@@ -30,9 +30,11 @@ namespace UltraCanvas {
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("MediaViewerSubtitle", 20, 42, 940, 36);
         subtitle->SetText("The framed area below is the live widget, opened on the media/images "
-                          "folder. Use the toolbar or click the image / arrow keys to browse "
-                          "(left = next, right = previous, works while zoomed). Try the "
-                          "slideshow, zoom, rotate, mirror, the Adjust panel, Save as and Info.");
+                          "folder. The arrow keys browse the folder right away — no click "
+                          "needed (Left = previous, Right = next); clicking the picture does "
+                          "the same (left click = next, right click = previous) and works "
+                          "while zoomed. Try the slideshow, zoom, rotate, mirror, the Adjust "
+                          "panel, Save as and Info.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         subtitle->SetWrap(TextWrap::WrapWord);

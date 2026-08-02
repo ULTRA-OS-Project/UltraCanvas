@@ -1,8 +1,28 @@
 // include/Plugins/Charts/UltraCanvasJitterPlotElement.h
 // Jitter plot (strip plot) element with statistical overlays and hybrid modes
-// Version: 1.1.3
-// Last Modified: 2026-05-09
+// Version: 1.3.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 1.3.0 (minor - per-point encodings):
+//  - NEW: Per-point size. AddCategoryData() accepts a parallel vector of size
+//         magnitudes; JitterPointSizeMode::ByValue maps them onto a radius
+//         range through sqrt, so point AREA tracks the quantity. The beeswarm
+//         packer receives the real per-point radii, so big and small bubbles
+//         pack without overlapping instead of all colliding at one radius.
+//  - NEW: Per-point continuous color. A parallel vector of color values plus
+//         JitterPointColorMode::ByValue samples any UltraCanvasColormap palette
+//         - including the diverging ones, with a configurable midpoint - so a
+//         beeswarm can encode a second continuous variable on top of position.
+//  - CHANGED: RenderJitterPoints now draws through DrawJitterPoint(), so the
+//         pointShape setting (Square / Triangle / Diamond) and the point edge
+//         style finally take effect. Previously it always drew a plain circle
+//         and ignored both.
+//  - FIXED: minScoreFilter defaulted to 0.0, so every negative value was
+//         silently discarded before rendering. Any signed quantity lost half
+//         its distribution with no indication why. Defaults to "no filter" now.
+//  - FIXED: AddCategoryData() did not invalidate the point-position cache, so a
+//         second call left the previously cached points on screen.
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -10,12 +30,14 @@
 #include "UltraCanvasRenderContext.h"
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
+#include "Plugins/Charts/UltraCanvasColormap.h"
 #include <memory>
 #include <vector>
 #include <string>
 #include <map>
 #include <random>
 #include <algorithm>
+#include <limits>
 
 #undef None
 namespace UltraCanvas {
@@ -103,6 +125,18 @@ enum class BeeswarmSide {
     Right              // Force right side only
 };
 
+// NEW in 1.3.0: how a point's radius is derived.
+enum class JitterPointSizeMode {
+    Fixed,    // Every point uses pointSize (default, 1.1 behaviour)
+    ByValue   // Area proportional to the point's entry in JitterCategoryData::sizeValues
+};
+
+// NEW in 1.3.0: how a point's fill color is derived.
+enum class JitterPointColorMode {
+    ByCategory,  // Category / hue group color (default, 1.1 behaviour)
+    ByValue      // Continuous colormap over JitterCategoryData::colorValues
+};
+
 // =============================================================================
 // JITTER PLOT DATA STRUCTURES
 // =============================================================================
@@ -113,7 +147,14 @@ struct JitterCategoryData {
     std::vector<double> values;
     std::string hueGroup;  // Secondary grouping variable
     Color customColor;     // Optional custom color override
-    
+
+    // NEW in 1.3.0: optional per-point encodings, parallel to `values`.
+    // Leave either empty to fall back to the uniform size / categorical color.
+    // A short vector is tolerated: points past its end use the fallback, so a
+    // partially-annotated dataset still renders.
+    std::vector<double> sizeValues;   // Magnitude behind each point (bubble area)
+    std::vector<double> colorValues;  // Continuous value behind each point
+
     // Statistical caching
     double cachedMedian = 0.0;
     double cachedMean = 0.0;
@@ -165,7 +206,33 @@ private:
     Color pointEdgeColor = Color(255, 255, 255, 100);
     float pointEdgeWidth = 0.5f;
     PointShape pointShape = PointShape::Circle;
-    
+
+    // ===== PER-POINT SIZE ENCODING (NEW in 1.3.0) =====
+    JitterPointSizeMode pointSizeMode = JitterPointSizeMode::Fixed;
+    float pointRadiusMin = 2.0f;    // Radius at the low end of the size domain
+    float pointRadiusMax = 14.0f;   // Radius at the high end
+    // Size domain. When autoSizeDomain is true (default) the range is taken
+    // from the data on every rebuild; set it explicitly to keep several charts
+    // on a comparable scale.
+    bool   autoSizeDomain = true;
+    double sizeDomainMin = 0.0;
+    double sizeDomainMax = 1.0;
+
+    // ===== PER-POINT COLOR ENCODING (NEW in 1.3.0) =====
+    JitterPointColorMode pointColorMode = JitterPointColorMode::ByCategory;
+    HeatmapColormap pointColormap = HeatmapColormap::RdBu;
+    std::vector<Color> pointColormapCustom;   // Used when pointColormap == Custom
+    bool   pointColormapReverse = false;
+    bool   autoColorDomain = true;
+    double colorDomainMin = 0.0;
+    double colorDomainMax = 1.0;
+    // Diverging normalization: maps [min, mid] -> [0, 0.5] and [mid, max] ->
+    // [0.5, 1] so `mid` lands on the palette's neutral centre. This is what
+    // makes a 0%-centred political margin, a zero-centred change, or any other
+    // signed quantity read correctly.
+    bool   pointColorDiverging = false;
+    double pointColorMidpoint = 0.0;
+
     // ===== STATISTICAL OVERLAYS =====
     bool showMedianMarker = false;
     bool showMeanMarker = false;
@@ -223,14 +290,24 @@ private:
     
     // ===== FILTERING =====
     std::string selectedRegion;
-    double minScoreFilter = 0.0;
-    
+    // FIXED in 1.3.0: was 0.0, which silently dropped every negative value -
+    // so a signed quantity (a margin, a change, a z-score) lost half its
+    // distribution before it was ever drawn, with no indication why. The filter
+    // is opt-in; its default must not filter anything.
+    double minScoreFilter = std::numeric_limits<double>::lowest();
+
     // ===== CACHE FOR POINT POSITIONS =====
     struct PointPosition {
         float x, y;
         double value;
         std::string category;
         std::string region;
+
+        // NEW in 1.3.0: resolved per-point encodings, computed once when the
+        // cache is built so the render loop stays a straight blit.
+        float  radius = 0.0f;
+        bool   hasColorValue = false;
+        double colorValue = 0.0;
     };
     mutable std::vector<PointPosition> pointPositionsCache;
     mutable bool pointCacheValid = false;
@@ -255,21 +332,26 @@ private:
     bool beeswarmCompact = false;         // Greedy vs predetermined order
     
     // ===== BEESWARM HELPER METHODS =====
-    // Main beeswarm layout calculator
+    // Main beeswarm layout calculator.
+    // NEW in 1.3.0: `perPointRadii` (parallel to `values`, may be empty) lets
+    // the packer place variable-size bubbles. When empty every point uses
+    // `pointRadius`, which is the 1.1 behaviour.
     std::vector<BeeswarmPoint> CalculateBeeswarmLayout(
         const std::vector<double>& values,
         float categoryCenter,
         float categoryWidth,
-        float pointRadius);
-    
+        float pointRadius,
+        const std::vector<float>& perPointRadii = {});
+
     // Swarm method: greedy placement preserving Y positions
     std::vector<BeeswarmPoint> CalculateBeeswarmSwarm(
         const std::vector<double>& values,
         const std::vector<int>& sortedIndices,
         float categoryCenter,
         float categoryWidth,
-        float pointRadius);
-    
+        float pointRadius,
+        const std::vector<float>& perPointRadii = {});
+
     // Center method: symmetric grid layout
     std::vector<BeeswarmPoint> CalculateBeeswarmCenter(
         const std::vector<double>& values,
@@ -388,11 +470,53 @@ public:
     void SetViolinSettings(const Color& fill, const Color& border, 
                           float borderWidth, int resolution);
     
+    // ===== PER-POINT SIZE ENCODING (NEW in 1.3.0) =====
+    void SetPointSizeMode(JitterPointSizeMode mode);
+    JitterPointSizeMode GetPointSizeMode() const { return pointSizeMode; }
+
+    // Radius range that the size domain maps onto.
+    void SetPointSizeRange(float minRadius, float maxRadius);
+
+    // Fix the size domain explicitly. Pass minValue >= maxValue to return to
+    // automatic domain detection from the data.
+    void SetPointSizeDomain(double minValue, double maxValue);
+
+    // Largest / smallest size value seen in the current data. Useful for
+    // labelling a bubble-size legend.
+    double GetSizeDomainMin() const { return sizeDomainMin; }
+    double GetSizeDomainMax() const { return sizeDomainMax; }
+
+    // ===== PER-POINT COLOR ENCODING (NEW in 1.3.0) =====
+    void SetPointColorMode(JitterPointColorMode mode);
+    JitterPointColorMode GetPointColorMode() const { return pointColorMode; }
+
+    void SetPointColormap(HeatmapColormap cmap, bool reverse = false);
+    void SetPointCustomColormap(const std::vector<Color>& anchors);
+
+    // Fix the color domain explicitly. Pass minValue >= maxValue to return to
+    // automatic domain detection from the data.
+    void SetPointColorDomain(double minValue, double maxValue);
+
+    // Centre a diverging palette on `midpoint` (e.g. 0 for a signed margin).
+    void SetPointColorDiverging(bool diverging, double midpoint = 0.0);
+
+    double GetColorDomainMin() const { return colorDomainMin; }
+    double GetColorDomainMax() const { return colorDomainMax; }
+
     // ===== DATA LOADING =====
-    void AddCategoryData(const std::string& category, 
+    void AddCategoryData(const std::string& category,
                         const std::vector<double>& values,
                         const std::string& hueValue = "");
-    
+
+    // NEW in 1.3.0: values plus the parallel per-point size and color vectors.
+    // Either extra vector may be empty (or shorter than `values`) - points
+    // without an entry fall back to the uniform size / categorical color.
+    void AddCategoryData(const std::string& category,
+                        const std::vector<double>& values,
+                        const std::vector<double>& sizeValues,
+                        const std::vector<double>& colorValues,
+                        const std::string& hueValue = "");
+
     void ClearData();
     
     // ===== BEESWARM CONFIGURATION (NEW) =====
@@ -470,6 +594,18 @@ private:
     
     // Color management
     Color GetPointColor(size_t categoryIndex, const std::string& hueValue);
+
+    // ===== PER-POINT ENCODING HELPERS (NEW in 1.3.0) =====
+    // Scan the loaded data and refresh sizeDomain* / colorDomain* when the
+    // corresponding auto flag is set. Called whenever the point cache rebuilds.
+    void RefreshEncodingDomains();
+
+    // Radius for one point. Falls back to pointSize in Fixed mode, or when the
+    // point has no size value.
+    float ResolvePointRadius(const JitterCategoryData& catData, size_t pointIndex) const;
+
+    // Color for one point, given the categorical color to fall back to.
+    Color ResolvePointColor(const PointPosition& pp, const Color& categoricalColor) const;
     
     // Data access
     std::vector<JitterCategoryData>& GetCategoryDataList(const std::string& category);

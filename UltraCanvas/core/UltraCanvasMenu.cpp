@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.1 - MenuClick event.targetElement set via weak_from_this()
-// Last Modified: 2026-07-02
+// Version: 1.8.2 - CloseMenu() is a no-op on an already-closed menu
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -42,6 +42,11 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::CloseMenu() {
         UltraCanvasTooltipManager::HideTooltip();
+        // Already closed: closing a popup detaches it from its window, and an
+        // item's action can dismiss the menu from inside its own click (a
+        // breadcrumb dropdown entry navigates, which rebuilds the strip and
+        // closes the menu) — ExecuteItem then still runs its own CloseMenutree.
+        if (!window) return;
         window->ClosePopup(*this, ClosePopupReason::Manual);
         debugOutput << "Menu '" << GetIdentifier() << "' hidden.  Visible: " << IsVisible() << std::endl;
     }

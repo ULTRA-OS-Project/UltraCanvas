@@ -1,3 +1,178 @@
+#### 2026-08-01 *0.3.23*
+- **UltraCanvasDendrogram** *(1.5.1)*: fixed radial leaf labels rendering upside
+  down in the upper-right quadrant. The left/right half test was
+  `angle > -pi/2 && angle < pi/2`, which assumes angles in `(-pi, pi]`, but
+  `DendrogramLayoutEngine::ApplyRadialLayout` produces `[0, 2pi)` — so every leaf
+  between `3pi/2` and `2pi` failed the test, took the left-half branch and picked
+  up an extra 180-degree rotation. Both the leaf labels and the group arc labels
+  now test `cos(rotation)`, which is precisely the condition for "this text is not
+  upside down" and does not depend on which angle range the layout uses. Audited
+  the other radial components at the same time — Sunburst, Chord, RadialBar,
+  CircularInfoGraphic and PolarChart all normalise correctly and were unaffected.
+
+#### 2026-08-01 *0.3.22*
+- **UltraCanvasNodeDiagram** *(2.2.0)*: organizational-network features. Node
+  size can now be driven by the data - `NodeSizeMode::ByDegree` sizes a node
+  from its connection count, `ByValue` from a new `NodeDiagramNode::value`
+  field, both through a sqrt transfer so node AREA tracks the quantity rather
+  than the diameter. Degrees can count total / incoming / outgoing links and are
+  cached, so bulk-loading a graph costs one rebuild instead of one per
+  `AddLink`. New `NodeDiagramGroup` cluster containers wrap a set of member
+  nodes in an auto-fitted boundary box (solid or dashed, optional fill and
+  corner radius, title in any corner) that follows its members through dragging
+  and re-layout; boxes draw behind the links and titles after the nodes, both
+  sized in screen pixels so they hold up at any zoom. `SetGroupCohesion()` adds
+  a per-group centroid attraction to the force-directed layout - without it
+  repulsion scatters a cluster and the boxes overlap into mush. New color legend
+  overlay (`NodeDiagramLegendConfig`, `BuildLegendFromGroups()`) drawn in screen
+  space in any corner. Groups and sizing round-trip through `ToJson()` /
+  `FromJson()`, and group boxes are included in `ComputeContentBounds()` so
+  `FitView()` and the minimap account for them. New demo tab (Diagrams > Node
+  Diagram > Organization): a five-department company network with a control
+  column for layout, sizing mode, degree mode, cohesion, link style, node shape,
+  theme, and toggles for the boxes, legend, grid, minimap, controls and snap.
+- **UltraCanvasDendrogram** *(1.5.0)*: hierarchical edge bundling (Holten 2006).
+  `AddRelation()` registers a leaf-to-leaf association that does not follow the
+  tree's parent/child structure; each one is routed through the tree path source
+  -> lowest common ancestor -> target, relaxed toward the straight chord by
+  `SetBundlingStrength()` (beta), and smoothed with a clamped cubic B-spline. A
+  radial dendrogram can now show its hierarchy and the cross-links between its
+  leaves at the same time without becoming a hairball. Also new: area-proportional
+  node dots via `DendrogramNodeSizeMode::ByValue` and `DendrogramNode::nodeValue`,
+  normalised against the largest value in the tree - replacing the single global
+  `style.leafNodeRadius` as the only leaf size available.
+- **UltraCanvasJitterPlotElement** *(1.3.0)*: per-point encodings. A parallel
+  vector of size magnitudes plus `JitterPointSizeMode::ByValue` turns a beeswarm
+  into a bubble beeswarm, with the packer receiving the real per-point radii so
+  mixed sizes pack without overlapping. A parallel vector of color values plus
+  `JitterPointColorMode::ByValue` samples any `UltraCanvasColormap` palette,
+  including the diverging ones with a configurable midpoint, so a signed quantity
+  reads correctly around zero. Fixes: `minScoreFilter` defaulted to `0.0` and
+  silently discarded every negative value before rendering; `AddCategoryData()`
+  did not invalidate the point-position cache, so a second call left the previous
+  points on screen; `RenderJitterPoints()` always drew a plain circle and ignored
+  both `SetPointShape()` and the point edge style.
+- **UltraCanvasMediaViewer**: the arrow keys now browse the folder as soon as
+  the widget is on screen. The widget takes the window keyboard focus when it is
+  attached to a window (`SetGrabFocusOnAttach(false)` opts out,
+  `FocusForKeyboard()` requests it on demand) and installs a window key filter,
+  so Left / Right no longer require a click into the picture first — with no
+  focused element at all the key event never reached the widget before. The
+  filter only steps in when the keyboard is unowned or held by one of the
+  display views; toolbar buttons, sliders and the breadcrumb keep their own key
+  handling. Where the active view uses the bare arrows itself (spreadsheet cell
+  movement) `Alt+Left` / `Alt+Right` browse instead.
+- **UltraCanvasMediaViewer**: text / source / markdown files open display-only
+  instead of read-only-but-focusable. The text area used to grab the focus and
+  swallow Left / Right for caret movement, which stopped file browsing dead
+  (and showed an editing caret in a viewer). The viewer now scrolls the text
+  itself with Up / Down / PageUp / PageDown and copies the selection with
+  Ctrl+C.
+- **UltraCanvasMediaViewer**: opening a single file through the Open dialog, or
+  dropping one file onto the widget, now browses the folder that file lives in
+  (with that file shown first) instead of building a one-entry playlist that the
+  arrow keys and the slideshow had nowhere to move in. Multi-selections are
+  still taken as an explicit playlist.
+- **UltraCanvasTextArea**: new `SetDisplayOnly()` / `IsDisplayOnly()`. Display-
+  only implies read-only and additionally takes the area out of the keyboard
+  focus chain — `AcceptsFocus()` returns false, no caret is drawn and no key
+  event reaches it — so a hosting widget keeps the arrow keys for its own
+  navigation. Mouse wheel / scrollbar scrolling and mouse selection are
+  unaffected.
+  
+#### 2026-08-01 *0.3.21*
+- **UltraCanvasSplitPane**: split lines can now carry an optional **handle**.
+  `SplitterHandleShape` picks the form - `Square`, `RoundedSquare`, `Round`
+  (a circle when square, a capsule when elongated) or `Image` - and
+  `SplitterHandleStyle` sets its size across and along the line, corner radius,
+  position along the line (0..1), colors, border and grip lines. The splitter
+  strip widens to fit the handle while the painted line stays as thin as
+  `splitterThickness`, so a 3 px line can carry a 22 px handle.
+  `SetSplitterHandleShape()` is the one-liner; the handle drags exactly like the
+  rest of the line. The shape enumerator for "no handle" is `NoHandle`, not
+  `None`, because `<X11/X.h>` defines `None` as a macro.
+- **UltraCanvasSplitPane**: **image handles**. `SplitterHandleStyle::imagePath`
+  takes an SVG or raster asset, with `SetSplitterHandleImage()` as the
+  one-liner. With `SplitterHandleShape::Image` the asset is the whole handle;
+  with any drawn shape it is centred on top of it and the grip is suppressed.
+  Leaving `axisLength` at 0 takes the handle's proportions from the asset, so
+  the ready-made `media/icons/scrollbar-handle-v.svg` (14x48) renders as a grip
+  rather than a squashed square. `imageAsMask` re-tints a monochrome glyph with
+  `imageColor`, or with the handle's own normal/hover/active color when that is
+  left transparent, so an image handle can react to hover and drag like a drawn
+  one.
+- **UltraCanvasSplitPane**: **action icons on the split line**. Any number of
+  icons per splitter (`AddSplitterIcon`, `SetSplitterIcons`,
+  `InsertSplitterIcon`, `RemoveSplitterIcon`, `ClearSplitterIcons`), each with
+  an image or text glyph, tooltip, enabled/visible state and its own click
+  handler, plus a pane-level `onSplitterIconClicked`. Icons are centred across
+  the line and grouped along it, either inside the handle (which auto-sizes to
+  wrap them) or at their own `SplitterIconStyle::position`. Pressing an icon
+  does not start a drag: the click fires on release over the same icon, the
+  cursor turns into a hand, and a disabled icon dims and swallows the press.
+  Icons live on the split pane rather than on the splitter objects, so they
+  survive pane insertion and removal.
+- **UltraCanvasSplitPane**: `SplitPaneStyle::splitterHitMargin` is wired up -
+  it now widens the grab strip on each side of the line without thickening the
+  painted line. New guide `Docs/UltraCanvas/UltraCanvasSplitPane.md` (the demo
+  already pointed at it) and three new demo sections covering handle shapes,
+  icons in a capsule handle, and icons on a bare vertical split line.
+
+#### 2026-08-01 *0.3.23*
+- **UltraCanvasDendrogram** *(1.5.1)*: fixed radial leaf labels rendering upside
+  down in the upper-right quadrant. The left/right half test was
+  `angle > -pi/2 && angle < pi/2`, which assumes angles in `(-pi, pi]`, but
+  `DendrogramLayoutEngine::ApplyRadialLayout` produces `[0, 2pi)` — so every leaf
+  between `3pi/2` and `2pi` failed the test, took the left-half branch and picked
+  up an extra 180-degree rotation. Both the leaf labels and the group arc labels
+  now test `cos(rotation)`, which is precisely the condition for "this text is not
+  upside down" and does not depend on which angle range the layout uses. Audited
+  the other radial components at the same time — Sunburst, Chord, RadialBar,
+  CircularInfoGraphic and PolarChart all normalise correctly and were unaffected.
+
+#### 2026-07-31 *0.3.22*
+- **UltraCanvasNodeDiagram** *(2.2.0)*: organizational-network features. Node
+  size can now be driven by the data - `NodeSizeMode::ByDegree` sizes a node
+  from its connection count, `ByValue` from a new `NodeDiagramNode::value`
+  field, both through a sqrt transfer so node AREA tracks the quantity rather
+  than the diameter. Degrees can count total / incoming / outgoing links and are
+  cached, so bulk-loading a graph costs one rebuild instead of one per
+  `AddLink`. New `NodeDiagramGroup` cluster containers wrap a set of member
+  nodes in an auto-fitted boundary box (solid or dashed, optional fill and
+  corner radius, title in any corner) that follows its members through dragging
+  and re-layout; boxes draw behind the links and titles after the nodes, both
+  sized in screen pixels so they hold up at any zoom. `SetGroupCohesion()` adds
+  a per-group centroid attraction to the force-directed layout - without it
+  repulsion scatters a cluster and the boxes overlap into mush. New color legend
+  overlay (`NodeDiagramLegendConfig`, `BuildLegendFromGroups()`) drawn in screen
+  space in any corner. Groups and sizing round-trip through `ToJson()` /
+  `FromJson()`, and group boxes are included in `ComputeContentBounds()` so
+  `FitView()` and the minimap account for them. New demo tab (Diagrams > Node
+  Diagram > Organization): a five-department company network with a control
+  column for layout, sizing mode, degree mode, cohesion, link style, node shape,
+  theme, and toggles for the boxes, legend, grid, minimap, controls and snap.
+- **UltraCanvasDendrogram** *(1.5.0)*: hierarchical edge bundling (Holten 2006).
+  `AddRelation()` registers a leaf-to-leaf association that does not follow the
+  tree's parent/child structure; each one is routed through the tree path source
+  -> lowest common ancestor -> target, relaxed toward the straight chord by
+  `SetBundlingStrength()` (beta), and smoothed with a clamped cubic B-spline. A
+  radial dendrogram can now show its hierarchy and the cross-links between its
+  leaves at the same time without becoming a hairball. Also new: area-proportional
+  node dots via `DendrogramNodeSizeMode::ByValue` and `DendrogramNode::nodeValue`,
+  normalised against the largest value in the tree - replacing the single global
+  `style.leafNodeRadius` as the only leaf size available.
+- **UltraCanvasJitterPlotElement** *(1.3.0)*: per-point encodings. A parallel
+  vector of size magnitudes plus `JitterPointSizeMode::ByValue` turns a beeswarm
+  into a bubble beeswarm, with the packer receiving the real per-point radii so
+  mixed sizes pack without overlapping. A parallel vector of color values plus
+  `JitterPointColorMode::ByValue` samples any `UltraCanvasColormap` palette,
+  including the diverging ones with a configurable midpoint, so a signed quantity
+  reads correctly around zero. Fixes: `minScoreFilter` defaulted to `0.0` and
+  silently discarded every negative value before rendering; `AddCategoryData()`
+  did not invalidate the point-position cache, so a second call left the previous
+  points on screen; `RenderJitterPoints()` always drew a plain circle and ignored
+  both `SetPointShape()` and the point edge style.
+
 #### 2026-07-31 *0.3.21*
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with

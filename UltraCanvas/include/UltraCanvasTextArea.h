@@ -390,7 +390,10 @@ namespace UltraCanvas {
 
         virtual ~UltraCanvasTextArea();
 
-        bool AcceptsFocus() const override { return true; }
+        // Display-only areas are pure viewers: they never take the keyboard
+        // focus, so no caret is drawn and no key ever reaches them (see
+        // SetDisplayOnly).
+        bool AcceptsFocus() const override { return !displayOnly; }
         // Render method
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
@@ -556,6 +559,15 @@ namespace UltraCanvas {
         // Properties
         void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool IsReadOnly() const { return isReadOnly; }
+
+        // Display-only ("viewer") mode: implies read-only and additionally takes
+        // the area out of the keyboard focus chain — no caret, no key handling —
+        // so the hosting widget keeps the arrow keys for its own navigation
+        // (UltraCanvasMediaViewer shows text files this way). Mouse wheel /
+        // scrollbar scrolling and mouse selection keep working; a host that wants
+        // keyboard scrolling drives ScrollUp()/ScrollDown() itself.
+        void SetDisplayOnly(bool displayOnlyMode);
+        bool IsDisplayOnly() const { return displayOnly; }
 
         void SetWordWrap(bool wrap);
         bool GetWordWrap() const { return wordWrap; }
@@ -878,6 +890,7 @@ namespace UltraCanvas {
         bool isNeedRecalculateVisibleArea;
         bool isNeedRebuildLineLayouts;
         bool isReadOnly;
+        bool displayOnly = false;   // pure viewer: read-only + not focusable
         bool wordWrap;
         bool highlightCurrentLine;
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).

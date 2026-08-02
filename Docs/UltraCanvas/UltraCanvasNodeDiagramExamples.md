@@ -7,7 +7,14 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.1.0
+**Version:** 2.2.0
+
+> **Since 2.2.0** the component covers organizational-network work: data-driven
+> node sizing (`NodeSizeMode::ByDegree` / `ByValue`), cluster containers
+> (`NodeDiagramGroup`) that auto-fit a boundary box around a set of member
+> nodes, a group-cohesion force that keeps those clusters together during
+> force-directed layout, and a color legend overlay. See
+> [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend).
 
 > **Since 2.1.0** the pan/zoom, snap-grid, minimap and controls machinery lives
 > in the shared [`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md).
@@ -43,6 +50,10 @@ UltraCanvasUIElement
 - **JSON serialization**: `ToJson()` / `FromJson()`
 - **Themes**: Default, Professional, Colorful, Minimal, Dark
 - **Auto-fit on layout**, label measurement (`SuggestNodeSizeForLabel`)
+- **Data-driven node sizing** (2.2.0): size by connection degree or by a per-node value
+- **Cluster containers** (2.2.0): auto-fitted, titled boundary boxes around node sets
+- **Group cohesion** (2.2.0): pulls cluster members together during force-directed layout
+- **Color legend overlay** (2.2.0), placeable in any corner
 
 ## Data Structures
 
@@ -68,6 +79,24 @@ enum class LinkStyle {
 
 enum class HandlePosition { Top, Right, Bottom, Left };
 enum class HandleType     { Source, Target };
+
+// NEW in 2.2.0
+enum class NodeSizeMode {
+    Fixed,      // node.width / node.height used verbatim (default)
+    ByDegree,   // size = baseSize * sqrt(degree), clamped to [minSize, maxSize]
+    ByValue     // size = baseSize * sqrt(node.value), clamped the same way
+};
+
+enum class NodeDegreeMode {
+    Total,      // incoming + outgoing (default)
+    Incoming,
+    Outgoing
+};
+
+// NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
+enum class GroupLabelPosition {
+    TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, NoLabel
+};
 
 // Since 2.1.0 an alias of the shared DiagramPanelPosition
 // (see UltraCanvasDiagramViewport.md).
@@ -141,6 +170,105 @@ struct NodeDiagramLink {
     bool   deletable   = true;
 };
 ```
+
+### NodeDiagramSizing (2.2.0)
+
+```cpp
+struct NodeDiagramSizing {
+    NodeSizeMode   mode       = NodeSizeMode::Fixed;
+    NodeDegreeMode degreeMode = NodeDegreeMode::Total;
+
+    double baseSize = 26.0;   // Size of a degree-1 (or value-1) node
+    double minSize  = 18.0;   // Floor - keeps isolated nodes clickable
+    double maxSize  = 96.0;   // Ceiling - keeps a mega-hub from eating the canvas
+
+    bool keepAspect = true;   // Scale width and height together
+};
+```
+
+Both scaling modes use a **square-root transfer**, so the node's *area* — not its
+diameter — is proportional to the underlying quantity. That is the perceptually
+correct mapping for a filled mark: scaling the diameter linearly would make a
+degree-9 hub look nine times more important than a degree-1 leaf instead of three.
+
+`NodeDiagramNode` gained a `value` field (default `1.0`) that drives
+`NodeSizeMode::ByValue`, plus `baseWidth` / `baseHeight`, which capture the size a
+node was authored with so switching back to `NodeSizeMode::Fixed` restores it exactly.
+
+### NodeDiagramGroup (2.2.0)
+
+A cluster container: a boundary box drawn around a set of member nodes, with an
+optional title. Bounds are recomputed from the members every frame, so the box
+tracks its contents through dragging and re-layout.
+
+```cpp
+struct NodeDiagramGroup {
+    std::string id;
+    std::string label;
+    std::vector<std::string> nodeIds;
+
+    Color  fillColor   = Color(0, 0, 0, 0);          // Transparent by default
+    Color  borderColor = Color(170, 170, 170, 255);
+    double borderWidth = 1.0;
+    bool   dashed      = false;
+    double dashLength  = 6.0;
+    double dashGap     = 4.0;
+
+    double padding      = 24.0;   // World-space gap between members and the box
+    double cornerRadius = 0.0;    // 0 = sharp corners
+
+    GroupLabelPosition labelPosition = GroupLabelPosition::TopLeft;
+    Color  labelColor    = Color(70, 70, 70, 255);
+    double labelFontSize = 12.0;
+    double labelMargin   = 6.0;
+
+    bool visible = true;
+};
+```
+
+Boxes render **behind the links** so edges crossing between clusters stay readable;
+titles render **after the nodes** so a node never covers one. Group titles and
+box borders are scaled by the inverse of the zoom, so they hold a constant
+on-screen size at any zoom level.
+
+### NodeDiagramLegendConfig (2.2.0)
+
+```cpp
+struct NodeDiagramLegendEntry {
+    std::string label;
+    Color       color = Color(100, 150, 220, 255);
+};
+
+struct NodeDiagramLegendConfig {
+    bool visible = false;
+    std::vector<NodeDiagramLegendEntry> entries;
+
+    DiagramPanelPosition position = DiagramPanelPosition::TopLeft;
+    double padding      = 10.0;   // Distance from the element edge
+    double innerPadding = 8.0;    // Panel border to content
+    double swatchWidth  = 14.0;
+    double swatchHeight = 14.0;
+    double rowGap       = 5.0;
+    double swatchGap    = 7.0;
+    double fontSize     = 11.0;
+
+    std::string title;            // Optional heading above the rows
+    double titleFontSize = 12.0;
+    double titleGap      = 6.0;
+
+    Color textColor        = Color(50, 50, 50, 255);
+    Color backgroundColor  = Color(255, 255, 255, 225);
+    Color borderColor      = Color(200, 200, 200, 255);
+    bool  showBackground   = true;
+    bool  showSwatchBorder = true;
+    Color swatchBorderColor = Color(120, 120, 120, 180);
+};
+```
+
+The legend is drawn in **screen space**, like the minimap and controls overlays —
+it does not pan or zoom with the diagram. Panel size is measured from the actual
+text, so long category names are never clipped.
+
 
 ## Class Reference
 
@@ -220,6 +348,94 @@ void ApplyGridLayout();
 void ApplyHierarchicalLayout(const std::string& rootId);
 
 void SetAutoFitOnLayout(bool autoFit);
+```
+
+### Data-driven node sizing (2.2.0)
+
+```cpp
+void         SetNodeSizeMode(NodeSizeMode mode);
+NodeSizeMode GetNodeSizeMode() const;
+
+void              SetNodeSizing(const NodeDiagramSizing& sizing);
+NodeDiagramSizing GetNodeSizing() const;
+
+// Convenience: mode-independent scale range in one call.
+void SetNodeSizeRange(double baseSize, double minSize, double maxSize);
+
+// Magnitude behind a node, used by NodeSizeMode::ByValue.
+void   SetNodeValue(const std::string& id, double value);
+double GetNodeValue(const std::string& id) const;
+
+// Connection count under the current (or an explicit) degree mode. 0 for unknown ids.
+int GetNodeDegree(const std::string& id) const;
+int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
+
+// Force a sizing pass now. Normally unnecessary - sizes are recomputed when
+// links or values change - but useful after bulk edits made through GetNode().
+void ApplyNodeSizing();
+```
+
+Degree counts are cached and invalidated by any node or link mutation, so
+bulk-loading a graph costs one rebuild rather than one per `AddLink` call.
+`RunLayout()` re-runs sizing before laying out, so the anti-overlap pass
+separates nodes by their final sizes.
+
+### Cluster containers (2.2.0)
+
+```cpp
+void AddGroup(const NodeDiagramGroup& group);
+void AddGroup(const std::string& id, const std::string& label,
+              const std::vector<std::string>& nodeIds,
+              const Color& borderColor,
+              const Color& fillColor = Color(0, 0, 0, 0));
+void RemoveGroup(const std::string& id);
+void ClearGroups();
+
+void AddNodeToGroup(const std::string& groupId, const std::string& nodeId);
+void RemoveNodeFromGroup(const std::string& groupId, const std::string& nodeId);
+
+NodeDiagramGroup*        GetGroup(const std::string& id);
+const NodeDiagramGroup*  GetGroup(const std::string& id) const;
+std::vector<std::string> GetAllGroupIds() const;
+
+// Id of the first group containing the node, or "" when it belongs to none.
+std::string GetNodeGroupId(const std::string& nodeId) const;
+
+// Current world-space box including padding. Empty rect for unknown ids.
+Rect2Dd GetGroupBounds(const std::string& id) const;
+
+void SetGroupsVisible(bool visible);
+bool AreGroupsVisible() const;
+
+// Per-group centroid attraction used by the force-directed layout.
+// 0 disables clustering; 0.05-0.20 gives visually distinct clusters.
+void   SetGroupCohesion(double strength);
+double GetGroupCohesion() const;
+```
+
+`RemoveNode()` drops the node from every group it belonged to, so a box never
+reserves space for a node that no longer exists. Group boxes are included in
+`ComputeContentBounds()`, so `FitView()` and the minimap account for them.
+
+**Group cohesion matters.** Without it, repulsion scatters a cluster's members
+across the canvas and the boxes grow until they overlap into mush — the boxes
+only read as clusters if the layout keeps their members together in the first
+place.
+
+### Color legend (2.2.0)
+
+```cpp
+void SetLegendVisible(bool visible);
+void SetLegendPosition(NodeDiagramPanelPosition pos);
+void SetLegendConfig(const NodeDiagramLegendConfig& cfg);
+NodeDiagramLegendConfig GetLegendConfig() const;
+
+void AddLegendEntry(const std::string& label, const Color& color);
+void ClearLegendEntries();
+
+// One row per group, using each group's border color as the swatch.
+// Groups with an empty label are skipped.
+void BuildLegendFromGroups();
 ```
 
 ### Styling & Theme
@@ -506,6 +722,95 @@ diagram->AddLink("e5", "eng_mgr", "dev1");
 diagram->SetDefaultLinkStyle(LinkStyle::SmoothStep);
 diagram->ApplyHierarchicalLayout("ceo");
 ```
+
+### Cluster containers, sizing and legend
+
+An organizational network: five departments, each wrapped in its own boundary
+box, with hub nodes sized by how many people connect to them. This is the shape
+a strict org chart cannot draw — the cross-department links are the point.
+
+```cpp
+auto diagram = CreateNodeDiagram("org", 0, 0, 900, 620);
+diagram->SetTheme(NodeDiagramTheme::Minimal);
+diagram->SetDefaultLinkStyle(LinkStyle::Straight);
+
+struct Dept { const char* id; const char* label; Color color; const char* hub; };
+const Dept departments[] = {
+    {"grp_sales", "Sales",              Color(31,  78, 160, 255), "sales_hub"},
+    {"grp_care",  "Customer Care",      Color(38, 125,  60, 255), "care_hub"},
+    {"grp_biz",   "Business Solutions", Color(214,106,  20, 255), "biz_hub"},
+    {"grp_cli",   "Client Services",    Color(196, 42,  96, 255), "cli_hub"},
+};
+
+int linkNo = 0;
+for (const auto& dept : departments) {
+    NodeDiagramNode hub(dept.hub, dept.label);
+    hub.shape       = NodeShape::Square;
+    hub.fillColor   = dept.color;
+    hub.borderColor = Color(40, 40, 40, 255);
+    hub.textColor   = Color(255, 255, 255, 255);
+    hub.width = hub.height = 46.0;
+    hub.value = 6.0;                     // Headcount - drives NodeSizeMode::ByValue
+    diagram->AddNode(hub);
+
+    std::vector<std::string> members{dept.hub};
+    for (int i = 0; i < 6; ++i) {
+        std::string id = std::string(dept.hub) + "_m" + std::to_string(i);
+        NodeDiagramNode node(id, "Member " + std::to_string(i));
+        node.shape       = NodeShape::Square;
+        node.borderColor = dept.color;
+        node.width = node.height = 34.0;
+        diagram->AddNode(node);
+        members.push_back(id);
+
+        NodeDiagramLink link("l" + std::to_string(++linkNo), dept.hub, id);
+        link.directed  = false;
+        link.lineColor = Color(dept.color.r, dept.color.g, dept.color.b, 150);
+        diagram->AddLink(link);
+    }
+
+    NodeDiagramGroup group(dept.id, dept.label);
+    group.nodeIds       = members;
+    group.borderColor   = dept.color;
+    group.fillColor     = Color(dept.color.r, dept.color.g, dept.color.b, 18);
+    group.labelColor    = dept.color;
+    group.dashed        = true;
+    group.cornerRadius  = 6.0;
+    group.labelPosition = GroupLabelPosition::TopLeft;
+    diagram->AddGroup(group);
+}
+
+// Cross-department ties: the reason this is a network, not a tree.
+diagram->AddLink(NodeDiagramLink("x1", "sales_hub", "biz_hub"));
+diagram->AddLink(NodeDiagramLink("x2", "biz_hub",   "cli_hub"));
+diagram->AddLink(NodeDiagramLink("x3", "cli_hub",   "care_hub"));
+
+// Hubs read as hubs: area proportional to connection count.
+NodeDiagramSizing sizing;
+sizing.mode     = NodeSizeMode::ByDegree;
+sizing.baseSize = 20.0;
+sizing.minSize  = 26.0;
+sizing.maxSize  = 74.0;
+diagram->SetNodeSizing(sizing);
+
+// Keep each department's members together while the layout runs.
+diagram->SetGroupCohesion(0.14);
+
+diagram->BuildLegendFromGroups();
+auto legend = diagram->GetLegendConfig();
+legend.visible  = true;
+legend.position = DiagramPanelPosition::TopRight;
+legend.title    = "Departments";
+diagram->SetLegendConfig(legend);
+
+diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+diagram->RunLayout();
+```
+
+Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
+`value` field instead — headcount, budget, revenue, whatever the graph is about.
+`NodeSizeMode::Fixed` restores the authored sizes exactly.
+
 
 ## Keyboard Shortcuts
 

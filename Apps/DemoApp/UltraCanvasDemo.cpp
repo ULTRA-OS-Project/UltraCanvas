@@ -549,7 +549,9 @@ namespace UltraCanvas {
                              "Docs/UltraCanvas/UltraCanvasSplitPane.md")
                 .AddVariant("splitpane", "Horizontal Split")
                 .AddVariant("splitpane", "Vertical Split")
-                .AddVariant("splitpane", "Nested Splits");
+                .AddVariant("splitpane", "Nested Splits")
+                .AddVariant("splitpane", "Splitter Handles")
+                .AddVariant("splitpane", "Split Line Action Icons");
 
         basicBuilder.AddItem("layouts", "Layout System",
                              "Box, Grid, and Flex layout examples",
@@ -1116,6 +1118,19 @@ namespace UltraCanvas {
                 .AddVariant("ganttcharts", "Dark Theme")
                 .AddVariant("ganttcharts", "Palette Gallery");
 
+        chartBuilder.AddItem("timelinechart", "Timeline Chart",
+                             "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTimelineChartExamples(); },
+                             "DemoApp/UltraCanvasTimelineChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
+                .AddVariant("timelinechart", "Modern")
+                .AddVariant("timelinechart", "Classic")
+                .AddVariant("timelinechart", "Minimal")
+                .AddVariant("timelinechart", "Roadmap")
+                .AddVariant("timelinechart", "Dark")
+                .AddVariant("timelinechart", "Swimlanes");
+
         chartBuilder.AddItem("kanbanboards", "Kanban Board",
                              "Workflow boards with WIP limits, swimlanes, drag & drop, "
                              "a built-in card editor, Mermaid text definitions and "
@@ -1132,23 +1147,6 @@ namespace UltraCanvas {
                 .AddVariant("kanbanboards", "Dark Theme")
                 .AddVariant("kanbanboards", "Text Definition")
                 .AddVariant("kanbanboards", "Cumulative Flow");
-
-        chartBuilder.AddItem("quadrantcharts", "Quadrant Diagram",
-                             "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateQuadrantChartExamples(); },
-                             "DemoApp/UltraCanvasQuadrantChartExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md")
-                .AddVariant("quadrantcharts", "SWOT Analysis")
-                .AddVariant("quadrantcharts", "BCG Matrix")
-                .AddVariant("quadrantcharts", "Eisenhower Matrix")
-                .AddVariant("quadrantcharts", "Risk Matrix")
-                .AddVariant("quadrantcharts", "Priority Matrix")
-                .AddVariant("quadrantcharts", "Custom Quadrants");
-
-        chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
 
         chartBuilder.AddItem("polarcharts", "Polar Chart",
                              "Angle/radius plots: scatter, line, spline, area and "
@@ -1336,6 +1334,23 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasVennDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
+        diagramBuilder.AddItem("packetdiagram", "Packet Diagram",
+                               "Bit-accurate protocol header and frame structure: RFC word grid "
+                               "with fields wrapping across rows, proportional byte strips, "
+                               "layer brackets, bit and byte rulers, word gutters, dimension "
+                               "rails, stacked flag bits, sub-fields, and a Mermaid-compatible "
+                               "text spec",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePacketDiagramExamples(); },
+                               "DemoApp/UltraCanvasPacketDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPacketDiagram.md")
+                .AddVariant("packetdiagram", "TCP/IP Stack")
+                .AddVariant("packetdiagram", "Rails + Payload")
+                .AddVariant("packetdiagram", "RFC Monochrome")
+                .AddVariant("packetdiagram", "Proportional Strip")
+                .AddVariant("packetdiagram", "Byte Columns + Values")
+                .AddVariant("packetdiagram", "Text Spec (Mermaid)");
+
         diagramBuilder.AddItem("wordcloud", "Word Cloud", "Frequency word cloud with shapes, masks and center image",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateWordCloudExamples(); },
@@ -1421,9 +1436,6 @@ namespace UltraCanvas {
                 .AddVariant("mindmap", "Relationships")
                 .AddVariant("mindmap", "Presentation")
                 .AddVariant("mindmap", "Themes & structures");
-    diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
     diagramBuilder.AddItem("erdiagram", "ER Diagram", "Entity-Relationship Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateERDiagramExamples(); },
@@ -1456,10 +1468,6 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "Coverage + compartments")
                 .AddVariant("requirementdiagram", "Mermaid import + editing")
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
-    diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });
-
 
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
@@ -1505,19 +1513,6 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", "Hanging")
                 .AddVariant("timelinediagram", "Chevron")
                 .AddVariant("timelinediagram", "Steps");
-
-        infoBuilder.AddItem("timelinechart", "Timeline Chart",
-                            "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
-                            ImplementationStatus::FullyImplemented,
-                            [this]() { return CreateTimelineChartExamples(); },
-                            "DemoApp/UltraCanvasTimelineChartExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
-                .AddVariant("timelinechart", "Modern")
-                .AddVariant("timelinechart", "Classic")
-                .AddVariant("timelinechart", "Minimal")
-                .AddVariant("timelinechart", "Roadmap")
-                .AddVariant("timelinechart", "Dark")
-                .AddVariant("timelinechart", "Swimlanes");
 
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,

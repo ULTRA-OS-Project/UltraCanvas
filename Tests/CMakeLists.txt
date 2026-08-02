@@ -356,6 +356,32 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== PACKET LAYOUT TEST =====
+# Packet structure model, layout engine (row splitting with continuation
+# edges, proportional clamping, lanes), validators, and the RFC-pinning
+# template tests. No UI stack - the layout engine is pure geometry.
+message(STATUS "  Building PacketLayoutTest...")
+add_executable(PacketLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PacketLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPacketLayout.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPacketTemplates.cpp
+)
+target_include_directories(PacketLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(PacketLayoutTest PRIVATE cxx_std_20)
+set_target_properties(PacketLayoutTest PROPERTIES
+    OUTPUT_NAME "PacketLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME PacketLayoutTest
+    COMMAND PacketLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: PacketLayoutTest")
+
 # ===== GIT GRAPH LAYOUT TEST =====
 # Commit ordering, lane assignment, merge/octopus handling, swimlane banding
 # and edge routing. Pure geometry - no UI stack, no link dependencies beyond

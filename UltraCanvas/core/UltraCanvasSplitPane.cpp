@@ -1,11 +1,12 @@
 // core/UltraCanvasSplitPane.cpp
 // Split pane container that divides content into N draggable panes along one axis
-// Version: 1.0.0
-// Last Modified: 2026-05-19
+// Version: 1.1.0
+// Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -25,16 +26,298 @@ namespace UltraCanvas {
                        : UCMouseCursor::SizeNS);
     }
 
-    void UltraCanvasSplitter::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
-        if (!style.showSplitterBackground) return;
+// ---------------------------------------------------------------------
+// Geometry
+//
+// Everything below works in "along" (parallel to the split line) and "cross"
+// (perpendicular to it) terms, so one set of formulas serves both orientations.
+// A Horizontal split pane has a vertical splitter strip: along = Y, cross = X.
+// ---------------------------------------------------------------------
 
-        Color fill = style.splitterColor;
-        if (dragging)         fill = style.splitterActiveColor;
-        else if (IsHovered()) fill = style.splitterHoverColor;
+    void UltraCanvasSplitter::UpdateGeometry() {
+        handleRect = Rect2Df(0, 0, 0, 0);
+        iconRects.clear();
+        iconHitRects.clear();
+        iconIndices.clear();
 
-        ctx->SetFillPaint(fill);
-        ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
+        const bool horizontal = (orientation == SplitOrientation::Horizontal);
+        const float w = GetWidth();
+        const float h = GetHeight();
+        const float alongExtent = horizontal ? h : w;
+        const float crossExtent = horizontal ? w : h;
+        if (alongExtent <= 0.0f || crossExtent <= 0.0f) return;
+
+        auto makeRect = [horizontal](float alongPos, float alongLen,
+                                     float crossPos, float crossLen) {
+            return horizontal ? Rect2Df(crossPos, alongPos, crossLen, alongLen)
+                              : Rect2Df(alongPos, crossPos, alongLen, crossLen);
+        };
+
+        // Visible icons of this splitter.
+        std::vector<size_t> visible;
+        if (owner) {
+            const auto& icons = owner->GetSplitterIcons(index);
+            for (size_t i = 0; i < icons.size(); ++i) {
+                if (icons[i].visible) visible.push_back(i);
+            }
+        }
+
+        const SplitterIconStyle& is = style.icons;
+        const int count = static_cast<int>(visible.size());
+        const float iconBox = static_cast<float>(std::max(0, is.size));
+        const float groupLen = (count > 0)
+                ? count * iconBox + (count - 1) * static_cast<float>(std::max(0, is.spacing))
+                : 0.0f;
+
+        // ----- handle -----
+        const SplitterHandleStyle& hs = style.handle;
+        const bool hasHandle = (hs.shape != SplitterHandleShape::NoHandle) && hs.crossSize > 0;
+        float handleAlongCenter = 0.0f;
+        if (hasHandle) {
+            float handleCross = std::min(static_cast<float>(hs.crossSize), crossExtent);
+            float handleAlong = static_cast<float>((hs.axisLength > 0) ? hs.axisLength : hs.crossSize);
+            if (hs.axisLength <= 0 && !hs.imagePath.empty()) {
+                // Auto-length for an image handle follows the asset's aspect ratio, so
+                // a 14x48 grip renders as a grip rather than a squashed square. The
+                // image cache makes this a lookup after the first call.
+                if (auto img = UCImage::Get(hs.imagePath)) {
+                    int iw = img->GetWidth();
+                    int ih = img->GetHeight();
+                    if (iw > 0 && ih > 0) {
+                        float alongPx = horizontal ? static_cast<float>(ih) : static_cast<float>(iw);
+                        float crossPx = horizontal ? static_cast<float>(iw) : static_cast<float>(ih);
+                        if (crossPx > 0.0f) handleAlong = handleCross * (alongPx / crossPx);
+                    }
+                }
+            }
+            if (hs.containsIcons && count > 0) {
+                handleAlong = std::max(handleAlong, groupLen + 2.0f * std::max(0, is.padding));
+            }
+            handleAlong = std::min(handleAlong, alongExtent);
+            if (handleAlong > 0.0f && handleCross > 0.0f) {
+                float half = handleAlong / 2.0f;
+                handleAlongCenter = std::clamp(hs.position * alongExtent, half, alongExtent - half);
+                handleRect = makeRect(handleAlongCenter - half, handleAlong,
+                                      (crossExtent - handleCross) / 2.0f, handleCross);
+            }
+        }
+
+        // ----- icons -----
+        if (count == 0 || iconBox <= 0.0f || groupLen > alongExtent) return;
+        float iconCross = std::min(iconBox, crossExtent);
+
+        float groupCenter;
+        if (hasHandle && hs.containsIcons && handleRect.width > 0.0f) {
+            groupCenter = handleAlongCenter;
+        } else {
+            float half = groupLen / 2.0f;
+            groupCenter = std::clamp(is.position * alongExtent, half, alongExtent - half);
+        }
+        float alongPos = groupCenter - groupLen / 2.0f;
+
+        const float grow = static_cast<float>(std::max(0, is.hoverPadding));
+        for (size_t i = 0; i < visible.size(); ++i) {
+            Rect2Df box = makeRect(alongPos, iconBox, (crossExtent - iconCross) / 2.0f, iconCross);
+            Rect2Df hit(box.x - grow, box.y - grow, box.width + 2 * grow, box.height + 2 * grow);
+            // Keep the click target inside the strip so it never steals pane clicks.
+            hit.x = std::max(hit.x, 0.0f);
+            hit.y = std::max(hit.y, 0.0f);
+            hit.width  = std::min(hit.width,  w - hit.x);
+            hit.height = std::min(hit.height, h - hit.y);
+
+            iconRects.push_back(box);
+            iconHitRects.push_back(hit);
+            iconIndices.push_back(visible[i]);
+            alongPos += iconBox + std::max(0, is.spacing);
+        }
     }
+
+    int UltraCanvasSplitter::HitTestIcon(const Point2Df& localPoint) const {
+        for (size_t i = 0; i < iconHitRects.size(); ++i) {
+            if (iconHitRects[i].Contains(localPoint)) return static_cast<int>(iconIndices[i]);
+        }
+        return -1;
+    }
+
+    bool UltraCanvasSplitter::IsIconActionable(int iconIndex) const {
+        if (iconIndex < 0 || !owner) return false;
+        const SplitPaneIcon* icon = owner->GetSplitterIcon(index, static_cast<size_t>(iconIndex));
+        return icon && icon->visible && icon->enabled;
+    }
+
+    void UltraCanvasSplitter::SetHoveredIcon(int iconIndex, const UCEvent& event) {
+        if (iconIndex == hoveredIcon) return;
+        hoveredIcon = iconIndex;
+
+        // The application only raises tooltips on element enter, so per-icon
+        // tooltips have to be driven from here as the pointer crosses icons.
+        const SplitPaneIcon* icon = (iconIndex >= 0 && owner)
+                ? owner->GetSplitterIcon(index, static_cast<size_t>(iconIndex)) : nullptr;
+        const std::string tip = (icon && !icon->tooltip.empty()) ? icon->tooltip : std::string();
+        SetTooltip(tip);
+        if (tip.empty()) {
+            UltraCanvasTooltipManager::HideTooltip();
+        } else if (auto* win = GetWindow()) {
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(win, tip, event.pointerWindow);
+        }
+        RequestRedraw();
+    }
+
+// ---------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------
+
+    void UltraCanvasSplitter::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
+        UpdateGeometry();
+
+        if (style.showSplitterBackground) {
+            Color fill = style.splitterColor;
+            if (dragging)         fill = style.splitterActiveColor;
+            else if (IsHovered()) fill = style.splitterHoverColor;
+
+            // Only the line itself is painted; the hit margin and any extra room
+            // taken by the handle/icons stay transparent. With no handle, no icons
+            // and no hit margin the band is the whole element, as it always was.
+            const bool horizontal = (orientation == SplitOrientation::Horizontal);
+            float crossExtent = horizontal ? GetWidth() : GetHeight();
+            float lineCross = std::min(static_cast<float>(std::max(0, style.splitterThickness)), crossExtent);
+            float crossPos = (crossExtent - lineCross) / 2.0f;
+
+            ctx->SetFillPaint(fill);
+            ctx->FillRectangle(horizontal
+                               ? Rect2Dd(crossPos, 0, lineCross, GetHeight())
+                               : Rect2Dd(0, crossPos, GetWidth(), lineCross));
+        }
+
+        DrawHandle(ctx);
+        DrawIcons(ctx);
+    }
+
+    void UltraCanvasSplitter::DrawHandle(IRenderContext* ctx) {
+        if (handleRect.width <= 0.0f || handleRect.height <= 0.0f) return;
+
+        const SplitterHandleStyle& hs = style.handle;
+        Color fill = hs.color;
+        if (dragging)         fill = hs.activeColor;
+        else if (IsHovered()) fill = hs.hoverColor;
+
+        Rect2Dd r(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+        const bool imageOnly = (hs.shape == SplitterHandleShape::Image);
+        const bool hasImage  = !hs.imagePath.empty();
+
+        if (!imageOnly) {
+            double radius = 0.0;
+            if (hs.shape == SplitterHandleShape::RoundedSquare) {
+                radius = std::max(0.0f, hs.cornerRadius);
+            } else if (hs.shape == SplitterHandleShape::Round) {
+                radius = std::min(r.width, r.height) / 2.0;   // circle when square, capsule when not
+            }
+            radius = std::min(radius, std::min(r.width, r.height) / 2.0);
+
+            ctx->SetFillPaint(fill);
+            if (radius > 0.0) ctx->FillRoundedRectangle(r, radius);
+            else              ctx->FillRectangle(r);
+
+            if (hs.borderColor.a != 0 && hs.borderWidth > 0.0f) {
+                ctx->SetStrokePaint(hs.borderColor);
+                ctx->SetStrokeWidth(hs.borderWidth);
+                if (radius > 0.0) ctx->DrawRoundedRectangle(r, radius);
+                else              ctx->DrawRectangle(r);
+            }
+        }
+
+        // The image is the whole handle for shape Image, and sits on top of the
+        // drawn shape otherwise.
+        if (hasImage) {
+            if (hs.imageAsMask) {
+                Color tint = (hs.imageColor.a != 0) ? hs.imageColor : fill;
+                ctx->DrawMask(tint, hs.imagePath, r, hs.imageFit);
+            } else {
+                ctx->DrawImage(hs.imagePath, r, hs.imageFit);
+            }
+        }
+
+        // Grip lines only when the handle is not already carrying icons or an image.
+        bool carriesIcons = hs.containsIcons && !iconRects.empty();
+        if (!hs.showGrip || carriesIcons || hasImage || imageOnly || hs.gripLineCount <= 0) return;
+
+        const bool horizontal = (orientation == SplitOrientation::Horizontal);
+        float alongLen  = horizontal ? handleRect.height : handleRect.width;
+        float crossLen  = horizontal ? handleRect.width  : handleRect.height;
+        float thickness = std::max(1.0f, hs.gripThickness);
+        float spacing   = static_cast<float>(std::max(0, hs.gripSpacing));
+        int   lines     = hs.gripLineCount;
+
+        float total = lines * thickness + (lines - 1) * spacing;
+        if (total > alongLen) return;
+        float gripLen = std::max(2.0f, crossLen * 0.5f);
+        float alongStart = (horizontal ? handleRect.y : handleRect.x) + (alongLen - total) / 2.0f;
+        float crossPos = (horizontal ? handleRect.x : handleRect.y) + (crossLen - gripLen) / 2.0f;
+
+        ctx->SetFillPaint(hs.gripColor);
+        for (int i = 0; i < lines; ++i) {
+            float a = alongStart + i * (thickness + spacing);
+            ctx->FillRectangle(horizontal ? Rect2Dd(crossPos, a, gripLen, thickness)
+                                          : Rect2Dd(a, crossPos, thickness, gripLen));
+        }
+    }
+
+    void UltraCanvasSplitter::DrawIcons(IRenderContext* ctx) {
+        if (iconRects.empty() || !owner) return;
+        const SplitterIconStyle& is = style.icons;
+        const auto& icons = owner->GetSplitterIcons(index);
+
+        for (size_t i = 0; i < iconRects.size(); ++i) {
+            size_t oi = iconIndices[i];
+            if (oi >= icons.size()) continue;
+            const SplitPaneIcon& icon = icons[oi];
+            const int oiInt = static_cast<int>(oi);
+
+            // Hover / pressed background
+            Color bg = Colors::Transparent;
+            if (icon.enabled && hoveredIcon == oiInt) {
+                bg = (pressedIcon == oiInt) ? is.pressedBackgroundColor : is.hoverBackgroundColor;
+            }
+            if (bg.a != 0) {
+                Rect2Df hr = iconHitRects[i];
+                ctx->SetFillPaint(bg);
+                ctx->FillRoundedRectangle(Rect2Dd(hr.x, hr.y, hr.width, hr.height),
+                                          std::max(0.0f, is.hoverCornerRadius));
+            }
+
+            Color tint = (icon.iconColor.a != 0) ? icon.iconColor : is.iconColor;
+            if (!icon.enabled)                                        tint = is.iconDisabledColor;
+            else if (hoveredIcon == oiInt && icon.iconColor.a == 0)   tint = is.iconHoverColor;
+
+            Rect2Df br = iconRects[i];
+            Rect2Dd box(br.x, br.y, br.width, br.height);
+
+            if (!icon.iconPath.empty()) {
+                if (!icon.enabled) {
+                    ctx->PushState();
+                    ctx->SetAlpha(0.45);
+                }
+                if (is.useIconAsMask) {
+                    ctx->DrawMask(tint, icon.iconPath, box, ImageFitMode::Contain);
+                } else {
+                    ctx->DrawImage(icon.iconPath, box, ImageFitMode::Contain);
+                }
+                if (!icon.enabled) ctx->PopState();
+            } else if (!icon.label.empty()) {
+                ctx->SetFontFace(is.labelFontFamily, FontWeight::Bold, FontSlant::Normal);
+                ctx->SetFontSize(is.labelFontSize);
+                Size2Di ts = ctx->GetTextLineDimensions(icon.label);
+                ctx->SetTextPaint(tint);
+                ctx->DrawText(icon.label,
+                              Point2Dd(box.x + (box.width - ts.width) / 2.0,
+                                       box.y + (box.height - ts.height) / 2.0));
+            }
+        }
+    }
+
+// ---------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------
 
     bool UltraCanvasSplitter::OnEvent(const UCEvent& event) {
         switch (event.type) {
@@ -45,11 +328,39 @@ namespace UltraCanvas {
 
             case UCEventType::MouseLeave:
                 SetHovered(false);
+                if (hoveredIcon != -1) {
+                    hoveredIcon = -1;
+                    SetTooltip("");
+                    UltraCanvasTooltipManager::HideTooltip();
+                }
+                pressedIcon = -1;
+                SetMouseCursor(orientation == SplitOrientation::Horizontal
+                               ? UCMouseCursor::SizeWE
+                               : UCMouseCursor::SizeNS);
                 RequestRedraw();
                 return true;
 
             case UCEventType::MouseDown:
                 if (event.button == UCMouseButton::Left && owner) {
+                    // An icon click must not start a drag.
+                    UpdateGeometry();
+                    int hit = HitTestIcon(Point2Df(event.pointer.x, event.pointer.y));
+                    if (IsIconActionable(hit)) {
+                        pressedIcon = hit;
+                        // A handler may swap this icon out (collapse -> restore), which
+                        // would leave the old tooltip on screen describing an icon that
+                        // is no longer there.
+                        SetTooltip("");
+                        UltraCanvasTooltipManager::HideTooltip();
+                        // Capture so the release comes back here even if the pointer
+                        // slips off the icon; the application drops it on MouseUp.
+                        if (auto* app = UltraCanvasApplication::GetInstance()) {
+                            app->CaptureMouse(this);
+                        }
+                        RequestRedraw();
+                        return true;
+                    }
+                    if (hit >= 0) return true;   // disabled icon swallows the press
                     dragging = true;
                     dragStartGlobalAxis = (orientation == SplitOrientation::Horizontal)
                                           ? event.pointerGlobal.x
@@ -64,6 +375,17 @@ namespace UltraCanvas {
                 return false;
 
             case UCEventType::MouseMove:
+                if (!dragging) {
+                    UpdateGeometry();
+                    int hit = HitTestIcon(Point2Df(event.pointer.x, event.pointer.y));
+                    SetHoveredIcon(hit, event);
+                    SetMouseCursor(IsIconActionable(hit)
+                                   ? UCMouseCursor::Hand
+                                   : (orientation == SplitOrientation::Horizontal
+                                      ? UCMouseCursor::SizeWE
+                                      : UCMouseCursor::SizeNS));
+                    if (hit >= 0) return true;
+                }
                 if (dragging && owner) {
                     int currentAxis = (orientation == SplitOrientation::Horizontal)
                                       ? event.pointerGlobal.x
@@ -94,6 +416,21 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
+                if (pressedIcon >= 0) {
+                    int pressed = pressedIcon;
+                    pressedIcon = -1;
+                    UpdateGeometry();
+                    int hit = HitTestIcon(Point2Df(event.pointer.x, event.pointer.y));
+                    // Forget the hover so the next move re-resolves it (and the
+                    // tooltip) against whatever the handler left on the line.
+                    hoveredIcon = -1;
+                    RequestRedraw();
+                    // Fire only when the release lands on the icon that was pressed.
+                    if (hit == pressed && owner && IsIconActionable(pressed)) {
+                        owner->TriggerSplitterIcon(index, static_cast<size_t>(pressed));
+                    }
+                    return true;
+                }
                 return false;
 
             default:
@@ -122,10 +459,178 @@ namespace UltraCanvas {
         InvalidateLayout();
     }
 
+    void UltraCanvasSplitPane::PushStyleToSplitters() {
+        for (auto& sp : splitters) sp->SetStyle(splitStyle);
+    }
+
     void UltraCanvasSplitPane::SetSplitPaneStyle(const SplitPaneStyle& s) {
         splitStyle = s;
-        for (auto& sp : splitters) sp->SetStyle(splitStyle);
+        PushStyleToSplitters();
         InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterHandleStyle(const SplitterHandleStyle& s) {
+        splitStyle.handle = s;
+        PushStyleToSplitters();
+        InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterHandleShape(SplitterHandleShape shape, int crossSize,
+                                                      int axisLength, float cornerRadius) {
+        splitStyle.handle.shape = shape;
+        splitStyle.handle.crossSize = std::max(0, crossSize);
+        splitStyle.handle.axisLength = axisLength;
+        splitStyle.handle.cornerRadius = cornerRadius;
+        PushStyleToSplitters();
+        InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterHandleImage(const std::string& imagePath,
+                                                      int crossSize, int axisLength) {
+        splitStyle.handle.shape = SplitterHandleShape::Image;
+        splitStyle.handle.imagePath = imagePath;
+        splitStyle.handle.crossSize = std::max(0, crossSize);
+        splitStyle.handle.axisLength = axisLength;
+        PushStyleToSplitters();
+        InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterIconStyle(const SplitterIconStyle& s) {
+        splitStyle.icons = s;
+        PushStyleToSplitters();
+        InvalidateLayout();
+    }
+
+// ===== SPLITTER ACTION ICONS =====
+
+    const std::vector<SplitPaneIcon>& UltraCanvasSplitPane::GetSplitterIcons(size_t splitterIndex) const {
+        static const std::vector<SplitPaneIcon> empty;
+        if (splitterIndex >= splitterIcons.size()) return empty;
+        return splitterIcons[splitterIndex];
+    }
+
+    const SplitPaneIcon* UltraCanvasSplitPane::GetSplitterIcon(size_t splitterIndex, size_t iconIndex) const {
+        const auto& icons = GetSplitterIcons(splitterIndex);
+        if (iconIndex >= icons.size()) return nullptr;
+        return &icons[iconIndex];
+    }
+
+    size_t UltraCanvasSplitPane::SplitterIconCount(size_t splitterIndex) const {
+        return GetSplitterIcons(splitterIndex).size();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterIcons(size_t splitterIndex, const std::vector<SplitPaneIcon>& icons) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        splitterIcons[splitterIndex] = icons;
+        InvalidateLayout();
+    }
+
+    size_t UltraCanvasSplitPane::AddSplitterIcon(size_t splitterIndex, const SplitPaneIcon& icon) {
+        if (splitterIndex >= splitterIcons.size()) return 0;
+        splitterIcons[splitterIndex].push_back(icon);
+        InvalidateLayout();
+        return splitterIcons[splitterIndex].size() - 1;
+    }
+
+    bool UltraCanvasSplitPane::InsertSplitterIcon(size_t splitterIndex, size_t iconIndex,
+                                                  const SplitPaneIcon& icon) {
+        if (splitterIndex >= splitterIcons.size()) return false;
+        auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex > icons.size()) iconIndex = icons.size();
+        icons.insert(icons.begin() + iconIndex, icon);
+        InvalidateLayout();
+        return true;
+    }
+
+    bool UltraCanvasSplitPane::RemoveSplitterIcon(size_t splitterIndex, size_t iconIndex) {
+        if (splitterIndex >= splitterIcons.size()) return false;
+        auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex >= icons.size()) return false;
+        icons.erase(icons.begin() + iconIndex);
+        InvalidateLayout();
+        return true;
+    }
+
+    void UltraCanvasSplitPane::ClearSplitterIcons(size_t splitterIndex) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        if (splitterIcons[splitterIndex].empty()) return;
+        splitterIcons[splitterIndex].clear();
+        InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::ClearAllSplitterIcons() {
+        for (auto& icons : splitterIcons) icons.clear();
+        InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterIconEnabled(size_t splitterIndex, size_t iconIndex, bool enabled) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex >= icons.size() || icons[iconIndex].enabled == enabled) return;
+        icons[iconIndex].enabled = enabled;
+        RequestRedraw();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterIconVisible(size_t splitterIndex, size_t iconIndex, bool visible) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex >= icons.size() || icons[iconIndex].visible == visible) return;
+        icons[iconIndex].visible = visible;
+        InvalidateLayout();   // the group length, and possibly the strip width, changed
+    }
+
+    void UltraCanvasSplitPane::SetSplitterIconTooltip(size_t splitterIndex, size_t iconIndex,
+                                                      const std::string& tooltip) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex >= icons.size()) return;
+        icons[iconIndex].tooltip = tooltip;
+    }
+
+    void UltraCanvasSplitPane::SetSplitterIconPath(size_t splitterIndex, size_t iconIndex,
+                                                   const std::string& iconPath) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex >= icons.size() || icons[iconIndex].iconPath == iconPath) return;
+        icons[iconIndex].iconPath = iconPath;
+        RequestRedraw();
+    }
+
+    void UltraCanvasSplitPane::TriggerSplitterIcon(size_t splitterIndex, size_t iconIndex) {
+        if (splitterIndex >= splitterIcons.size()) return;
+        const auto& icons = splitterIcons[splitterIndex];
+        if (iconIndex >= icons.size()) return;
+        // Copy: a handler may mutate the icon list (add/remove icons, swap a pane).
+        SplitPaneIcon icon = icons[iconIndex];
+        if (!icon.enabled || !icon.visible) return;
+        if (icon.onClick) icon.onClick(splitterIndex, iconIndex);
+        if (onSplitterIconClicked) onSplitterIconClicked(splitterIndex, iconIndex, icon);
+        // Handlers commonly retune weights or icon visibility. Invalidate the
+        // window for the same reason the drag path does: the upward
+        // InvalidateLayout bubble can be defeated by a stale arrangeValid, and
+        // the root has no parent to bubble to.
+        if (auto* w = GetWindow()) w->InvalidateLayout();
+        RequestRedraw();
+    }
+
+// ===== LAYOUT METRICS =====
+
+    int UltraCanvasSplitPane::EffectiveSplitterThickness() const {
+        int thickness = std::max(0, splitStyle.splitterThickness) +
+                        2 * std::max(0, splitStyle.splitterHitMargin);
+
+        if (splitStyle.handle.shape != SplitterHandleShape::NoHandle) {
+            thickness = std::max(thickness, std::max(0, splitStyle.handle.crossSize));
+        }
+        for (const auto& icons : splitterIcons) {
+            for (const auto& icon : icons) {
+                if (!icon.visible) continue;
+                thickness = std::max(thickness, std::max(0, splitStyle.icons.size) +
+                                                2 * std::max(0, splitStyle.icons.padding));
+                break;   // one visible icon is enough; all icons share a size
+            }
+        }
+        return thickness;
     }
 
     int UltraCanvasSplitPane::AxisLength() const {
@@ -148,6 +653,14 @@ namespace UltraCanvas {
         slot.weight = (weight > 0.0) ? weight : 1.0;
         panes.insert(panes.begin() + index, slot);
 
+        // Keep each existing splitter's icons on the same split line: the new pane
+        // introduces a fresh (empty) splitter slot at `index`, everything after it
+        // shifts along.
+        if (panes.size() > 1) {
+            size_t at = std::min(index, splitterIcons.size());
+            splitterIcons.insert(splitterIcons.begin() + at, std::vector<SplitPaneIcon>());
+        }
+
         AddChild(pane);
         EnsureSplitterCountMatches();
         RebindSplitterIndices();
@@ -159,6 +672,11 @@ namespace UltraCanvas {
         if (index >= panes.size()) return;
         auto paneShared = panes[index].pane;
         panes.erase(panes.begin() + index);
+        // Drop the icons of the split line that disappears with the pane.
+        if (!splitterIcons.empty()) {
+            size_t at = std::min(index, splitterIcons.size() - 1);
+            splitterIcons.erase(splitterIcons.begin() + at);
+        }
         if (paneShared) UltraCanvasContainer::RemoveChild(paneShared);
         EnsureSplitterCountMatches();
         RebindSplitterIndices();
@@ -232,6 +750,7 @@ namespace UltraCanvas {
             splitters.push_back(sp);
             AddChild(sp);
         }
+        if (splitterIcons.size() != splitters.size()) splitterIcons.resize(splitters.size());
     }
 
     void UltraCanvasSplitPane::RebindSplitterIndices() {
@@ -306,7 +825,8 @@ namespace UltraCanvas {
         Rect2Di area = GetContentArea();
         int axisLen = (orientation == SplitOrientation::Horizontal) ? area.width : area.height;
         int crossLen = (orientation == SplitOrientation::Horizontal) ? area.height : area.width;
-        int splittersTotal = static_cast<int>(splitters.size()) * splitStyle.splitterThickness;
+        int splitterThickness = EffectiveSplitterThickness();
+        int splittersTotal = static_cast<int>(splitters.size()) * splitterThickness;
         int available = std::max(0, axisLen - splittersTotal);
 
         auto sizes = ComputePaneSizes(available);
@@ -339,12 +859,12 @@ namespace UltraCanvas {
             if (i < splitters.size()) {
                 Rect2Di sr;
                 if (orientation == SplitOrientation::Horizontal) {
-                    sr = Rect2Di(area.x + axisOffset, area.y, splitStyle.splitterThickness, crossLen);
+                    sr = Rect2Di(area.x + axisOffset, area.y, splitterThickness, crossLen);
                 } else {
-                    sr = Rect2Di(area.x, area.y + axisOffset, crossLen, splitStyle.splitterThickness);
+                    sr = Rect2Di(area.x, area.y + axisOffset, crossLen, splitterThickness);
                 }
                 arrangeChild(splitters[i].get(), sr);
-                axisOffset += splitStyle.splitterThickness;
+                axisOffset += splitterThickness;
             }
         }
     }
