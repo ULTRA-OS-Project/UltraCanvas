@@ -1,6 +1,6 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.4.1
+// Version: 1.4.2
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 #pragma once
@@ -164,6 +164,13 @@ namespace UltraCanvas {
         // Font
         FontStyle fontStyle;
 
+        // Mouse cursor. `dropdownCursor` marks the parts that open a menu
+        // rather than navigate — an item's dropdown chevron and the whole
+        // overflow ("...") item — the same cursor the dropdown widget's
+        // button uses; `itemCursor` covers the rest of the strip.
+        UCMouseCursor itemCursor = UCMouseCursor::Hand;
+        UCMouseCursor dropdownCursor = UCMouseCursor::ContextMenu;
+
         // Overflow
         BreadcrumbOverflowMode overflowMode = BreadcrumbOverflowMode::Collapse;
         std::string overflowEllipsisText = "...";
@@ -232,7 +239,9 @@ namespace UltraCanvas {
         explicit UltraCanvasBreadcrumb(const std::string& identifier = "")
                 : UltraCanvasBreadcrumb(identifier, -1, -1, -1, -1) {};
 
-        virtual ~UltraCanvasBreadcrumb() = default;
+        // Closes a still-open dropdown so it cannot outlive the breadcrumb:
+        // the window holds the popup menu alive as one of its children.
+        ~UltraCanvasBreadcrumb() override;
 
         // ===== ITEM MANAGEMENT =====
         void AddItem(const BreadcrumbItem& item);
@@ -261,6 +270,16 @@ namespace UltraCanvas {
         std::string GetPath(char separator = '/') const;
         // Replaces the entire item list.
         void SetItems(std::vector<BreadcrumbItem> newItems);
+
+        // ===== DROPDOWNS =====
+        // Only one dropdown (an item's sibling list or the overflow "..." menu)
+        // is ever open at a time: opening one closes whichever was open before,
+        // and clicking the same chevron again toggles it shut.
+        bool IsDropdownOpen() const;
+        // Index of the item whose dropdown is open, -1 when none is open or the
+        // open menu is the overflow menu.
+        int GetOpenDropdownItemIndex() const;
+        void CloseDropdown();
 
         // ===== CURRENT ITEM (the "leaf" / active position) =====
         // By default the current item is the last one. SetCurrentIndex lets a
@@ -326,6 +345,7 @@ namespace UltraCanvas {
 
         // Hover/press tracking
         int hoveredSlotIdx = -1;
+        bool hoveredOnDropdown = false;
         int pressedSlotIdx = -1;
         bool pressedOnDropdown = false;
 
@@ -338,8 +358,17 @@ namespace UltraCanvas {
         int rowHeight = 0;
         bool layoutDirty = true;
 
-        // Active dropdown menu (kept alive while shown)
+        // Active dropdown menu (kept alive while shown). At most one is open at
+        // a time — the window stacks popups (submenus rely on it) and never
+        // dismisses one because another opened, and a click on the breadcrumb
+        // is a click on the popup's owner, so it isn't a click-outside either.
+        // Both mean the previous menu has to be closed here.
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
+        // Which menu activePopupMenu is: the item index for an item dropdown,
+        // kOverflowDropdown for the overflow ("...") menu, kNoDropdown for none.
+        static constexpr int kNoDropdown = -1;
+        static constexpr int kOverflowDropdown = -2;
+        int activeDropdownItem = kNoDropdown;
 
         // ===== HELPERS =====
         int ResolvedCurrentIndex() const;
@@ -357,6 +386,11 @@ namespace UltraCanvas {
 
         // Hit testing (returns slot index or -1).
         int HitTest(const Point2Di& localPoint, bool& onDropdown) const;
+        // Picks style.dropdownCursor / style.itemCursor for what the pointer is
+        // over. While the pointer is inside the strip (pointerInside) the new
+        // shape is pushed to the window immediately instead of waiting for the
+        // next mouse event.
+        void ApplyHoverCursor(int slotIdx, bool onDropdown, bool pointerInside);
 
         // Rendering.
         void RenderBackground(IRenderContext* ctx);

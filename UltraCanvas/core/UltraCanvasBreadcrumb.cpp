@@ -1,6 +1,6 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.4.1
+// Version: 1.4.2
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 
@@ -157,7 +157,13 @@ namespace UltraCanvas {
                                                  float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style = BreadcrumbStyle::Default();
-        SetMouseCursor(UCMouseCursor::Hand);
+        SetMouseCursor(style.itemCursor);
+    }
+
+    UltraCanvasBreadcrumb::~UltraCanvasBreadcrumb() {
+        // An open popup is a child of the window, which would keep the menu (and
+        // its callbacks into this breadcrumb) alive past our own destruction.
+        CloseDropdown();
     }
 
 // ===== ITEM MANAGEMENT =====
@@ -318,6 +324,7 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::SetStyle(const BreadcrumbStyle& newStyle) {
         style = newStyle;
         layoutDirty = true;
+        ApplyHoverCursor(hoveredSlotIdx, hoveredOnDropdown, hoveredSlotIdx >= 0);
         InvalidateLayout(); RequestRedraw();
     }
 
@@ -889,6 +896,26 @@ namespace UltraCanvas {
         return -1;
     }
 
+    void UltraCanvasBreadcrumb::ApplyHoverCursor(int slotIdx, bool onDropdown,
+                                                 bool pointerInside) {
+        UCMouseCursor wanted = style.itemCursor;
+        if (pointerInside && slotIdx >= 0 && slotIdx < (int)slots.size()) {
+            // The overflow item is a menu in its entirety — it opens from
+            // anywhere on the slot, not just its chevron.
+            if (slots[slotIdx].isOverflow || onDropdown) {
+                wanted = style.dropdownCursor;
+            }
+        }
+        if (GetMouseCursor() == wanted) return;
+        SetMouseCursor(wanted);
+        // The window samples the element's cursor *before* handing it the move
+        // event, so without this the new shape would only appear on the next
+        // one. Only while the pointer is over us, though: on the way out the
+        // window is already showing the cursor of whatever we left it for.
+        if (!pointerInside) return;
+        if (auto* win = GetWindow()) win->SelectMouseCursor(wanted);
+    }
+
 // ===== RENDERING =====
     void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Layout is normally computed in Arrange(); recompute here only as a safety
@@ -1246,9 +1273,13 @@ namespace UltraCanvas {
                         hoveredSlotIdx = idx;
                         RequestRedraw();
                     }
+                    hoveredOnDropdown = onDropdown;
+                    ApplyHoverCursor(idx, onDropdown, true);
                     SetHovered(true);
                 } else if (hoveredSlotIdx != -1) {
                     hoveredSlotIdx = -1;
+                    hoveredOnDropdown = false;
+                    ApplyHoverCursor(-1, false, false);
                     SetHovered(false);
                     RequestRedraw();
                 }
@@ -1258,8 +1289,10 @@ namespace UltraCanvas {
             case UCEventType::MouseLeave:
                 if (hoveredSlotIdx != -1 || pressedSlotIdx != -1) {
                     hoveredSlotIdx = -1;
+                    hoveredOnDropdown = false;
                     pressedSlotIdx = -1;
                     pressedOnDropdown = false;
+                    ApplyHoverCursor(-1, false, false);
                     SetHovered(false);
                     RequestRedraw();
                 }
@@ -1315,7 +1348,11 @@ namespace UltraCanvas {
 
         if (onDropdown && item.hasDropdown) {
             OpenDropdownForSlot(slotIdx);
-            if (onItemDropdown) onItemDropdown(itemIdx, item);
+            // Re-check: filling the menu runs the item's provider, which is
+            // free to rebuild the path (and with it `items`).
+            if (onItemDropdown && itemIdx < (int)items.size()) {
+                onItemDropdown(itemIdx, items[itemIdx]);
+            }
             return;
         }
 
@@ -1323,14 +1360,54 @@ namespace UltraCanvas {
         if (isCurrent && !style.currentItemClickable) return;
         if (!item.clickable) return;
 
-        if (item.onClick) item.onClick();
-        if (onItemClicked) onItemClicked(itemIdx, item);
+        // Clicking the label of any segment dismisses an open dropdown as well:
+        // the click lands on the popup's owner, so the window leaves it up.
+        CloseDropdown();
+
+        // The handler usually navigates, and navigation rebuilds the path (the
+        // filer and the media viewer both do) — which clears `items` out from
+        // under us. Run off copies so nothing dangles mid-click.
+        auto onClick = item.onClick;
+        BreadcrumbItem clicked = item;
+        if (onClick) onClick();
+        if (onItemClicked) onItemClicked(itemIdx, clicked);
+    }
+
+    bool UltraCanvasBreadcrumb::IsDropdownOpen() const {
+        // The menu drops its popup flag as soon as the window closes it (item
+        // picked, click outside, Escape), so this also reports menus that went
+        // away without us asking.
+        return activePopupMenu && activePopupMenu->IsVisible();
+    }
+
+    int UltraCanvasBreadcrumb::GetOpenDropdownItemIndex() const {
+        if (!IsDropdownOpen() || activeDropdownItem < 0) return -1;
+        return activeDropdownItem;
+    }
+
+    void UltraCanvasBreadcrumb::CloseDropdown() {
+        // Hold a local reference: resetting the member can otherwise drop the
+        // last one while the menu is still running the click that got us here
+        // (a dropdown entry navigating away rebuilds the whole breadcrumb).
+        auto menu = activePopupMenu;
+        activePopupMenu.reset();
+        activeDropdownItem = kNoDropdown;
+        if (!menu) return;
+        if (auto* win = GetWindow()) {
+            win->ClosePopup(*menu, ClosePopupReason::Manual);
+        }
     }
 
     void UltraCanvasBreadcrumb::OpenDropdownForSlot(int slotIdx) {
         if (slotIdx < 0 || slotIdx >= (int)slots.size()) return;
         const ItemSlot& slot = slots[slotIdx];
         if (slot.itemIndex < 0) return;
+
+        // A second click on the chevron of the open dropdown toggles it shut.
+        bool reclick = IsDropdownOpen() && activeDropdownItem == slot.itemIndex;
+        CloseDropdown();
+        if (reclick) return;
+
         BreadcrumbItem& item = items[slot.itemIndex];
 
         std::vector<MenuItemData> menuItems = item.dropdownItems;
@@ -1354,6 +1431,7 @@ namespace UltraCanvas {
 
         PopupElementSettings settings;
         settings.popupOwner = weak_from_this();
+        activeDropdownItem = slot.itemIndex;
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
@@ -1361,6 +1439,11 @@ namespace UltraCanvas {
         if (overflowItemIndices.empty()) return;
         if (slotIdx < 0 || slotIdx >= (int)slots.size()) return;
         const ItemSlot& slot = slots[slotIdx];
+
+        // Same toggle / one-at-a-time rule as the item dropdowns.
+        bool reclick = IsDropdownOpen() && activeDropdownItem == kOverflowDropdown;
+        CloseDropdown();
+        if (reclick) return;
 
         auto win = GetWindow();
         if (!win) return;
@@ -1390,7 +1473,9 @@ namespace UltraCanvas {
             if (!sepSuffix.empty()) label += "  " + sepSuffix;
             activePopupMenu->AddItem(MenuItemData::Action(label, [this, capturedIdx]() {
                 if (capturedIdx < 0 || capturedIdx >= (int)items.size()) return;
-                BreadcrumbItem& it = items[capturedIdx];
+                // Copies, not references: navigating rebuilds `items` (see
+                // HandleClickOnSlot).
+                BreadcrumbItem it = items[capturedIdx];
                 if (it.onClick) it.onClick();
                 if (onItemClicked) onItemClicked(capturedIdx, it);
             }));
@@ -1401,12 +1486,16 @@ namespace UltraCanvas {
 
         PopupElementSettings settings;
         settings.popupOwner = weak_from_this();
+        activeDropdownItem = kOverflowDropdown;
         activePopupMenu->OpenMenu(winPos, *win, settings);
 
         if (onOverflowOpened) onOverflowOpened();
     }
 
     void UltraCanvasBreadcrumb::NotifyPathChanged() {
+        // Every item mutation lands here, and an open dropdown belongs to the
+        // item set we just replaced — its slot may not even exist any more.
+        CloseDropdown();
         if (onPathChanged) onPathChanged();
     }
 
