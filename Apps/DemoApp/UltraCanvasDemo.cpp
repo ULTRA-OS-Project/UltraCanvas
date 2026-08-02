@@ -1365,9 +1365,18 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });
-    diagramBuilder.AddItem("classdiagram", "Class Diagram", "Class Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Class Diagram is not ready yet"); });
+    diagramBuilder.AddItem("classdiagram", "Class Diagram",
+                               "UML class diagram: compartment boxes, seven relationship kinds, "
+                               "automatic layout and C++ reverse engineering",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateClassDiagramExamples(); },
+                               "DemoApp/UltraCanvasClassDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasClassDiagramExamples.md")
+                .AddVariant("classdiagram", "Banking System")
+                .AddVariant("classdiagram", "Interfaces")
+                .AddVariant("classdiagram", "Service Metadata")
+                .AddVariant("classdiagram", "Domain Model")
+                .AddVariant("classdiagram", "Reverse Engineered");
     diagramBuilder.AddItem("quadrantdiagram", "Quadrant Chart (diagram)", "Quadrant Chart (diagram)",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart (diagram) is not ready yet"); });

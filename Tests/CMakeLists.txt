@@ -337,6 +337,25 @@ add_test(NAME DiagramRoutingTest COMMAND DiagramRoutingTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: DiagramRoutingTest")
 
+# ===== CLASS LAYOUT TEST =====
+# Unit tests for the class-diagram layout engine (ranking, directions, tree
+# centring, grid, pinned nodes, no-overlap property). UI-free.
+message(STATUS "  Building ClassLayoutTest...")
+add_executable(ClassLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ClassLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasClassLayout.cpp
+)
+target_include_directories(ClassLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ClassLayoutTest PRIVATE cxx_std_20)
+set_target_properties(ClassLayoutTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ClassLayoutTest")
+
 # ===== UML MODEL TEST =====
 # Unit tests for the UML static-structure model, the member-notation grammar,
 # the heuristic C++ reverse engineer and PlantUML/Mermaid export. UI-free.

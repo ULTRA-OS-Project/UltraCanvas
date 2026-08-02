@@ -161,6 +161,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasWordCloudExamples.cpp
             Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
             Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasClassDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
             Apps/DemoApp/UltraCanvasPertChartExamples.cpp

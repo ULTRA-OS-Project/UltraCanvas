@@ -68,7 +68,9 @@ enum class UMLRelationshipKind {
 };
 
 // Which way an association name is meant to be read.
-enum class UMLReadingDirection { None, SourceToTarget, TargetToSource };
+// "Unspecified" rather than "None": X11 defines None as a macro, and this
+// header must stay usable in a translation unit that has included Xlib.
+enum class UMLReadingDirection { Unspecified, SourceToTarget, TargetToSource };
 
 // A member row belongs to exactly one compartment.
 enum class UMLMemberKind { Attribute, Operation, Literal };
@@ -198,7 +200,7 @@ struct UMLRelationship {
     UMLRelationshipEnd target;
 
     std::string stereotype;  // "use", "create", "derive" — dependencies
-    UMLReadingDirection nameDirection = UMLReadingDirection::None;
+    UMLReadingDirection nameDirection = UMLReadingDirection::Unspecified;
     std::string associationClassId;
     std::vector<std::string> extraEndIds;  // NAry: ends beyond source/target
 
@@ -232,7 +234,7 @@ public:
     explicit UMLRelationshipHandle(UMLRelationship* rel = nullptr) : relationship(rel) {}
 
     UMLRelationshipHandle& SetName(const std::string& name,
-                                   UMLReadingDirection direction = UMLReadingDirection::None);
+                                   UMLReadingDirection direction = UMLReadingDirection::Unspecified);
     UMLRelationshipHandle& SetMultiplicity(const std::string& sourceMultiplicity,
                                            const std::string& targetMultiplicity);
     UMLRelationshipHandle& SetRoles(const std::string& sourceRole,
