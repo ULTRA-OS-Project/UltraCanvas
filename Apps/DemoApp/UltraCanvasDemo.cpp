@@ -1104,6 +1104,19 @@ namespace UltraCanvas {
                 .AddVariant("ganttcharts", "Dark Theme")
                 .AddVariant("ganttcharts", "Palette Gallery");
 
+        chartBuilder.AddItem("timelinechart", "Timeline Chart",
+                             "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTimelineChartExamples(); },
+                             "DemoApp/UltraCanvasTimelineChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
+                .AddVariant("timelinechart", "Modern")
+                .AddVariant("timelinechart", "Classic")
+                .AddVariant("timelinechart", "Minimal")
+                .AddVariant("timelinechart", "Roadmap")
+                .AddVariant("timelinechart", "Dark")
+                .AddVariant("timelinechart", "Swimlanes");
+
         chartBuilder.AddItem("kanbanboards", "Kanban Board",
                              "Workflow boards with WIP limits, swimlanes, drag & drop, "
                              "a built-in card editor, Mermaid text definitions and "
@@ -1120,23 +1133,6 @@ namespace UltraCanvas {
                 .AddVariant("kanbanboards", "Dark Theme")
                 .AddVariant("kanbanboards", "Text Definition")
                 .AddVariant("kanbanboards", "Cumulative Flow");
-
-        chartBuilder.AddItem("quadrantcharts", "Quadrant Diagram",
-                             "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateQuadrantChartExamples(); },
-                             "DemoApp/UltraCanvasQuadrantChartExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md")
-                .AddVariant("quadrantcharts", "SWOT Analysis")
-                .AddVariant("quadrantcharts", "BCG Matrix")
-                .AddVariant("quadrantcharts", "Eisenhower Matrix")
-                .AddVariant("quadrantcharts", "Risk Matrix")
-                .AddVariant("quadrantcharts", "Priority Matrix")
-                .AddVariant("quadrantcharts", "Custom Quadrants");
-
-        chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
 
         chartBuilder.AddItem("polarcharts", "Polar Chart",
                              "Angle/radius plots: scatter, line, spline, area and "
@@ -1444,10 +1440,6 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "Coverage + compartments")
                 .AddVariant("requirementdiagram", "Mermaid import + editing")
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
-    diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });
-
 
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
@@ -1493,19 +1485,6 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", "Hanging")
                 .AddVariant("timelinediagram", "Chevron")
                 .AddVariant("timelinediagram", "Steps");
-
-        infoBuilder.AddItem("timelinechart", "Timeline Chart",
-                            "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
-                            ImplementationStatus::FullyImplemented,
-                            [this]() { return CreateTimelineChartExamples(); },
-                            "DemoApp/UltraCanvasTimelineChartExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
-                .AddVariant("timelinechart", "Modern")
-                .AddVariant("timelinechart", "Classic")
-                .AddVariant("timelinechart", "Minimal")
-                .AddVariant("timelinechart", "Roadmap")
-                .AddVariant("timelinechart", "Dark")
-                .AddVariant("timelinechart", "Swimlanes");
 
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
