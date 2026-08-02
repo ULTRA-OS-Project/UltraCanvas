@@ -19,8 +19,11 @@
 // so files can be exchanged with external file managers. When the clipboard
 // holds raw data instead of files (an image or text copied in another
 // program), Paste creates a new file with that content in the shown folder.
-// Version: 1.5.0
-// Last Modified: 2026-07-30
+// The column-based views (Details / List / BarSize) carry draggable
+// UltraCanvasSplitPane-style splitters between their columns, and names that
+// do not fit their column show the full name in a tooltip.
+// Version: 1.6.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,6 +31,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
 #include <condition_variable>
@@ -70,6 +74,25 @@ namespace UltraCanvas {
         ModifiedDate,
         CreatedDate
     };
+
+    // ===== DETAILS-VIEW COLUMNS =====
+    // The columns of the Details table, left to right. Each one can be resized
+    // by dragging the splitter on its right edge, or from code with
+    // SetDetailsColumnWidth(). Note that Attributes and Info are not sortable
+    // fields, which is why the columns have their own identifiers rather than
+    // reusing FilerSortField.
+    enum class FilerDetailsColumn {
+        Name,
+        Size,
+        Type,
+        ModifiedDate,
+        CreatedDate,
+        Attributes,
+        Info
+    };
+    // Number of Details columns (the enum is contiguous and Info is last).
+    constexpr size_t kFilerDetailsColumnCount =
+            static_cast<size_t>(FilerDetailsColumn::Info) + 1;
 
     // ===== THUMBNAIL DATASET FIELDS =====
     // Extra per-file facts shown under the name in the thumbnail views. Combine
@@ -186,6 +209,18 @@ namespace UltraCanvas {
 
         int iconMenuButtonSize = 20;     // hover icon-menu button edge
         int infoBarHeight      = 26;     // selection info bar under the entries
+
+        // Column splitters of the Details / List / BarSize views. They reuse
+        // UltraCanvasSplitPane's divider styling so a resizable Filer column
+        // looks and drags exactly like a split-pane divider; splitterHitMargin
+        // widens the grab area beyond the painted strip.
+        SplitPaneStyle columnSplitter;
+
+        FilerStyle() {
+            columnSplitter.splitterThickness = 3;
+            columnSplitter.splitterHitMargin = 3;
+            columnSplitter.splitterColor = Color(226, 226, 230, 255);
+        }
     };
 
     // ===== THE FILER ELEMENT =====
@@ -289,6 +324,52 @@ namespace UltraCanvas {
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
 
+        // ===== RESIZABLE COLUMNS =====
+        // The column views carry draggable splitters (UltraCanvasSplitPane
+        // dividers, styled through FilerStyle::columnSplitter):
+        //   Details — one splitter on the right edge of every column, inside
+        //             the header strip; dragging it moves width between that
+        //             column and the one after it, so the table keeps filling
+        //             the widget exactly like split-pane panes do.
+        //   List    — one splitter in every gap between the flowing columns;
+        //             dragging any of them re-widths all of them (the list
+        //             columns are uniform).
+        //   BarSize — splitters between the name column, the bar and the size
+        //             label column, running the full height of the rows.
+        // Widths survive rescans, sorting and view switches. Set them from
+        // code to restore a layout saved by the application.
+        void SetColumnResizeEnabled(bool enabled);
+        bool IsColumnResizeEnabled() const { return columnResizeEnabled; }
+
+        // Details columns. The Name column is the flexible one: it absorbs
+        // whatever the other columns leave, so setting its width is equivalent
+        // to taking that width from the column next to it.
+        void SetDetailsColumnWidth(FilerDetailsColumn column, int pixels);
+        int  GetDetailsColumnWidth(FilerDetailsColumn column) const;
+        void ResetDetailsColumnWidths();          // back to the built-in widths
+
+        // List view column width (same value as FilerStyle::listColumnWidth).
+        void SetListColumnWidth(int pixels);
+        int  GetListColumnWidth() const { return style.listColumnWidth; }
+
+        // BarSize columns: the name column on the left and the size label on
+        // the right; the bar takes what is left between them. A value column
+        // width of 0 means "auto" — as wide as the widest formatted size.
+        void SetBarSizeNameColumnWidth(int pixels);
+        int  GetBarSizeNameColumnWidth() const { return barSizeNameWidth; }
+        void SetBarSizeValueColumnWidth(int pixels);
+        int  GetBarSizeValueColumnWidth() const { return barSizeValueWidth; }
+
+        // ===== NAME TOOLTIPS =====
+        // Names too long for the space they are drawn in are ellipsized; with
+        // this on (default) hovering such a name pops a tooltip with the full
+        // name. The hover icon-menu buttons keep their own tooltips: while the
+        // cursor is on one of them its action tooltip is shown instead, so in
+        // the Details view the name column describes the file and the icon
+        // strip over the other columns describes its buttons.
+        void SetNameTooltipsEnabled(bool enabled);
+        bool AreNameTooltipsEnabled() const { return nameTooltips; }
+
         // ===== DATA ACCESS =====
         const std::vector<FilerEntry>& GetEntries() const { return entries; }
         std::vector<FilerEntry> GetSelectedEntries() const;
@@ -330,6 +411,9 @@ namespace UltraCanvas {
         std::function<void(const std::vector<FilerEntry>&)> onSelectionChanged;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
+        // After a column splitter drag (or a programmatic width change) — the
+        // application can persist the widths and restore them later.
+        std::function<void()> onColumnWidthsChanged;
 
         // Optional veto for DeleteSelection: return false to abort.
         std::function<bool(const std::vector<FilerEntry>&)> confirmDelete;
@@ -371,6 +455,8 @@ namespace UltraCanvas {
         bool showOpenPathItem = false;
         bool showSelectionInfo = true;
         bool shrinkThumbnailRows = true;
+        bool columnResizeEnabled = true;
+        bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
         uint32_t datasetFields = 0;
         FilerStyle style;
@@ -386,11 +472,15 @@ namespace UltraCanvas {
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
 
-        // Hover icon-menu tooltip tracking: the action / entry currently under
-        // the cursor, so the tooltip is shown once when the cursor enters a
-        // button and hidden when it leaves.
-        int    hoveredIconAction = -1;
-        size_t hoveredIconEntry  = 0;
+        // Tooltip tracking: what the cursor is currently over, so a tooltip is
+        // shown once when the cursor enters it and hidden when it leaves. An
+        // icon-menu button wins over the item name underneath it.
+        // (NoneTarget, not None: X11 #defines None, same reason
+        // FilerDatasetField spells its empty value NoneData.)
+        enum class TooltipTarget { NoneTarget, IconButton, ItemName };
+        TooltipTarget tooltipTarget = TooltipTarget::NoneTarget;
+        size_t tooltipEntry  = 0;
+        int    tooltipAction = -1;   // IconMenuAction when target == IconButton
 
         std::vector<FilerNewDocumentType> newDocumentTypes;
         std::vector<FilerOpenWithApp> openWithApps;
@@ -410,6 +500,7 @@ namespace UltraCanvas {
 
         // Details-view columns (recomputed with the layout).
         struct DetailsColumn {
+            FilerDetailsColumn id = FilerDetailsColumn::Name;
             FilerSortField field;
             std::string title;
             int x = 0, width = 0;
@@ -418,6 +509,50 @@ namespace UltraCanvas {
         };
         std::vector<DetailsColumn> detailsColumns;
         int detailsHeaderHeight = 26;
+        // Static description of the Details table, in FilerDetailsColumn order.
+        // The Name column's defaultWidth only seeds it — layout re-derives that
+        // column from what the others leave.
+        struct DetailsColumnSpec {
+            FilerDetailsColumn id;
+            FilerSortField field;
+            const char* title;
+            int  defaultWidth;
+            bool rightAligned;
+            bool sortable;
+        };
+        static const DetailsColumnSpec kDetailsColumnSpecs[kFilerDetailsColumnCount];
+        // Current width of every Details column, indexed by FilerDetailsColumn
+        // — the widths the splitters edit, kept across rescans, sorting and
+        // view switches. Index 0 (Name) is derived at layout time from what
+        // the other columns leave, so it always fills the table out to the
+        // widget edge.
+        std::vector<int> detailsColumnWidths;
+
+        // BarSize columns: the name column on the left, the size label on the
+        // right, the bar in between. 0 = auto for the value column (as wide as
+        // the widest formatted size).
+        int barSizeNameWidth  = 220;
+        int barSizeValueWidth = 0;
+        // Measured width of the widest formatted size, remembered from the
+        // draw pass so a splitter drag (which has no render context) can start
+        // from the width the auto column is actually drawn with.
+        mutable int barSizeAutoValueWidth = 0;
+
+        // ===== COLUMN SPLITTERS (UltraCanvasSplitPane-style dividers) =====
+        // Rebuilt every frame by the draw pass (like iconMenuHits) so hit
+        // testing always matches what was painted: the strips are in widget-
+        // local coordinates with scrolling already applied.
+        struct ColumnSplitterHit {
+            Rect2Di rect;    // painted strip (the grab area adds the hit margin)
+            int     index;   // Details: column left of it; List: column
+                             // boundary; BarSize: 0 = name|bar, 1 = bar|value
+        };
+        std::vector<ColumnSplitterHit> columnSplitters;
+        int hoveredSplitter  = -1;
+        int draggingSplitter = -1;
+        int splitterDragStartX = 0;   // pointer x when the drag started
+        int splitterDragStartA = 0;   // width of the column left of it
+        int splitterDragStartB = 0;   // width of the column right of it
 
         // Scrolling (vertical everywhere; horizontal in List mode).
         int scrollOffsetX = 0;
@@ -617,6 +752,21 @@ namespace UltraCanvas {
         int  ThumbnailImageHeight(const FilerEntry& e, int edge);
         void LayoutDetails(const Rect2Di& area);
         void LayoutList(const Rect2Di& area);
+        // Fills detailsColumnWidths with the built-in widths the first time it
+        // is needed (and after a reset).
+        void EnsureDetailsColumnWidths();
+        // Column geometry of one BarSize row. `autoValueWidth` is the measured
+        // width of the widest formatted size, used when the value column is on
+        // "auto"; the caller measures it because layout has no render context.
+        struct BarSizeColumns {
+            int nameX = 0, nameWidth = 0;
+            int barX = 0, barWidth = 0;
+            int valueX = 0, valueWidth = 0;
+        };
+        BarSizeColumns BarSizeColumnsFor(const ItemLayout& item,
+                                         int autoValueWidth) const;
+        // Width the BarSize value column is drawn with (auto = measured).
+        int BarSizeValueWidthFor(IRenderContext* ctx) const;
         void LayoutThumbnails(const Rect2Di& area);
         void LayoutBarSize(const Rect2Di& area);
         void LayoutTreeMap(const Rect2Di& area);
@@ -668,6 +818,10 @@ namespace UltraCanvas {
         void DrawDialogButton(IRenderContext* ctx, const Rect2Di& rect,
                               const std::string& label, bool primary, bool hovered);
         void DrawScrollbar(IRenderContext* ctx);
+        // Rebuilds columnSplitters for the current view and paints the
+        // dividers (hovered / dragged ones highlight like a split-pane
+        // splitter). No-op for the views without columns.
+        void DrawColumnSplitters(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawSelectionInfoBar(IRenderContext* ctx, const Rect2Di& bounds);
         int  InfoBarHeight() const {
             return (showSelectionInfo && style.infoBarHeight > 0)
@@ -683,6 +837,14 @@ namespace UltraCanvas {
         std::string EntryExtraInfo(const FilerEntry& e) const;
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
+        // Ellipsizes an entry's name for the space it is drawn in and records
+        // whether it had to be shortened, so the hover tooltip only pops for
+        // names that are actually cut off.
+        std::string EllipsizeEntryName(IRenderContext* ctx, size_t entryIndex,
+                                       const std::string& name, int maxWidth);
+        // Per-entry "the drawn name is shortened" flags, refreshed by the draw
+        // pass for the items it paints (sized with `entries`).
+        std::vector<uint8_t> nameTruncated;
 
         // Thumbnail dataset lines (Display > Dataset): the formatted values of
         // the enabled fields that apply to this entry, top to bottom.
@@ -706,8 +868,24 @@ namespace UltraCanvas {
         bool IsOnItemName(const ItemLayout& item, const Point2Di& contentPoint) const;
         int  IconMenuActionAt(const Point2Di& localPoint, size_t& outEntry) const;
         int  DetailsHeaderColumnAt(const Point2Di& localPoint) const;
+        // Splitter under a widget-local point — its own index (the column it
+        // belongs to, see ColumnSplitterHit::index), or -1. The grab area is
+        // the painted strip grown by splitterHitMargin on both sides.
+        int  ColumnSplitterAt(const Point2Di& localPoint) const;
 
         // ===== INTERACTION =====
+        // Column splitter drag, mirroring UltraCanvasSplitPane's splitter:
+        // the press snapshots the two adjacent column widths and every move
+        // re-splits that pair by the pointer delta.
+        void BeginColumnSplitterDrag(int index, const Point2Di& localPoint);
+        void UpdateColumnSplitterDrag(const Point2Di& localPoint);
+        void EndColumnSplitterDrag();
+        void NotifyColumnWidthsChanged();
+        // Shows / hides the hover tooltip for the icon-menu button or the
+        // truncated item name under the cursor.
+        void UpdateHoverTooltip(const UCEvent& event, const Point2Di& localPoint);
+        void HideHoverTooltip();
+
         void HandleItemClick(int index, bool ctrl, bool shift);
         void ActivateEntry(size_t index);          // double-click / Enter
         void OpenContextMenu(const Point2Di& localPoint);
