@@ -6386,7 +6386,7 @@ std::vector<std::string> ListDriveRoots();
 struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
     std::string computerLabel = "Computer";
-    bool siblingDropdowns = true;            // per-segment dropdown of neighbouring folders
+    bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
@@ -6399,8 +6399,11 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
                            const FolderBreadcrumbOptions& options = FolderBreadcrumbOptions());
 ```
 
-Sibling dropdowns are filled lazily when the menu opens, so a deep path costs
-nothing extra to build.
+Every node drops down its own sub-folders: `Computer` lists the drives, the
+drive node the folders of that drive, and each folder node the folders inside
+it — so the path can be extended one level straight from the strip. A folder
+without sub-folders shows a disabled `(no sub-folders)` entry. The lists are
+filled lazily when the menu opens, so a deep path costs nothing extra to build.
 
 ```cpp
 // Keep a filer and its path strip in sync.
@@ -6413,6 +6416,34 @@ filer->onPathChanged = [crumb, filer](const std::string& path) {
 Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
 and `minVisibleAfterCollapse`) so a deep path collapses its middle into a `...`
 menu rather than running past the strip.
+
+### Dropdowns
+
+Only one dropdown is ever open at a time — an item's dropdown or the overflow
+(`...`) menu. Opening one closes whichever was open before, clicking the same
+chevron again toggles it shut, clicking any segment label closes it, and so
+does any change to the item list (the open menu belongs to the path it was
+opened from). The menu is also closed if the breadcrumb itself is destroyed.
+
+```cpp
+bool IsDropdownOpen() const;
+// Item index of the open dropdown; -1 when nothing is open or the open menu
+// is the overflow menu.
+int  GetOpenDropdownItemIndex() const;
+void CloseDropdown();
+```
+
+The pointer says which parts open a menu: a dropdown chevron — and the whole
+overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
+(`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
+the rest of the strip shows the item cursor. Both are style fields:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.itemCursor     = UCMouseCursor::Hand;         // default
+s.dropdownCursor = UCMouseCursor::ContextMenu;  // default
+bc->SetStyle(s);
+```
 
 ### Current Item
 
@@ -13233,10 +13264,10 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 
 | View type | Description |
 |---|---|
-| `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort. |
-| `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). |
+| `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
+| `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
 | `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
-| `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). |
+| `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
@@ -13253,6 +13284,57 @@ Fields: `Name`, `Size`, `Type`, `ModifiedDate`, `CreatedDate`. Directories alway
 list before files. In the Details view a click on a sortable column header
 selects that field (a second click flips the direction) and the header shows a
 ▲ / ▼ indicator. `onSortChanged(field, ascending)` fires on every change.
+
+## Resizable columns
+
+The three column-based views carry draggable splitters between their columns.
+They are `UltraCanvasSplitPane` dividers in look and feel — the style is a
+`SplitPaneStyle` (`FilerStyle::columnSplitter`), the hovered and dragged
+divider highlight the same way, the cursor turns into the `SizeWE` resize
+cursor, and a drag re-splits the two neighbouring columns instead of moving the
+whole table. They are painted by the widget itself (like the rows, the hover
+icon menu and the scrollbar) rather than being child elements, so a folder with
+thousands of entries stays as cheap as before.
+
+| View | Splitters | Dragging one |
+|---|---|---|
+| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | Moves width between that column and the one after it, so the table keeps spanning the widget. The Name column is the flexible one: it absorbs whatever the others leave, so dragging the first splitter widens or narrows the name. |
+| `List` | In every gap between the flowing columns, full height. | Re-widths **all** columns (the list columns are uniform) and reflows the entries. |
+| `BarSize` | Between the name column and the bar, and between the bar and the size label, full height. | Resizes the name / label column; the bar takes what is left between them. |
+
+Widths survive rescans, sorting and view switches, and can be driven from code
+— e.g. to restore a layout the application saved:
+
+```cpp
+filer->SetDetailsColumnWidth(FilerDetailsColumn::Size, 110);
+filer->SetDetailsColumnWidth(FilerDetailsColumn::Info, 200);
+int nameWidth = filer->GetDetailsColumnWidth(FilerDetailsColumn::Name);
+filer->ResetDetailsColumnWidths();       // back to the built-in widths
+
+filer->SetListColumnWidth(260);          // == FilerStyle::listColumnWidth
+filer->SetBarSizeNameColumnWidth(180);
+filer->SetBarSizeValueColumnWidth(0);    // 0 = auto (fits the widest size)
+
+filer->onColumnWidthsChanged = [] { /* persist the layout */ };
+filer->SetColumnResizeEnabled(false);    // fixed columns
+```
+
+`FilerDetailsColumn` names the Details columns left to right: `Name`, `Size`,
+`Type`, `ModifiedDate`, `CreatedDate`, `Attributes`, `Info`. Columns cannot be
+dragged below a usable minimum (44 px, 120 px for the name).
+`onColumnWidthsChanged` fires when a drag ends and on every programmatic change.
+
+## Name tooltips
+
+Names that do not fit the space they are drawn in are ellipsized; hovering such
+a name pops a tooltip with the full name (`SetNameTooltipsEnabled`, default on).
+It applies to every view — the Name column in Details, the rows in List and
+BarSize, the captions in the thumbnail grids, and treemap cells too small to
+show any caption at all. Names that fit are not repeated in a tooltip.
+
+The hover icon-menu buttons keep their own action tooltips and win wherever the
+two overlap, so in the Details view the name column describes the file while the
+icon strip — which sits over the columns to its right — describes its buttons.
 
 ## Context menu
 
@@ -13442,6 +13524,7 @@ their compression factor in the Info column.
 | `onSelectionChanged(entries)` | Selection changed |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
+| `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
@@ -13454,7 +13537,11 @@ their compression factor in the Info column.
 
 `SetStyle(FilerStyle)` controls colors (background, selection, hover, bars,
 grid lines, icon-menu), fonts, row heights, thumbnail tile sizes and paddings —
-see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`.
+see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. The column splitters
+are styled through `FilerStyle::columnSplitter`, a `SplitPaneStyle`: thickness,
+the idle / hover / drag colors, the extra grab margin around the painted strip
+and `showSplitterBackground` (off paints no divider while the drag handle stays
+live).
 
 ## Demo
 
@@ -32148,6 +32235,325 @@ std::function<void()> onEditingFinished;
   mode, or the `min..max` grid stepped by `step` in numeric modes). Editable
   numeric fields can still be typed into via a **double-click**. Numeric grids
   larger than 512 entries are not listed (the arrows / typing remain available).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSplitPane.md
+==============================================================================
+
+# UltraCanvas Split Pane Documentation
+
+## Overview
+
+**UltraCanvasSplitPane** is a container that divides its content area into *N*
+panes along one axis, separated by draggable splitters. Panes are sized by
+proportional **weights**, so resizing the split pane preserves relative sizes,
+and per-pane **min/max pixel sizes** clamp the drag.
+
+Each split line can additionally carry an optional **handle** (square, rounded
+square or round/capsule, at a configurable size) and any number of **action
+icons** centred on the line, each with its own tooltip, enabled state and click
+handler.
+
+**File Location**: `include/UltraCanvasSplitPane.h`
+**Version**: 1.2.0
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ **N panes** on one axis (`Horizontal` or `Vertical`), not just two
+- ✅ **Weighted** sizing plus per-pane **min / max** pixel clamps
+- ✅ Drag a splitter to resize only the two panes it separates
+- ✅ **Nestable** — put a split pane inside a pane for VS Code-style layouts
+- ✅ Panes are real `UltraCanvasContainer`s: padding, background, scrollbars,
+  CSS layout
+- ✅ Optional **splitter handle**: `Square`, `RoundedSquare`, `Round`, with a
+  configurable size across and along the line, corner radius, colors, border
+  and grip lines
+- ✅ **Action icons on the split line**: variable count per splitter, centred
+  across the line, image or text glyph, tooltip, enabled/visible state,
+  per-icon click callback
+- ✅ Icons never start a drag; the splitter still drags everywhere else
+- ✅ Callbacks: `onSplitterDragStart`, `onSplitterDragEnd`, `onWeightsChanged`,
+  `onSplitterIconClicked`
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasSplitPane.h"
+using namespace UltraCanvas;
+
+auto split = CreateHorizontalSplitPane("MainSplit", 20, 20, 960, 400);
+
+auto sidebar = split->AddPane(1.0);   // weight 1
+auto editor  = split->AddPane(3.0);   // weight 3
+split->SetPaneMinSize(0, 120);        // sidebar never narrower than 120 px
+
+sidebar->SetBackgroundColor(Color(232, 240, 252, 255));
+sidebar->SetPadding(8);
+sidebar->AddChild(CreateButton("Files", 1, 10, 10, 120, 28, "Files"));
+
+editor->SetBackgroundColor(Colors::White);
+editor->AddChild(myEditorWidget);
+
+split->onWeightsChanged = [](const std::vector<double>& w) {
+    SaveLayout(w);
+};
+```
+
+`CreateVerticalSplitPane(...)` gives the top-to-bottom variant. Splitter *i* is
+always the line between pane *i* and pane *i + 1*, so a split pane with *N*
+panes has *N - 1* splitters.
+
+## Pane management
+
+| Method | Purpose |
+|---|---|
+| `AddPane(weight = 1.0)` | Append a pane, returns the new `UltraCanvasContainer` |
+| `InsertPane(index, weight)` | Insert a pane at `index` |
+| `RemovePane(index)` / `RemovePane(pane*)` | Remove a pane and its split line |
+| `PaneCount()` / `GetPane(index)` / `GetPaneIndex(pane*)` | Query |
+| `SetPaneWeight(index, w)` / `GetPaneWeight(index)` | Proportional sizing |
+| `SetPaneMinSize(index, px)` / `SetPaneMaxSize(index, px)` | Clamps (0 max = unlimited) |
+| `SetPaneSizes({px, px, …})` | Set all weights at once from pixel sizes |
+| `SplitterCount()` | Number of split lines (`PaneCount() - 1`) |
+
+## Styling the splitter
+
+```cpp
+SplitPaneStyle style = split->GetSplitPaneStyle();
+style.splitterThickness = 3;                       // the visible line
+style.splitterHitMargin = 3;                       // extra grab room each side
+style.splitterColor       = Color(220, 220, 220, 255);
+style.splitterHoverColor  = Color(180, 200, 240, 255);
+style.splitterActiveColor = Color(120, 160, 230, 255);
+split->SetSplitPaneStyle(style);
+```
+
+The splitter strip is as thick as the line plus its hit margin, widened
+further when a handle or icons need the room. Only the `splitterThickness`
+band is painted; the rest of the strip stays transparent, so a thin line can
+carry a much larger handle.
+
+## Splitter handle
+
+```cpp
+enum class SplitterHandleShape { NoHandle, Square, RoundedSquare, Round, Image };
+```
+
+`Round` is fully rounded: a **circle** when the handle is square, a **capsule**
+when it is elongated. `Image` draws an SVG or raster asset as the handle — see
+[Image handles](#image-handles).
+
+```cpp
+// Shorthand
+split->SetSplitterHandleShape(SplitterHandleShape::RoundedSquare,
+                              /*crossSize*/ 14, /*axisLength*/ 48,
+                              /*cornerRadius*/ 4.0f);
+
+// Full control
+SplitterHandleStyle hs = split->GetSplitterHandleStyle();
+hs.shape        = SplitterHandleShape::Round;
+hs.crossSize    = 22;     // extent ACROSS the split line
+hs.axisLength   = 0;      // extent ALONG the line; <= 0 = auto
+hs.position     = 0.5f;   // 0 = start of the line, 0.5 = centred, 1 = end
+hs.color        = Color(244, 244, 244, 255);
+hs.hoverColor   = Color(205, 220, 248, 255);
+hs.activeColor  = Color(150, 185, 240, 255);
+hs.borderColor  = Color(170, 170, 170, 255);   // Transparent = no border
+hs.borderWidth  = 1.0f;
+hs.showGrip     = true;   // grip lines, suppressed when the handle holds icons
+hs.gripLineCount = 3;
+hs.gripSpacing   = 3;
+hs.gripColor     = Color(120, 120, 120, 255);
+hs.containsIcons = true;  // the handle wraps this splitter's icon group
+split->SetSplitterHandleStyle(hs);
+```
+
+| Field | Meaning |
+|---|---|
+| `crossSize` | Handle size perpendicular to the line. The splitter strip widens to fit it. |
+| `axisLength` | Handle size along the line. `<= 0` means auto: the image's aspect ratio when `imagePath` is set, otherwise `crossSize` for a bare handle, or just enough to wrap the icon group when `containsIcons` is set. |
+| `cornerRadius` | Used by `RoundedSquare` only. |
+| `position` | Where the handle sits along the line, `0.0` … `1.0`. |
+| `containsIcons` | `true` (default): the icons of this splitter are drawn inside the handle. `false`: handle and icons are positioned independently. |
+
+Dragging works on the handle exactly as on the rest of the line — the handle is
+a visual affordance, not a separate control.
+
+### Image handles
+
+```cpp
+// Shorthand — shape, path and size in one call
+split->SetSplitterHandleImage("media/icons/scrollbar-handle-v.svg",
+                              /*crossSize*/ 14, /*axisLength*/ 48);
+
+// Full control
+SplitterHandleStyle hs = split->GetSplitterHandleStyle();
+hs.shape       = SplitterHandleShape::Image;
+hs.imagePath   = "media/icons/scrollbar-handle-v.svg";
+hs.crossSize   = 14;
+hs.axisLength  = 0;                      // 0 = take proportions from the asset
+hs.imageFit    = ImageFitMode::Fill;
+hs.imageAsMask = false;                  // true tints a monochrome glyph
+hs.imageColor  = Colors::Transparent;    // Transparent = follow the state color
+split->SetSplitterHandleStyle(hs);
+```
+
+| `shape` | `imagePath` | Result |
+|---|---|---|
+| `Image` | set | The image **is** the handle — no fill, border or grip |
+| `Image` | empty | Nothing is drawn |
+| `Square` / `RoundedSquare` / `Round` | set | The shape is drawn and the image is centred on top of it; the grip is suppressed |
+| `Square` / `RoundedSquare` / `Round` | empty | The plain drawn shape, with grip lines |
+
+Supply an asset matching the orientation: a **tall** one for a `Horizontal`
+split pane (whose split line is vertical), a **wide** one for a `Vertical` one.
+`media/icons/scrollbar-handle-v.svg` (14 × 48) and `scrollbar-handle-h.svg`
+(48 × 14) are ready-made grips.
+
+With `axisLength <= 0` the handle takes its length from the asset's aspect
+ratio, so a 14 × 48 grip at `crossSize = 14` renders 48 px long rather than as
+a squashed square. Setting `imageAsMask = true` re-colours a monochrome glyph
+with `imageColor`, or with the handle's own normal/hover/active color when
+`imageColor` is left transparent — which makes an image handle react to hover
+and drag the way a drawn one does.
+
+## Action icons on the split line
+
+Icons are centred across the split line and grouped at the middle along it (or
+inside the handle). The count is per splitter and free.
+
+```cpp
+struct SplitPaneIcon {
+    std::string id;         // your identifier, passed back on click
+    std::string iconPath;   // image/SVG path; empty -> `label` is drawn instead
+    std::string label;      // short text/glyph fallback, e.g. "\xE2\x80\xB9"
+    std::string tooltip;
+    bool enabled = true;
+    bool visible = true;
+    Color iconColor = Colors::Transparent;   // Transparent = use the icon style
+    std::function<void(size_t splitterIndex, size_t iconIndex)> onClick;
+};
+```
+
+```cpp
+SplitPaneIcon collapse;
+collapse.id       = "collapse-sidebar";
+collapse.iconPath = "media/icons/angle-left.svg";
+collapse.tooltip  = "Collapse the sidebar";
+collapse.onClick  = [split](size_t s, size_t i) {
+    split->SetPaneWeight(0, 0.02);
+    split->SetSplitterIconVisible(s, i, false);       // swap to the restore icon
+    split->SetSplitterIconVisible(s, i + 1, true);
+};
+split->AddSplitterIcon(/*splitterIndex*/ 0, collapse);
+
+// AddSplitterIcon(icon) is shorthand for splitter 0 — the only one in a
+// two-pane split.
+split->AddSplitterIcon(restore);
+
+split->onSplitterIconClicked =
+    [](size_t splitterIndex, size_t iconIndex, const SplitPaneIcon& icon) {
+        Log("clicked " + icon.id);
+    };
+```
+
+### Icon API
+
+| Method | Purpose |
+|---|---|
+| `SetSplitterIcons(splitterIndex, icons)` | Replace the whole list |
+| `AddSplitterIcon(splitterIndex, icon)` | Append, returns the new index |
+| `AddSplitterIcon(icon)` | Append to splitter 0 |
+| `InsertSplitterIcon(splitterIndex, iconIndex, icon)` | Insert |
+| `RemoveSplitterIcon(splitterIndex, iconIndex)` | Remove one |
+| `ClearSplitterIcons(splitterIndex)` / `ClearAllSplitterIcons()` | Remove all |
+| `SplitterIconCount(splitterIndex)` | Count |
+| `GetSplitterIcons(splitterIndex)` / `GetSplitterIcon(s, i)` | Read back |
+| `SetSplitterIconEnabled(s, i, bool)` | Grey out and stop responding |
+| `SetSplitterIconVisible(s, i, bool)` | Hide without removing (the group re-centres) |
+| `SetSplitterIconTooltip(s, i, text)` | Change the tooltip |
+| `SetSplitterIconPath(s, i, path)` | Swap the image |
+
+### Icon styling
+
+```cpp
+SplitterIconStyle is = split->GetSplitterIconStyle();
+is.size    = 16;      // icon box, square
+is.spacing = 6;       // gap between icons
+is.padding = 5;       // free space around the group
+is.position = 0.5f;   // along the line, used when not drawn inside the handle
+is.useIconAsMask = true;                          // tint monochrome icons
+is.iconColor         = Color(70, 70, 70, 255);
+is.iconHoverColor    = Color(20, 20, 20, 255);
+is.iconDisabledColor = Color(170, 170, 170, 255);
+is.hoverBackgroundColor   = Color(0, 0, 0, 30);
+is.pressedBackgroundColor = Color(0, 0, 0, 55);
+is.hoverCornerRadius = 3.0f;
+is.labelFontFamily = "Arial";                     // for `label`-only icons
+is.labelFontSize   = 12.0f;
+split->SetSplitterIconStyle(is);
+```
+
+### Behaviour
+
+- Pointing at an icon shows its tooltip and switches the cursor from the resize
+  cursor to a hand.
+- Pressing an icon does **not** start a drag; the click fires on release, and
+  only if the release lands on the same icon.
+- A disabled icon is drawn dimmed, shows no hover highlight and swallows the
+  press (so it does not drag either).
+- Hiding icons shrinks the group and re-centres what is left; an auto-sized
+  handle shrinks with it.
+- `onClick` runs first, then `onSplitterIconClicked`. Both may mutate the icon
+  list — the icon is copied before the handlers run.
+
+## Callbacks
+
+| Callback | Signature |
+|---|---|
+| `onSplitterDragStart` | `void(size_t splitterIndex)` |
+| `onSplitterDragEnd` | `void(size_t splitterIndex)` |
+| `onWeightsChanged` | `void(const std::vector<double>& weights)` |
+| `onSplitterIconClicked` | `void(size_t splitterIndex, size_t iconIndex, const SplitPaneIcon&)` |
+
+## Nesting
+
+Put a split pane inside a pane and let a flex layout stretch it:
+
+```cpp
+auto outer = CreateHorizontalSplitPane("Outer", 20, 20, 960, 400);
+auto left  = outer->AddPane(1.0);
+auto right = outer->AddPane(3.0);
+
+auto inner = CreateVerticalSplitPane("Inner", 0, 0, 100, 100);
+inner->AddPane(3.0);   // editor
+inner->AddPane(1.0);   // output
+
+right->layout.SetFlexColumn();
+right->layout.SetFlexGap(0);
+right->AddChild(inner);
+inner->layoutItem.SetFlexGrow(1)
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+```
+
+## Notes
+
+- Icons and handles are configured on the split pane, not on individual
+  splitter objects — they survive pane insertion and removal. Removing a pane
+  drops the icons of the split line that disappears with it; the remaining
+  lines keep theirs.
+- The handle and icon styles are shared by every splitter of a split pane; the
+  icon *list* is per splitter.
+- `SplitterHandleShape::NoHandle` (the default) is spelled that way rather than
+  `None` because `<X11/X.h>` defines `None` as a macro.
+
+## Demo
+
+`Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp` (demo page **Basic UI > Split
+Pane**) shows weighted horizontal and vertical splits, nesting, live
+handle-shape switching, and action icons wired to collapse, grow and even out
+panes.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md

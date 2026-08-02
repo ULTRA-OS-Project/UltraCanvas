@@ -102,7 +102,9 @@ namespace UltraCanvas {
                           "(Copy / Cut / Delete / Duplicate / Rename / New / Display / Compress / "
                           "Extras). Hovering an item shows its quick icon menu; the info bar at "
                           "the bottom describes the selection (size, dates, image dimensions, "
-                          "media duration and codec, folder contents).");
+                          "media duration and codec, folder contents). In the Details, List and "
+                          "Bar size views the columns are resizable — drag the splitters between "
+                          "them — and a name too long for its column shows in full as a tooltip.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -200,6 +202,22 @@ namespace UltraCanvas {
                     StyleFilerOptionButton((*group)[i], views[i].type == now);
                 }
             };
+
+            // Puts the column widths of all three column views back to their
+            // defaults after they have been dragged around.
+            auto reset = std::make_shared<UltraCanvasButton>(
+                    "FilerResetColumns", 0, 0, 0, 24, "Reset columns");
+            reset->SetFontSize(11);
+            reset->SetCornerRadius(4.0f);
+            StyleFilerOptionButton(reset.get(), false);
+            reset->SetOnClick([filerPtr]() {
+                filerPtr->ResetDetailsColumnWidths();
+                filerPtr->SetListColumnWidth(FilerStyle().listColumnWidth);
+                filerPtr->SetBarSizeNameColumnWidth(220);
+                filerPtr->SetBarSizeValueColumnWidth(0);   // auto
+            });
+            reset->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(reset);
             root->AddChild(row);
         }
 

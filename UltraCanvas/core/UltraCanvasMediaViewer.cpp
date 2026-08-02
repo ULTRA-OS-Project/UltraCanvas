@@ -630,8 +630,8 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     // ----- FOLDER BREADCRUMB (top, Parallelogram style) -----
     // Built by BuildFolderBreadcrumb, the shared folder path mechanism (see
     // UpdateBreadcrumb): "Computer" + drive + one node per folder. Each segment
-    // navigates to that folder; its dropdown lists the sibling folders at the
-    // same level so another folder can be selected. Long paths collapse their
+    // navigates to that folder; its dropdown lists the folders inside that
+    // segment so the path can be extended one level. Long paths collapse their
     // middle segments into a "..." overflow menu, keeping the root and the last
     // two folders visible.
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("MV_Breadcrumb", 0, 0, 0, 30);
@@ -1128,7 +1128,7 @@ void UltraCanvasMediaViewer::UpdateBreadcrumb() {
     // Same path mechanism the Filer uses: a leading "Computer" node listing the
     // drives / volumes, the drive (or root) node, then one node per folder — the
     // path separator never becomes a node of its own. Clicking a node (or an
-    // entry of its sibling dropdown) browses that folder here.
+    // entry of its sub-folder dropdown) browses that folder here.
     BuildFolderBreadcrumb(breadcrumb.get(), currentFolder,
                           [this](const std::string& folder) { OpenFolder(folder); });
     breadcrumb->SetVisible(true);

@@ -12,8 +12,11 @@
 // programs (external file managers, editors, ...). Pasting a clipboard that
 // holds raw data instead of files (an image or text copied elsewhere) writes
 // that content as a new file into the shown folder.
-// Version: 1.5.0
-// Last Modified: 2026-07-30
+// The column views (details, list, size bars) carry UltraCanvasSplitPane-style
+// splitters between their columns (see COLUMN SPLITTERS), and names too long
+// for the space they are drawn in show the full name in a hover tooltip.
+// Version: 1.6.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -71,6 +74,16 @@ namespace UltraCanvas {
         // editor (Windows style). Must exceed the platform double-click
         // interval so the first click of a double-click never renames.
         constexpr unsigned int kRenameClickDelayMs = 500;
+
+        // ===== RESIZABLE COLUMNS =====
+        // Narrowest a column can be dragged; the Name column keeps more so it
+        // never collapses to the icon.
+        constexpr int kMinColumnWidth = 44;
+        constexpr int kMinNameColumnWidth = 120;
+        constexpr int kMinListColumnWidth = 80;
+        constexpr int kMinBarWidth = 60;             // BarSize: shortest bar area
+        constexpr int kScrollbarGutter = 10;         // reserved on the right edge
+        constexpr int kListColumnGap = 12;           // List: gap between columns
 
         int clampi(int v, int lo, int hi) {
             return v < lo ? lo : (v > hi ? hi : v);
@@ -946,6 +959,7 @@ namespace UltraCanvas {
         cs.forceShowVerticalScrollbar = false;
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
+        EnsureDetailsColumnWidths();
 
         newDocumentTypes = {
             {"Text",        "txt", ""},
@@ -1185,6 +1199,12 @@ namespace UltraCanvas {
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
+        // The old view's splitters are gone; their hit strips are rebuilt by
+        // the next frame.
+        EndColumnSplitterDrag();
+        hoveredSplitter = -1;
+        columnSplitters.clear();
+        HideHoverTooltip();
         DropThumbnailCache();   // tile size changed; free the old-size pixmaps
         InvalidateFilerLayout();
         RequestRedraw();
@@ -1291,6 +1311,88 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    // ===== RESIZABLE COLUMNS =====
+    void UltraCanvasFilerWidget::SetColumnResizeEnabled(bool enabled) {
+        if (columnResizeEnabled == enabled) return;
+        columnResizeEnabled = enabled;
+        if (!enabled) {
+            EndColumnSplitterDrag();
+            hoveredSplitter = -1;
+            columnSplitters.clear();
+            SetMouseCursor(UCMouseCursor::Default);
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailsColumnWidth(FilerDetailsColumn column,
+                                                       int pixels) {
+        EnsureDetailsColumnWidths();
+        size_t index = static_cast<size_t>(column);
+        if (index >= kFilerDetailsColumnCount) return;
+        int minWidth = (column == FilerDetailsColumn::Name) ? kMinNameColumnWidth
+                                                            : kMinColumnWidth;
+        int width = std::max(minWidth, pixels);
+        if (detailsColumnWidths[index] == width) return;
+        // Name is derived from what the others leave, so widening it means
+        // taking that width from the column next to it.
+        if (column == FilerDetailsColumn::Name) {
+            int delta = width - detailsColumnWidths[0];
+            int next = static_cast<int>(FilerDetailsColumn::Size);
+            detailsColumnWidths[next] = std::max(kMinColumnWidth,
+                                                 detailsColumnWidths[next] - delta);
+        }
+        detailsColumnWidths[index] = width;
+        InvalidateFilerLayout();
+        NotifyColumnWidthsChanged();
+        RequestRedraw();
+    }
+
+    int UltraCanvasFilerWidget::GetDetailsColumnWidth(FilerDetailsColumn column) const {
+        size_t index = static_cast<size_t>(column);
+        return (index < detailsColumnWidths.size()) ? detailsColumnWidths[index] : 0;
+    }
+
+    void UltraCanvasFilerWidget::ResetDetailsColumnWidths() {
+        detailsColumnWidths.clear();
+        EnsureDetailsColumnWidths();
+        InvalidateFilerLayout();
+        NotifyColumnWidthsChanged();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetListColumnWidth(int pixels) {
+        int width = std::max(kMinListColumnWidth, pixels);
+        if (style.listColumnWidth == width) return;
+        style.listColumnWidth = width;
+        InvalidateFilerLayout();
+        NotifyColumnWidthsChanged();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetBarSizeNameColumnWidth(int pixels) {
+        int width = std::max(kMinColumnWidth, pixels);
+        if (barSizeNameWidth == width) return;
+        barSizeNameWidth = width;
+        InvalidateFilerLayout();
+        NotifyColumnWidthsChanged();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetBarSizeValueColumnWidth(int pixels) {
+        int width = (pixels <= 0) ? 0 : std::max(kMinColumnWidth, pixels);
+        if (barSizeValueWidth == width) return;
+        barSizeValueWidth = width;
+        InvalidateFilerLayout();
+        NotifyColumnWidthsChanged();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetNameTooltipsEnabled(bool enabled) {
+        if (nameTooltips == enabled) return;
+        nameTooltips = enabled;
+        if (!enabled && tooltipTarget == TooltipTarget::ItemName) HideHoverTooltip();
+    }
+
     // ===== SELECTION =====
     std::vector<FilerEntry> UltraCanvasFilerWidget::GetSelectedEntries() const {
         std::vector<FilerEntry> out;
@@ -1383,7 +1485,7 @@ namespace UltraCanvas {
         // The pointer leaves for the drag: drop the hover state now, the
         // widget won't see mouse events until the drag ends.
         if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
-        UltraCanvasTooltipManager::HideTooltip();
+        HideHoverTooltip();
 
         // The drop target performs the copy / move itself; after a move this
         // folder needs a rescan to drop the vanished entries.
@@ -2356,38 +2458,51 @@ namespace UltraCanvas {
         ClampScroll();
     }
 
+    // The Details table description: the Name column is flexible (it absorbs
+    // whatever the others leave), the rest carry the widths the splitters edit.
+    // Ordered exactly like FilerDetailsColumn.
+    const UltraCanvasFilerWidget::DetailsColumnSpec
+            UltraCanvasFilerWidget::kDetailsColumnSpecs[kFilerDetailsColumnCount] = {
+        {FilerDetailsColumn::Name,         FilerSortField::Name,         "Name",     260, false, true},
+        {FilerDetailsColumn::Size,         FilerSortField::Size,         "Size",     90,  true,  true},
+        {FilerDetailsColumn::Type,         FilerSortField::Type,         "Type",     130, false, true},
+        {FilerDetailsColumn::ModifiedDate, FilerSortField::ModifiedDate, "Modified", 150, false, true},
+        {FilerDetailsColumn::CreatedDate,  FilerSortField::CreatedDate,  "Created",  150, false, true},
+        {FilerDetailsColumn::Attributes,   FilerSortField::Name,         "Attr",     55,  false, false},
+        {FilerDetailsColumn::Info,         FilerSortField::Name,         "Info",     120, false, false},
+    };
+
+    void UltraCanvasFilerWidget::EnsureDetailsColumnWidths() {
+        if (detailsColumnWidths.size() == kFilerDetailsColumnCount) return;
+        detailsColumnWidths.assign(kFilerDetailsColumnCount, 0);
+        for (size_t i = 0; i < kFilerDetailsColumnCount; ++i)
+            detailsColumnWidths[i] = kDetailsColumnSpecs[i].defaultWidth;
+    }
+
     void UltraCanvasFilerWidget::LayoutDetails(const Rect2Di& area) {
-        // Fixed columns; the name column absorbs the remaining width.
-        struct Fixed { FilerSortField field; const char* title; int width;
-                       bool right; bool sortable; };
-        static const Fixed fixedCols[] = {
-            {FilerSortField::Size,         "Size",     90,  true,  true},
-            {FilerSortField::Type,         "Type",     130, false, true},
-            {FilerSortField::ModifiedDate, "Modified", 150, false, true},
-            {FilerSortField::CreatedDate,  "Created",  150, false, true},
-            {FilerSortField::Name,         "Attr",     55,  false, false},
-            {FilerSortField::Name,         "Info",     120, false, false},
-        };
-        int fixedTotal = 0;
-        for (const Fixed& f : fixedCols) fixedTotal += f.width;
-        int scrollbarGutter = 10;
-        int nameWidth = std::max(180, area.width - fixedTotal - scrollbarGutter);
+        EnsureDetailsColumnWidths();
+        // The name column absorbs whatever the (splitter-resized) rest leaves,
+        // so the table always spans the widget and dragging a splitter moves
+        // width between two neighbours instead of scrolling the table sideways.
+        int othersTotal = 0;
+        for (size_t i = 1; i < kFilerDetailsColumnCount; ++i)
+            othersTotal += detailsColumnWidths[i];
+        detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
+                                          area.width - othersTotal - kScrollbarGutter);
 
         int x = area.x;
-        DetailsColumn name;
-        name.field = FilerSortField::Name;
-        name.title = "Name";
-        name.x = x; name.width = nameWidth;
-        detailsColumns.push_back(name);
-        x += nameWidth;
-        for (const Fixed& f : fixedCols) {
+        for (size_t i = 0; i < kFilerDetailsColumnCount; ++i) {
+            const DetailsColumnSpec& spec = kDetailsColumnSpecs[i];
             DetailsColumn c;
-            c.field = f.field; c.title = f.title;
-            c.x = x; c.width = f.width;
-            c.rightAligned = f.right;
-            c.sortable = f.sortable;
+            c.id = spec.id;
+            c.field = spec.field;
+            c.title = spec.title;
+            c.x = x;
+            c.width = detailsColumnWidths[i];
+            c.rightAligned = spec.rightAligned;
+            c.sortable = spec.sortable;
             detailsColumns.push_back(c);
-            x += f.width;
+            x += c.width;
         }
 
         int rowH = style.detailsRowHeight;
@@ -2406,8 +2521,8 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::LayoutList(const Rect2Di& area) {
         int rowH = style.listRowHeight;
-        int colW = style.listColumnWidth;
-        int gap = 12;
+        int colW = std::max(kMinListColumnWidth, style.listColumnWidth);
+        int gap = kListColumnGap;
         int rowsPerColumn = std::max(1, area.height / rowH);
         for (size_t i = 0; i < entries.size(); ++i) {
             int col = static_cast<int>(i) / rowsPerColumn;
@@ -2474,13 +2589,51 @@ namespace UltraCanvas {
         for (size_t i = 0; i < entries.size(); ++i) {
             ItemLayout it;
             it.entryIndex = i;
-            it.rect = Rect2Di(area.x, y, area.width - 10, rowH);
+            it.rect = Rect2Di(area.x, y, area.width - kScrollbarGutter, rowH);
             it.imageRect = Rect2Di(area.x + 4, y + 3, rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
         contentWidth = area.width;
         contentHeight = y + style.outerPadding;
+    }
+
+    int UltraCanvasFilerWidget::BarSizeValueWidthFor(IRenderContext* ctx) const {
+        if (barSizeValueWidth > 0) return barSizeValueWidth;
+        // Auto: the widest value FormatSizeFixed() can produce, so every bar
+        // ends at the same x no matter how wide the individual number is. It
+        // is remembered because a splitter drag has no render context to
+        // measure it with.
+        barSizeAutoValueWidth = ctx->GetTextLineDimensions("1023.9 MB").width;
+        return barSizeAutoValueWidth;
+    }
+
+    // Name column | bar | value column. The name column is what the first
+    // splitter drags; the value column is fixed-width (auto or dragged) and
+    // right-aligned, and the bar takes what is left between them.
+    UltraCanvasFilerWidget::BarSizeColumns
+    UltraCanvasFilerWidget::BarSizeColumnsFor(const ItemLayout& item,
+                                              int autoValueWidth) const {
+        const int rightPad = 14;
+        const int labelGap = 8;
+        BarSizeColumns c;
+        int iconRight = item.imageRect.x + item.imageRect.width;
+        c.nameX = iconRight + 6;
+        int nameSpan = iconRight - item.rect.x + 6;   // icon + gaps before the name
+
+        int valueW = std::max(kMinColumnWidth, autoValueWidth);
+        // Keep name + bar + value inside the row even on a narrow widget.
+        int available = std::max(0, item.rect.width - nameSpan - rightPad - labelGap);
+        valueW = std::min(valueW, std::max(0, available - kMinBarWidth - kMinColumnWidth));
+        int nameW = clampi(barSizeNameWidth, kMinColumnWidth,
+                           std::max(kMinColumnWidth, available - valueW - kMinBarWidth));
+
+        c.nameWidth = nameW;
+        c.valueWidth = std::max(0, valueW);
+        c.valueX = item.rect.x + item.rect.width - rightPad - c.valueWidth;
+        c.barX = c.nameX + nameW;
+        c.barWidth = c.valueX - labelGap - c.barX;
+        return c;
     }
 
     // Squarified treemap: lay the weighted entries into `area` so every cell's
@@ -2673,6 +2826,11 @@ namespace UltraCanvas {
         ctx->FillRectangle(Rect2Dd(bounds));
 
         iconMenuHits.clear();
+        columnSplitters.clear();
+        // Refreshed per drawn item; only the items the last frame painted can
+        // be hovered, so their flags are always the current ones.
+        if (nameTruncated.size() != entries.size())
+            nameTruncated.assign(entries.size(), 0);
 
         if (viewType == FilerViewType::GourceTree) {
             DrawPlaceholderView(ctx, bounds,
@@ -2754,6 +2912,7 @@ namespace UltraCanvas {
         CommitThumbnailWants();
 
         if (viewType == FilerViewType::Details) DrawDetailsHeader(ctx, bounds);
+        DrawColumnSplitters(ctx, bounds);
         DrawScrollbar(ctx);
         DrawSelectionInfoBar(ctx, bounds);
         ctx->PopState();
@@ -2786,6 +2945,16 @@ namespace UltraCanvas {
             if (ts.width <= maxWidth) return s + "…";
         }
         return "…";
+    }
+
+    std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
+                                                           size_t entryIndex,
+                                                           const std::string& name,
+                                                           int maxWidth) {
+        std::string shown = EllipsizeText(ctx, name, maxWidth);
+        if (entryIndex < nameTruncated.size())
+            nameTruncated[entryIndex] = (shown != name) ? 1 : 0;
+        return shown;
     }
 
     void UltraCanvasFilerWidget::DrawSelectionState(IRenderContext* ctx,
@@ -3280,10 +3449,10 @@ namespace UltraCanvas {
         ctx->SetFontStyle(fsty);
         for (const DetailsColumn& c : detailsColumns) {
             std::string title = c.title;
-            if (c.sortable && c.field == sortField &&
-                (c.title != "Attr" && c.title != "Info")) {
+            if (c.sortable && c.field == sortField) {
                 title += sortAscending ? " ▲" : " ▼";
             }
+            title = EllipsizeText(ctx, title, c.width - 12);
             ctx->SetTextPaint(style.headerTextColor);
             Size2Di ts = ctx->GetTextLineDimensions(title);
             int tx = c.rightAligned ? c.x + c.width - ts.width - 8 : c.x + 6;
@@ -3306,38 +3475,43 @@ namespace UltraCanvas {
         int textInsetTop = 0;
         for (const DetailsColumn& c : detailsColumns) {
             std::string value;
-            Color color = style.textColor;
-            if (c.title == "Name") {
-                value = e.name;
-            } else if (c.title == "Size") {
-                value = e.isDirectory ? "" : FormatSize(e.size);
-                color = style.secondaryTextColor;
-            } else if (c.title == "Type") {
-                value = e.typeName;
-                color = style.secondaryTextColor;
-            } else if (c.title == "Modified") {
-                value = FormatTime(e.modifiedTime);
-                color = style.secondaryTextColor;
-            } else if (c.title == "Created") {
-                value = FormatTime(e.createdTime);
-                color = style.secondaryTextColor;
-            } else if (c.title == "Attr") {
-                value = e.attributes;
-                color = style.secondaryTextColor;
-            } else if (c.title == "Info") {
-                value = e.info;
-                color = style.secondaryTextColor;
+            Color color = style.secondaryTextColor;
+            switch (c.id) {
+                case FilerDetailsColumn::Name:
+                    value = e.name;
+                    color = style.textColor;
+                    break;
+                case FilerDetailsColumn::Size:
+                    value = e.isDirectory ? "" : FormatSize(e.size);
+                    break;
+                case FilerDetailsColumn::Type:
+                    value = e.typeName;
+                    break;
+                case FilerDetailsColumn::ModifiedDate:
+                    value = FormatTime(e.modifiedTime);
+                    break;
+                case FilerDetailsColumn::CreatedDate:
+                    value = FormatTime(e.createdTime);
+                    break;
+                case FilerDetailsColumn::Attributes:
+                    value = e.attributes;
+                    break;
+                case FilerDetailsColumn::Info:
+                    value = e.info;
+                    break;
             }
             if (value.empty()) continue;
 
             int pad = 6;
             int textX = c.x + pad;
             int avail = c.width - 2 * pad;
-            if (c.title == "Name") {
+            if (c.id == FilerDetailsColumn::Name) {
                 textX = item.imageRect.x + item.imageRect.width + 6;
                 avail = c.x + c.width - textX - pad;
             }
-            std::string shown = EllipsizeText(ctx, value, avail);
+            std::string shown = (c.id == FilerDetailsColumn::Name)
+                    ? EllipsizeEntryName(ctx, item.entryIndex, value, avail)
+                    : EllipsizeText(ctx, value, avail);
             ctx->SetTextPaint(color);
             Size2Di ts = ctx->GetTextLineDimensions(shown);
             if (textInsetTop == 0) textInsetTop = (item.rect.height - ts.height) / 2;
@@ -3365,7 +3539,7 @@ namespace UltraCanvas {
         ctx->SetTextPaint(style.textColor);
         int textX = item.imageRect.x + item.imageRect.width + 6;
         int avail = item.rect.x + item.rect.width - textX - 4;
-        std::string shown = EllipsizeText(ctx, e.name, avail);
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name, avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
         ctx->DrawText(shown, Point2Dd(textX,
                 item.rect.y + (item.rect.height - ts.height) / 2));
@@ -3391,7 +3565,8 @@ namespace UltraCanvas {
         fsty.fontSize = style.smallFontSize;
         ctx->SetFontStyle(fsty);
         ctx->SetTextPaint(style.textColor);
-        std::string shown = EllipsizeText(ctx, e.name, item.rect.width - 8);
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
+                                               item.rect.width - 8);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
         int capTop = item.imageRect.y + item.imageRect.height;
         ctx->DrawText(shown, Point2Dd(
@@ -3437,27 +3612,28 @@ namespace UltraCanvas {
         fsty.fontSize = style.fontSize;
         ctx->SetFontStyle(fsty);
 
-        int nameX = item.imageRect.x + item.imageRect.width + 6;
-        int nameW = std::min(220, item.rect.width / 3);
-        std::string shown = EllipsizeText(ctx, e.name, nameW - 8);
+        // Size bar scaled against the folder's largest entry. The size label
+        // lives in a fixed-width column on the right so every bar ends at the
+        // same x and all bars share the same width, regardless of how wide the
+        // individual number happens to be. Both column widths are draggable
+        // (see DrawColumnSplitters); "auto" sizes the label column for the
+        // widest value we can format ("NNN.N UU").
+        BarSizeColumns cols = BarSizeColumnsFor(item, BarSizeValueWidthFor(ctx));
+
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
+                                               cols.nameWidth - 8);
         ctx->SetTextPaint(style.textColor);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
         int textY = item.rect.y + (item.rect.height - ts.height) / 2;
-        ctx->DrawText(shown, Point2Dd(nameX, textY));
+        ctx->DrawText(shown, Point2Dd(cols.nameX, textY));
 
-        // Size bar scaled against the folder's largest entry.  The size label
-        // lives in a fixed-width column on the right so every bar ends at the
-        // same x and all bars share the same width, regardless of how wide the
-        // individual number happens to be.  The reference string sizes that
-        // column for the widest value we can format ("NNN.N UU").
-        std::string sizeText = FormatSizeFixed(e.effectiveSize);
-        int sizeColW = ctx->GetTextLineDimensions("1023.9 MB").width;
+        std::string sizeText = EllipsizeText(ctx, FormatSizeFixed(e.effectiveSize),
+                                             cols.valueWidth);
         Size2Di sts = ctx->GetTextLineDimensions(sizeText);
-        const int rightPad = 14;
-        const int labelGap = 8;
-        int sizeColX = item.rect.x + item.rect.width - rightPad - sizeColW;
-        int barX = item.rect.x + nameW + item.imageRect.width + 12;
-        int barMaxW = sizeColX - labelGap - barX;
+        int sizeColW = cols.valueWidth;
+        int sizeColX = cols.valueX;
+        int barX = cols.barX;
+        int barMaxW = cols.barWidth;
         if (barMaxW > 20) {
             int barH = std::max(6, item.rect.height - 12);
             int barY = item.rect.y + (item.rect.height - barH) / 2;
@@ -3498,7 +3674,12 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRectangle(Rect2Dd(item.rect));
 
-        if (item.rect.width >= 46 && item.rect.height >= 26) {
+        if (item.rect.width < 46 || item.rect.height < 26) {
+            // The cell is too small for a caption: the name is not shown at
+            // all, so the hover tooltip is the only way to read it.
+            if (item.entryIndex < nameTruncated.size())
+                nameTruncated[item.entryIndex] = 1;
+        } else {
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(item.rect));
             FontStyle fsty;
@@ -3507,7 +3688,8 @@ namespace UltraCanvas {
             fsty.fontWeight = FontWeight::Bold;
             ctx->SetFontStyle(fsty);
             ctx->SetTextPaint(Color(255, 255, 255, 235));
-            std::string shown = EllipsizeText(ctx, e.name, item.rect.width - 8);
+            std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
+                                                   item.rect.width - 8);
             ctx->DrawText(shown, Point2Dd(item.rect.x + 4, item.rect.y + 3));
             if (item.rect.height >= 42) {
                 fsty.fontWeight = FontWeight::Normal;
@@ -3662,6 +3844,225 @@ namespace UltraCanvas {
         }
         ctx->SetFillPaint(thumbColor);
         ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
+    }
+
+    // ===== COLUMN SPLITTERS =====
+    // The column views get UltraCanvasSplitPane dividers between their
+    // columns: the same look (FilerStyle::columnSplitter is a SplitPaneStyle),
+    // the same drag feel (a press snapshots the two neighbouring widths and
+    // the move re-splits that pair) and the same SizeWE cursor. They are drawn
+    // — and their hit strips recorded — here rather than being child elements,
+    // because the filer paints its whole view itself (Album pattern).
+    //
+    // Where the strip sits differs per view: the Details table has a header,
+    // so its splitters live there (Explorer style) and the rows stay fully
+    // clickable; List and BarSize have no header, so their dividers run the
+    // full height of the entries, which is also the only place they are
+    // visible.
+    void UltraCanvasFilerWidget::DrawColumnSplitters(IRenderContext* ctx,
+                                                     const Rect2Di& bounds) {
+        if (!columnResizeEnabled) return;
+        Rect2Di area = ContentBounds();
+        if (area.width <= 0 || area.height <= 0) return;
+
+        int thickness = std::max(1, style.columnSplitter.splitterThickness);
+        int viewBottom = std::min(bounds.y + bounds.height - InfoBarHeight(),
+                                  area.y + area.height);
+
+        // Strip geometry per view: (x of the divider centre, top, bottom).
+        struct Strip { int centerX, top, bottom; };
+        std::vector<Strip> strips;
+
+        switch (viewType) {
+            case FilerViewType::Details: {
+                // One splitter on the right edge of every column but the last;
+                // inside the header strip only.
+                for (size_t i = 0; i + 1 < detailsColumns.size(); ++i) {
+                    const DetailsColumn& c = detailsColumns[i];
+                    strips.push_back({c.x + c.width, area.y,
+                                      area.y + detailsHeaderHeight});
+                }
+                break;
+            }
+            case FilerViewType::List: {
+                // The list columns are uniform, so every gap carries a
+                // splitter and dragging any of them re-widths all of them.
+                int colW = std::max(kMinListColumnWidth, style.listColumnWidth);
+                // Items run column by column, so the last one is in the last
+                // column.
+                int cols = items.empty() ? 0
+                        : (items.back().rect.x - area.x) / (colW + kListColumnGap) + 1;
+                for (int k = 0; k < cols; ++k) {
+                    int right = area.x + k * kListColumnGap + (k + 1) * colW;
+                    strips.push_back({right + kListColumnGap / 2 - scrollOffsetX,
+                                      area.y, viewBottom});
+                }
+                break;
+            }
+            case FilerViewType::BarSize: {
+                if (items.empty()) break;
+                BarSizeColumns cols = BarSizeColumnsFor(items.front(),
+                                                        BarSizeValueWidthFor(ctx));
+                strips.push_back({cols.barX - 3, area.y, viewBottom});
+                strips.push_back({cols.valueX - 4, area.y, viewBottom});
+                break;
+            }
+            default:
+                return;   // the other views have no columns to resize
+        }
+
+        for (size_t i = 0; i < strips.size(); ++i) {
+            const Strip& s = strips[i];
+            Rect2Di rect(s.centerX - thickness / 2, s.top, thickness,
+                         std::max(0, s.bottom - s.top));
+            if (rect.height <= 0) continue;
+            // Skip dividers scrolled out of the view (List scrolls sideways).
+            if (rect.x + rect.width < bounds.x ||
+                rect.x > bounds.x + bounds.width - kScrollbarGutter) {
+                continue;
+            }
+            columnSplitters.push_back({rect, static_cast<int>(i)});
+
+            if (!style.columnSplitter.showSplitterBackground) continue;
+            bool dragging = (draggingSplitter == static_cast<int>(i));
+            Color fill = style.columnSplitter.splitterColor;
+            if (dragging) fill = style.columnSplitter.splitterActiveColor;
+            else if (hoveredSplitter == static_cast<int>(i))
+                fill = style.columnSplitter.splitterHoverColor;
+            ctx->SetFillPaint(fill);
+            ctx->FillRectangle(Rect2Dd(rect));
+
+            // While dragging, a guide line down the whole view shows where the
+            // boundary will land — the Details splitters only live in the
+            // header, so without it the drag would have no visible effect
+            // until it is released.
+            if (dragging && rect.y + rect.height < viewBottom) {
+                Color guide = style.columnSplitter.splitterActiveColor;
+                guide.a = 120;
+                ctx->SetFillPaint(guide);
+                ctx->FillRectangle(Rect2Dd(rect.x, rect.y + rect.height,
+                                           rect.width, viewBottom - rect.y - rect.height));
+            }
+        }
+    }
+
+    // Returns the splitter's own index (the column it belongs to), not its
+    // position in columnSplitters — that vector only holds the strips the last
+    // frame painted, and a drag must survive one scrolling out of view.
+    int UltraCanvasFilerWidget::ColumnSplitterAt(const Point2Di& localPoint) const {
+        if (!columnResizeEnabled) return -1;
+        int margin = std::max(0, style.columnSplitter.splitterHitMargin);
+        for (const ColumnSplitterHit& h : columnSplitters) {
+            Rect2Di grab = h.rect;
+            grab.x -= margin;
+            grab.width += 2 * margin;
+            if (grab.Contains(localPoint)) return h.index;
+        }
+        return -1;
+    }
+
+    void UltraCanvasFilerWidget::BeginColumnSplitterDrag(int index,
+                                                         const Point2Di& localPoint) {
+        if (index < 0) return;
+        draggingSplitter = index;
+        splitterDragStartX = localPoint.x;
+        splitterDragStartA = 0;
+        splitterDragStartB = 0;
+
+        switch (viewType) {
+            case FilerViewType::Details: {
+                EnsureDetailsColumnWidths();
+                if (index + 1 >= (int)kFilerDetailsColumnCount) {
+                    draggingSplitter = -1;
+                    return;
+                }
+                splitterDragStartA = detailsColumnWidths[index];
+                splitterDragStartB = detailsColumnWidths[index + 1];
+                break;
+            }
+            case FilerViewType::List:
+                splitterDragStartA = std::max(kMinListColumnWidth, style.listColumnWidth);
+                break;
+            case FilerViewType::BarSize: {
+                if (items.empty()) { draggingSplitter = -1; return; }
+                // The value column may be on auto: snapshot the width it is
+                // actually drawn with, so the drag continues from there.
+                BarSizeColumns cols = BarSizeColumnsFor(
+                        items.front(), barSizeValueWidth > 0 ? barSizeValueWidth
+                                                             : barSizeAutoValueWidth);
+                splitterDragStartA = cols.nameWidth;
+                splitterDragStartB = cols.valueWidth;
+                break;
+            }
+            default:
+                draggingSplitter = -1;
+                return;
+        }
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+        SetMouseCursor(UCMouseCursor::SizeWE);
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::UpdateColumnSplitterDrag(const Point2Di& localPoint) {
+        if (draggingSplitter < 0) return;
+        int index = draggingSplitter;
+        int delta = localPoint.x - splitterDragStartX;
+
+        switch (viewType) {
+            case FilerViewType::Details: {
+                // Split-pane semantics: the width the left column gains is
+                // taken from the column on the right, so the table keeps
+                // spanning the widget. The Name column is derived from what
+                // the others leave, which makes dragging the first splitter
+                // resize Name by the same amount in the opposite direction.
+                if (index + 1 >= (int)kFilerDetailsColumnCount) return;
+                int pairTotal = splitterDragStartA + splitterDragStartB;
+                int minLeft = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
+                int newLeft = clampi(splitterDragStartA + delta, minLeft,
+                                     std::max(minLeft, pairTotal - kMinColumnWidth));
+                detailsColumnWidths[index] = newLeft;
+                detailsColumnWidths[index + 1] = pairTotal - newLeft;
+                break;
+            }
+            case FilerViewType::List: {
+                // Boundary k sits after k+1 columns and k gaps, so the pointer
+                // position divides by the number of columns before it.
+                int colsBefore = index + 1;
+                int width = splitterDragStartA + delta / colsBefore;
+                style.listColumnWidth = std::max(kMinListColumnWidth, width);
+                break;
+            }
+            case FilerViewType::BarSize: {
+                if (index == 0) {
+                    barSizeNameWidth = std::max(kMinColumnWidth,
+                                                splitterDragStartA + delta);
+                } else {
+                    // Dragging the value splitter right shrinks the label
+                    // column: its right edge is pinned to the row's edge.
+                    int rowWidth = items.empty() ? 0 : items.front().rect.width;
+                    barSizeValueWidth = clampi(splitterDragStartB - delta,
+                                               kMinColumnWidth,
+                                               std::max(kMinColumnWidth, rowWidth / 2));
+                }
+                break;
+            }
+            default:
+                return;
+        }
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::EndColumnSplitterDrag() {
+        if (draggingSplitter < 0) return;
+        draggingSplitter = -1;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+        NotifyColumnWidthsChanged();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::NotifyColumnWidthsChanged() {
+        if (onColumnWidthsChanged) onColumnWidthsChanged();
     }
 
     // ===== ASYNC FOLDER STATS =====
@@ -3990,13 +4391,18 @@ namespace UltraCanvas {
                 return contentPoint.y >= capTop;
             }
             default: {
-                // Row views: the name runs to the right of the icon. In Details
-                // it is limited to the Name column so the other columns still
-                // open the entry.
+                // Row views: the name runs to the right of the icon. In the
+                // column views it is limited to its own column, so the other
+                // columns (and the size bar) still open the entry.
                 int nameLeft = item.imageRect.x + item.imageRect.width;
                 int nameRight = item.rect.x + item.rect.width;
                 if (viewType == FilerViewType::Details && !detailsColumns.empty()) {
                     nameRight = detailsColumns[0].x + detailsColumns[0].width;
+                } else if (viewType == FilerViewType::BarSize) {
+                    BarSizeColumns cols = BarSizeColumnsFor(
+                            item, barSizeValueWidth > 0 ? barSizeValueWidth
+                                                        : barSizeAutoValueWidth);
+                    nameRight = cols.nameX + cols.nameWidth;
                 }
                 return contentPoint.x >= nameLeft && contentPoint.x < nameRight;
             }
@@ -4027,6 +4433,68 @@ namespace UltraCanvas {
                 return static_cast<int>(i);
         }
         return -1;
+    }
+
+    // ===== HOVER TOOLTIPS =====
+    // Two things under the cursor can describe themselves: a hover icon-menu
+    // button (its action) and an item name that did not fit the space it was
+    // drawn in (the full name). The button wins where they overlap, so in the
+    // Details view the name column tells the user the file name while the icon
+    // strip — which sits over the columns to its right — keeps describing its
+    // buttons.
+    void UltraCanvasFilerWidget::UpdateHoverTooltip(const UCEvent& event,
+                                                    const Point2Di& localPoint) {
+        TooltipTarget target = TooltipTarget::NoneTarget;
+        size_t entry = 0;
+        int action = -1;
+        std::string text;
+
+        size_t iconEntry = 0;
+        int iconAction = IconMenuActionAt(localPoint, iconEntry);
+        if (iconAction >= 0) {
+            static const char* kIconMenuTips[] = { "Copy", "Cut", "Rename", "Delete" };
+            target = TooltipTarget::IconButton;
+            entry  = iconEntry;
+            action = iconAction;
+            text   = kIconMenuTips[iconAction];
+        } else if (nameTooltips && renamingIndex < 0 && !IsInInfoBar(localPoint) &&
+                   hoveredSplitter < 0) {
+            Point2Di content = ToContentPoint(localPoint);
+            for (const ItemLayout& item : items) {
+                if (!item.rect.Contains(content)) continue;
+                if (item.entryIndex < nameTruncated.size() &&
+                    nameTruncated[item.entryIndex] &&
+                    IsOnItemName(item, content)) {
+                    target = TooltipTarget::ItemName;
+                    entry  = item.entryIndex;
+                    text   = entries[item.entryIndex].name;
+                }
+                break;
+            }
+        }
+
+        // Nothing changed: leave the tooltip (and its show timer) alone so it
+        // does not restart on every pixel of movement.
+        if (target == tooltipTarget && entry == tooltipEntry && action == tooltipAction)
+            return;
+        tooltipTarget = target;
+        tooltipEntry  = entry;
+        tooltipAction = action;
+
+        auto* win = GetWindow();
+        if (!win || target == TooltipTarget::NoneTarget || text.empty()) {
+            UltraCanvasTooltipManager::HideTooltip();
+            return;
+        }
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                win, text, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+    }
+
+    void UltraCanvasFilerWidget::HideHoverTooltip() {
+        if (tooltipTarget == TooltipTarget::NoneTarget) return;
+        tooltipTarget = TooltipTarget::NoneTarget;
+        tooltipAction = -1;
+        UltraCanvasTooltipManager::HideTooltip();
     }
 
     // ===== INTERACTION =====
@@ -4370,10 +4838,11 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseLeave: {
                 if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
-                if (hoveredIconAction != -1) {
-                    hoveredIconAction = -1;
-                    UltraCanvasTooltipManager::HideTooltip();
+                if (hoveredSplitter != -1 && draggingSplitter < 0) {
+                    hoveredSplitter = -1;
+                    RequestRedraw();
                 }
+                HideHoverTooltip();
                 // Do not cancel an active scrollbar drag here: it is mouse-
                 // captured and ends on button release, so a leave (e.g. the
                 // pointer crossing the right edge) must not interrupt it.
@@ -4389,12 +4858,19 @@ namespace UltraCanvas {
                     if (MaxScrollY() <= 0) return false;
                     scrollOffsetY -= event.wheelDelta * kWheelStep;
                 }
+                // What the tooltip describes slides away under the cursor.
+                HideHoverTooltip();
                 ClampScroll();
                 RequestRedraw();
                 return true;
             }
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                // A column splitter drag owns the pointer until it is released.
+                if (draggingSplitter >= 0) {
+                    UpdateColumnSplitterDrag(local);
+                    return true;
+                }
                 // Armed drag-out: once the press moves past the slop the
                 // selection leaves as a native OS drag.
                 if (dragOutArmed) {
@@ -4412,6 +4888,19 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
+                // Column splitters: highlight the one under the cursor and
+                // show the resize cursor, so they are discoverable the same
+                // way a split-pane divider is.
+                {
+                    int splitter = ColumnSplitterAt(local);
+                    if (splitter != hoveredSplitter) {
+                        hoveredSplitter = splitter;
+                        RequestRedraw();
+                    }
+                    SetMouseCursor(splitter >= 0 ? UCMouseCursor::SizeWE
+                                                 : UCMouseCursor::Default);
+                }
+
                 int newHover = IsInInfoBar(local) ? -1 : ItemAt(ToContentPoint(local));
                 // Keep the item hovered while the pointer is over one of its
                 // hover icon-menu buttons. On narrow tiles the button strip can
@@ -4428,27 +4917,7 @@ namespace UltraCanvas {
                     RequestRedraw();
                 }
 
-                // Tooltip for the hover icon-menu button under the cursor.
-                {
-                    size_t tipEntry = 0;
-                    int tipAction = IconMenuActionAt(local, tipEntry);
-                    if (tipAction != hoveredIconAction || tipEntry != hoveredIconEntry) {
-                        hoveredIconAction = tipAction;
-                        hoveredIconEntry  = tipEntry;
-                        auto* win = GetWindow();
-                        if (win && tipAction >= 0) {
-                            static const char* kIconMenuTips[] = {
-                                "Copy", "Cut", "Rename", "Delete"
-                            };
-                            UltraCanvasTooltipManager::UpdateAndShowTooltip(
-                                    win, kIconMenuTips[tipAction],
-                                    Point2Di(event.pointerWindow.x,
-                                             event.pointerWindow.y));
-                        } else {
-                            UltraCanvasTooltipManager::HideTooltip();
-                        }
-                    }
-                }
+                UpdateHoverTooltip(event, local);
                 return false;
             }
             case UCEventType::MouseDown: {
@@ -4532,6 +5001,17 @@ namespace UltraCanvas {
                     }
                 }
 
+                // A column splitter grabs the press before the header sort
+                // click and before the entries underneath it.
+                {
+                    int splitter = ColumnSplitterAt(local);
+                    if (splitter >= 0) {
+                        HideHoverTooltip();
+                        BeginColumnSplitterDrag(splitter, local);
+                        return true;
+                    }
+                }
+
                 // Details header: click toggles / switches the sort column.
                 {
                     int col = DetailsHeaderColumnAt(local);
@@ -4584,6 +5064,10 @@ namespace UltraCanvas {
                 return true;
             }
             case UCEventType::MouseUp: {
+                if (draggingSplitter >= 0) {
+                    EndColumnSplitterDrag();
+                    return true;
+                }
                 if (dragOutArmed && dragCollapseIndex >= 0) {
                     // The press on a selected item turned out to be a plain
                     // click: apply the deferred "select only this item".
@@ -4613,6 +5097,8 @@ namespace UltraCanvas {
                 CancelPendingRename();
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (IsInInfoBar(local)) return true;
+                // A double-click on a divider must not open the entry behind it.
+                if (ColumnSplitterAt(local) >= 0) return true;
                 int index = ItemAt(ToContentPoint(local));
                 if (index >= 0) {
                     ActivateEntry(static_cast<size_t>(index));

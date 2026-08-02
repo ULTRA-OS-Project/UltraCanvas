@@ -26,8 +26,82 @@
   event reaches it — so a hosting widget keeps the arrow keys for its own
   navigation. Mouse wheel / scrollbar scrolling and mouse selection are
   unaffected.
+  
+#### 2026-08-01 *0.3.21*
+- **UltraCanvasSplitPane**: split lines can now carry an optional **handle**.
+  `SplitterHandleShape` picks the form - `Square`, `RoundedSquare`, `Round`
+  (a circle when square, a capsule when elongated) or `Image` - and
+  `SplitterHandleStyle` sets its size across and along the line, corner radius,
+  position along the line (0..1), colors, border and grip lines. The splitter
+  strip widens to fit the handle while the painted line stays as thin as
+  `splitterThickness`, so a 3 px line can carry a 22 px handle.
+  `SetSplitterHandleShape()` is the one-liner; the handle drags exactly like the
+  rest of the line. The shape enumerator for "no handle" is `NoHandle`, not
+  `None`, because `<X11/X.h>` defines `None` as a macro.
+- **UltraCanvasSplitPane**: **image handles**. `SplitterHandleStyle::imagePath`
+  takes an SVG or raster asset, with `SetSplitterHandleImage()` as the
+  one-liner. With `SplitterHandleShape::Image` the asset is the whole handle;
+  with any drawn shape it is centred on top of it and the grip is suppressed.
+  Leaving `axisLength` at 0 takes the handle's proportions from the asset, so
+  the ready-made `media/icons/scrollbar-handle-v.svg` (14x48) renders as a grip
+  rather than a squashed square. `imageAsMask` re-tints a monochrome glyph with
+  `imageColor`, or with the handle's own normal/hover/active color when that is
+  left transparent, so an image handle can react to hover and drag like a drawn
+  one.
+- **UltraCanvasSplitPane**: **action icons on the split line**. Any number of
+  icons per splitter (`AddSplitterIcon`, `SetSplitterIcons`,
+  `InsertSplitterIcon`, `RemoveSplitterIcon`, `ClearSplitterIcons`), each with
+  an image or text glyph, tooltip, enabled/visible state and its own click
+  handler, plus a pane-level `onSplitterIconClicked`. Icons are centred across
+  the line and grouped along it, either inside the handle (which auto-sizes to
+  wrap them) or at their own `SplitterIconStyle::position`. Pressing an icon
+  does not start a drag: the click fires on release over the same icon, the
+  cursor turns into a hand, and a disabled icon dims and swallows the press.
+  Icons live on the split pane rather than on the splitter objects, so they
+  survive pane insertion and removal.
+- **UltraCanvasSplitPane**: `SplitPaneStyle::splitterHitMargin` is wired up -
+  it now widens the grab strip on each side of the line without thickening the
+  painted line. New guide `Docs/UltraCanvas/UltraCanvasSplitPane.md` (the demo
+  already pointed at it) and three new demo sections covering handle shapes,
+  icons in a capsule handle, and icons on a bare vertical split line.
 
 #### 2026-07-31 *0.3.21*
+- **UltraCanvasBreadcrumb**: fixed the folder path dropdowns of
+  `BuildFolderBreadcrumb()` (the media viewer's and the filer's path strip).
+  Every segment listed the folders next to it (its siblings), so opening the
+  dropdown of a folder repeated the listing of the segment before it instead of
+  descending — on `Computer > C: > Projekte` the `Projekte` dropdown showed the
+  contents of `C:\`. Each node now drops down its own sub-folders, so the path
+  can be extended one level from the strip; a folder without sub-folders shows a
+  disabled `(no sub-folders)` entry rather than an empty menu.
+  `FolderBreadcrumbOptions::siblingDropdowns` is accordingly renamed
+  `subFolderDropdowns`.
+- **UltraCanvasBreadcrumb**: a segment dropdown no longer stays up when a
+  second one is opened. The window stacks popups (submenus depend on it) and
+  never dismisses one because another opened, and a click on the breadcrumb is
+  a click on the popup's *owner*, so it does not count as a click-outside
+  either — both left the previous menu on screen, which is what the filer's and
+  the media viewer's path strips showed. The breadcrumb now closes the menu it
+  owns before opening another: only one dropdown (item or overflow) is open at
+  a time, a second click on the same chevron toggles it shut, clicking a
+  segment label closes it, and so does any change to the item list or the
+  breadcrumb's destruction. New `IsDropdownOpen()`, `GetOpenDropdownItemIndex()`
+  and `CloseDropdown()`.
+- **UltraCanvasBreadcrumb**: the pointer now says which parts of the strip open
+  a menu instead of navigating — a dropdown chevron, and the whole overflow
+  (`...`) item since it opens from anywhere on it, switch to the menu cursor
+  (`UCMouseCursor::ContextMenu`, the one the dropdown widget's button already
+  uses) and back to the item cursor elsewhere. Both are style fields
+  (`itemCursor`, `dropdownCursor`). The shape is applied as the pointer crosses
+  the chevron rather than one mouse event later.
+- **UltraCanvasBreadcrumb**: a click handler that rebuilds the path (which is
+  what filer/media-viewer navigation does) cleared `items` while the clicked
+  item was still being read from it — the item click and the overflow-menu
+  entries now work off copies.
+- **UltraCanvasMenu**: `CloseMenu()` on an already-closed menu is a no-op
+  instead of dereferencing the window pointer that closing cleared. Reached
+  when an item's action dismisses its own menu, as a breadcrumb dropdown entry
+  now does by navigating.
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
   rows given identity: one named band per workstream, a name column on the left
