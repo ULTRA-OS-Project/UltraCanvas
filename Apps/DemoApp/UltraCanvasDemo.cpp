@@ -987,6 +987,12 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasRadarChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasRadarChartElement.md");
 
+        chartBuilder.AddItem("parallelcoordinates", "Parallel Coordinates", "Multi-dimensional records as polylines across parallel axes",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateParallelCoordinateChartExamples(); },
+                             "DemoApp/UltraCanvasParallelCoordinateChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md");
+
         chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateFinancialChartExamples(); },

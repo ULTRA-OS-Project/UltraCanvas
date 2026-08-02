@@ -305,6 +305,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateCircularProgressChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePolarChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRadarChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateParallelCoordinateChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateHeatmapExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateContourChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGaugeExamples();

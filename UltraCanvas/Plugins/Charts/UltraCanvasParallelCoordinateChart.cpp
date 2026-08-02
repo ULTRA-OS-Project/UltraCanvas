@@ -302,9 +302,19 @@ void UltraCanvasParallelCoordinateChartElement::MeasureContent(
     const double lineHeight = ctx->GetTextLineHeight("Ag");
     request.Reserve(ChartAxisEdge::Top, lineHeight + 10.0);
     request.Reserve(ChartAxisEdge::Bottom, lineHeight * 2.0 + 16.0);
-    // Room for half a label at the outer axes.
-    request.Reserve(ChartAxisEdge::Left, 30.0);
-    request.Reserve(ChartAxisEdge::Right, 30.0);
+
+    // The outer axes' titles and endpoint labels are centred on the axis, so
+    // half of the widest of them hangs outside the plot - measure, don't guess.
+    const std::vector<size_t> display = model.DisplayOrder();
+    if (!display.empty()) {
+        request.Reserve(ChartAxisEdge::Left,
+                        ctx->GetTextLineWidth(model.DimensionName(display.front())) * 0.5 + 8.0);
+        request.Reserve(ChartAxisEdge::Right,
+                        ctx->GetTextLineWidth(model.DimensionName(display.back())) * 0.5 + 8.0);
+    } else {
+        request.Reserve(ChartAxisEdge::Left, 30.0);
+        request.Reserve(ChartAxisEdge::Right, 30.0);
+    }
 }
 
 void UltraCanvasParallelCoordinateChartElement::BuildRecordPath(

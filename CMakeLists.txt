@@ -78,6 +78,14 @@ endif()
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
 message(STATUS "")
 message(STATUS "── Building UltraCanvas Core Library ──")
+# The demo's chart pages use the typed factories of these selectable charts,
+# so the demo build declares its chart set (chart engine proposal §12.11).
+# A -DULTRACANVAS_CHARTS=... on the command line still wins (cache-first).
+if(BUILD_DEMO_APP)
+    set(ULTRACANVAS_CHARTS "ParallelCoordinate" CACHE STRING
+        "Selectable charts linked into the library: 'all', empty, or a ;-list of keys")
+endif()
+
 add_subdirectory(UltraCanvas)
 
 # ===== BUILD ULTRAAI MODULE =====
@@ -196,6 +204,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasCircularProgressChartExamples.cpp
             Apps/DemoApp/UltraCanvasPolarChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasParallelCoordinateChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
             Apps/DemoApp/UltraCanvasContourChartExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
