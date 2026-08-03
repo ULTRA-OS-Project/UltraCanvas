@@ -9,6 +9,7 @@ components:
 | Folder content (center pane) | `UltraCanvasTabbedContainer` hosting one `UltraCanvasFilerWidget` per tab — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Preview (right pane) | `UltraCanvasMediaViewer` — images, video, audio, PDFs, spreadsheets, 3D models and text files |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
+| Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::ShowFileList()` |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
 
 ## Features
@@ -20,6 +21,14 @@ components:
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
   tree with lazy expansion.
+- **Search:** the field on the right of the path bar searches the current
+  folder recursively for names containing the text (case-insensitive, up to
+  1000 matches). Enter runs it; the matches are displayed in the tab's
+  current view mode, with a *Path* column after the name in Details view.
+  The context menu's first entry, **Open path (in new tab)**, opens the
+  selected match's folder in a new tab. Clearing the field (or navigating
+  anywhere) returns to the normal folder display. Each tab keeps its own
+  search.
 - **Command bar:** New folder / New file (inline rename starts
   automatically), Cut / Copy / Paste (system clipboard interop), Rename,
   Delete (with confirmation), sort field + direction, view type selection,

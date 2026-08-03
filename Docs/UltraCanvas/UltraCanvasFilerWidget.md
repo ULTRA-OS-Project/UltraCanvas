@@ -86,8 +86,11 @@ filer->onColumnWidthsChanged = [] { /* persist the layout */ };
 filer->SetColumnResizeEnabled(false);    // fixed columns
 ```
 
-`FilerDetailsColumn` names the Details columns left to right: `Name`, `Size`,
-`Type`, `ModifiedDate`, `CreatedDate`, `Attributes`, `Info`. Columns cannot be
+`FilerDetailsColumn` names the Details columns left to right: `Name`, `Path`,
+`Size`, `Type`, `ModifiedDate`, `CreatedDate`, `Attributes`, `Info`. `Path`
+(the entry's containing folder) is only shown while a file list is displayed —
+see *File list (search results)* below — so a normal folder display has the
+columns it always had. Columns cannot be
 dragged below a usable minimum (44 px, 120 px for the name).
 `onColumnWidthsChanged` fires when a drag ends and on every programmatic change.
 
@@ -142,6 +145,8 @@ icon strip — which sits over the columns to its right — describes its button
 A right-click opens the file menu:
 
 ```
+Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
+──────────         displays; the label is configurable)
 Copy / Cut / Paste / Delete / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
@@ -159,7 +164,6 @@ Compress / Extract
 ──────────
 Print
 ──────────
-Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result displays)
 Extras         >  Share / Attributes / Copy path / Access
 Settings
 ```
@@ -338,6 +342,33 @@ keeps the selection on the files that are still there — it is remembered by
 path, not by row index. Files that vanished drop out of it, which is reported
 through `onSelectionChanged`; every rescan also fires `onFolderRefreshed` so a
 host can refresh what it shows about the folder (item counts, status bar).
+
+## File list (search results)
+
+`ShowFileList(paths)` displays an explicit list of paths — typically search
+results — instead of the folder listing, in whatever view mode is selected.
+Each path is stat-ed like a scanned entry (type, size, times, attributes), and
+paths that no longer exist are skipped. The Details view adds the `Path` column
+(the entry's containing folder) directly after the name, since the entries come
+from different folders.
+
+`GetPath()` keeps returning the folder shown before, so navigation state is
+untouched; `SetPath()` returns to the normal folder display and
+`IsShowingFileList()` reports which mode is active. `Refresh()` re-stats the
+list, dropping entries that vanished.
+
+Pair it with `SetOpenPathMenuItemVisible(true, label)`, which puts an
+Open-Path item at the *top* of the context menu (followed by a separator) and
+lets you name it — e.g. `"Open path (in new tab)"`. The item calls
+`onOpenPath(entry)` if set, otherwise it browses the entry's parent folder.
+
+```cpp
+filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+filer->onOpenPath = [this](const FilerEntry& e) {
+    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+};
+filer->ShowFileList(matches);   // shown in the current view mode
+```
 
 ## Callbacks
 

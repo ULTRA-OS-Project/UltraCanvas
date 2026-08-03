@@ -1,9 +1,9 @@
 // Apps/UltraFiler/UltraFilerWindow.cpp
 // UltraFiler main window: Windows Explorer style file manager built from the
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
-// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab) and the media
-// preview (UltraCanvasMediaViewer).
-// Version: 1.1.3
+// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
+// search field and the media preview (UltraCanvasMediaViewer).
+// Version: 1.2.0
 // Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 
@@ -275,7 +275,69 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
 
+    // Recursive name search under the current folder; Enter runs it, an
+    // empty query returns to the normal folder display.
+    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
+    searchInput->SetFontSize(kUiFontSize);
+    searchInput->SetPlaceholder("Search");
+    searchInput->onEnterPressed = [this](const std::string& text) {
+        RunSearch(text);
+        return true;
+    };
+    searchInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    row->AddChild(searchInput);
+
     return row;
+}
+
+// ===== SEARCH =====
+
+void UltraFilerWindow::RunSearch(const std::string& query) {
+    if (!filer) return;
+
+    if (query.empty()) {
+        // Back to the normal folder display (SetPath leaves file-list mode).
+        if (filer->IsShowingFileList()) filer->SetPath(filer->GetPath());
+        return;
+    }
+
+    const std::string root = filer->GetPath();
+    if (root.empty()) return;
+
+    std::string needle = query;
+    std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+
+    // Bounded so a match-everything query on a huge tree stays responsive.
+    constexpr size_t kMaxResults = 1000;
+    std::vector<std::string> results;
+    std::error_code ec;
+    fs::recursive_directory_iterator it(
+            root, fs::directory_options::skip_permission_denied, ec), end;
+    for (; !ec && it != end && results.size() < kMaxResults; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (IsHiddenName(name)) {
+            // Consistent with the folder tree: hidden folders are not entered.
+            std::error_code dec;
+            if (it->is_directory(dec) && !dec) it.disable_recursion_pending();
+            continue;
+        }
+        std::string lower = name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if (lower.find(needle) != std::string::npos)
+            results.push_back(it->path().string());
+    }
+
+    if (FilerTabState* tab = ActiveTabState()) tab->searchQuery = query;
+    filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+    filer->ShowFileList(results);
+    if (statusLabel) {
+        std::string text = std::to_string(results.size())
+                + (results.size() == 1 ? " result for \"" : " results for \"")
+                + query + "\"";
+        if (results.size() >= kMaxResults) text += " (first 1000 shown)";
+        statusLabel->SetText(text);
+    }
 }
 
 // ===== COMMAND BAR (New / clipboard / rename / delete / sort / view / preview) =====
@@ -683,6 +745,10 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
+    tab->filer->onOpenPath = [this](const FilerEntry& entry) {
+        const std::string parent = fs::path(entry.path).parent_path().string();
+        if (!parent.empty()) AddNewTab(parent, true);
+    };
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -696,6 +762,7 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
         BuildFolderBreadcrumb(breadcrumb.get(), path,
                               [this](const std::string& folder) { NavigateTo(folder); });
     }
+    if (searchInput) searchInput->SetText(tab->searchQuery);
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
@@ -820,7 +887,13 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     const int index = TabIndexOf(tab);
     if (index >= 0) tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
 
+    // Entering a folder ends a search-result display (SetPath leaves it).
+    tab->searchQuery.clear();
+    tab->filer->SetOpenPathMenuItemVisible(false);
+
     if (!IsActiveTab(tab)) return;
+
+    if (searchInput) searchInput->SetText("");
 
     if (breadcrumb) {
         BuildFolderBreadcrumb(breadcrumb.get(), path,

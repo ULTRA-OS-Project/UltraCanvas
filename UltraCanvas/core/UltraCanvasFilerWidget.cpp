@@ -1011,12 +1011,24 @@ namespace UltraCanvas {
     // ===== FOLDER =====
     void UltraCanvasFilerWidget::SetPath(const std::string& folderPath) {
         currentPath = folderPath;
+        fileListMode = false;
+        fileListPaths.clear();
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
         ClearSelection();
         ScanFolder();
         if (onPathChanged) onPathChanged(currentPath);
+    }
+
+    void UltraCanvasFilerWidget::ShowFileList(const std::vector<std::string>& paths) {
+        fileListMode = true;
+        fileListPaths = paths;
+        scrollOffsetX = scrollOffsetY = 0;
+        CancelRename();
+        CancelPendingRename();
+        ClearSelection();
+        ScanFolder();
     }
 
     void UltraCanvasFilerWidget::Refresh() {
@@ -1047,6 +1059,33 @@ namespace UltraCanvas {
         if (e.category == FilerFileCategory::Archive) e.isArchive = true;
     }
 
+    bool UltraCanvasFilerWidget::StatEntryForPath(const std::string& path,
+                                                  FilerEntry& e) const {
+        std::error_code ec;
+        fs::file_status st = fs::symlink_status(path, ec);
+        if (ec || !fs::exists(st)) return false;
+        e.name = fs::path(path).filename().string();
+        e.path = path;
+        e.isSymlink = fs::is_symlink(st);
+        e.isDirectory = fs::is_directory(path, ec) && !ec;
+        e.isHidden = !e.name.empty() && e.name[0] == '.';
+        if (!e.isDirectory) {
+            std::error_code sec;
+            e.size = fs::file_size(path, sec);
+            if (sec) e.size = 0;
+        }
+        e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+
+        struct stat sb{};
+        if (::stat(path.c_str(), &sb) == 0) {
+            e.modifiedTime = sb.st_mtime;
+            e.createdTime = sb.st_ctime;
+            e.isReadOnly = (sb.st_mode & S_IWUSR) == 0;
+        }
+        ApplyEntryTypeInfo(e);
+        return true;
+    }
+
     void UltraCanvasFilerWidget::ScanFolder() {
         // `selection` indexes `entries`, which is rebuilt below — remember what
         // is selected by path so a rescan (Refresh after a file operation, a
@@ -1075,7 +1114,14 @@ namespace UltraCanvas {
         std::error_code ec;
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
 
-        if (isRealDir) {
+        if (fileListMode) {
+            for (const std::string& p : fileListPaths) {
+                FilerEntry e;
+                if (!StatEntryForPath(p, e)) continue;
+                if (e.isHidden && !showHiddenFiles) continue;
+                entries.push_back(std::move(e));
+            }
+        } else if (isRealDir) {
             for (fs::directory_iterator it(currentPath, ec), end; it != end;
                  it.increment(ec)) {
                 if (ec) break;
@@ -1391,10 +1437,12 @@ namespace UltraCanvas {
         int width = std::max(minWidth, pixels);
         if (detailsColumnWidths[index] == width) return;
         // Name is derived from what the others leave, so widening it means
-        // taking that width from the column next to it.
+        // taking that width from the visible column next to it.
         if (column == FilerDetailsColumn::Name) {
             int delta = width - detailsColumnWidths[0];
-            int next = static_cast<int>(FilerDetailsColumn::Size);
+            const std::vector<size_t> vis = VisibleDetailsSpecIndices();
+            size_t next = vis.size() > 1 ? vis[1]
+                                         : static_cast<size_t>(FilerDetailsColumn::Size);
             detailsColumnWidths[next] = std::max(kMinColumnWidth,
                                                  detailsColumnWidths[next] - delta);
         }
@@ -2708,6 +2756,7 @@ namespace UltraCanvas {
     const UltraCanvasFilerWidget::DetailsColumnSpec
             UltraCanvasFilerWidget::kDetailsColumnSpecs[kFilerDetailsColumnCount] = {
         {FilerDetailsColumn::Name,         FilerSortField::Name,         "Name",     260, false, true},
+        {FilerDetailsColumn::Path,         FilerSortField::Name,         "Path",     220, false, false},
         {FilerDetailsColumn::Size,         FilerSortField::Size,         "Size",     90,  true,  true},
         {FilerDetailsColumn::Type,         FilerSortField::Type,         "Type",     130, false, true},
         {FilerDetailsColumn::ModifiedDate, FilerSortField::ModifiedDate, "Modified", 150, false, true},
@@ -2723,26 +2772,39 @@ namespace UltraCanvas {
             detailsColumnWidths[i] = kDetailsColumnSpecs[i].defaultWidth;
     }
 
+    std::vector<size_t> UltraCanvasFilerWidget::VisibleDetailsSpecIndices() const {
+        std::vector<size_t> vis;
+        vis.reserve(kFilerDetailsColumnCount);
+        for (size_t i = 0; i < kFilerDetailsColumnCount; ++i) {
+            if (!fileListMode &&
+                kDetailsColumnSpecs[i].id == FilerDetailsColumn::Path)
+                continue;
+            vis.push_back(i);
+        }
+        return vis;
+    }
+
     void UltraCanvasFilerWidget::LayoutDetails(const Rect2Di& area) {
         EnsureDetailsColumnWidths();
+        const std::vector<size_t> vis = VisibleDetailsSpecIndices();
         // The name column absorbs whatever the (splitter-resized) rest leaves,
         // so the table always spans the widget and dragging a splitter moves
         // width between two neighbours instead of scrolling the table sideways.
         int othersTotal = 0;
-        for (size_t i = 1; i < kFilerDetailsColumnCount; ++i)
-            othersTotal += detailsColumnWidths[i];
+        for (size_t k = 1; k < vis.size(); ++k)
+            othersTotal += detailsColumnWidths[vis[k]];
         detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
                                           area.width - othersTotal - kScrollbarGutter);
 
         int x = area.x;
-        for (size_t i = 0; i < kFilerDetailsColumnCount; ++i) {
-            const DetailsColumnSpec& spec = kDetailsColumnSpecs[i];
+        for (size_t k = 0; k < vis.size(); ++k) {
+            const DetailsColumnSpec& spec = kDetailsColumnSpecs[vis[k]];
             DetailsColumn c;
             c.id = spec.id;
             c.field = spec.field;
             c.title = spec.title;
             c.x = x;
-            c.width = detailsColumnWidths[i];
+            c.width = detailsColumnWidths[vis[k]];
             c.rightAligned = spec.rightAligned;
             c.sortable = spec.sortable;
             detailsColumns.push_back(c);
@@ -3951,6 +4013,9 @@ namespace UltraCanvas {
                     value = e.name;
                     color = style.textColor;
                     break;
+                case FilerDetailsColumn::Path:
+                    value = fs::path(e.path).parent_path().string();
+                    break;
                 case FilerDetailsColumn::Size:
                     value = e.isDirectory ? "" : FormatSize(e.size);
                     break;
@@ -4470,12 +4535,15 @@ namespace UltraCanvas {
         switch (viewType) {
             case FilerViewType::Details: {
                 EnsureDetailsColumnWidths();
-                if (index + 1 >= (int)kFilerDetailsColumnCount) {
+                // The splitter index counts visible columns; the widths stay
+                // indexed by FilerDetailsColumn (Path may be hidden).
+                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
+                if (index + 1 >= (int)vis.size()) {
                     draggingSplitter = -1;
                     return;
                 }
-                splitterDragStartA = detailsColumnWidths[index];
-                splitterDragStartB = detailsColumnWidths[index + 1];
+                splitterDragStartA = detailsColumnWidths[vis[index]];
+                splitterDragStartB = detailsColumnWidths[vis[index + 1]];
                 break;
             }
             case FilerViewType::List:
@@ -4513,13 +4581,14 @@ namespace UltraCanvas {
                 // spanning the widget. The Name column is derived from what
                 // the others leave, which makes dragging the first splitter
                 // resize Name by the same amount in the opposite direction.
-                if (index + 1 >= (int)kFilerDetailsColumnCount) return;
+                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
+                if (index + 1 >= (int)vis.size()) return;
                 int pairTotal = splitterDragStartA + splitterDragStartB;
                 int minLeft = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
                 int newLeft = clampi(splitterDragStartA + delta, minLeft,
                                      std::max(minLeft, pairTotal - kMinColumnWidth));
-                detailsColumnWidths[index] = newLeft;
-                detailsColumnWidths[index + 1] = pairTotal - newLeft;
+                detailsColumnWidths[vis[index]] = newLeft;
+                detailsColumnWidths[vis[index + 1]] = pairTotal - newLeft;
                 break;
             }
             case FilerViewType::List: {
@@ -5069,6 +5138,20 @@ namespace UltraCanvas {
             menu.AddItem(item);
         };
 
+        // Search-result displays put "Open Path" first: the entries come from
+        // different folders, so jumping to an entry's folder is the primary
+        // action there.
+        if (showOpenPathItem) {
+            size_t openIdx = hasSel ? selection.front() : 0;
+            addAction(openPathItemLabel, hasSel, [this, openIdx]() {
+                if (openIdx >= entries.size()) return;
+                const FilerEntry e = entries[openIdx];
+                if (onOpenPath) onOpenPath(e);
+                else SetPath(fs::path(e.path).parent_path().string());
+            });
+            menu.AddItem(MenuItemData::Separator());
+        }
+
         addAction("Copy", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
         addAction("Cut", hasSel, [this]() { CutSelection(); }, "Ctrl+X");
         addAction("Paste", ClipboardHasContent(), [this]() { Paste(); }, "Ctrl+V");
@@ -5216,16 +5299,6 @@ namespace UltraCanvas {
             if (onPrint) onPrint(SelectionOrAll());
         }, "Ctrl+P");
         menu.AddItem(MenuItemData::Separator());
-
-        if (showOpenPathItem) {
-            size_t openIdx = hasSel ? selection.front() : 0;
-            addAction("Open Path", hasSel, [this, openIdx]() {
-                if (openIdx >= entries.size()) return;
-                const FilerEntry e = entries[openIdx];
-                if (onOpenPath) onOpenPath(e);
-                else SetPath(fs::path(e.path).parent_path().string());
-            });
-        }
 
         // Extras >
         {
