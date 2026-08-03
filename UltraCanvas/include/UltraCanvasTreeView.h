@@ -183,6 +183,7 @@ private:
     int indentSize;                 // Indentation per level
     int iconSpacing;               // Space between icon and text
     int textPadding;               // Padding around text
+    float fontSize = 12.0f;        // Row label font size
     bool showRootLines;            // Show lines for root level
     bool showExpandButtons;        // Show +/- buttons
     bool showFirstChildOnExpand;   // auto open first child on expand node
@@ -261,6 +262,9 @@ public:
     
     void SetIndentSize(int size) { indentSize = size; }
     int GetIndentSize() const { return indentSize; }
+
+    void SetFontSize(float size) { fontSize = size; }
+    float GetFontSize() const { return fontSize; }
     
     void SetSelectionMode(TreeSelectionMode mode);
     TreeSelectionMode GetSelectionMode() const { return selectionMode; }

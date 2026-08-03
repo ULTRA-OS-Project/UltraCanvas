@@ -3,8 +3,8 @@
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab) and the media
 // preview (UltraCanvasMediaViewer).
-// Version: 1.1.0
-// Last Modified: 2026-08-02
+// Version: 1.1.1
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -26,6 +26,15 @@ namespace {
 
     // Suffix marking the lazy placeholder child of an unexpanded folder node.
     constexpr const char* kPlaceholderSuffix = "\n#placeholder";
+
+    // Single UI font size (pt) used by every element of the window.
+    constexpr float kUiFontSize = 9.0f;
+
+    void ApplyDropdownFontSize(UltraCanvasDropdown* dropdown) {
+        DropdownStyle s = dropdown->GetStyle();
+        s.fontSize = kUiFontSize;
+        dropdown->SetStyle(s);
+    }
 
     std::string IconPath(const std::string& fileName) {
         return NormalizePath(GetResourcesDir() + "media/icons/" + fileName);
@@ -117,7 +126,7 @@ namespace {
             const std::string& id, const std::string& label,
             const std::string& iconFile, int width, std::function<void()> onClick) {
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-        b->SetFontSize(12);
+        b->SetFontSize(kUiFontSize);
         b->SetCornerRadius(4.0f);
         b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
         b->SetTextColors(Color(40, 40, 44, 255));
@@ -152,7 +161,7 @@ namespace {
         s.arrowSize = 8;
         s.itemPaddingHorizontal = 9;
         s.itemPaddingVertical = 4;
-        s.fontStyle.fontSize = 12.0f;
+        s.fontStyle.fontSize = kUiFontSize;
         return s;
     }
 
@@ -204,7 +213,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     // Status bar under the split.
     statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 24);
-    statusLabel->SetFontSize(11);
+    statusLabel->SetFontSize(kUiFontSize);
     statusLabel->SetTextColor(Color(70, 70, 76, 255));
     statusLabel->SetBackgroundColor(Color(243, 243, 246, 255));
     statusLabel->SetPadding(4, 10, 4, 10);
@@ -241,7 +250,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
         if (path.empty()) path = UserHomeDir();
         AddNewTab(path, true);
     });
-    newTabButton->SetFontSize(16);
+    newTabButton->SetFontSize(kUiFontSize);
     row->AddChild(newTabButton);
 
     backButton = MakeToolButton("ufl-back", "", "arrow-left.svg", 30,
@@ -300,6 +309,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     auto sep1 = std::make_shared<UltraCanvasLabel>("ufl-sep1", 0, 0, 9, 24);
     sep1->SetText("|");
+    sep1->SetFontSize(kUiFontSize);
     sep1->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep1);
 
@@ -334,17 +344,19 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     auto sep2 = std::make_shared<UltraCanvasLabel>("ufl-sep2", 0, 0, 9, 24);
     sep2->SetText("|");
+    sep2->SetFontSize(kUiFontSize);
     sep2->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep2);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
     auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
     sortLbl->SetText("Sort");
-    sortLbl->SetFontSize(12);
+    sortLbl->SetFontSize(kUiFontSize);
     sortLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(sortLbl);
 
     sortDropdown = CreateDropdown("ufl-sort", 0, 0, 104, 26);
+    ApplyDropdownFontSize(sortDropdown.get());
     sortDropdown->AddItem("Name");
     sortDropdown->AddItem("Size");
     sortDropdown->AddItem("Type");
@@ -370,11 +382,12 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // View type; defaults to medium thumbnails like the Explorer screenshot.
     auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
     viewLbl->SetText("View");
-    viewLbl->SetFontSize(12);
+    viewLbl->SetFontSize(kUiFontSize);
     viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(viewLbl);
 
     viewDropdown = CreateDropdown("ufl-view", 0, 0, 130, 26);
+    ApplyDropdownFontSize(viewDropdown.get());
     viewDropdown->AddItem("Details");
     viewDropdown->AddItem("List");
     viewDropdown->AddItem("Small icons");
@@ -405,11 +418,12 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // a 5 second muted clip (album hover-preview style) or a still frame.
     auto videoLbl = std::make_shared<UltraCanvasLabel>("ufl-video-lbl", 0, 0, 44, 24);
     videoLbl->SetText("Video");
-    videoLbl->SetFontSize(12);
+    videoLbl->SetFontSize(kUiFontSize);
     videoLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(videoLbl);
 
     videoModeDropdown = CreateDropdown("ufl-video-mode", 0, 0, 104, 26);
+    ApplyDropdownFontSize(videoModeDropdown.get());
     videoModeDropdown->AddItem("Autoplay");
     videoModeDropdown->AddItem("5 s clip");
     videoModeDropdown->AddItem("Still image");
@@ -436,6 +450,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
 void UltraFilerWindow::BuildFolderTree() {
     folderTree = std::make_shared<UltraCanvasTreeView>("ufl-tree");
+    folderTree->SetFontSize(kUiFontSize);
     folderTree->SetRowHeight(24);
     folderTree->SetSelectionMode(TreeSelectionMode::Single);
     folderTree->SetLineStyle(TreeLineStyle::NoLine);
@@ -551,6 +566,7 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
 
 void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ufl-tabs");
+    tabbedContainer->fontSize = static_cast<int>(kUiFontSize);
     tabbedContainer->SetTabHeight(30);
     tabbedContainer->SetTabMinWidth(90);
     tabbedContainer->SetCloseMode(TabCloseMode::Closable);
@@ -586,6 +602,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
+    FilerStyle filerStyle = state->filer->GetStyle();
+    filerStyle.fontSize = kUiFontSize;
+    filerStyle.smallFontSize = kUiFontSize;
+    state->filer->SetStyle(filerStyle);
     state->filer->SetViewType(FilerViewType::ThumbnailsMedium);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);

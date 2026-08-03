@@ -129,7 +129,7 @@ namespace UltraCanvas {
         const int rowHeight = GetRowHeight();
         ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, rowWidth - 2, rowHeight),
                                  columnStyle.groupHeaderBackground);
-        ctx->SetFontSize(12);
+        ctx->SetFontSize(GetFontSize());
         ctx->SetFontWeight(FontWeight::Bold);
         ctx->SetTextPaint(columnStyle.groupHeaderTextColor);
         ctx->SetTextAlignment(TextAlignment::Center);
@@ -163,7 +163,7 @@ namespace UltraCanvas {
 
         auto layout = LayoutColumns(rowLeft, rowWidth, textX);
 
-        ctx->SetFontSize(12);
+        ctx->SetFontSize(GetFontSize());
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
 
         for (size_t i = 0; i < columns_.size() && i < layout.size(); ++i) {
@@ -227,7 +227,7 @@ namespace UltraCanvas {
         const int textX = rowLeft + GetTextPadding();
         auto layout = LayoutColumns(rowLeft, rowWidth, textX);
 
-        ctx->SetFontSize(12);
+        ctx->SetFontSize(GetFontSize());
         ctx->SetFontWeight(FontWeight::Bold);
         ctx->SetTextPaint(cs.headerTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);

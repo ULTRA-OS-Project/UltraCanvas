@@ -783,7 +783,7 @@ namespace UltraCanvas {
                                               const Rect2Di &contentRect) {
         // Classic mode: single text run + optional right icon.
         Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
-        ctx->SetFontSize(12);
+        ctx->SetFontSize(fontSize);
         ctx->SetTextPaint(nodeTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - textX, rowHeight), true);
