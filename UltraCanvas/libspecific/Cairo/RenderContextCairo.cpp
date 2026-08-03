@@ -122,7 +122,7 @@ namespace UltraCanvas {
         }
     }
 
-    std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, const Size2Di &sz) {
+    std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, const Size2Di &sz, bool isMarkup) {
         // Generate a unique cache key based on all parameters that affect text rendering
         std::ostringstream keyStream;
 
@@ -137,7 +137,11 @@ namespace UltraCanvas {
                   << static_cast<int>(currentState.textStyle.wrap)
 //                  << currentState.textSourceColor.ToARGB()
                   << static_cast<int>(currentState.textStyle.lineHeight * 100)
-                  << (currentState.textStyle.isMarkup ? "1" : "0")
+                  // The same string laid out as markup and as literal text
+                  // produces different layouts, so it must not share a cache
+                  // entry. This tracks the caller's request, not the render
+                  // state, because GetOrCreateTextLayout takes it as an argument.
+                  << (isMarkup ? "1" : "0")
 //                  << static_cast<int>(g_TextAntialias)
 //                  << static_cast<int>(g_TextHintStyle)
 //                  << static_cast<int>(g_TextHintMetrics) << "|"
@@ -715,7 +719,7 @@ namespace UltraCanvas {
         }
 
         // Generate cache key
-        std::string cacheKey = GenerateTextCacheKey(text, sz);
+        std::string cacheKey = GenerateTextCacheKey(text, sz, isMarkup);
 
         // Try to get from cache first
         auto cached = g_TextLayoutsCache.GetFromCache(cacheKey);
@@ -779,10 +783,14 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Dd &rect) {
+        DrawTextInRect(text, rect, false);
+    }
+
+    void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Dd &rect, bool isMarkup) {
         if (text.empty()) {
             return; // Nothing to draw
         }
-        auto layout = GetOrCreateTextLayout(text, rect.Size(), false);
+        auto layout = GetOrCreateTextLayout(text, rect.Size(), isMarkup);
         if (layout) {
             DrawTextLayout(*layout, rect.TopLeft());
         } else {

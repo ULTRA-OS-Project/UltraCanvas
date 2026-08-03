@@ -1,8 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.3.0
-// Last Modified: 2026-01-25
+// Version: 3.4.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -213,6 +213,20 @@ namespace UltraCanvas {
 //        bool closeOnClickOutside = false;
         float autoCloseTime = 0.0f; // 0 = no auto close
 
+        // ===== KEYBOARD BEHAVIOUR =====
+        // Return/Enter activates defaultButton when the focused element does not
+        // consume the key itself (a focused button, a multiline text field).
+        bool activateDefaultOnEnter = true;
+        // Give every button a mnemonic letter, drawn underlined in its label.
+        // Alt+letter always activates it; a bare letter does too, but only while
+        // the dialog holds no editable text field that would swallow it.
+        bool useButtonMnemonics = true;
+        // Discard keys that were already held down when the dialog opened, and
+        // forget the keyboard state again when it closes. Without this a key
+        // still down from the action that opened the dialog dismisses it
+        // immediately, and the key that dismissed it leaks to the parent window.
+        bool clearPendingInput = true;
+
         DialogConfig() {
             // Set window defaults for dialogs
             title = "Dialog";
@@ -339,7 +353,26 @@ namespace UltraCanvas {
         bool autoSizeHeight = true;
 
         // ===== FOOTER COMPONENTS =====
-        std::vector<std::shared_ptr<UltraCanvasButton>> dialogButtons;
+        // A footer button plus everything the keyboard path needs to activate
+        // it: which result it produces and which letter selects it.
+        struct DialogButtonEntry {
+            std::shared_ptr<UltraCanvasButton> button;
+            DialogButton type = DialogButton::NoneButton;
+            DialogResult result = DialogResult::NoResult;
+            char mnemonic = 0;   // uppercase ASCII, 0 = no mnemonic
+        };
+        std::vector<DialogButtonEntry> dialogButtons;
+
+        // ===== KEYBOARD STATE =====
+        // Keys that were already held when the dialog was shown. Their KeyDown /
+        // KeyUp / TextInput events are dropped until the key is released, so a
+        // leftover keystroke cannot act on a dialog that was not on screen when
+        // it was pressed. Empty once the keyboard is fully "armed".
+        std::vector<UCKeys> pendingHeldKeys;
+        // Identifier of the window event filter that implements the keyboard
+        // handling. Set on the first ShowModal() and kept for the window's
+        // lifetime; empty means no filter has been installed yet.
+        std::string keyboardFilterId;
 
     public:
         // ===== DIALOG OPERATIONS =====
@@ -375,6 +408,18 @@ namespace UltraCanvas {
         void AddCustomButton(const std::string& text, DialogResult result, std::function<void()> callback = nullptr);
         void SetButtonDisabled(DialogButton button, bool disabled);
         void SetButtonVisible(DialogButton button, bool visible);
+
+        // ===== KEYBOARD =====
+        // Override the letter that activates a button. The letter must occur in
+        // the button's label; returns false (leaving the assignment untouched)
+        // when it does not, or when no such button exists.
+        bool SetButtonMnemonic(DialogButton button, char letter);
+        // Uppercase mnemonic of a button, or 0 when it has none.
+        char GetButtonMnemonic(DialogButton button) const;
+        // Activate a button from code exactly as the keyboard would, by running
+        // its own click handler. Returns false without doing anything for a
+        // button that is absent, hidden or disabled.
+        bool ActivateButton(DialogButton button);
 
         // ===== CONTENT MANAGEMENT =====
         // Add custom UI elements to the dialog's content area
@@ -420,8 +465,55 @@ namespace UltraCanvas {
         // ===== EVENT HELPERS =====
         void OnDialogButtonClick(DialogButton button);
 
+        // ===== KEYBOARD HANDLING =====
+        // Runs as a window event filter installed by ShowModal(), i.e. before
+        // the focused element sees the key. Only the two cases that need to
+        // pre-empt the focused element live here: dropping keystrokes left over
+        // from before the dialog opened, and mnemonics. Return and Escape are
+        // handled in OnEvent() instead, so a focused button or a multiline
+        // field keeps first claim on them.
+        bool HandleDialogKeyEvent(const UCEvent& event);
+        void InstallKeyboardHandling();
+        // Clears the per-showing keyboard state when the dialog closes. The
+        // filter itself stays installed on purpose: a mnemonic closes the dialog
+        // from inside the filter callback, and uninstalling there would destroy
+        // the std::function that is still running. It belongs to the window and
+        // dies with it, and re-showing the dialog reuses it.
+        void ResetKeyboardState();
+        // Drop events belonging to a key that was already down when the dialog
+        // opened; returns true when the event must not be delivered.
+        bool ShouldSwallowStaleInput(const UCEvent& event);
+        // Give each button a distinct underlined letter, preferring the first
+        // character of the label and falling back to later ones on collision.
+        void AssignButtonMnemonics();
+        // Entry whose mnemonic matches `letter`, or nullptr.
+        DialogButtonEntry* FindButtonByMnemonic(char letter);
+        DialogButtonEntry* FindButtonEntry(DialogButton button);
+        const DialogButtonEntry* FindButtonEntry(DialogButton button) const;
+        // The button Return activates: the configured default, else the first
+        // affirmative button the dialog carries (OK, Yes, Retry, Apply, Close),
+        // else its first usable button.
+        DialogButtonEntry* FindDefaultButtonEntry();
+        // Run a button's own click handler, so every path — mouse, Return,
+        // mnemonic — produces exactly the same behaviour. Falls back to closing
+        // with the button's result for a button that has no handler.
+        void ActivateButtonEntry(DialogButtonEntry& entry);
+        // The button Escape maps to: the configured cancelButton when the dialog
+        // has it, else the first of Cancel / No / Close / Abort / Ignore that it
+        // does have.
+        DialogButtonEntry* FindCancelButtonEntry();
+        // True while the dialog holds a focusable, editable text field — bare
+        // letters are then typing, not mnemonics. Dialogs that render their own
+        // text entry (the file dialog's file-name field) override this.
+        virtual bool HasEditableTextField() const;
+        // Focus the element the user is most likely to act on first: the input
+        // field of an input dialog, otherwise the default button.
+        virtual void FocusInitialElement();
+
         // ===== UTILITY =====
         std::string GetButtonText(DialogButton button) const;
+        // Result a button produces when activated.
+        static DialogResult ButtonToResult(DialogButton button);
     };
 
 // ===== DIALOG MANAGER =====
@@ -551,6 +643,9 @@ namespace UltraCanvas {
         void SetupInputField();
         void OnInputChanged(const std::string& text);
         void OnInputValidation();
+        // The field is what the user came to type into, so it takes the focus
+        // instead of the default button.
+        void FocusInitialElement() override;
     };
 
 // ===== FILE DIALOG CLASS =====
@@ -655,10 +750,20 @@ namespace UltraCanvas {
         void RenderFileNameInput(IRenderContext* ctx);
         void RenderFilterSelector(IRenderContext* ctx);
 
+        // The file-name field is drawn by this dialog rather than being a real
+        // text input, so letters typed here are text, not mnemonics.
+        bool HasEditableTextField() const override { return fileConfig.dialogType != FileDialogType::SelectFolder; }
+        // The list and the name field are drawn by the dialog and handled at
+        // window level; focusing a button would take Return and the arrow keys
+        // away from them before OnEvent ever sees them.
+        void FocusInitialElement() override { ClearFocus(); }
+
         // Event handlers
         void HandleFileListClick(const UCEvent& event);
         void HandleFileListDoubleClick(const UCEvent& event);
-        void HandleKeyDown(const UCEvent& event);
+        // Returns false for keys the browser does not use, so Escape and the
+        // dialog's other keyboard handling still get their chance.
+        bool HandleKeyDown(const UCEvent& event);
         void HandleTextInput(const UCEvent& event);
         void HandleMouseWheel(const UCEvent& event);
         void HandleFilterDropdownClick();

@@ -123,6 +123,9 @@ class UltraCanvasAlert {
   type) and to the green check styling in the internal dialog.
 - The default `buttons` for the severity one-liners is `OK`; use `Confirm` or the
   rich `Show` form for Yes/No/Cancel and other combinations.
+- Alerts inherit the dialog keyboard model: Return activates the default button,
+  Escape cancels, and each button carries an underlined mnemonic letter that
+  activates it. See [`UltraCanvasDialogKeyboard.md`](UltraCanvasDialogKeyboard.md).
 - For transient, non-blocking status messages that should *not* interrupt the
   user, prefer a Toast (`UltraCanvasToast`) instead — an Alert is intentionally
   interruptive.

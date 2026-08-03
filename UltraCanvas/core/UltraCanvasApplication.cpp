@@ -552,6 +552,24 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    std::vector<UCKeys> UltraCanvasApplicationBase::GetPressedKeys() const {
+        std::vector<UCKeys> pressed;
+        for (int key = 0; key < 256; ++key) {
+            if (keyStates[key]) {
+                pressed.push_back(static_cast<UCKeys>(key));
+            }
+        }
+        return pressed;
+    }
+
+    void UltraCanvasApplicationBase::ClearKeyboardState() {
+        memset(keyStates, 0, sizeof(keyStates));
+        shiftHeld = false;
+        ctrlHeld = false;
+        altHeld = false;
+        metaHeld = false;
+    }
+
     void UltraCanvasApplicationBase::SetFocusedWindowInternal(UltraCanvasWindowBase* window) {
         auto current = focusedWindow.lock();
         if (current.get() == window) {

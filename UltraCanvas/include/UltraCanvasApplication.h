@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.5.1
-// Last Modified: 2026-07-21
+// Version: 1.6.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -177,6 +177,14 @@ namespace UltraCanvas {
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
         bool IsKeyPressed(UCKeys keyCode) { return keyStates[keyCode]; }
+        // Keys the application currently believes are held down. Modal dialogs
+        // snapshot this on open so a key that was already down when they
+        // appeared cannot act as input to them.
+        std::vector<UCKeys> GetPressedKeys() const;
+        // Forget every held key and modifier. Called when a modal dialog closes
+        // so the key that dismissed it is not still considered down by whatever
+        // regains the focus.
+        void ClearKeyboardState();
 
         bool IsShiftHeld() { return shiftHeld; }
         bool IsCtrlHeld() { return ctrlHeld; }

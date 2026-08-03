@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.4.0
-// Last Modified: 2026-05-31
+// Version: 2.5.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -124,6 +124,8 @@ namespace UltraCanvas {
     class UltraCanvasButton : public UltraCanvasUIElement {
     private:
         std::string text = "Button";
+        // Byte offset in `text` of the underlined mnemonic character, -1 = none.
+        int mnemonicIndex = -1;
         std::shared_ptr<UCImage> icon;
         ButtonStyle style;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
@@ -189,6 +191,21 @@ namespace UltraCanvas {
         // ===== TEXT & ICON METHODS =====
         void SetText(const std::string& buttonText);
         std::string GetText() const { return text; }
+
+        // ===== MNEMONIC (ACCELERATOR) SUPPORT =====
+        // A mnemonic marks one character of the label as the key that activates
+        // the button; it is drawn underlined so the shortcut is visible. The
+        // button itself does not listen for the key — the owner (a dialog, a
+        // menu) matches GetMnemonicChar() and calls the click handler.
+        // SetText() clears any mnemonic, so set the text first.
+        void SetMnemonicIndex(int index);          // byte index into the text, -1 = none
+        int GetMnemonicIndex() const { return mnemonicIndex; }
+        // Underline the first occurrence of `letter` (case-insensitive).
+        // Returns false and leaves the button unchanged when it is not present.
+        bool SetMnemonicChar(char letter);
+        // Uppercased mnemonic letter, or 0 when the button has none.
+        char GetMnemonicChar() const;
+        bool HasMnemonic() const;
         void SetIcon(const std::string& iconPath);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
@@ -259,6 +276,9 @@ namespace UltraCanvas {
         void DrawIcon(IRenderContext* ctx);
         void DrawSecondaryIcon(IRenderContext* ctx);  // New method
         void DrawText(IRenderContext* ctx);
+        // Markup form of the label with the mnemonic character wrapped in <u>.
+        // Only used when a mnemonic is set; plain labels keep the literal path.
+        std::string BuildMnemonicMarkup() const;
         void DrawSplitButton(IRenderContext* ctx);
         void GetCurrentColors(Color& bgColor, Color& textColor) const;
         void GetSplitColors(Color& primaryBg, Color& primaryText, Color& secondaryBg, Color& secondaryText);
