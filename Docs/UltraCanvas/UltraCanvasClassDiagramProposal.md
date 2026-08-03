@@ -1,6 +1,6 @@
 # UltraCanvasClassDiagram — Research & Feature Proposal
 
-Status: **Foundations delivered; the rendering element is still open.**
+Status: **P1 delivered — the element renders and ships in the demo app.**
 This document is the research write-up and the agreed feature list for a new
 `UltraCanvasClassDiagram` element under `UltraCanvas/Plugins/Diagrams/`.
 
@@ -22,8 +22,17 @@ they gate is implemented:
   Docs: [`UltraCanvasUMLModel.md`](UltraCanvasUMLModel.md).
   Tests: `Tests/UMLModelTest.cpp`.
 
-Still open: the `UltraCanvasClassDiagram` element itself — everything in §5 that
-concerns rendering, layout, interaction and file I/O beyond text export.
+**The element itself is now implemented** (`UltraCanvasClassDiagram`, plus the
+`UltraCanvasClassLayout` engine), wired into the demo app under
+Diagrams → Class Diagram with five scenarios, and documented in
+[`UltraCanvasClassDiagramExamples.md`](UltraCanvasClassDiagramExamples.md).
+Delivered from §5: M1–M7, M10, M11, M20 · R1–R11 · L1–L4, L8–L11 ·
+E1–E4, E10 · S1, S2, S4–S6, S8–S10, S13 · I1–I4, I13–I15, I19 · X11.
+
+Still open: packages, frames and notes (K1–K7), self and n-ary relationships
+(R12, R13), association classes (M15), the editing/undo/clipboard tier
+(I5–I12), collision-aware end-label placement (R11 refinement), and file I/O
+beyond text export (X1, X6–X8).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30
@@ -317,7 +326,7 @@ struct UMLRelationship {
     UMLRelationshipKind kind = UMLRelationshipKind::Association;
     UMLRelationshipEnd source, target;
     std::string stereotype;            // "use", "create"
-    UMLReadingDirection nameDirection = UMLReadingDirection::None;  // ▸ / ◂
+    UMLReadingDirection nameDirection = UMLReadingDirection::Unspecified;  // ▸ / ◂
     std::string associationClassId;    // association class, if any
     UMLRelationshipStyle style;
 };
@@ -554,7 +563,7 @@ would need eight positional arguments.
 
 | Phase | Content | Outcome |
 |---|---|---|
-| **P1** | §5.1 M1–M7, M10, M11, M20 · §5.2 R1–R11 · §5.4 L1–L4, L8, L9, L11 · §5.5 E1–E4, E10 · §5.6 S1, S2, S4–S6, S8–S10, S13 · §5.7 I1–I4, I13–I15, I19 · §5.8 X1 · all of §5.9 | Reproduces reference images 1, 2 and 5 exactly; read-only/scripted diagrams work end to end. **Delivered so far: E1, E4, E10 (router), and the model-level halves of M1–M7, M20, R1–R11 plus X11.** Remaining: everything that renders |
+| **P1** | §5.1 M1–M7, M10, M11, M20 · §5.2 R1–R11 · §5.4 L1–L4, L8, L9, L11 · §5.5 E1–E4, E10 · §5.6 S1, S2, S4–S6, S8–S10, S13 · §5.7 I1–I4, I13–I15, I19 · §5.8 X1 · all of §5.9 | **DELIVERED**, except X1 (native JSON save/load), which text export covers for now. Reproduces reference images 1–5 |
 | **P2** | Packages/frames/notes (K1–K4, K7), enumerations (M8), association classes (M15), editing + undo/redo + clipboard (I5–I12, I16–I18), remaining layouts (L5–L7, L10, L12), routing polish (E5–E7, E9), PlantUML/Mermaid/SVG/PNG I/O (X2–X7), validation (X11) | Reproduces images 3 and 4; becomes a real interactive UML editor |
 | **P3** | Advanced notation (M12–M14, M16–M18, R13–R15, R17, K5, K6), line jumps (E8), XMI (X8), ~~C++ reverse engineering (X9)~~ **delivered**, code generation (X10), metrics (X12) | Full UML 2.5 coverage and toolchain integration |
 
