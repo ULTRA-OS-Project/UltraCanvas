@@ -259,6 +259,15 @@ int GetIndentSize() const
 ```
 Sets/gets the indentation size per level.
 
+#### Font Size
+```cpp
+void SetFontSize(float size)
+float GetFontSize() const
+```
+Sets/gets the font size used for the row labels (default 12). Also used by
+`UltraCanvasColumnsTreeView` for its cell text, column headers and group
+headers.
+
 #### Selection Mode
 ```cpp
 void SetSelectionMode(TreeSelectionMode mode)
