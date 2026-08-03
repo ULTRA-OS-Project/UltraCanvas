@@ -226,6 +226,10 @@ namespace UltraCanvas {
         int thumbnailBig       = 170;
         int thumbnailMaximized = 260;
 
+        // Scale of the folder glyph inside a thumbnail tile's image box
+        // (1.0 = fill the box like the file glyphs; UltraFiler uses 0.7).
+        float folderIconScale  = 1.0f;
+
         int iconMenuButtonSize = 20;     // hover icon-menu button edge
         int infoBarHeight      = 26;     // selection info bar under the entries
 

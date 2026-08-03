@@ -8,10 +8,14 @@
   label font size (default 12, previously hardcoded).
   `UltraCanvasColumnsTreeView` uses it for its cell text, column headers and
   group headers too.
-- **UltraFiler app** *(1.1.2)*: every UI element now uses a single 9 pt font
+- **UltraCanvasFilerWidget**: new `FilerStyle::folderIconScale` (default 1.0)
+  — shrinks the folder glyph inside a thumbnail tile's image box, centered,
+  so folders can read lighter next to image thumbnails.
+- **UltraFiler app** *(1.1.3)*: every UI element now uses a single 9 pt font
   size (toolbar, breadcrumb, dropdowns, tabs, folder tree, file panel, status
   bar). The preview pane hides the media viewer's breadcrumb and toolbars —
-  the filer provides the navigation, the pane shows only the media.
+  the filer provides the navigation, the pane shows only the media. Folder
+  icons in the thumbnail views draw at 70% size.
 
 #### 2026-08-04 *0.3.25*
 - **UltraCanvasFilerWidget** *(1.7.0)*: entries are properly draggable. A press

@@ -14502,7 +14502,10 @@ s.captionMaxLines = 3;     // let tile names run over up to three lines
 s.captionLineHeight = 16;  // 0 = derived from smallFontSize
 filer->SetStyle(s);
 ```
- The column splitters
+
+`FilerStyle::folderIconScale` (default 1.0) shrinks the folder glyph inside a
+thumbnail tile's image box, centered — e.g. 0.7 draws folders at 70% so they
+read lighter next to image thumbnails. The column splitters
 are styled through `FilerStyle::columnSplitter`, a `SplitPaneStyle`: thickness,
 the idle / hover / drag colors, the extra grab margin around the painted strip
 and `showSplitterBackground` (off paints no divider while the drag handle stays

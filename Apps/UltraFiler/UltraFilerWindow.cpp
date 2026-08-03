@@ -3,7 +3,7 @@
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab) and the media
 // preview (UltraCanvasMediaViewer).
-// Version: 1.1.2
+// Version: 1.1.3
 // Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 
@@ -608,6 +608,7 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     FilerStyle filerStyle = state->filer->GetStyle();
     filerStyle.fontSize = kUiFontSize;
     filerStyle.smallFontSize = kUiFontSize;
+    filerStyle.folderIconScale = 0.7f;
     state->filer->SetStyle(filerStyle);
     state->filer->SetViewType(FilerViewType::ThumbnailsMedium);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)

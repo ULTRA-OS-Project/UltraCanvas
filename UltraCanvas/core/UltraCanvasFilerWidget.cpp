@@ -4028,6 +4028,13 @@ namespace UltraCanvas {
         Rect2Di img;
         ImageFitMode fit;
         ThumbGeometryForItem(item, img, fit);
+        if (e.isDirectory && style.folderIconScale < 1.0f) {
+            // Shrink the folder glyph inside its image box, centered.
+            int w = std::max(2, (int)(img.width * style.folderIconScale));
+            int h = std::max(2, (int)(img.height * style.folderIconScale));
+            img = Rect2Di(img.x + (img.width - w) / 2,
+                          img.y + (img.height - h) / 2, w, h);
+        }
         DrawEntryIcon(ctx, e, img, fit);
 
         FontStyle fsty;
