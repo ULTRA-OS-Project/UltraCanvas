@@ -1,8 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.1.0
-// Last Modified: 2026-07-28
+// Version: 1.2.0
+// Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -591,6 +591,8 @@ UltraCanvasMediaViewer::UltraCanvasMediaViewer(const std::string& identifier,
 }
 
 UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
+    // The key filter captures `this`; it must not outlive the widget.
+    RemoveKeyFilter();
     if (slideshowTimer) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(slideshowTimer);
         slideshowTimer = 0;
@@ -628,8 +630,8 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     // ----- FOLDER BREADCRUMB (top, Parallelogram style) -----
     // Built by BuildFolderBreadcrumb, the shared folder path mechanism (see
     // UpdateBreadcrumb): "Computer" + drive + one node per folder. Each segment
-    // navigates to that folder; its dropdown lists the sibling folders at the
-    // same level so another folder can be selected. Long paths collapse their
+    // navigates to that folder; its dropdown lists the folders inside that
+    // segment so the path can be extended one level. Long paths collapse their
     // middle segments into a "..." overflow menu, keeping the root and the last
     // two folders visible.
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("MV_Breadcrumb", 0, 0, 0, 30);
@@ -801,12 +803,15 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(modelView);
     }
 
-    // ----- TEXT / SOURCE / MARKDOWN VIEW (read-only) -----
+    // ----- TEXT / SOURCE / MARKDOWN VIEW (display only) -----
+    // Display-only, not merely read-only: the area stays out of the focus chain,
+    // so it shows no caret and never captures Left/Right — those keep browsing
+    // the folder. The viewer scrolls it from HandleViewerKey() instead.
     {
         auto tv = std::make_shared<UltraCanvasTextArea>("MV_Text", 0, 0, 0, 0);
         tv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        tv->SetReadOnly(true);
+        tv->SetDisplayOnly(true);
         tv->SetVisible(false);
         textView = tv;
         AddChild(textView);
@@ -1048,7 +1053,11 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
         .SetParentWindow(GetWindow());
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts,
             [this](DialogResult r, const std::vector<std::string>& files) {
-                if (r == DialogResult::OK && !files.empty()) SetFiles(files, 0);
+                if (r != DialogResult::OK || files.empty()) return;
+                // One picked file browses its whole folder (arrow keys / slideshow
+                // then have the siblings); a multi-selection is the playlist.
+                if (files.size() == 1) OpenFile(files[0]);
+                else                   SetFiles(files, 0);
             });
 }
 
@@ -1119,7 +1128,7 @@ void UltraCanvasMediaViewer::UpdateBreadcrumb() {
     // Same path mechanism the Filer uses: a leading "Computer" node listing the
     // drives / volumes, the drive (or root) node, then one node per folder — the
     // path separator never becomes a node of its own. Clicking a node (or an
-    // entry of its sibling dropdown) browses that folder here.
+    // entry of its sub-folder dropdown) browses that folder here.
     BuildFolderBreadcrumb(breadcrumb.get(), currentFolder,
                           [this](const std::string& folder) { OpenFolder(folder); });
     breadcrumb->SetVisible(true);
@@ -1203,7 +1212,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
                     ta->SetHighlightSyntax(false);
                 }
             }
-            ta->SetReadOnly(true);
+            ta->SetDisplayOnly(true);   // viewer, not editor (also implies read-only)
             ta->SetText(content);
         }
         handled = true;
@@ -1483,13 +1492,156 @@ void UltraCanvasMediaViewer::SetSlideshowIntervalSeconds(double sec) {
 void UltraCanvasMediaViewer::HandleDroppedFiles(const std::vector<std::string>& files) {
     if (files.empty()) return;
     std::error_code ec;
-    // A single dropped folder browses that folder; anything else is treated as
-    // an explicit file list (with any folders in it expanded).
+    // A single dropped folder browses that folder; a single dropped file browses
+    // the folder it lives in (so the arrow keys have somewhere to go) with that
+    // file shown first. Several files are an explicit list (folders expanded).
     if (files.size() == 1 && fs::is_directory(files[0], ec)) {
         OpenFolder(files[0]);
         return;
     }
+    if (files.size() == 1 && IsSupportedMedia(files[0])) {
+        OpenFile(files[0]);
+        return;
+    }
     SetFiles(files, 0);
+}
+
+// ===========================================================================
+// KEYBOARD
+// ===========================================================================
+// Two paths lead here. When the widget (or one of its toolbar controls) holds
+// the focus the key event bubbles into OnEvent(). When the focus is nowhere —
+// the common case right after the widget appears — or sits on a display view
+// that ignores or swallows the browsing keys, the window key filter catches it
+// before normal dispatch. Both end in HandleViewerKey().
+
+std::string UltraCanvasMediaViewer::KeyFilterId() const {
+    return GetIdentifier() + "_MediaViewerKeys";
+}
+
+bool UltraCanvasMediaViewer::IsEffectivelyVisible() const {
+    if (!IsVisible()) return false;
+    for (const UltraCanvasUIElement* e = GetParentContainer(); e; e = e->GetParentContainer()) {
+        if (!e->IsVisible()) return false;
+    }
+    return true;
+}
+
+UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
+    switch (activeKind) {
+        case MediaKind::Document: return pdfView.get();
+        case MediaKind::Sheet:    return sheetView.get();
+        case MediaKind::Model:    return modelView.get();
+        case MediaKind::Text:     return textView.get();
+        case MediaKind::Video:    return videoPlayer.get();
+        case MediaKind::Audio:    return audioPlayer.get();
+        case MediaKind::Image:
+        default:                  return surface.get();
+    }
+}
+
+bool UltraCanvasMediaViewer::IsDisplayView(const UltraCanvasUIElement* element) const {
+    if (!element) return false;
+    return element == surface.get()     || element == pdfView.get() ||
+           element == sheetView.get()   || element == modelView.get() ||
+           element == textView.get()    || element == videoPlayer.get() ||
+           element == audioPlayer.get();
+}
+
+bool UltraCanvasMediaViewer::FocusForKeyboard() {
+    return SetFocus(true);
+}
+
+void UltraCanvasMediaViewer::InstallKeyFilter() {
+    auto* win = GetWindow();
+    if (!win || keyFilterInstalled) return;
+    keyFilterInstalled = true;
+    win->InstallEventFilter(KeyFilterId(),
+            [this](const UCEvent& e) -> bool { return HandleFilteredKey(e); },
+            { UCEventType::KeyDown });
+}
+
+void UltraCanvasMediaViewer::RemoveKeyFilter() {
+    if (!keyFilterInstalled) return;
+    keyFilterInstalled = false;
+    if (auto* win = GetWindow()) win->UnInstallWindowEventFilter(KeyFilterId());
+}
+
+void UltraCanvasMediaViewer::SetWindow(UltraCanvasWindowBase* win) {
+    if (GetWindow() && GetWindow() != win) RemoveKeyFilter();
+    UltraCanvasContainer::SetWindow(win);
+    if (!win) return;
+    InstallKeyFilter();
+    // Claim the keyboard so the arrow keys browse straight away instead of only
+    // after a click into the picture.
+    if (grabFocusOnAttach) FocusForKeyboard();
+}
+
+bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
+    if (event.type != UCEventType::KeyDown) return false;
+    if (!IsEffectivelyVisible()) return false;
+    auto* win = GetWindow();
+    if (!win) return false;
+    // An open dropdown / menu owns the keyboard while it is up.
+    if (win->GetActivePopupElement()) return false;
+
+    UltraCanvasUIElement* focused = win->GetFocusedElement();
+    // Step in only when the keyboard is unowned or held by one of the display
+    // views. Toolbar buttons, sliders and the breadcrumb keep their own key
+    // handling — their events bubble into OnEvent() instead.
+    if (focused && focused != this && !IsDisplayView(focused)) return false;
+
+    return HandleViewerKey(event);
+}
+
+bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
+    if (event.type != UCEventType::KeyDown) return false;
+
+    // File browsing. Alt+Left / Alt+Right browse even while the active view
+    // claims the bare arrows for itself (spreadsheet cell movement).
+    const bool viewOwnsArrows = ActiveViewUsesArrowKeys();
+    switch (event.virtualKey) {
+        case UCKeys::Left:
+            if (viewOwnsArrows && !event.alt) return false;
+            Previous();
+            return true;
+        case UCKeys::Right:
+            if (viewOwnsArrows && !event.alt) return false;
+            Next();
+            return true;
+        case UCKeys::Space:
+            if (viewOwnsArrows) return false;
+            ToggleSlideshow();
+            return true;
+        default:
+            break;
+    }
+
+    // The text view is display-only, so scrolling it is the widget's job.
+    if (activeKind == MediaKind::Text && textView) {
+        auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+        switch (event.virtualKey) {
+            case UCKeys::Up:       ta->ScrollUp(1);     return true;
+            case UCKeys::Down:     ta->ScrollDown(1);   return true;
+            case UCKeys::PageUp:   ta->ScrollUp(10);    return true;
+            case UCKeys::PageDown: ta->ScrollDown(10);  return true;
+            default: break;
+        }
+        if (event.ctrl && (event.character == 'c' || event.character == 'C')) {
+            ta->CopySelection();
+            return true;
+        }
+        return false;
+    }
+
+    // Everything else belongs to the active view: image zoom / rotate on the
+    // surface, page keys in the PDF view, cell movement in the spreadsheet. The
+    // view handles those itself while it holds the focus; while the widget holds
+    // it (the usual case now) they are forwarded.
+    if (UltraCanvasUIElement* view = ActiveViewElement()) {
+        if (!view->IsFocused()) return view->OnEvent(event);
+    }
+    return false;
 }
 
 bool UltraCanvasMediaViewer::OnEvent(const UCEvent& event) {
@@ -1499,15 +1651,7 @@ bool UltraCanvasMediaViewer::OnEvent(const UCEvent& event) {
     }
     if (UltraCanvasContainer::OnEvent(event)) return true;
 
-    if (event.type == UCEventType::KeyDown) {
-        switch (event.virtualKey) {
-            case UCKeys::Left:  Previous();        return true;
-            case UCKeys::Right: Next();            return true;
-            case UCKeys::Space: ToggleSlideshow(); return true;
-            default: break;
-        }
-    }
-    return false;
+    return HandleViewerKey(event);
 }
 
 } // namespace UltraCanvas

@@ -11,7 +11,9 @@ where the shape narrows sharply, the process is leaking.
 A funnel is not a pyramid chart. A pyramid shows a static hierarchy whose slices
 are independent parts of a whole; a funnel shows a *process*, where every stage
 is drawn from the one above it. If your stages do not nest, reach for
-`UltraCanvasPopulationChart` or a plain bar chart instead.
+[`UltraCanvasPyramidChart`](UltraCanvasPyramidChart.md) — including for an
+inverted pyramid, which looks like a funnel but still means "parts of a whole" —
+or for `UltraCanvasPopulationChart` or a plain bar chart.
 
 ## Quick start
 

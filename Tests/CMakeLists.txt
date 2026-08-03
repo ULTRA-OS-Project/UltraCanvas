@@ -245,6 +245,45 @@ else()
     message(STATUS "  tinyxml2 not found - WordFormatsTest disabled")
 endif()
 
+# ===== MIND MAP IO TEST =====
+# Interchange: Mermaid, FreeMind/Freeplane .mm, OPML, indented text, CSV, XMind
+# content.json, SVG export and format sniffing. Checks round-trip fidelity and
+# that a failed import leaves the caller's model untouched. Needs the same
+# system tinyxml2 + vendored miniz/yyjson as WordFormatsTest, not the UI stack.
+if(TINYXML2_TEST_FOUND)
+    message(STATUS "  Building MindMapIOTest...")
+    add_executable(MindMapIOTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MindMapIOTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapIO.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasZipPackage.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(MindMapIOTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${TINYXML2_TEST_INCLUDE_DIRS}
+    )
+    target_link_libraries(MindMapIOTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_features(MindMapIOTest PRIVATE cxx_std_20)
+    set_target_properties(MindMapIOTest PROPERTIES
+        OUTPUT_NAME "MindMapIOTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME MindMapIOTest
+        COMMAND MindMapIOTest
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: MindMapIOTest")
+else()
+    message(STATUS "  tinyxml2 not found - MindMapIOTest disabled")
+endif()
+
+
 # ===== SPREADSHEET ODS FORMULA TEST =====
 # Regression test for translating OpenDocument (ODS) formula references into the
 # engine's native A1 syntax and tokenizing them. Header-only: exercises the real
@@ -317,6 +356,136 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== PACKET LAYOUT TEST =====
+# Packet structure model, layout engine (row splitting with continuation
+# edges, proportional clamping, lanes), validators, and the RFC-pinning
+# template tests. No UI stack - the layout engine is pure geometry.
+message(STATUS "  Building PacketLayoutTest...")
+add_executable(PacketLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PacketLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPacketLayout.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPacketTemplates.cpp
+)
+target_include_directories(PacketLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(PacketLayoutTest PRIVATE cxx_std_20)
+set_target_properties(PacketLayoutTest PROPERTIES
+    OUTPUT_NAME "PacketLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME PacketLayoutTest
+    COMMAND PacketLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: PacketLayoutTest")
+
+# ===== GIT GRAPH LAYOUT TEST =====
+# Commit ordering, lane assignment, merge/octopus handling, swimlane banding
+# and edge routing. Pure geometry - no UI stack, no link dependencies beyond
+# the layout source itself.
+message(STATUS "  Building GitGraphLayoutTest...")
+add_executable(GitGraphLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/GitGraphLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasGitGraphLayout.cpp
+)
+target_include_directories(GitGraphLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(GitGraphLayoutTest PRIVATE cxx_std_20)
+set_target_properties(GitGraphLayoutTest PROPERTIES
+    OUTPUT_NAME "GitGraphLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME GitGraphLayoutTest
+    COMMAND GitGraphLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: GitGraphLayoutTest")
+
+# ===== GIT GRAPH MERMAID TEST =====
+# Mermaid gitGraph import/export: statements, attributes, the init header,
+# error reporting and an import -> export -> import round trip.
+message(STATUS "  Building GitGraphMermaidTest...")
+add_executable(GitGraphMermaidTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/GitGraphMermaidTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasGitGraphMermaid.cpp
+)
+target_include_directories(GitGraphMermaidTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(GitGraphMermaidTest PRIVATE cxx_std_20)
+set_target_properties(GitGraphMermaidTest PROPERTIES
+    OUTPUT_NAME "GitGraphMermaidTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME GitGraphMermaidTest
+    COMMAND GitGraphMermaidTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: GitGraphMermaidTest")
+
+# ===== GIT REPOSITORY TEST =====
+# Reads a real repository (this checkout by default): refs, loose and packed
+# objects, delta chains and the newest-first walk. Needs the vendored miniz for
+# zlib inflate; skips cleanly when no .git directory is present.
+message(STATUS "  Building GitRepositoryTest...")
+add_executable(GitRepositoryTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/GitRepositoryTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasGitRepository.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(GitRepositoryTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_definitions(GitRepositoryTest PRIVATE
+    ULTRACANVAS_REPO_ROOT="${ULTRACANVAS_ROOT}"
+)
+target_compile_features(GitRepositoryTest PRIVATE cxx_std_20)
+set_target_properties(GitRepositoryTest PROPERTIES
+    OUTPUT_NAME "GitRepositoryTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME GitRepositoryTest
+    COMMAND GitRepositoryTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: GitRepositoryTest")
+
+# ===== MIND MAP LAYOUT TEST =====
+# Topic tree model (add/remove/reparent/cycle rejection, outline build, outline
+# numbering, relationships) and the layout engine (balanced, logic, org chart and
+# radial structures, balance policies, collapse, floating topics, spacing) with a
+# non-overlap stress case over a deep ragged tree. Pure geometry - no UI stack.
+message(STATUS "  Building MindMapLayoutTest...")
+add_executable(MindMapLayoutTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MindMapLayoutTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+)
+target_include_directories(MindMapLayoutTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(MindMapLayoutTest PRIVATE cxx_std_20)
+set_target_properties(MindMapLayoutTest PROPERTIES
+        OUTPUT_NAME "MindMapLayoutTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+        NAME MindMapLayoutTest
+        COMMAND MindMapLayoutTest
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: MindMapLayoutTest")
+
 # ===== DIAGRAM ROUTING TEST =====
 # Unit tests for the shared orthogonal router (cardinal L/Z paths, A* obstacle
 # avoidance, label anchors, arrow angles). UI-free - links only the one source
@@ -377,6 +546,31 @@ set_target_properties(UMLModelTest PROPERTIES
 add_test(NAME UMLModelTest COMMAND UMLModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: UMLModelTest")
+# ===== REQUIREMENT MODEL TEST =====
+# Unit tests for the SysML requirement model: endpoint semantics, containment
+# cycle detection, hierarchical id assignment, derived-element compartments,
+# coverage analysis, trace chains and the Mermaid/CSV interchange. The model
+# is deliberately free of UI dependencies, so only its own source is compiled.
+message(STATUS "  Building RequirementModelTests...")
+add_executable(RequirementModelTests
+    ${CMAKE_CURRENT_SOURCE_DIR}/RequirementModelTests.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasRequirementModel.cpp
+)
+target_include_directories(RequirementModelTests PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(RequirementModelTests PRIVATE cxx_std_20)
+set_target_properties(RequirementModelTests PROPERTIES
+    OUTPUT_NAME "RequirementModelTests"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME RequirementModelTests
+    COMMAND RequirementModelTests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: RequirementModelTests")
 
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative

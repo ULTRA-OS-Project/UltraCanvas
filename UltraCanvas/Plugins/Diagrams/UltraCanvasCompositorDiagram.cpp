@@ -316,6 +316,14 @@ UltraCanvasCompositorDiagram::UltraCanvasCompositorDiagram(
         const std::string& id, int x, int y, int width, int height)
     : UltraCanvasUIElement(id, x, y, width, height) {
 
+    // 2.1.0: the overlay configs are now the shared viewport's light-themed
+    // structs, so the compositor's dark defaults are applied here instead of
+    // being struct member initialisers.
+    viewport.SetMinimapConfig(MakeCompositorMinimapDefaults());
+    viewport.SetControlsConfig(MakeCompositorControlsDefaults());
+    viewport.SetSnapGrid(kCompositorDefaultSnap, kCompositorDefaultSnap);
+    viewport.SetViewportSize(width, height);
+
     auto seed = [this](SocketDataType t, const char* name, Color c) {
         SocketTypeInfo info;
         info.type = t;
@@ -974,20 +982,22 @@ void UltraCanvasCompositorDiagram::SetGridVisible(bool visible, double spacing) 
 // =============================================================================
 
 void UltraCanvasCompositorDiagram::SetSnapToGrid(bool enabled) {
-    snapGrid.enabled = enabled;
+    viewport.SetSnapToGrid(enabled);
 }
 
 void UltraCanvasCompositorDiagram::SetSnapGrid(double snapX, double snapY) {
-    if (snapX > 0.0) snapGrid.snapX = snapX;
-    if (snapY > 0.0) snapGrid.snapY = snapY;
+    auto& grid = viewport.SnapGridConfig();
+    if (snapX > 0.0) grid.snapX = snapX;
+    if (snapY > 0.0) grid.snapY = snapY;
+}
+
+bool UltraCanvasCompositorDiagram::IsSnapToGridEnabled() const {
+    return viewport.IsSnapToGridEnabled();
 }
 
 Point2Df UltraCanvasCompositorDiagram::SnapWorldPoint(const Point2Df& p) const {
-    if (!snapGrid.enabled) return p;
-    Point2Df out;
-    out.x = std::round(p.x / snapGrid.snapX) * snapGrid.snapX;
-    out.y = std::round(p.y / snapGrid.snapY) * snapGrid.snapY;
-    return out;
+    Point2Dd snapped = viewport.SnapPoint(Point2Dd(p.x, p.y));
+    return Point2Df(static_cast<float>(snapped.x), static_cast<float>(snapped.y));
 }
 
 // =============================================================================
@@ -1077,61 +1087,68 @@ bool UltraCanvasCompositorDiagram::IsLinkSelected(const std::string& linkId) con
 // VIEWPORT
 // =============================================================================
 
-void UltraCanvasCompositorDiagram::SetZoomLevel(double zoom) {
-    zoomLevel = zoom;
-    ClampZoom();
-    RequestRedraw();
+void UltraCanvasCompositorDiagram::SyncViewportSize() {
+    viewport.SetViewportSize(GetWidth(), GetHeight());
 }
 
-void UltraCanvasCompositorDiagram::SetPanOffset(double x, double y) {
-    panOffset.x = x;
-    panOffset.y = y;
-    RequestRedraw();
-}
-
-void UltraCanvasCompositorDiagram::ZoomIn(double factor) {
-    zoomLevel *= factor;
-    ClampZoom();
-    RequestRedraw();
-}
-
-void UltraCanvasCompositorDiagram::ZoomOut(double factor) {
-    zoomLevel /= factor;
-    ClampZoom();
-    RequestRedraw();
-}
-
-void UltraCanvasCompositorDiagram::FitView(double padding) {
-    if (nodes.empty()) return;
-    double minX =  1e18, minY =  1e18;
-    double maxX = -1e18, maxY = -1e18;
+DiagramContentBounds UltraCanvasCompositorDiagram::ComputeContentBounds() const {
+    DiagramContentBounds bounds;
     for (const auto& kv : nodes) {
         const auto& n = kv.second;
         const auto* tmpl = GetTemplate(n.templateId);
         if (!tmpl) continue;
         NodeLayout L = ComputeNodeLayout(n, *tmpl);
-        minX = std::min<double>(minX, L.bounds.x);
-        minY = std::min<double>(minY, L.bounds.y);
-        maxX = std::max<double>(maxX, L.bounds.x + L.bounds.width);
-        maxY = std::max<double>(maxY, L.bounds.y + L.bounds.height);
+        bounds.Include(Rect2Dd(L.bounds.x, L.bounds.y, L.bounds.width, L.bounds.height));
     }
-    if (minX > maxX || minY > maxY) return;
-    double contentW = std::max(1.0, maxX - minX);
-    double contentH = std::max(1.0, maxY - minY);
-    double availW = std::max(1.0, static_cast<double>(GetWidth())  - 2 * padding);
-    double availH = std::max(1.0, static_cast<double>(GetHeight()) - 2 * padding);
-    zoomLevel = std::min(availW / contentW, availH / contentH);
-    ClampZoom();
-    double cx = (minX + maxX) * 0.5;
-    double cy = (minY + maxY) * 0.5;
-    panOffset.x = GetWidth()  * 0.5 - cx * zoomLevel;
-    panOffset.y = GetHeight() * 0.5 - cy * zoomLevel;
+    return bounds;
+}
+
+double UltraCanvasCompositorDiagram::GetZoomLevel() const {
+    return viewport.GetZoomLevel();
+}
+
+Point2Dd UltraCanvasCompositorDiagram::GetPanOffset() const {
+    return viewport.GetPanOffset();
+}
+
+void UltraCanvasCompositorDiagram::SetMinZoom(double minZ) {
+    viewport.SetZoomRange(minZ, viewport.GetMaxZoom());
+}
+
+void UltraCanvasCompositorDiagram::SetMaxZoom(double maxZ) {
+    viewport.SetZoomRange(viewport.GetMinZoom(), maxZ);
+}
+
+void UltraCanvasCompositorDiagram::SetZoomLevel(double zoom) {
+    viewport.SetZoomLevel(zoom);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::SetPanOffset(double x, double y) {
+    viewport.SetPanOffset(x, y);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ZoomIn(double factor) {
+    viewport.ZoomIn(factor);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ZoomOut(double factor) {
+    viewport.ZoomOut(factor);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::FitView(double padding) {
+    if (nodes.empty()) return;
+    SyncViewportSize();
+    if (!viewport.FitView(ComputeContentBounds(), padding)) return;
     RequestRedraw();
 }
 
 void UltraCanvasCompositorDiagram::CenterOn(double worldX, double worldY) {
-    panOffset.x = GetWidth()  * 0.5 - worldX * zoomLevel;
-    panOffset.y = GetHeight() * 0.5 - worldY * zoomLevel;
+    SyncViewportSize();
+    viewport.CenterOn(worldX, worldY);
     RequestRedraw();
 }
 
@@ -1291,7 +1308,7 @@ std::string UltraCanvasCompositorDiagram::FindLinkAt(const Point2Di& screenPos) 
     Point2Df world = ScreenToWorld(screenPos);
     // Pick threshold scales inversely with zoom so distant zoomed-out lines
     // remain easy to click.
-    double pickThresh = 6.0 / std::max(0.1, zoomLevel);
+    double pickThresh = 6.0 / std::max(0.1, viewport.GetZoomLevel());
     for (const auto& l : links) {
         const auto* sn = GetNode(l.sourceNodeId);
         const auto* dn = GetNode(l.targetNodeId);
@@ -1419,14 +1436,18 @@ void UltraCanvasCompositorDiagram::Render(IRenderContext* ctx, const Rect2Df& di
     (void)dirtyRect;
     if (!ctx || !IsVisible()) return;
 
+    // Keep the shared viewport's drawable area in step with the element size.
+    SyncViewportSize();
+
     // Background (screen space)
     ctx->SetFillPaint(style.backgroundColor);
     ctx->FillRectangle(Rect2Df(0, 0, GetWidth(), GetHeight()));
 
     // Apply viewport transform (world space below this).
     ctx->PushState();
-    ctx->Translate(panOffset.x, panOffset.y);
-    ctx->Scale(zoomLevel, zoomLevel);
+    Point2Dd pan = viewport.GetPanOffset();
+    ctx->Translate(pan.x, pan.y);
+    ctx->Scale(viewport.GetZoomLevel(), viewport.GetZoomLevel());
 
     if (style.showGrid) RenderGrid(ctx);
     RenderLinks(ctx);
@@ -1438,13 +1459,13 @@ void UltraCanvasCompositorDiagram::Render(IRenderContext* ctx, const Rect2Df& di
     ctx->PopState();
 
     // Overlays render in screen space.
-    if (minimapConfig.visible)  RenderMinimap(ctx);
-    if (controlsConfig.visible) RenderControls(ctx);
+    if (viewport.IsMinimapVisible())  RenderMinimap(ctx);
+    if (viewport.AreControlsVisible()) RenderControls(ctx);
 }
 
 void UltraCanvasCompositorDiagram::RenderGrid(IRenderContext* ctx) {
     ctx->SetStrokePaint(style.gridColor);
-    ctx->SetStrokeWidth(1.0 / std::max(0.01, zoomLevel));
+    ctx->SetStrokeWidth(1.0 / std::max(0.01, viewport.GetZoomLevel()));
     double spacing = style.gridSpacing;
     if (spacing < 2.0) return;
 
@@ -1918,22 +1939,16 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
 
     // 0a. Controls overlay button click - always reachable even when
     //     interaction is locked, otherwise the lock button can't be released.
-    if (controlsConfig.visible && event.button == UCMouseButton::Left) {
+    if (viewport.AreControlsVisible() && event.button == UCMouseButton::Left) {
         int btnIdx = FindControlButtonAt(mousePos);
         if (btnIdx >= 0) {
-            int idx = btnIdx;
-            if (controlsConfig.showZoom) {
-                if (idx == 0) { ZoomIn();  return true; }
-                if (idx == 1) { ZoomOut(); return true; }
-                idx -= 2;
+            SyncViewportSize();
+            DiagramControlButton role =
+                viewport.ApplyControlButton(btnIdx, ComputeContentBounds());
+            if (role == DiagramControlButton::ToggleLock) {
+                SetInteractive(!isInteractive);
             }
-            if (controlsConfig.showFit) {
-                if (idx == 0) { FitView(); return true; }
-                idx -= 1;
-            }
-            if (controlsConfig.showLock) {
-                if (idx == 0) { SetInteractive(!isInteractive); return true; }
-            }
+            RequestRedraw();
             return true;
         }
     }
@@ -1941,7 +1956,7 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
     if (!isInteractive && event.button != UCMouseButton::Middle) return false;
 
     // 0b. Minimap click → recenter viewport (or start minimap drag).
-    if (minimapConfig.visible && minimapConfig.pannable &&
+    if (viewport.IsMinimapVisible() && viewport.MinimapConfig().pannable &&
         event.button == UCMouseButton::Left && PointInMinimap(mousePos)) {
         isDraggingMinimap = true;
         HandleMinimapDrag(mousePos);
@@ -2383,8 +2398,7 @@ bool UltraCanvasCompositorDiagram::HandleMouseMove(const UCEvent& event) {
     }
 
     if (isDraggingViewport) {
-        panOffset.x += (mousePos.x - lastMousePos.x);
-        panOffset.y += (mousePos.y - lastMousePos.y);
+        viewport.PanBy(mousePos.x - lastMousePos.x, mousePos.y - lastMousePos.y);
         lastMousePos = mousePos;
         RequestRedraw();
         return true;
@@ -2392,7 +2406,7 @@ bool UltraCanvasCompositorDiagram::HandleMouseMove(const UCEvent& event) {
 
     // Update hover for visual feedback.
     lastMousePos = mousePos;
-    int newHoveredCtrl = controlsConfig.visible ? FindControlButtonAt(mousePos) : -1;
+    int newHoveredCtrl = viewport.AreControlsVisible() ? FindControlButtonAt(mousePos) : -1;
     std::string newHoveredNode;
     std::string newHoveredLink;
     if (newHoveredCtrl < 0 && !PointInMinimap(mousePos)) {
@@ -2414,17 +2428,9 @@ bool UltraCanvasCompositorDiagram::HandleMouseWheel(const UCEvent& event) {
     if (!zoomOnScroll) return false;
 
     Point2Di mousePos(event.pointer.x, event.pointer.y);
-    Point2Df worldBefore = ScreenToWorld(mousePos);
-
     double factor = (event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15);
-    zoomLevel *= factor;
-    ClampZoom();
-
-    // Keep cursor anchored to its world point.
-    Point2Df worldAfter = ScreenToWorld(mousePos);
-    panOffset.x += (worldAfter.x - worldBefore.x) * zoomLevel;
-    panOffset.y += (worldAfter.y - worldBefore.y) * zoomLevel;
-
+    SyncViewportSize();
+    viewport.ZoomAtPoint(mousePos, factor);
     RequestRedraw();
     return true;
 }
@@ -2501,18 +2507,15 @@ bool UltraCanvasCompositorDiagram::HandleKeyDown(const UCEvent& event) {
 // UTILITY
 // =============================================================================
 
+// The compositor keeps its world coordinates in Point2Df; the shared viewport
+// works in Point2Dd. These wrappers are the only conversion points.
 Point2Df UltraCanvasCompositorDiagram::ScreenToWorld(const Point2Di& screenPos) const {
-    Point2Df w;
-    w.x = (screenPos.x - panOffset.x) / std::max(1e-9, zoomLevel);
-    w.y = (screenPos.y - panOffset.y) / std::max(1e-9, zoomLevel);
-    return w;
+    Point2Dd w = viewport.ScreenToWorld(screenPos);
+    return Point2Df(static_cast<float>(w.x), static_cast<float>(w.y));
 }
 
 Point2Di UltraCanvasCompositorDiagram::WorldToScreen(const Point2Df& worldPos) const {
-    Point2Di s;
-    s.x = static_cast<int>(worldPos.x * zoomLevel + panOffset.x);
-    s.y = static_cast<int>(worldPos.y * zoomLevel + panOffset.y);
-    return s;
+    return viewport.WorldToScreen(Point2Dd(worldPos.x, worldPos.y));
 }
 
 void UltraCanvasCompositorDiagram::NotifySelectionChange() {
@@ -2522,7 +2525,7 @@ void UltraCanvasCompositorDiagram::NotifySelectionChange() {
 }
 
 void UltraCanvasCompositorDiagram::ClampZoom() {
-    zoomLevel = std::max(minZoom, std::min(maxZoom, zoomLevel));
+    viewport.SetZoomLevel(viewport.GetZoomLevel());  // Re-applies the clamp
 }
 
 bool UltraCanvasCompositorDiagram::TryConnect(
@@ -2545,9 +2548,9 @@ std::string UltraCanvasCompositorDiagram::ToJson() const {
     out << "{\n";
     out << "  \"version\": \"0.1.0\",\n";
     out << "  \"viewport\": {\n";
-    out << "    \"zoom\": " << zoomLevel << ",\n";
-    out << "    \"panX\": " << panOffset.x << ",\n";
-    out << "    \"panY\": " << panOffset.y << "\n";
+    out << "    \"zoom\": " << viewport.GetZoomLevel() << ",\n";
+    out << "    \"panX\": " << viewport.GetPanOffset().x << ",\n";
+    out << "    \"panY\": " << viewport.GetPanOffset().y << "\n";
     out << "  },\n";
 
     // Templates
@@ -2677,9 +2680,9 @@ bool UltraCanvasCompositorDiagram::FromJson(const std::string& json) {
     // Viewport
     std::string vp = FindRawValue(json, "viewport");
     if (!vp.empty()) {
-        zoomLevel  = ExtractNumberValue(vp, "zoom", 1.0);
-        panOffset.x = ExtractNumberValue(vp, "panX", 0.0);
-        panOffset.y = ExtractNumberValue(vp, "panY", 0.0);
+        viewport.SetZoomLevel(ExtractNumberValue(vp, "zoom", 1.0));
+        viewport.SetPanOffset(ExtractNumberValue(vp, "panX", 0.0),
+                              ExtractNumberValue(vp, "panY", 0.0));
         ClampZoom();
     }
 
@@ -2854,7 +2857,7 @@ void UltraCanvasCompositorDiagram::RenderSelectionBox(IRenderContext* ctx) {
     ctx->SetFillPaint(style.selectionBoxFill);
     ctx->FillRectangle(r);
     ctx->SetStrokePaint(style.selectionBoxStroke);
-    ctx->SetStrokeWidth(1.0 / std::max(0.01, zoomLevel));
+    ctx->SetStrokeWidth(1.0 / std::max(0.01, viewport.GetZoomLevel()));
     ctx->DrawRectangle(r);
 }
 
@@ -3111,287 +3114,79 @@ void UltraCanvasCompositorDiagram::Duplicate(double offsetX, double offsetY) {
 // =============================================================================
 
 void UltraCanvasCompositorDiagram::SetMinimapVisible(bool visible) {
-    minimapConfig.visible = visible;
+    viewport.SetMinimapVisible(visible);
     RequestRedraw();
 }
 
 void UltraCanvasCompositorDiagram::SetMinimapPosition(NodeDiagramPanelPosition pos) {
-    minimapConfig.position = pos;
+    viewport.SetMinimapPosition(pos);
     RequestRedraw();
 }
 
 void UltraCanvasCompositorDiagram::SetMinimapConfig(const CompositorMinimapConfig& cfg) {
-    minimapConfig = cfg;
+    viewport.SetMinimapConfig(cfg);
     RequestRedraw();
 }
 
+const CompositorMinimapConfig& UltraCanvasCompositorDiagram::GetMinimapConfig() const {
+    return viewport.MinimapConfig();
+}
+
 Rect2Df UltraCanvasCompositorDiagram::GetMinimapRectScreen() const {
-    double w = minimapConfig.width;
-    double h = minimapConfig.height;
-    double pad = minimapConfig.padding;
-    double bw = static_cast<double>(GetWidth());
-    double bh = static_cast<double>(GetHeight());
-    double mx = pad, my = pad;
-    switch (minimapConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:     mx = pad;             my = pad;             break;
-        case NodeDiagramPanelPosition::TopRight:    mx = bw - w - pad;    my = pad;             break;
-        case NodeDiagramPanelPosition::BottomLeft:  mx = pad;             my = bh - h - pad;    break;
-        case NodeDiagramPanelPosition::BottomRight: mx = bw - w - pad;    my = bh - h - pad;    break;
-    }
-    return Rect2Df(mx, my, w, h);
+    Rect2Dd r = viewport.GetMinimapRect();
+    return Rect2Df(static_cast<float>(r.x), static_cast<float>(r.y),
+                   static_cast<float>(r.width), static_cast<float>(r.height));
 }
 
 bool UltraCanvasCompositorDiagram::PointInMinimap(const Point2Di& screenPos) const {
-    if (!minimapConfig.visible) return false;
-    Rect2Df r = GetMinimapRectScreen();
-    return screenPos.x >= r.x && screenPos.x <= r.x + r.width &&
-           screenPos.y >= r.y && screenPos.y <= r.y + r.height;
+    return viewport.PointInMinimap(screenPos);
 }
 
 void UltraCanvasCompositorDiagram::RenderMinimap(IRenderContext* ctx) {
-    Rect2Df mr = GetMinimapRectScreen();
-    ctx->SetFillPaint(minimapConfig.backgroundColor);
-    ctx->FillRoundedRectangle(mr, 4.0);
-    ctx->SetStrokePaint(minimapConfig.borderColor);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(mr, 4.0);
-
-    if (nodes.empty()) return;
-
-    // World bbox of all node layouts (use computed bounds, not raw width/0).
-    double minX =  1e18, minY =  1e18;
-    double maxX = -1e18, maxY = -1e18;
-    for (const auto& kv : nodes) {
-        const auto* tmpl = GetTemplate(kv.second.templateId);
-        if (!tmpl) continue;
-        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
-        minX = std::min<double>(minX, L.bounds.x);
-        minY = std::min<double>(minY, L.bounds.y);
-        maxX = std::max<double>(maxX, L.bounds.x + L.bounds.width);
-        maxY = std::max<double>(maxY, L.bounds.y + L.bounds.height);
-    }
-    if (minX > maxX || minY > maxY) return;
-    double margin = 20.0;
-    minX -= margin; minY -= margin; maxX += margin; maxY += margin;
-
-    double worldW = maxX - minX;
-    double worldH = maxY - minY;
-    if (worldW <= 0 || worldH <= 0) return;
-
-    double innerPad = 6.0;
-    double availW = mr.width  - 2 * innerPad;
-    double availH = mr.height - 2 * innerPad;
-    double scale = std::min(availW / worldW, availH / worldH);
-    double drawnW = worldW * scale;
-    double drawnH = worldH * scale;
-    double ox = mr.x + innerPad + (availW - drawnW) * 0.5;
-    double oy = mr.y + innerPad + (availH - drawnH) * 0.5;
-
-    auto worldToMini = [&](double wx, double wy) -> Point2Df {
-        return Point2Df(ox + (wx - minX) * scale, oy + (wy - minY) * scale);
-    };
-
-    ctx->SetFillPaint(minimapConfig.nodeColor);
-    for (const auto& kv : nodes) {
-        const auto* tmpl = GetTemplate(kv.second.templateId);
-        if (!tmpl) continue;
-        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
-        Point2Df tl = worldToMini(L.bounds.x, L.bounds.y);
-        double w = L.bounds.width  * scale;
-        double h = L.bounds.height * scale;
-        if (w < 1) w = 1;
-        if (h < 1) h = 1;
-        ctx->FillRectangle(Rect2Df(tl.x, tl.y, w, h));
-    }
-
-    // Viewport rectangle
-    Point2Df tlW = ScreenToWorld({0, 0});
-    Point2Df brW = ScreenToWorld(Point2Di(GetWidth(), GetHeight()));
-    Point2Df vpTL = worldToMini(tlW.x, tlW.y);
-    Point2Df vpBR = worldToMini(brW.x, brW.y);
-    double vpW = vpBR.x - vpTL.x;
-    double vpH = vpBR.y - vpTL.y;
-    ctx->SetFillPaint(minimapConfig.viewportFill);
-    ctx->FillRectangle(Rect2Df(vpTL.x, vpTL.y, vpW, vpH));
-    ctx->SetStrokePaint(minimapConfig.viewportStroke);
-    ctx->SetStrokeWidth(1.5);
-    ctx->DrawRectangle(Rect2Df(vpTL.x, vpTL.y, vpW, vpH));
+    viewport.RenderMinimap(ctx, ComputeContentBounds(),
+        [&](const DiagramMinimapProjection& projection) {
+            for (const auto& kv : nodes) {
+                const auto* tmpl = GetTemplate(kv.second.templateId);
+                if (!tmpl) continue;
+                NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
+                Point2Dd tl = projection.WorldToMinimap(L.bounds.x, L.bounds.y);
+                double w = std::max(1.0, L.bounds.width  * projection.scale);
+                double h = std::max(1.0, L.bounds.height * projection.scale);
+                ctx->FillRectangle(Rect2Dd(tl.x, tl.y, w, h));
+            }
+        });
 }
 
 void UltraCanvasCompositorDiagram::HandleMinimapDrag(const Point2Di& screenPos) {
-    // Map the click point inside the minimap rect to a world coord and center
-    // the viewport on it.
-    Rect2Df mr = GetMinimapRectScreen();
-    if (nodes.empty()) return;
-    double minX =  1e18, minY =  1e18;
-    double maxX = -1e18, maxY = -1e18;
-    for (const auto& kv : nodes) {
-        const auto* tmpl = GetTemplate(kv.second.templateId);
-        if (!tmpl) continue;
-        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
-        minX = std::min<double>(minX, L.bounds.x);
-        minY = std::min<double>(minY, L.bounds.y);
-        maxX = std::max<double>(maxX, L.bounds.x + L.bounds.width);
-        maxY = std::max<double>(maxY, L.bounds.y + L.bounds.height);
-    }
-    if (minX > maxX || minY > maxY) return;
-    double margin = 20.0;
-    minX -= margin; minY -= margin; maxX += margin; maxY += margin;
-    double worldW = maxX - minX, worldH = maxY - minY;
-    double innerPad = 6.0;
-    double availW = mr.width - 2 * innerPad, availH = mr.height - 2 * innerPad;
-    double scale = std::min(availW / worldW, availH / worldH);
-    if (scale <= 0) return;
-    double drawnW = worldW * scale, drawnH = worldH * scale;
-    double ox = mr.x + innerPad + (availW - drawnW) * 0.5;
-    double oy = mr.y + innerPad + (availH - drawnH) * 0.5;
-    double wx = minX + (screenPos.x - ox) / scale;
-    double wy = minY + (screenPos.y - oy) / scale;
-    CenterOn(wx, wy);
+    viewport.HandleMinimapDrag(screenPos, ComputeContentBounds());
+    RequestRedraw();
 }
 
-// =============================================================================
-// CONTROLS OVERLAY
-// =============================================================================
-
 void UltraCanvasCompositorDiagram::SetControlsVisible(bool visible) {
-    controlsConfig.visible = visible;
+    viewport.SetControlsVisible(visible);
     RequestRedraw();
 }
 
 void UltraCanvasCompositorDiagram::SetControlsPosition(NodeDiagramPanelPosition pos) {
-    controlsConfig.position = pos;
+    viewport.SetControlsPosition(pos);
     RequestRedraw();
 }
 
 void UltraCanvasCompositorDiagram::SetControlsConfig(const CompositorControlsConfig& cfg) {
-    controlsConfig = cfg;
+    viewport.SetControlsConfig(cfg);
     RequestRedraw();
 }
 
+const CompositorControlsConfig& UltraCanvasCompositorDiagram::GetControlsConfig() const {
+    return viewport.ControlsConfig();
+}
+
 int UltraCanvasCompositorDiagram::FindControlButtonAt(const Point2Di& screenPos) {
-    if (!controlsConfig.visible) return -1;
-    int btnCount = 0;
-    if (controlsConfig.showZoom) btnCount += 2;
-    if (controlsConfig.showFit)  btnCount += 1;
-    if (controlsConfig.showLock) btnCount += 1;
-    if (btnCount == 0) return -1;
-    double bs = controlsConfig.buttonSize;
-    double gap = controlsConfig.gap;
-    double totalH = btnCount * bs + (btnCount - 1) * gap;
-    double panelW = bs + 2 * controlsConfig.padding;
-    double panelH = totalH + 2 * controlsConfig.padding;
-    double pad = controlsConfig.padding;
-    double bw = static_cast<double>(GetWidth());
-    double bh = static_cast<double>(GetHeight());
-    double px = 0, py = 0;
-    switch (controlsConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:     px = pad;             py = pad;             break;
-        case NodeDiagramPanelPosition::TopRight:    px = bw - panelW-pad; py = pad;             break;
-        case NodeDiagramPanelPosition::BottomLeft:  px = pad;             py = bh - panelH-pad; break;
-        case NodeDiagramPanelPosition::BottomRight: px = bw - panelW-pad; py = bh - panelH-pad; break;
-    }
-    double bx = px + controlsConfig.padding;
-    double by = py + controlsConfig.padding;
-    for (int i = 0; i < btnCount; ++i) {
-        double btnY = by + i * (bs + gap);
-        if (screenPos.x >= bx && screenPos.x <= bx + bs &&
-            screenPos.y >= btnY && screenPos.y <= btnY + bs) {
-            return i;
-        }
-    }
-    return -1;
+    return viewport.FindControlButtonAt(screenPos);
 }
 
 void UltraCanvasCompositorDiagram::RenderControls(IRenderContext* ctx) {
-    int btnCount = 0;
-    if (controlsConfig.showZoom) btnCount += 2;
-    if (controlsConfig.showFit)  btnCount += 1;
-    if (controlsConfig.showLock) btnCount += 1;
-    if (btnCount == 0) return;
-
-    double bs = controlsConfig.buttonSize;
-    double gap = controlsConfig.gap;
-    double totalH = btnCount * bs + (btnCount - 1) * gap;
-    double panelW = bs + 2 * controlsConfig.padding;
-    double panelH = totalH + 2 * controlsConfig.padding;
-    double pad = controlsConfig.padding;
-    double bw = static_cast<double>(GetWidth());
-    double bh = static_cast<double>(GetHeight());
-    double px = 0, py = 0;
-    switch (controlsConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:     px = pad;             py = pad;             break;
-        case NodeDiagramPanelPosition::TopRight:    px = bw - panelW-pad; py = pad;             break;
-        case NodeDiagramPanelPosition::BottomLeft:  px = pad;             py = bh - panelH-pad; break;
-        case NodeDiagramPanelPosition::BottomRight: px = bw - panelW-pad; py = bh - panelH-pad; break;
-    }
-
-    ctx->SetFillPaint(controlsConfig.backgroundColor);
-    ctx->FillRoundedRectangle(Rect2Df(px, py, panelW, panelH), 4.0);
-    ctx->SetStrokePaint(controlsConfig.borderColor);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(Rect2Df(px, py, panelW, panelH), 4.0);
-
-    double bx = px + controlsConfig.padding;
-    double by = py + controlsConfig.padding;
-    int btnIndex = 0;
-
-    auto drawBtnBg = [&](int idx) -> std::pair<double, double> {
-        double btnY = by + idx * (bs + gap);
-        if (hoveredControlButton == idx) {
-            ctx->SetFillPaint(controlsConfig.hoverColor);
-            ctx->FillRoundedRectangle(Rect2Df(bx, btnY, bs, bs), 3.0);
-        }
-        return { bx + bs * 0.5, btnY + bs * 0.5 };
-    };
-
-    if (controlsConfig.showZoom) {
-        auto [cx1, cy1] = drawBtnBg(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        ctx->SetStrokeWidth(2.0);
-        double a = bs * 0.25;
-        ctx->DrawLine({cx1 - a, cy1}, {cx1 + a, cy1});
-        ctx->DrawLine({cx1, cy1 - a}, {cx1, cy1 + a});
-        auto [cx2, cy2] = drawBtnBg(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        ctx->SetStrokeWidth(2.0);
-        ctx->DrawLine({cx2 - a, cy2}, {cx2 + a, cy2});
-    }
-    if (controlsConfig.showFit) {
-        auto [cx, cy] = drawBtnBg(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        ctx->SetStrokeWidth(1.8);
-        double hs = bs * 0.28;
-        double br = hs * 0.45;
-        // TL/TR/BL/BR brackets
-        ctx->DrawLine({cx - hs, cy - hs}, {cx - hs + br, cy - hs});
-        ctx->DrawLine({cx - hs, cy - hs}, {cx - hs, cy - hs + br});
-        ctx->DrawLine({cx + hs - br, cy - hs}, {cx + hs, cy - hs});
-        ctx->DrawLine({cx + hs, cy - hs}, {cx + hs, cy - hs + br});
-        ctx->DrawLine({cx - hs, cy + hs - br}, {cx - hs, cy + hs});
-        ctx->DrawLine({cx - hs, cy + hs}, {cx - hs + br, cy + hs});
-        ctx->DrawLine({cx + hs, cy + hs - br}, {cx + hs, cy + hs});
-        ctx->DrawLine({cx + hs - br, cy + hs}, {cx + hs, cy + hs});
-    }
-    if (controlsConfig.showLock) {
-        auto [cx, cy] = drawBtnBg(btnIndex++);
-        ctx->SetFillPaint(controlsConfig.iconColor);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        ctx->SetStrokeWidth(1.8);
-        double bodyW = 9.0, bodyH = 7.0, bodyY = cy + 1.0;
-        ctx->FillRectangle(Rect2Df(cx - bodyW * 0.5, bodyY, bodyW, bodyH));
-        double shW = 7.0, shH = 5.5, shTop = bodyY - shH;
-        if (isInteractive) {
-            // Open shackle = unlocked = interactive
-            ctx->DrawLine({cx - shW * 0.5, bodyY}, {cx - shW * 0.5, shTop});
-            ctx->DrawLine({cx - shW * 0.5, shTop}, {cx + shW * 0.6, shTop});
-            ctx->DrawLine({cx + shW * 0.6, shTop}, {cx + shW * 0.6, shTop + 2.5});
-        } else {
-            ctx->DrawLine({cx - shW * 0.5, bodyY}, {cx - shW * 0.5, shTop});
-            ctx->DrawLine({cx - shW * 0.5, shTop}, {cx + shW * 0.5, shTop});
-            ctx->DrawLine({cx + shW * 0.5, shTop}, {cx + shW * 0.5, bodyY});
-        }
-    }
+    viewport.RenderControls(ctx, hoveredControlButton, !isInteractive);
 }
 
 // =============================================================================
@@ -3425,7 +3220,7 @@ Point2Df UltraCanvasCompositorDiagram::ComputeAlignmentSnap(
     double lyc = proposedTopLeft.y + lh * 0.5;
 
     // World-space threshold (the user-set threshold is in pixels).
-    double thr = alignmentGuideThreshold / std::max(0.01, zoomLevel);
+    double thr = alignmentGuideThreshold / std::max(0.01, viewport.GetZoomLevel());
 
     for (const auto& kv : nodes) {
         if (kv.first == leaderId) continue;
@@ -3484,7 +3279,7 @@ Point2Df UltraCanvasCompositorDiagram::ComputeAlignmentSnap(
 void UltraCanvasCompositorDiagram::RenderAlignmentGuides(IRenderContext* ctx) {
     if (currentAlignmentGuides.empty()) return;
     ctx->SetStrokePaint(Color(255, 80, 200, 200));
-    ctx->SetStrokeWidth(1.0 / std::max(0.01, zoomLevel));
+    ctx->SetStrokeWidth(1.0 / std::max(0.01, viewport.GetZoomLevel()));
     for (const auto& g : currentAlignmentGuides) {
         if (g.vertical) {
             ctx->DrawLine(Point2Df(g.position, g.start), Point2Df(g.position, g.end));

@@ -31,6 +31,7 @@ static constexpr double LINK_HIT_TOLERANCE = 8.0f;    // World pixels distance t
 UltraCanvasNodeDiagram::UltraCanvasNodeDiagram(const std::string& id,
                                                 int x, int y, int width, int height)
     : UltraCanvasUIElement(id, x, y, width, height) {
+    viewport.SetViewportSize(width, height);
     ApplyDefaultTheme();
 }
 
@@ -95,8 +96,14 @@ void UltraCanvasNodeDiagram::AddNode(const std::string& id, const std::string& l
             break;
     }
     
+    // 2.2.0: remember the authored size so a later switch back to
+    // NodeSizeMode::Fixed can restore it exactly.
+    node.baseWidth  = width;
+    node.baseHeight = height;
+
     nodes[id] = node;
     nodeOrder.push_back(id);
+    InvalidateDegreeCache();
     RequestRedraw();
 }
 
@@ -104,7 +111,12 @@ void UltraCanvasNodeDiagram::AddNode(const std::string& id, const std::string& l
 void UltraCanvasNodeDiagram::AddNode(const NodeDiagramNode& node) {
     if (node.id.empty() || nodes.find(node.id) != nodes.end()) return;
     nodes[node.id] = node;
+    // 2.2.0: capture the authored size when the caller did not set it.
+    NodeDiagramNode& stored = nodes[node.id];
+    if (stored.baseWidth  <= 0.0) stored.baseWidth  = stored.width;
+    if (stored.baseHeight <= 0.0) stored.baseHeight = stored.height;
     nodeOrder.push_back(node.id);
+    InvalidateDegreeCache();
     RequestRedraw();
 }
 
@@ -123,10 +135,18 @@ void UltraCanvasNodeDiagram::RemoveNode(const std::string& id) {
     
     nodes.erase(it);
     nodeOrder.erase(std::remove(nodeOrder.begin(), nodeOrder.end(), id), nodeOrder.end());
-    
+
     selectedNodes.erase(id);
     if (selectedNodeId == id) selectedNodeId.clear();
-    
+
+    // 2.2.0: drop the node from any cluster it belonged to, so the group box
+    // stops reserving space for a node that no longer exists.
+    for (auto& group : groups) {
+        group.nodeIds.erase(std::remove(group.nodeIds.begin(), group.nodeIds.end(), id),
+                            group.nodeIds.end());
+    }
+    InvalidateDegreeCache();
+
     RequestRedraw();
 }
 
@@ -232,6 +252,7 @@ void UltraCanvasNodeDiagram::AddLink(const std::string& id, const std::string& s
     NodeDiagramLink link(id, sourceId, targetId);
     link.style = defaultLinkStyle;
     links.push_back(link);
+    InvalidateDegreeCache();   // 2.2.0
     RequestRedraw();
 }
 
@@ -253,6 +274,7 @@ void UltraCanvasNodeDiagram::AddLink(const NodeDiagramLink& link) {
         if (existing.id == link.id) return;
     }
     links.push_back(link);
+    InvalidateDegreeCache();   // 2.2.0
     RequestRedraw();
 }
 
@@ -264,6 +286,7 @@ void UltraCanvasNodeDiagram::RemoveLink(const std::string& id) {
     );
     selectedLinks.erase(id);
     if (selectedLinkId == id) selectedLinkId.clear();
+    InvalidateDegreeCache();   // 2.2.0
     RequestRedraw();
 }
 
@@ -275,6 +298,7 @@ void UltraCanvasNodeDiagram::RemoveLink(const std::string& sourceId, const std::
             }),
         links.end()
     );
+    InvalidateDegreeCache();   // 2.2.0
     RequestRedraw();
 }
 
@@ -343,6 +367,13 @@ void UltraCanvasNodeDiagram::SetLayout(NodeDiagramLayout newLayout) {
 }
 
 void UltraCanvasNodeDiagram::RunLayout() {
+    // 2.2.0: size the nodes before laying them out - the anti-overlap pass
+    // separates nodes by their bounding-box radii, so it needs the final sizes
+    // or a freshly grown hub will still be clipping its neighbours.
+    if (sizing.mode != NodeSizeMode::Fixed) {
+        ApplyNodeSizing();
+    }
+
     switch (layout) {
         case NodeDiagramLayout::ForceDirected:
             RunForceDirectedLayout(style.iterations);
@@ -478,7 +509,43 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             pair.second.vx += (centerX - ncx) * kCenterPull;
             pair.second.vy += (centerY - ncy) * kCenterPull;
         }
-        
+
+        // 2.2.0: GROUP COHESION.
+        //
+        // Pull every member of a cluster toward that cluster's centroid. Without
+        // it, repulsion scatters group members across the canvas and the cluster
+        // boxes grow until they all overlap - the boxes only read as clusters if
+        // the layout keeps their members together in the first place.
+        if (style.groupCohesion > 0.0 && !groups.empty()) {
+            for (const auto& group : groups) {
+                if (group.nodeIds.size() < 2) continue;
+
+                double sumX = 0.0, sumY = 0.0;
+                int count = 0;
+                for (const auto& nodeId : group.nodeIds) {
+                    auto it = nodes.find(nodeId);
+                    if (it == nodes.end()) continue;
+                    sumX += it->second.x + it->second.width  * 0.5f;
+                    sumY += it->second.y + it->second.height * 0.5f;
+                    ++count;
+                }
+                if (count < 2) continue;
+
+                double gcx = sumX / static_cast<double>(count);
+                double gcy = sumY / static_cast<double>(count);
+
+                for (const auto& nodeId : group.nodeIds) {
+                    auto it = nodes.find(nodeId);
+                    if (it == nodes.end() || it->second.isPinned) continue;
+                    double ncx = it->second.x + it->second.width  * 0.5f;
+                    double ncy = it->second.y + it->second.height * 0.5f;
+                    it->second.vx += (gcx - ncx) * style.groupCohesion;
+                    it->second.vy += (gcy - ncy) * style.groupCohesion;
+                }
+            }
+        }
+
+
         // Apply velocities with annealing temperature
         for (auto& pair : nodes) {
             if (pair.second.isPinned) continue;
@@ -670,6 +737,314 @@ void UltraCanvasNodeDiagram::ApplyHierarchicalLayout(const std::string& rootId) 
         }
     }
     
+    RequestRedraw();
+}
+
+// =============================================================================
+// DATA-DRIVEN NODE SIZING (NEW in 2.2.0)
+// =============================================================================
+//
+// Degree counts are cached because a sizing pass would otherwise be O(nodes *
+// links). The cache is invalidated by any link or node mutation and rebuilt
+// lazily on first read, so bulk-loading a graph costs one rebuild rather than
+// one per AddLink call.
+// =============================================================================
+
+void UltraCanvasNodeDiagram::RebuildDegreeCache() const {
+    degreeIn.clear();
+    degreeOut.clear();
+    for (const auto& link : links) {
+        // Only count links whose endpoints actually exist - a dangling link
+        // would otherwise inflate a neighbour's degree.
+        if (nodes.find(link.sourceNodeId) == nodes.end()) continue;
+        if (nodes.find(link.targetNodeId) == nodes.end()) continue;
+        degreeOut[link.sourceNodeId]++;
+        degreeIn[link.targetNodeId]++;
+    }
+    degreeCacheDirty = false;
+}
+
+void UltraCanvasNodeDiagram::InvalidateDegreeCache() {
+    degreeCacheDirty = true;
+    // Only re-run sizing when it would actually change something.
+    if (sizing.mode == NodeSizeMode::ByDegree) {
+        ApplyNodeSizing();
+    }
+}
+
+int UltraCanvasNodeDiagram::GetNodeDegree(const std::string& id) const {
+    return GetNodeDegree(id, sizing.degreeMode);
+}
+
+int UltraCanvasNodeDiagram::GetNodeDegree(const std::string& id, NodeDegreeMode mode) const {
+    if (nodes.find(id) == nodes.end()) return 0;
+    if (degreeCacheDirty) RebuildDegreeCache();
+
+    auto lookup = [](const std::map<std::string, int>& m, const std::string& key) {
+        auto it = m.find(key);
+        return it == m.end() ? 0 : it->second;
+    };
+
+    switch (mode) {
+        case NodeDegreeMode::Incoming: return lookup(degreeIn, id);
+        case NodeDegreeMode::Outgoing: return lookup(degreeOut, id);
+        case NodeDegreeMode::Total:
+        default:                        return lookup(degreeIn, id) + lookup(degreeOut, id);
+    }
+}
+
+void UltraCanvasNodeDiagram::ApplyNodeSizing() {
+    if (nodes.empty()) return;
+
+    if (degreeCacheDirty && sizing.mode == NodeSizeMode::ByDegree) {
+        RebuildDegreeCache();
+    }
+
+    for (auto& pair : nodes) {
+        NodeDiagramNode& node = pair.second;
+
+        // Remember the authored size the first time we touch this node, so
+        // returning to Fixed mode restores it exactly.
+        if (node.baseWidth <= 0.0)  node.baseWidth  = node.width;
+        if (node.baseHeight <= 0.0) node.baseHeight = node.height;
+
+        if (sizing.mode == NodeSizeMode::Fixed) {
+            node.width  = node.baseWidth;
+            node.height = node.baseHeight;
+            continue;
+        }
+
+        double quantity = (sizing.mode == NodeSizeMode::ByDegree)
+                            ? static_cast<double>(GetNodeDegree(node.id))
+                            : node.value;
+        if (quantity < 0.0) quantity = 0.0;
+
+        // sqrt transfer: node AREA tracks the quantity, which is the mapping
+        // the eye actually reads for a filled mark.
+        double scaled = sizing.baseSize * std::sqrt(quantity);
+        double target = std::max(sizing.minSize, std::min(sizing.maxSize, scaled));
+
+        // Keep the node centred on the same point while it grows or shrinks -
+        // resizing from the top-left corner would make hubs visibly drift.
+        double oldCenterX = node.x + node.width  * 0.5;
+        double oldCenterY = node.y + node.height * 0.5;
+
+        node.width = target;
+        if (sizing.keepAspect) {
+            node.height = target;
+        } else if (node.baseHeight > 0.0) {
+            node.height = node.baseHeight;
+        }
+
+        node.x = oldCenterX - node.width  * 0.5;
+        node.y = oldCenterY - node.height * 0.5;
+    }
+
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::SetNodeSizeMode(NodeSizeMode mode) {
+    if (sizing.mode == mode) return;
+    sizing.mode = mode;
+    ApplyNodeSizing();
+}
+
+void UltraCanvasNodeDiagram::SetNodeSizing(const NodeDiagramSizing& newSizing) {
+    sizing = newSizing;
+    if (sizing.minSize > sizing.maxSize) std::swap(sizing.minSize, sizing.maxSize);
+    ApplyNodeSizing();
+}
+
+void UltraCanvasNodeDiagram::SetNodeSizeRange(double baseSize, double minSize, double maxSize) {
+    sizing.baseSize = baseSize;
+    sizing.minSize  = std::min(minSize, maxSize);
+    sizing.maxSize  = std::max(minSize, maxSize);
+    ApplyNodeSizing();
+}
+
+void UltraCanvasNodeDiagram::SetNodeValue(const std::string& id, double value) {
+    auto it = nodes.find(id);
+    if (it == nodes.end()) return;
+    it->second.value = value;
+    if (sizing.mode == NodeSizeMode::ByValue) {
+        ApplyNodeSizing();
+    }
+}
+
+double UltraCanvasNodeDiagram::GetNodeValue(const std::string& id) const {
+    auto it = nodes.find(id);
+    return it == nodes.end() ? 0.0 : it->second.value;
+}
+
+// =============================================================================
+// CLUSTER CONTAINERS / GROUPS (NEW in 2.2.0)
+// =============================================================================
+
+void UltraCanvasNodeDiagram::AddGroup(const NodeDiagramGroup& group) {
+    if (group.id.empty()) return;
+    for (auto& existing : groups) {
+        if (existing.id == group.id) {
+            existing = group;   // Replace in place, keeping draw order
+            RequestRedraw();
+            return;
+        }
+    }
+    groups.push_back(group);
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::AddGroup(const std::string& id, const std::string& label,
+                                       const std::vector<std::string>& nodeIds,
+                                       const Color& borderColor,
+                                       const Color& fillColor) {
+    NodeDiagramGroup group(id, label);
+    group.nodeIds = nodeIds;
+    group.borderColor = borderColor;
+    group.fillColor = fillColor;
+    group.labelColor = borderColor;
+    AddGroup(group);
+}
+
+void UltraCanvasNodeDiagram::RemoveGroup(const std::string& id) {
+    groups.erase(std::remove_if(groups.begin(), groups.end(),
+                    [&id](const NodeDiagramGroup& g) { return g.id == id; }),
+                 groups.end());
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::ClearGroups() {
+    groups.clear();
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::AddNodeToGroup(const std::string& groupId, const std::string& nodeId) {
+    NodeDiagramGroup* group = GetGroup(groupId);
+    if (!group) return;
+    if (std::find(group->nodeIds.begin(), group->nodeIds.end(), nodeId) != group->nodeIds.end()) {
+        return;
+    }
+    group->nodeIds.push_back(nodeId);
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::RemoveNodeFromGroup(const std::string& groupId, const std::string& nodeId) {
+    NodeDiagramGroup* group = GetGroup(groupId);
+    if (!group) return;
+    group->nodeIds.erase(std::remove(group->nodeIds.begin(), group->nodeIds.end(), nodeId),
+                         group->nodeIds.end());
+    RequestRedraw();
+}
+
+NodeDiagramGroup* UltraCanvasNodeDiagram::GetGroup(const std::string& id) {
+    for (auto& group : groups) {
+        if (group.id == id) return &group;
+    }
+    return nullptr;
+}
+
+const NodeDiagramGroup* UltraCanvasNodeDiagram::GetGroup(const std::string& id) const {
+    for (const auto& group : groups) {
+        if (group.id == id) return &group;
+    }
+    return nullptr;
+}
+
+std::vector<std::string> UltraCanvasNodeDiagram::GetAllGroupIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(groups.size());
+    for (const auto& group : groups) ids.push_back(group.id);
+    return ids;
+}
+
+std::string UltraCanvasNodeDiagram::GetNodeGroupId(const std::string& nodeId) const {
+    for (const auto& group : groups) {
+        if (std::find(group.nodeIds.begin(), group.nodeIds.end(), nodeId) != group.nodeIds.end()) {
+            return group.id;
+        }
+    }
+    return std::string();
+}
+
+Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group) const {
+    bool any = false;
+    double minX = 0.0, minY = 0.0, maxX = 0.0, maxY = 0.0;
+
+    for (const auto& nodeId : group.nodeIds) {
+        auto it = nodes.find(nodeId);
+        if (it == nodes.end()) continue;   // Tolerate stale ids
+        const NodeDiagramNode& node = it->second;
+        if (!any) {
+            minX = node.x;
+            minY = node.y;
+            maxX = node.x + node.width;
+            maxY = node.y + node.height;
+            any = true;
+        } else {
+            minX = std::min(minX, node.x);
+            minY = std::min(minY, node.y);
+            maxX = std::max(maxX, node.x + node.width);
+            maxY = std::max(maxY, node.y + node.height);
+        }
+    }
+
+    if (!any) return Rect2Dd(0.0, 0.0, 0.0, 0.0);
+
+    return Rect2Dd(minX - group.padding,
+                   minY - group.padding,
+                   (maxX - minX) + group.padding * 2.0,
+                   (maxY - minY) + group.padding * 2.0);
+}
+
+Rect2Dd UltraCanvasNodeDiagram::GetGroupBounds(const std::string& id) const {
+    const NodeDiagramGroup* group = GetGroup(id);
+    if (!group) return Rect2Dd(0.0, 0.0, 0.0, 0.0);
+    return ComputeGroupBounds(*group);
+}
+
+void UltraCanvasNodeDiagram::SetGroupsVisible(bool visible) {
+    groupsVisible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::SetGroupCohesion(double strength) {
+    style.groupCohesion = std::max(0.0, strength);
+}
+
+// =============================================================================
+// COLOR LEGEND (NEW in 2.2.0)
+// =============================================================================
+
+void UltraCanvasNodeDiagram::SetLegendVisible(bool visible) {
+    legend.visible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::SetLegendPosition(NodeDiagramPanelPosition pos) {
+    legend.position = pos;
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::SetLegendConfig(const NodeDiagramLegendConfig& cfg) {
+    legend = cfg;
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::AddLegendEntry(const std::string& label, const Color& color) {
+    legend.entries.emplace_back(label, color);
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::ClearLegendEntries() {
+    legend.entries.clear();
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::BuildLegendFromGroups() {
+    legend.entries.clear();
+    for (const auto& group : groups) {
+        if (group.label.empty()) continue;
+        legend.entries.emplace_back(group.label, group.borderColor);
+    }
     RequestRedraw();
 }
 
@@ -937,6 +1312,10 @@ void UltraCanvasNodeDiagram::Clear() {
     nodes.clear();
     nodeOrder.clear();
     links.clear();
+    groups.clear();          // 2.2.0
+    degreeIn.clear();        // 2.2.0
+    degreeOut.clear();
+    degreeCacheDirty = false;
     DeselectAll();
     RequestRedraw();
 }
@@ -967,83 +1346,96 @@ void UltraCanvasNodeDiagram::NotifySelectionChange() {
 // VIEWPORT
 // =============================================================================
 
+// =============================================================================
+// VIEWPORT - forwards onto the shared UltraCanvasDiagramViewport (2.1.0).
+// The element keeps its public API; the mechanics live in the shared component.
+// =============================================================================
+
+void UltraCanvasNodeDiagram::SyncViewportSize() {
+    viewport.SetViewportSize(finalBounds.width, finalBounds.height);
+}
+
+DiagramContentBounds UltraCanvasNodeDiagram::ComputeContentBounds() const {
+    DiagramContentBounds bounds;
+    for (const auto& pair : nodes) {
+        const auto& n = pair.second;
+        bounds.Include(n.x, n.y);
+        bounds.Include(n.x + n.width, n.y + n.height);
+    }
+    // 2.2.0: cluster boxes extend past their members by the group padding, so
+    // FitView and the minimap must account for them or the boxes get clipped.
+    if (groupsVisible) {
+        for (const auto& group : groups) {
+            if (!group.visible) continue;
+            Rect2Dd box = ComputeGroupBounds(group);
+            if (box.width <= 0.0 || box.height <= 0.0) continue;
+            bounds.Include(box.x, box.y);
+            bounds.Include(box.x + box.width, box.y + box.height);
+        }
+    }
+    return bounds;
+}
+
 void UltraCanvasNodeDiagram::SetZoomLevel(double zoom) {
-    zoomLevel = zoom;
-    ClampZoom();
+    viewport.SetZoomLevel(zoom);
     NotifyViewportChange();
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::SetPanOffset(double x, double y) {
-    panOffset.x = x;
-    panOffset.y = y;
+    viewport.SetPanOffset(x, y);
     NotifyViewportChange();
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::ZoomIn(double factor) {
-    SetZoomLevel(zoomLevel * factor);
+    SetZoomLevel(viewport.GetZoomLevel() * factor);
 }
 
 void UltraCanvasNodeDiagram::ZoomOut(double factor) {
-    SetZoomLevel(zoomLevel / factor);
+    SetZoomLevel(viewport.GetZoomLevel() / factor);
 }
 
 void UltraCanvasNodeDiagram::FitView(double padding) {
     if (nodes.empty()) return;
-    
-    // Compute world-coords bounding box of all nodes
-    double minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-    for (const auto& pair : nodes) {
-        const auto& n = pair.second;
-        minX = std::min(minX, n.x);
-        minY = std::min(minY, n.y);
-        maxX = std::max(maxX, n.x + n.width);
-        maxY = std::max(maxY, n.y + n.height);
-    }
-    
-    double contentW = maxX - minX;
-    double contentH = maxY - minY;
-    if (contentW <= 0 || contentH <= 0) return;
-    
-    double availW = static_cast<double>(finalBounds.width) - padding * 2.0;
-    double availH = static_cast<double>(finalBounds.height) - padding * 2.0;
-    if (availW <= 0 || availH <= 0) return;
-    
-    double zoomX = availW / contentW;
-    double zoomY = availH / contentH;
-    double newZoom = std::min(zoomX, zoomY);
-    newZoom = std::clamp(newZoom, minZoom, maxZoom);
-    
-    zoomLevel = newZoom;
-    
-    // Center the content
-    double contentCenterX = (minX + maxX) / 2.0;
-    double contentCenterY = (minY + maxY) / 2.0;
-    
-    panOffset.x = finalBounds.width / 2.0 - contentCenterX * zoomLevel;
-    panOffset.y = finalBounds.height / 2.0 - contentCenterY * zoomLevel;
-    
+    SyncViewportSize();
+    if (!viewport.FitView(ComputeContentBounds(), padding)) return;
     NotifyViewportChange();
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::CenterOn(double worldX, double worldY) {
-    panOffset.x = finalBounds.width / 2.0 - worldX * zoomLevel;
-    panOffset.y = finalBounds.height / 2.0 - worldY * zoomLevel;
+    SyncViewportSize();
+    viewport.CenterOn(worldX, worldY);
     NotifyViewportChange();
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::ClampZoom() {
-    if (zoomLevel < minZoom) zoomLevel = minZoom;
-    if (zoomLevel > maxZoom) zoomLevel = maxZoom;
+    viewport.SetZoomLevel(viewport.GetZoomLevel());  // Re-applies the clamp
 }
 
 void UltraCanvasNodeDiagram::NotifyViewportChange() {
     if (onViewportChange) {
-        onViewportChange(zoomLevel, panOffset.x, panOffset.y);
+        Point2Dd pan = viewport.GetPanOffset();
+        onViewportChange(viewport.GetZoomLevel(), pan.x, pan.y);
     }
+}
+
+double UltraCanvasNodeDiagram::GetZoomLevel() const {
+    return viewport.GetZoomLevel();
+}
+
+Point2Dd UltraCanvasNodeDiagram::GetPanOffset() const {
+    return viewport.GetPanOffset();
+}
+
+void UltraCanvasNodeDiagram::SetMinZoom(double minZ) {
+    viewport.SetZoomRange(minZ, viewport.GetMaxZoom());
+}
+
+void UltraCanvasNodeDiagram::SetMaxZoom(double maxZ) {
+    viewport.SetZoomRange(viewport.GetMinZoom(), maxZ);
 }
 
 // =============================================================================
@@ -1051,20 +1443,19 @@ void UltraCanvasNodeDiagram::NotifyViewportChange() {
 // =============================================================================
 
 void UltraCanvasNodeDiagram::SetSnapToGrid(bool enabled) {
-    snapGrid.enabled = enabled;
+    viewport.SetSnapToGrid(enabled);
 }
 
 void UltraCanvasNodeDiagram::SetSnapGrid(double snapX, double snapY) {
-    snapGrid.snapX = snapX;
-    snapGrid.snapY = snapY;
+    viewport.SetSnapGrid(snapX, snapY);
+}
+
+bool UltraCanvasNodeDiagram::IsSnapToGridEnabled() const {
+    return viewport.IsSnapToGridEnabled();
 }
 
 Point2Dd UltraCanvasNodeDiagram::SnapPoint(const Point2Dd& p) const {
-    if (!snapGrid.enabled) return p;
-    return Point2Dd(
-        std::round(p.x / snapGrid.snapX) * snapGrid.snapX,
-        std::round(p.y / snapGrid.snapY) * snapGrid.snapY
-    );
+    return viewport.SnapPoint(p);
 }
 
 // =============================================================================
@@ -1072,18 +1463,22 @@ Point2Dd UltraCanvasNodeDiagram::SnapPoint(const Point2Dd& p) const {
 // =============================================================================
 
 void UltraCanvasNodeDiagram::SetMinimapVisible(bool visible) {
-    minimapConfig.visible = visible;
+    viewport.SetMinimapVisible(visible);
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::SetMinimapPosition(NodeDiagramPanelPosition pos) {
-    minimapConfig.position = pos;
+    viewport.SetMinimapPosition(pos);
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::SetMinimapConfig(const NodeDiagramMinimapConfig& cfg) {
-    minimapConfig = cfg;
+    viewport.SetMinimapConfig(cfg);
     RequestRedraw();
+}
+
+NodeDiagramMinimapConfig UltraCanvasNodeDiagram::GetMinimapConfig() const {
+    return viewport.MinimapConfig();
 }
 
 // =============================================================================
@@ -1091,18 +1486,22 @@ void UltraCanvasNodeDiagram::SetMinimapConfig(const NodeDiagramMinimapConfig& cf
 // =============================================================================
 
 void UltraCanvasNodeDiagram::SetControlsVisible(bool visible) {
-    controlsConfig.visible = visible;
+    viewport.SetControlsVisible(visible);
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::SetControlsPosition(NodeDiagramPanelPosition pos) {
-    controlsConfig.position = pos;
+    viewport.SetControlsPosition(pos);
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::SetControlsConfig(const NodeDiagramControlsConfig& cfg) {
-    controlsConfig = cfg;
+    viewport.SetControlsConfig(cfg);
     RequestRedraw();
+}
+
+NodeDiagramControlsConfig UltraCanvasNodeDiagram::GetControlsConfig() const {
+    return viewport.ControlsConfig();
 }
 
 // =============================================================================
@@ -1110,17 +1509,11 @@ void UltraCanvasNodeDiagram::SetControlsConfig(const NodeDiagramControlsConfig& 
 // =============================================================================
 
 Point2Dd UltraCanvasNodeDiagram::ScreenToWorld(const Point2Di& screenPos) const {
-    Point2Dd worldPos;
-    worldPos.x = (screenPos.x - panOffset.x) / zoomLevel;
-    worldPos.y = (screenPos.y - panOffset.y) / zoomLevel;
-    return worldPos;
+    return viewport.ScreenToWorld(screenPos);
 }
 
 Point2Di UltraCanvasNodeDiagram::WorldToScreen(const Point2Dd& worldPos) const {
-    Point2Di screenPos;
-    screenPos.x = static_cast<int>(worldPos.x * zoomLevel + panOffset.x);
-    screenPos.y = static_cast<int>(worldPos.y * zoomLevel + panOffset.y);
-    return screenPos;
+    return viewport.WorldToScreen(worldPos);
 }
 
 double UltraCanvasNodeDiagram::CalculateDistance(const Point2Dd& a, const Point2Dd& b) const {
@@ -1254,7 +1647,7 @@ std::string UltraCanvasNodeDiagram::FindNodeAt(const Point2Di& screenPos) {
 
 std::string UltraCanvasNodeDiagram::FindLinkAt(const Point2Di& screenPos) {
     Point2Dd worldPos = ScreenToWorld(screenPos);
-    double toleranceWorld = LINK_HIT_TOLERANCE / zoomLevel;
+    double toleranceWorld = LINK_HIT_TOLERANCE / viewport.GetZoomLevel();
     
     for (const auto& link : links) {
         const auto* sourceNode = GetNode(link.sourceNodeId);
@@ -1302,7 +1695,7 @@ std::pair<std::string, std::string> UltraCanvasNodeDiagram::FindHandleAt(const P
             Point2Dd hp = GetHandleWorldPosition(node, handle);
             double dx = worldPos.x - hp.x;
             double dy = worldPos.y - hp.y;
-            double r = handle.radius + HANDLE_HIT_TOLERANCE / zoomLevel;
+            double r = handle.radius + HANDLE_HIT_TOLERANCE / viewport.GetZoomLevel();
             if ((dx * dx + dy * dy) <= (r * r)) {
                 return { node.id, handle.id };
             }
@@ -1312,88 +1705,11 @@ std::pair<std::string, std::string> UltraCanvasNodeDiagram::FindHandleAt(const P
 }
 
 bool UltraCanvasNodeDiagram::PointInMinimap(const Point2Di& screenPos) const {
-    if (!minimapConfig.visible) return false;
-    
-    double mx = finalBounds.x + minimapConfig.padding;
-    double my = finalBounds.y + minimapConfig.padding;
-    
-    switch (minimapConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:
-            mx = finalBounds.x + minimapConfig.padding;
-            my = finalBounds.y + minimapConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::TopRight:
-            mx = finalBounds.x + finalBounds.width - minimapConfig.width - minimapConfig.padding;
-            my = finalBounds.y + minimapConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomLeft:
-            mx = finalBounds.x + minimapConfig.padding;
-            my = finalBounds.y + finalBounds.height - minimapConfig.height - minimapConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomRight:
-            mx = finalBounds.x + finalBounds.width - minimapConfig.width - minimapConfig.padding;
-            my = finalBounds.y + finalBounds.height - minimapConfig.height - minimapConfig.padding;
-            break;
-    }
-    
-    return screenPos.x >= mx && screenPos.x <= mx + minimapConfig.width &&
-           screenPos.y >= my && screenPos.y <= my + minimapConfig.height;
+    return viewport.PointInMinimap(screenPos);
 }
 
 int UltraCanvasNodeDiagram::FindControlButtonAt(const Point2Di& screenPos) {
-    if (!controlsConfig.visible) return -1;
-    
-    // Count visible buttons
-    int btnCount = 0;
-    if (controlsConfig.showZoom) btnCount += 2;  // Zoom in + out
-    if (controlsConfig.showFit) btnCount += 1;
-    if (controlsConfig.showLock) btnCount += 1;
-    if (btnCount == 0) return -1;
-    
-    double bs = controlsConfig.buttonSize;
-    double gap = controlsConfig.gap;
-    double totalH = btnCount * bs + (btnCount - 1) * gap;
-    double panelW = bs + 2 * controlsConfig.padding;  // Inner padding around buttons
-    double panelH = totalH + 2 * controlsConfig.padding;
-    
-    double px = finalBounds.x;
-    double py = finalBounds.y;
-    switch (controlsConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:
-            px += controlsConfig.padding;
-            py += controlsConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::TopRight:
-            px += finalBounds.width - panelW - controlsConfig.padding;
-            py += controlsConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomLeft:
-            px += controlsConfig.padding;
-            py += finalBounds.height - panelH - controlsConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomRight:
-            px += finalBounds.width - panelW - controlsConfig.padding;
-            py += finalBounds.height - panelH - controlsConfig.padding;
-            break;
-    }
-    
-    // Inside panel?
-    if (screenPos.x < px || screenPos.x > px + panelW ||
-        screenPos.y < py || screenPos.y > py + panelH) {
-        return -1;
-    }
-    
-    // Which button?
-    double bx = px + controlsConfig.padding;
-    double by = py + controlsConfig.padding;
-    for (int i = 0; i < btnCount; ++i) {
-        double btnY = by + i * (bs + gap);
-        if (screenPos.x >= bx && screenPos.x <= bx + bs &&
-            screenPos.y >= btnY && screenPos.y <= btnY + bs) {
-            return i;
-        }
-    }
-    return -1;
+    return viewport.FindControlButtonAt(screenPos);
 }
 
 
@@ -1405,6 +1721,10 @@ static constexpr double NODE_DIAGRAM_PI_R3 = 3.14159265358979323846f;
 
 void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx || !IsVisible()) return;
+
+    // Keep the shared viewport's drawable area in step with the element size,
+    // so overlay placement and FitView stay correct after a resize.
+    SyncViewportSize();
     
     // Background (in screen space, no transform)
     ctx->SetFillPaint(style.backgroundColor);
@@ -1413,15 +1733,29 @@ void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     // Apply viewport transform: translate then scale.
     // After this, all draw calls accept WORLD coordinates.
     ctx->PushState();
-    ctx->Translate(panOffset.x, panOffset.y);
-    ctx->Scale(zoomLevel, zoomLevel);
+    Point2Dd pan = viewport.GetPanOffset();
+    ctx->Translate(pan.x, pan.y);
+    ctx->Scale(viewport.GetZoomLevel(), viewport.GetZoomLevel());
     
     if (style.showGrid) {
         RenderGrid(ctx);
     }
-    
+
+    // 2.2.0: cluster containers sit behind the links so edges crossing between
+    // clusters stay readable on top of the boxes.
+    if (groupsVisible && !groups.empty()) {
+        RenderGroups(ctx);
+    }
+
     RenderLinks(ctx);
     RenderNodes(ctx);
+
+    // 2.2.0: group titles go LAST. Drawn with the boxes they end up underneath
+    // whichever node happens to sit in that corner, and a cluster title is
+    // exactly the label you cannot afford to lose.
+    if (groupsVisible && !groups.empty()) {
+        RenderGroupTitles(ctx);
+    }
     
     // In-progress drag-to-connect line stays in WORLD space
     if (isConnecting) {
@@ -1436,11 +1770,234 @@ void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     ctx->PopState();
     
     // Overlays in SCREEN space (after PopState)
-    if (minimapConfig.visible) {
+    if (viewport.IsMinimapVisible()) {
         RenderMinimap(ctx);
     }
-    if (controlsConfig.visible) {
+    if (viewport.AreControlsVisible()) {
         RenderControls(ctx);
+    }
+    if (legend.visible && !legend.entries.empty()) {
+        RenderLegend(ctx);   // 2.2.0
+    }
+}
+
+// =============================================================================
+// CLUSTER CONTAINERS (NEW in 2.2.0)
+// =============================================================================
+//
+// Rendered in WORLD space, before the links, so a box never covers the edges
+// that cross it. Bounds are recomputed every frame rather than cached: node
+// positions change on drag and on every layout run, and re-deriving a box from
+// its members is a handful of comparisons.
+// =============================================================================
+
+void UltraCanvasNodeDiagram::RenderGroups(IRenderContext* ctx) {
+    for (const auto& group : groups) {
+        if (!group.visible) continue;
+
+        Rect2Dd box = ComputeGroupBounds(group);
+        if (box.width <= 0.0 || box.height <= 0.0) continue;
+
+        // Fill first (usually a very low alpha wash, or fully transparent)
+        if (group.fillColor.a > 0) {
+            ctx->SetFillPaint(group.fillColor);
+            if (group.cornerRadius > 0.0) {
+                ctx->FillRoundedRectangle(box, group.cornerRadius);
+            } else {
+                ctx->FillRectangle(box);
+            }
+        }
+
+        // Border. Stroke width is divided by the zoom so the box outline stays
+        // visually constant instead of thickening as the user zooms in.
+        if (group.borderWidth > 0.0 && group.borderColor.a > 0) {
+            double zoom = viewport.GetZoomLevel();
+            if (zoom < 0.001) zoom = 1.0;
+
+            ctx->SetStrokePaint(group.borderColor);
+            ctx->SetStrokeWidth(group.borderWidth / zoom);
+
+            if (group.dashed) {
+                ctx->SetLineDash(UCDashPattern({group.dashLength / zoom,
+                                                 group.dashGap / zoom}, 0.0));
+            }
+
+            if (group.cornerRadius > 0.0) {
+                ctx->DrawRoundedRectangle(box, group.cornerRadius);
+            } else {
+                ctx->DrawRectangle(box);
+            }
+
+            if (group.dashed) {
+                ctx->SetLineDash(UCDashPattern());   // Restore solid
+            }
+        }
+    }
+}
+
+void UltraCanvasNodeDiagram::RenderGroupTitles(IRenderContext* ctx) {
+    for (const auto& group : groups) {
+        if (!group.visible) continue;
+        if (group.labelPosition == GroupLabelPosition::NoLabel) continue;
+        if (group.label.empty()) continue;
+
+        Rect2Dd box = ComputeGroupBounds(group);
+        if (box.width <= 0.0 || box.height <= 0.0) continue;
+
+        RenderGroupLabel(ctx, group, box);
+    }
+}
+
+void UltraCanvasNodeDiagram::RenderGroupLabel(IRenderContext* ctx,
+                                               const NodeDiagramGroup& group,
+                                               const Rect2Dd& box) {
+    // Titles are drawn inside the world transform (so they track their box) but
+    // sized in SCREEN pixels: dividing by the zoom keeps a cluster title legible
+    // and proportionate at every zoom level, the same trick the box border uses.
+    double zoom = viewport.GetZoomLevel();
+    if (zoom < 0.001) zoom = 1.0;
+
+    ctx->SetTextPaint(group.labelColor);
+    ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+    ctx->SetFontSize(group.labelFontSize / zoom);
+
+    Size2Di dims = ctx->GetTextLineDimensions(group.label);
+    double textW = static_cast<double>(dims.width);
+    double textH = static_cast<double>(dims.height);
+
+    double margin = group.labelMargin / zoom;
+    double x = box.x + margin;
+    double y = box.y + margin;
+
+    switch (group.labelPosition) {
+        case GroupLabelPosition::TopLeft:
+            break;   // Already correct
+        case GroupLabelPosition::TopCenter:
+            x = box.x + (box.width - textW) * 0.5;
+            break;
+        case GroupLabelPosition::TopRight:
+            x = box.x + box.width - textW - margin;
+            break;
+        case GroupLabelPosition::BottomLeft:
+            y = box.y + box.height - textH - margin;
+            break;
+        case GroupLabelPosition::BottomCenter:
+            x = box.x + (box.width - textW) * 0.5;
+            y = box.y + box.height - textH - margin;
+            break;
+        case GroupLabelPosition::NoLabel:
+        default:
+            return;
+    }
+
+    ctx->DrawText(group.label, {x, y});
+}
+
+// =============================================================================
+// COLOR LEGEND OVERLAY (NEW in 2.2.0)
+// =============================================================================
+//
+// Screen space, like the minimap and controls: a legend that panned away with
+// the diagram would be useless. Panel size is measured from the actual text so
+// long category names are never clipped.
+// =============================================================================
+
+Rect2Dd UltraCanvasNodeDiagram::ComputeLegendPanel(IRenderContext* ctx) const {
+    ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+    ctx->SetFontSize(legend.fontSize);
+
+    double rowHeight = std::max(legend.swatchHeight,
+                                 static_cast<double>(ctx->GetTextLineHeight("Ag")));
+    double widest = 0.0;
+    for (const auto& entry : legend.entries) {
+        double w = static_cast<double>(ctx->GetTextLineWidth(entry.label));
+        widest = std::max(widest, w);
+    }
+
+    double titleHeight = 0.0;
+    if (!legend.title.empty()) {
+        ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+        ctx->SetFontSize(legend.titleFontSize);
+        titleHeight = static_cast<double>(ctx->GetTextLineHeight(legend.title)) + legend.titleGap;
+        widest = std::max(widest, static_cast<double>(ctx->GetTextLineWidth(legend.title))
+                                   - legend.swatchWidth - legend.swatchGap);
+    }
+
+    size_t rows = legend.entries.size();
+    double contentW = legend.swatchWidth + legend.swatchGap + widest;
+    double contentH = titleHeight
+                    + static_cast<double>(rows) * rowHeight
+                    + static_cast<double>(rows > 0 ? rows - 1 : 0) * legend.rowGap;
+
+    double panelW = contentW + legend.innerPadding * 2.0;
+    double panelH = contentH + legend.innerPadding * 2.0;
+
+    double x = legend.padding;
+    double y = legend.padding;
+    switch (legend.position) {
+        case DiagramPanelPosition::TopLeft:
+            break;
+        case DiagramPanelPosition::TopRight:
+            x = finalBounds.width - panelW - legend.padding;
+            break;
+        case DiagramPanelPosition::BottomLeft:
+            y = finalBounds.height - panelH - legend.padding;
+            break;
+        case DiagramPanelPosition::BottomRight:
+            x = finalBounds.width  - panelW - legend.padding;
+            y = finalBounds.height - panelH - legend.padding;
+            break;
+    }
+
+    return Rect2Dd(x, y, panelW, panelH);
+}
+
+void UltraCanvasNodeDiagram::RenderLegend(IRenderContext* ctx) {
+    Rect2Dd panel = ComputeLegendPanel(ctx);
+
+    if (legend.showBackground) {
+        ctx->SetFillPaint(legend.backgroundColor);
+        ctx->FillRoundedRectangle(panel, 4.0);
+        ctx->SetStrokePaint(legend.borderColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawRoundedRectangle(panel, 4.0);
+    }
+
+    double x = panel.x + legend.innerPadding;
+    double y = panel.y + legend.innerPadding;
+
+    if (!legend.title.empty()) {
+        ctx->SetTextPaint(legend.textColor);
+        ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+        ctx->SetFontSize(legend.titleFontSize);
+        double titleH = static_cast<double>(ctx->GetTextLineHeight(legend.title));
+        ctx->DrawText(legend.title, {x, y});
+        y += titleH + legend.titleGap;
+    }
+
+    ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+    ctx->SetFontSize(legend.fontSize);
+    double rowHeight = std::max(legend.swatchHeight,
+                                 static_cast<double>(ctx->GetTextLineHeight("Ag")));
+
+    for (const auto& entry : legend.entries) {
+        double swatchY = y + (rowHeight - legend.swatchHeight) * 0.5;
+
+        ctx->SetFillPaint(entry.color);
+        ctx->FillRectangle(Rect2Dd(x, swatchY, legend.swatchWidth, legend.swatchHeight));
+        if (legend.showSwatchBorder) {
+            ctx->SetStrokePaint(legend.swatchBorderColor);
+            ctx->SetStrokeWidth(0.5);
+            ctx->DrawRectangle(Rect2Dd(x, swatchY, legend.swatchWidth, legend.swatchHeight));
+        }
+
+        ctx->SetTextPaint(legend.textColor);
+        double textH = static_cast<double>(ctx->GetTextLineHeight(entry.label));
+        ctx->DrawText(entry.label,
+                      {x + legend.swatchWidth + legend.swatchGap,
+                       y + (rowHeight - textH) * 0.5});
+
+        y += rowHeight + legend.rowGap;
     }
 }
 
@@ -1455,7 +2012,7 @@ void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
 
 void UltraCanvasNodeDiagram::RenderGrid(IRenderContext* ctx) {
     ctx->SetStrokePaint(style.gridColor);
-    ctx->SetStrokeWidth(1.0 / zoomLevel);  // Keep line visually constant at 1px
+    ctx->SetStrokeWidth(1.0 / viewport.GetZoomLevel());  // Keep line visually constant at 1px
     
     double spacing = style.gridSpacing;
     if (spacing < 1.0) return;
@@ -2000,243 +2557,25 @@ void UltraCanvasNodeDiagram::RenderSelectionBox(IRenderContext* ctx) {
     ctx->SetFillPaint(style.selectionBoxFill);
     ctx->FillRectangle(Rect2Dd(x, y, w, h));
     ctx->SetStrokePaint(style.selectionBoxStroke);
-    ctx->SetStrokeWidth(1.0 / zoomLevel);
+    ctx->SetStrokeWidth(1.0 / viewport.GetZoomLevel());
     ctx->DrawRectangle(Rect2Dd(x, y, w, h));
 }
 
 void UltraCanvasNodeDiagram::RenderMinimap(IRenderContext* ctx) {
-    // Compute panel rect in element-local (0-based) space
-    auto local = GetLocalBounds();
-    double mx = local.x;
-    double my = local.y;
-    switch (minimapConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:
-            mx = local.x + minimapConfig.padding;
-            my = local.y + minimapConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::TopRight:
-            mx = local.x + local.width - minimapConfig.width - minimapConfig.padding;
-            my = local.y + minimapConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomLeft:
-            mx = local.x + minimapConfig.padding;
-            my = local.y + local.height - minimapConfig.height - minimapConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomRight:
-            mx = local.x + local.width - minimapConfig.width - minimapConfig.padding;
-            my = local.y + local.height - minimapConfig.height - minimapConfig.padding;
-            break;
-    }
-
-    // Background panel
-    ctx->SetFillPaint(minimapConfig.backgroundColor);
-    ctx->FillRoundedRectangle(Rect2Dd(mx, my, minimapConfig.width, minimapConfig.height), 4.0);
-    ctx->SetStrokePaint(minimapConfig.borderColor);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(Rect2Dd(mx, my, minimapConfig.width, minimapConfig.height), 4.0);
-    
-    if (nodes.empty()) return;
-    
-    // World bounding box of all nodes
-    double minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-    for (const auto& pair : nodes) {
-        const auto& n = pair.second;
-        minX = std::min(minX, n.x);
-        minY = std::min(minY, n.y);
-        maxX = std::max(maxX, n.x + n.width);
-        maxY = std::max(maxY, n.y + n.height);
-    }
-    // Add a margin so nodes don't sit flush against minimap edge
-    double margin = 20.0;
-    minX -= margin; minY -= margin; maxX += margin; maxY += margin;
-    
-    double worldW = maxX - minX;
-    double worldH = maxY - minY;
-    if (worldW <= 0 || worldH <= 0) return;
-    
-    // Fit world bbox into minimap content area (with small inner padding)
-    double innerPad = 6.0;
-    double availW = minimapConfig.width  - 2 * innerPad;
-    double availH = minimapConfig.height - 2 * innerPad;
-    double scale = std::min(availW / worldW, availH / worldH);
-    
-    double drawnW = worldW * scale;
-    double drawnH = worldH * scale;
-    double ox = mx + innerPad + (availW - drawnW) * 0.5f;
-    double oy = my + innerPad + (availH - drawnH) * 0.5f;
-    
-    auto worldToMini = [&](double wx, double wy) -> Point2Dd {
-        return Point2Dd(ox + (wx - minX) * scale, oy + (wy - minY) * scale);
-    };
-    
-    // Draw nodes as small rectangles
-    ctx->SetFillPaint(minimapConfig.nodeColor);
-    for (const auto& pair : nodes) {
-        const auto& n = pair.second;
-        Point2Dd topLeft = worldToMini(n.x, n.y);
-        double w = n.width * scale;
-        double h = n.height * scale;
-        if (w < 1) w = 1;
-        if (h < 1) h = 1;
-        ctx->FillRectangle(Rect2Dd(topLeft.x, topLeft.y, w, h));
-    }
-
-    // Draw viewport rectangle (the world-region currently visible).
-    // ScreenToWorld() expects element-local pixel coords, so use {0,0}..{w,h}.
-    Point2Dd topLeftWorld = ScreenToWorld(Point2Di(local.x, local.y));
-    Point2Dd bottomRightWorld = ScreenToWorld(
-        Point2Di(local.x + local.width, local.y + local.height));
-
-    Point2Dd vpTL = worldToMini(topLeftWorld.x, topLeftWorld.y);
-    Point2Dd vpBR = worldToMini(bottomRightWorld.x, bottomRightWorld.y);
-    double vpW = vpBR.x - vpTL.x;
-    double vpH = vpBR.y - vpTL.y;
-
-    ctx->SetFillPaint(minimapConfig.viewportFill);
-    ctx->FillRectangle(Rect2Dd(vpTL.x, vpTL.y, vpW, vpH));
-    ctx->SetStrokePaint(minimapConfig.viewportStroke);
-    ctx->SetStrokeWidth(1.5f);
-    ctx->DrawRectangle(Rect2Dd(vpTL.x, vpTL.y, vpW, vpH));
+    viewport.RenderMinimap(ctx, ComputeContentBounds(),
+        [&](const DiagramMinimapProjection& projection) {
+            for (const auto& pair : nodes) {
+                const auto& n = pair.second;
+                Point2Dd topLeft = projection.WorldToMinimap(n.x, n.y);
+                double w = std::max(1.0, n.width * projection.scale);
+                double h = std::max(1.0, n.height * projection.scale);
+                ctx->FillRectangle(Rect2Dd(topLeft.x, topLeft.y, w, h));
+            }
+        });
 }
 
 void UltraCanvasNodeDiagram::RenderControls(IRenderContext* ctx) {
-    int btnCount = 0;
-    if (controlsConfig.showZoom) btnCount += 2;
-    if (controlsConfig.showFit) btnCount += 1;
-    if (controlsConfig.showLock) btnCount += 1;
-    if (btnCount == 0) return;
-    
-    double bs = controlsConfig.buttonSize;
-    double gap = controlsConfig.gap;
-    double totalH = btnCount * bs + (btnCount - 1) * gap;
-    double panelW = bs + 2 * controlsConfig.padding;
-    double panelH = totalH + 2 * controlsConfig.padding;
-    
-    auto local = GetLocalBounds();
-    double px = local.x;
-    double py = local.y;
-    switch (controlsConfig.position) {
-        case NodeDiagramPanelPosition::TopLeft:
-            px += controlsConfig.padding;
-            py += controlsConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::TopRight:
-            px += local.width - panelW - controlsConfig.padding;
-            py += controlsConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomLeft:
-            px += controlsConfig.padding;
-            py += local.height - panelH - controlsConfig.padding;
-            break;
-        case NodeDiagramPanelPosition::BottomRight:
-            px += local.width - panelW - controlsConfig.padding;
-            py += local.height - panelH - controlsConfig.padding;
-            break;
-    }
-
-    // Panel background
-    ctx->SetFillPaint(controlsConfig.backgroundColor);
-    ctx->FillRoundedRectangle(Rect2Dd(px, py, panelW, panelH), 4.0);
-    ctx->SetStrokePaint(controlsConfig.borderColor);
-    ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(Rect2Dd(px, py, panelW, panelH), 4.0);
-    
-    // Buttons
-    double bx = px + controlsConfig.padding;
-    double by = py + controlsConfig.padding;
-    int btnIndex = 0;
-    
-    // 2.0.1: Hover BG behind icon. Glyphs are drawn as vector primitives below
-    // (text glyphs at 14pt rendered too small/blurry inside 28px squares and the
-    // vertical-centering math (bs + th/2)/2 was wrong, putting them off-center).
-    auto drawBtnBackground = [&](int idx) -> std::pair<double, double> {
-        double btnY = by + idx * (bs + gap);
-        bool isHover = (hoveredControlButton == idx);
-        if (isHover) {
-            ctx->SetFillPaint(controlsConfig.hoverColor);
-            ctx->FillRoundedRectangle(Rect2Dd(bx, btnY, bs, bs), 3.0);
-        }
-        return { bx + bs * 0.5f, btnY + bs * 0.5f };  // Returns icon center
-    };
-    
-    ctx->SetStrokePaint(controlsConfig.iconColor);
-    ctx->SetFillPaint(controlsConfig.iconColor);
-    
-    auto drawPlus = [&](double cx, double cy, double armLen, double thickness) {
-        ctx->SetStrokeWidth(thickness);
-        ctx->DrawLine({cx - armLen, cy}, {cx + armLen, cy});
-        ctx->DrawLine({cx, cy - armLen}, {cx, cy + armLen});
-    };
-
-    auto drawMinus = [&](double cx, double cy, double armLen, double thickness) {
-        ctx->SetStrokeWidth(thickness);
-        ctx->DrawLine({cx - armLen, cy}, {cx + armLen, cy});
-    };
-
-    // Fit-to-view glyph: 4 corner brackets pointing inward (like a viewfinder)
-    auto drawFitGlyph = [&](double cx, double cy, double halfSize, double thickness) {
-        ctx->SetStrokeWidth(thickness);
-        double bracket = halfSize * 0.45f;
-        // TL corner
-        ctx->DrawLine({cx - halfSize, cy - halfSize}, {cx - halfSize + bracket, cy - halfSize});
-        ctx->DrawLine({cx - halfSize, cy - halfSize}, {cx - halfSize, cy - halfSize + bracket});
-        // TR corner
-        ctx->DrawLine({cx + halfSize - bracket, cy - halfSize}, {cx + halfSize, cy - halfSize});
-        ctx->DrawLine({cx + halfSize, cy - halfSize}, {cx + halfSize, cy - halfSize + bracket});
-        // BL corner
-        ctx->DrawLine({cx - halfSize, cy + halfSize - bracket}, {cx - halfSize, cy + halfSize});
-        ctx->DrawLine({cx - halfSize, cy + halfSize}, {cx - halfSize + bracket, cy + halfSize});
-        // BR corner
-        ctx->DrawLine({cx + halfSize, cy + halfSize - bracket}, {cx + halfSize, cy + halfSize});
-        ctx->DrawLine({cx + halfSize - bracket, cy + halfSize}, {cx + halfSize, cy + halfSize});
-    };
-
-    // Padlock glyph: shackle (arc-approx with 3 segments) + body (rectangle)
-    auto drawLockGlyph = [&](double cx, double cy, bool locked, double thickness) {
-        ctx->SetStrokeWidth(thickness);
-        double bodyW = 9.0;
-        double bodyH = 7.0;
-        double bodyY = cy + 1.0;
-        // Body
-        ctx->FillRectangle(Rect2Dd(cx - bodyW * 0.5f, bodyY, bodyW, bodyH));
-        // Shackle: U-shape on top
-        double sh_w = 7.0;
-        double sh_h = 5.5f;
-        double sh_top = bodyY - sh_h;
-        if (locked) {
-            // Closed shackle: full U
-            ctx->DrawLine({cx - sh_w * 0.5f, bodyY}, {cx - sh_w * 0.5f, sh_top});
-            ctx->DrawLine({cx - sh_w * 0.5f, sh_top}, {cx + sh_w * 0.5f, sh_top});
-            ctx->DrawLine({cx + sh_w * 0.5f, sh_top}, {cx + sh_w * 0.5f, bodyY});
-        } else {
-            // Open shackle: right side detached/swung
-            ctx->DrawLine({cx - sh_w * 0.5f, bodyY}, {cx - sh_w * 0.5f, sh_top});
-            ctx->DrawLine({cx - sh_w * 0.5f, sh_top}, {cx + sh_w * 0.6f, sh_top});
-            ctx->DrawLine({cx + sh_w * 0.6f, sh_top}, {cx + sh_w * 0.6f, sh_top + 2.5f});
-        }
-    };
-    
-    if (controlsConfig.showZoom) {
-        // +
-        auto [cx1, cy1] = drawBtnBackground(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        drawPlus(cx1, cy1, bs * 0.25f, 2.0);
-        // -
-        auto [cx2, cy2] = drawBtnBackground(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        drawMinus(cx2, cy2, bs * 0.25f, 2.0);
-    }
-    if (controlsConfig.showFit) {
-        auto [cx, cy] = drawBtnBackground(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        drawFitGlyph(cx, cy, bs * 0.28f, 1.8f);
-    }
-    if (controlsConfig.showLock) {
-        auto [cx, cy] = drawBtnBackground(btnIndex++);
-        ctx->SetStrokePaint(controlsConfig.iconColor);
-        ctx->SetFillPaint(controlsConfig.iconColor);
-        drawLockGlyph(cx, cy, !isInteractive, 1.8f);
-    }
+    viewport.RenderControls(ctx, hoveredControlButton, !isInteractive);
 }
 
 
@@ -2288,21 +2627,17 @@ bool UltraCanvasNodeDiagram::HandleMouseDown(const UCEvent& event) {
     // -------- 1. Controls overlay buttons --------
     int controlIdx = FindControlButtonAt(mousePos);
     if (controlIdx >= 0) {
-        int idx = 0;
-        if (controlsConfig.showZoom) {
-            if (controlIdx == idx++) { ZoomIn(1.2f); return true; }
-            if (controlIdx == idx++) { ZoomOut(1.2f); return true; }
+        // Button roles come from the shared viewport, so the index->action
+        // mapping stays correct whichever button groups are enabled.
+        SyncViewportSize();
+        DiagramControlButton role =
+            viewport.ApplyControlButton(controlIdx, ComputeContentBounds());
+        if (role == DiagramControlButton::ToggleLock) {
+            isInteractive = !isInteractive;   // Lock state is the element's, not the viewport's
+        } else if (role != DiagramControlButton::NoAction) {
+            NotifyViewportChange();
         }
-        if (controlsConfig.showFit) {
-            if (controlIdx == idx++) { FitView(); return true; }
-        }
-        if (controlsConfig.showLock) {
-            if (controlIdx == idx++) {
-                isInteractive = !isInteractive;
-                RequestRedraw();
-                return true;
-            }
-        }
+        RequestRedraw();
         return true;
     }
     
@@ -2327,10 +2662,13 @@ bool UltraCanvasNodeDiagram::HandleMouseDown(const UCEvent& event) {
     }
     
     // -------- 2. Minimap --------
-    if (PointInMinimap(mousePos) && minimapConfig.pannable) {
-        // Center the viewport on the clicked world coordinate
-        // (full impl would convert click to world, here we just start drag)
+    if (PointInMinimap(mousePos) && viewport.MinimapConfig().pannable) {
+        // Centre on the clicked world coordinate straight away, then keep
+        // following the pointer for the rest of the drag.
         isDraggingMinimap = true;
+        viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
+        NotifyViewportChange();
+        RequestRedraw();
         return true;
     }
     
@@ -2597,8 +2935,7 @@ bool UltraCanvasNodeDiagram::HandleMouseMove(const UCEvent& event) {
     }
     
     if (isDraggingViewport) {
-        panOffset.x += delta.x;
-        panOffset.y += delta.y;
+        viewport.PanBy(delta.x, delta.y);
         NotifyViewportChange();
         RequestRedraw();
         lastMousePos = mousePos;
@@ -2613,32 +2950,11 @@ bool UltraCanvasNodeDiagram::HandleMouseMove(const UCEvent& event) {
     }
     
     if (isDraggingMinimap) {
-        // Pan world so click moves accordingly. Simple proportional behaviour.
-        // Compute minimap rect again (kept in sync with RenderMinimap).
-        // We compute the world-per-minimap-pixel scale and translate inversely.
-        if (!nodes.empty()) {
-            double minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-            for (const auto& pair : nodes) {
-                const auto& n = pair.second;
-                minX = std::min(minX, n.x);
-                minY = std::min(minY, n.y);
-                maxX = std::max(maxX, n.x + n.width);
-                maxY = std::max(maxY, n.y + n.height);
-            }
-            double margin = 20.0;
-            minX -= margin; minY -= margin; maxX += margin; maxY += margin;
-            double worldW = maxX - minX, worldH = maxY - minY;
-            double innerPad = 6.0;
-            double availW = minimapConfig.width  - 2 * innerPad;
-            double availH = minimapConfig.height - 2 * innerPad;
-            double scale = std::min(availW / worldW, availH / worldH);
-            
-            // Pan inversely so dragging moves what we see
-            panOffset.x -= delta.x / scale * zoomLevel;
-            panOffset.y -= delta.y / scale * zoomLevel;
-            NotifyViewportChange();
-            RequestRedraw();
-        }
+        // Delegate to the shared viewport, which inverts the same projection
+        // RenderMinimap uses, so click position and pan stay consistent.
+        viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
+        NotifyViewportChange();
+        RequestRedraw();
         lastMousePos = mousePos;
         return true;
     }
@@ -2709,23 +3025,11 @@ bool UltraCanvasNodeDiagram::HandleMouseWheel(const UCEvent& event) {
     if (!Contains(Point2Di(event.pointer.x, event.pointer.y))) return false;
     if (!isInteractive || !zoomOnScroll) return false;
     
-    double zoomFactor = (event.wheelDelta > 0) ? 1.1f : (1.0 / 1.1f);
-    double newZoom = std::clamp(zoomLevel * zoomFactor, minZoom, maxZoom);
-    if (std::abs(newZoom - zoomLevel) < 0.0001f) return true;
-    
-    Point2Di cursor(event.pointer.x, event.pointer.y);
-    
-    // World coords under cursor BEFORE zoom change
-    Point2Dd worldUnderCursor = ScreenToWorld(cursor);
-    
-    // Apply new zoom
-    zoomLevel = newZoom;
-    
-    // Recompute pan so the same world point lands under the cursor again.
-    // ScreenToWorld is: world = (screen - bounds - pan) / zoom
-    // Solving for pan with the new zoom: pan = screen - bounds - world * zoom
-    panOffset.x = cursor.x - finalBounds.x - worldUnderCursor.x * zoomLevel;
-    panOffset.y = cursor.y - finalBounds.y - worldUnderCursor.y * zoomLevel;
+    double zoomFactor = (event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1);
+    SyncViewportSize();
+    if (!viewport.ZoomAtPoint(Point2Di(event.pointer.x, event.pointer.y), zoomFactor)) {
+        return true;  // Already at the zoom limit; event is still consumed
+    }
     
     NotifyViewportChange();
     RequestRedraw();
@@ -2860,6 +3164,59 @@ LinkStyle LinkStyleFromString(const std::string& s) {
     return LinkStyle::Straight;
 }
 
+// ---- 2.2.0 enums ----
+
+const char* NodeSizeModeToString(NodeSizeMode m) {
+    switch (m) {
+        case NodeSizeMode::ByDegree: return "byDegree";
+        case NodeSizeMode::ByValue:  return "byValue";
+        case NodeSizeMode::Fixed:    return "fixed";
+    }
+    return "fixed";
+}
+
+NodeSizeMode NodeSizeModeFromString(const std::string& s) {
+    if (s == "byDegree") return NodeSizeMode::ByDegree;
+    if (s == "byValue")  return NodeSizeMode::ByValue;
+    return NodeSizeMode::Fixed;
+}
+
+const char* NodeDegreeModeToString(NodeDegreeMode m) {
+    switch (m) {
+        case NodeDegreeMode::Incoming: return "incoming";
+        case NodeDegreeMode::Outgoing: return "outgoing";
+        case NodeDegreeMode::Total:    return "total";
+    }
+    return "total";
+}
+
+NodeDegreeMode NodeDegreeModeFromString(const std::string& s) {
+    if (s == "incoming") return NodeDegreeMode::Incoming;
+    if (s == "outgoing") return NodeDegreeMode::Outgoing;
+    return NodeDegreeMode::Total;
+}
+
+const char* GroupLabelPositionToString(GroupLabelPosition p) {
+    switch (p) {
+        case GroupLabelPosition::TopCenter:    return "topCenter";
+        case GroupLabelPosition::TopRight:     return "topRight";
+        case GroupLabelPosition::BottomLeft:   return "bottomLeft";
+        case GroupLabelPosition::BottomCenter: return "bottomCenter";
+        case GroupLabelPosition::NoLabel:      return "none";
+        case GroupLabelPosition::TopLeft:      return "topLeft";
+    }
+    return "topLeft";
+}
+
+GroupLabelPosition GroupLabelPositionFromString(const std::string& s) {
+    if (s == "topCenter")    return GroupLabelPosition::TopCenter;
+    if (s == "topRight")     return GroupLabelPosition::TopRight;
+    if (s == "bottomLeft")   return GroupLabelPosition::BottomLeft;
+    if (s == "bottomCenter") return GroupLabelPosition::BottomCenter;
+    if (s == "none")         return GroupLabelPosition::NoLabel;
+    return GroupLabelPosition::TopLeft;
+}
+
 // Tiny JSON helpers operating on std::string. Robust enough for the
 // well-formed JSON produced by ToJson(); not a general-purpose parser.
 
@@ -2975,6 +3332,35 @@ std::vector<std::string> ExtractObjectArray(const std::string& json, const std::
     return result;
 }
 
+// 2.2.0: pull a flat array of strings, e.g. "nodeIds": ["a", "b", "c"].
+std::vector<std::string> ExtractStringArray(const std::string& json, const std::string& key) {
+    std::vector<std::string> result;
+    std::string searchKey = "\"" + key + "\"";
+    size_t kp = json.find(searchKey);
+    if (kp == std::string::npos) return result;
+    size_t cp = json.find(':', kp);
+    if (cp == std::string::npos) return result;
+    size_t bs = json.find('[', cp);
+    if (bs == std::string::npos) return result;
+    size_t be = json.find(']', bs);
+    if (be == std::string::npos) return result;
+
+    size_t pos = bs + 1;
+    while (pos < be) {
+        size_t qs = json.find('"', pos);
+        if (qs == std::string::npos || qs > be) break;
+        size_t qe = qs + 1;
+        while (qe < be) {
+            if (json[qe] == '"' && json[qe - 1] != '\\') break;
+            qe++;
+        }
+        if (qe >= be) break;
+        result.push_back(json.substr(qs + 1, qe - qs - 1));
+        pos = qe + 1;
+    }
+    return result;
+}
+
 } // anonymous namespace
 
 std::string UltraCanvasNodeDiagram::ToJson() const {
@@ -2983,9 +3369,9 @@ std::string UltraCanvasNodeDiagram::ToJson() const {
     
     // Viewport
     out << "  \"viewport\": {\n";
-    out << "    \"zoom\": " << zoomLevel << ",\n";
-    out << "    \"panX\": " << panOffset.x << ",\n";
-    out << "    \"panY\": " << panOffset.y << "\n";
+    out << "    \"zoom\": " << viewport.GetZoomLevel() << ",\n";
+    out << "    \"panX\": " << viewport.GetPanOffset().x << ",\n";
+    out << "    \"panY\": " << viewport.GetPanOffset().y << "\n";
     out << "  },\n";
     
     // Nodes
@@ -3010,6 +3396,7 @@ std::string UltraCanvasNodeDiagram::ToJson() const {
         out << "      \"textColor\": " << ColorToJsonString(n.textColor) << ",\n";
         out << "      \"borderWidth\": " << n.borderWidth << ",\n";
         out << "      \"fontSize\": " << n.fontSize << ",\n";
+        out << "      \"value\": " << n.value << ",\n";
         out << "      \"isPinned\": " << (n.isPinned ? "true" : "false") << ",\n";
         out << "      \"draggable\": " << (n.draggable ? "true" : "false") << ",\n";
         out << "      \"selectable\": " << (n.selectable ? "true" : "false") << ",\n";
@@ -3061,6 +3448,45 @@ std::string UltraCanvasNodeDiagram::ToJson() const {
         }
         out << "\n    }";
     }
+    out << "\n  ],\n";
+
+    // Sizing (2.2.0)
+    out << "  \"sizing\": {\n";
+    out << "    \"mode\": \"" << NodeSizeModeToString(sizing.mode) << "\",\n";
+    out << "    \"degreeMode\": \"" << NodeDegreeModeToString(sizing.degreeMode) << "\",\n";
+    out << "    \"baseSize\": " << sizing.baseSize << ",\n";
+    out << "    \"minSize\": " << sizing.minSize << ",\n";
+    out << "    \"maxSize\": " << sizing.maxSize << ",\n";
+    out << "    \"keepAspect\": " << (sizing.keepAspect ? "true" : "false") << "\n";
+    out << "  },\n";
+
+    // Groups (2.2.0)
+    out << "  \"groups\": [\n";
+    first = true;
+    for (const auto& g : groups) {
+        if (!first) out << ",\n";
+        first = false;
+        out << "    {\n";
+        out << "      \"id\": " << EscapeJsonString(g.id) << ",\n";
+        out << "      \"label\": " << EscapeJsonString(g.label) << ",\n";
+        out << "      \"fillColor\": " << ColorToJsonString(g.fillColor) << ",\n";
+        out << "      \"borderColor\": " << ColorToJsonString(g.borderColor) << ",\n";
+        out << "      \"labelColor\": " << ColorToJsonString(g.labelColor) << ",\n";
+        out << "      \"borderWidth\": " << g.borderWidth << ",\n";
+        out << "      \"dashed\": " << (g.dashed ? "true" : "false") << ",\n";
+        out << "      \"padding\": " << g.padding << ",\n";
+        out << "      \"cornerRadius\": " << g.cornerRadius << ",\n";
+        out << "      \"labelFontSize\": " << g.labelFontSize << ",\n";
+        out << "      \"labelPosition\": \"" << GroupLabelPositionToString(g.labelPosition) << "\",\n";
+        out << "      \"visible\": " << (g.visible ? "true" : "false") << ",\n";
+        out << "      \"nodeIds\": [";
+        for (size_t i = 0; i < g.nodeIds.size(); ++i) {
+            if (i > 0) out << ", ";
+            out << EscapeJsonString(g.nodeIds[i]);
+        }
+        out << "]\n";
+        out << "    }";
+    }
     out << "\n  ]\n";
     out << "}\n";
     return out.str();
@@ -3079,9 +3505,9 @@ bool UltraCanvasNodeDiagram::FromJson(const std::string& json) {
             size_t braceEnd = json.find('}', braceStart);
             if (braceStart != std::string::npos && braceEnd != std::string::npos) {
                 std::string vpJson = json.substr(braceStart, braceEnd - braceStart + 1);
-                zoomLevel = ExtractNumberValue(vpJson, "zoom", 1.0);
-                panOffset.x = ExtractNumberValue(vpJson, "panX", 0.0);
-                panOffset.y = ExtractNumberValue(vpJson, "panY", 0.0);
+                viewport.SetZoomLevel(ExtractNumberValue(vpJson, "zoom", 1.0));
+                viewport.SetPanOffset(ExtractNumberValue(vpJson, "panX", 0.0),
+                                      ExtractNumberValue(vpJson, "panY", 0.0));
                 ClampZoom();
             }
         }
@@ -3104,6 +3530,7 @@ bool UltraCanvasNodeDiagram::FromJson(const std::string& json) {
         n.textColor   = ExtractColorValue(nodeJson, "textColor",   n.textColor);
         n.borderWidth = ExtractNumberValue(nodeJson, "borderWidth", 2.0);
         n.fontSize    = ExtractNumberValue(nodeJson, "fontSize", 10.0);
+        n.value       = ExtractNumberValue(nodeJson, "value", 1.0);   // 2.2.0
         n.isPinned    = ExtractBoolValue(nodeJson, "isPinned", false);
         n.draggable   = ExtractBoolValue(nodeJson, "draggable", true);
         n.selectable  = ExtractBoolValue(nodeJson, "selectable", true);
@@ -3144,7 +3571,55 @@ bool UltraCanvasNodeDiagram::FromJson(const std::string& json) {
         l.label     = ExtractStringValue(linkJson, "label");
         AddLink(l);
     }
-    
+
+    // Groups (2.2.0) - loaded before sizing so a degree-driven sizing pass sees
+    // the finished graph exactly once.
+    {
+        size_t groupsKey = json.find("\"groups\"");
+        if (groupsKey != std::string::npos) {
+            auto groupObjects = ExtractObjectArray(json, "groups");
+            for (const auto& groupJson : groupObjects) {
+                NodeDiagramGroup g;
+                g.id = ExtractStringValue(groupJson, "id");
+                if (g.id.empty()) continue;
+                g.label         = ExtractStringValue(groupJson, "label");
+                g.fillColor     = ExtractColorValue(groupJson, "fillColor",   g.fillColor);
+                g.borderColor   = ExtractColorValue(groupJson, "borderColor", g.borderColor);
+                g.labelColor    = ExtractColorValue(groupJson, "labelColor",  g.labelColor);
+                g.borderWidth   = ExtractNumberValue(groupJson, "borderWidth", 1.0);
+                g.dashed        = ExtractBoolValue(groupJson, "dashed", false);
+                g.padding       = ExtractNumberValue(groupJson, "padding", 24.0);
+                g.cornerRadius  = ExtractNumberValue(groupJson, "cornerRadius", 0.0);
+                g.labelFontSize = ExtractNumberValue(groupJson, "labelFontSize", 12.0);
+                g.labelPosition = GroupLabelPositionFromString(
+                                      ExtractStringValue(groupJson, "labelPosition"));
+                g.visible       = ExtractBoolValue(groupJson, "visible", true);
+                g.nodeIds       = ExtractStringArray(groupJson, "nodeIds");
+                AddGroup(g);
+            }
+        }
+    }
+
+    // Sizing (2.2.0)
+    {
+        size_t sizingStart = json.find("\"sizing\"");
+        if (sizingStart != std::string::npos) {
+            size_t braceStart = json.find('{', sizingStart);
+            size_t braceEnd = json.find('}', braceStart);
+            if (braceStart != std::string::npos && braceEnd != std::string::npos) {
+                std::string sizingJson = json.substr(braceStart, braceEnd - braceStart + 1);
+                NodeDiagramSizing s;
+                s.mode       = NodeSizeModeFromString(ExtractStringValue(sizingJson, "mode"));
+                s.degreeMode = NodeDegreeModeFromString(ExtractStringValue(sizingJson, "degreeMode"));
+                s.baseSize   = ExtractNumberValue(sizingJson, "baseSize", s.baseSize);
+                s.minSize    = ExtractNumberValue(sizingJson, "minSize", s.minSize);
+                s.maxSize    = ExtractNumberValue(sizingJson, "maxSize", s.maxSize);
+                s.keepAspect = ExtractBoolValue(sizingJson, "keepAspect", true);
+                SetNodeSizing(s);
+            }
+        }
+    }
+
     NotifyViewportChange();
     RequestRedraw();
     return true;

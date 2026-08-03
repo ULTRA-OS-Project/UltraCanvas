@@ -1,8 +1,29 @@
 // include/Plugins/Diagrams/UltraCanvasNodeDiagram.h
 // Interactive Node Diagram component for graph/network visualization & flow editing
-// Version: 2.0.6
-// Last Modified: 2026-05-04
+// Version: 2.2.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 2.2.0 (minor - organizational network analysis features):
+//  - NEW: Data-driven node sizing. NodeSizeMode (Fixed / ByDegree / ByValue)
+//         plus NodeDiagramSizing config. In ByDegree mode a node's size is
+//         baseSize * sqrt(degree) clamped to [minSize, maxSize], so hub nodes
+//         read as hubs instead of rendering the same size as leaves. Degree can
+//         count Total / Incoming / Outgoing connections. NodeDiagramNode gained
+//         a `value` field driving ByValue mode.
+//  - NEW: Cluster containers. NodeDiagramGroup wraps a set of member nodes in
+//         an auto-fitted boundary box (solid or dashed, optional fill, optional
+//         corner radius, title in any corner). Bounds are recomputed from the
+//         member nodes so the box follows dragging and re-layout. Groups are
+//         drawn behind links, included in ComputeContentBounds (so FitView and
+//         the minimap account for them) and serialized in ToJson/FromJson.
+//  - NEW: Group cohesion force. SetGroupCohesion() adds a per-group centroid
+//         attraction to the force-directed simulation, so members of a cluster
+//         settle together instead of scattering - the layout that makes a
+//         grouped network diagram readable.
+//  - NEW: Color legend overlay. NodeDiagramLegendConfig renders swatch+label
+//         rows in any corner, with optional panel background and title.
+//         BuildLegendFromGroups() derives the entries from the groups.
 //
 // CHANGELOG 2.0.6 (patch - critical text + layout fixes):
 //  - FIXED: RenderNodeLabel - was offsetting text Y by textHeight/3.0f from
@@ -83,11 +104,26 @@
 //  - FIXED: Zoom-at-cursor formula (was net-zero before)
 //  - FIXED: Mouse cursor feedback (Hand on handle, SizeAll on draggable node, etc.)
 
+// CHANGELOG 2.1.0 (minor - shared viewport):
+//  - CHANGED: pan/zoom, the snap grid, the minimap and the controls overlay now
+//    live in the shared UltraCanvasDiagramViewport instead of being duplicated
+//    here and in UltraCanvasCompositorDiagram. The public API is unchanged;
+//    NodeDiagramPanelPosition / NodeDiagramMinimapConfig /
+//    NodeDiagramControlsConfig / NodeDiagramSnapGrid are now aliases of the
+//    shared types, so existing app code keeps compiling.
+//  - FIXED: PointInMinimap(), FindControlButtonAt() and HandleMouseWheel()
+//    added/subtracted finalBounds.x/y against event coordinates that are
+//    already element-local, double-counting the element origin. Minimap and
+//    controls hit-testing, and zoom-at-cursor, were offset by the element's
+//    position whenever the diagram was not placed at (0, 0). The shared
+//    viewport is local-space throughout.
+
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Diagrams/UltraCanvasDiagramViewport.h"
 #include <vector>
 #include <map>
 #include <set>
@@ -154,11 +190,33 @@ enum class HandleType {
 };
 
 // NEW in 2.0.0: Panel positions for overlays
-enum class NodeDiagramPanelPosition {
+// CHANGED in 2.1.0: now an alias of the shared DiagramPanelPosition
+using NodeDiagramPanelPosition = DiagramPanelPosition;
+
+// NEW in 2.2.0: how a node's rendered size is derived.
+enum class NodeSizeMode {
+    Fixed,      // node.width / node.height are used verbatim (2.0 behaviour)
+    ByDegree,   // size = baseSize * sqrt(degree), clamped to [minSize, maxSize]
+    ByValue     // size = baseSize * sqrt(node.value), clamped the same way
+};
+
+// NEW in 2.2.0: which connections count toward a node's degree.
+enum class NodeDegreeMode {
+    Total,      // Incoming + outgoing (default - undirected reading)
+    Incoming,   // Links where the node is the target
+    Outgoing    // Links where the node is the source
+};
+
+// NEW in 2.2.0: where a cluster container draws its title.
+// NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a
+// macro and this header is reachable from app code that includes X11.
+enum class GroupLabelPosition {
     TopLeft,
+    TopCenter,
     TopRight,
     BottomLeft,
-    BottomRight
+    BottomCenter,
+    NoLabel
 };
 
 // =============================================================================
@@ -228,7 +286,17 @@ struct NodeDiagramNode {
     
     // NEW in 2.0.0: Z-order (higher = on top)
     int zIndex = 0;
-    
+
+    // NEW in 2.2.0: magnitude behind this node. Drives NodeSizeMode::ByValue.
+    // Ignored in Fixed and ByDegree modes.
+    double value = 1.0;
+
+    // NEW in 2.2.0: size the sizing pass scales from. Captured the first time
+    // sizing runs so switching back to NodeSizeMode::Fixed restores the size
+    // the node was created with instead of whatever the last mode computed.
+    double baseWidth = 0.0;
+    double baseHeight = 0.0;
+
     NodeDiagramNode() = default;
     NodeDiagramNode(const std::string& nodeId, const std::string& nodeLabel)
         : id(nodeId), label(nodeLabel) {}
@@ -263,6 +331,94 @@ struct NodeDiagramLink {
         : id(linkId), sourceNodeId(source), targetNodeId(target) {}
 };
 
+// NEW in 2.2.0: data-driven node sizing configuration.
+//
+// Both scaling modes use a square-root transfer so the node AREA - not its
+// diameter - is proportional to the underlying quantity. That is the perceptually
+// correct mapping for circular/square marks; scaling the diameter linearly makes
+// a degree-9 hub look 9x more important than a degree-1 leaf instead of 3x.
+struct NodeDiagramSizing {
+    NodeSizeMode mode = NodeSizeMode::Fixed;
+    NodeDegreeMode degreeMode = NodeDegreeMode::Total;
+
+    double baseSize = 26.0;   // Size of a degree-1 (or value-1) node
+    double minSize  = 18.0;   // Floor - keeps isolated nodes clickable
+    double maxSize  = 96.0;   // Ceiling - keeps a mega-hub from eating the canvas
+
+    // When true (default) width and height are scaled together, so circles stay
+    // circular and squares stay square. When false only the width scales and the
+    // height keeps whatever the node was created with - useful for label-bearing
+    // rectangles that must stay one text line tall.
+    bool keepAspect = true;
+};
+
+// NEW in 2.2.0: a cluster container - a boundary box drawn around a set of
+// member nodes, with an optional title. Bounds are recomputed from the members
+// on every layout/drag, so the box tracks its contents automatically.
+struct NodeDiagramGroup {
+    std::string id;
+    std::string label;
+    std::vector<std::string> nodeIds;
+
+    Color fillColor = Color(0, 0, 0, 0);              // Transparent by default
+    Color borderColor = Color(170, 170, 170, 255);
+    double borderWidth = 1.0;
+    bool dashed = false;
+    double dashLength = 6.0;
+    double dashGap = 4.0;
+
+    double padding = 24.0;        // World-space gap between members and the box
+    double cornerRadius = 0.0;    // 0 = sharp corners
+
+    GroupLabelPosition labelPosition = GroupLabelPosition::TopLeft;
+    Color labelColor = Color(70, 70, 70, 255);
+    double labelFontSize = 12.0;
+    double labelMargin = 6.0;
+
+    bool visible = true;
+
+    NodeDiagramGroup() = default;
+    NodeDiagramGroup(const std::string& groupId, const std::string& groupLabel)
+        : id(groupId), label(groupLabel) {}
+};
+
+// NEW in 2.2.0: one row of the color legend overlay.
+struct NodeDiagramLegendEntry {
+    std::string label;
+    Color color = Color(100, 150, 220, 255);
+
+    NodeDiagramLegendEntry() = default;
+    NodeDiagramLegendEntry(const std::string& entryLabel, const Color& entryColor)
+        : label(entryLabel), color(entryColor) {}
+};
+
+// NEW in 2.2.0: color legend overlay. Drawn in SCREEN space like the minimap
+// and controls overlays, so it does not pan or zoom with the diagram.
+struct NodeDiagramLegendConfig {
+    bool visible = false;
+    std::vector<NodeDiagramLegendEntry> entries;
+
+    DiagramPanelPosition position = DiagramPanelPosition::TopLeft;
+    double padding = 10.0;        // Distance from the element edge
+    double innerPadding = 8.0;    // Panel border to content
+    double swatchWidth = 14.0;
+    double swatchHeight = 14.0;
+    double rowGap = 5.0;
+    double swatchGap = 7.0;       // Swatch to its label
+    double fontSize = 11.0;
+
+    std::string title;            // Optional heading above the rows
+    double titleFontSize = 12.0;
+    double titleGap = 6.0;
+
+    Color textColor = Color(50, 50, 50, 255);
+    Color backgroundColor = Color(255, 255, 255, 225);
+    Color borderColor = Color(200, 200, 200, 255);
+    bool showBackground = true;
+    bool showSwatchBorder = true;
+    Color swatchBorderColor = Color(120, 120, 120, 180);
+};
+
 struct NodeDiagramStyle {
     std::string fontFamily = "Arial";
     double baseFontSize = 11.0f;
@@ -288,45 +444,19 @@ struct NodeDiagramStyle {
     double linkStrength = 0.1f;
     double chargeStrength = -300.0f;
     int iterations = 100;
+
+    // NEW in 2.2.0: how strongly members of the same group are pulled toward
+    // their group centroid during force-directed layout. 0 disables clustering
+    // (2.1 behaviour); ~0.05-0.15 gives visually distinct clusters that still
+    // respect link and repulsion forces.
+    double groupCohesion = 0.0f;
 };
 
-// NEW in 2.0.0: Snap grid
-struct NodeDiagramSnapGrid {
-    bool enabled = false;
-    double snapX = 25.0f;
-    double snapY = 25.0f;
-};
-
-// NEW in 2.0.0: Minimap config
-struct NodeDiagramMinimapConfig {
-    bool visible = false;
-    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomRight;
-    double width = 180.0f;
-    double height = 130.0f;
-    double padding = 10.0f;
-    Color backgroundColor = Color(245, 245, 245, 230);
-    Color borderColor = Color(180, 180, 180, 255);
-    Color nodeColor = Color(140, 160, 200, 255);
-    Color viewportFill = Color(0, 120, 215, 40);
-    Color viewportStroke = Color(0, 120, 215, 200);
-    bool pannable = true;
-};
-
-// NEW in 2.0.0: Controls overlay config
-struct NodeDiagramControlsConfig {
-    bool visible = false;
-    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomLeft;
-    double buttonSize = 28.0f;
-    double padding = 10.0f;
-    double gap = 4.0f;
-    Color backgroundColor = Color(255, 255, 255, 230);
-    Color borderColor = Color(200, 200, 200, 255);
-    Color iconColor = Color(80, 80, 80, 255);
-    Color hoverColor = Color(230, 230, 230, 255);
-    bool showZoom = true;
-    bool showFit = true;
-    bool showLock = true;
-};
+// NEW in 2.0.0: Snap grid / minimap / controls configuration
+// CHANGED in 2.1.0: now aliases of the shared viewport's configuration types
+using NodeDiagramSnapGrid = DiagramSnapGrid;
+using NodeDiagramMinimapConfig = DiagramMinimapConfig;
+using NodeDiagramControlsConfig = DiagramControlsConfig;
 
 // =============================================================================
 // NODE DIAGRAM COMPONENT CLASS
@@ -400,7 +530,86 @@ public:
     void ApplyCircularLayout();
     void ApplyGridLayout();
     void ApplyHierarchicalLayout(const std::string& rootId);
-    
+
+    // =============================================================================
+    // DATA-DRIVEN NODE SIZING (NEW in 2.2.0)
+    // =============================================================================
+
+    // Switch the sizing mode. Sizes are recomputed immediately, and again
+    // whenever the link set changes while a degree-driven mode is active.
+    void SetNodeSizeMode(NodeSizeMode mode);
+    NodeSizeMode GetNodeSizeMode() const { return sizing.mode; }
+
+    void SetNodeSizing(const NodeDiagramSizing& newSizing);
+    NodeDiagramSizing GetNodeSizing() const { return sizing; }
+
+    // Convenience for the common case: mode + the scale range in one call.
+    void SetNodeSizeRange(double baseSize, double minSize, double maxSize);
+
+    // Magnitude behind a node, used by NodeSizeMode::ByValue.
+    void SetNodeValue(const std::string& id, double value);
+    double GetNodeValue(const std::string& id) const;
+
+    // Connection count for a node under the current degree mode. Returns 0 for
+    // unknown ids.
+    int GetNodeDegree(const std::string& id) const;
+    int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
+
+    // Force a sizing pass now. Normally unnecessary - the component recomputes
+    // sizes when links or values change - but useful after bulk edits made
+    // through GetNode() pointers.
+    void ApplyNodeSizing();
+
+    // =============================================================================
+    // CLUSTER CONTAINERS / GROUPS (NEW in 2.2.0)
+    // =============================================================================
+
+    void AddGroup(const NodeDiagramGroup& group);
+    void AddGroup(const std::string& id, const std::string& label,
+                  const std::vector<std::string>& nodeIds,
+                  const Color& borderColor,
+                  const Color& fillColor = Color(0, 0, 0, 0));
+    void RemoveGroup(const std::string& id);
+    void ClearGroups();
+
+    void AddNodeToGroup(const std::string& groupId, const std::string& nodeId);
+    void RemoveNodeFromGroup(const std::string& groupId, const std::string& nodeId);
+
+    NodeDiagramGroup* GetGroup(const std::string& id);
+    const NodeDiagramGroup* GetGroup(const std::string& id) const;
+    std::vector<std::string> GetAllGroupIds() const;
+
+    // Id of the first group containing the node, or "" when it belongs to none.
+    std::string GetNodeGroupId(const std::string& nodeId) const;
+
+    // Current world-space box of a group, including its padding. Returns an
+    // empty rect for unknown ids or groups with no (visible) members.
+    Rect2Dd GetGroupBounds(const std::string& id) const;
+
+    void SetGroupsVisible(bool visible);
+    bool AreGroupsVisible() const { return groupsVisible; }
+
+    // Strength of the per-group centroid attraction used by the force-directed
+    // layout. 0 disables clustering.
+    void SetGroupCohesion(double strength);
+    double GetGroupCohesion() const { return style.groupCohesion; }
+
+    // =============================================================================
+    // COLOR LEGEND (NEW in 2.2.0)
+    // =============================================================================
+
+    void SetLegendVisible(bool visible);
+    void SetLegendPosition(NodeDiagramPanelPosition pos);
+    void SetLegendConfig(const NodeDiagramLegendConfig& cfg);
+    NodeDiagramLegendConfig GetLegendConfig() const { return legend; }
+
+    void AddLegendEntry(const std::string& label, const Color& color);
+    void ClearLegendEntries();
+
+    // Replaces the legend entries with one row per group, using each group's
+    // border color as the swatch. Groups with an empty label are skipped.
+    void BuildLegendFromGroups();
+
     // =============================================================================
     // STYLING & THEME
     // =============================================================================
@@ -435,16 +644,16 @@ public:
     
     void SetZoomLevel(double zoom);
     void SetPanOffset(double x, double y);
-    double GetZoomLevel() const { return zoomLevel; }
-    Point2Dd GetPanOffset() const { return panOffset; }
+    double GetZoomLevel() const;
+    Point2Dd GetPanOffset() const;
     
     void ZoomIn(double factor = 1.2f);                                      // NEW in 2.0.0
     void ZoomOut(double factor = 1.2f);                                     // NEW in 2.0.0
     void FitView(double padding = 40.0f);                                   // NEW in 2.0.0
     void CenterOn(double worldX, double worldY);                             // NEW in 2.0.0
     
-    void SetMinZoom(double minZ) { minZoom = minZ; }
-    void SetMaxZoom(double maxZ) { maxZoom = maxZ; }
+    void SetMinZoom(double minZ);
+    void SetMaxZoom(double maxZ);
     
     // =============================================================================
     // SNAP-TO-GRID (NEW in 2.0.0)
@@ -452,7 +661,7 @@ public:
     
     void SetSnapToGrid(bool enabled);
     void SetSnapGrid(double snapX, double snapY);
-    bool IsSnapToGridEnabled() const { return snapGrid.enabled; }
+    bool IsSnapToGridEnabled() const;
     
     // =============================================================================
     // INTERACTION SETTINGS (NEW in 2.0.0)
@@ -471,7 +680,7 @@ public:
     void SetMinimapVisible(bool visible);
     void SetMinimapPosition(NodeDiagramPanelPosition pos);
     void SetMinimapConfig(const NodeDiagramMinimapConfig& cfg);
-    NodeDiagramMinimapConfig GetMinimapConfig() const { return minimapConfig; }
+    NodeDiagramMinimapConfig GetMinimapConfig() const;
     
     // =============================================================================
     // CONTROLS OVERLAY (NEW in 2.0.0)
@@ -480,7 +689,7 @@ public:
     void SetControlsVisible(bool visible);
     void SetControlsPosition(NodeDiagramPanelPosition pos);
     void SetControlsConfig(const NodeDiagramControlsConfig& cfg);
-    NodeDiagramControlsConfig GetControlsConfig() const { return controlsConfig; }
+    NodeDiagramControlsConfig GetControlsConfig() const;
     
     // =============================================================================
     // AUTO-FIT (NEW in 2.0.1)
@@ -571,6 +780,10 @@ private:
     // =============================================================================
     
     void RenderGrid(IRenderContext* ctx);
+    void RenderGroups(IRenderContext* ctx);          // NEW in 2.2.0 - boxes only
+    void RenderGroupTitles(IRenderContext* ctx);     // NEW in 2.2.0 - drawn last
+    void RenderGroupLabel(IRenderContext* ctx, const NodeDiagramGroup& group,
+                          const Rect2Dd& box);        // NEW in 2.2.0
     void RenderLinks(IRenderContext* ctx);
     void RenderNodes(IRenderContext* ctx);
     void RenderNodeShape(IRenderContext* ctx, const NodeDiagramNode& node);
@@ -586,6 +799,7 @@ private:
     void RenderSelectionBox(IRenderContext* ctx);
     void RenderMinimap(IRenderContext* ctx);
     void RenderControls(IRenderContext* ctx);
+    void RenderLegend(IRenderContext* ctx);          // NEW in 2.2.0
     
     // =============================================================================
     // EVENT SUB-HANDLERS (NEW pattern in 2.0.0)
@@ -603,6 +817,13 @@ private:
     
     Point2Dd ScreenToWorld(const Point2Di& screenPos) const;
     Point2Di WorldToScreen(const Point2Dd& worldPos) const;
+
+    // NEW in 2.1.0: world-space extent of all nodes, handed to the shared
+    // viewport for FitView and the minimap projection.
+    DiagramContentBounds ComputeContentBounds() const;
+    // Keeps the shared viewport's notion of the drawable area in sync with the
+    // element's current size. Called at the top of Render() and event handling.
+    void SyncViewportSize();
     double CalculateDistance(const Point2Dd& a, const Point2Dd& b) const;
     Point2Dd SnapPoint(const Point2Dd& p) const;
     void NotifySelectionChange();
@@ -616,7 +837,16 @@ private:
                         bool smooth, std::vector<Point2Dd>& outPath) const;
     HandlePosition InferHandleSide(const NodeDiagramNode& fromNode,
                                     const NodeDiagramNode& toNode) const;
-    
+
+    // NEW in 2.2.0: degree cache + sizing + group geometry
+    void RebuildDegreeCache() const;
+    void InvalidateDegreeCache();
+    // World-space box a group occupies, or a rect with width<=0 when the group
+    // has no resolvable members.
+    Rect2Dd ComputeGroupBounds(const NodeDiagramGroup& group) const;
+    // Panel rectangle for the legend overlay, in element-local pixels.
+    Rect2Dd ComputeLegendPanel(IRenderContext* ctx) const;
+
     // =============================================================================
     // THEME
     // =============================================================================
@@ -633,7 +863,22 @@ private:
     std::map<std::string, NodeDiagramNode> nodes;
     std::vector<std::string> nodeOrder;        // For deterministic z-ordering
     std::vector<NodeDiagramLink> links;
-    
+
+    // NEW in 2.2.0: cluster containers, kept in a vector so draw order is the
+    // order the app declared them in.
+    std::vector<NodeDiagramGroup> groups;
+    bool groupsVisible = true;
+
+    // NEW in 2.2.0: data-driven sizing + degree cache. The cache is mutable so
+    // const accessors (GetNodeDegree) can refresh it lazily.
+    NodeDiagramSizing sizing;
+    mutable std::map<std::string, int> degreeIn;
+    mutable std::map<std::string, int> degreeOut;
+    mutable bool degreeCacheDirty = true;
+
+    // NEW in 2.2.0: legend overlay
+    NodeDiagramLegendConfig legend;
+
     NodeDiagramStyle style;
     NodeDiagramTheme theme = NodeDiagramTheme::Default;
     NodeDiagramLayout layout = NodeDiagramLayout::Manual;
@@ -671,26 +916,16 @@ private:
     HandleType connectionSourceType = HandleType::Source;
     Point2Dd connectionEndPoint;  // World coords, follows mouse
     
-    // Viewport
-    double zoomLevel = 1.0f;
-    Point2Dd panOffset;
-    double minZoom = 0.1f;
-    double maxZoom = 5.0f;
-    
-    // Snap grid
-    NodeDiagramSnapGrid snapGrid;
-    
+    // Viewport, snap grid, minimap and controls (shared component, 2.1.0)
+    UltraCanvasDiagramViewport viewport;
+
     // Interaction toggles
     bool isInteractive = true;
     bool nodesConnectable = true;
     bool panOnDrag = true;
     bool zoomOnScroll = true;
     bool isMultiSelectKeyHeld = false;  // Tracked from key events
-    
-    // Overlays
-    NodeDiagramMinimapConfig minimapConfig;
-    NodeDiagramControlsConfig controlsConfig;
-    
+
     // NEW in 2.0.1
     bool autoFitOnLayout = true;
 };

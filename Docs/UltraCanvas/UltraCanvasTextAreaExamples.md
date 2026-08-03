@@ -332,6 +332,25 @@ void SetReadOnly(bool readOnly)
 ```
 Enables or disables read-only mode.
 
+#### SetDisplayOnly
+```cpp
+void SetDisplayOnly(bool displayOnlyMode)
+bool IsDisplayOnly() const
+```
+Turns the area into a pure viewer. Display-only implies read-only and, on top of
+that, takes the area out of the keyboard focus chain: `AcceptsFocus()` returns
+false, no caret is drawn and no key event ever reaches it — so a hosting widget
+keeps the arrow keys for its own navigation (this is how `UltraCanvasMediaViewer`
+shows text files while Left/Right still browse the folder). Mouse wheel and
+scrollbar scrolling plus mouse selection keep working; a host that wants
+keyboard scrolling calls `ScrollUp()` / `ScrollDown()` itself.
+
+```cpp
+auto viewer = std::make_shared<UltraCanvasTextArea>("LogView", 0, 0, 600, 400);
+viewer->SetDisplayOnly(true);          // read-only AND not focusable
+viewer->SetText(logContents);
+```
+
 #### SetWordWrap
 ```cpp
 void SetWordWrap(bool wrap)

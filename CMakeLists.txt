@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.3.20
+    VERSION 0.3.21
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -43,6 +43,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== BUILD OPTIONS =====
 option(BUILD_TEXTER_APP "Build the texter application" ON)
+option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
@@ -149,6 +150,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
+            Apps/DemoApp/UltraCanvasPyramidChartExamples.cpp
             Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
             Apps/DemoApp/UltraCanvasMekkoChartExamples.cpp
             Apps/DemoApp/UltraCanvasNestedAreaChartExamples.cpp
@@ -163,18 +165,24 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasClassDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasERDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
             Apps/DemoApp/UltraCanvasPertChartExamples.cpp
             Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
+            Apps/DemoApp/UltraCanvasGitGraphExamples.cpp
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTimelineChartExamples.cpp
             Apps/DemoApp/UltraCanvasGanttChartExamples.cpp
+            Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
+            Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
@@ -189,8 +197,11 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
             Apps/DemoApp/UltraCanvasContourChartExamples.cpp
+            Apps/DemoApp/UltraCanvasPacketDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasRequirementDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasMindMapExamples.cpp
             Apps/DemoApp/UltraCanvasNetworkingExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
             Apps/DemoApp/UltraCanvasAlbumExamples.cpp
@@ -524,6 +535,47 @@ endif()
 #    )
 endif()
 
+# ===== ULTRAFILER APPLICATION =====
+# Windows Explorer style file manager: folder tree (UltraCanvasTreeView) +
+# folder content (UltraCanvasFilerWidget) + media preview
+# (UltraCanvasMediaViewer) in a three-pane split window.
+if (BUILD_ULTRAFILER_APP)
+    message(STATUS "")
+    message(STATUS "── Building UltraFiler Application ──")
+
+    add_executable(UltraFiler
+            Apps/UltraFiler/main.cpp
+            Apps/UltraFiler/UltraFilerWindow.cpp
+    )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraFiler PROPERTIES ENABLE_EXPORTS ON)
+
+    target_include_directories(UltraFiler PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler
+    )
+
+    target_link_libraries(UltraFiler PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+    target_link_libraries(UltraFiler PRIVATE fmt::fmt)
+
+    target_compile_features(UltraFiler PRIVATE cxx_std_20)
+
+    target_compile_definitions(UltraFiler PRIVATE
+            ULTRAFILER_VERSION="${PROJECT_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/UltraCanvas.png"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraFiler
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraCanvas.png")
+
+    message(STATUS "  UltraFiler executable: UltraFiler")
+endif()
+
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
@@ -698,6 +750,9 @@ endif()
 if(BUILD_DEMO_APP)
     add_dependencies(UltraCanvasDemo copy_assets)
 endif()
+if(BUILD_ULTRAFILER_APP)
+    add_dependencies(UltraFiler copy_assets)
+endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so
 # nothing forces it to rebuild when a core interface header (e.g. IRenderContext)
@@ -706,7 +761,7 @@ endif()
 # crashing on the first cross-module virtual call. Take an explicit build-order
 # dependency (NOT a link) so any app that can load the module always rebuilds it.
 if(TARGET UltraCanvasLaTeX)
-    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraAIApp UCFileManager EBookViewerTest)
+    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraFiler UltraAIApp UCFileManager EBookViewerTest)
         if(TARGET ${_uc_app})
             add_dependencies(${_uc_app} UltraCanvasLaTeX)
         endif()

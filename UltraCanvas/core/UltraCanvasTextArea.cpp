@@ -1289,8 +1289,26 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
 
+    void UltraCanvasTextArea::SetDisplayOnly(bool displayOnlyMode) {
+        if (displayOnly == displayOnlyMode) return;
+        displayOnly = displayOnlyMode;
+        if (displayOnly) {
+            SetReadOnly(true);
+            // Drop the focus (and with it the caret) the moment the area turns
+            // into a viewer; AcceptsFocus() now refuses to take it back.
+            SetFocus(false);
+            UltraCanvasCaret::GetInstance().Hide(this);
+            ClearSelection();
+        }
+        RequestRedraw();
+    }
+
     bool UltraCanvasTextArea::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
+
+        // A display-only area never consumes keys: it cannot hold the focus, and
+        // returning false leaves them to the hosting widget.
+        if (displayOnly && event.IsKeyboardEvent()) return false;
 
         // Hex mode delegates to its own handlers
         if (editingMode == TextAreaEditingMode::Hex) {

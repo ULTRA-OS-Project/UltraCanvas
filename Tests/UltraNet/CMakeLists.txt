@@ -26,7 +26,32 @@ set(ULTRANET_TEST_SOURCES
 add_executable(UltraNetTests ${ULTRANET_TEST_SOURCES})
 
 target_compile_features(UltraNetTests PRIVATE cxx_std_20)
-target_link_libraries(UltraNetTests PRIVATE UltraNet)
+
+# UltraNetMime routes base64/Trim through UltraCanvas core (UltraCanvasUtils),
+# whose definitions live in libultracanvas — which in turn PUBLIC-links UltraNet.
+# That makes the two static archives mutually dependent, so the test must link
+# both and the linker must resolve the UltraNet -> UltraCanvas back-references
+# regardless of scan order. GNU ld (Linux + Windows/MinGW CI) is single-pass, so
+# wrap the pair in a rescanned link group; Apple ld64 / MSVC link.exe rescan
+# archives natively AND reject CMake's LINK_GROUP RESCAN feature at generate time,
+# so those get plain order. Linker family is checked first for exactly that
+# reason. Guarded on the UltraCanvas target because the net tests can be built
+# standalone. Mirrors the version-guarded WHOLE_ARCHIVE idiom in
+# UltraCanvas/CMakeLists.txt.
+if(TARGET UltraCanvas)
+    if(APPLE OR MSVC)
+        target_link_libraries(UltraNetTests PRIVATE UltraNet UltraCanvas)
+    elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+        target_link_libraries(UltraNetTests PRIVATE
+            "$<LINK_GROUP:RESCAN,UltraNet,UltraCanvas>")
+    else()
+        # GNU ld on CMake < 3.24 (no LINK_GROUP genex): emit the flags directly.
+        target_link_libraries(UltraNetTests PRIVATE
+            -Wl,--start-group UltraNet UltraCanvas -Wl,--end-group)
+    endif()
+else()
+    target_link_libraries(UltraNetTests PRIVATE UltraNet)
+endif()
 target_include_directories(UltraNetTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
 

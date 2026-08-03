@@ -1,8 +1,16 @@
 // UltraCanvasDendrogramLayout.h
 // Reingold-Tilford layout engine for dendrogram tree positioning
-// Version: 1.1.0
-// Last Modified: 2026-04-02
+// Version: 1.2.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 1.2.0:
+//  - NEW: DendrogramNode::nodeValue - magnitude behind a node, driving
+//         area-proportional node dots (see DendrogramNodeSizeMode).
+//  - NEW: DendrogramNodeSizeMode enum (Fixed / ByValue).
+//  - NEW: DendrogramRelation - a leaf-to-leaf association drawn as a
+//         hierarchically bundled spline, independent of the tree's own
+//         parent/child branches.
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -72,6 +80,12 @@ namespace UltraCanvas {
         LineThicknessAndDot  // Both combined
     };
 
+    // NEW in 1.2.0 — how a node dot's radius is derived.
+    enum class DendrogramNodeSizeMode {
+        Fixed,   // style.leafNodeRadius / style.internalNodeRadius (default)
+        ByValue  // Area proportional to DendrogramNode::nodeValue
+    };
+
 // =============================================================================
 // DATA STRUCTURES
 // =============================================================================
@@ -86,6 +100,12 @@ namespace UltraCanvas {
         float confidence   = 1.0f;   // 0–1; controls branch thickness/dash/dot
         float branchValue  = -1.0f;  // -1 = unset; 0–1 for gradient encoding
         Color customBranchColor = Colors::Transparent; // Only used in Custom mode
+
+        // NEW in 1.2.0 — magnitude behind this node (population, count, weight …).
+        // -1 = unset, which falls back to the fixed radius even in ByValue mode.
+        // Any positive scale works: radii are normalised against the largest
+        // value in the tree, so the units never have to be pixels.
+        float nodeValue = -1.0f;
 
         std::string nodeAnnotation;   // Short annotation shown on internal nodes
         std::string tooltip;
@@ -113,6 +133,33 @@ namespace UltraCanvas {
         bool  showGroupLabel     = true;
         float groupLabelFontSize = 12.0f;
         FontWeight groupLabelWeight = FontWeight::Bold;
+    };
+
+    // NEW in 1.2.0 — an association between two leaves that does NOT follow the
+    // tree's parent/child structure. Rendered as a hierarchically bundled spline
+    // (Holten 2006): the curve is routed along the tree path from the source leaf
+    // up to the lowest common ancestor and back down to the target leaf, then
+    // relaxed toward a straight line by the bundling strength. Bundling turns an
+    // unreadable hairball of N² straight chords into a few legible flows.
+    struct DendrogramRelation {
+        std::string sourceLeafId;
+        std::string targetLeafId;
+
+        // Colors at each end. When they differ the spline is drawn as a gradient
+        // from source to target, which makes direction readable without arrows.
+        Color sourceColor = Color(90, 110, 200, 90);
+        Color targetColor = Color(200, 90, 110, 90);
+
+        float width  = 1.0f;   // Stroke width in pixels
+        float weight = 1.0f;   // Optional magnitude; apps may map it to width
+        bool  visible = true;
+
+        std::string tooltip;
+        void* userData = nullptr;
+
+        DendrogramRelation() = default;
+        DendrogramRelation(const std::string& source, const std::string& target)
+            : sourceLeafId(source), targetLeafId(target) {}
     };
 
     // Computed layout node — output of the layout engine

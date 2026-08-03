@@ -114,7 +114,7 @@ std::vector<std::string> ListDriveRoots();
 struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
     std::string computerLabel = "Computer";
-    bool siblingDropdowns = true;            // per-segment dropdown of neighbouring folders
+    bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
@@ -127,8 +127,11 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
                            const FolderBreadcrumbOptions& options = FolderBreadcrumbOptions());
 ```
 
-Sibling dropdowns are filled lazily when the menu opens, so a deep path costs
-nothing extra to build.
+Every node drops down its own sub-folders: `Computer` lists the drives, the
+drive node the folders of that drive, and each folder node the folders inside
+it — so the path can be extended one level straight from the strip. A folder
+without sub-folders shows a disabled `(no sub-folders)` entry. The lists are
+filled lazily when the menu opens, so a deep path costs nothing extra to build.
 
 ```cpp
 // Keep a filer and its path strip in sync.
@@ -141,6 +144,34 @@ filer->onPathChanged = [crumb, filer](const std::string& path) {
 Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
 and `minVisibleAfterCollapse`) so a deep path collapses its middle into a `...`
 menu rather than running past the strip.
+
+### Dropdowns
+
+Only one dropdown is ever open at a time — an item's dropdown or the overflow
+(`...`) menu. Opening one closes whichever was open before, clicking the same
+chevron again toggles it shut, clicking any segment label closes it, and so
+does any change to the item list (the open menu belongs to the path it was
+opened from). The menu is also closed if the breadcrumb itself is destroyed.
+
+```cpp
+bool IsDropdownOpen() const;
+// Item index of the open dropdown; -1 when nothing is open or the open menu
+// is the overflow menu.
+int  GetOpenDropdownItemIndex() const;
+void CloseDropdown();
+```
+
+The pointer says which parts open a menu: a dropdown chevron — and the whole
+overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
+(`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
+the rest of the strip shows the item cursor. Both are style fields:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.itemCursor     = UCMouseCursor::Hand;         // default
+s.dropdownCursor = UCMouseCursor::ContextMenu;  // default
+bc->SetStyle(s);
+```
 
 ### Current Item
 

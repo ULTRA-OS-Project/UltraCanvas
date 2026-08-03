@@ -1,45 +1,45 @@
-#### 2026-07-29 *0.1.40*
+#### 2026-07-29 *1.40*
 - Fixed **Recent Files** losing entries — most visibly the file a document was loaded from before a **Save As**. `recent_files.txt` is shared by every window and every UltraTexter process, but each window rewrote the whole file from the snapshot it read at start-up, discarding everything the others had added since. Add/remove/clear now merge with the file on disk, and the menus re-read it when they open.
 - Recent file entries are stored as normalized absolute paths, so the same file opened via a relative command-line argument, a symlink or a `..` resource path is one entry instead of several — and no longer silently drops out of the list when the working directory changes.
 - Recent Files entries that share a file name (what "Save As" into another folder produces) now show their folder next to the name instead of appearing twice as the same item.
 - Added `Tests/RecentFilesTest.cpp` covering the Save As / multi-window scenarios.
 
-#### 2026-06-22 *0.1.39*
+#### 2026-06-22 *1.39*
 - Fix Texter Search. No advance on each typed character
 
-#### 2026-06-18 *0.1.38*
+#### 2026-06-18 *1.38*
 - Implemented show inline images in Markdown mode
-#### 2026-06-17 *0.1.37*
+#### 2026-06-17 *1.37*
 - Merge "PDF support", implemented PDF support in Texter
 
-#### 2026-06-15 *0.1.36*
+#### 2026-06-15 *1.36*
 - Merge changes from "Texter inactive icon rendering"
 
-#### 2026-06-07 *0.1.35*
+#### 2026-06-07 *1.35*
 - Fix UltraCanvasTextEditorInfoFileStatistics layout (migrate from old layout)
 - Fixed crash-recovery naming so recovered tabs derive their names from actual content instead of showing stale Recovered1 … RecoveredX.
 
-#### 2026-06-03 *0.1.34*
+#### 2026-06-03 *1.34*
 - Make Texter compliant with CSS layout support.
 
-#### 2026-05-18 *0.1.33*
+#### 2026-05-18 *1.33*
 - Added an **"Open recent folder"** submenu placed directly under **File → Open...**
 
-#### 2026-05-13 *0.1.32*
+#### 2026-05-13 *1.32*
 - Fix focus problem with Texter (new tab/close active tab)
 - Fix ordered list content offset in MD-mode in TextArea
 
-#### 2026-05-12 *0.1.31*
+#### 2026-05-12 *1.31*
 - Implemented OS Recent files support (add opened files to OS Recent files list)
 
-#### 2026-05-09 *0.1.30*
+#### 2026-05-09 *1.30*
 - Attempt to fix menu crash on MacOS
 
-#### 2026-05-06 *0.1.29*
+#### 2026-05-06 *1.29*
 - Show tooltips with full pathname for Recent files menu items
 - Set maxWidth=500 for Recent files menu
 
-#### 2026-05-05 *0.1.28*
+#### 2026-05-05 *1.28*
 - Fix invalidate all line layouts in TextArea on window size change
 
 #### 2026-05-04 *1.0.27*
