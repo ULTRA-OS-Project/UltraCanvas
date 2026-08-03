@@ -7891,6 +7891,142 @@ to force it. Hovering a cell shows its value via the heatmap tooltip.
   years.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
+==============================================================================
+
+# UltraCanvasChartEngine Documentation
+
+## Overview
+
+`UltraCanvasChartEngineElement` is the chart engine's render driver: a chart
+type derives from it, implements **phase 2** — its own drawing — plus small
+descriptor methods, and receives everything else. Phase 1 (background, grid
+derived from the axis ticks, limiter lines, axes with decluttered tick labels)
+and phase 3 (the solved label plan, the legend, the interaction overlay) are
+engine-supplied, and phase 2 is clipped to the plot area so a chart cannot
+paint over the axes or legend by accident.
+
+Live demo: **Charts → Chart Engine** in the demo application
+(`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one ~90-line bar-chart
+class rendered under the Vertical, Horizontal and Polar projections. The first
+production client is the parallel coordinate chart
+([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md)).
+
+- Driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
+- Axis model: `include/Plugins/Charts/Engine/UltraCanvasChartAxis.h`
+- Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
+- Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
+- Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
+- Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
+
+**Version:** 1.0.0
+**Last Modified:** 2026-08-02
+**Author:** UltraCanvas Framework
+**Namespace:** `UltraCanvas`
+
+## The content contract
+
+```cpp
+class MyChart : public UltraCanvasChartEngineElement {
+    // Called only when Data or Style is dirty - never per frame.
+    void DescribeAxes(ChartAxisSet& axes) override;
+
+    // Phase 2. Already clipped to frame.plotArea.
+    void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override;
+
+    // Optional: extra margin (measure pass), labels for the solved plan,
+    // hover/brush overlay, named-property reactions, events.
+    void MeasureContent(IRenderContext*, ChartLayoutRequest&) override;
+    void CollectChartLabels(IRenderContext*, ChartLabelBroker&) override;
+    void RenderInteractionOverlay(IRenderContext*, const ChartEngineFrame&) override;
+    void OnEnginePropertyChanged(const std::string&, const UCPropertyValue&) override;
+};
+```
+
+`ChartEngineFrame` is the frozen frame every phase renders against: plot area,
+axes, projection, solved label plan, animation progress. It is read-only while
+drawing; content maps its data through `frame.projection->ToScreen()` on
+normalised `(u, v)` coordinates, which is what makes one implementation work
+under every projection.
+
+## Axes
+
+`ChartAxis` covers the range/scale/tick/format behaviour ten legacy charts each
+reimplemented:
+
+| Facility | API |
+|---|---|
+| Range | `Observe(values)` for auto (nice-number rounded, NaN-safe, degenerate columns padded) or `SetRange(lo, hi)` |
+| Scales | `Linear`, `Log`, `SymLog`, `Percentile`, `ZScore`, `RobustZScore`, `Category` |
+| Placement | `side` (Left/Right/Top/Bottom edge) or `inPlot` + `plotPosition` (parallel coordinates) |
+| Inversion | `inverted` |
+| Ticks | `GenerateTicks(n)` - nice steps, decades on Log, one per category; **explicit `tickValues` override everything** (category slots under bars, hand-picked thresholds) |
+| Formatting | `decimals`, `unitPrefix`/`unitSuffix`, `compactNumbers` (`$1.3M`), or a custom `formatter` |
+| Endpoint labels | `showEndpointLabels` (in-plot axes) |
+
+`Normalize(value)` maps into `[0,1]`; out-of-range values map outside rather
+than clamping. Tick labels are decluttered by the 1-D pass
+(`PriorityGreedy`: range ends and zero survive longest) — never by the 2-D
+solver.
+
+## Projections
+
+`SetProjectionKind(...)`: `Vertical` (domain right, value up), `Horizontal`
+(the same content transposed), `Polar` (domain around the circle, value
+outward; `Space3D` reserved). Content that draws its shapes as subdivided
+projected edges renders correctly under all of them — the demo's bars become
+ring sectors under Polar with no chart-side change.
+
+## Phase-1 services
+
+- **Grid follows ticks**: `SetGridAxis(index)` derives gridlines from that
+  axis's ticks, so grid and labels cannot disagree.
+- **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
+  caption})` draws reference lines (average, target, threshold...); captions
+  are solved into the label plan so they never overprint value labels.
+- **Layout is measured, not guessed**: axis tick labels, titles and the legend
+  reserve their measured space in the measure pass; `MeasureContent` adds
+  chart-specific needs. `SolvePlotArea` never returns an empty plot.
+
+## Phase-3 services
+
+- **Label plan**: labels submitted in `CollectChartLabels` go through the
+  collision solver **once per invalidation, never per frame**. `allowSuppress`
+  drops labels that would overprint (set `priority` on the ones that must
+  survive); leaders and rotation are drawn by the engine.
+- **Legend**: `SetShowLegend(true)` + `SetLegendEntries({{label, color}, ...})`
+  — measured, reserved in layout, and an obstacle the solved labels avoid.
+- **Interaction overlay**: `RenderInteractionOverlay` draws hover emphasis,
+  crosshairs, brush bands — last, over everything.
+
+## The dirty model
+
+`MarkEngineDirty(flags)` with `ChartDirty::Data | Geometry | Style | Selection
+| Hover | Animation`. Only Data/Geometry/Style rebuild the layout and the label
+plan; hover, selection and animation repaint from the frozen frame. A resize is
+detected automatically.
+
+## Named properties
+
+The engine implements `IConfigurableElement`: subclasses `Define()` keys in
+their constructor (the engine provides `"title"`), react in
+`OnEnginePropertyChanged`, and by-name creators (registry, templates, module
+hosts) configure the chart with `SetProperty("key", value)` across any module
+boundary.
+
+## Best Practices
+
+1. Draw with normalised coordinates through `frame.projection` — never compute
+   pixels from the plot rect yourself, or Horizontal/Polar will be wrong.
+2. Mark the right dirtiness: data changes `Data`, restyling `Style`,
+   hover/selection only what they are. The label solver's cost then never
+   lands on the frame path.
+3. Submit measured label sizes (`GetTextLineDimensions`) and let the plan
+   declutter with `allowSuppress` instead of drawing every label.
+4. Keep `DescribeAxes` a pure description of the data — it runs only on
+   Data/Style invalidation, and the engine finalizes the axes afterwards.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCheckbox.md
 ==============================================================================
 
@@ -13632,6 +13768,168 @@ er->AddAttribute("line", column);
 The compartment divider is drawn only when there are columns on both sides of
 it, and the hoisting is display-only — `GetEntity()->attributes` keeps the order
 you supplied.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasElementPlugins.md
+==============================================================================
+
+# UltraCanvasElementPlugins Documentation
+
+## Overview
+
+`UltraCanvasElementRegistry` is the framework-wide element plugin system: every
+pluggable thing — chart, diagram, widget, tool — is described by a
+`UCElementDescriptor` registered under a stable kebab-case type name, whether it
+is compiled into the application or loaded on demand from a plugin DSO. It
+implements the registry (P1) and loader core (P2) of
+[`UltraCanvasElementPluginSystemProposal.md`](UltraCanvasElementPluginSystemProposal.md);
+manifest-indexed selective loading and the UltraNet port onto the shared loader
+helpers are still to come.
+
+- Registry + loader: `include/UltraCanvasElementPlugins.h`,
+  `core/UltraCanvasElementPlugins.cpp`
+- DSO helpers (shared, platform-neutral): `include/UltraCanvasPluginLoader.h`,
+  `core/UltraCanvasPluginLoader.cpp`
+- Named-property surface: `include/UltraCanvasElementProperties.h`
+- Tests: `Tests/ElementPluginTest.cpp` (`ctest -R ElementPluginTest`) — includes
+  a real end-to-end DSO load of two test plugins built as MODULE libraries
+
+**Version:** 1.0.0
+**Last Modified:** 2026-08-01
+**Author:** UltraCanvas Framework
+**Namespace:** `UltraCanvas`
+
+## Registering an element
+
+```cpp
+#include "UltraCanvasElementPlugins.h"
+
+UCElementDescriptor d;
+d.typeName    = "kanban-board";                 // stable, kebab-case
+d.category    = UCPluginCategory::Diagram;      // Chart | Diagram | Widget | Tool | FileFormat
+d.displayName = "Kanban Board";
+d.description = "Card board with WIP limits";
+d.docPath     = "Docs/UltraCanvas/UltraCanvasKanbanBoard.md";
+d.create      = [](const std::string& id, int x, int y, int w, int h) {
+    return std::static_pointer_cast<UltraCanvasUIElement>(
+        CreateKanbanBoardElement(id, x, y, w, h));
+};
+// Optional capabilities:
+d.textKeywords   = {"kanban"};                  // dispatch for CreateFromText
+d.createFromText = ...;                         // Mermaid-style text loader
+d.propertyKeys   = {"columns", "wipLimit"};     // IConfigurableElement keys
+UltraCanvasElementRegistry::Register(d);
+```
+
+Registration is idempotent by type name: re-registering a live name is ignored
+with a warning. A descriptor without a `create` factory is rejected.
+
+**Never register through a file-scope static.** A self-registering static
+forces the linker to keep every element's object file in every binary. Register
+from explicit `Register…()` functions (bundled elements), or from a plugin's
+init (below).
+
+## Creating by name
+
+```cpp
+auto board = UltraCanvasElementRegistry::Create("kanban-board", "b1", 20, 20, 800, 500);
+
+// Keyword-dispatched text creation - the first word selects the element:
+std::string error;
+auto fromText = UltraCanvasElementRegistry::CreateFromText(
+    "kanban\n  column: Todo\n", "b2", 0, 0, 800, 500, &error);
+
+// Discovery for pickers:
+for (const UCElementDescriptor& d : UltraCanvasElementRegistry::List(UCPluginCategory::Chart))
+    printf("%s - %s\n", d.typeName.c_str(), d.displayName.c_str());
+```
+
+A miss on `Create`/`CreateFromText` triggers an on-demand refresh of the plugin
+directories (or the custom resolver installed with `SetMissingTypeResolver`) and
+retries once. A miss that stays a miss returns `nullptr` and explains itself in
+`UltraCanvas_GetLastPluginError()`.
+
+## Configuring a by-name element
+
+`Create` returns the element base class, which has none of the element's typed
+API. Three paths, in order of preference:
+
+1. Typed factory (`CreateKanbanBoardElement(...)`) — full API, requires the
+   element compiled into the application.
+2. `std::dynamic_pointer_cast<UltraCanvasKanbanBoardElement>` — full API,
+   requires the header and a plugin built with the same toolchain.
+3. **Named properties** — works across any module boundary:
+
+```cpp
+#include "UltraCanvasElementProperties.h"
+
+if (auto cfg = std::dynamic_pointer_cast<IConfigurableElement>(board)) {
+    cfg->SetProperty("columns", int64_t{4});         // false = unknown key/bad value
+    cfg->SetProperty("title", std::string("Sprint"));
+}
+```
+
+Elements implement `IConfigurableElement`, usually by embedding a
+`UCPropertyBag` (define keys with defaults; undefined keys are rejected).
+Descriptors advertise their keys in `propertyKeys`.
+
+## Writing a plugin DSO
+
+```cpp
+// myplugin.cpp - built as a CMake MODULE library
+#include "UltraCanvasElementPlugins.h"
+
+static bool Init(const UltraCanvas::UltraCanvasPluginHost* host) {
+    UltraCanvas::UCElementDescriptor d;
+    /* ... fill as above ... */
+    host->RegisterElement(&d);       // never resolve host symbols directly
+    return true;                     // false = refuse (missing backend, ...)
+}
+ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)
+```
+
+The macro defines the one exported symbol, `UltraCanvas_PluginInit`, with the
+handshake already in place: it verifies the host's `abiVersion`, compares the
+host's `frameworkAbiTag` (compiler + standard library + C++ standard +
+descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the plugin's own,
+and fences exceptions. A mismatched or unhappy plugin is skipped with a log
+line — never half-registered. One DSO may register many descriptors.
+
+## Loader behaviour
+
+```cpp
+UltraCanvas_AddPluginDirectory("/usr/lib/ultracanvas/plugins");
+int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implicit via Create
+```
+
+- Search is restricted to the configured directories plus
+  `ULTRACANVAS_PLUGIN_PATH` (`:`-separated; `;` on Windows) — never the working
+  directory, never paths from documents.
+- Accepted files: `.so` / `.dylib` (POSIX), `.dll` (Windows).
+- Refresh is idempotent (canonical-path keyed); plugins that refused are
+  remembered and not reopened.
+- Load failures are log lines and `UltraCanvas_GetLastPluginError()`, never
+  fatal.
+- **No unloading**: handles stay open for the process lifetime, because element
+  vtables live in the DSO.
+- POSIX loads use `RTLD_GLOBAL` so `dynamic_cast` works across module
+  boundaries (path 2 above).
+- **Static-core hosts must call `UltraCanvas_RegisterSelectedCharts()` at
+  startup** (harmless no-op body when nothing is selected): besides registering
+  the compile-time chart selection, its generated TU anchors the chart engine's
+  objects into the executable. A static archive only keeps referenced members,
+  so without the anchor the linker strips the engine and a runtime chart module
+  fails at `dlopen` with an undefined base-class symbol. Shared-core builds
+  need no anchor - modules link the DLL/so directly.
+
+## Best Practices
+
+1. Type names are API — kebab-case, never renamed once shipped.
+2. Register explicitly, never from static initialisers.
+3. Refuse (`return false`) before registering anything; never after.
+4. Advertise `propertyKeys` so document-driven callers can configure blind.
+5. Plugins must be built with the framework's toolchain — the ABI tag enforces
+   this at load time rather than at crash time.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFilerWidget.md
@@ -20120,8 +20418,8 @@ diagram — every chart and diagram links against the one implementation in the
 core library, so the behaviour stays consistent and the charts remain free to
 move to a plugin model later.
 
-**Version:** 1.3.0
-**Last Modified:** 2026-07-29
+**Version:** 2.0.0
+**Last Modified:** 2026-08-01
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -20130,8 +20428,16 @@ those shapes, the solver computes a position for each label such that labels
 do not overlap each other, keep clear of caller-supplied obstacles, avoid
 covering other shapes where possible, and stay within the bounds.
 
+Version 2.0 adds a persistent `LabelPlacementSession` so several passes share
+one collision world, a spatial index so the solver scales to chart-sized label
+counts, rotated labels, polyline obstacles, explicit priorities, suppression
+instead of overprinting, a minimum-separation rule, leader lines, point anchors
+and a 1-D fast path for axis ticks. Everything added is opt-in: the defaults
+reproduce the 1.3 behaviour exactly.
+
 Live, interactive demo: **Layout System → Label placement** tab in the demo
 application (`Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp`).
+Unit tests: `Tests/LabelPlacementTest.cpp` (`ctest -R LabelPlacementTest`).
 
 ## Model
 
@@ -20171,6 +20477,11 @@ Results come back in the same order as the input labels.
 | `containerShape` | Index of a shape the label must stay within (`-1` = none) |
 | `tolerateShapeOverflow` | Inside placement: do not penalise text spilling over the outline |
 | `allowOutsideFallback` | Inside placement: offer the outside sides as last resort |
+| `rotationDegrees` | Rotation of the drawn text about its centre; candidates reserve the rotated footprint and collisions use the exact rotated quad |
+| `priority` | Higher is placed first, regardless of array position; ties keep input order |
+| `allowSuppress` | Drop the label rather than overlap a neighbour or leave the bounds |
+| `wantLeaderLine` | Ask for a connector when the label lands far from its shape |
+| `usePointAnchor`, `anchorPoint` | Place around a bare point instead of a shape from the array |
 
 ### LabelPlacementOptions
 
@@ -20181,14 +20492,52 @@ Results come back in the same order as the input labels.
 | `labelMargin` | Minimum gap between neighbouring labels |
 | `avoidOtherShapes` | Penalise labels covering shapes other than their own |
 | `obstacles` | Keep-out rectangles: legends, axis titles, connector lines, markers |
+| `minLabelSeparation` | Minimum clear distance between labels; the larger of this and `labelMargin` wins (0 = unchanged behaviour) |
+| `declutter` | `PlaceAll` (default) or `SuppressColliding` to drop badly-placed labels without per-label opt-in |
+
+### PlacedShapeLabel
+
+| Field | Meaning |
+|---|---|
+| `bounds` | Final rectangle. For a rotated label this is the axis-aligned box: draw the text centred in it, rotated by `rotationDegrees` |
+| `side` | Which kind of position was used |
+| `fitted` | `false` when the label could not be fully resolved |
+| `suppressed` | `true` when the label was dropped — **do not draw it**; it claims no space |
+| `rotationDegrees` | Echoed back for the drawing code |
+| `hasLeader`, `leaderFrom` | Draw a connector from this point on the shape edge to the label |
+
+## Sessions: solve once, draw many times
+
+`PlaceShapeLabels()` solves one batch and forgets it. Anything placing labels in
+several passes — axis furniture, then series values, then a legend, then
+annotations — should hold a `LabelPlacementSession` instead, so each pass sees
+what the earlier ones claimed:
+
+```cpp
+LabelPlacementSession session(opts);
+session.AddShapes(pointShapes);
+session.AddObstacleRect(legendRect);
+session.AddObstaclePolyline(seriesPolyline, 3.0);   // the line itself is keep-out
+
+auto valueLabels  = session.Place(valueLabelRequests);
+auto seriesLabels = session.Place(seriesNameRequests);   // avoids the value labels
+```
+
+**Solve at build time, not at draw time.** The intended lifetime is the chart,
+not the frame: build the session when the chart is created, keep the solved
+rectangles, and draw from them on every redraw. `Reset()` it only when something
+that moves labels changes — data, geometry, fonts, axis ranges. Running the
+solver inside a paint handler is the thing this class exists to avoid.
 
 ## Priority
 
-Labels are placed **greedily in input order**, so the input order *is* the
-priority order: an earlier label claims its preferred spot and later labels are
-steered around it. Submit the most constrained labels first — charts submit the
-smallest shapes first, because a label on a small mark has the least room to
-move.
+Labels are placed **greedily in priority order, then input order**, so with all
+priorities equal the input order *is* the priority order: an earlier label
+claims its preferred spot and later labels are steered around it. Submit the
+most constrained labels first — charts submit the smallest shapes first, because
+a label on a small mark has the least room to move. Set `priority` explicitly
+when a label must survive regardless of where it sits in the array — the
+minimum, maximum, latest or pinned values in a chart.
 
 Within one label, the candidate order expresses the preference: the first
 anchor/angle/side wins unless it collides, then the solver falls back to the
@@ -20257,6 +20606,50 @@ shapes.push_back(parent);
 
 label.containerShape = static_cast<int>(shapes.size() - 1);
 ```
+
+## Decluttering dense labels
+
+A chart with hundreds of value labels cannot draw them all. Offer them all and
+let the solver decide:
+
+```cpp
+for (...) {
+    ShapeLabel l;
+    l.usePointAnchor = true;
+    l.anchorPoint    = screenPos;
+    l.textSize       = measured;
+    l.allowSuppress  = true;          // drop rather than overprint
+    l.priority       = isExtreme ? 10 : 0;   // keep min/max whatever happens
+    requests.push_back(l);
+}
+opts.minLabelSeparation = 12.0;       // visible breathing space, not just no overlap
+
+for (const PlacedShapeLabel& p : session.Place(requests)) {
+    if (p.suppressed) continue;       // <- the whole point
+    ctx->DrawText(text, p.bounds.TopLeft());
+}
+```
+
+A label is suppressed when it would overlap something already claimed **or**
+would have to hang outside the bounds to avoid doing so. Suppressed labels claim
+no space, so later labels can use the room.
+
+## Axis ticks: use the 1-D path
+
+Tick labels sit at constructed positions along one axis and only ever collide
+with their own neighbours, so they do not belong in the 2-D solver:
+
+```cpp
+std::vector<bool> visible = DeclutterAxisTicks(tickCentres, tickWidths,
+                                               /*minGap*/ 6.0,
+                                               TickDeclutterPolicy::KeepEveryNth);
+```
+
+| Policy | Behaviour |
+|---|---|
+| `KeepEveryNth` | Smallest stride that fits — evenly spaced survivors, the classic axis look |
+| `Greedy` | Keep everything that clears the last kept label — more labels, uneven spacing |
+| `PriorityGreedy` | Highest-priority ticks first (min/max/current), then whatever still fits |
 
 ## Users in the framework
 
@@ -25324,6 +25717,138 @@ std::function<void(int page)> onPageChanged;
 - Clicking the current page, an ellipsis, or a disabled end control does nothing.
 - `GetPreferredWidth()` gives a rough width for the current configuration (square
   cells plus estimated text cells) for use when sizing the control in a layout.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md
+==============================================================================
+
+# UltraCanvasParallelCoordinateChart Documentation
+
+## Overview
+
+`UltraCanvasParallelCoordinateChartElement` renders multi-dimensional records
+as polylines across parallel axes: each dimension gets its own vertical axis,
+one record becomes one line. It is the **first native client of the chart
+engine** — it implements only phase 2 of the engine's three-phase render (the
+polylines) plus small descriptor methods; axes, endpoint labels, the shared
+value axis and its grid, the legend, the solved label plan and the plot-area
+clipping all come from `UltraCanvasChartEngineElement`. Data lives in the
+unit-tested `ParallelAxisModel`.
+
+- Element: `include/Plugins/Charts/UltraCanvasParallelCoordinateChart.h`,
+  `Plugins/Charts/UltraCanvasParallelCoordinateChart.cpp`
+- Model (UI-free): `include/Plugins/Charts/UltraCanvasParallelAxisModel.h`,
+  `Plugins/Charts/UltraCanvasParallelAxisModel.cpp` — tested in
+  `Tests/ChartEngineTest.cpp`
+- Engine driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
+- Registry name: `"parallel-coordinate-chart"` (call
+  `RegisterParallelCoordinateChartElement()` to register)
+
+**Version:** 1.0.0
+**Last Modified:** 2026-08-01
+**Author:** UltraCanvas Framework
+**Namespace:** `UltraCanvas`
+
+## Reading the chart
+
+Only *neighbouring* axes compare directly: lines running parallel between two
+axes mean positive correlation, a tight X means negative correlation, a bundle
+of lines sharing a corridor is a cluster, a line leaving the envelope is an
+outlier. Axis order is therefore interactive state, not fixed configuration —
+drag an axis header to reorder, double-click an axis to invert it.
+
+## Basic usage
+
+```cpp
+#include "Plugins/Charts/UltraCanvasParallelCoordinateChart.h"
+
+auto pcp = CreateParallelCoordinateChartElement("iris", 20, 20, 720, 420);
+
+pcp->AddDimension("Petal Length", petalLength);   // column-oriented input
+pcp->AddDimension("Petal Width",  petalWidth);
+pcp->AddDimension("Sepal Length", sepalLength);
+pcp->AddDimension("Sepal Width",  sepalWidth);
+pcp->SetRecordGroups(species);                    // "setosa" / "versicolor" / ...
+
+// The Iris look: z-score every column onto one shared value axis with grid.
+pcp->SetNormalizationMode(PCPNormalization::CommonScale);
+pcp->SetStandardize(PCPStandardize::ZScore);
+pcp->SetShowVertexMarkers(true);
+pcp->SetChartTitle("Parallel Coordinate Plot for the Iris Data");
+// Groups get palette colours and a legend automatically; override with:
+pcp->SetGroupColors({{"setosa", Color(68, 1, 84)},
+                     {"versicolor", Color(33, 145, 140)},
+                     {"virginica", Color(253, 231, 37)}});
+
+window->AddElement(pcp.get());
+```
+
+Record-oriented input (`SetRecords`) takes `PCPRecord` — values, label, group,
+weight, optional per-record colour. `NaN` values are missing: they break the
+record's line and never poison an axis range.
+
+## Normalisation
+
+| Mode | Behaviour |
+|---|---|
+| `PerAxis` (default) | Each axis spans its own min..max — the classic look, per-axis endpoint labels |
+| `CommonScale` | All axes share one value band; a shared left value axis with gridlines appears |
+| + `SetStandardize(ZScore)` | Columns are z-scored per column before the common scale, so different units compare (Iris) |
+
+## Lines and colour
+
+```cpp
+pcp->SetLineMode(PCPLineMode::Curved);      // Catmull-Rom; straight is default
+pcp->SetCurveTension(0.6f);
+pcp->SetLineWidth(1.5f);
+pcp->SetLineAlpha(0.0f);                    // 0 = automatic from record count
+
+pcp->SetColorMode(PCPColorMode::ByValue);   // ByGroup | ByValue | PerRecord | Single
+pcp->SetColorDimension("accuracy");
+pcp->SetColormap(HeatmapColormap::Turbo);
+```
+
+Straight lines are the default deliberately — curves look softer but
+misrepresent values between axes.
+
+## Interaction
+
+- **Hover** a line: it emphasises and a tooltip lists every dimension value.
+- **Click** a line: pin it (bold, on top); click again to unpin.
+- **Drag on an axis**: create a range brush. Records failing any brushed axis
+  dim to the context colour (`SetContextStyle`) or vanish
+  (`SetShowContext(false)`). Brushes on one axis OR together; across axes they
+  AND. Click an axis to clear its brushes.
+- **Drag an axis header** (just above the axis top): reorder the axes.
+- **Double-click an axis**: invert it.
+
+```cpp
+pcp->AddBrush("learning_rate", 0.001, 0.01);       // programmatic brushes
+pcp->onBrushChanged     = [](size_t passing) { /* live count */ };
+pcp->onRecordClick      = [](int record) { /* ... */ };
+pcp->onAxisOrderChanged = [](const std::vector<std::string>& order) { /* persist */ };
+```
+
+Brushing, pinning and hovering never re-run the label solver — the engine's
+dirty model rebuilds the label plan only for data, geometry or style changes.
+
+## Named properties
+
+Created by name (`UltraCanvasElementRegistry::Create("parallel-coordinate-chart", ...)`),
+the chart is configurable across any module boundary through
+`IConfigurableElement`: `title`, `lineAlpha`, `lineWidth`, `curveTension`,
+`lineMode` (`"straight"`/`"curved"`), `showEndpointLabels`.
+
+## Best Practices
+
+1. Feed columns, not pre-normalised values — the model normalises, and brushes
+   are specified in data space.
+2. Leave `SetLineAlpha(0)` for datasets above a few hundred records; the
+   automatic alpha keeps dense plots readable.
+3. Use `CommonScale` + `ZScore` only when the columns are comparable
+   quantities; otherwise per-axis ranges tell the truer story.
+4. `Model()` exposes the full `ParallelAxisModel` for programmatic reordering,
+   visibility and brush inspection.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md

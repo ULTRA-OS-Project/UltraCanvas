@@ -638,6 +638,108 @@ else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
 
+# ===== LABEL PLACEMENT TEST =====
+# Session reuse across passes, the spatial index, rotated labels, polyline
+# obstacles, priority, suppression, minimum separation, leader lines, point
+# anchors and the 1-D axis tick declutter. Pure geometry - no UI stack, no link
+# dependencies beyond the solver itself.
+message(STATUS "  Building LabelPlacementTest...")
+add_executable(LabelPlacementTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/LabelPlacementTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
+)
+target_include_directories(LabelPlacementTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(LabelPlacementTest PRIVATE cxx_std_20)
+set_target_properties(LabelPlacementTest PROPERTIES
+    OUTPUT_NAME "LabelPlacementTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME LabelPlacementTest
+    COMMAND LabelPlacementTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: LabelPlacementTest")
+
+# ===== CHART ENGINE TEST =====
+# The engine's model layer: axis ranges and scales, tick generation and
+# formatting, layout negotiation, the vertical / horizontal / polar projections
+# and the label policy and plan. Pure model code - no UI stack.
+message(STATUS "  Building ChartEngineTest...")
+add_executable(ChartEngineTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ChartEngineTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
+)
+target_include_directories(ChartEngineTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ChartEngineTest PRIVATE cxx_std_20)
+set_target_properties(ChartEngineTest PROPERTIES
+    OUTPUT_NAME "ChartEngineTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ChartEngineTest
+    COMMAND ChartEngineTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ChartEngineTest")
+
+# ===== ELEMENT PLUGIN TEST =====
+# The element plugin registry, create-by-name, keyword text dispatch, the named
+# property surface, the ABI handshake, and a real end-to-end DSO load: two test
+# plugins are built as MODULE libraries and loaded through the host vtable.
+# The test supplies its own minimal UltraCanvasUIElement stand-in (see
+# ElementPluginTestSupport.h) so no UI stack is needed.
+message(STATUS "  Building ElementPluginTest...")
+add_library(TestElementPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestElementPlugin.cpp
+)
+add_library(TestRefusingPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestRefusingPlugin.cpp
+)
+foreach(plugin TestElementPlugin TestRefusingPlugin)
+    target_include_directories(${plugin} PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_compile_features(${plugin} PRIVATE cxx_std_20)
+    set_target_properties(${plugin} PROPERTIES
+        PREFIX ""
+        POSITION_INDEPENDENT_CODE ON
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/TestElements
+    )
+endforeach()
+
+add_executable(ElementPluginTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ElementPluginTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasElementPlugins.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasPluginLoader.cpp
+)
+target_include_directories(ElementPluginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_compile_features(ElementPluginTest PRIVATE cxx_std_20)
+target_link_libraries(ElementPluginTest PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin)
+set_target_properties(ElementPluginTest PROPERTIES
+    OUTPUT_NAME "ElementPluginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ElementPluginTest
+    COMMAND ElementPluginTest ${CMAKE_BINARY_DIR}/Plugins/TestElements
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ElementPluginTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

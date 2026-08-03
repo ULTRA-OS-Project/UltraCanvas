@@ -1,12 +1,27 @@
 # UltraCanvas Element Plugin System — Plan & Proposal
 
-Status: **Proposal — not yet implemented.** Plan for a real, on-demand
-plugin system covering **charts, diagrams, tools and widgets**: elements
-become installable, dynamically loadable modules instead of compile-time
-members of the core library.
+Status: **P1 (registry) and the P2 loader core are implemented** — see
+[`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md) for the API
+documentation and `Tests/ElementPluginTest.cpp` for the tests, which include a
+real end-to-end DSO load. Still open from the plan: manifest-indexed selective
+lazy loading (today a registry miss refreshes all directories), the
+`ultracanvas_add_element_plugin` CMake helper, porting UltraNet onto the shared
+loader helpers, `RegisterGraphicsPlugin` in the host vtable, and the §8 P3/P4
+migration and consumer work. The §10.1 property surface shipped as
+`UltraCanvasElementProperties.h`.
+
+This document remains the plan of record for a real, on-demand plugin system
+covering **charts, diagrams, tools and widgets**: elements become installable,
+dynamically loadable modules instead of compile-time members of the core
+library.
 
 Author: UltraCanvas Framework
-Last Modified: 2026-07-30
+Last Modified: 2026-08-01
+
+Related: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
+§12 packages the chart category on top of this system. Cross-checking the two
+surfaced three gaps in the contract below and one conflicting default; both are
+recorded in **§10**.
 
 ---
 
@@ -368,3 +383,100 @@ for existing apps, after P2 the system is real end-to-end.
 5. **Per-plugin resources** (icons, translations, demo pages) — probably
    a `resources/` subfolder next to the DSO, resolved via the manifest;
    needs a small VirtualFS hook. Decide in P3.
+
+---
+
+## 10. Addenda from the chart engine work
+
+Added 2026-08-01 after cross-checking this plan against
+[`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md) §12,
+which packages the chart category on top of this system. The chart document
+withdrew its own registry and its own `UltraCanvasChart_PluginInit` in favour of
+what is specified here. Three gaps in the contract above came out of that
+comparison, plus one conflicting default. None of them changes the architecture;
+all four need a decision before P2.
+
+### 10.1 Descriptors cannot carry a typed API across the boundary
+
+`UCElementDescriptor::create` returns `std::shared_ptr<UltraCanvasUIElement>`.
+That is the right lowest common denominator, but it means an application that
+creates an element **by name** cannot reach any of its own configuration:
+
+```cpp
+auto e = UltraCanvasElementRegistry::Create("contour-chart", "c1", 0, 0, 640, 480);
+e->SetLevelStep(0.02);          // does not compile - e is a UIElement
+```
+
+This bites every category, not just charts: a Kanban board created by name
+cannot have its columns configured, a Gantt chart cannot have its timescale set.
+Three paths exist and the rule should be stated explicitly in §3.1:
+
+| Path | Configuration available | Requires |
+|---|---|---|
+| Typed factory (`CreateKanbanBoardElement`) | Full typed API | The element compiled into the application |
+| `Create(...)` + `std::dynamic_pointer_cast<T>` | Full typed API after the cast | The element's header, and a plugin built with the host's compiler and standard library (the `frameworkAbiTag` case) |
+| `Create(...)` + named properties | `SetProperty("levelStep", 0.02)` on the base | Nothing - works across any module boundary |
+
+Recommendation: add a small `SetProperty` / `GetProperty` surface to
+`UltraCanvasUIElement` (or to a `IConfigurableElement` mix-in), which each
+element registers its own keys into, and let `UCElementDescriptor` advertise the
+keys it accepts. It is the only path that does not inherit the ABI constraint,
+and it is what makes create-by-name genuinely useful for the UI-from-file and
+`RenderDiagramText` consumers in §8 P4 — those construct elements from a
+document and have no typed handle either.
+
+### 10.2 Some categories need a shared service instance, not just a factory
+
+Charts are the first case: every chart shares one engine object holding the
+registry, the label placement service and the theme. If the engine were linked
+statically into each DSO, every module would get its own copy of those statics
+and a label solved in one module would be invisible to another.
+
+The general rule this implies for §5: **when a category has a shared service
+library, that library must be built `SHARED` as soon as any of its elements ship
+as DSOs, and the plugin modules link against it rather than embedding it.** The
+host vtable in §3.3 is the natural place to hand the service to a plugin - the
+chart side wants an `engine` pointer there, and other categories may want their
+own equivalents, so the vtable's append-only growth rule matters.
+
+### 10.3 Elements can inherit from other elements, across DSO boundaries
+
+§3.2's one-DSO-many-descriptors model handles related elements by grouping them,
+but per-element packaging has to cope with real inheritance. In the chart
+category alone:
+
+| Derived element | Base element |
+|---|---|
+| `UltraCanvasHexbinChartElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasContourChartElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasCalendarHeatmapElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasSpectrogramElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasContourSurfaceGLElement` | `UltraCanvasContourSurface3DElement` |
+
+Two ways out, and `ultracanvas_add_element_plugin` should support both: group
+the family into one DSO (the model already described), or let the derived
+module link against the base module so the dynamic linker resolves it
+(`DT_NEEDED` on ELF and Mach-O, an import library on Windows) with no loader
+logic. Promoting the base element into the core library is the option to avoid -
+it makes every application pay for a heatmap it may never draw.
+
+### 10.4 Conflicting default: bundled-first versus plugin-first
+
+Goal 4 above is **zero breakage**: `ULTRACANVAS_BUNDLED_ELEMENTS=ON` by
+default, every element still compiled into the core library.
+
+The chart category has taken the opposite decision (chart proposal §12.10): its
+`ULTRACANVAS_CHARTS` list defaults to **empty** and runtime modules default to
+**on**, so a default build ships a chart-free core and charts arrive as modules.
+That is the lean mode this document already anticipates ("ULTRA OS uses this
+mode"), but as a *default* it makes charts the first category to go
+plugin-first while diagrams, widgets and tools stay bundled.
+
+Consequence to plan for: this repository's own applications must then declare
+their chart sets. DemoApp uses roughly 25 chart types through typed factories
+and stops linking until it does, so the target split and the application chart
+lists belong in one commit.
+
+The two positions are reconcilable either way - per-category defaults, or one
+framework-wide default with products opting into lean builds. It needs an
+explicit decision rather than each document assuming its own.

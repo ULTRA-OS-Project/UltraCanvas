@@ -10,8 +10,8 @@ diagram — every chart and diagram links against the one implementation in the
 core library, so the behaviour stays consistent and the charts remain free to
 move to a plugin model later.
 
-**Version:** 1.3.0
-**Last Modified:** 2026-07-29
+**Version:** 2.0.0
+**Last Modified:** 2026-08-01
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -20,8 +20,16 @@ those shapes, the solver computes a position for each label such that labels
 do not overlap each other, keep clear of caller-supplied obstacles, avoid
 covering other shapes where possible, and stay within the bounds.
 
+Version 2.0 adds a persistent `LabelPlacementSession` so several passes share
+one collision world, a spatial index so the solver scales to chart-sized label
+counts, rotated labels, polyline obstacles, explicit priorities, suppression
+instead of overprinting, a minimum-separation rule, leader lines, point anchors
+and a 1-D fast path for axis ticks. Everything added is opt-in: the defaults
+reproduce the 1.3 behaviour exactly.
+
 Live, interactive demo: **Layout System → Label placement** tab in the demo
 application (`Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp`).
+Unit tests: `Tests/LabelPlacementTest.cpp` (`ctest -R LabelPlacementTest`).
 
 ## Model
 
@@ -61,6 +69,11 @@ Results come back in the same order as the input labels.
 | `containerShape` | Index of a shape the label must stay within (`-1` = none) |
 | `tolerateShapeOverflow` | Inside placement: do not penalise text spilling over the outline |
 | `allowOutsideFallback` | Inside placement: offer the outside sides as last resort |
+| `rotationDegrees` | Rotation of the drawn text about its centre; candidates reserve the rotated footprint and collisions use the exact rotated quad |
+| `priority` | Higher is placed first, regardless of array position; ties keep input order |
+| `allowSuppress` | Drop the label rather than overlap a neighbour or leave the bounds |
+| `wantLeaderLine` | Ask for a connector when the label lands far from its shape |
+| `usePointAnchor`, `anchorPoint` | Place around a bare point instead of a shape from the array |
 
 ### LabelPlacementOptions
 
@@ -71,14 +84,52 @@ Results come back in the same order as the input labels.
 | `labelMargin` | Minimum gap between neighbouring labels |
 | `avoidOtherShapes` | Penalise labels covering shapes other than their own |
 | `obstacles` | Keep-out rectangles: legends, axis titles, connector lines, markers |
+| `minLabelSeparation` | Minimum clear distance between labels; the larger of this and `labelMargin` wins (0 = unchanged behaviour) |
+| `declutter` | `PlaceAll` (default) or `SuppressColliding` to drop badly-placed labels without per-label opt-in |
+
+### PlacedShapeLabel
+
+| Field | Meaning |
+|---|---|
+| `bounds` | Final rectangle. For a rotated label this is the axis-aligned box: draw the text centred in it, rotated by `rotationDegrees` |
+| `side` | Which kind of position was used |
+| `fitted` | `false` when the label could not be fully resolved |
+| `suppressed` | `true` when the label was dropped — **do not draw it**; it claims no space |
+| `rotationDegrees` | Echoed back for the drawing code |
+| `hasLeader`, `leaderFrom` | Draw a connector from this point on the shape edge to the label |
+
+## Sessions: solve once, draw many times
+
+`PlaceShapeLabels()` solves one batch and forgets it. Anything placing labels in
+several passes — axis furniture, then series values, then a legend, then
+annotations — should hold a `LabelPlacementSession` instead, so each pass sees
+what the earlier ones claimed:
+
+```cpp
+LabelPlacementSession session(opts);
+session.AddShapes(pointShapes);
+session.AddObstacleRect(legendRect);
+session.AddObstaclePolyline(seriesPolyline, 3.0);   // the line itself is keep-out
+
+auto valueLabels  = session.Place(valueLabelRequests);
+auto seriesLabels = session.Place(seriesNameRequests);   // avoids the value labels
+```
+
+**Solve at build time, not at draw time.** The intended lifetime is the chart,
+not the frame: build the session when the chart is created, keep the solved
+rectangles, and draw from them on every redraw. `Reset()` it only when something
+that moves labels changes — data, geometry, fonts, axis ranges. Running the
+solver inside a paint handler is the thing this class exists to avoid.
 
 ## Priority
 
-Labels are placed **greedily in input order**, so the input order *is* the
-priority order: an earlier label claims its preferred spot and later labels are
-steered around it. Submit the most constrained labels first — charts submit the
-smallest shapes first, because a label on a small mark has the least room to
-move.
+Labels are placed **greedily in priority order, then input order**, so with all
+priorities equal the input order *is* the priority order: an earlier label
+claims its preferred spot and later labels are steered around it. Submit the
+most constrained labels first — charts submit the smallest shapes first, because
+a label on a small mark has the least room to move. Set `priority` explicitly
+when a label must survive regardless of where it sits in the array — the
+minimum, maximum, latest or pinned values in a chart.
 
 Within one label, the candidate order expresses the preference: the first
 anchor/angle/side wins unless it collides, then the solver falls back to the
@@ -147,6 +198,50 @@ shapes.push_back(parent);
 
 label.containerShape = static_cast<int>(shapes.size() - 1);
 ```
+
+## Decluttering dense labels
+
+A chart with hundreds of value labels cannot draw them all. Offer them all and
+let the solver decide:
+
+```cpp
+for (...) {
+    ShapeLabel l;
+    l.usePointAnchor = true;
+    l.anchorPoint    = screenPos;
+    l.textSize       = measured;
+    l.allowSuppress  = true;          // drop rather than overprint
+    l.priority       = isExtreme ? 10 : 0;   // keep min/max whatever happens
+    requests.push_back(l);
+}
+opts.minLabelSeparation = 12.0;       // visible breathing space, not just no overlap
+
+for (const PlacedShapeLabel& p : session.Place(requests)) {
+    if (p.suppressed) continue;       // <- the whole point
+    ctx->DrawText(text, p.bounds.TopLeft());
+}
+```
+
+A label is suppressed when it would overlap something already claimed **or**
+would have to hang outside the bounds to avoid doing so. Suppressed labels claim
+no space, so later labels can use the room.
+
+## Axis ticks: use the 1-D path
+
+Tick labels sit at constructed positions along one axis and only ever collide
+with their own neighbours, so they do not belong in the 2-D solver:
+
+```cpp
+std::vector<bool> visible = DeclutterAxisTicks(tickCentres, tickWidths,
+                                               /*minGap*/ 6.0,
+                                               TickDeclutterPolicy::KeepEveryNth);
+```
+
+| Policy | Behaviour |
+|---|---|
+| `KeepEveryNth` | Smallest stride that fits — evenly spaced survivors, the classic axis look |
+| `Greedy` | Keep everything that clears the last kept label — more labels, uneven spacing |
+| `PriorityGreedy` | Highest-priority ticks first (min/max/current), then whatever still fits |
 
 ## Users in the framework
 

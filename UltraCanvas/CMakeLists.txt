@@ -308,6 +308,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Collision-aware placement of annotation labels around shapes.
         # Part of the layout engine, not of any chart/diagram plugin.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabelPlacement.cpp
+        # Element plugin system: registry + DSO loader (element plugin proposal P1/P2)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPluginLoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
 
         # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
         # on top of the CSSLayout engine (used by the eBook subsystem).
@@ -346,6 +349,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoHoverPreview.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
+        # Chart engine: model layer + three-phase render driver (chart engine proposal P1)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -495,6 +503,104 @@ set(ULTRACANVAS_CORE_SOURCES
         # Add Windows/Mac sources as needed
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
+
+# ===== CHART SYSTEM (chart engine proposal §12) =====
+# Selectable charts compile into the library only when named in
+# ULTRACANVAS_CHARTS ("all", empty, or a ;-list of keys); every selectable
+# chart NOT compiled in is built as its own runtime module
+# (ultracanvas-chart-<name>) that registers through the element plugin loader.
+# Legacy charts (pre-engine) stay unconditionally bundled until each is
+# migrated to a descriptor - the selectable set grows as they migrate.
+option(ULTRACANVAS_ENABLE_CHARTS "Build the chart engine and chart types" ON)
+set(ULTRACANVAS_CHARTS "" CACHE STRING
+    "Selectable charts linked into the library: 'all', empty, or a ;-list of keys")
+option(ULTRACANVAS_CHART_RUNTIME_MODULES
+    "Build unselected charts as runtime-loadable modules" ON)
+set(ULTRACANVAS_CHART_MODULE_GRANULARITY "chart" CACHE STRING
+    "Runtime module packaging: chart|family (family reserved for grouped packaging)")
+
+# Platforms without dlopen fall back to compile-time selection (proposal §12.11).
+if(EMSCRIPTEN AND ULTRACANVAS_CHART_RUNTIME_MODULES)
+    message(STATUS "Charts: no dynamic loading on this platform - runtime modules disabled")
+    set(ULTRACANVAS_CHART_RUNTIME_MODULES OFF)
+endif()
+
+# --- selectable chart table (key -> kebab name, sources, plugin glue, register fn)
+set(UC_CHART_KEYS ParallelCoordinate)
+set(UC_CHART_ParallelCoordinate_KEBAB   "parallel-coordinate")
+set(UC_CHART_ParallelCoordinate_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasParallelCoordinateChart.cpp)
+set(UC_CHART_ParallelCoordinate_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasParallelCoordinateChartPlugin.cpp)
+set(UC_CHART_ParallelCoordinate_HEADER  "Plugins/Charts/UltraCanvasParallelCoordinateChart.h")
+set(UC_CHART_ParallelCoordinate_REGISTER "RegisterParallelCoordinateChartElement")
+
+set(UC_CHART_SELECTED_KEYS "")
+set(UC_CHART_MODULE_KEYS "")
+if(ULTRACANVAS_ENABLE_CHARTS)
+    if(ULTRACANVAS_CHARTS STREQUAL "all")
+        set(UC_CHART_SELECTED_KEYS ${UC_CHART_KEYS})
+    elseif(NOT ULTRACANVAS_CHARTS STREQUAL "")
+        foreach(key IN LISTS ULTRACANVAS_CHARTS)
+            if(NOT key IN_LIST UC_CHART_KEYS)
+                message(FATAL_ERROR "ULTRACANVAS_CHARTS names unknown chart '${key}' (known: ${UC_CHART_KEYS})")
+            endif()
+            list(APPEND UC_CHART_SELECTED_KEYS ${key})
+        endforeach()
+    endif()
+    foreach(key IN LISTS UC_CHART_KEYS)
+        if(NOT key IN_LIST UC_CHART_SELECTED_KEYS)
+            list(APPEND UC_CHART_MODULE_KEYS ${key})
+        endif()
+    endforeach()
+    if(NOT ULTRACANVAS_CHART_RUNTIME_MODULES AND UC_CHART_MODULE_KEYS)
+        message(WARNING "Charts not selected and runtime modules off - unavailable: ${UC_CHART_MODULE_KEYS}")
+    endif()
+
+    foreach(key IN LISTS UC_CHART_SELECTED_KEYS)
+        list(APPEND ULTRACANVAS_CORE_SOURCES ${UC_CHART_${key}_SOURCES})
+    endforeach()
+    message(STATUS "Charts: compiled in [${UC_CHART_SELECTED_KEYS}], modules [${UC_CHART_MODULE_KEYS}]")
+else()
+    # Chart-free core: drop every chart source, engine included.
+    list(FILTER ULTRACANVAS_CORE_SOURCES EXCLUDE REGEX "Plugins/Charts/")
+    message(STATUS "Charts: DISABLED - core contains no chart code")
+endif()
+
+# Generated registration TU: always present (possibly an empty body) so apps
+# can call UltraCanvas_RegisterSelectedCharts() unconditionally.
+set(UC_CHART_REG_INCLUDES "")
+set(UC_CHART_REG_CALLS "")
+set(UC_CHART_REG_ANCHOR "")
+if(ULTRACANVAS_ENABLE_CHARTS)
+    # In a STATIC core the linker keeps only referenced archive members, so a
+    # host that never names the chart engine would strip it - and a runtime
+    # chart module would then fail to resolve its base-class symbols at
+    # dlopen. Calling UltraCanvas_RegisterSelectedCharts() (the documented
+    # startup call) anchors the engine objects into the host (§12.11).
+    string(APPEND UC_CHART_REG_INCLUDES "#include \"Plugins/Charts/Engine/UltraCanvasChartEngineElement.h\"\n#include \"Plugins/Charts/UltraCanvasColormap.h\"\n")
+    string(APPEND UC_CHART_REG_ANCHOR "
+// Anchors the chart engine and its shared support objects into static hosts
+// so runtime chart modules can resolve them at dlopen.
+const void* UltraCanvas_ChartEngineAnchor() {
+    static const void* const anchors[] = {
+        &typeid(UltraCanvasChartEngineElement),
+        reinterpret_cast<const void*>(&SampleColormap),
+    };
+    return anchors;
+}
+")
+endif()
+foreach(key IN LISTS UC_CHART_SELECTED_KEYS)
+    string(APPEND UC_CHART_REG_INCLUDES "#include \"${UC_CHART_${key}_HEADER}\"\n")
+    string(APPEND UC_CHART_REG_CALLS "    ${UC_CHART_${key}_REGISTER}();\n")
+endforeach()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasChartRegistration.cpp.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp
+               @ONLY)
+list(APPEND ULTRACANVAS_CORE_SOURCES
+     ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp)
 
 # libvips-dependent sources
 if(LIBVIPS_FOUND)
@@ -706,6 +812,39 @@ if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
     add_library(${ULTRACANVAS_LIB_NAME} STATIC ${ULTRACANVAS_ALL_SOURCES})
+endif()
+
+# ===== CHART RUNTIME MODULES =====
+# One MODULE DSO per unselected selectable chart, following the LaTeX plugin
+# pattern: on Unix the module's undefined core symbols resolve from the host
+# executable at dlopen() time (ENABLE_EXPORTS + RTLD_GLOBAL); on Windows the
+# module links the shared core DLL, so a Windows static build skips modules.
+if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
+    foreach(key IN LISTS UC_CHART_MODULE_KEYS)
+        set(uc_chart_target "ultracanvas-chart-${UC_CHART_${key}_KEBAB}")
+        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
+            message(STATUS "  [−] chart module ${uc_chart_target} - SKIPPED (needs shared core on Windows)")
+            continue()
+        endif()
+        add_library(${uc_chart_target} MODULE
+            ${UC_CHART_${key}_SOURCES}
+            ${UC_CHART_${key}_PLUGIN})
+        # Same include set the LaTeX MODULE uses - target-scoped, so modules
+        # must name the platform dirs themselves.
+        target_include_directories(${uc_chart_target} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
+            ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+        target_compile_features(${uc_chart_target} PRIVATE cxx_std_20)
+        set_target_properties(${uc_chart_target} PROPERTIES
+            PREFIX ""
+            POSITION_INDEPENDENT_CODE ON
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/Elements)
+        if(WIN32)
+            target_link_libraries(${uc_chart_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
+        endif()
+        message(STATUS "  [✓] chart module ${uc_chart_target}")
+    endforeach()
 endif()
 
 # Set library properties

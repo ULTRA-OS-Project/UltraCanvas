@@ -1,0 +1,672 @@
+// Tests/ChartEngineTest.cpp
+// Unit tests for the chart engine model layer: axis ranges and scales, tick
+// generation and formatting, the layout negotiation, the three 2-D projections
+// and the label policy / plan.
+//
+// Exercises the real engine sources with no UI stack and no link dependencies
+// beyond the files under test.
+//
+// Version: 1.0.0
+// Last Modified: 2026-08-01
+// Author: UltraCanvas Framework
+
+#include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+using namespace UltraCanvas;
+
+static int g_failures = 0;
+
+#define CHECK(cond, msg)                                             \
+    do {                                                             \
+        if (!(cond)) { std::printf("  FAIL: %s\n", msg); ++g_failures; } \
+        else         { std::printf("  ok:   %s\n", msg); }           \
+    } while (0)
+
+static bool Near(double a, double b, double tol = 1e-9) { return std::abs(a - b) <= tol; }
+
+// =============================================================================
+// AXIS
+// =============================================================================
+
+static void TestLinearAxis() {
+    std::printf("Linear axis (range, normalisation, inversion)\n");
+
+    ChartAxis axis("value");
+    axis.Observe({2.0, 8.0, 5.0, 3.0});
+    axis.Finalize();
+
+    CHECK(axis.Min() <= 2.0 && axis.Max() >= 8.0, "the auto range covers the data");
+    CHECK(Near(axis.Normalize(axis.Min()), 0.0) && Near(axis.Normalize(axis.Max()), 1.0),
+          "the range ends map to 0 and 1");
+
+    const double mid = (axis.Min() + axis.Max()) * 0.5;
+    CHECK(Near(axis.Normalize(mid), 0.5), "the midpoint maps to 0.5");
+    CHECK(Near(axis.Denormalize(axis.Normalize(6.25)), 6.25, 1e-9),
+          "normalise and denormalise round-trip");
+
+    axis.inverted = true;
+    CHECK(Near(axis.Normalize(axis.Min()), 1.0), "inversion flips the ends");
+    CHECK(Near(axis.Denormalize(axis.Normalize(6.25)), 6.25, 1e-9),
+          "the round trip survives inversion");
+}
+
+static void TestExplicitRangeAndOutOfRange() {
+    std::printf("Explicit range (values outside are not clamped)\n");
+
+    ChartAxis axis;
+    axis.SetRange(0.0, 100.0);
+    axis.Finalize();
+
+    CHECK(Near(axis.Min(), 0.0) && Near(axis.Max(), 100.0), "an explicit range is used verbatim");
+    CHECK(Near(axis.Normalize(25.0), 0.25), "a value maps by proportion");
+    CHECK(axis.Normalize(150.0) > 1.0, "an out-of-range value maps outside 0..1");
+    CHECK(axis.Normalize(-50.0) < 0.0, "so does one below the range");
+}
+
+static void TestDegenerateRange() {
+    std::printf("Degenerate range (a constant column must not divide by zero)\n");
+
+    ChartAxis axis;
+    axis.Observe({7.0, 7.0, 7.0});
+    axis.Finalize();
+
+    CHECK(axis.IsDegenerate(), "a constant column is reported as degenerate");
+    CHECK(axis.Max() > axis.Min(), "the range is padded rather than collapsed");
+    const double t = axis.Normalize(7.0);
+    CHECK(std::isfinite(t), "normalising the constant value yields a finite result");
+    CHECK(Near(t, 0.5, 1e-6), "the constant value sits in the middle of the padded range");
+
+    ChartAxis empty;
+    empty.Finalize();
+    CHECK(empty.Max() > empty.Min() && std::isfinite(empty.Normalize(0.5)),
+          "an axis with no data at all still yields a usable range");
+}
+
+static void TestNaNIsIgnored() {
+    std::printf("Missing values (NaN must not poison the range)\n");
+
+    ChartAxis axis;
+    axis.Observe(1.0);
+    axis.Observe(std::nan(""));
+    axis.Observe(std::numeric_limits<double>::infinity());
+    axis.Observe(9.0);
+    axis.Finalize();
+
+    CHECK(std::isfinite(axis.Min()) && std::isfinite(axis.Max()),
+          "the range stays finite with NaN and infinity in the data");
+    CHECK(axis.SampleCount() == 2, "non-finite observations are dropped");
+}
+
+static void TestLogAxis() {
+    std::printf("Log axis\n");
+
+    ChartAxis axis;
+    axis.scale = ChartScale::Log;
+    axis.SetRange(1.0, 1000.0);
+    axis.Finalize();
+
+    CHECK(Near(axis.Normalize(1.0), 0.0) && Near(axis.Normalize(1000.0), 1.0),
+          "the ends map to 0 and 1");
+    CHECK(Near(axis.Normalize(10.0), 1.0 / 3.0, 1e-9), "a decade is a third of the way");
+    CHECK(Near(axis.Denormalize(axis.Normalize(42.0)), 42.0, 1e-6), "log round-trips");
+    CHECK(std::isfinite(axis.Normalize(0.0)) && std::isfinite(axis.Normalize(-5.0)),
+          "non-positive values are floored rather than producing -inf");
+
+    const std::vector<ChartTick> ticks = axis.GenerateTicks(4);
+    CHECK(!ticks.empty(), "a log axis generates ticks");
+    bool decades = true;
+    for (const ChartTick& t : ticks) {
+        const double e = std::log10(t.value);
+        if (std::abs(e - std::round(e)) > 1e-9) decades = false;
+    }
+    CHECK(decades, "log ticks land on decades");
+}
+
+static void TestZScoreAndPercentile() {
+    std::printf("Standardising scales (z-score, percentile)\n");
+
+    ChartAxis z;
+    z.scale = ChartScale::ZScore;
+    z.Observe({10.0, 12.0, 14.0, 16.0, 18.0});
+    z.Finalize();
+    // Mean 14, so the mean must land in the middle of the standardised range.
+    CHECK(Near(z.Normalize(14.0), 0.5, 1e-9), "the mean maps to the centre");
+    CHECK(z.Normalize(18.0) > z.Normalize(10.0), "order is preserved");
+    CHECK(Near(z.Denormalize(z.Normalize(12.0)), 12.0, 1e-6), "z-score round-trips");
+
+    ChartAxis robust;
+    robust.scale = ChartScale::RobustZScore;
+    robust.Observe({10.0, 12.0, 14.0, 16.0, 1000.0});   // one wild outlier
+    robust.Finalize();
+    CHECK(Near(robust.Normalize(14.0), 0.5, 1e-6) || robust.Normalize(14.0) < 0.6,
+          "the median stays near the centre despite an outlier");
+
+    ChartAxis p;
+    p.scale = ChartScale::Percentile;
+    p.Observe({1.0, 2.0, 3.0, 4.0, 5.0});
+    p.Finalize();
+    CHECK(Near(p.Normalize(1.0), 0.0), "the smallest value is rank 0");
+    CHECK(Near(p.Normalize(5.0), 1.0), "the largest value is rank 1");
+    CHECK(Near(p.Normalize(3.0), 0.5), "the median value is rank 0.5");
+}
+
+static void TestCategoryAxis() {
+    std::printf("Category axis\n");
+
+    ChartAxis axis;
+    axis.scale = ChartScale::Category;
+    axis.categories = {"setosa", "versicolor", "virginica"};
+    axis.Finalize();
+
+    CHECK(Near(axis.Normalize(0.0), 0.0) && Near(axis.Normalize(2.0), 1.0),
+          "the first and last categories sit at the ends");
+    CHECK(Near(axis.Normalize(1.0), 0.5), "the middle category sits in the middle");
+    CHECK(axis.FormatValue(1.0) == "versicolor", "values format as their category name");
+
+    const std::vector<ChartTick> ticks = axis.GenerateTicks(10);
+    CHECK(ticks.size() == 3, "one tick per category regardless of the target count");
+    CHECK(ticks[2].label == "virginica", "tick labels are the category names");
+}
+
+static void TestTicksAndFormatting() {
+    std::printf("Ticks and formatting\n");
+
+    ChartAxis axis;
+    axis.SetRange(0.0, 1.0);
+    axis.Finalize();
+    const std::vector<ChartTick> ticks = axis.GenerateTicks(6);
+
+    CHECK(ticks.size() >= 3 && ticks.size() <= 12, "roughly the requested number of ticks");
+    bool ordered = true, inRange = true;
+    for (size_t i = 0; i < ticks.size(); ++i) {
+        if (i && ticks[i].value <= ticks[i - 1].value) ordered = false;
+        if (ticks[i].normalized < -1e-9 || ticks[i].normalized > 1.0 + 1e-9) inRange = false;
+    }
+    CHECK(ordered, "ticks come back in ascending order");
+    CHECK(inRange, "every tick normalises inside the plot");
+
+    bool endsPrioritised = false;
+    for (const ChartTick& t : ticks) if (t.priority >= 10) endsPrioritised = true;
+    CHECK(endsPrioritised, "the range ends get a declutter priority");
+
+    // Nice numbers: a scruffy range must produce round tick labels.
+    ChartAxis scruffy;
+    scruffy.Observe({0.0031, 0.1978});
+    scruffy.Finalize();
+    const std::vector<ChartTick> niceTicks = scruffy.GenerateTicks(5);
+    bool round = true;
+    for (const ChartTick& t : niceTicks) {
+        const double scaled = t.value * 1000.0;
+        if (std::abs(scaled - std::round(scaled)) > 1e-6) round = false;
+    }
+    CHECK(round, "auto ticks land on round values, not raw data extremes");
+
+    ChartAxis money;
+    money.SetRange(0.0, 5000000.0);
+    money.unitPrefix = "$";
+    money.compactNumbers = true;
+    money.Finalize();
+    CHECK(money.FormatValue(2500000.0) == "$2.5M", "compact formatting with a unit prefix");
+
+    ChartAxis custom;
+    custom.SetRange(0.0, 1.0);
+    custom.formatter = [](double v) { return std::string("<") + std::to_string((int)(v * 100)) + ">"; };
+    custom.Finalize();
+    CHECK(custom.FormatValue(0.5) == "<50>", "a custom formatter overrides everything");
+
+    // Explicit tick values override generation - what a bar chart's category
+    // axis uses to put one tick under each bar.
+    ChartAxis explicitTicks;
+    explicitTicks.SetRange(-0.6, 3.4);
+    explicitTicks.tickValues = {0.0, 1.0, 2.0, 3.0};
+    explicitTicks.formatter = [](double v) {
+        static const char* names[] = {"Q1", "Q2", "Q3", "Q4"};
+        const int i = (int)std::lround(v);
+        return std::string((i >= 0 && i < 4) ? names[i] : "?");
+    };
+    explicitTicks.Finalize();
+    const std::vector<ChartTick> et = explicitTicks.GenerateTicks(6);
+    CHECK(et.size() == 4, "explicit tickValues produce exactly those ticks");
+    CHECK(et[1].label == "Q2", "explicit ticks format through the axis formatter");
+    CHECK(et[0].normalized > 0.0 && et[3].normalized < 1.0,
+          "explicit ticks sit inside a padded range");
+}
+
+static void TestAxisSet() {
+    std::printf("Axis set\n");
+
+    ChartAxisSet axes;
+    ChartAxis a("price");
+    a.Observe({10.0, 20.0});
+    ChartAxis b("volume");
+    b.Observe({100.0, 900.0});
+    axes.Add(a);
+    axes.Add(b);
+    axes.FinalizeAll();
+
+    CHECK(axes.Count() == 2, "axes accumulate");
+    CHECK(axes.Find("volume") != nullptr, "axes are findable by name");
+    CHECK(axes.Find("missing") == nullptr, "an unknown name yields null");
+    CHECK(axes.At(0).Max() >= 20.0 && axes.At(1).Max() >= 900.0,
+          "each axis keeps its own independent range");
+}
+
+// =============================================================================
+// LAYOUT
+// =============================================================================
+
+static void TestLayoutNegotiation() {
+    std::printf("Layout negotiation (measure then solve)\n");
+
+    ChartLayoutRequest request;
+    request.Reserve(ChartAxisEdge::Left, 60.0);     // y tick labels
+    request.Reserve(ChartAxisEdge::Left, 40.0);     // a smaller claim must not shrink it
+    request.Reserve(ChartAxisEdge::Bottom, 30.0);
+    request.Reserve(ChartAxisEdge::Right, 120.0);   // legend
+    request.Reserve(ChartAxisEdge::Top, 24.0);      // title
+
+    const Rect2Dd chartArea(0, 0, 800, 600);
+    const Rect2Dd plot = SolvePlotArea(chartArea, request.margins);
+
+    CHECK(Near(request.margins.left, 60.0), "the largest reservation on an edge wins");
+    CHECK(Near(plot.x, 60.0) && Near(plot.y, 24.0), "the plot area starts inside the margins");
+    CHECK(Near(plot.width, 800.0 - 60.0 - 120.0), "width accounts for both side margins");
+    CHECK(Near(plot.height, 600.0 - 24.0 - 30.0), "height accounts for top and bottom");
+
+    // Greedy reservations must not invert the plot area.
+    ChartLayoutRequest greedy;
+    greedy.Reserve(ChartAxisEdge::Left, 5000.0);
+    greedy.Reserve(ChartAxisEdge::Right, 5000.0);
+    const Rect2Dd squeezed = SolvePlotArea(chartArea, greedy.margins);
+    CHECK(squeezed.width > 0.0 && squeezed.height > 0.0,
+          "impossible reservations still leave a usable plot area");
+}
+
+// =============================================================================
+// PROJECTIONS
+// =============================================================================
+
+static void TestVerticalAndHorizontalProjections() {
+    std::printf("Vertical and horizontal projections\n");
+
+    const Rect2Dd plot(100, 50, 400, 300);
+
+    ChartVerticalProjection vertical;
+    vertical.SetPlotArea(plot);
+    const Point2Dd origin = vertical.ToScreen(ChartNormalizedPoint(0.0, 0.0));
+    const Point2Dd corner = vertical.ToScreen(ChartNormalizedPoint(1.0, 1.0));
+    CHECK(Near(origin.x, 100.0) && Near(origin.y, 350.0),
+          "vertical: value 0 is at the bottom left");
+    CHECK(Near(corner.x, 500.0) && Near(corner.y, 50.0),
+          "vertical: value 1 is at the top right");
+
+    ChartHorizontalProjection horizontal;
+    horizontal.SetPlotArea(plot);
+    const Point2Dd hOrigin = horizontal.ToScreen(ChartNormalizedPoint(0.0, 0.0));
+    const Point2Dd hCorner = horizontal.ToScreen(ChartNormalizedPoint(1.0, 1.0));
+    CHECK(Near(hOrigin.x, 100.0) && Near(hOrigin.y, 50.0),
+          "horizontal: the domain runs down, the value runs right");
+    CHECK(Near(hCorner.x, 500.0) && Near(hCorner.y, 350.0),
+          "horizontal: the far corner is bottom right");
+
+    // Round trips.
+    const ChartNormalizedPoint p(0.32, 0.71);
+    const ChartNormalizedPoint v2 = vertical.ToNormalized(vertical.ToScreen(p));
+    const ChartNormalizedPoint h2 = horizontal.ToNormalized(horizontal.ToScreen(p));
+    CHECK(Near(v2.u, p.u, 1e-9) && Near(v2.v, p.v, 1e-9), "vertical round-trips");
+    CHECK(Near(h2.u, p.u, 1e-9) && Near(h2.v, p.v, 1e-9), "horizontal round-trips");
+}
+
+static void TestPolarProjection() {
+    std::printf("Polar projection\n");
+
+    ChartPolarProjection polar;
+    polar.SetPlotArea(Rect2Dd(0, 0, 400, 400));
+    polar.SetAngles(-90.0, 360.0, true);
+
+    const Point2Dd centre = polar.ToScreen(ChartNormalizedPoint(0.0, 0.0));
+    CHECK(Near(centre.x, 200.0) && Near(centre.y, 200.0), "value 0 sits at the centre");
+
+    const Point2Dd top = polar.ToScreen(ChartNormalizedPoint(0.0, 1.0));
+    CHECK(Near(top.x, 200.0) && Near(top.y, 0.0),
+          "the first axis points straight up with the radar default");
+
+    const Point2Dd quarter = polar.ToScreen(ChartNormalizedPoint(0.25, 1.0));
+    CHECK(Near(quarter.x, 400.0, 1e-9) && Near(quarter.y, 200.0, 1e-9),
+          "a quarter turn clockwise points right");
+
+    const ChartNormalizedPoint p(0.3, 0.8);
+    const ChartNormalizedPoint back = polar.ToNormalized(polar.ToScreen(p));
+    CHECK(Near(back.u, p.u, 1e-9) && Near(back.v, p.v, 1e-9), "polar round-trips");
+
+    // Donut: the inner radius must displace value 0 outward.
+    polar.SetInnerRadiusFraction(0.5);
+    const Point2Dd inner = polar.ToScreen(ChartNormalizedPoint(0.0, 0.0));
+    CHECK(Near(inner.y, 100.0), "an inner radius pushes value 0 off the centre");
+    const ChartNormalizedPoint donutBack = polar.ToNormalized(polar.ToScreen(p));
+    CHECK(Near(donutBack.u, p.u, 1e-9) && Near(donutBack.v, p.v, 1e-9),
+          "polar round-trips with an inner radius");
+
+    const std::unique_ptr<IChartProjection> made = CreateChartProjection(ChartProjectionKind::Polar);
+    CHECK(made && made->Kind() == ChartProjectionKind::Polar, "the factory returns the right kind");
+}
+
+// =============================================================================
+// LABELS
+// =============================================================================
+
+static ChartLabelRequest MakeRequest(const std::string& text, ChartLabelClass klass,
+                                     double x, double y) {
+    ChartLabelRequest r;
+    r.text = text;
+    r.klass = klass;
+    r.anchor = Point2Dd(x, y);
+    r.textSize = Size2Dd(40.0, 12.0);
+    return r;
+}
+
+static void TestLabelPolicyRoles() {
+    std::printf("Label policy (solved / obstacle / excluded per chart type)\n");
+
+    const ChartLabelPolicy def = ChartLabelPolicy::Default();
+    CHECK(HasClass(def.excluded, ChartLabelClass::AxisTick),
+          "axis ticks are excluded from the solver by default");
+    CHECK(HasClass(def.excluded, ChartLabelClass::AxisTitle),
+          "so are axis titles");
+    CHECK(HasClass(def.solved, ChartLabelClass::ValueLabel),
+          "value labels are solved");
+    CHECK(HasClass(def.obstacles, ChartLabelClass::LegendEntry),
+          "the legend blocks without moving");
+
+    const ChartLabelPolicy pcp = ChartLabelPolicy::ParallelCoordinates();
+    CHECK(HasClass(pcp.obstacles, ChartLabelClass::AxisTitle) &&
+          !HasClass(pcp.excluded, ChartLabelClass::AxisTitle),
+          "parallel coordinates promotes axis headers to obstacles");
+
+    const ChartLabelPolicy heat = ChartLabelPolicy::Heatmap();
+    CHECK(HasClass(heat.obstacles, ChartLabelClass::AxisTick),
+          "the heatmap promotes row/column labels to obstacles");
+
+    const ChartLabelPolicy radial = ChartLabelPolicy::Radial();
+    CHECK(HasClass(radial.solved, ChartLabelClass::AxisTitle),
+          "radial charts solve their spoke labels");
+
+    // A role change must clear the other two.
+    ChartLabelPolicy p = ChartLabelPolicy::Default();
+    p.SetRole(ChartLabelClass::AxisTick, true, false);
+    CHECK(HasClass(p.solved, ChartLabelClass::AxisTick) &&
+          !HasClass(p.excluded, ChartLabelClass::AxisTick) &&
+          !HasClass(p.obstacles, ChartLabelClass::AxisTick),
+          "a class holds exactly one role at a time");
+}
+
+static void TestLabelBrokerRouting() {
+    std::printf("Label broker (routing by class, one solve for the whole frame)\n");
+
+    LabelPlacementOptions opts;
+    opts.bounds = Rect2Dd(0, 0, 400, 300);
+
+    ChartLabelBroker broker(ChartLabelPolicy::Default(), opts);
+
+    // An excluded axis tick, an obstacle legend entry, and value labels that
+    // must avoid the legend.
+    ChartLabelRequest tick = MakeRequest("0.5", ChartLabelClass::AxisTick, 10.0, 290.0);
+    tick.fixedBounds = Rect2Dd(0.0, 284.0, 30.0, 12.0);
+    broker.Add(tick);
+
+    ChartLabelRequest legend = MakeRequest("Series A", ChartLabelClass::LegendEntry, 0, 0);
+    legend.fixedBounds = Rect2Dd(280.0, 20.0, 100.0, 60.0);
+    broker.Add(legend);
+
+    for (int i = 0; i < 6; ++i) {
+        ChartLabelRequest v = MakeRequest("12.3", ChartLabelClass::ValueLabel,
+                                          300.0, 30.0 + i * 9.0);
+        v.allowSuppress = true;
+        broker.Add(v);
+    }
+
+    const ChartLabelPlan plan = broker.Solve(7);
+
+    CHECK(plan.generation == 7, "the plan carries its generation stamp");
+    CHECK(plan.labels.size() == 8, "every request appears in the plan");
+
+    // The excluded tick keeps exactly the position the caller gave it.
+    const PlacedChartLabel* placedTick = nullptr;
+    for (const PlacedChartLabel& l : plan.labels)
+        if (l.klass == ChartLabelClass::AxisTick) placedTick = &l;
+    CHECK(placedTick && Near(placedTick->bounds.x, 0.0) && Near(placedTick->bounds.y, 284.0),
+          "an excluded label is passed through untouched");
+
+    // No solved value label may sit under the legend.
+    const Rect2Dd legendRect(280.0, 20.0, 100.0, 60.0);
+    int overlapping = 0;
+    for (const PlacedChartLabel& l : plan.labels) {
+        if (l.klass != ChartLabelClass::ValueLabel || l.suppressed) continue;
+        const double w = std::min(l.bounds.Right(), legendRect.Right()) -
+                         std::max(l.bounds.Left(), legendRect.Left());
+        const double h = std::min(l.bounds.Bottom(), legendRect.Bottom()) -
+                         std::max(l.bounds.Top(), legendRect.Top());
+        if (w > 0.01 && h > 0.01) ++overlapping;
+    }
+    CHECK(overlapping == 0, "solved labels steer around the obstacle legend");
+    CHECK(plan.DrawableCount() <= plan.labels.size(), "suppressed labels are not drawable");
+}
+
+static void TestLabelBrokerUserData() {
+    std::printf("Label broker (results map back to the caller's own indices)\n");
+
+    LabelPlacementOptions opts;
+    opts.bounds = Rect2Dd(0, 0, 300, 300);
+    ChartLabelBroker broker(ChartLabelPolicy::Default(), opts);
+
+    for (size_t i = 0; i < 5; ++i) {
+        ChartLabelRequest r = MakeRequest("p" + std::to_string(i),
+                                          ChartLabelClass::ValueLabel,
+                                          40.0 + i * 50.0, 150.0);
+        r.userData = 1000 + i;
+        r.anchorRadius = 4.0;
+        broker.Add(r);
+    }
+
+    const ChartLabelPlan plan = broker.Solve();
+    std::vector<size_t> seen;
+    for (const PlacedChartLabel& l : plan.labels) seen.push_back(l.userData);
+    std::sort(seen.begin(), seen.end());
+
+    CHECK(seen.size() == 5, "one result per request");
+    CHECK(seen.front() == 1000 && seen.back() == 1004, "userData survives the solve");
+
+    bool clearsMarks = true;
+    for (const PlacedChartLabel& l : plan.labels) {
+        if (l.suppressed) continue;
+        // The label must not sit on top of the 4px mark it belongs to.
+        const double cx = l.bounds.x + l.bounds.width * 0.5;
+        if (std::abs(l.bounds.Bottom() - 150.0) < 1e-9 && std::abs(cx - 40.0) < 1e-9) {
+            clearsMarks = false;
+        }
+    }
+    CHECK(clearsMarks, "a label with an anchor radius clears its mark");
+}
+
+// =============================================================================
+// PARALLEL AXIS MODEL
+// =============================================================================
+
+static ParallelAxisModel MakeIrisLikeModel() {
+    ParallelAxisModel model;
+    model.AddDimensionColumn("petal", {1.0, 2.0, 3.0, 4.0});
+    model.AddDimensionColumn("sepal", {10.0, 20.0, 30.0, 40.0});
+    model.AddDimensionColumn("width", {100.0, 300.0, 200.0, 400.0});
+    model.SetRecordGroups({"a", "a", "b", "b"});
+    return model;
+}
+
+static void TestPCPModelBasics() {
+    std::printf("PCP model (columns, order, visibility, inversion)\n");
+
+    ParallelAxisModel model = MakeIrisLikeModel();
+    CHECK(model.DimensionCount() == 3 && model.RecordCount() == 4,
+          "columns build dimensions and records");
+
+    std::vector<size_t> order = model.DisplayOrder();
+    CHECK(order.size() == 3 && order[0] == 0 && order[2] == 2,
+          "the default display order is insertion order");
+
+    model.MoveAxis(2, 0);            // drag "width" to the front
+    order = model.DisplayOrder();
+    CHECK(order[0] == 2 && order[1] == 0 && order[2] == 1,
+          "MoveAxis reorders the display");
+
+    model.SetAxisVisible(0, false);  // hide "petal"
+    order = model.DisplayOrder();
+    CHECK(order.size() == 2 && order[0] == 2 && order[1] == 1,
+          "a hidden dimension leaves the display order");
+    CHECK(Near(model.AxisU(0), 0.0) && Near(model.AxisU(1), 1.0),
+          "axis positions respan after hiding");
+
+    model.SetAxisVisible(0, true);
+    ChartAxisSet axes;
+    model.ConfigureAxes(axes);
+    model.BuildCache(axes);
+    CHECK(axes.Count() == 3, "one axis per visible dimension");
+    CHECK(axes.At(0).inPlot && Near(axes.At(0).plotPosition, 0.0) &&
+              Near(axes.At(2).plotPosition, 1.0),
+          "axes are in-plot at their display positions");
+
+    // Per-axis normalisation: each column's extremes hit 0 and 1.
+    // Display order is now width, petal, sepal.
+    CHECK(Near(model.NormalizedValue(0, 1), 0.0) &&
+              Near(model.NormalizedValue(3, 1), 1.0),
+          "per-axis: a column's extremes map to the axis ends");
+
+    model.SetAxisInverted(0, true);  // invert petal (display slot 1)
+    ChartAxisSet inverted;
+    model.ConfigureAxes(inverted);
+    model.BuildCache(inverted);
+    CHECK(Near(model.NormalizedValue(0, 1), 1.0),
+          "inversion flips a single axis");
+}
+
+static void TestPCPCommonScale() {
+    std::printf("PCP model (common scale and standardisation)\n");
+
+    ParallelAxisModel model;
+    model.AddDimensionColumn("small", {0.0, 5.0, 10.0});
+    model.AddDimensionColumn("large", {0.0, 50.0, 100.0});
+
+    // Raw common scale: the same value lands at the same height on every axis.
+    model.SetNormalization(PCPNormalization::CommonScale);
+    ChartAxisSet axes;
+    model.ConfigureAxes(axes);
+    model.BuildCache(axes);
+    CHECK(Near(model.NormalizedValue(1, 0), 0.05) &&
+              Near(model.NormalizedValue(1, 1), 0.5),
+          "raw common scale maps values onto one shared band");
+    double lo = 0.0, hi = 0.0;
+    model.SharedRange(lo, hi);
+    CHECK(Near(lo, 0.0) && Near(hi, 100.0), "the shared range spans all columns");
+
+    // Standardised: each column's mean sits at the same height even though the
+    // units differ by 10x - the Iris look.
+    model.SetStandardize(PCPStandardize::ZScore);
+    ChartAxisSet zAxes;
+    model.ConfigureAxes(zAxes);
+    model.BuildCache(zAxes);
+    CHECK(Near(model.NormalizedValue(1, 0), model.NormalizedValue(1, 1), 1e-9),
+          "z-scored common scale aligns the column means");
+    CHECK(Near(model.NormalizedValue(0, 0), model.NormalizedValue(0, 1), 1e-9),
+          "and the standardised extremes");
+}
+
+static void TestPCPBrushes() {
+    std::printf("PCP model (brush semantics: AND across axes, OR within)\n");
+
+    ParallelAxisModel model = MakeIrisLikeModel();
+    CHECK(model.RecordPasses(0) && model.PassingCount() == 4,
+          "no brushes: everything passes");
+
+    model.AddBrush(0, 1.5, 3.5);            // petal in [1.5, 3.5] -> records 1, 2
+    CHECK(model.PassingCount() == 2 && !model.RecordPasses(0) && model.RecordPasses(1),
+          "one brush filters its dimension");
+
+    model.AddBrush(1, 25.0, 45.0);          // AND sepal in [25, 45] -> records 2, 3
+    CHECK(model.PassingCount() == 1 && model.RecordPasses(2),
+          "brushes on different axes intersect (AND)");
+
+    model.AddBrush(0, 3.8, 4.2);            // OR petal in [3.8, 4.2] -> adds record 3
+    CHECK(model.PassingCount() == 2 && model.RecordPasses(3),
+          "brushes on the same axis union (OR)");
+
+    model.ClearBrushes(0);
+    CHECK(model.PassingCount() == 2, "clearing one axis keeps the other's filter");
+    model.ClearBrushes();
+    CHECK(model.PassingCount() == 4, "clearing all brushes restores everything");
+}
+
+static void TestPCPMissingAndHitTest() {
+    std::printf("PCP model (missing values and nearest-line hit testing)\n");
+
+    ParallelAxisModel model;
+    model.AddDimensionColumn("a", {0.0, 1.0, std::nan("")});
+    model.AddDimensionColumn("b", {0.0, 1.0, 0.5});
+    ChartAxisSet axes;
+    model.ConfigureAxes(axes);
+    model.BuildCache(axes);
+
+    CHECK(!model.HasValue(2, 0) && model.HasValue(2, 1),
+          "a NaN cell is missing, its neighbours are not");
+
+    // Record 0 runs along v=0, record 1 along v=1 (both columns share ranges).
+    CHECK(model.NearestRecord(0.5, 0.05, 0.2) == 0,
+          "the nearest line to a point near the bottom is record 0");
+    CHECK(model.NearestRecord(0.5, 0.95, 0.2) == 1,
+          "and near the top is record 1");
+    CHECK(model.NearestRecord(0.5, 0.5, 0.05) == -1,
+          "nothing within tolerance yields -1");
+    // Record 2's segment is broken by the NaN, so it can never be hit.
+    CHECK(model.NearestRecord(0.5, 0.55, 0.12) != 2,
+          "a record with a missing endpoint is not hit through the gap");
+
+    CHECK(MakeIrisLikeModel().Groups() == std::vector<std::string>({"a", "b"}),
+          "groups come back distinct, in first-seen order");
+}
+
+// =============================================================================
+
+int main() {
+    std::printf("=== ChartEngineTest ===\n\n");
+
+    TestLinearAxis();
+    TestExplicitRangeAndOutOfRange();
+    TestDegenerateRange();
+    TestNaNIsIgnored();
+    TestLogAxis();
+    TestZScoreAndPercentile();
+    TestCategoryAxis();
+    TestTicksAndFormatting();
+    TestAxisSet();
+    TestLayoutNegotiation();
+    TestVerticalAndHorizontalProjections();
+    TestPolarProjection();
+    TestLabelPolicyRoles();
+    TestLabelBrokerRouting();
+    TestLabelBrokerUserData();
+    TestPCPModelBasics();
+    TestPCPCommonScale();
+    TestPCPBrushes();
+    TestPCPMissingAndHitTest();
+
+    std::printf("\n%s (%d failure%s)\n",
+                g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
+                g_failures, g_failures == 1 ? "" : "s");
+    return g_failures == 0 ? 0 : 1;
+}
