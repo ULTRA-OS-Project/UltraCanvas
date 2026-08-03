@@ -4,7 +4,7 @@
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab) and the media
 // preview (UltraCanvasMediaViewer).
 // Version: 1.1.2
-// Last Modified: 2026-08-04
+// Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -202,6 +202,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // The pane is added / removed as the selection changes; the viewer must
     // not steal the keyboard focus from the filer on every appearance.
     preview->SetGrabFocusOnAttach(false);
+    // The filer provides the navigation; the preview shows only the media
+    // (no breadcrumb / toolbar rows above the image).
+    preview->SetTopBarsVisible(false);
 
     BuildTabbedContainer();
 

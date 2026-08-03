@@ -296,6 +296,14 @@ public:
 
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 
+    // ===== TOP BARS (EMBEDDED MODE) =====
+    // Show/hide everything above the display surface: the folder breadcrumb,
+    // both toolbar rows and the adjustments panel. Hosts that embed the viewer
+    // as a plain preview pane (e.g. the UltraFiler preview) turn them off and
+    // provide their own navigation. Default: visible.
+    void SetTopBarsVisible(bool visible);
+    bool GetTopBarsVisible() const { return topBarsVisible; }
+
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
     // without clicking into it first.
@@ -371,6 +379,7 @@ private:
     std::vector<std::string> playlist;
     size_t currentIndex = 0;
     std::string currentFolder;     // folder the breadcrumb reflects
+    bool topBarsVisible = true;    // breadcrumb + toolbars above the surface
 
     std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
     std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row

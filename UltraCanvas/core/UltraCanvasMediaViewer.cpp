@@ -1135,9 +1135,21 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
 
+void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
+    if (topBarsVisible == visible) return;
+    topBarsVisible = visible;
+    if (toolbar)  toolbar->SetVisible(visible);
+    if (toolbar2) toolbar2->SetVisible(visible);
+    // The adjustments panel opens through its toolbar2 toggle; it never stays
+    // open (or reappears) while the bars are hidden.
+    if (!visible && adjustPanel) adjustPanel->SetVisible(false);
+    UpdateBreadcrumb();
+    RequestRedraw();
+}
+
 void UltraCanvasMediaViewer::UpdateBreadcrumb() {
     if (!breadcrumb) return;
-    if (currentFolder.empty()) {
+    if (currentFolder.empty() || !topBarsVisible) {
         breadcrumb->Clear();
         breadcrumb->SetVisible(false);
         return;

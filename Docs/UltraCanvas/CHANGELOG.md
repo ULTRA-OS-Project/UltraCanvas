@@ -1,3 +1,18 @@
+#### 2026-08-05 *0.3.26*
+- **UltraCanvasMediaViewer**: new `SetTopBarsVisible()` / `GetTopBarsVisible()`
+  — shows/hides everything above the display surface (the folder breadcrumb,
+  both toolbar rows and the adjustments panel). For hosts that embed the
+  viewer as a plain preview pane and provide their own navigation. Default:
+  visible.
+- **UltraCanvasTreeView**: new `SetFontSize()` / `GetFontSize()` for the row
+  label font size (default 12, previously hardcoded).
+  `UltraCanvasColumnsTreeView` uses it for its cell text, column headers and
+  group headers too.
+- **UltraFiler app** *(1.1.2)*: every UI element now uses a single 9 pt font
+  size (toolbar, breadcrumb, dropdowns, tabs, folder tree, file panel, status
+  bar). The preview pane hides the media viewer's breadcrumb and toolbars —
+  the filer provides the navigation, the pane shows only the media.
+
 #### 2026-08-04 *0.3.25*
 - **UltraCanvasFilerWidget** *(1.7.0)*: entries are properly draggable. A press
   on an item captures the mouse and, past the slop threshold, picks up that
