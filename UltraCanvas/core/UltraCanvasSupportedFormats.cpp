@@ -56,17 +56,18 @@ namespace {
     }
 #endif
 
-    // ---- Bitmap: probe the candidate formats against the installed libvips ----
-    void AddBitmapFormats(std::vector<MediaFormatInfo>& out) {
-        struct Candidate {
-            const char* ext;
-            std::vector<std::string> aliases;
-            const char* description;
-        };
-        // Everything the UCImage load/save path implements; whether a
-        // particular loader/saver is really present depends on how libvips
-        // was built (e.g. .heic needs libheif with an HEVC codec).
-        static const std::vector<Candidate> candidates = {
+    struct BitmapCandidate {
+        const char* ext;
+        std::vector<std::string> aliases;
+        const char* description;
+    };
+    // Everything the UCImage load/save path implements; whether a
+    // particular loader/saver is really present depends on how libvips
+    // was built (e.g. .heic needs libheif with an HEVC codec). Shared by
+    // AddBitmapFormats and CanImagePipelineLoad: the magick fallback only
+    // applies to these known-raster extensions.
+    const std::vector<BitmapCandidate>& BitmapCandidates() {
+        static const std::vector<BitmapCandidate> candidates = {
             { "png",  {},                 "Portable Network Graphics" },
             { "jpg",  { "jpeg", "jfif" }, "JPEG image" },
             { "webp", {},                 "WebP image" },
@@ -86,7 +87,12 @@ namespace {
             { "ico",  {},                 "Windows icon" },
             { "fits", {},                 "Flexible Image Transport System" },
         };
+        return candidates;
+    }
 
+    // ---- Bitmap: probe the candidate formats against the installed libvips ----
+    void AddBitmapFormats(std::vector<MediaFormatInfo>& out) {
+        const std::vector<BitmapCandidate>& candidates = BitmapCandidates();
 #ifdef HAS_LIBVIPS
         if (!EnsureImageSubsystem()) return;
         // magickload advertises no suffixes (content-sniffing), so for these
@@ -420,6 +426,31 @@ namespace {
             if (f.MatchesExtension(extension)) return f;
         }
         return std::nullopt;
+    }
+
+    bool UltraCanvasSupportedFormats::CanImagePipelineLoad(const std::string& extension) {
+        const std::string ext = ToLowerNoDot(extension);
+        if (ext.empty()) return false;
+        // SVG bypasses libvips: UCImage routes it to the built-in SVG renderer.
+        if (ext == "svg" || ext == "svgz") return true;
+#ifdef HAS_LIBVIPS
+        if (!EnsureImageSubsystem()) return false;
+        if (VipsCanLoad("." + ext)) return true;
+        // magickload advertises no suffixes (it content-sniffs), so it only
+        // counts for extensions known to be raster formats — never for
+        // arbitrary files (that is exactly the mis-dispatch this API guards
+        // against).
+        if (VipsHasMagickLoadFallback()) {
+            for (const BitmapCandidate& c : BitmapCandidates()) {
+                if (ext == c.ext) return true;
+                for (const std::string& alias : c.aliases)
+                    if (ext == alias) return true;
+            }
+        }
+        return false;
+#else
+        return ext == "png";   // cairo's native PNG reader
+#endif
     }
 
     std::string UltraCanvasSupportedFormats::GetCategoryName(MediaFormatCategory category) {

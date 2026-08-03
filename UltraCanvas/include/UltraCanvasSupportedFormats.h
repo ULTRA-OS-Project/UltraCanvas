@@ -59,6 +59,14 @@ namespace UltraCanvas {
         // find the same entry). Empty optional when no format matches.
         static std::optional<MediaFormatInfo> FindByExtension(const std::string& extension);
 
+        // True when the raster/SVG image pipeline behind UCImage (libvips +
+        // the built-in SVG renderer) can decode files with this extension
+        // (with or without leading dot, any case). Use this to gate thumbnail
+        // or preview decode attempts: formats that only a graphics plugin
+        // understands (CDR, XAR, ...) are listed as loadable in the inventory
+        // but must NOT be fed to the image pipeline.
+        static bool CanImagePipelineLoad(const std::string& extension);
+
         static std::string GetCategoryName(MediaFormatCategory category);
     };
 

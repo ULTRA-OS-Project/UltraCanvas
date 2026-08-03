@@ -227,6 +227,14 @@ private:
     std::string infoText;
 };
 
+// How the viewer behaves when a video file becomes the shown item.
+enum class VideoPreviewMode {
+    Autoplay,      // start full playback with sound (default)
+    PreviewClip,   // play the first few seconds muted, then pause
+                   // (the UltraCanvasAlbum hover-preview style)
+    Still          // show the prerolled first frame, paused
+};
+
 // ===== THE MEDIA VIEWER WIDGET =====
 // A self-contained column of [toolbar][adjustments panel][image surface]
 // [info bar]. Manages the playlist of files, slideshow timing and the
@@ -270,6 +278,22 @@ public:
     void SetTransition(MediaTransition t) { transition = t; }
     MediaTransition GetTransition() const { return transition; }
 
+    // ===== VIDEO PREVIEW =====
+    // Selects what happens when a video file is shown (see VideoPreviewMode).
+    // Changing the mode also applies it to a currently shown video: Autoplay
+    // resumes playback with sound, PreviewClip restarts the muted clip and
+    // Still pauses.
+    void SetVideoPreviewMode(VideoPreviewMode mode);
+    VideoPreviewMode GetVideoPreviewMode() const { return videoPreviewMode; }
+    // Length of the muted PreviewClip playback (default 5 s, like the
+    // UltraCanvasAlbum hover preview).
+    void SetVideoPreviewClipSeconds(float seconds);
+    float GetVideoPreviewClipSeconds() const { return videoPreviewClipSec; }
+    // Stop any running video / audio playback (and a pending PreviewClip
+    // timer). For hosts that hide or detach the viewer: without this the
+    // sound would keep playing while nothing is visible.
+    void StopPlayback();
+
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 
     // ===== KEYBOARD =====
@@ -292,6 +316,10 @@ public:
 private:
     void BuildUI(float w, float h);
     void LoadCurrent(bool animated);
+    // Start playback of a freshly loaded (or already shown) video according
+    // to videoPreviewMode; no-op when the video backend is unavailable.
+    void ApplyVideoPreviewToCurrent();
+    void StopVideoClipTimer();
     void UpdateBreadcrumb();          // rebuild the folder path strip from currentFolder
     void UpdateInfoBar();
     void UpdateDetailedInfo();
@@ -365,6 +393,10 @@ private:
     bool   slideshowPlaying = false;
     double slideshowIntervalSec = 5.0;
     TimerId slideshowTimer = 0;
+
+    VideoPreviewMode videoPreviewMode = VideoPreviewMode::Autoplay;
+    float videoPreviewClipSec = 5.0f;
+    TimerId videoClipTimer = 0;        // ends the muted PreviewClip playback
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
 

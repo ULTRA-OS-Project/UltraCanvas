@@ -31,6 +31,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
@@ -88,6 +89,25 @@ namespace UltraCanvas {
         int clampi(int v, int lo, int hi) {
             return v < lo ? lo : (v > hi ? hi : v);
         }
+
+        // Cached per-extension answer to "can the UCImage pipeline decode
+        // this?". The Image/Vector file categories are broader than what the
+        // image pipeline loads (e.g. xar/cdr render through graphics plugins),
+        // and feeding such files to the loader just produces libvips warnings
+        // and a failed decode.
+        bool ImagePipelineLoadsExtension(const std::string& ext) {
+            static std::map<std::string, bool> cache;
+            static std::mutex cacheMutex;
+            std::lock_guard<std::mutex> lk(cacheMutex);
+            auto it = cache.find(ext);
+            if (it == cache.end()) {
+                it = cache.emplace(
+                        ext, UltraCanvasSupportedFormats::CanImagePipelineLoad(ext)).first;
+            }
+            return it->second;
+        }
+
+        std::string LowerExtension(const std::string& name);   // defined below
 
         int CompareNoCase(const std::string& a, const std::string& b) {
             size_t n = std::min(a.size(), b.size());
@@ -1821,7 +1841,10 @@ namespace UltraCanvas {
                 auto thumb = CreateImageElement(
                         "FilerDelThumb" + std::to_string(idx), 0, 0, tile, tile);
                 thumb->SetFitMode(ImageFitMode::Contain);
-                if (!pi.isDir && !pi.realPath.empty()) thumb->LoadFromFile(pi.realPath);
+                if (!pi.isDir && !pi.realPath.empty() &&
+                    ImagePipelineLoadsExtension(
+                            LowerExtension(fs::path(pi.realPath).filename().string())))
+                    thumb->LoadFromFile(pi.realPath);
                 thumb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 cell->AddChild(thumb);
 
@@ -2985,8 +3008,9 @@ namespace UltraCanvas {
 
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
-        if (e.category == FilerFileCategory::Image ||
-            e.category == FilerFileCategory::Vector) {
+        if ((e.category == FilerFileCategory::Image ||
+             e.category == FilerFileCategory::Vector) &&
+            ImagePipelineLoadsExtension(e.extension)) {
             return e.path;
         }
         return {};

@@ -597,6 +597,7 @@ UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(slideshowTimer);
         slideshowTimer = 0;
     }
+    StopVideoClipTimer();
 }
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasMediaViewer::BuildAdjustSlider(
@@ -1138,6 +1139,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
 
     // Stop any media that was playing before we switch away from it.
+    StopVideoClipTimer();
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     if (videoPlayer) static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->Stop();
 #endif
@@ -1225,7 +1227,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         if (!vp->LoadFromFile(path)) {
             if (infoLabel) infoLabel->SetText("Failed to open video: " + BaseName(path));
         } else {
-            vp->Play();
+            ApplyVideoPreviewToCurrent();
         }
         handled = true;
     }
@@ -1485,6 +1487,91 @@ void UltraCanvasMediaViewer::ToggleSlideshow() {
 void UltraCanvasMediaViewer::SetSlideshowIntervalSeconds(double sec) {
     slideshowIntervalSec = std::max(0.5, sec);
     if (slideshowPlaying) { PauseSlideshow(); slideshowPlaying = true; PlaySlideshow(); }
+}
+
+// ===== VIDEO PREVIEW =====
+
+void UltraCanvasMediaViewer::StopVideoClipTimer() {
+    if (!videoClipTimer) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(videoClipTimer);
+    videoClipTimer = 0;
+}
+
+void UltraCanvasMediaViewer::ApplyVideoPreviewToCurrent() {
+    StopVideoClipTimer();
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (!videoPlayer) return;
+    auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+    auto player = vp->GetPlayer();
+    if (!player || !player->IsLoaded()) return;
+    switch (videoPreviewMode) {
+        case VideoPreviewMode::Autoplay:
+            player->SetMute(false);
+            vp->Play();
+            break;
+        case VideoPreviewMode::PreviewClip: {
+            // Album hover-preview style: a few seconds of muted playback,
+            // then pause on the current frame (the transport bar stays live
+            // for the user to continue watching).
+            player->SetMute(true);
+            vp->Seek(0.0);
+            vp->Play();
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (app) {
+                unsigned ms = static_cast<unsigned>(
+                        std::max(0.5f, videoPreviewClipSec) * 1000.0f);
+                videoClipTimer = app->StartTimer(ms, false, [this](TimerId) {
+                    videoClipTimer = 0;
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+                    if (!videoPlayer) return;
+                    auto* v = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+                    v->Pause();
+                    // Un-mute so a manual resume plays with sound again.
+                    if (auto p = v->GetPlayer()) p->SetMute(false);
+#endif
+                });
+            }
+            break;
+        }
+        case VideoPreviewMode::Still:
+            // Stay paused: the backend prerolls the first frame on load, so
+            // the surface shows a still image without starting playback.
+            player->SetMute(false);
+            break;
+    }
+#endif
+}
+
+void UltraCanvasMediaViewer::SetVideoPreviewMode(VideoPreviewMode mode) {
+    if (mode == videoPreviewMode) return;
+    videoPreviewMode = mode;
+    // Apply to a currently shown video so the change is immediately visible.
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (videoPlayer && videoPlayer->IsVisible()) {
+        if (mode == VideoPreviewMode::Still) {
+            StopVideoClipTimer();
+            auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+            vp->Pause();
+            if (auto p = vp->GetPlayer()) p->SetMute(false);
+        } else {
+            ApplyVideoPreviewToCurrent();
+        }
+    }
+#endif
+}
+
+void UltraCanvasMediaViewer::SetVideoPreviewClipSeconds(float seconds) {
+    videoPreviewClipSec = std::max(0.5f, seconds);
+}
+
+void UltraCanvasMediaViewer::StopPlayback() {
+    StopVideoClipTimer();
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (videoPlayer) static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->Stop();
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Stop();
+#endif
 }
 
 // ===== EVENTS =====
