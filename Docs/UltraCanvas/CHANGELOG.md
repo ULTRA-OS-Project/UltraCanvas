@@ -1,4 +1,22 @@
 #### 2026-08-02 *0.3.24*
+- **UltraCanvasApplication**: runtime fontconfig bootstrap. `Initialize()` now
+  calls `SetupBundledFontconfig()` before anything can touch fontconfig: when no
+  config file is reachable (no `FONTCONFIG_FILE`, no `FONTCONFIG_PATH` entry and
+  nothing at the platform's built-in location — the situation in the packaged
+  Windows ZIP, which ships no `etc/fonts/fonts.conf`), it writes a minimal
+  `fonts.conf` into the user's cache/appdata directory and points
+  `FONTCONFIG_FILE` at it. This removes the
+  `Fontconfig error: Cannot load default config file: No such file: (null)`
+  line printed on startup and gives font matching real directories (bundled
+  fonts, system fonts, a cache dir, generic family aliases) instead of an empty
+  config. No-op on macOS and on any system that already has a `fonts.conf`, and
+  the generated file carries no rendering rules, so text looks unchanged.
+- **UltraFiler app**: no console window on Windows release builds
+  (`WIN32_EXECUTABLE`, like the demo and Texter apps) — startup noise from
+  third-party libraries no longer pops up a terminal behind the window. The
+  executable now also embeds the UTF-8 active-code-page manifest, so paths
+  outside the legacy code page (Thai, CJK, …) reach narrow Win32/CRT calls
+  intact.
 - **UltraCanvasMediaViewer**: selectable video preview behavior. New
   `VideoPreviewMode` (`Autoplay` — full playback with sound, the previous and
   default behavior; `PreviewClip` — the first seconds muted and then paused,

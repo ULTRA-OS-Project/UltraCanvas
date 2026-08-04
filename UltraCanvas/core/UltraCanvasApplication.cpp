@@ -122,6 +122,267 @@ namespace UltraCanvas {
         return p;
     }
 
+#if !defined(__APPLE__)
+    // ===== RUNTIME FONTCONFIG BOOTSTRAP =====
+    // Packaged builds ship no fonts.conf (the MSYS2 Windows ZIP most
+    // visibly), so the very first fontconfig call made from inside
+    // Pango/cairo/vips prints
+    //     Fontconfig error: Cannot load default config file: No such file: (null)
+    // on stderr and leaves the process with a config that knows no font
+    // directory at all. The helpers below detect that before fontconfig is
+    // first touched and write a minimal config for FONTCONFIG_FILE to point
+    // at, so no error is printed and font matching has real directories to
+    // work with.
+    namespace {
+        bool FontconfigFileExists(const std::string& path) {
+            if (path.empty()) return false;
+            std::error_code ec;
+            return std::filesystem::exists(path, ec);
+        }
+
+        std::vector<std::string> SplitSearchPath(const char* value) {
+#if defined(_WIN32) || defined(_WIN64)
+            const char separator = ';';
+#else
+            const char separator = ':';
+#endif
+            std::vector<std::string> parts;
+            if (!value) return parts;
+            std::string current;
+            for (const char* c = value; *c; ++c) {
+                if (*c == separator) {
+                    if (!current.empty()) parts.push_back(current);
+                    current.clear();
+                } else {
+                    current.push_back(*c);
+                }
+            }
+            if (!current.empty()) parts.push_back(current);
+            return parts;
+        }
+
+        // Mirrors fontconfig's own lookup closely enough to answer "would
+        // FcInit() find a config file?" without calling into fontconfig (any
+        // FcConfig* call would already trigger the failing init we want to
+        // avoid). Order: FONTCONFIG_FILE, FONTCONFIG_PATH entries, then the
+        // platform's built-in location. On Windows that location is derived
+        // from the libfontconfig DLL directory (<dir>\etc\fonts, with a
+        // trailing "bin"/"lib" component stripped), which for a packaged app
+        // is the executable directory.
+        bool SystemFontconfigConfigFound() {
+            const char* explicitFile = std::getenv("FONTCONFIG_FILE");
+            if (explicitFile && *explicitFile && FontconfigFileExists(explicitFile)) {
+                return true;
+            }
+
+            std::vector<std::string> dirs = SplitSearchPath(std::getenv("FONTCONFIG_PATH"));
+            const std::string exeDir = GetExecutableDir();
+#if defined(_WIN32) || defined(_WIN64)
+            dirs.push_back(exeDir + "/etc/fonts");
+            dirs.push_back(exeDir + "/../etc/fonts");
+#else
+            dirs.push_back("/etc/fonts");
+            dirs.push_back("/usr/local/etc/fonts");
+            dirs.push_back(exeDir + "/../etc/fonts");
+#endif
+            for (const std::string& dir : dirs) {
+                if (FontconfigFileExists(dir + "/fonts.conf")) return true;
+            }
+            return false;
+        }
+
+        // fontconfig understands forward slashes on every platform; keeping
+        // backslashes out of the generated XML avoids any escaping question.
+        std::string ToFontconfigPath(const std::string& in) {
+            std::string out = in;
+            std::replace(out.begin(), out.end(), '\\', '/');
+            while (out.size() > 1 && out.back() == '/') out.pop_back();
+            return out;
+        }
+
+        std::string XmlEscape(const std::string& in) {
+            std::string out;
+            out.reserve(in.size());
+            for (char c : in) {
+                switch (c) {
+                    case '&':  out += "&amp;";  break;
+                    case '<':  out += "&lt;";   break;
+                    case '>':  out += "&gt;";   break;
+                    case '"':  out += "&quot;"; break;
+                    case '\'': out += "&apos;"; break;
+                    default:   out += c;        break;
+                }
+            }
+            return out;
+        }
+
+        // Writable directory for the generated config. The app directory is
+        // deliberately not used - a packaged app may live under Program Files
+        // or a read-only mount.
+        std::string RuntimeFontconfigDir() {
+#if defined(_WIN32) || defined(_WIN64)
+            const char* roots[] = { std::getenv("LOCALAPPDATA"),
+                                    std::getenv("TEMP"),
+                                    std::getenv("TMP") };
+            for (const char* root : roots) {
+                if (root && *root) return std::string(root) + "/UltraCanvas/fontconfig";
+            }
+            return {};
+#else
+            if (const char* xdg = std::getenv("XDG_CACHE_HOME")) {
+                if (*xdg) return std::string(xdg) + "/UltraCanvas/fontconfig";
+            }
+            if (const char* home = std::getenv("HOME")) {
+                if (*home) return std::string(home) + "/.cache/UltraCanvas/fontconfig";
+            }
+            return "/tmp/UltraCanvas-fontconfig";
+#endif
+        }
+
+        // Deliberately free of rendering rules (antialias/hinting/lcdfilter):
+        // this config only replaces a *missing* one, so it must not change how
+        // text looks compared to a system that has its own fonts.conf.
+        std::string GenerateFontsConf() {
+            std::string bundledDir;
+            {
+                const std::string dir = GetBundledFontsDir();
+                std::error_code ec;
+                if (std::filesystem::is_directory(dir, ec)) {
+                    bundledDir = XmlEscape(ToFontconfigPath(dir));
+                }
+            }
+
+            std::ostringstream conf;
+            conf << "<?xml version=\"1.0\"?>\n"
+                    "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+                    "<!-- Generated by UltraCanvas: no system fonts.conf was found. -->\n"
+                    "<fontconfig>\n";
+
+            if (!bundledDir.empty()) {
+                conf << "  <dir>" << bundledDir << "</dir>\n";
+            }
+#if defined(_WIN32) || defined(_WIN64)
+            // WINDOWSFONTDIR / WINDOWSUSERFONTDIR / LOCAL_APPDATA_FONTCONFIG_CACHE
+            // are fontconfig's built-in Windows keywords.
+            conf << "  <dir>WINDOWSFONTDIR</dir>\n"
+                    "  <dir>WINDOWSUSERFONTDIR</dir>\n"
+                    "  <cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>\n";
+            const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
+            const char* const kSerif[] = { "Times New Roman", "Georgia" };
+            const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
+#else
+            conf << "  <dir>/usr/share/fonts</dir>\n"
+                    "  <dir>/usr/local/share/fonts</dir>\n"
+                    "  <dir prefix=\"xdg\">fonts</dir>\n"
+                    "  <dir>~/.fonts</dir>\n"
+                    "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
+                    "  <cachedir>~/.fontconfig</cachedir>\n"
+                    "  <include ignore_missing=\"yes\">/etc/fonts/conf.d</include>\n";
+            const char* const kSans[] = { "Ubuntu", "DejaVu Sans", "Liberation Sans", "Noto Sans" };
+            const char* const kSerif[] = { "DejaVu Serif", "Liberation Serif", "Noto Serif" };
+            const char* const kMono[] = { "Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono" };
+#endif
+            // Generic family aliases - without a system config nothing maps
+            // "sans-serif"/"monospace" (what Pango asks for by default) onto a
+            // real family, and every request falls back to the first font
+            // fontconfig happens to list.
+            struct GenericAlias {
+                const char* generic;
+                const char* const* preferred;
+                size_t preferredCount;
+            };
+            const GenericAlias aliases[] = {
+                { "sans-serif", kSans,  sizeof(kSans) / sizeof(kSans[0]) },
+                { "sans",       kSans,  sizeof(kSans) / sizeof(kSans[0]) },
+                { "serif",      kSerif, sizeof(kSerif) / sizeof(kSerif[0]) },
+                { "monospace",  kMono,  sizeof(kMono) / sizeof(kMono[0]) },
+            };
+            for (const GenericAlias& alias : aliases) {
+                conf << "  <alias>\n"
+                     << "    <family>" << alias.generic << "</family>\n"
+                     << "    <prefer>\n";
+                for (size_t i = 0; i < alias.preferredCount; ++i) {
+                    conf << "      <family>" << alias.preferred[i] << "</family>\n";
+                }
+                conf << "    </prefer>\n"
+                     << "  </alias>\n";
+            }
+
+            conf << "</fontconfig>\n";
+            return conf.str();
+        }
+    } // namespace
+#endif // !__APPLE__
+
+    void SetupBundledFontconfig() {
+#if defined(__APPLE__)
+        // macOS renders text through CoreText - fontconfig is not in the stack.
+#else
+        if (SystemFontconfigConfigFound()) return;
+
+        const std::string dir = RuntimeFontconfigDir();
+        if (dir.empty()) {
+            debugOutput << "UltraCanvas: no writable directory for a runtime "
+                           "fonts.conf" << std::endl;
+            return;
+        }
+
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        if (ec) {
+            debugOutput << "UltraCanvas: cannot create " << dir << ": "
+                        << ec.message() << std::endl;
+            return;
+        }
+
+        const std::string file = dir + "/fonts.conf";
+        const std::string contents = GenerateFontsConf();
+
+        // Rewrite only when stale - the baked-in bundled-fonts path changes
+        // whenever the application is moved, and rewriting invalidates
+        // fontconfig's cache for that config.
+        bool needsWrite = true;
+        {
+            std::ifstream existing(file, std::ios::binary);
+            if (existing) {
+                std::ostringstream current;
+                current << existing.rdbuf();
+                needsWrite = (current.str() != contents);
+            }
+        }
+        if (needsWrite) {
+            std::ofstream out(file, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                debugOutput << "UltraCanvas: cannot write runtime fonts.conf to "
+                            << file << std::endl;
+                return;
+            }
+            out << contents;
+            if (!out) {
+                debugOutput << "UltraCanvas: failed writing runtime fonts.conf to "
+                            << file << std::endl;
+                return;
+            }
+        }
+
+        // fontconfig reads FONTCONFIG_FILE through the narrow CRT getenv(), so
+        // set it through the CRT (not SetEnvironmentVariable) and keep it UTF-8
+        // - UltraCanvas executables embed a manifest selecting the UTF-8 active
+        // code page, so a non-ASCII path survives the round trip.
+#if defined(_WIN32) || defined(_WIN64)
+        const bool environmentSet = (_putenv_s("FONTCONFIG_FILE", file.c_str()) == 0);
+#else
+        const bool environmentSet = (setenv("FONTCONFIG_FILE", file.c_str(), 1) == 0);
+#endif
+        if (!environmentSet) {
+            debugOutput << "UltraCanvas: could not set FONTCONFIG_FILE=" << file << std::endl;
+            return;
+        }
+        debugOutput << "UltraCanvas: no system fonts.conf found, using generated "
+                    << file << std::endl;
+#endif
+    }
+
 
     FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
         if (!cachedSystemFontStyle_.has_value()) {
@@ -139,6 +400,10 @@ namespace UltraCanvas {
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
+
+        // Must run before anything can touch fontconfig - the image subsystem
+        // (vips -> pango) and every native backend below do.
+        SetupBundledFontconfig();
 
         UCImage::InitializeImageSubsysterm(appName.c_str());
 

@@ -586,6 +586,11 @@ if (BUILD_ULTRAFILER_APP)
     ultracanvas_embed_app_icon(UltraFiler
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraCanvas.png")
 
+    # Embed manifest with UTF-8 active code page (Windows only) - a file
+    # manager browses arbitrary paths, so narrow Win32/CRT calls must read
+    # them as UTF-8 instead of the legacy code page.
+    ultracanvas_embed_windows_manifest(UltraFiler)
+
     message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
 
@@ -749,6 +754,9 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
     if(BUILD_FILEMANAGER_APP)
         set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+    if(BUILD_ULTRAFILER_APP)
+        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 endif()
 
