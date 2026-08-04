@@ -13940,12 +13940,13 @@ FILE: Docs/UltraCanvas/UltraCanvasFilerWidget.md
 The Filer folder widget displays the content of one folder. It is self-rendered
 (like `UltraCanvasAlbum`), so folders with thousands of entries stay cheap: rows,
 tiles, treemap cells, the hover icon menu and the scrollbar are all painted
-inside `Render()` rather than being child elements. Files can be dragged out to
-other windows and applications (and dropped in from them), and Copy / Cut /
-Paste go through the system clipboard so files can be exchanged with external
-file managers; pasting a clipboard image or text creates a file with that
-content — see [Clipboard interop](#clipboard-interop-with-other-programs)
-and [Drag & drop](#drag--drop).
+inside `Render()` rather than being child elements. Entries can be dragged —
+onto a folder shown in the view, or out to other windows and applications (and
+dropped in from them) — and Copy / Cut / Paste go through the system clipboard
+so files can be exchanged with external file managers; pasting a clipboard
+image or text creates a file with that content — see
+[Clipboard interop](#clipboard-interop-with-other-programs) and
+[Drag & drop](#drag--drop).
 
 ```cpp
 #include "UltraCanvasFilerWidget.h"
@@ -14179,16 +14180,33 @@ whenever files, an image or text are available.
 
 ## Drag & drop
 
-Files can be **dragged out** of the widget: press on a (selected) item, move a
-few pixels, and the selection leaves as a native OS drag (XDND on Linux) that
-can be dropped on any other window or application — another Filer widget,
-another window of the same application, an external file manager, an editor,
-… The drop target performs the copy or move itself; when it reports a move the
-source folder is rescanned automatically. During the drag the cursor shows
-whether the target accepts a copy or a move (hold Shift to suggest a move) and
-Escape cancels. Pressing an item that is part of a multi-selection keeps the
-selection so the whole set can be dragged; the usual collapse to a single item
-happens on release when no drag started.
+Press an item and move a few pixels: the entry — or the whole selection, when
+the press landed inside it — is picked up. The mouse is captured for the
+gesture, so even a fast flick out of the widget starts the drag instead of
+losing it. `SetDragEnabled(false)` turns the whole gesture off and leaves
+presses as plain clicks.
+
+**Inside the widget** the drag is drawn by the widget itself: a badge with the
+entry's icon and its name (or "N items") follows the cursor, and the folder
+under the cursor is highlighted as the drop target. Dropping on it **moves**
+the files into that folder — hold **Ctrl** to drop a **copy** instead. Names
+that already exist there get a " (2)" style suffix, a folder cannot be dropped
+into itself, and a drop anywhere but on a folder simply ends the drag. Escape
+abandons the drag without moving anything.
+
+**Leaving the widget** hands the same set over to the native OS drag (XDND on
+Linux), so it can be dropped on any other window or application — another
+Filer widget, another window of the same application, an external file manager,
+an editor, … There the drop target performs the copy or move itself; when it
+reports a move the source folder is rescanned automatically. During that part
+of the drag the cursor shows whether the target accepts a copy or a move (hold
+Shift to suggest a move) and Escape cancels.
+
+A drag **never changes the selection**: what a plain press would select is
+applied on the release instead, so dragging a file does not fire
+`onSelectionChanged` and does not re-target a preview pane fed by it. When no
+drag started, the release selects exactly as a click always did (including the
+collapse of a multi-selection to the pressed item).
 
 Files **dropped onto** the widget from other applications (or dragged over
 from another Filer widget) are copied into the shown folder with unique names;
@@ -14218,6 +14236,12 @@ listed through `VirtualFS_ListDirectory`, so double-clicking a browsable archive
 (`zip`, `7z`, `tar`, ...) descends into it transparently and archive members show
 their compression factor in the Info column.
 
+A rescan (`Refresh()`, or the automatic one after a file operation or a drop)
+keeps the selection on the files that are still there — it is remembered by
+path, not by row index. Files that vanished drop out of it, which is reported
+through `onSelectionChanged`; every rescan also fires `onFolderRefreshed` so a
+host can refresh what it shows about the folder (item counts, status bar).
+
 ## Callbacks
 
 | Callback | Fired |
@@ -14225,6 +14249,7 @@ their compression factor in the Info column.
 | `onFileActivated(entry)` | Double-click / Enter on a file |
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
+| `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

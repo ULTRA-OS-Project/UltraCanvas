@@ -6,8 +6,11 @@
 // codec via lightweight header probes, recursive folder stats). Image
 // thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
 // never waits for image files.
-// Files drag out to other windows / applications via the native OS drag &
-// drop, external drops are copied into the shown folder, and Copy / Cut /
+// Entries are draggable (see DRAGGING ENTRIES): inside the widget the drag is
+// drawn here and a drop on a folder of the view moves the files into it (Ctrl
+// copies), and once the cursor leaves the widget the same set continues as a
+// native OS drag onto other windows / applications. Dragging never changes the
+// selection. External drops are copied into the shown folder, and Copy / Cut /
 // Paste go through the system clipboard so files can be exchanged with other
 // programs (external file managers, editors, ...). Pasting a clipboard that
 // holds raw data instead of files (an image or text copied elsewhere) writes
@@ -15,8 +18,8 @@
 // The column views (details, list, size bars) carry UltraCanvasSplitPane-style
 // splitters between their columns (see COLUMN SPLITTERS), and names too long
 // for the space they are drawn in show the full name in a hover tooltip.
-// Version: 1.6.0
-// Last Modified: 2026-07-31
+// Version: 1.7.0
+// Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -994,6 +997,10 @@ namespace UltraCanvas {
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         CancelPendingRename();      // the timer callback captures `this`
+        if (dragMouseCaptured) {    // never leave the pointer grabbed
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+            dragMouseCaptured = false;
+        }
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
         StopFolderStatsWorker();
@@ -1039,6 +1046,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ScanFolder() {
+        // `selection` indexes `entries`, which is rebuilt below — remember what
+        // is selected by path so a rescan (Refresh after a file operation, a
+        // drop, ...) keeps the same files selected instead of whatever ends up
+        // at the old indices.
+        std::vector<std::string> selectedPaths;
+        for (size_t idx : selection)
+            if (idx < entries.size()) selectedPaths.push_back(entries[idx].path);
+
         entries.clear();
         effectiveSizesValid = false;
         hoveredIndex = -1;
@@ -1160,8 +1175,28 @@ namespace UltraCanvas {
         }
 
         SortEntries();
+
+        // Restore the selection on the entries that are still there. Files that
+        // vanished (moved away, deleted elsewhere) drop out of it, which is a
+        // real selection change and is reported.
+        {
+            std::vector<size_t> restored;
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (std::find(selectedPaths.begin(), selectedPaths.end(),
+                              entries[i].path) != selectedPaths.end()) {
+                    restored.push_back(i);
+                }
+            }
+            bool changed = restored.size() != selectedPaths.size();
+            selection.swap(restored);
+            if (changed) FireSelectionChanged();
+        }
+
         InvalidateFilerLayout();
         RequestRedraw();
+        // The listing itself changed (entries added / removed / renamed) —
+        // hosts use this to refresh what they show about the folder.
+        if (onFolderRefreshed) onFolderRefreshed();
     }
 
     void UltraCanvasFilerWidget::SortEntries() {
@@ -1493,14 +1528,192 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::CopySelection() { SelectionToClipboard(false); }
     void UltraCanvasFilerWidget::CutSelection()  { SelectionToClipboard(true); }
 
+    // ===== DRAGGING ENTRIES =====
+    void UltraCanvasFilerWidget::SetDragEnabled(bool enabled) {
+        if (dragEnabled == enabled) return;
+        dragEnabled = enabled;
+        if (!dragEnabled && (draggingItems || dragOutArmed)) CancelItemDrag();
+    }
+
+    void UltraCanvasFilerWidget::BeginItemDrag(const Point2Di& localPoint) {
+        dragOutArmed = false;
+        // A drag is not a click: whatever the press deferred (collapsing a
+        // multi-selection, selecting the pressed item, the rename click) is
+        // dropped, so the selection — and any preview fed by it — is untouched.
+        dragCollapseIndex = -1;
+        pendingSelectIndex = -1;
+        CancelPendingRename();
+        HideHoverTooltip();
+
+        // The pressed item alone, unless the press landed inside the selection
+        // — then the whole selection travels.
+        std::vector<size_t> indices;
+        if (dragPressIndex >= 0 &&
+            std::find(selection.begin(), selection.end(),
+                      static_cast<size_t>(dragPressIndex)) != selection.end()) {
+            indices = selection;
+        } else if (dragPressIndex >= 0 &&
+                   dragPressIndex < static_cast<int>(entries.size())) {
+            indices.push_back(static_cast<size_t>(dragPressIndex));
+        }
+
+        dragPaths.clear();
+        for (size_t idx : indices)
+            if (idx < entries.size()) dragPaths.push_back(entries[idx].path);
+        if (dragPaths.empty()) return;
+
+        // Badge contents: the single dragged entry, or the item count.
+        const FilerEntry& lead = entries[indices.front()];
+        dragLabel = dragPaths.size() == 1
+                ? lead.name
+                : (std::to_string(dragPaths.size()) + " items");
+        dragLeadEntry = lead;
+
+        draggingItems = true;
+        dragPos = localPoint;
+        dragDropFolderIndex = DragDropFolderAt(localPoint);
+        if (hoveredIndex != -1) hoveredIndex = -1;
+        SetMouseCursor(UCMouseCursor::Hand);
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::UpdateItemDrag(const Point2Di& localPoint) {
+        dragPos = localPoint;
+
+        // Left the widget: the same set continues as a native OS drag, so it
+        // can be dropped on any other window or application.
+        auto lb = GetLocalBounds();
+        Rect2Di local(static_cast<int>(lb.x), static_cast<int>(lb.y),
+                      static_cast<int>(lb.width), static_cast<int>(lb.height));
+        if (!local.Contains(localPoint)) {
+            std::vector<std::string> paths = dragPaths;
+            EndDragGesture();
+            if (!StartNativeDragOfPaths(paths)) {
+                // No native drag available (no window / refused grab): keep the
+                // in-widget drag running so the gesture is not lost.
+                draggingItems = true;
+                dragPaths = paths;
+                dragPos = localPoint;
+                if (auto* app = UltraCanvasApplication::GetInstance()) {
+                    app->CaptureMouse(this);
+                    dragMouseCaptured = true;
+                }
+            }
+            RequestRedraw();
+            return;
+        }
+
+        int folder = DragDropFolderAt(localPoint);
+        if (folder != dragDropFolderIndex) dragDropFolderIndex = folder;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::FinishItemDrag(const Point2Di& localPoint,
+                                                bool copy) {
+        std::vector<std::string> paths = dragPaths;
+        int folder = DragDropFolderAt(localPoint);
+        std::string destDir = (folder >= 0 && folder < static_cast<int>(entries.size()))
+                ? entries[folder].path : std::string();
+        EndDragGesture();
+        RequestRedraw();
+        // A drop that is not on a folder of this view just ends the drag.
+        if (!destDir.empty() && !paths.empty()) DropPathsInto(paths, destDir, copy);
+    }
+
+    void UltraCanvasFilerWidget::CancelItemDrag() {
+        if (!draggingItems && !dragOutArmed) return;
+        EndDragGesture();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::EndDragGesture() {
+        if (dragMouseCaptured) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+            dragMouseCaptured = false;
+        }
+        if (draggingItems) SetMouseCursor(UCMouseCursor::Default);
+        draggingItems = false;
+        dragOutArmed = false;
+        dragPressIndex = -1;
+        dragDropFolderIndex = -1;
+        dragPaths.clear();
+        dragLabel.clear();
+    }
+
+    int UltraCanvasFilerWidget::DragDropFolderAt(const Point2Di& localPoint) const {
+        if (IsInInfoBar(localPoint)) return -1;
+        int idx = ItemAt(ToContentPoint(localPoint));
+        if (idx < 0 || idx >= static_cast<int>(entries.size())) return -1;
+        if (!entries[idx].isDirectory) return -1;
+        // A folder cannot be dropped on itself.
+        if (std::find(dragPaths.begin(), dragPaths.end(), entries[idx].path)
+            != dragPaths.end()) {
+            return -1;
+        }
+        return idx;
+    }
+
+    void UltraCanvasFilerWidget::DropPathsInto(const std::vector<std::string>& paths,
+                                               const std::string& destDir,
+                                               bool copy) {
+        std::error_code ec;
+        if (!fs::is_directory(destDir, ec)) {
+            ReportError("Drop target is not a folder: " + destDir);
+            return;
+        }
+        fs::path canonicalDest = fs::weakly_canonical(fs::path(destDir), ec);
+
+        bool changed = false;
+        for (const std::string& src : paths) {
+            fs::path from(src);
+            ec.clear();
+            if (!fs::exists(from, ec)) continue;
+            fs::path canonicalFrom = fs::weakly_canonical(from, ec);
+            if (canonicalFrom == canonicalDest) continue;
+            // Already in the target folder: a move would be a no-op, a copy
+            // would just litter it with a duplicate.
+            if (canonicalFrom.parent_path() == canonicalDest) continue;
+            // Dropping a folder into itself (or into one of its own children)
+            // would recurse forever.
+            std::string fromStr = canonicalFrom.string();
+            std::string destStr = canonicalDest.string();
+            if (fs::is_directory(from, ec) && !fromStr.empty() &&
+                destStr.compare(0, fromStr.size(), fromStr) == 0 &&
+                (destStr.size() == fromStr.size() || destStr[fromStr.size()] == '/')) {
+                ReportError("Cannot drop a folder into itself: " + src);
+                continue;
+            }
+
+            std::string dest = UniquePathIn(destDir, from.filename().string());
+            ec.clear();
+            if (copy) {
+                fs::copy(from, dest, fs::copy_options::recursive, ec);
+            } else {
+                fs::rename(from, dest, ec);
+                if (ec) {   // cross-device move: copy + delete
+                    ec.clear();
+                    fs::copy(from, dest, fs::copy_options::recursive, ec);
+                    if (!ec) fs::remove_all(from, ec);
+                }
+            }
+            if (ec) ReportError((copy ? "Copy failed for " : "Move failed for ")
+                                + src + ": " + ec.message());
+            else changed = true;
+        }
+        if (changed) Refresh();
+    }
+
     // ===== NATIVE DRAG & DROP =====
     bool UltraCanvasFilerWidget::StartNativeDragOfSelection() {
-        UltraCanvasWindowBase* win = GetWindow();
-        if (!win) return false;
-
         std::vector<std::string> paths;
         for (const FilerEntry& e : GetSelectedEntries()) paths.push_back(e.path);
-        if (paths.empty()) return false;
+        return StartNativeDragOfPaths(paths);
+    }
+
+    bool UltraCanvasFilerWidget::StartNativeDragOfPaths(
+            const std::vector<std::string>& paths) {
+        UltraCanvasWindowBase* win = GetWindow();
+        if (!win || paths.empty()) return false;
 
         // The pointer leaves for the drag: drop the hover state now, the
         // widget won't see mouse events until the drag ends.
@@ -1550,11 +1763,12 @@ namespace UltraCanvas {
         if (changed) Refresh();
     }
 
-    std::string UltraCanvasFilerWidget::UniqueChildPath(const std::string& baseName) const {
+    std::string UltraCanvasFilerWidget::UniquePathIn(const std::string& folder,
+                                                     const std::string& baseName) {
         fs::path base(baseName);
         std::string stem = base.stem().string();
         std::string ext = base.extension().string();   // includes the dot
-        fs::path dir(currentPath);
+        fs::path dir(folder);
         fs::path candidate = dir / baseName;
         std::error_code ec;
         int n = 2;
@@ -1562,6 +1776,10 @@ namespace UltraCanvas {
             candidate = dir / (stem + " (" + std::to_string(n++) + ")" + ext);
         }
         return candidate.string();
+    }
+
+    std::string UltraCanvasFilerWidget::UniqueChildPath(const std::string& baseName) const {
+        return UniquePathIn(currentPath, baseName);
     }
 
     void UltraCanvasFilerWidget::Paste() {
@@ -2938,7 +3156,63 @@ namespace UltraCanvas {
         DrawColumnSplitters(ctx, bounds);
         DrawScrollbar(ctx);
         DrawSelectionInfoBar(ctx, bounds);
+        // Drag badge + drop highlight above the whole view (including chrome).
+        if (draggingItems) DrawDragFeedback(ctx, bounds);
         ctx->PopState();
+    }
+
+    void UltraCanvasFilerWidget::DrawDragFeedback(IRenderContext* ctx,
+                                                  const Rect2Di& bounds) {
+        // The folder the drop would land in, framed like a selected item.
+        if (dragDropFolderIndex >= 0) {
+            for (const ItemLayout& it : items) {
+                if (static_cast<int>(it.entryIndex) != dragDropFolderIndex) continue;
+                Rect2Di r(it.rect.x - scrollOffsetX, it.rect.y - scrollOffsetY,
+                          it.rect.width, it.rect.height);
+                Color fillc = style.selectionColor; fillc.a = 130;
+                ctx->SetFillPaint(fillc);
+                ctx->FillRoundedRectangle(Rect2Dd(r), 6);
+                ctx->SetStrokePaint(style.selectionBorderColor);
+                ctx->SetStrokeWidth(2.5f);
+                ctx->DrawRoundedRectangle(Rect2Dd(r), 6);
+                break;
+            }
+        }
+
+        // Badge following the cursor: the dragged entry's icon plus its name
+        // (or the item count), so it is always visible what is being carried.
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.smallFontSize;
+        ctx->SetFontStyle(fsty);
+        std::string label = EllipsizeText(ctx, dragLabel, 220);
+        Size2Di ts = ctx->GetTextLineDimensions(label);
+
+        const int iconSz = 20, padX = 8, padY = 6, gap = 6;
+        int bw = padX * 2 + iconSz + gap + ts.width;
+        int bh = std::max(iconSz, ts.height) + padY * 2;
+        int bx = dragPos.x + 14;
+        int by = dragPos.y + 14;
+        // Keep the badge inside the widget so it never paints over neighbours.
+        if (bx + bw > bounds.x + bounds.width)  bx = bounds.x + bounds.width - bw;
+        if (by + bh > bounds.y + bounds.height) by = dragPos.y - bh - 6;
+        if (bx < bounds.x) bx = bounds.x;
+        if (by < bounds.y) by = bounds.y;
+        Rect2Di badge(bx, by, bw, bh);
+
+        Color back = style.backgroundColor; back.a = 235;
+        ctx->SetFillPaint(back);
+        ctx->FillRoundedRectangle(Rect2Dd(badge), 5);
+        ctx->SetStrokePaint(style.selectionBorderColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(badge), 5);
+
+        DrawEntryIcon(ctx, dragLeadEntry,
+                      Rect2Di(bx + padX, by + (bh - iconSz) / 2, iconSz, iconSz));
+        ctx->SetFontStyle(fsty);
+        ctx->SetTextPaint(style.textColor);
+        ctx->DrawText(label, Point2Dd(bx + padX + iconSz + gap,
+                                      by + (bh - ts.height) / 2.0));
     }
 
     void UltraCanvasFilerWidget::DrawPlaceholderView(IRenderContext* ctx,
@@ -4867,11 +5141,10 @@ namespace UltraCanvas {
                     RequestRedraw();
                 }
                 HideHoverTooltip();
-                // Do not cancel an active scrollbar drag here: it is mouse-
-                // captured and ends on button release, so a leave (e.g. the
-                // pointer crossing the right edge) must not interrupt it.
-                if (!draggingScrollbar) dragOutArmed = false;
-                dragCollapseIndex = -1;
+                // Do not cancel an active drag here: the pointer is captured
+                // for the whole gesture and it ends on the button release, so
+                // a leave (the pointer crossing an edge — which is exactly how
+                // a drag reaches another window) must not interrupt it.
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -4895,15 +5168,25 @@ namespace UltraCanvas {
                     UpdateColumnSplitterDrag(local);
                     return true;
                 }
-                // Armed drag-out: once the press moves past the slop the
-                // selection leaves as a native OS drag.
+                // A running item drag owns the pointer too.
+                if (draggingItems) {
+                    UpdateItemDrag(local);
+                    return true;
+                }
+                // Armed gesture: once the press moves past the slop the
+                // pressed item (or the selection it belongs to) is picked up.
                 if (dragOutArmed) {
                     int dx = local.x - dragOutPressPoint.x;
                     int dy = local.y - dragOutPressPoint.y;
                     if (dx * dx + dy * dy >= kDragStartSlop * kDragStartSlop) {
-                        dragOutArmed = false;
-                        dragCollapseIndex = -1;   // it's a drag, not a click
-                        if (StartNativeDragOfSelection()) return true;
+                        BeginItemDrag(local);
+                        if (draggingItems) {
+                            // The press may already be outside the widget when
+                            // the first move arrives (a fast flick out): hand
+                            // the drag straight over to the OS.
+                            UpdateItemDrag(local);
+                            return true;
+                        }
                     }
                 }
                 if (draggingScrollbar) {
@@ -4942,15 +5225,24 @@ namespace UltraCanvas {
                 }
 
                 UpdateHoverTooltip(event, local);
-                return false;
+                // While the gesture holds the pointer capture this move is
+                // ours: consuming it keeps the dispatcher from handing the
+                // same move to whatever else is under the cursor.
+                return dragMouseCaptured;
             }
             case UCEventType::MouseDown: {
+                // A running drag owns the pointer until it is released.
+                if (draggingItems) return true;
                 Point2Di local(event.pointer.x, event.pointer.y);
                 SetFocus(true);
 
-                // Any new press supersedes a not-yet-fired rename click.
+                // Any new press supersedes a not-yet-fired rename click and
+                // whatever an earlier press left deferred (its release may
+                // have gone elsewhere).
                 bool wasRenaming = renamingIndex >= 0;
                 CancelPendingRename();
+                pendingSelectIndex = -1;
+                dragCollapseIndex = -1;
 
                 // The info bar covers items scrolled behind it.
                 if (IsInInfoBar(local)) return true;
@@ -5053,7 +5345,14 @@ namespace UltraCanvas {
                     bool alreadySelected = index >= 0 &&
                             std::find(selection.begin(), selection.end(),
                                       static_cast<size_t>(index)) != selection.end();
-                    if (alreadySelected && !event.ctrl && !event.shift) {
+                    if (index >= 0 && !alreadySelected && !event.ctrl && !event.shift
+                        && dragEnabled) {
+                        // A plain press on an unselected item may still turn
+                        // into a drag, and a drag must not change the selection
+                        // (an attached preview would load the file that is only
+                        // being carried). Selecting it waits for the release.
+                        pendingSelectIndex = index;
+                    } else if (alreadySelected && !event.ctrl && !event.shift) {
                         // Keep the (multi-)selection so it can be dragged as a
                         // whole; collapsing to just this item happens on
                         // release when no drag started.
@@ -5078,11 +5377,20 @@ namespace UltraCanvas {
                         HandleItemClick(index, event.ctrl, event.shift);
                         dragCollapseIndex = -1;
                     }
-                    // Pressing on an item arms the drag-out gesture; the drag
-                    // starts once the pointer moves past the slop threshold.
-                    if (index >= 0 && !selection.empty()) {
+                    // Pressing on an item arms the drag gesture; the drag starts
+                    // once the pointer moves past the slop threshold. The mouse
+                    // is captured for the gesture so a fast flick out of the
+                    // widget still delivers the move that starts it (without
+                    // the capture that move goes to whatever is under the
+                    // cursor and the drag is simply lost).
+                    if (index >= 0 && dragEnabled) {
                         dragOutArmed = true;
                         dragOutPressPoint = local;
+                        dragPressIndex = index;
+                        if (auto* app = UltraCanvasApplication::GetInstance()) {
+                            app->CaptureMouse(this);
+                            dragMouseCaptured = true;
+                        }
                     }
                 }
                 return true;
@@ -5092,10 +5400,21 @@ namespace UltraCanvas {
                     EndColumnSplitterDrag();
                     return true;
                 }
+                if (draggingItems) {
+                    // Drop: Ctrl copies, a plain drop moves.
+                    FinishItemDrag(Point2Di(event.pointer.x, event.pointer.y),
+                                   event.ctrl);
+                    pendingRenameIndex = -1;
+                    return true;
+                }
                 if (dragOutArmed && dragCollapseIndex >= 0) {
                     // The press on a selected item turned out to be a plain
                     // click: apply the deferred "select only this item".
                     HandleItemClick(dragCollapseIndex, false, false);
+                } else if (dragOutArmed && pendingSelectIndex >= 0) {
+                    // Same for the press on an unselected item: no drag
+                    // started, so it was a plain click after all.
+                    HandleItemClick(pendingSelectIndex, false, false);
                 }
                 if (dragOutArmed && pendingRenameIndex >= 0) {
                     // Plain click on the sole selection's name: rename after
@@ -5104,8 +5423,15 @@ namespace UltraCanvas {
                 } else {
                     pendingRenameIndex = -1;
                 }
-                dragOutArmed = false;
+                pendingSelectIndex = -1;
                 dragCollapseIndex = -1;
+                // Consume the release when the gesture held the pointer
+                // capture: the dispatcher offers a captured release to the
+                // capturing element first and then, if it was not handled,
+                // again to whatever sits under the cursor — a second pass
+                // through here would undo what this one just armed.
+                bool ownedRelease = dragMouseCaptured;
+                EndDragGesture();
                 if (draggingScrollbar) {
                     draggingScrollbar = false;
                     if (auto* app = UltraCanvasApplication::GetInstance())
@@ -5113,7 +5439,7 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
-                return false;
+                return ownedRelease;
             }
             case UCEventType::MouseDoubleClick: {
                 // The first click of this double-click may have armed the
@@ -5131,6 +5457,11 @@ namespace UltraCanvas {
                 return false;
             }
             case UCEventType::KeyDown: {
+                // Escape abandons a running drag (nothing is moved).
+                if (draggingItems && event.virtualKey == UCKeys::Escape) {
+                    CancelItemDrag();
+                    return true;
+                }
                 CancelPendingRename();   // keyboard action outruns the click
                 if (HandleRenameKey(event)) return true;
                 if (renamingIndex >= 0) return true;   // swallow while editing

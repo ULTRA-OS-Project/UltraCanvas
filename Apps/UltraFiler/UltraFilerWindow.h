@@ -7,9 +7,10 @@
 // the tabbed folder content display (UltraCanvasTabbedContainer hosting one
 // UltraCanvasFilerWidget per tab) and the media preview
 // (UltraCanvasMediaViewer, shown only while a previewable file is selected),
-// plus a status bar describing the folder and the selection.
-// Version: 1.1.0
-// Last Modified: 2026-08-02
+// plus a status bar describing the folder and the selection (kept in step with
+// the folder listing through the filer's onFolderRefreshed callback).
+// Version: 1.1.2
+// Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
 #pragma once
 

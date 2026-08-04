@@ -336,6 +336,10 @@ private:
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
     static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsModelFile(const std::string& path);       // STL 3D models
+    // Bitmaps and vector graphics the image pipeline rasterizes (SVG through
+    // librsvg). Checked before IsTextFile so markup-based image formats show
+    // their picture rather than their source code.
+    static bool IsImageFile(const std::string& path);
     static bool IsTextFile(const std::string& path);        // text / source / markdown
     static bool IsVideoFile(const std::string& path);
     static bool IsAudioFile(const std::string& path);

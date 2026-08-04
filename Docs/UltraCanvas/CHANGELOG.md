@@ -1,3 +1,32 @@
+#### 2026-08-04 *0.3.25*
+- **UltraCanvasFilerWidget** *(1.7.0)*: entries are properly draggable. A press
+  on an item captures the mouse and, past the slop threshold, picks up that
+  item — or the whole selection when the press landed inside it. Inside the
+  widget the drag is drawn by the widget (a badge with the entry icon and name
+  / "N items" following the cursor, the folder under it highlighted) and a drop
+  on a folder of the view **moves** the files into it, **Ctrl** drops a copy;
+  Escape abandons the drag. Leaving the widget hands the same set to the native
+  OS drag as before — which is also what fixes dragging files out: the capture
+  makes a fast flick out of the widget start the drag instead of losing the
+  move to whatever the cursor passed over. New `SetDragEnabled()` /
+  `IsDragEnabled()` turn the gesture off.
+- **UltraCanvasFilerWidget**: a drag no longer changes the selection. What a
+  plain press would select is applied on the release, so dragging a file does
+  not fire `onSelectionChanged` and no longer re-targets a preview pane fed by
+  it (UltraFiler loaded the dragged file into the preview mid-drag).
+- **UltraCanvasFilerWidget**: the selection now survives a rescan — it is
+  remembered by path instead of by row index, so `Refresh()` after a file
+  operation no longer leaves the selection pointing at whatever moved into
+  those indices. New `onFolderRefreshed` callback fires after every scan of the
+  shown folder, so hosts can refresh their folder description.
+- **UltraCanvasMediaViewer**: SVG files preview as the rendered image instead
+  of their source code. `ClassifyFile()` matched the syntax tokenizer's SVG /
+  XPM / XBM languages before the image formats, so markup-based image files
+  opened in the read-only text area. New `IsImageFile()` is checked first.
+- **UltraFiler app**: the status bar follows the folder listing again — it is
+  refreshed from `onFolderRefreshed`, so item counts stay correct after a drop
+  or another file operation rescans the view.
+
 #### 2026-08-02 *0.3.24*
 - **UltraCanvasMediaViewer**: selectable video preview behavior. New
   `VideoPreviewMode` (`Autoplay` — full playback with sound, the previous and

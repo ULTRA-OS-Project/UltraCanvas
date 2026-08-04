@@ -3,8 +3,8 @@
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab) and the media
 // preview (UltraCanvasMediaViewer).
-// Version: 1.1.1
-// Last Modified: 2026-08-03
+// Version: 1.1.2
+// Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -628,6 +628,14 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         HandlePathChanged(tab, path);
     };
     tab->filer->onSelectionChanged = [this, tab](const std::vector<FilerEntry>&) {
+        if (!IsActiveTab(tab)) return;
+        UpdateStatusBar();
+        UpdatePreviewPane();
+    };
+    tab->filer->onFolderRefreshed = [this, tab]() {
+        // The folder listing changed (a file operation, a drop, a rename):
+        // the item counts in the status bar describe it, and a previewed file
+        // may have moved away.
         if (!IsActiveTab(tab)) return;
         UpdateStatusBar();
         UpdatePreviewPane();
