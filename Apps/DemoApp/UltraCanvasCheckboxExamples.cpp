@@ -344,6 +344,21 @@ namespace UltraCanvas {
         mainContainer->AddChild(switchOutsideHint);
         currentY += 40;
 
+        // ----- Switch flanked by two texts (BothSides): "Backup [switch] Auto-Save" -----
+        auto switchSides = UltraCanvasSwitch::CreateWithSideLabels(
+                "SwitchSides", 30, currentY, "Backup", "Auto-Save", true);
+        switchSides->SetTrackSize(44.0f, 22.0f);
+        switchSides->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Mode: " << (newState == CheckedState::Checked ? "Auto-Save" : "Backup")
+                        << std::endl;
+        };
+        auto switchSidesHint = std::make_shared<UltraCanvasLabel>("SwitchSidesHint", 280, currentY + 2, 500, 24);
+        switchSidesHint->SetText("Two texts with the switch between them — click a text to pick that side");
+        switchSidesHint->SetTextColor(Color(100, 100, 100, 255));
+        mainContainer->AddChild(switchSides);
+        mainContainer->AddChild(switchSidesHint);
+        currentY += 40;
+
         // ----- Vertical orientation (plain + with check icon, side by side) -----
         auto switchVertical = UltraCanvasSwitch::Create("SwitchVertical", 30, currentY, "Volume", true);
         switchVertical->SetOrientation(SwitchOrientation::Vertical);
