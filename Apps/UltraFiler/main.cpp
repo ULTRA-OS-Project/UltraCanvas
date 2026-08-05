@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         app.SetDefaultWindowIcon(
-                NormalizePath(GetResourcesDir() + "media/appicon/UltraCanvas.png"));
+                NormalizePath(GetResourcesDir() + "media/appicon/UltraFiler.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraFilerWindow mainWindow;

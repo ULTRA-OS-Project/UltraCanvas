@@ -578,13 +578,30 @@ if (BUILD_ULTRAFILER_APP)
 
     target_compile_definitions(UltraFiler PRIVATE
             ULTRAFILER_VERSION="${PROJECT_VERSION}"
-            UCAPP_ICON_PATH="media/appicon/UltraCanvas.png"
+            UCAPP_ICON_PATH="media/appicon/UltraFiler.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
 
     # Embed app icon in .exe (Windows only)
     ultracanvas_embed_app_icon(UltraFiler
-        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraCanvas.png")
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraFiler.png")
+
+    # Embed the application manifest + version info (Windows only). The .rc
+    # ships its own manifest, so do NOT also call
+    # ultracanvas_embed_windows_manifest here (two RT_MANIFEST id=1 resources
+    # would collide at resource link time).
+    if(WIN32)
+        target_sources(UltraFiler PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler/UltraFiler.rc
+        )
+        # windres/rc.exe resolves the manifest path relative to the .rc file's
+        # directory.
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler/UltraFiler.rc
+            PROPERTIES
+                COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler"
+        )
+    endif()
 
     # Embed manifest with UTF-8 active code page (Windows only) - a file
     # manager browses arbitrary paths, so narrow Win32/CRT calls must read
@@ -751,6 +768,9 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
     if(BUILD_TEXTER_APP)
         set_target_properties(UltraCanvasTexter PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+    if(BUILD_ULTRAFILER_APP)
+        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
     if(BUILD_FILEMANAGER_APP)
         set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
