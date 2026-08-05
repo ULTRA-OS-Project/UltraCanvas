@@ -1,0 +1,51 @@
+// Apps/UltraFiler/UltraFiler.rc
+// Windows Resource Script for UltraFiler
+// Embeds: version information, application manifest
+// Built automatically by CMake on WIN32 builds
+// NOTE: the application icon is embedded separately by CMake
+// (ultracanvas_embed_app_icon from media/appicon/UltraFiler.png), so it is
+// intentionally not declared here.
+
+#include <windows.h>
+
+// ===== APPLICATION MANIFEST =====
+// Embeds UltraFiler.manifest directly into the EXE
+// ID 1 = application manifest (required by Windows)
+1 RT_MANIFEST "UltraFiler.manifest"
+
+// ===== VERSION INFORMATION =====
+VS_VERSION_INFO VERSIONINFO
+    FILEVERSION     1,0,0,0
+    PRODUCTVERSION  1,0,0,0
+    FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+    FILEFLAGS       VS_FF_DEBUG
+#else
+    FILEFLAGS       0
+#endif
+    FILEOS          VOS_NT_WINDOWS32
+    FILETYPE        VFT_APP
+    FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // Language: English (US), Code page: Unicode
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Cloverleaf UG\0"
+            VALUE "FileDescription",  "UltraFiler - Cross-Platform File Manager\0"
+            VALUE "FileVersion",      "1.0\0"
+            VALUE "InternalName",     "UltraFiler\0"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 Cloverleaf UG\0"
+            VALUE "OriginalFilename", "UltraFiler.exe\0"
+            VALUE "ProductName",      "UltraFiler\0"
+            VALUE "ProductVersion",   "1.0\0"
+            VALUE "Comments",         "Part of the ULTRA OS ecosystem - ultracanvas.dev\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        // English (US), Unicode
+        VALUE "Translation", 0x0409, 0x04B0
+    END
+END
