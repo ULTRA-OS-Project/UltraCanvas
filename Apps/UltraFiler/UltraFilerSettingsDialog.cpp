@@ -101,6 +101,13 @@ namespace {
         d->checkeredRadio = UltraCanvasRadio::Create(
                 "ufl-set-ti-checkered", -1, -1, "Checkered pattern (shows transparency)",
                 checkered);
+        // Explicit sizes: content measuring needs a render context, which the
+        // dialog does not have while it is first laid out.
+        for (auto& radio : {d->solidRadio, d->checkeredRadio}) {
+            radio->size.width  = CSSLayout::Dimension::Px(340);
+            radio->size.height = CSSLayout::Dimension::Px(22);
+            radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        }
         d->backgroundGroup.AddRadioButton(d->solidRadio);
         d->backgroundGroup.AddRadioButton(d->checkeredRadio);
         d->backgroundGroup.onSelectionChanged =
@@ -168,8 +175,8 @@ namespace {
     void BuildDialog(DialogState* d, UltraCanvasWindowBase* parent) {
         WindowConfig wc;
         wc.title = "UltraFiler - Settings";
-        wc.width = 620;
-        wc.height = 540;
+        wc.width = 700;
+        wc.height = 560;
         wc.resizable = true;
         wc.type = WindowType::Dialog;
         wc.parentWindow = parent;
