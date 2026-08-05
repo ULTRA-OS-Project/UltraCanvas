@@ -1,13 +1,14 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.5.2
-// Last Modified: 2026-07-17
+// Version: 2.6.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasImage.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <cctype>
 
 namespace UltraCanvas {
 
@@ -101,8 +102,50 @@ namespace UltraCanvas {
 // ===== TEXT & ICON METHODS =====
     void UltraCanvasButton::SetText(const std::string& buttonText) {
         text = buttonText;
+        // The old index points into the previous string and would underline an
+        // unrelated character; owners re-apply the mnemonic after setting text.
+        mnemonicIndex = -1;
         InvalidateLayout();
         RequestRedraw();
+    }
+
+// ===== MNEMONIC (ACCELERATOR) SUPPORT =====
+    void UltraCanvasButton::SetMnemonicIndex(int index) {
+        int newIndex = -1;
+        if (index >= 0 && index < static_cast<int>(text.size())) {
+            // Only ASCII characters can be split out of the UTF-8 label by a
+            // byte index without risking a broken sequence in the markup.
+            unsigned char ch = static_cast<unsigned char>(text[index]);
+            if (ch < 0x80 && std::isalnum(ch)) {
+                newIndex = index;
+            }
+        }
+        if (newIndex == mnemonicIndex) return;
+        mnemonicIndex = newIndex;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasButton::SetMnemonicChar(char letter) {
+        unsigned char wanted = static_cast<unsigned char>(letter);
+        if (wanted >= 0x80 || !std::isalnum(wanted)) return false;
+
+        for (size_t i = 0; i < text.size(); ++i) {
+            unsigned char ch = static_cast<unsigned char>(text[i]);
+            if (ch < 0x80 && std::toupper(ch) == std::toupper(wanted)) {
+                SetMnemonicIndex(static_cast<int>(i));
+                return mnemonicIndex >= 0;
+            }
+        }
+        return false;
+    }
+
+    char UltraCanvasButton::GetMnemonicChar() const {
+        if (!HasMnemonic()) return 0;
+        return static_cast<char>(std::toupper(static_cast<unsigned char>(text[mnemonicIndex])));
+    }
+
+    bool UltraCanvasButton::HasMnemonic() const {
+        return mnemonicIndex >= 0 && mnemonicIndex < static_cast<int>(text.size());
     }
 
     void UltraCanvasButton::SetIcon(const std::string& path) {
@@ -695,6 +738,31 @@ namespace UltraCanvas {
         }
     }
 
+    // Escape the characters Pango markup reserves so a literal label survives
+    // being embedded in the <u>…</u> wrapper below.
+    static std::string EscapeMarkup(const std::string& s) {
+        std::string out;
+        out.reserve(s.size());
+        for (char c : s) {
+            switch (c) {
+                case '&':  out += "&amp;";  break;
+                case '<':  out += "&lt;";   break;
+                case '>':  out += "&gt;";   break;
+                case '"':  out += "&quot;"; break;
+                case '\'': out += "&apos;"; break;
+                default:   out += c;        break;
+            }
+        }
+        return out;
+    }
+
+    std::string UltraCanvasButton::BuildMnemonicMarkup() const {
+        size_t i = static_cast<size_t>(mnemonicIndex);
+        return EscapeMarkup(text.substr(0, i)) +
+               "<u>" + EscapeMarkup(text.substr(i, 1)) + "</u>" +
+               EscapeMarkup(text.substr(i + 1));
+    }
+
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {
         if (text.empty() || textRect.width <= 0) return;
 
@@ -704,15 +772,20 @@ namespace UltraCanvas {
         ctx->SetTextPaint(textColor);
         ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
-        ctx->SetTextIsMarkup(true);
+        // Underlining one character needs markup. Labels without a mnemonic stay
+        // on the literal path so text containing & or < renders as typed.
+        const bool useMarkup = HasMnemonic();
+        ctx->SetTextIsMarkup(useMarkup);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextAlignment(TextAlignment::Center);
 
+        const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
+
         //debugOutput << "btn draw text=" << text << " rect=" << textRect.x << "," << textRect.y << " " << textRect.width << "x" << textRect.height << std::endl;
         if (GetPrimaryState() == ElementState::Pressed) {
-            ctx->DrawTextInRect(text, Rect2Dd(textRect.x+1, textRect.y+1, textRect.width, textRect.height));
+            ctx->DrawTextInRect(drawnText, Rect2Dd(textRect.x+1, textRect.y+1, textRect.width, textRect.height), useMarkup);
         } else {
-            ctx->DrawTextInRect(text, textRect);
+            ctx->DrawTextInRect(drawnText, textRect, useMarkup);
         }
     }
 

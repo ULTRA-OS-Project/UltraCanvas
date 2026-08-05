@@ -83,7 +83,7 @@ namespace UltraCanvas {
 //        bool CreateStagingSurface();
 //        void SwitchToSurface(cairo_surface_t* s);
 
-        std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz);
+        std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz, bool isMarkup);
 
     public:
         ~RenderContextCairo() override;
@@ -226,6 +226,7 @@ namespace UltraCanvas {
         void DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) override;
         void DrawText(const std::string &text, const Point2Dd &pos) override;
         void DrawTextInRect(const std::string &text, const Rect2Dd &rect) override;
+        void DrawTextInRect(const std::string &text, const Rect2Dd &rect, bool isMarkup) override;
         Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) override;
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 

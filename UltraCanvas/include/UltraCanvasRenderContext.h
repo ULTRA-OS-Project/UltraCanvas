@@ -1,7 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
-// Version: 2.5.0
-// Last Modified: 2026-04-12
+// Version: 2.6.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -326,6 +326,13 @@ namespace UltraCanvas {
         // ===== TEXT RENDERING =====
         virtual void DrawText(const std::string &text, const Point2Dd &pos) = 0;
         virtual void DrawTextInRect(const std::string &text, const Rect2Dd &rect) = 0;
+        // Same, but `text` is parsed as markup (<b>, <i>, <u>, <span>, …) when
+        // isMarkup is true. The caller must escape &, < and > in the literal
+        // parts. Used for accents such as the underlined mnemonic letter on a
+        // button; the two-argument form always draws the string literally.
+        virtual void DrawTextInRect(const std::string &text, const Rect2Dd &rect, bool isMarkup) {
+            DrawTextInRect(text, rect);
+        }
         virtual Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) = 0;
         Size2Di GetTextLineDimensions(const std::string& text) { return GetTextDimensions(text, {0, 0}); };
         int GetTextLineWidth(const std::string& text) { return GetTextLineDimensions(text).width; };
