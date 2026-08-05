@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.5.1
-// Last Modified: 2026-07-21
+// Version: 1.6.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -41,13 +41,19 @@ namespace UltraCanvas {
     // implemented on Linux + Windows, no-op elsewhere. Returns true on success.
 //    bool LoadDejaVuFcRules(void* fcConfig);
 
-    // Writes a runtime fonts.conf (with the absolute path to the bundled
-    // DejaVu directory baked in) and sets the FONTCONFIG_FILE env variable so
-    // the next FcInit() call has a valid config regardless of how broken the
-    // system default is (notably on packaged MSYS2 Windows builds run outside
-    // the mingw shell). On Linux the generated config <include>s the system
-    // fonts.conf so apps still see non-DejaVu system fonts via FC. No-op on
-    // macOS. Honours an externally-set FONTCONFIG_FILE — does not override.
+    // Makes sure fontconfig has a config file to load before it is first used.
+    // Packaged builds ship no fonts.conf (notably the MSYS2-produced Windows
+    // ZIP), and fontconfig then prints
+    //     Fontconfig error: Cannot load default config file: No such file: (null)
+    // on stderr and initialises with no font directory at all. If no config is
+    // reachable (FONTCONFIG_FILE, FONTCONFIG_PATH, or the platform's built-in
+    // location), this writes a minimal one — bundled fonts directory, system
+    // font directories, a cache directory and the generic family aliases — into
+    // the user's cache/appdata directory and points FONTCONFIG_FILE at it. It
+    // carries no rendering rules, so text looks the same as on a system that
+    // has its own fonts.conf. No-op on macOS (CoreText) and whenever a usable
+    // config already exists, so a normal Linux desktop is unaffected. Called
+    // first thing by UltraCanvasApplicationBase::Initialize().
     void SetupBundledFontconfig();
 
     class UltraCanvasApplicationBase {
@@ -177,6 +183,14 @@ namespace UltraCanvas {
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
         bool IsKeyPressed(UCKeys keyCode) { return keyStates[keyCode]; }
+        // Keys the application currently believes are held down. Modal dialogs
+        // snapshot this on open so a key that was already down when they
+        // appeared cannot act as input to them.
+        std::vector<UCKeys> GetPressedKeys() const;
+        // Forget every held key and modifier. Called when a modal dialog closes
+        // so the key that dismissed it is not still considered down by whatever
+        // regains the focus.
+        void ClearKeyboardState();
 
         bool IsShiftHeld() { return shiftHeld; }
         bool IsCtrlHeld() { return ctrlHeld; }

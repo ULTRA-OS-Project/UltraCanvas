@@ -91,13 +91,47 @@ filer->SetColumnResizeEnabled(false);    // fixed columns
 dragged below a usable minimum (44 px, 120 px for the name).
 `onColumnWidthsChanged` fires when a drag ends and on every programmatic change.
 
+## Long names
+
+In the tile-shaped views — the four thumbnail grids and the treemap — the space
+a name gets is only as wide as the tile, which is far less than most file names
+need. A name that does not fit therefore **wraps onto the next line** instead of
+being cut off after one:
+
+- Lines break after a separator (space, `-`, `_`, `.`) when one sits in the back
+  half of the line, otherwise at the exact character that still fits — file names
+  are frequently one long "word".
+- At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
+  restores the old single-line caption).
+- What does not fit even then is dropped from the **front of the last line**,
+  which then opens with an `…` overflow marker, so the end of the name — its
+  extension — always stays readable:
+
+  ```
+  Holiday photos
+  …Rome 2024.jpg
+  ```
+
+- Tiles grow to fit: every line past the first adds `FilerStyle::captionLineHeight`
+  (`0` = derived from `smallFontSize`) to the tile. All tiles of a grid row share
+  the caption height of the deepest name in that row, so the grid stays aligned.
+  Dataset lines (Display > Dataset) follow underneath as before.
+- Treemap cells wrap into whatever height the cell has above its size line.
+
+The row-based views (`Details`, `List`, `BarSize`) keep their single-line,
+ellipsized names — their rows are fixed height and the name has a whole column
+width available.
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
 a name pops a tooltip with the full name (`SetNameTooltipsEnabled`, default on).
 It applies to every view — the Name column in Details, the rows in List and
 BarSize, the captions in the thumbnail grids, and treemap cells too small to
-show any caption at all. Names that fit are not repeated in a tooltip.
+show any caption at all. Names that fit are not repeated in a tooltip; in the
+tile views that now includes the names that fit *after wrapping* (see
+[Long names](#long-names)), so only a name still carrying the `…` overflow
+marker pops one.
 
 The hover icon-menu buttons keep their own action tooltips and win wherever the
 two overlap, so in the Details view the name column describes the file while the
@@ -328,7 +362,17 @@ host can refresh what it shows about the folder (item counts, status bar).
 
 `SetStyle(FilerStyle)` controls colors (background, selection, hover, bars,
 grid lines, icon-menu), fonts, row heights, thumbnail tile sizes and paddings —
-see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. The column splitters
+see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. `captionHeight`,
+`captionMaxLines` and `captionLineHeight` size the tile caption and its name
+wrapping (see [Long names](#long-names)):
+
+```cpp
+FilerStyle s = filer->GetStyle();
+s.captionMaxLines = 3;     // let tile names run over up to three lines
+s.captionLineHeight = 16;  // 0 = derived from smallFontSize
+filer->SetStyle(s);
+```
+ The column splitters
 are styled through `FilerStyle::columnSplitter`, a `SplitPaneStyle`: thickness,
 the idle / hover / drag colors, the extra grab margin around the painted strip
 and `showSplitterBackground` (off paints no divider while the drag handle stays

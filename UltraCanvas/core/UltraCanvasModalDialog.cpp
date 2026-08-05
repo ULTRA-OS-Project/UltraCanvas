@@ -1,8 +1,8 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.3.1
-// Last Modified: 2026-07-20
+// Version: 3.4.0
+// Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -11,6 +11,7 @@
 #include <fmt/os.h>
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include "UltraCanvasDebug.h"
 
@@ -163,8 +164,8 @@ namespace UltraCanvas {
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         CreateDialogButtons();
-        for (auto& button : dialogButtons) {
-            footerSection->AddChild(button);
+        for (auto& entry : dialogButtons) {
+            footerSection->AddChild(entry.button);
         }
         AddChild(footerSection);
     }
@@ -180,7 +181,7 @@ namespace UltraCanvas {
                     fmt::format("DialogBtn_{}", static_cast<int>(btn)), 0, 0,
                     static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
             button->SetText(text);
-            dialogButtons.push_back(button);
+            dialogButtons.push_back(DialogButtonEntry{button, btn, ButtonToResult(btn)});
         };
 
         if (buttonMask & static_cast<int>(DialogButton::OK)) {
@@ -204,26 +205,157 @@ namespace UltraCanvas {
         if (buttonMask & static_cast<int>(DialogButton::Ignore)) {
             addButton(DialogButton::Ignore, "Ignore");
         }
+
+        AssignButtonMnemonics();
     }
 
     void UltraCanvasModalDialog::WireButtonCallbacks() {
-        for (auto& button : dialogButtons) {
-            // Extract button type from identifier
-            std::string btnId = button->GetIdentifier();
-            DialogButton btnType = DialogButton::NoneButton;
-
-            if (btnId.find("_1") != std::string::npos) btnType = DialogButton::OK;
-            else if (btnId.find("_2") != std::string::npos) btnType = DialogButton::Cancel;
-            else if (btnId.find("_4") != std::string::npos) btnType = DialogButton::Yes;
-            else if (btnId.find("_8") != std::string::npos) btnType = DialogButton::No;
-            else if (btnId.find("_128") != std::string::npos) btnType = DialogButton::Retry;
-            else if (btnId.find("_512") != std::string::npos) btnType = DialogButton::Abort;
-            else if (btnId.find("_256") != std::string::npos) btnType = DialogButton::Ignore;
-
-            button->onClick = [this, btnType]() {
+        for (auto& entry : dialogButtons) {
+            DialogButton btnType = entry.type;
+            entry.button->onClick = [this, btnType]() {
                 OnDialogButtonClick(btnType);
             };
         }
+    }
+
+// ===== MNEMONICS =====
+    void UltraCanvasModalDialog::AssignButtonMnemonics() {
+        for (auto& entry : dialogButtons) {
+            entry.mnemonic = 0;
+            entry.button->SetMnemonicIndex(-1);
+        }
+        if (!dialogConfig.useButtonMnemonics) return;
+
+        std::vector<char> taken;
+        auto isTaken = [&taken](char c) {
+            return std::find(taken.begin(), taken.end(), c) != taken.end();
+        };
+
+        for (auto& entry : dialogButtons) {
+            const std::string& label = entry.button->GetText();
+
+            // Prefer the label's own initial ("OK" -> O, "Cancel" -> C), then
+            // the initial of any later word, then any remaining letter. The
+            // standard button sets never collide on the first pass; the later
+            // passes only matter for custom labels ("Cancel" + "Close").
+            std::vector<size_t> candidates;
+            for (size_t i = 0; i < label.size(); ++i) {
+                unsigned char ch = static_cast<unsigned char>(label[i]);
+                if (ch >= 0x80 || !std::isalnum(ch)) continue;
+                bool wordStart = (i == 0) || !std::isalnum(static_cast<unsigned char>(label[i - 1]));
+                if (wordStart) candidates.push_back(i);
+            }
+            for (size_t i = 0; i < label.size(); ++i) {
+                unsigned char ch = static_cast<unsigned char>(label[i]);
+                if (ch >= 0x80 || !std::isalnum(ch)) continue;
+                if (std::find(candidates.begin(), candidates.end(), i) == candidates.end()) {
+                    candidates.push_back(i);
+                }
+            }
+
+            for (size_t index : candidates) {
+                char letter = static_cast<char>(std::toupper(static_cast<unsigned char>(label[index])));
+                if (isTaken(letter)) continue;
+                entry.button->SetMnemonicIndex(static_cast<int>(index));
+                entry.mnemonic = entry.button->GetMnemonicChar();
+                if (entry.mnemonic) taken.push_back(entry.mnemonic);
+                break;
+            }
+        }
+    }
+
+    UltraCanvasModalDialog::DialogButtonEntry* UltraCanvasModalDialog::FindButtonByMnemonic(char letter) {
+        unsigned char wanted = static_cast<unsigned char>(letter);
+        if (wanted >= 0x80 || !std::isalnum(wanted)) return nullptr;
+        char upper = static_cast<char>(std::toupper(wanted));
+
+        for (auto& entry : dialogButtons) {
+            if (entry.mnemonic && entry.mnemonic == upper) return &entry;
+        }
+        return nullptr;
+    }
+
+    UltraCanvasModalDialog::DialogButtonEntry* UltraCanvasModalDialog::FindButtonEntry(DialogButton button) {
+        // NoneButton is what custom buttons carry, so it must never match.
+        if (button == DialogButton::NoneButton) return nullptr;
+        for (auto& entry : dialogButtons) {
+            if (entry.type == button) return &entry;
+        }
+        return nullptr;
+    }
+
+    const UltraCanvasModalDialog::DialogButtonEntry* UltraCanvasModalDialog::FindButtonEntry(DialogButton button) const {
+        if (button == DialogButton::NoneButton) return nullptr;
+        for (const auto& entry : dialogButtons) {
+            if (entry.type == button) return &entry;
+        }
+        return nullptr;
+    }
+
+    UltraCanvasModalDialog::DialogButtonEntry* UltraCanvasModalDialog::FindDefaultButtonEntry() {
+        auto usable = [](DialogButtonEntry* entry) {
+            return entry && entry->button->IsVisible() && !entry->button->IsDisabled();
+        };
+
+        auto* entry = FindButtonEntry(dialogConfig.defaultButton);
+        if (usable(entry)) return entry;
+
+        // The configured default (OK by default) is not on this dialog, so fall
+        // back to whichever affirmative button it does carry — Enter on a
+        // Yes/No/Cancel question should mean Yes, not the first button in the
+        // row, which is Cancel.
+        for (DialogButton candidate : {DialogButton::OK, DialogButton::Yes,
+                                       DialogButton::Retry, DialogButton::Apply,
+                                       DialogButton::Close}) {
+            auto* fallback = FindButtonEntry(candidate);
+            if (usable(fallback)) return fallback;
+        }
+
+        for (auto& candidate : dialogButtons) {
+            if (usable(&candidate)) return &candidate;
+        }
+        return nullptr;
+    }
+
+    void UltraCanvasModalDialog::ActivateButtonEntry(DialogButtonEntry& entry) {
+        if (entry.button->onClick) {
+            entry.button->onClick();
+        } else {
+            CloseDialog(entry.result);
+        }
+    }
+
+    UltraCanvasModalDialog::DialogButtonEntry* UltraCanvasModalDialog::FindCancelButtonEntry() {
+        if (auto* configured = FindButtonEntry(dialogConfig.cancelButton)) return configured;
+
+        // No explicit cancel button in this dialog; fall back to whichever
+        // dismissive button it does carry so Escape maps to a real action.
+        for (DialogButton candidate : {DialogButton::Cancel, DialogButton::No,
+                                       DialogButton::Close, DialogButton::Abort,
+                                       DialogButton::Ignore}) {
+            if (auto* entry = FindButtonEntry(candidate)) return entry;
+        }
+        return nullptr;
+    }
+
+    bool UltraCanvasModalDialog::SetButtonMnemonic(DialogButton button, char letter) {
+        auto* entry = FindButtonEntry(button);
+        if (!entry || !entry->button->SetMnemonicChar(letter)) return false;
+        entry->mnemonic = entry->button->GetMnemonicChar();
+        return entry->mnemonic != 0;
+    }
+
+    char UltraCanvasModalDialog::GetButtonMnemonic(DialogButton button) const {
+        const auto* entry = FindButtonEntry(button);
+        return entry ? entry->mnemonic : 0;
+    }
+
+    bool UltraCanvasModalDialog::ActivateButton(DialogButton button) {
+        auto* entry = FindButtonEntry(button);
+        if (!entry || !entry->button->IsVisible() || entry->button->IsDisabled()) return false;
+
+        ActivateButtonEntry(*entry);
+        return true;
     }
 
     void UltraCanvasModalDialog::SetDialogTitle(const std::string& title) {
@@ -256,8 +388,8 @@ namespace UltraCanvas {
 
         // Remove old buttons from footer
         if (footerSection) {
-            for (auto& btn : dialogButtons) {
-                footerSection->RemoveChild(btn);
+            for (auto& entry : dialogButtons) {
+                footerSection->RemoveChild(entry.button);
             }
         }
 
@@ -270,8 +402,8 @@ namespace UltraCanvas {
                                  .SetFlexGap(style.buttonSpacing)
                                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
             footerSection->AddStretchSpacer(1);
-            for (auto& button : dialogButtons) {
-                footerSection->AddChild(button);
+            for (auto& entry : dialogButtons) {
+                footerSection->AddChild(entry.button);
             }
         }
 
@@ -372,8 +504,20 @@ namespace UltraCanvas {
         UltraCanvasDialogManager::RegisterDialog(
                 std::dynamic_pointer_cast<UltraCanvasModalDialog>(shared_from_this()));
 
+        // Whatever was still held down belongs to the action that opened the
+        // dialog, not to the dialog. Remember those keys so their remaining
+        // events (including the KeyUp that would otherwise click the freshly
+        // focused default button) are dropped instead of delivered.
+        pendingHeldKeys.clear();
+        if (dialogConfig.clearPendingInput && app) {
+            pendingHeldKeys = app->GetPressedKeys();
+        }
+        InstallKeyboardHandling();
+
         // Show the window
         Show();
+
+        FocusInitialElement();
     }
 
     void UltraCanvasModalDialog::AutoSizeToContent() {
@@ -430,6 +574,18 @@ namespace UltraCanvas {
         UltraCanvasDialogManager::UnregisterDialog(
                 std::dynamic_pointer_cast<UltraCanvasModalDialog>(shared_from_this()));
 
+        ResetKeyboardState();
+
+        // The dialog was usually dismissed by a key that is still physically
+        // down. Forgetting the keyboard state stops the window that regains
+        // focus from treating that key as held, and stops its release from
+        // being read as a keystroke aimed at it.
+        if (dialogConfig.clearPendingInput) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                app->ClearKeyboardState();
+            }
+        }
+
         UltraCanvasWindow::PerformClose();
 
         if (onResult) {
@@ -443,11 +599,122 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasModalDialog::OnEvent(const UCEvent& event) {
-        if (dialogConfig.closeOnEscape && event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Escape) {
-            CloseDialog(DialogResult::Cancel);
-            return true;
+        // Reached only after the focused element declined the key, so a focused
+        // button still owns Return/Space and a multiline field still owns Return.
+        if (event.type == UCEventType::KeyDown) {
+            if (dialogConfig.closeOnEscape && event.virtualKey == UCKeys::Escape) {
+                // Go through the dialog's own cancel button when it has one, so
+                // the result and any handler match what clicking it would do.
+                if (auto* entry = FindCancelButtonEntry()) {
+                    ActivateButtonEntry(*entry);
+                } else {
+                    CloseDialog(DialogResult::Cancel);
+                }
+                return true;
+            }
+
+            if (dialogConfig.activateDefaultOnEnter &&
+                (event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::Enter) &&
+                !event.ctrl && !event.alt && !event.meta) {
+                if (auto* entry = FindDefaultButtonEntry()) {
+                    ActivateButtonEntry(*entry);
+                    return true;
+                }
+            }
         }
         return UltraCanvasWindow::OnEvent(event);
+    }
+
+// ===== KEYBOARD HANDLING =====
+    void UltraCanvasModalDialog::InstallKeyboardHandling() {
+        if (!keyboardFilterId.empty()) return;
+
+        keyboardFilterId = fmt::format("UltraCanvasModalDialogKeys_{}", static_cast<const void*>(this));
+        InstallEventFilter(keyboardFilterId,
+                           [this](const UCEvent& event) { return HandleDialogKeyEvent(event); },
+                           {UCEventType::KeyDown, UCEventType::KeyUp, UCEventType::TextInput});
+    }
+
+    void UltraCanvasModalDialog::ResetKeyboardState() {
+        pendingHeldKeys.clear();
+    }
+
+    bool UltraCanvasModalDialog::ShouldSwallowStaleInput(const UCEvent& event) {
+        if (pendingHeldKeys.empty()) return false;
+
+        auto it = std::find(pendingHeldKeys.begin(), pendingHeldKeys.end(), event.virtualKey);
+        if (it == pendingHeldKeys.end()) {
+            // A key the user pressed after the dialog appeared: real input, and
+            // proof that the earlier keys are no longer part of this gesture.
+            if (event.type == UCEventType::KeyDown) pendingHeldKeys.clear();
+            return false;
+        }
+
+        // Releasing the key ends the gesture that was in flight; the next press
+        // of it is genuine input for this dialog.
+        if (event.type == UCEventType::KeyUp) pendingHeldKeys.erase(it);
+        return true;
+    }
+
+    bool UltraCanvasModalDialog::HandleDialogKeyEvent(const UCEvent& event) {
+        if (!event.IsKeyboardEvent()) return false;
+        // The filter outlives each showing of the dialog (see ResetKeyboardState),
+        // so ignore anything that arrives while it is not on screen.
+        if (!IsVisible()) return false;
+
+        if (dialogConfig.clearPendingInput && ShouldSwallowStaleInput(event)) {
+            return true;
+        }
+
+        if (!dialogConfig.useButtonMnemonics || event.type != UCEventType::KeyDown) {
+            return false;
+        }
+        if (event.ctrl || event.meta) return false;
+
+        // Alt+letter is the mnemonic everywhere. A bare letter is one too, but
+        // only while nothing in the dialog is waiting to have text typed into it.
+        if (!event.alt && HasEditableTextField()) return false;
+
+        unsigned char key = static_cast<unsigned char>(event.virtualKey);
+        if (key >= 0x80 || !std::isalnum(key)) return false;
+
+        auto* entry = FindButtonByMnemonic(static_cast<char>(key));
+        if (!entry || !entry->button->IsVisible() || entry->button->IsDisabled()) return false;
+
+        ActivateButtonEntry(*entry);
+        return true;
+    }
+
+    bool UltraCanvasModalDialog::HasEditableTextField() const {
+        // The message area is a read-only Markdown view, so it does not count;
+        // an input dialog's field does.
+        std::function<bool(const UltraCanvasContainer*)> scan =
+                [&scan](const UltraCanvasContainer* container) -> bool {
+            for (const auto& child : container->GetChildren()) {
+                auto* element = child.get();
+                if (!element || !element->IsVisible() || element->IsDisabled()) continue;
+
+                if (auto* input = dynamic_cast<UltraCanvasTextInput*>(element)) {
+                    if (!input->IsReadOnly()) return true;
+                }
+                if (auto* area = dynamic_cast<UltraCanvasTextArea*>(element)) {
+                    if (!area->IsReadOnly()) return true;
+                }
+                if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(element)) {
+                    if (scan(childContainer)) return true;
+                }
+            }
+            return false;
+        };
+        return scan(this);
+    }
+
+    void UltraCanvasModalDialog::FocusInitialElement() {
+        // Focusing the default button gives it a focus ring and makes Space and
+        // Return act on it directly, without going through the dialog.
+        if (auto* entry = FindDefaultButtonEntry()) {
+            SetFocusedElement(entry->button.get());
+        }
     }
 
     bool UltraCanvasModalDialog::IsModalDialog() const {
@@ -487,24 +754,24 @@ namespace UltraCanvas {
         // The contentSection and footerSection are already children of the window.
     }
 
-    void UltraCanvasModalDialog::OnDialogButtonClick(DialogButton button) {
-        DialogResult dialogResult = DialogResult::NoResult;
-
+    DialogResult UltraCanvasModalDialog::ButtonToResult(DialogButton button) {
         switch (button) {
-            case DialogButton::OK:     dialogResult = DialogResult::OK; break;
-            case DialogButton::Cancel: dialogResult = DialogResult::Cancel; break;
-            case DialogButton::Yes:    dialogResult = DialogResult::Yes; break;
-            case DialogButton::No:     dialogResult = DialogResult::No; break;
-            case DialogButton::Retry:  dialogResult = DialogResult::Retry; break;
-            case DialogButton::Abort:  dialogResult = DialogResult::Abort; break;
-            case DialogButton::Ignore: dialogResult = DialogResult::Ignore; break;
-            case DialogButton::Apply:  dialogResult = DialogResult::Apply; break;
-            case DialogButton::Close:  dialogResult = DialogResult::Close; break;
-            case DialogButton::Help:   dialogResult = DialogResult::Help; break;
-            default: break;
+            case DialogButton::OK:     return DialogResult::OK;
+            case DialogButton::Cancel: return DialogResult::Cancel;
+            case DialogButton::Yes:    return DialogResult::Yes;
+            case DialogButton::No:     return DialogResult::No;
+            case DialogButton::Retry:  return DialogResult::Retry;
+            case DialogButton::Abort:  return DialogResult::Abort;
+            case DialogButton::Ignore: return DialogResult::Ignore;
+            case DialogButton::Apply:  return DialogResult::Apply;
+            case DialogButton::Close:  return DialogResult::Close;
+            case DialogButton::Help:   return DialogResult::Help;
+            default:                   return DialogResult::NoResult;
         }
+    }
 
-        CloseDialog(dialogResult);
+    void UltraCanvasModalDialog::OnDialogButtonClick(DialogButton button) {
+        CloseDialog(ButtonToResult(button));
     }
 
     void UltraCanvasModalDialog::UpdateIconAppearance() {
@@ -594,7 +861,11 @@ namespace UltraCanvas {
             if (callback) callback();
             CloseDialog(buttonResult);
         };
-        dialogButtons.push_back(button);
+        dialogButtons.push_back(DialogButtonEntry{button, DialogButton::NoneButton, buttonResult});
+
+        // The new label needs a letter that none of the existing buttons uses,
+        // which can only be decided across the whole set.
+        AssignButtonMnemonics();
 
         if (footerSection) {
             footerSection->AddChild(button);
@@ -602,22 +873,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::SetButtonDisabled(DialogButton button, bool disabled) {
-        auto btnId = fmt::format("DialogBtn_{}", static_cast<int>(button));
-        for (auto& btn : dialogButtons) {
-            if (btn && btn->GetIdentifier() == btnId) {
-                btn->SetDisabled(disabled);
-                break;
-            }
+        if (auto* entry = FindButtonEntry(button)) {
+            entry->button->SetDisabled(disabled);
         }
     }
 
     void UltraCanvasModalDialog::SetButtonVisible(DialogButton button, bool buttonVisible) {
-        auto btnId = fmt::format("DialogBtn_{}", static_cast<int>(button));
-        for (auto& btn : dialogButtons) {
-            if (btn && btn->GetIdentifier() == btnId) {
-                btn->SetVisible(buttonVisible);
-                break;
-            }
+        if (auto* entry = FindButtonEntry(button)) {
+            entry->button->SetVisible(buttonVisible);
         }
     }
     void UltraCanvasInputDialog::CreateInputDialog(const InputDialogConfig &config) {
@@ -709,6 +972,14 @@ namespace UltraCanvas {
         ValidateInput();
     }
 
+    void UltraCanvasInputDialog::FocusInitialElement() {
+        if (textInput && textInput->IsVisible() && !textInput->IsDisabled()) {
+            SetFocusedElement(textInput.get());
+            return;
+        }
+        UltraCanvasModalDialog::FocusInitialElement();
+    }
+
     void UltraCanvasInputDialog::OnInputChanged(const std::string& text) {
         inputValue = text;
         ValidateInput();
@@ -734,6 +1005,14 @@ namespace UltraCanvas {
         showHiddenFiles = fileConfig.showHiddenFiles;
 
         SetDialogButtons(DialogButtons::OKCancel);
+
+        // OK must go through HandleOkButton so the selection is resolved and
+        // onFileSelected fires; the inherited handler would only close the
+        // dialog. Wiring it here keeps the click, Enter and mnemonic paths
+        // identical, because they all run this same callback.
+        if (auto* okEntry = FindButtonEntry(DialogButton::OK)) {
+            okEntry->button->onClick = [this]() { HandleOkButton(); };
+        }
 
         if (currentDirectory.empty()) {
             try {
@@ -1128,8 +1407,10 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::KeyDown:
-                HandleKeyDown(event);
-                return true;
+                // Falls through to the modal dialog when the browser has no use
+                // for the key, so Escape still cancels.
+                if (HandleKeyDown(event)) return true;
+                break;
 
             case UCEventType::TextInput:
                 HandleTextInput(event);
@@ -1187,11 +1468,18 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasFileDialog::HandleKeyDown(const UCEvent& event) {
+    bool UltraCanvasFileDialog::HandleKeyDown(const UCEvent& event) {
         switch (event.virtualKey) {
             case UCKeys::Return:
-                HandleOkButton();
-                break;
+                // Enter on a highlighted directory opens it; anywhere else it
+                // accepts the current selection or typed name.
+                if (selectedFileIndex >= 0 &&
+                    selectedFileIndex < static_cast<int>(directoryList.size())) {
+                    NavigateToDirectory(directoryList[selectedFileIndex]);
+                } else {
+                    HandleOkButton();
+                }
+                return true;
 
             case UCKeys::Up:
                 if (selectedFileIndex > 0) {
@@ -1199,7 +1487,7 @@ namespace UltraCanvas {
                     EnsureItemVisible();
                     UpdateSelection();
                 }
-                break;
+                return true;
 
             case UCKeys::Down:
                 if (selectedFileIndex < static_cast<int>(directoryList.size() + fileList.size()) - 1) {
@@ -1207,14 +1495,20 @@ namespace UltraCanvas {
                     EnsureItemVisible();
                     UpdateSelection();
                 }
-                break;
+                return true;
 
             case UCKeys::Backspace:
-                NavigateToParentDirectory();
-                break;
+                // Backspace edits the file name being typed; only an empty name
+                // means "go up a level".
+                if (fileConfig.dialogType != FileDialogType::SelectFolder && !fileNameText.empty()) {
+                    fileNameText.pop_back();
+                } else {
+                    NavigateToParentDirectory();
+                }
+                return true;
 
             default:
-                break;
+                return false;
         }
     }
 

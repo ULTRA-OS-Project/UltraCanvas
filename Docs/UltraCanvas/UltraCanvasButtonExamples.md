@@ -57,6 +57,21 @@ const std::string& GetText() const;
 void SetText(const std::string& newText);
 ```
 
+#### Mnemonic (Accelerator) Letter
+```cpp
+void SetMnemonicIndex(int index);   // byte index into the text, -1 = none
+int  GetMnemonicIndex() const;
+bool SetMnemonicChar(char letter);  // first case-insensitive match; false if absent
+char GetMnemonicChar() const;       // uppercase letter, or 0
+bool HasMnemonic() const;
+```
+
+The mnemonic character is drawn **underlined** so the shortcut is visible. The
+button only draws the accent — matching the key and invoking the action belongs
+to the owner (a dialog, a menu). `SetText()` clears the mnemonic, so set the
+text first. See [`UltraCanvasDialogKeyboard.md`](UltraCanvasDialogKeyboard.md)
+for how dialogs use it.
+
 #### State Methods
 ```cpp
 ButtonState GetButtonState() const;
@@ -274,6 +289,9 @@ disabledBtn->SetEnabled(false);
 Buttons support keyboard interaction:
 - **Space/Enter**: Activates the button when focused
 - **Tab**: Navigate to button (if focus enabled)
+- **Mnemonic letter**: set with `SetMnemonicChar()`, drawn underlined. The
+  button renders the accent; the owner matches the key — dialogs do this
+  automatically, see [`UltraCanvasDialogKeyboard.md`](UltraCanvasDialogKeyboard.md).
 
 ## Rendering
 
