@@ -896,6 +896,25 @@ bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
     return LowerExt(path) == "stl";
 }
 
+// Image / vector formats the image pipeline can rasterize. Kept in one place
+// because both ClassifyFile() and IsSupportedMedia() need the same list.
+static const std::vector<std::string>& ImageExtensions() {
+    static const std::vector<std::string> exts = {
+        "jpg", "jpeg", "jpe", "png", "gif", "bmp", "webp", "tif", "tiff",
+        "svg", "svgz", "ico", "cur", "heic", "heif", "avif", "jxl", "jp2", "j2k",
+        "ppm", "pgm", "pbm", "pnm", "pfm", "tga", "psd", "qoi", "hdr", "exr",
+        "xpm", "xbm", "pcx", "sgi", "dds", "fits"
+    };
+    return exts;
+}
+
+bool UltraCanvasMediaViewer::IsImageFile(const std::string& path) {
+    std::string e = LowerExt(path);
+    if (e.empty()) return false;
+    const auto& exts = ImageExtensions();
+    return std::find(exts.begin(), exts.end(), e) != exts.end();
+}
+
 bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     // Text / markup / source files open in a read-only UltraCanvasTextArea. A
     // curated set of plain-text & markup extensions, plus any source language
@@ -953,20 +972,18 @@ MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsModelFile(path))       return MediaKind::Model;
     if (IsVideoFile(path))       return MediaKind::Video;
     if (IsAudioFile(path))       return MediaKind::Audio;
+    // Images before text: SVG (and XPM / XBM) are markup the syntax tokenizer
+    // recognises, so classifying by text first would preview their source code
+    // instead of the picture they describe.
+    if (IsImageFile(path))       return MediaKind::Image;
     if (IsTextFile(path))        return MediaKind::Text;
     return MediaKind::Image;
 }
 
 bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
-    static const std::vector<std::string> exts = {
-        "jpg", "jpeg", "jpe", "png", "gif", "bmp", "webp", "tif", "tiff",
-        "svg", "ico", "cur", "heic", "heif", "avif", "jxl", "jp2", "j2k",
-        "ppm", "pgm", "pbm", "pnm", "pfm", "tga", "psd", "qoi", "hdr", "exr",
-        "xpm", "xbm", "pcx", "sgi", "dds", "fits"
-    };
     std::string e = LowerExt(path);
     if (e.empty()) return false;
-    if (std::find(exts.begin(), exts.end(), e) != exts.end()) return true;
+    if (IsImageFile(path)) return true;
     // Documents / spreadsheets / 3D models / text / video / audio (video & audio
     // gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||

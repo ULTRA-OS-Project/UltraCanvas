@@ -12,10 +12,16 @@
 // thumbnails are decoded asynchronously on worker threads: the folder page
 // renders immediately with placeholder glyphs and tiles fill in as decodes
 // complete.
-// Files can be dragged out of the widget into other windows and applications
-// (native OS drag & drop; the target performs the copy/move), files dropped
-// onto the widget from other applications are copied into the shown folder,
-// and Copy / Cut / Paste (Ctrl+C/X/V) interoperate with the system clipboard
+// Entries can be dragged: pressing an item and moving a few pixels picks it
+// (or the whole selection it belongs to) up. Inside the widget the drag is
+// shown as a badge following the cursor with the folder under it highlighted,
+// and dropping on that folder moves the files into it (Ctrl drops a copy);
+// leaving the widget hands the same set to the native OS drag & drop so it can
+// be dropped on any other window or application (the target performs the
+// copy/move). A drag never changes the selection, so dragging a file does not
+// re-target a preview attached to onSelectionChanged. Files dropped onto the
+// widget from other applications are copied into the shown folder, and
+// Copy / Cut / Paste (Ctrl+C/X/V) interoperate with the system clipboard
 // so files can be exchanged with external file managers. When the clipboard
 // holds raw data instead of files (an image or text copied in another
 // program), Paste creates a new file with that content in the shown folder.
@@ -315,6 +321,19 @@ namespace UltraCanvas {
         // displays a search result rather than a plain folder).
         void SetOpenPathMenuItemVisible(bool visible) { showOpenPathItem = visible; }
 
+        // ===== DRAGGING ENTRIES =====
+        // Dragging files out of the view (on by default): a press on an item
+        // followed by a few pixels of movement picks up that item — or the
+        // whole selection when the pressed item is part of it — as a drag.
+        // While the cursor stays inside the widget the drag is drawn in-widget
+        // (badge under the cursor, drop folder highlighted) and dropping on a
+        // folder shown in the view moves the files into it (Ctrl = copy); once
+        // the cursor leaves the widget the set is handed to the native OS drag
+        // so other windows and applications can accept it. Turning this off
+        // leaves presses as plain clicks.
+        void SetDragEnabled(bool enabled);
+        bool IsDragEnabled() const { return dragEnabled; }
+
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
         // attributes for a single file, plus pixel dimensions for bitmaps and
@@ -422,6 +441,11 @@ namespace UltraCanvas {
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
         std::function<void(const std::string&)> onPathChanged;    // after SetPath / folder entered
         std::function<void(const std::vector<FilerEntry>&)> onSelectionChanged;
+        // After every (re)scan of the shown folder — the listing changed
+        // (entries created, deleted, moved in or out, renamed). Hosts refresh
+        // their folder description (item counts, status bar) from it. The
+        // selection survives a rescan on the files that are still there.
+        std::function<void()> onFolderRefreshed;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -606,17 +630,40 @@ namespace UltraCanvas {
         int pendingRenameIndex = -1;
         TimerId pendingRenameTimer = InvalidTimerId;
 
-        // ===== DRAG FILES OUT (native OS drag & drop) =====
-        // A left press on an item arms the gesture; moving past the slop
-        // threshold with the button held starts a native file drag of the
-        // selection (window->StartNativeFileDrag). The drop target performs
-        // the actual copy / move; after a move this view is refreshed.
-        bool dragOutArmed = false;
+        // ===== DRAGGING ENTRIES (in-widget drag + native OS drag out) =====
+        // A left press on an item arms the gesture and captures the mouse, so
+        // even a fast flick out of the widget still delivers the move that
+        // starts the drag. Past the slop threshold the pressed item — or the
+        // whole selection when the press landed inside it — is picked up:
+        //   * inside the widget the drag is drawn here (a badge under the
+        //     cursor, the folder below it highlighted) and a drop on a folder
+        //     of the view moves the files into it (Ctrl drops a copy);
+        //   * once the cursor leaves the widget the same set is handed to the
+        //     native OS drag (window->StartNativeFileDrag), where the drop
+        //     target performs the copy / move and a move refreshes this view.
+        // Dragging never changes the selection: what a press would select is
+        // deferred to the release (see pendingSelectIndex / dragCollapseIndex),
+        // so dragging a file does not fire onSelectionChanged and does not
+        // re-target an attached preview.
+        bool dragEnabled = true;
+        bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
+        int  dragPressIndex = -1;          // entry the press landed on
+        bool dragMouseCaptured = false;    // pointer captured for the gesture
+        bool draggingItems = false;        // in-widget drag running
+        Point2Di dragPos;                  // cursor while dragging (widget-local)
+        std::vector<std::string> dragPaths;  // files being dragged
+        std::string dragLabel;             // badge text ("photo.png" / "5 items")
+        FilerEntry  dragLeadEntry;         // drives the badge icon / thumbnail
+        int  dragDropFolderIndex = -1;     // folder highlighted under the cursor
         // Press on an already-selected item keeps the (multi-)selection so it
         // can be dragged; the usual "select only this item" collapse is
         // deferred to the release and recorded here (-1 = nothing deferred).
         int dragCollapseIndex = -1;
+        // Press on an item outside the selection: selecting it is deferred to
+        // the release the same way, so a press that turns into a drag leaves
+        // the selection (and any preview fed by it) untouched.
+        int pendingSelectIndex = -1;
 
         // ===== ASYNC THUMBNAILS =====
         // Decoding an image for a tile is expensive (full decode + resize).
@@ -942,8 +989,31 @@ namespace UltraCanvas {
         // clipboard data (an image or text copied in another program) as a
         // new file into the current folder. False = nothing pastable there.
         bool PasteClipboardDataAsFile();
+        // ===== DRAGGING ENTRIES =====
+        // Picks up the pressed item (or the selection containing it) and runs
+        // the in-widget drag; the pointer stays captured for its duration.
+        void BeginItemDrag(const Point2Di& localPoint);
+        // Tracks the cursor: highlights the folder under it and hands the drag
+        // over to the native OS drag once the cursor leaves the widget.
+        void UpdateItemDrag(const Point2Di& localPoint);
+        // Drop: files land in the highlighted folder (moved, or copied when
+        // `copy`); a drop anywhere else is a no-op.
+        void FinishItemDrag(const Point2Di& localPoint, bool copy);
+        void CancelItemDrag();             // Escape / lost pointer
+        void EndDragGesture();             // clears the armed / running state
+        // Moves (or copies) `paths` into `destDir`, skipping sources that are
+        // already there and folders dropped into themselves. Rescans on change.
+        void DropPathsInto(const std::vector<std::string>& paths,
+                           const std::string& destDir, bool copy);
+        // Folder entry under a widget-local point that the running drag may be
+        // dropped on (never one of the dragged items), or -1.
+        int  DragDropFolderAt(const Point2Di& localPoint) const;
+        // Drop-folder highlight + the badge that follows the cursor.
+        void DrawDragFeedback(IRenderContext* ctx, const Rect2Di& bounds);
         // Starts the native OS drag of the current selection (drag-out).
         bool StartNativeDragOfSelection();
+        // Starts the native OS drag of an explicit file set.
+        bool StartNativeDragOfPaths(const std::vector<std::string>& paths);
         // Files dropped onto the widget from other applications / windows are
         // copied into the current folder (sources already there are skipped).
         void AcceptDroppedFiles(const std::vector<std::string>& paths);
@@ -957,6 +1027,9 @@ namespace UltraCanvas {
         void FireSelectionChanged();
         void ReportError(const std::string& message);
         std::string UniqueChildPath(const std::string& baseName) const;
+        // Same, but in an arbitrary folder (drop target of a drag).
+        static std::string UniquePathIn(const std::string& folder,
+                                        const std::string& baseName);
 
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.
