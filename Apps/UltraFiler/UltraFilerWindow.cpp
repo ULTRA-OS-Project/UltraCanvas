@@ -2,8 +2,11 @@
 // UltraFiler main window: Windows Explorer style file manager built from the
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
-// search field and the media preview (UltraCanvasMediaViewer).
-// Version: 1.2.0
+// search field and the media preview (UltraCanvasMediaViewer). The Settings
+// menu opens the settings window (UltraFilerSettingsDialog); persisted
+// settings load at startup and configure the preview's transparent-image
+// backdrop.
+// Version: 1.3.0
 // Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 
@@ -12,6 +15,7 @@
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraFilerSettingsDialog.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -206,8 +210,13 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // (no breadcrumb / toolbar rows above the image).
     preview->SetTopBarsVisible(false);
 
+    // Persisted settings (transparent-image backdrop of the preview, ...).
+    settings.Load();
+    ApplySettings();
+
     BuildTabbedContainer();
 
+    window->AddChild(BuildMenuBar());
     window->AddChild(BuildNavigationRow());
     window->AddChild(BuildCommandBar());
 
@@ -237,6 +246,42 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
 void UltraFilerWindow::Show() {
     if (window) window->Show();
+}
+
+// ===== MENU BAR =====
+
+std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
+    MenuStyle style = MenuStyle::Default();
+    style.backgroundColor = Color(249, 249, 251, 255);
+    style.font.fontSize = kUiFontSize;
+
+    menuBar = MenuBuilder("ufl-menubar", 0, 0, 0, 24)
+            .SetType(MenuType::Menubar)
+            .SetStyle(style)
+            .AddSubmenu("Settings", {
+                    MenuItemData::Action("Settings...",
+                            [this]() { OpenSettingsDialog(); }),
+            })
+            .Build();
+    menuBar->size.height = CSSLayout::Dimension::Px(24);
+    menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    return menuBar;
+}
+
+// ===== SETTINGS =====
+
+void UltraFilerWindow::ApplySettings() {
+    if (!preview) return;
+    preview->SetTransparentBackground(settings.previewCheckeredBackground
+            ? TransparentImageBackground::Checkered
+            : TransparentImageBackground::SolidColor);
+    preview->SetTransparentColor(settings.previewTransparentColor);
+}
+
+void UltraFilerWindow::OpenSettingsDialog() {
+    UltraFilerSettingsDialog::Show(window.get(), &settings,
+                                   [this]() { ApplySettings(); });
 }
 
 // ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb) =====

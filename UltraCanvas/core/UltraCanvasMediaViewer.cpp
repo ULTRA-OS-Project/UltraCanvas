@@ -1,8 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.2.0
-// Last Modified: 2026-08-01
+// Version: 1.3.0
+// Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -324,6 +324,54 @@ void UltraCanvasMediaSurface::Blit(IRenderContext* ctx,
     ctx->PopState();
 }
 
+void UltraCanvasMediaSurface::DrawBackdrop(IRenderContext* ctx, const Rect2Df& b,
+                                           double iw, double ih, double scale,
+                                           double cx, double cy, int rotQ,
+                                           double alpha) {
+    if (iw <= 0 || ih <= 0 || scale <= 0 || alpha <= 0.001) return;
+    // Displayed rectangle of the image in widget coordinates: rotation is in
+    // 90° steps, so it stays axis-aligned (odd quarters swap the sides).
+    bool swap = ((((rotQ % 4) + 4) % 4) % 2) == 1;
+    double dispW = (swap ? ih : iw) * scale;
+    double dispH = (swap ? iw : ih) * scale;
+    double left = cx - dispW / 2.0;
+    double top  = cy - dispH / 2.0;
+    // Visible part only — at high zoom the image rectangle is far larger than
+    // the widget, and the checkerboard cost scales with the area drawn.
+    double x0 = std::max(left, static_cast<double>(b.x));
+    double y0 = std::max(top,  static_cast<double>(b.y));
+    double x1 = std::min(left + dispW, static_cast<double>(b.x) + b.width);
+    double y1 = std::min(top  + dispH, static_cast<double>(b.y) + b.height);
+    if (x1 <= x0 || y1 <= y0) return;
+
+    ctx->PushState();
+    if (alpha < 0.999) ctx->SetAlpha(alpha);
+    if (transparentBackground == TransparentImageBackground::SolidColor) {
+        ctx->DrawFilledRectangle(Rect2Dd(x0, y0, x1 - x0, y1 - y0),
+                                 transparentColor, 0.0f);
+    } else {
+        constexpr double kCell = 12.0;                   // square size (px)
+        const Color light(255, 255, 255, 255);
+        const Color dark(203, 203, 203, 255);
+        ctx->DrawFilledRectangle(Rect2Dd(x0, y0, x1 - x0, y1 - y0), light, 0.0f);
+        // Pattern anchored to the image rectangle so it pans with the image.
+        int c0 = static_cast<int>(std::floor((x0 - left) / kCell));
+        int r0 = static_cast<int>(std::floor((y0 - top)  / kCell));
+        for (int r = r0; top + r * kCell < y1; ++r) {
+            double cy0 = std::max(top + r * kCell, y0);
+            double cy1 = std::min(top + (r + 1) * kCell, y1);
+            for (int c = c0 + ((c0 + r) % 2 == 0 ? 1 : 0); left + c * kCell < x1; c += 2) {
+                double cx0 = std::max(left + c * kCell, x0);
+                double cx1 = std::min(left + (c + 1) * kCell, x1);
+                if (cx1 > cx0 && cy1 > cy0)
+                    ctx->DrawFilledRectangle(Rect2Dd(cx0, cy0, cx1 - cx0, cy1 - cy0),
+                                             dark, 0.0f);
+            }
+        }
+    }
+    ctx->PopState();
+}
+
 void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b) {
     if (!image || !image->IsValid()) {
         ctx->SetFontSize(16);
@@ -342,6 +390,7 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
     // Colour-adjusted pixmap wins; otherwise an animated image draws its
     // current frame; a plain still falls through to the image itself.
     std::shared_ptr<UCPixmap> pm = processed ? processed : animator.GetCurrentFramePixmap();
+    DrawBackdrop(ctx, b, iw, ih, s, cx, cy, rotationQuarters, 1.0);
     Blit(ctx, image, pm, iw, ih, s, cx, cy, rotationQuarters, flipH, flipV, 1.0);
 }
 
@@ -415,12 +464,16 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
         }
 
         if (prevImage && prevAlpha > 0.001) {
+            DrawBackdrop(ctx, b, iwP, ihP, fitP * prevScaleMul,
+                         cx + prevOffX, cy + prevOffY, prevRotQ, prevAlpha);
             Blit(ctx, prevImage, prevProcessed, iwP, ihP, fitP * prevScaleMul,
                  cx + prevOffX, cy + prevOffY, prevRotQ, prevFlipH, prevFlipV, prevAlpha);
         }
         if (image && curAlpha > 0.001) {
             std::shared_ptr<UCPixmap> curPm =
                     processed ? processed : animator.GetCurrentFramePixmap();
+            DrawBackdrop(ctx, b, iwC, ihC, fitC * curScaleMul,
+                         cx + curOffX, cy + curOffY, rotationQuarters, curAlpha);
             Blit(ctx, image, curPm, iwC, ihC, fitC * curScaleMul,
                  cx + curOffX, cy + curOffY, rotationQuarters, flipH, flipV, curAlpha);
         }
@@ -1145,6 +1198,23 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
     if (!visible && adjustPanel) adjustPanel->SetVisible(false);
     UpdateBreadcrumb();
     RequestRedraw();
+}
+
+void UltraCanvasMediaViewer::SetTransparentBackground(TransparentImageBackground mode) {
+    if (surface) surface->SetTransparentBackground(mode);
+}
+
+TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() const {
+    return surface ? surface->GetTransparentBackground()
+                   : TransparentImageBackground::SolidColor;
+}
+
+void UltraCanvasMediaViewer::SetTransparentColor(const Color& c) {
+    if (surface) surface->SetTransparentColor(c);
+}
+
+Color UltraCanvasMediaViewer::GetTransparentColor() const {
+    return surface ? surface->GetTransparentColor() : Color(255, 255, 255, 255);
 }
 
 void UltraCanvasMediaViewer::UpdateBreadcrumb() {

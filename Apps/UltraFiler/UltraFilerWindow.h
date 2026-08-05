@@ -1,5 +1,6 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
+// a menu bar (Settings menu opening the settings window),
 // a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, folder
 // breadcrumb + recursive search field), a command bar (New folder / New file,
 // Cut / Copy / Paste / Rename / Delete, Sort and View dropdowns, video preview
@@ -10,7 +11,7 @@
 // file is selected), plus a status bar describing the folder and the
 // selection (kept in step with the folder listing through the filer's
 // onFolderRefreshed callback).
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 #pragma once
@@ -26,7 +27,9 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraFilerSettings.h"
 
 #include <memory>
 #include <string>
@@ -55,6 +58,7 @@ private:
     };
 
     // ===== UI CONSTRUCTION =====
+    std::shared_ptr<UltraCanvasMenu>      BuildMenuBar();
     std::shared_ptr<UltraCanvasContainer> BuildNavigationRow();
     std::shared_ptr<UltraCanvasContainer> BuildCommandBar();
     void BuildFolderTree();
@@ -108,8 +112,16 @@ private:
     // nothing to preview.
     std::string PreviewablePathForSelection() const;
 
+    // ===== SETTINGS =====
+    // Pushes the persisted settings into the widgets they configure (the
+    // preview's transparent-image backdrop). Called at startup and by the
+    // settings dialog after every change.
+    void ApplySettings();
+    void OpenSettingsDialog();
+
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
+    std::shared_ptr<UltraCanvasMenu>            menuBar;
     std::shared_ptr<UltraCanvasTreeView>        folderTree;
     std::shared_ptr<UltraCanvasTabbedContainer> tabbedContainer;
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
@@ -134,6 +146,7 @@ private:
     bool syncingControls = false;          // dropdowns driven by filer callbacks
     bool previewEnabled = true;            // the command bar toggle state
     bool previewShown = false;             // preview pane currently in the split
+    UltraFilerSettings settings;           // persisted application settings
 };
 
 } // namespace UltraCanvas

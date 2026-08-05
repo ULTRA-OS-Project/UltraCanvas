@@ -1,4 +1,22 @@
 #### 2026-08-05 *0.3.26*
+- **UltraCanvasMediaViewer** *(1.3.0)*: configurable backdrop behind
+  transparent images. New `TransparentImageBackground` enum
+  (`SolidColor` / `Checkered`) with `SetTransparentBackground()` /
+  `GetTransparentBackground()` and `SetTransparentColor()` /
+  `GetTransparentColor()` on both the surface and the viewer. The backdrop is
+  drawn under the image's displayed rectangle (only its visible part, so a
+  high zoom costs nothing extra) — a preset solid colour (default white) or
+  the light/dark checkerboard familiar from image editors — and fades with
+  the image during slideshow transitions. Transparent pixels now read against
+  a defined background instead of the dark canvas colour.
+- **UltraFiler app** *(1.3.0)*: menu bar with a *Settings* menu opening the
+  new settings window: a tree of settings pages on the left (main pages with
+  sub pages — currently *Media Viewer > Transparent Images*) and the selected
+  page on the right. The Transparent Images page chooses between the
+  checkered pattern and a preset colour (colour picker) for the backdrop
+  behind transparent images in the media preview; changes apply live and
+  persist to the platform config directory
+  (`~/.config/UltraFiler/config.ini` on Linux).
 - **UltraCanvasMediaViewer**: new `SetTopBarsVisible()` / `GetTopBarsVisible()`
   — shows/hides everything above the display surface (the folder breadcrumb,
   both toolbar rows and the adjustments panel). For hosts that embed the
