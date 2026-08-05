@@ -45213,9 +45213,52 @@ dependencies.
   schematics, produce an SVG sidecar.
 * **File-format export hook** — `PixelFX` exporters gain `*.svg` as
   an output format when the plugin is linked.
-* **Demo screen** — drop image, configure colour mode / speckle /
-  precision sliders, preview both the source bitmap and the vector
-  output side by side.
+* **Demo screen** — shipped, see §7.1.
+
+---
+
+## 7.1 Demo screen
+
+`Apps/DemoApp/UltraCanvasVectorizerExamples.cpp` (tools → *Vectorizer*)
+is a three-column page: **input bitmap · tracing parameters · SVG
+output**.
+
+**Input** — `Vectorizer-demo.png` is loaded by default; *Open…* swaps
+in any bitmap libvips can decode. The pixel dimensions are shown under
+the preview because they drive both trace time and SVG size.
+
+**Tracing parameters** — every field of `VectorizerConfig` is editable:
+
+| Control | Field | Range |
+|---|---|---|
+| Quality preset | whole config | 7 presets + *Custom* |
+| Colour mode | `colorMode` | Colour / Binary |
+| Shape hierarchy | `hierarchy` | Stacked / Cutout |
+| Path mode | `pathMode` | Spline / Polygon / Pixel |
+| Speckle filter | `filterSpeckle` | 0–64 px |
+| Colour precision | `colorPrecision` | 1–8 bits |
+| Layer difference | `layerDifference` | 0–255 |
+| Corner threshold | `cornerThreshold` | 0–180° |
+| Path length threshold | `lengthThreshold` | 0.5–10 px |
+| Splice threshold | `spliceThreshold` | 0–180° |
+| Curve-fitting iterations | `maxIterations` | 1–30 |
+
+The presets — *Logo / icon* (the framework defaults), *Detailed
+illustration*, *Photograph (compact)*, *Poster / flat cutout*, *Line
+art (black & white)*, *Pixel perfect* and *Maximum detail* — cover the
+fidelity-versus-size trade-off documented in §8. Selecting one fills in
+every control; editing any single control switches the dropdown to
+*Custom*. Parameters that have no effect in the current colour / path
+mode (e.g. colour precision in Binary mode, splice threshold in Pixel
+mode) are greyed out rather than silently ignored, and *Reset to
+defaults* returns to the first preset.
+
+**Output** — the traced SVG is written to a temp file and rendered
+through the image element, with dimensions, byte size and trace time in
+the status line. **Save SVG…** opens the native save dialog (default
+name derived from the source bitmap, `.svg` appended if the user omits
+it) and writes the document from the last successful trace; the button
+stays disabled until there is something to save.
 
 ---
 
@@ -45245,7 +45288,7 @@ dependencies.
 
 | Phase | Scope | Effort |
 |---|---|---|
-| **P1** | Plugin skeleton, corrosion wire-up, Rust shim, C++ facade, file/buffer/PFXImage entry points, demo screen pointing at this README | shipped now |
+| **P1** | Plugin skeleton, corrosion wire-up, Rust shim, C++ facade, file/buffer/PFXImage entry points, demo screen with the full parameter set and SVG export (§7.1) | shipped |
 | **P2** | UI hooks: image-element trace action, PDF viewer "Vectorize page", PixelFX `.svg` export | ~2 days |
 | **P3** | Cancellation + parallel batch (vectorise N images / pages) | ~1 day |
 | **P4** | Optional ImageTracer-cpp Tier-2 backend behind `ULTRACANVAS_VECTORIZER_IMAGETRACER=ON` for zero-Rust builds | ~1 day |
