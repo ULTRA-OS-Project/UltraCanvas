@@ -119,6 +119,11 @@ class TreeNode {
 public:
     TreeNodeData data;
     TreeNodeState state;
+    // Remembers that the node was expanded when its last child was removed,
+    // so AddChild can restore the expanded state instead of collapsing.
+    // Lazy-loading callers swap a placeholder child for the real children on
+    // expansion; without this the node would silently snap shut.
+    bool wasExpandedBeforeEmptied = false;
     int level;                    // Depth in tree (0 = root level)
     bool selected;
     bool hovered;
