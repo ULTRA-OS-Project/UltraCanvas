@@ -1,8 +1,9 @@
 // UltraCanvasSwitch.h
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
-// Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels.
-// Version: 1.2.0
-// Last Modified: 2026-05-29
+// Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels
+// (inside the track, outside it, or one label on each side of the track).
+// Version: 1.3.0
+// Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,7 +24,11 @@ namespace UltraCanvas {
     enum class SwitchStateLabelPosition {
         Hidden,        // No ON/OFF text
         InsideTrack,   // Drawn inside the track on the side opposite the thumb
-        OutsideTrack   // Drawn next to the track, between the track and the main label
+        OutsideTrack,  // Drawn next to the track, between the track and the main label
+        BothSides      // Both texts are always visible, one on each side of the track:
+                       //   horizontal -> offText left, onText right
+                       //   vertical   -> onText above, offText below (ON = top)
+                       // The text matching the current state is highlighted.
     };
 
     enum class SwitchThumbIconStyle {
@@ -76,6 +81,20 @@ namespace UltraCanvas {
         FontWeight stateLabelFontWeight = FontWeight::Bold;
         float stateLabelTrackPadding = 4.0f;     // Gap between thumb and inside-track label
         float stateLabelOutsidePadding = 6.0f;   // Gap between track and outside-track label
+
+        // Side labels (SwitchStateLabelPosition::BothSides only).
+        // Both texts stay visible; the one matching the current state uses the
+        // active color/weight, the other the inactive pair.
+        std::string sideLabelFontFamily = "Arial";
+        float sideLabelFontSize = 12.0f;
+        FontWeight sideLabelActiveWeight = FontWeight::Normal;
+        FontWeight sideLabelInactiveWeight = FontWeight::Normal;
+        Color sideLabelActiveColor = Colors::TextDefault;
+        Color sideLabelInactiveColor = Color(150, 150, 150, 255);
+        Color sideLabelDisabledColor = Colors::TextDisabled;
+        float sideLabelPadding = 8.0f;           // Gap between track and each side label
+        bool sideLabelClickSelects = true;       // Click a side label to select that state
+                                                 // (click on the track always toggles)
     };
 
 // ===== TOGGLE SWITCH =====
@@ -83,24 +102,41 @@ namespace UltraCanvas {
     private:
         SwitchVisualStyle visualStyle;
 
+        // Last mouse position (element-local), used by BothSides to turn a click
+        // on a side label into a state selection instead of a plain toggle.
+        Point2Di lastPointer{0, 0};
+        bool lastPointerValid = false;
+
+        // Measured extents of the two side labels (BothSides mode).
+        struct SideLabelMetrics {
+            float offWidth = 0.0f;
+            float onWidth = 0.0f;
+            float height = 0.0f;
+        };
+
         Color GetCurrentTrackColor() const;
         Color GetCurrentThumbColor() const;
 
         // Computes the track sub-rect inside indicatorRect (which may include
-        // outside-track label space along the long axis).
+        // outside-track or side label space).
         Rect2Df GetTrackRect() const;
 
         // Conservative width estimate for an outside-track label (in long-axis pixels).
         float EstimateStateLabelExtent() const;
 
+        // Measures both side labels at both weights, so the track keeps its
+        // position when the active/inactive weights differ.
+        SideLabelMetrics MeasureSideLabels() const;
+
         void DrawThumbIcon(IRenderContext* ctx, const Point2Df& thumbCenter, float thumbRadius);
         void DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Df& track);
         void DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Df& track);
+        void DrawSideLabels(IRenderContext* ctx, const Rect2Df& track);
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
         Size2Df GetIndicatorSize() const override;
-        void OnActivate() override { Toggle(); }
+        void OnActivate() override;
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
@@ -125,6 +161,9 @@ namespace UltraCanvas {
 
         // Indeterminate is invalid for switches; clamp to Unchecked.
         void SetCheckState(CheckedState state) override;
+
+        // Tracks the pointer position before the base class turns it into an activation.
+        bool OnEvent(const UCEvent& event) override;
 
         // ===== APPEARANCE =====
         void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
@@ -163,11 +202,31 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
+        // Two always-visible texts with the track between them: offLabel goes to the
+        // OFF side of the track (left when horizontal, bottom when vertical), onLabel
+        // to the ON side. Whichever matches the current state is highlighted.
+        void SetSideLabels(const std::string& offLabel, const std::string& onLabel) {
+            visualStyle.offText = offLabel;
+            visualStyle.onText = onLabel;
+            visualStyle.stateLabelPosition = SwitchStateLabelPosition::BothSides;
+            layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
+        }
+
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasSwitch> Create(
                 const std::string& identifier,
                 float x, float y,
                 const std::string& text = "",
+                bool checked = false);
+
+        // Switch flanked by two texts (offLabel — track — onLabel), no main label.
+        static std::shared_ptr<UltraCanvasSwitch> CreateWithSideLabels(
+                const std::string& identifier,
+                float x, float y,
+                const std::string& offLabel,
+                const std::string& onLabel,
                 bool checked = false);
     };
 
