@@ -15,8 +15,10 @@
 // The column views (details, list, size bars) carry UltraCanvasSplitPane-style
 // splitters between their columns (see COLUMN SPLITTERS), and names too long
 // for the space they are drawn in show the full name in a hover tooltip.
-// Version: 1.6.0
-// Last Modified: 2026-07-31
+// Tile captions (thumbnail grids, treemap) wrap long names over several lines
+// instead of cutting them off after one (see WRAPPED CAPTIONS).
+// Version: 1.7.0
+// Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -2458,6 +2460,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::RecomputeLayout() {
         items.clear();
         detailsColumns.clear();
+        captionLinesMeasured = true;   // only the thumbnail grid measures names
         contentWidth = contentHeight = 0;
         Rect2Di area = ContentBounds();
         if (area.width <= 0 || area.height <= 0) return;
@@ -2567,14 +2570,31 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::LayoutThumbnails(const Rect2Di& area) {
         int edge = ThumbnailEdge();
         int gap = style.tileGap;
-        // The name occupies the base caption band; each enabled dataset field
-        // adds one line below it (reserved uniformly so the grid stays aligned).
-        int capH = style.captionHeight + DatasetLineCount() * DatasetLineHeight();
+        // The name occupies the caption band (one line, more when a name in the
+        // row wraps); each enabled dataset field adds one line below it
+        // (reserved uniformly so the grid stays aligned).
+        int datasetH = DatasetLineCount() * DatasetLineHeight();
         int tileW = edge;
         int scrollbarGutter = 10;
         int availW = area.width - scrollbarGutter;
         int cols = std::max(1, (availW + gap) / (tileW + gap));
         size_t n = entries.size();
+
+        // Wrapping needs text metrics. Outside a render pass the widget may not
+        // be on a window yet: captions then stay single-line and the first
+        // Render() rebuilds the layout with real measurements.
+        int maxNameLines = std::max(1, style.captionMaxLines);
+        IRenderContext* mctx = measureContext ? measureContext : GetRenderContext();
+        captionLinesMeasured = (mctx != nullptr);
+        if (mctx && maxNameLines > 1) {
+            mctx->PushState();
+            FontStyle nameFont;
+            nameFont.fontFamily = style.fontFamily;
+            nameFont.fontSize = style.smallFontSize;
+            mctx->SetFontStyle(nameFont);
+        } else {
+            mctx = nullptr;
+        }
 
         // Rows are laid out one grid line at a time so each can take its own
         // height. A row's image band is the tallest thumbnail actually shown in
@@ -2590,17 +2610,28 @@ namespace UltraCanvas {
                 if (rowImageH >= edge) break;   // pinned to full height already
             }
             if (rowImageH <= 0) rowImageH = edge;
-            int tileH = rowImageH + capH;
+            // Caption band of the row: the deepest wrapped name in it, so every
+            // tile of the row keeps the same height and the grid stays aligned.
+            int rowNameLines = 1;
+            for (size_t i = rowStart; mctx && i < rowEnd; ++i) {
+                rowNameLines = std::max(rowNameLines,
+                                        CaptionLinesFor(mctx, entries[i].name,
+                                                        tileW - 8));
+                if (rowNameLines >= maxNameLines) break;
+            }
+            int tileH = rowImageH + CaptionBandHeight(rowNameLines) + datasetH;
             for (size_t i = rowStart; i < rowEnd; ++i) {
                 int col = static_cast<int>(i - rowStart);
                 ItemLayout it;
                 it.entryIndex = i;
                 it.rect = Rect2Di(area.x + col * (tileW + gap), y, tileW, tileH);
                 it.imageRect = Rect2Di(it.rect.x, it.rect.y, tileW, rowImageH);
+                it.captionLines = rowNameLines;
                 items.push_back(it);
             }
             y += tileH + gap;
         }
+        if (mctx) mctx->PopState();
         contentWidth = area.width;
         contentHeight = (n == 0) ? area.height : (y - gap + style.outerPadding);
     }
@@ -2829,7 +2860,12 @@ namespace UltraCanvas {
     // ===== RENDER =====
     void UltraCanvasFilerWidget::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
+        // Tile heights depend on measured names, so hand the layout the context
+        // of this pass; a layout that ran without one is redone here.
+        measureContext = ctx;
+        if (!captionLinesMeasured) InvalidateFilerLayout();
         EnsureLayout();
+        measureContext = nullptr;
 
         auto lb = GetLocalBounds();
         Rect2Di bounds(static_cast<int>(lb.x), static_cast<int>(lb.y),
@@ -2978,6 +3014,142 @@ namespace UltraCanvas {
         if (entryIndex < nameTruncated.size())
             nameTruncated[entryIndex] = (shown != name) ? 1 : 0;
         return shown;
+    }
+
+    // ===== WRAPPED CAPTIONS =====
+    // Tile captions (thumbnail grids, treemap cells) are only as wide as the
+    // tile, which is far less than a file name often needs. Instead of cutting
+    // the name off after one line it is broken over up to captionMaxLines
+    // lines; only what does not fit even then is dropped, from the front of the
+    // last line, so the tail — the extension — always remains readable.
+    namespace {
+        // Byte offset of every UTF-8 code point start in `s`, plus s.size() as
+        // the closing boundary: cutting on one never splits a multibyte
+        // sequence. Index i of the result addresses the prefix s[0, b[i]) and
+        // the suffix s[b[i], end).
+        std::vector<size_t> Utf8Boundaries(const std::string& s) {
+            std::vector<size_t> b;
+            b.reserve(s.size() + 1);
+            for (size_t i = 0; i < s.size(); ++i) {
+                if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) b.push_back(i);
+            }
+            b.push_back(s.size());
+            return b;
+        }
+
+        // Break the line after one of these when it sits in the back half of
+        // what fits: a name reads much better broken at its own separators
+        // ("Holiday photos - Rome.jpg") than in the middle of a word.
+        bool IsNameBreakChar(char c) {
+            return c == ' ' || c == '-' || c == '_' || c == '.' || c == ',' ||
+                   c == ';' || c == '(' || c == ')' || c == '[' || c == ']';
+        }
+    }
+
+    std::vector<std::string> UltraCanvasFilerWidget::WrapText(
+            IRenderContext* ctx, const std::string& text,
+            int maxWidth, int maxLines, bool* outTruncated) const {
+        if (outTruncated) *outTruncated = false;
+        std::vector<std::string> lines;
+        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
+        if (maxLines < 1) maxLines = 1;
+
+        if (ctx->GetTextLineDimensions(text).width <= maxWidth) {
+            lines.push_back(text);
+            return lines;                       // the common case: one measure
+        }
+        if (maxLines == 1) {
+            lines.push_back(EllipsizeText(ctx, text, maxWidth));
+            if (outTruncated) *outTruncated = true;
+            return lines;
+        }
+
+        std::string rest = text;
+        for (int line = 0; line < maxLines && !rest.empty(); ++line) {
+            std::vector<size_t> bounds = Utf8Boundaries(rest);
+            const bool lastLine = (line == maxLines - 1);
+
+            if (lastLine) {
+                if (ctx->GetTextLineDimensions(rest).width <= maxWidth) {
+                    lines.push_back(rest);
+                    break;
+                }
+                // Longest tail that fits behind a leading "…" (the shorter the
+                // tail the narrower the line, so the fit is monotone in `lo`).
+                size_t lo = 0, hi = bounds.size() - 1;
+                while (lo < hi) {
+                    size_t mid = (lo + hi) / 2;
+                    std::string cand = "…" + rest.substr(bounds[mid]);
+                    if (ctx->GetTextLineDimensions(cand).width <= maxWidth) hi = mid;
+                    else lo = mid + 1;
+                }
+                lines.push_back("…" + rest.substr(bounds[lo]));
+                if (outTruncated) *outTruncated = true;
+                break;
+            }
+
+            // Longest prefix that still fits this line.
+            size_t lo = 0, hi = bounds.size() - 1;
+            while (lo < hi) {
+                size_t mid = (lo + hi + 1) / 2;
+                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= maxWidth)
+                    lo = mid;
+                else
+                    hi = mid - 1;
+            }
+            size_t fit = bounds[lo];
+            // Not even one code point fits: take one anyway so the loop always
+            // makes progress (a caption this narrow is unreadable regardless).
+            if (fit == 0) fit = bounds.size() > 1 ? bounds[1] : rest.size();
+
+            // The exact fit is kept when it already ends on a word boundary;
+            // otherwise the line backs off to the last separator inside it —
+            // unless that would leave more than half the line empty.
+            size_t cut = fit;
+            if (fit < rest.size() && !IsNameBreakChar(rest[fit])) {
+                for (size_t i = fit; i > 0; --i) {
+                    if (!IsNameBreakChar(rest[i - 1])) continue;
+                    if (i * 2 >= fit) cut = i;
+                    break;
+                }
+            }
+
+            std::string head = rest.substr(0, cut);
+            rest.erase(0, cut);
+            while (!head.empty() && head.back() == ' ') head.pop_back();
+            while (!rest.empty() && rest.front() == ' ') rest.erase(0, 1);
+            if (!head.empty()) lines.push_back(head);
+        }
+        return lines;
+    }
+
+    std::vector<std::string> UltraCanvasFilerWidget::WrapEntryName(
+            IRenderContext* ctx, size_t entryIndex, const std::string& name,
+            int maxWidth, int maxLines) {
+        bool truncated = false;
+        std::vector<std::string> lines = WrapText(ctx, name, maxWidth, maxLines,
+                                                  &truncated);
+        if (entryIndex < nameTruncated.size())
+            nameTruncated[entryIndex] = truncated ? 1 : 0;
+        return lines;
+    }
+
+    int UltraCanvasFilerWidget::CaptionLinesFor(IRenderContext* ctx,
+                                                const std::string& name,
+                                                int maxWidth) const {
+        int maxLines = std::max(1, style.captionMaxLines);
+        if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
+        int n = static_cast<int>(WrapText(ctx, name, maxWidth, maxLines).size());
+        return clampi(n, 1, maxLines);
+    }
+
+    int UltraCanvasFilerWidget::NameLineHeight() const {
+        return style.captionLineHeight > 0 ? style.captionLineHeight
+                                           : static_cast<int>(style.smallFontSize) + 3;
+    }
+
+    int UltraCanvasFilerWidget::CaptionBandHeight(int lines) const {
+        return style.captionHeight + (std::max(1, lines) - 1) * NameLineHeight();
     }
 
     void UltraCanvasFilerWidget::DrawSelectionState(IRenderContext* ctx,
@@ -3589,13 +3761,22 @@ namespace UltraCanvas {
         fsty.fontSize = style.smallFontSize;
         ctx->SetFontStyle(fsty);
         ctx->SetTextPaint(style.textColor);
-        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
-                                               item.rect.width - 8);
-        Size2Di ts = ctx->GetTextLineDimensions(shown);
+        // The name wraps over the lines the row reserved for it; a name too
+        // long even for those keeps its tail behind a leading "…".
         int capTop = item.imageRect.y + item.imageRect.height;
-        ctx->DrawText(shown, Point2Dd(
-                item.rect.x + (item.rect.width - ts.width) / 2.0,
-                capTop + (style.captionHeight - ts.height) / 2.0));
+        int capH = CaptionBandHeight(item.captionLines);
+        int nameLineH = NameLineHeight();
+        std::vector<std::string> nameLines = WrapEntryName(
+                ctx, item.entryIndex, e.name, item.rect.width - 8,
+                std::max(1, item.captionLines));
+        double ny = capTop + (capH - static_cast<int>(nameLines.size()) * nameLineH) / 2.0;
+        for (const std::string& ln : nameLines) {
+            Size2Di ts = ctx->GetTextLineDimensions(ln);
+            ctx->DrawText(ln, Point2Dd(
+                    item.rect.x + (item.rect.width - ts.width) / 2.0,
+                    ny + (nameLineH - ts.height) / 2.0));
+            ny += nameLineH;
+        }
 
         // Dataset lines (Display > Dataset) under the name, smaller and greyed.
         if (datasetFields != 0) {
@@ -3603,7 +3784,7 @@ namespace UltraCanvas {
             if (!lines.empty()) {
                 ctx->SetTextPaint(style.secondaryTextColor);
                 int lineH = DatasetLineHeight();
-                int y = capTop + style.captionHeight;
+                int y = capTop + capH;
                 for (const std::string& raw : lines) {
                     std::string ln = EllipsizeText(ctx, raw, item.rect.width - 8);
                     Size2Di lts = ctx->GetTextLineDimensions(ln);
@@ -3712,16 +3893,26 @@ namespace UltraCanvas {
             fsty.fontWeight = FontWeight::Bold;
             ctx->SetFontStyle(fsty);
             ctx->SetTextPaint(Color(255, 255, 255, 235));
-            std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
-                                                   item.rect.width - 8);
-            ctx->DrawText(shown, Point2Dd(item.rect.x + 4, item.rect.y + 3));
-            if (item.rect.height >= 42) {
+            // The name wraps into whatever the cell has room for above the size
+            // line (cells are sized by the treemap, not by the caption).
+            int lineH = NameLineHeight();
+            bool showSize = item.rect.height >= 42;
+            int nameRoom = item.rect.height - 6 - (showSize ? lineH : 0);
+            int maxLines = clampi(nameRoom / std::max(1, lineH), 1,
+                                  std::max(1, style.captionMaxLines));
+            std::vector<std::string> nameLines = WrapEntryName(
+                    ctx, item.entryIndex, e.name, item.rect.width - 8, maxLines);
+            int ny = item.rect.y + 3;
+            for (const std::string& ln : nameLines) {
+                ctx->DrawText(ln, Point2Dd(item.rect.x + 4, ny));
+                ny += lineH;
+            }
+            if (showSize) {
                 fsty.fontWeight = FontWeight::Normal;
                 ctx->SetFontStyle(fsty);
                 ctx->SetTextPaint(Color(255, 255, 255, 190));
                 ctx->DrawText(FormatSize(e.effectiveSize),
-                              Point2Dd(item.rect.x + 4,
-                                       item.rect.y + 3 + style.smallFontSize + 4));
+                              Point2Dd(item.rect.x + 4, ny + 1));
             }
             ctx->PopState();
         }
@@ -3821,9 +4012,11 @@ namespace UltraCanvas {
                                        + detailsColumns[0].width - x - 4);
             }
         } else {   // thumbnails / treemap
+            // Covers the whole (possibly multi-line) caption band; the editor
+            // itself stays a single line, centered in it.
             int capTop = item.imageRect.y + item.imageRect.height;
-            field = Rect2Di(item.rect.x + 2, capTop,
-                            item.rect.width - 4, style.captionHeight);
+            field = Rect2Di(item.rect.x + 2, capTop, item.rect.width - 4,
+                            CaptionBandHeight(item.captionLines));
         }
 
         ctx->SetFillPaint(style.renameFieldColor);

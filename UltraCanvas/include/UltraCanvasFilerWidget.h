@@ -21,9 +21,12 @@
 // program), Paste creates a new file with that content in the shown folder.
 // The column-based views (Details / List / BarSize) carry draggable
 // UltraCanvasSplitPane-style splitters between their columns, and names that
-// do not fit their column show the full name in a tooltip.
-// Version: 1.6.0
-// Last Modified: 2026-07-31
+// do not fit their column show the full name in a tooltip. In the tile-shaped
+// views (thumbnail grids, treemap) a name wider than the tile wraps onto
+// further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
+// even then is dropped from the front of the last line, which opens with "…".
+// Version: 1.7.0
+// Last Modified: 2026-08-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -199,7 +202,17 @@ namespace UltraCanvas {
         int listColumnWidth   = 220;     // list mode column width
         int outerPadding      = 8;
         int tileGap           = 10;      // thumbnail grid gap
-        int captionHeight     = 20;      // thumbnail caption strip
+        int captionHeight     = 20;      // thumbnail caption strip (first line)
+
+        // Name wrapping in the caption of a thumbnail tile / treemap cell: a
+        // name wider than the tile continues on the next line, up to
+        // captionMaxLines lines (1 = the old single-line, tail-ellipsized
+        // caption). What still does not fit is dropped from the *front* of the
+        // last line, which then opens with "…" so the end of the name — its
+        // extension — stays readable. Every line past the first adds
+        // captionLineHeight to the tile.
+        int captionMaxLines   = 2;
+        int captionLineHeight = 0;       // 0 = derived from smallFontSize
 
         // Thumbnail tile edge for the four thumbnail view types.
         int thumbnailSmall     = 72;
@@ -490,9 +503,22 @@ namespace UltraCanvas {
             Rect2Di rect;        // whole row / tile / treemap cell
             Rect2Di imageRect;   // icon / thumbnail sub-region
             size_t  entryIndex;
+            // Name lines the tile caption reserves (thumbnail views): 1 unless
+            // a name in the same grid row has to wrap. All tiles of a row share
+            // it so the grid stays aligned.
+            int     captionLines = 1;
         };
         std::vector<ItemLayout> items;
         bool layoutValid = false;
+        // Tile heights depend on measured text (wrapped names), so a layout
+        // built without a render context — before the widget is on a window —
+        // falls back to single-line captions. The first Render() then redoes it
+        // with real metrics.
+        bool captionLinesMeasured = true;
+        // The context of the running Render(), so the layout it triggers can
+        // measure text. Null outside a render pass (GetRenderContext() is used
+        // then, which is null until the widget is attached to a window).
+        IRenderContext* measureContext = nullptr;
         int  contentWidth = 0;
         int  contentHeight = 0;
         int  lastAreaW = -1, lastAreaH = -1;
@@ -842,6 +868,27 @@ namespace UltraCanvas {
         // names that are actually cut off.
         std::string EllipsizeEntryName(IRenderContext* ctx, size_t entryIndex,
                                        const std::string& name, int maxWidth);
+        // Breaks `text` into at most `maxLines` lines that each fit `maxWidth`,
+        // for the captions of the tile-shaped views. Breaks after a separator
+        // (space, -, _, .) when one sits in the back half of the line, else at
+        // the exact fit — file names are frequently one long "word". When the
+        // text still does not fit, the head of what is left is dropped and the
+        // last line opens with "…", keeping the end of the name (extension)
+        // visible. `outTruncated` reports whether anything was dropped.
+        std::vector<std::string> WrapText(IRenderContext* ctx,
+                                          const std::string& text,
+                                          int maxWidth, int maxLines,
+                                          bool* outTruncated = nullptr) const;
+        // WrapText for an entry name; records whether it had to be shortened,
+        // so the hover tooltip only pops for names that are really cut off.
+        std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
+                                               const std::string& name,
+                                               int maxWidth, int maxLines);
+        // Lines a caption needs for `name` at `maxWidth` (1..captionMaxLines).
+        int  CaptionLinesFor(IRenderContext* ctx, const std::string& name,
+                             int maxWidth) const;
+        int  NameLineHeight() const;            // one wrapped caption line
+        int  CaptionBandHeight(int lines) const;// caption strip for `lines`
         // Per-entry "the drawn name is shortened" flags, refreshed by the draw
         // pass for the items it paints (sized with `entries`).
         std::vector<uint8_t> nameTruncated;
