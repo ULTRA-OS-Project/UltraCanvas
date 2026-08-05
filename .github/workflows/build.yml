@@ -62,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload build artifacts (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
@@ -276,7 +276,7 @@ jobs:
 
       - name: Upload build artifacts (macOS)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
@@ -285,7 +285,7 @@ jobs:
 
       - name: Upload build artifacts (Linux)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: UCDemo-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
