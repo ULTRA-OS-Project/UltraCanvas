@@ -1,3 +1,36 @@
+#### 2026-08-05 *0.3.26*
+- **UltraCanvasMediaViewer**: new `SetTopBarsVisible()` / `GetTopBarsVisible()`
+  — shows/hides everything above the display surface (the folder breadcrumb,
+  both toolbar rows and the adjustments panel). For hosts that embed the
+  viewer as a plain preview pane and provide their own navigation. Default:
+  visible.
+- **UltraCanvasTreeView**: new `SetFontSize()` / `GetFontSize()` for the row
+  label font size (default 12, previously hardcoded).
+  `UltraCanvasColumnsTreeView` uses it for its cell text, column headers and
+  group headers too.
+- **UltraCanvasFilerWidget**: new `FilerStyle::folderIconScale` (default 1.0)
+  — shrinks the folder glyph inside a thumbnail tile's image box, centered,
+  so folders can read lighter next to image thumbnails.
+- **UltraCanvasFilerWidget**: file-list display for search results. New
+  `ShowFileList(paths)` / `IsShowingFileList()` shows an explicit list of
+  paths (stat-ed like scanned entries) instead of the folder listing, in the
+  current view mode; `SetPath()` returns to the folder display. The Details
+  view gains a `Path` column (the entry's containing folder) shown only in
+  that mode, so normal folder displays are unchanged. The Open-Path context
+  item now sits at the *top* of the menu followed by a separator, and
+  `SetOpenPathMenuItemVisible(visible, label)` takes a caption.
+- **UltraFiler app** *(1.2.0)*: search field on the right of the path bar —
+  searches the current folder recursively for names containing the text
+  (case-insensitive, capped at 1000 matches) and shows the matches in the
+  tab's current view mode, with the *Path* column after the name in Details
+  view and "Open path (in new tab)" as the context menu's first entry.
+  Clearing the field or navigating returns to the folder display; each tab
+  keeps its own search. Every UI element now uses a single 9 pt font size
+  (toolbar, breadcrumb, dropdowns, tabs, folder tree, file panel, status
+  bar). The preview pane hides the media viewer's breadcrumb and toolbars —
+  the filer provides the navigation, the pane shows only the media. Folder
+  icons in the thumbnail views draw at 70% size.
+
 #### 2026-08-04 *0.3.25*
 - **UltraCanvasFilerWidget** *(1.7.0)*: entries are properly draggable. A press
   on an item captures the mouse and, past the slop threshold, picks up that

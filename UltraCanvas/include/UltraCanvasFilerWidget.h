@@ -92,6 +92,7 @@ namespace UltraCanvas {
     // reusing FilerSortField.
     enum class FilerDetailsColumn {
         Name,
+        Path,        // containing folder — only shown for a file list display
         Size,
         Type,
         ModifiedDate,
@@ -226,6 +227,10 @@ namespace UltraCanvas {
         int thumbnailBig       = 170;
         int thumbnailMaximized = 260;
 
+        // Scale of the folder glyph inside a thumbnail tile's image box
+        // (1.0 = fill the box like the file glyphs; UltraFiler uses 0.7).
+        float folderIconScale  = 1.0f;
+
         int iconMenuButtonSize = 20;     // hover icon-menu button edge
         int infoBarHeight      = 26;     // selection info bar under the entries
 
@@ -263,6 +268,17 @@ namespace UltraCanvas {
         void SetPath(const std::string& folderPath);   // scans + displays the folder
         const std::string& GetPath() const { return currentPath; }
         void Refresh();                                // rescan the current folder
+
+        // ===== FILE LIST (SEARCH RESULTS) =====
+        // Display an explicit list of paths (e.g. search results) instead of
+        // the folder listing, in the current view mode. The Details view adds
+        // a Path column after the name, showing each entry's containing
+        // folder. GetPath() keeps returning the folder shown before; SetPath()
+        // returns to the normal folder display. Refresh() re-stats the list
+        // (vanished files drop out). Pair with SetOpenPathMenuItemVisible()
+        // to let the context menu open an entry's containing folder.
+        void ShowFileList(const std::vector<std::string>& paths);
+        bool IsShowingFileList() const { return fileListMode; }
 
         // ===== VIEW =====
         void SetViewType(FilerViewType type);
@@ -317,9 +333,15 @@ namespace UltraCanvas {
         void SetHoverIconMenuEnabled(bool enabled);
         bool IsHoverIconMenuEnabled() const { return hoverIconMenu; }
 
-        // Show the "Open Path" context-menu item (useful when the widget
-        // displays a search result rather than a plain folder).
-        void SetOpenPathMenuItemVisible(bool visible) { showOpenPathItem = visible; }
+        // Show the "Open Path" context-menu item as the menu's first entry
+        // (useful when the widget displays a search result rather than a plain
+        // folder). `label` replaces the item's caption, e.g.
+        // "Open path (in new tab)".
+        void SetOpenPathMenuItemVisible(bool visible,
+                                        const std::string& label = "Open Path") {
+            showOpenPathItem = visible;
+            openPathItemLabel = label;
+        }
 
         // ===== DRAGGING ENTRIES =====
         // Dragging files out of the view (on by default): a press on an item
@@ -469,6 +491,11 @@ namespace UltraCanvas {
         std::function<void()> onSettings;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
 
+        // File-list (search result) display: while active, ScanFolder() builds
+        // the entries from these explicit paths instead of listing currentPath.
+        bool fileListMode = false;
+        std::vector<std::string> fileListPaths;
+
         // New-document hook: return true when the app handled the creation
         // itself (dialog, template, ...); false lets the widget create the file.
         std::function<bool(const FilerNewDocumentType&, const std::string& folderPath)> onNewDocument;
@@ -490,6 +517,7 @@ namespace UltraCanvas {
         bool showHiddenFiles = false;
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
+        std::string openPathItemLabel = "Open Path";
         bool showSelectionInfo = true;
         bool shrinkThumbnailRows = true;
         bool columnResizeEnabled = true;
@@ -805,6 +833,9 @@ namespace UltraCanvas {
 
         // ===== SCANNING =====
         void ScanFolder();
+        // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
+        // when the path no longer exists. Used by the file-list display.
+        bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
         void ApplyEntryTypeInfo(FilerEntry& e) const;
@@ -828,6 +859,11 @@ namespace UltraCanvas {
         // Fills detailsColumnWidths with the built-in widths the first time it
         // is needed (and after a reset).
         void EnsureDetailsColumnWidths();
+        // Spec/width indices of the Details columns visible right now — the
+        // Path column only shows for a file list (search result) display.
+        // Splitter drags and layout go through this so the width slots stay
+        // addressed by FilerDetailsColumn even while Path is hidden.
+        std::vector<size_t> VisibleDetailsSpecIndices() const;
         // Column geometry of one BarSize row. `autoValueWidth` is the measured
         // width of the widest formatted size, used when the value column is on
         // "auto"; the caller measures it because layout has no render context.

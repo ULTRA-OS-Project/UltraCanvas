@@ -97,3 +97,39 @@ then `ctest --test-dir build`. Framework tests live under `Tests/`.
    `THIRD_PARTY_LICENSES.md`.
 5. Docs changes: regenerate `llms.txt`/`llms-full.txt`
    (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
+
+## Branch and pull-request rules (AI sessions)
+
+Why these exist: in a long session the working branch's PR can be merged
+mid-session (which deletes the branch on GitHub). A later `git push` then
+silently *recreates* the branch — but a merged PR never receives new
+commits, so everything pushed after the merge is stranded on an untracked
+branch and never reaches `main`. This has happened; the rules below prevent
+a repeat.
+
+For assistants:
+
+1. **Check the branch before every follow-up push.** Run
+   `git ls-remote origin <branch>` first. If the branch is gone from the
+   remote — or the push output says `* [new branch]` where an update to an
+   existing branch was expected — the PR was merged (or closed) and the
+   branch deleted. Do not just push and move on.
+2. **Never stack new work onto merged history.** When the branch's PR is
+   merged: `git fetch origin main`, rebase the still-unmerged commits onto
+   `origin/main` (keep the same branch name), push with
+   `--force-with-lease`, and tell the user a **new** PR is needed — a
+   merged/closed PR cannot track new commits, and GitHub will not reopen it
+   for a recreated branch.
+3. **Confirm delivery after pushing.** Verify an *open* PR exists for the
+   branch and that its head is the commit just pushed; report the PR number
+   and head SHA. "Pushed" is not "delivered" — only a commit reachable from
+   an open PR (or `main`) counts.
+4. **Keep the base fresh.** Before the rebase in rule 2, always fetch —
+   `main` usually moved while the session ran; resolve conflicts locally so
+   the new PR is mergeable from the start.
+
+For maintainers:
+
+5. **Do not merge a session's PR while the session may still push to it.**
+   Merge after the session says it is done — or, if merging early, tell the
+   session so it restarts from `main` and opens a fresh PR for the rest.

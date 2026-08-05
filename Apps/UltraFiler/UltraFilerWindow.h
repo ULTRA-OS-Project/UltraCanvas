@@ -1,16 +1,17 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
-// a navigation row ("+" new-tab button, Back / Forward / Up / Refresh + folder
-// breadcrumb), a command bar (New folder / New file, Cut / Copy / Paste /
-// Rename / Delete, Sort and View dropdowns, video preview mode, Preview
-// toggle), a three-pane split with the lazy folder tree (UltraCanvasTreeView),
-// the tabbed folder content display (UltraCanvasTabbedContainer hosting one
-// UltraCanvasFilerWidget per tab) and the media preview
-// (UltraCanvasMediaViewer, shown only while a previewable file is selected),
-// plus a status bar describing the folder and the selection (kept in step with
-// the folder listing through the filer's onFolderRefreshed callback).
-// Version: 1.1.2
-// Last Modified: 2026-08-04
+// a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, folder
+// breadcrumb + recursive search field), a command bar (New folder / New file,
+// Cut / Copy / Paste / Rename / Delete, Sort and View dropdowns, video preview
+// mode, Preview toggle), a three-pane split with the lazy folder tree
+// (UltraCanvasTreeView), the tabbed folder content display
+// (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
+// the media preview (UltraCanvasMediaViewer, shown only while a previewable
+// file is selected), plus a status bar describing the folder and the
+// selection (kept in step with the folder listing through the filer's
+// onFolderRefreshed callback).
+// Version: 1.2.0
+// Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -25,6 +26,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextInput.h"
 
 #include <memory>
 #include <string>
@@ -49,6 +51,7 @@ private:
         std::vector<std::string> history;      // visited folders
         size_t historyIndex = 0;               // current position in `history`
         bool navigatingHistory = false;        // Back/Forward in flight - don't push
+        std::string searchQuery;               // active search ("" = folder display)
     };
 
     // ===== UI CONSTRUCTION =====
@@ -79,6 +82,12 @@ private:
     // Selects (expanding ancestors as needed) the tree node of `path`.
     void SyncTreeSelection(const std::string& path);
 
+    // ===== SEARCH =====
+    // Searches the active tab's folder (recursively) for names containing
+    // `query` and shows the matches in the tab's current view mode; an empty
+    // query returns the tab to its normal folder display.
+    void RunSearch(const std::string& query);
+
     // ===== NAVIGATION =====
     void NavigateTo(const std::string& path);
     void NavigateBack();
@@ -108,6 +117,7 @@ private:
     std::shared_ptr<UltraCanvasSplitPane>       split;
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
     std::shared_ptr<UltraCanvasBreadcrumb>      breadcrumb;
+    std::shared_ptr<UltraCanvasTextInput>       searchInput;
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
