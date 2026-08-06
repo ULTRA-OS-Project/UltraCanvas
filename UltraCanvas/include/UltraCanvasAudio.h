@@ -27,6 +27,11 @@ enum class AudioFormat {
     Unknown
 };
 
+// Map a file extension ("flac", ".OGG", "oga", "m4a", ...) to the matching
+// AudioFormat. Case-insensitive, leading dot optional. Extensions that no
+// AudioFormat covers return AudioFormat::Unknown.
+AudioFormat AudioFormatFromExtension(const std::string& extension);
+
 // ===== AUDIO SAMPLE TYPE =====
 enum class AudioSampleType {
     PCM_S16,    // 16-bit signed integer (most common)

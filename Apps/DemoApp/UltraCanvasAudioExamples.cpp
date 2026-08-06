@@ -40,21 +40,6 @@ namespace UltraCanvas {
         float lastRms = 0.0f;
     };
 
-    // Map a file extension (as reported by the supported-format inventory)
-    // to the AudioFormat enum used by the save/encode APIs.
-    AudioFormat AudioFormatFromExtension(const std::string& ext) {
-        std::string e;
-        e.reserve(ext.size());
-        for (char c : ext) e.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        if (e == "wav")                return AudioFormat::WAV;
-        if (e == "mp3")                return AudioFormat::MP3;
-        if (e == "ogg" || e == "oga")  return AudioFormat::OGG;
-        if (e == "flac")               return AudioFormat::FLAC;
-        if (e == "aac" || e == "m4a")  return AudioFormat::AAC;
-        if (e == "opus")               return AudioFormat::Opus;
-        return AudioFormat::WAV;
-    }
-
     std::string StripExtension(const std::string& name) {
         size_t dot = name.find_last_of('.');
         return dot == std::string::npos ? name : name.substr(0, dot);
@@ -228,7 +213,8 @@ namespace UltraCanvas {
                 return;
             }
             const std::string ext = item->value;
-            const AudioFormat fmt = AudioFormatFromExtension(ext);
+            AudioFormat fmt = AudioFormatFromExtension(ext);
+            if (fmt == AudioFormat::Unknown) fmt = AudioFormat::WAV;
 
             std::string base = haveRecording
                     ? "recording"

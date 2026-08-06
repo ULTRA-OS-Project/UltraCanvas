@@ -326,15 +326,37 @@ void UltraCanvasAudioRecorderElement::ShowSaveDialog() {
     FileDialogOptions opts;
     opts.SetTitle("Save Recording")
         .SetDefaultFileName("recording.wav")
-        .AddFilter("Wave audio (*.wav)", "wav")
-        .AddFilter("All files (*.*)", "*")
         .SetParentWindow(GetWindow());
+
+    // One filter per save-capable audio format from the runtime inventory
+    // (WAV always leads it), so newly compiled-in encoders appear here
+    // automatically. The chosen extension picks the encoding.
+    auto formats = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
+    for (const auto& f : formats) {
+        if (!f.canSave) continue;
+        std::vector<std::string> exts{ f.extension };
+        exts.insert(exts.end(), f.aliases.begin(), f.aliases.end());
+        opts.AddFilter(f.description + " (*." + f.extension + ")", exts);
+    }
+    if (opts.filters.empty()) opts.AddFilter("Wave audio (*.wav)", "wav");
+    opts.AddFilter("All files (*.*)", "*");
 
     auto self = this;
     UltraCanvasFileLoader::SaveFileDialog(opts,
         [self](DialogResult result, const std::string& path) {
             if (result == DialogResult::OK && !path.empty()) {
-                if (self->SaveToFile(path, AudioFormat::WAV)) {
+                // Encode in the format the chosen extension implies; a
+                // missing or unknown extension falls back to WAV.
+                std::string ext;
+                size_t slash = path.find_last_of("/\\");
+                size_t dot = path.find_last_of('.');
+                if (dot != std::string::npos &&
+                    (slash == std::string::npos || dot > slash)) {
+                    ext = path.substr(dot + 1);
+                }
+                AudioFormat fmt = AudioFormatFromExtension(ext);
+                if (fmt == AudioFormat::Unknown) fmt = AudioFormat::WAV;
+                if (self->SaveToFile(path, fmt)) {
                     // onSaved is already fired by SaveToFile; nothing more needed.
                 }
             } else {

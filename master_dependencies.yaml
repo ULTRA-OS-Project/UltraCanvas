@@ -130,3 +130,75 @@ networking:
       priority: "low"
       platforms: ["all"]
       apt: "libldap2-dev"
+
+# ===== MEDIA (audio codecs) =====
+#
+# Audio playback/capture and WAV encode + WAV/MP3/FLAC decode come from the
+# bundled miniaudio single-header backend and need no packages. The entries
+# below are the OPTIONAL system codec libraries that unlock the remaining
+# cells of the audio format matrix (encode FLAC/OGG/Opus/MP3, decode
+# OGG/Opus). CMake detects each independently; anything missing simply
+# leaves its format save- or load-disabled, exactly as reported at runtime
+# by UltraCanvasSupportedFormats.
+media:
+  advanced:
+    flac:
+      min_version: "1.3"
+      purpose: "FLAC encoding for UCAudio::SaveToFile - optional codec"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "flac"
+      apt: "libflac-dev"
+      vcpkg: "libflac"
+      brew: "flac"
+      msys2: "mingw-w64-x86_64-flac"
+
+    libvorbis:
+      min_version: "1.3"
+      purpose: "Ogg Vorbis encoding + decoding (vorbisenc / vorbisfile) - optional codec"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "vorbisenc vorbisfile vorbis ogg"
+      apt: "libvorbis-dev libogg-dev"
+      vcpkg: "libvorbis"
+      brew: "libvorbis"
+      msys2: "mingw-w64-x86_64-libvorbis"
+
+    libopusenc:
+      min_version: "0.2"
+      purpose: "Opus encoding (Ogg-encapsulated, resamples internally) - optional codec"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "libopusenc"
+      apt: "libopusenc-dev libopus-dev"
+      vcpkg: "libopusenc"
+      brew: "libopusenc"
+      msys2: "mingw-w64-x86_64-libopusenc"
+
+    opusfile:
+      min_version: "0.12"
+      purpose: "Opus decoding (always 48 kHz output) - optional codec"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "opusfile"
+      apt: "libopusfile-dev"
+      vcpkg: "opusfile"
+      brew: "opusfile"
+      msys2: "mingw-w64-x86_64-opusfile"
+
+    lame:
+      min_version: "3.100"
+      purpose: "MP3 encoding (LGPL, linked as a shared system library) - optional codec"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      # LAME ships no pkg-config file; CMake uses find_library(mp3lame) +
+      # find_path(lame/lame.h).
+      apt: "libmp3lame-dev"
+      vcpkg: "mp3lame"
+      brew: "lame"
+      msys2: "mingw-w64-x86_64-lame"

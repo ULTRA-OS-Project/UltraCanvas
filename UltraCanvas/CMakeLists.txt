@@ -703,8 +703,28 @@ if(ULTRACANVAS_ENABLE_AUDIO)
 
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioCodecsExtra.cpp
     )
     message(STATUS "Audio backend: miniaudio (${miniaudio_SOURCE_DIR})")
+
+    # Optional codec libraries (system packages, detected via pkg-config /
+    # find_library). Each one found unlocks the matching format in
+    # UCAudio::SaveToFile / LoadFromFile and in the supported-format inventory:
+    #   libFLAC              -> FLAC encode  (decode already via miniaudio/dr_flac)
+    #   libvorbis(enc/file)  -> Ogg Vorbis encode + decode
+    #   libopusenc / opusfile-> Opus encode + decode
+    #   LAME (mp3lame)       -> MP3 encode   (decode already via miniaudio/dr_mp3)
+    # All are optional: missing ones simply leave their formats save- (or
+    # load-) disabled, exactly as reported by UltraCanvasSupportedFormats.
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(UC_FLAC flac)
+        pkg_check_modules(UC_VORBIS vorbisenc vorbisfile vorbis ogg)
+        pkg_check_modules(UC_OPUSENC libopusenc)
+        pkg_check_modules(UC_OPUSFILE opusfile)
+    endif()
+    find_library(UC_MP3LAME_LIBRARY mp3lame)
+    find_path(UC_MP3LAME_INCLUDE_DIR lame/lame.h)
 endif()
 
 # Video sources (always-compiled API surface; backend is a stub unless
@@ -1110,6 +1130,44 @@ if(ULTRACANVAS_ENABLE_AUDIO)
             ${COREAUDIO_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
         )
+    endif()
+
+    # Optional codec libraries found above. The ULTRACANVAS_HAS_* defines are
+    # PRIVATE: they only gate code inside AudioCodecsExtra.cpp and the
+    # supported-format inventory, never public headers.
+    if(UC_FLAC_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_LIBFLAC=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_FLAC_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FLAC_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FLAC_LIBRARIES})
+        message(STATUS "Audio codec: FLAC encode (libFLAC ${UC_FLAC_VERSION})")
+    endif()
+    if(UC_VORBIS_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_VORBIS=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_VORBIS_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_VORBIS_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_VORBIS_LIBRARIES})
+        message(STATUS "Audio codec: Ogg Vorbis encode + decode (libvorbis)")
+    endif()
+    if(UC_OPUSENC_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_OPUSENC=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_OPUSENC_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_OPUSENC_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_OPUSENC_LIBRARIES})
+        message(STATUS "Audio codec: Opus encode (libopusenc)")
+    endif()
+    if(UC_OPUSFILE_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_OPUSFILE=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_OPUSFILE_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_OPUSFILE_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_OPUSFILE_LIBRARIES})
+        message(STATUS "Audio codec: Opus decode (opusfile)")
+    endif()
+    if(UC_MP3LAME_LIBRARY AND UC_MP3LAME_INCLUDE_DIR)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_LAME=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_MP3LAME_INCLUDE_DIR})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_MP3LAME_LIBRARY})
+        message(STATUS "Audio codec: MP3 encode (LAME ${UC_MP3LAME_LIBRARY})")
     endif()
 endif()
 

@@ -700,6 +700,19 @@ if (BUILD_TESTS)
     )
     add_test(NAME JSONTests COMMAND JSONTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Audio encode/decode roundtrip across every save-capable format the
+    # build reports (WAV always; FLAC/OGG/Opus/MP3 with their codec libs).
+    # Links the full library but runs headless - no window or device needed.
+    add_executable(AudioCodecTests Tests/AudioCodecTests.cpp)
+    target_include_directories(AudioCodecTests PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(AudioCodecTests PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(AudioCodecTests PRIVATE cxx_std_20)
+    set_target_properties(AudioCodecTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AudioCodecTests COMMAND AudioCodecTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
 if (BUILD_FILEMANAGER_APP)

@@ -52,6 +52,7 @@ their *License* is likewise marked **—** (OS component).
 | EGL | [khronos.org/egl](https://www.khronos.org/egl/) | [github.com/KhronosGroup/EGL-Registry](https://github.com/KhronosGroup/EGL-Registry) | — |
 | FFmpeg | [ffmpeg.org](https://ffmpeg.org/) | [git.ffmpeg.org/ffmpeg.git](https://git.ffmpeg.org/ffmpeg.git) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | FFTW3 | [fftw.org](https://www.fftw.org/) | [github.com/FFTW/fftw3](https://github.com/FFTW/fftw3) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
+| FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | fmt | [fmt.dev](https://fmt.dev/) | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FontConfig | [freedesktop.org/wiki/Software/fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/) | [gitlab.freedesktop.org/fontconfig/fontconfig](https://gitlab.freedesktop.org/fontconfig/fontconfig) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FreeType | [freetype.org](https://freetype.org/) | [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype) | [FTL](https://spdx.org/licenses/FTL.html) |
@@ -69,6 +70,7 @@ their *License* is likewise marked **—** (OS component).
 | jbig2dec | [jbig2dec.com](https://jbig2dec.com/) | [github.com/ArtifexSoftware/jbig2dec](https://github.com/ArtifexSoftware/jbig2dec) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | yyjson | [ibireme.github.io/yyjson](https://ibireme.github.io/yyjson/doc/doxygen/html/) | [github.com/ibireme/yyjson](https://github.com/ibireme/yyjson) | [MIT](https://spdx.org/licenses/MIT.html) |
 | KissFFT | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
+| LAME (libmp3lame) | [lame.sourceforge.io](https://lame.sourceforge.io/) | [sourceforge.net/projects/lame](https://sourceforge.net/projects/lame/) | [LGPL 2](https://spdx.org/licenses/LGPL-2.0-or-later.html) |
 | Latin Modern Math | [gust.org.pl](https://www.gust.org.pl/projects/e-foundry/lm-math) | — | [LPPL](https://spdx.org/licenses/LPPL-1.3c.html) |
 | LCMS2 (Little CMS) | [littlecms.com](https://www.littlecms.com/) | [github.com/mm2/Little-CMS](https://github.com/mm2/Little-CMS) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Leptonica | [leptonica.org](http://www.leptonica.org/) | [github.com/DanBloomberg/leptonica](https://github.com/DanBloomberg/leptonica) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
@@ -78,11 +80,14 @@ their *License* is likewise marked **—** (OS component).
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libmspack | [cabextract.org.uk/libmspack](https://www.cabextract.org.uk/libmspack/) | [github.com/kyz/libmspack](https://github.com/kyz/libmspack) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| libogg | [xiph.org/ogg](https://xiph.org/ogg/) | [github.com/xiph/ogg](https://github.com/xiph/ogg) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
+| libopusenc | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/libopusenc](https://github.com/xiph/libopusenc) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libpng | [libpng.org](http://www.libpng.org/pub/png/libpng.html) | [github.com/pnggroup/libpng](https://github.com/pnggroup/libpng) | [libpng 2](https://spdx.org/licenses/libpng-2.0.html) |
 | librevenge | [sourceforge.net/p/libwpd](https://sourceforge.net/p/libwpd/wiki/librevenge/) | [sourceforge.net/p/libwpd/librevenge](https://sourceforge.net/p/libwpd/librevenge/) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libsndfile | [libsndfile.github.io](https://libsndfile.github.io/libsndfile/) | [github.com/libsndfile/libsndfile](https://github.com/libsndfile/libsndfile) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libtiff | [simplesystems.org/libtiff](http://www.simplesystems.org/libtiff/) | [gitlab.com/libtiff/libtiff](https://gitlab.com/libtiff/libtiff) | [libtiff](https://spdx.org/licenses/libtiff.html) |
 | libvips | [libvips.org](https://www.libvips.org/) | [github.com/libvips/libvips](https://github.com/libvips/libvips) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| libvorbis | [xiph.org/vorbis](https://xiph.org/vorbis/) | [github.com/xiph/vorbis](https://github.com/xiph/vorbis) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libwebp | [developers.google.com/speed/webp](https://developers.google.com/speed/webp) | [chromium.googlesource.com/webm/libwebp](https://chromium.googlesource.com/webm/libwebp/) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | lz4 | [lz4.org](https://lz4.org/) | [github.com/lz4/lz4](https://github.com/lz4/lz4) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | Media Foundation | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/medfound/microsoft-media-foundation-sdk) | — | — |
@@ -96,6 +101,8 @@ their *License* is likewise marked **—** (OS component).
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
 | OpenJPEG (openjp2) | [openjpeg.org](https://www.openjpeg.org/) | [github.com/uclouvain/openjpeg](https://github.com/uclouvain/openjpeg) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | OpenSSL | [openssl.org](https://www.openssl.org/) | [github.com/openssl/openssl](https://github.com/openssl/openssl) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
+| Opus (libopus) | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opus](https://github.com/xiph/opus) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
+| opusfile | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opusfile](https://github.com/xiph/opusfile) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Pango | [pango.gnome.org](https://pango.gnome.org/) | [gitlab.gnome.org/GNOME/pango](https://gitlab.gnome.org/GNOME/pango) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | PulseAudio | [freedesktop.org/wiki/Software/PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | [gitlab.freedesktop.org/pulseaudio/pulseaudio](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | qrcodegen | [nayuki.io](https://www.nayuki.io/page/qr-code-generator-library) | [github.com/nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -141,6 +148,7 @@ their *License* is likewise marked **—** (OS component).
 | GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif | giflib, libheif |
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |
+| Audio encode FLAC / OGG / Opus / MP3, decode OGG / Opus | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) |
 | Video playback & capture | GStreamer (optional) | AVFoundation (optional) | Media Foundation (optional) |
 | OpenGL 3D surface | OpenGL, EGL / GLX (optional) | OpenGL, CGL (optional) | OpenGL, GLEW / WGL (optional) |
 | QR / barcode decoding | zbar (optional) | zbar (optional) | zbar (optional) |

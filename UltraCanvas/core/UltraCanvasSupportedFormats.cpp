@@ -11,8 +11,10 @@
 //                  the Markdown/HTML text path, plus every extension the
 //                  eBook engine registry reports at runtime.
 //   Spreadsheet  — the built-in ODS/XLSX/CSV engines (always compiled in).
-//   Audio        — the miniaudio backend: WAV/MP3/FLAC decode, WAV encode.
-//                  (OGG/AAC/Opus are deliberately absent: no decoder is wired.)
+//   Audio        — the miniaudio backend (WAV/MP3/FLAC decode, WAV encode)
+//                  plus the optional system codec libraries: libFLAC (FLAC
+//                  encode), libvorbis (OGG encode+decode), libopusenc/opusfile
+//                  (Opus encode/decode), LAME (MP3 encode). AAC stays absent.
 //   Video        — the platform backend's demuxer/muxer matrix (GStreamer /
 //                  Media Foundation / AVFoundation).
 // Version: 1.0.0
@@ -247,21 +249,55 @@ namespace {
                         "built-in CSV engine", "" });
     }
 
-    // ---- Audio: the miniaudio backend's real decode/encode matrix ----
+    // ---- Audio: miniaudio's decode/encode matrix plus the optional system
+    // codec libraries wired through AudioCodecsExtra (compile-gated on the
+    // ULTRACANVAS_HAS_* defines their CMake detection sets) ----
     void AddAudioFormats(std::vector<MediaFormatInfo>& out) {
 #ifdef ULTRACANVAS_ENABLE_AUDIO
         out.push_back({ "wav", {}, "Waveform audio",
                         MediaFormatCategory::Audio, true, true,
                         "miniaudio (dr_wav)", "" });
+#ifdef ULTRACANVAS_HAS_LAME
+        out.push_back({ "mp3", {}, "MPEG layer III audio",
+                        MediaFormatCategory::Audio, true, true,
+                        "miniaudio (dr_mp3) + LAME", "" });
+#else
         out.push_back({ "mp3", {}, "MPEG layer III audio",
                         MediaFormatCategory::Audio, true, false,
-                        "miniaudio (dr_mp3)", "" });
+                        "miniaudio (dr_mp3)",
+                        "saving requires LAME (libmp3lame)" });
+#endif
+#ifdef ULTRACANVAS_HAS_LIBFLAC
+        out.push_back({ "flac", {}, "Free Lossless Audio Codec",
+                        MediaFormatCategory::Audio, true, true,
+                        "miniaudio (dr_flac) + libFLAC", "" });
+#else
         out.push_back({ "flac", {}, "Free Lossless Audio Codec",
                         MediaFormatCategory::Audio, true, false,
-                        "miniaudio (dr_flac)", "" });
-        // NOTE deliberately absent: ogg/oga (no Vorbis decoder is wired into
-        // the miniaudio backend), aac, opus. Add entries here only after a
-        // decoder actually lands in libspecific/Audio.
+                        "miniaudio (dr_flac)",
+                        "saving requires libFLAC" });
+#endif
+#ifdef ULTRACANVAS_HAS_VORBIS
+        out.push_back({ "ogg", { "oga" }, "Ogg Vorbis audio",
+                        MediaFormatCategory::Audio, true, true,
+                        "libvorbis (vorbisfile + vorbisenc)", "" });
+#endif
+#if defined(ULTRACANVAS_HAS_OPUSFILE) || defined(ULTRACANVAS_HAS_OPUSENC)
+        {
+            bool opusLoad = false, opusSave = false;
+#ifdef ULTRACANVAS_HAS_OPUSFILE
+            opusLoad = true;
+#endif
+#ifdef ULTRACANVAS_HAS_OPUSENC
+            opusSave = true;
+#endif
+            out.push_back({ "opus", {}, "Opus audio",
+                            MediaFormatCategory::Audio, opusLoad, opusSave,
+                            "opusfile + libopusenc", "" });
+        }
+#endif
+        // NOTE deliberately absent: aac/m4a (no codec is wired). Add an entry
+        // here only after a codec actually lands in libspecific/Audio.
 #else
         (void)out;
 #endif

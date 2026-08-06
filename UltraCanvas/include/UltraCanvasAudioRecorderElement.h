@@ -161,8 +161,10 @@ public:
     void DiscardRecording();
 
     // Opens the platform's native save dialog (via UltraCanvasFileLoader),
-    // pre-filled with sensible WAV filters, and writes the captured buffer
-    // to the chosen path. Async: result delivered via onSaved / onSaveCancelled.
+    // pre-filled with one filter per save-capable audio format from the
+    // runtime supported-format inventory (WAV, plus FLAC/OGG/Opus/MP3 when
+    // their encoders are compiled in). The chosen file extension selects the
+    // encoding. Async: result delivered via onSaved / onSaveCancelled.
     void ShowSaveDialog();
 
     // ===== CONFIG =====

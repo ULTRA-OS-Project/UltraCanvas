@@ -4,11 +4,53 @@ Cross-platform audio **playback** and **recording** for UltraCanvas.
 
 ## Status
 
-API scaffolded. Backend is a no-op stub — `ULTRACANVAS_ENABLE_AUDIO=ON` reserves
-the hook, but no real playback/capture device is wired yet. The recommended
-next step is vendoring **miniaudio** (single-header, MIT, covers Linux, macOS,
-Windows, FreeBSD, Android, iOS) and providing a single `AudioBackendMiniaudio.cpp`
-implementation of `IAudioBackend`.
+Implemented. `ULTRACANVAS_ENABLE_AUDIO=ON` (the default) builds the
+**miniaudio** backend (single-header, MIT-0, vendored at
+`libspecific/Audio/miniaudio.h`): device enumeration, playback and capture
+streams, WAV/MP3/FLAC decode and WAV encode. The optional system codec
+libraries below extend the format matrix with FLAC/OGG/Opus/MP3 encoding and
+OGG/Opus decoding. With the option OFF a null backend keeps the API surface
+compiling (see Build below).
+
+## Format support
+
+| Format | Load | Save | Provided by |
+|---|---|---|---|
+| WAV  | always | always | miniaudio (dr_wav) |
+| MP3  | always | with **LAME** | miniaudio (dr_mp3) + libmp3lame |
+| FLAC | always | with **libFLAC** | miniaudio (dr_flac) + libFLAC |
+| OGG Vorbis (`ogg`, `oga`) | with **libvorbis** | with **libvorbis** | vorbisfile + vorbisenc |
+| Opus | with **opusfile** | with **libopusenc** | opusfile + libopusenc |
+
+"Always" means whenever the audio backend is compiled in. The optional codec
+libraries are system packages detected via pkg-config at configure time
+(`libflac-dev`, `libvorbis-dev` + `libogg-dev`, `libopusenc-dev`,
+`libopusfile-dev`, `libmp3lame-dev` on Debian/Ubuntu); each one found unlocks
+its column independently. **The authoritative answer at runtime** is the
+supported-format inventory — never hardcode the matrix:
+
+```cpp
+auto audio = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
+for (const auto& f : audio) {
+    // f.extension, f.canLoad, f.canSave, f.provider
+}
+```
+
+`UltraCanvasFileLoader::OpenAudio` filters and the audio recorder's save
+dialog both follow that inventory automatically. To map a file extension to
+the enum used by the save APIs:
+
+```cpp
+AudioFormat fmt = AudioFormatFromExtension("flac");   // ".OGG", "oga", ... also fine
+if (fmt == AudioFormat::Unknown) fmt = AudioFormat::WAV;
+audio->SaveToFile(path, fmt);
+```
+
+Encoding details: FLAC keeps 16-bit sources bit-exact and writes wider/float
+sources as 24-bit; Vorbis encodes VBR (quality 0.4); Opus is Ogg-encapsulated
+and resamples internally (decode is always 48 kHz — Opus by design); MP3 is
+VBR with a Xing header, mono/stereo only. `Tests/AudioCodecTests.cpp`
+(`BUILD_TESTS=ON`) roundtrips every save-capable format.
 
 ## Public API surface
 
@@ -113,12 +155,22 @@ Factories: `CreateAudioRecorder`, `CreateCompactAudioRecorder`,
 ## Build
 
 ```
-cmake -DULTRACANVAS_ENABLE_AUDIO=ON ..
+cmake -DULTRACANVAS_ENABLE_AUDIO=ON ..            # default ON
 ```
 
-Default OFF. With the option OFF (or no backend linked), `UltraCanvasAudioDevices::IsAvailable()`
+With the option OFF (or no backend linked), `UltraCanvasAudioDevices::IsAvailable()`
 returns `false` and all calls succeed-but-do-nothing — apps that use audio
 optionally can compile and run on backend-less systems.
+
+Optional codec packages (each detected independently at configure time):
+
+```
+# Debian/Ubuntu
+sudo apt install libflac-dev libvorbis-dev libogg-dev \
+                 libopus-dev libopusfile-dev libopusenc-dev libmp3lame-dev
+# macOS
+brew install flac libvorbis opus opusfile libopusenc lame
+```
 
 ## Architecture notes
 
@@ -128,5 +180,7 @@ optionally can compile and run on backend-less systems.
 - Backend audio callbacks fire on the backend's audio thread. The player /
   recorder marshal user-facing callbacks back to the UI thread via the
   existing event/timer infrastructure (TODO during full implementation).
-- Decoders/encoders live in `Plugins/Audio/` (WAV built-in; MP3/OGG/FLAC
-  optional). They register with `UCAudio::LoadFromFile` dispatch.
+- Decoders/encoders beyond miniaudio's built-ins live in
+  `libspecific/Audio/AudioCodecsExtra.cpp`, compile-gated on the
+  `ULTRACANVAS_HAS_*` defines set by CMake codec detection. The backend
+  delegates `EncodeFile` (non-WAV) and undecodable files to it.

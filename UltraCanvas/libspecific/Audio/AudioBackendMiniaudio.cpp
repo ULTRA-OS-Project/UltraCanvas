@@ -1,10 +1,12 @@
 // libspecific/Audio/AudioBackendMiniaudio.cpp
 // IAudioBackend implementation backed by miniaudio (single-header, MIT).
 // Provides device enumeration, playback and capture streams, plus WAV
-// encode and WAV/MP3/FLAC/Vorbis decode (miniaudio's built-in support).
+// encode and WAV/MP3/FLAC decode (miniaudio's built-in support). Formats
+// beyond that are delegated to AudioCodecsExtra: FLAC/OGG/Opus/MP3 encode
+// and OGG/Opus decode via the optional system codec libraries.
 // Only compiled when ULTRACANVAS_ENABLE_AUDIO is ON.
-// Version: 0.1.0
-// Last Modified: 2026-06-12
+// Version: 0.2.0
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_ENABLE_AUDIO
@@ -13,6 +15,7 @@
 #include "miniaudio.h"
 
 #include "IAudioBackend.h"
+#include "AudioCodecsExtra.h"
 #include "UltraCanvasUtils.h"
 #include <cstring>
 #include <memory>
@@ -219,11 +222,13 @@ public:
         // which can't represent file names outside the system code page.
         std::wstring wpath = Utf8ToWide(path);
         if (ma_decoder_init_file_w(wpath.c_str(), &dcfg, &decoder) != MA_SUCCESS) {
-            return nullptr;
+            // Not a format miniaudio reads: try the optional codec libraries
+            // (Ogg Vorbis / Opus).
+            return AudioCodecs::TryDecode(path);
         }
 #else
         if (ma_decoder_init_file(path.c_str(), &dcfg, &decoder) != MA_SUCCESS) {
-            return nullptr;
+            return AudioCodecs::TryDecode(path);
         }
 #endif
         return DecodeViaDecoder(decoder);
@@ -245,7 +250,10 @@ public:
         ma_encoding_format enc;
         switch (format) {
             case AudioFormat::WAV: enc = ma_encoding_format_wav; break;
-            default: return false;  // Only WAV is built into miniaudio
+            default:
+                // Only WAV is built into miniaudio; everything else goes to
+                // the optional codec libraries (FLAC/OGG/Opus/MP3).
+                return AudioCodecs::Encode(path, audio, format);
         }
         const auto& info = audio.GetInfo();
         ma_encoder_config ec = ma_encoder_config_init(

@@ -29,7 +29,9 @@ jobs:
               brew install zbar
               brew install mupdf
               brew install c-ares
-              brew install leptonica tesseract              
+              brew install leptonica tesseract
+              # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
+              brew install flac libvorbis opus opusfile libopusenc lame
               # libcurl: use Apple's system libcurl (SecureTransport-family
               # backend) — already present on every macOS install, so we add
               # no extra dependency for UltraNet on this platform.
@@ -49,6 +51,8 @@ jobs:
               # must be linked from system -dev packages (find_library needs the .so).
               sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev
               sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+              # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
+              sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libopusenc-dev libmp3lame-dev
               sudo apt-get install -y libcurl4-openssl-dev
               sudo apt-get install -y libc-ares-dev
           - os: windows-latest
@@ -109,6 +113,13 @@ jobs:
             mingw-w64-x86_64-c-ares
             mingw-w64-x86_64-leptonica
             mingw-w64-x86_64-tesseract-ocr
+            mingw-w64-x86_64-flac
+            mingw-w64-x86_64-libvorbis
+            mingw-w64-x86_64-libogg
+            mingw-w64-x86_64-opus
+            mingw-w64-x86_64-opusfile
+            mingw-w64-x86_64-libopusenc
+            mingw-w64-x86_64-lame
             zip
             
       # ===== macOS / Linux: system package manager =====
