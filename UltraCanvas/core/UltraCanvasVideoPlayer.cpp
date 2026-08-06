@@ -1,7 +1,12 @@
 // core/UltraCanvasVideoPlayer.cpp
 // Non-visual video playback engine; wraps a backend decode session
-// Version: 0.1.1
-// Last Modified: 2026-07-12
+// Version: 0.1.2
+// Last Modified: 2026-08-06
+// V0.1.2: Open() no longer pushes the default 1.0 playback rate into a freshly
+//   opened session. Backends apply a rate via a flushing seek, which — issued
+//   while the initial preroll is still settling — flushed away the prerolled
+//   first frame, so a session left paused (still-image video preview) showed
+//   "Buffering..." instead of the first frame.
 // V0.1.1: Play() after the clip ran to end-of-stream rewinds to 0 first — at EOS
 //   the pipeline produces no data, so a bare Play() silently did nothing.
 // Author: UltraCanvas Framework
@@ -45,11 +50,16 @@ struct UltraCanvasVideoPlayer::Impl {
 
         HookSession();
 
-        // Apply configured properties.
+        // Apply configured properties. The playback rate is only forwarded when
+        // it differs from the backend's initial 1.0: backends realise a rate
+        // change with a flushing seek, and issuing one while the just-started
+        // preroll is still settling discards the prerolled first frame that a
+        // session left paused (e.g. a still-image video preview) must show.
         session->SetVolume(config.volume);
         session->SetMute(config.mute);
         session->SetLoop(config.loop);
-        session->SetPlaybackRate(config.playbackRate);
+        if (config.playbackRate != 1.0f)
+            session->SetPlaybackRate(config.playbackRate);
 
         SetState(VideoPlaybackState::Stopped);
         if (config.autoPlay) { session->Play(); SetState(VideoPlaybackState::Playing); }

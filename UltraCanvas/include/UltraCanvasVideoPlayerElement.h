@@ -1,7 +1,10 @@
 // include/UltraCanvasVideoPlayerElement.h
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.3
-// Last Modified: 2026-07-21
+// Version: 0.1.4
+// Last Modified: 2026-08-06
+// V0.1.4: LoadFrom* resets the per-file frame state; HasVideoFrame() reports
+//   whether a frame of the current source has been shown yet (hosts use it to
+//   request a still frame explicitly when the load-time preroll delivered none).
 // V0.1.3: The transport bar is drawn greyed out and stops responding to input
 //   when no media is loaded (VideoPlayerStyle::disabledColor).
 // Author: UltraCanvas Framework
@@ -68,6 +71,9 @@ public:
 
     // ===== ACCESS =====
     std::shared_ptr<UltraCanvasVideoPlayer> GetPlayer() const { return player; }
+    // A decoded frame of the *current* source has been uploaded to the surface
+    // (LoadFrom* resets this). While false the surface shows the placeholder.
+    bool HasVideoFrame() const { return haveFrame; }
 
     // ===== EVENTS =====
     std::function<void()> onPlay;
@@ -118,6 +124,7 @@ private:
     double lastInteractionTime = 0.0;
 
     void HookPlayerCallbacks();
+    void ResetFrameState();            // per-source state, cleared by LoadFrom*
     void Relayout();
     void StartFrameTimer();
     void StopFrameTimer();

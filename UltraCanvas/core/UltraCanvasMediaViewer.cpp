@@ -1,8 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.3.0
-// Last Modified: 2026-08-05
+// Version: 1.3.1
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -1633,9 +1633,14 @@ void UltraCanvasMediaViewer::ApplyVideoPreviewToCurrent() {
             break;
         }
         case VideoPreviewMode::Still:
-            // Stay paused: the backend prerolls the first frame on load, so
-            // the surface shows a still image without starting playback.
+            // Stay paused and show the first frame. The load-time preroll is
+            // not a reliable frame source on its own (its one emission can be
+            // lost while the pipeline is still settling), so when no frame of
+            // this source has been shown yet, request one explicitly: a paused
+            // seek to 0 makes the sink re-preroll and deliver the frame — the
+            // same mechanism that refreshes the surface on a paused scrub.
             player->SetMute(false);
+            if (!vp->HasVideoFrame()) vp->Seek(0.0);
             break;
     }
 #endif
@@ -1652,6 +1657,9 @@ void UltraCanvasMediaViewer::SetVideoPreviewMode(VideoPreviewMode mode) {
             auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
             vp->Pause();
             if (auto p = vp->GetPlayer()) p->SetMute(false);
+            // No frame shown yet (e.g. the mode changed right after a load):
+            // a paused seek re-prerolls and delivers the still frame.
+            if (!vp->HasVideoFrame()) vp->Seek(0.0);
         } else {
             ApplyVideoPreviewToCurrent();
         }

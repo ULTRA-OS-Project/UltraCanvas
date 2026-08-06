@@ -10,8 +10,15 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
-// Version: 0.1.10
-// Last Modified: 2026-07-23
+// Version: 0.1.11
+// Last Modified: 2026-08-06
+// V0.1.11: SetPlaybackRate no longer issues a flushing seek when the rate is
+//   unchanged. The playback engine pushes its configured (default 1.0) rate on
+//   every load, so the no-op "change" fired a FLUSH|ACCURATE seek while the
+//   initial preroll was still settling — flushing away the prerolled first
+//   frame that a paused still preview (MediaViewer VideoPreviewMode::Still)
+//   depends on, leaving the surface on "Buffering...". The MediaFoundation
+//   backend already special-cases the 1x rate the same way.
 // V0.1.10: Fix camera preview/recording delivering no frames on webcams without an
 //   exact 1280x720 mode. The capture source no longer hard-pins width×height (which
 //   failed caps negotiation on such cameras); it constrains height to a range
@@ -41,6 +48,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <future>
 #include <mutex>
@@ -419,7 +427,14 @@ public:
     }
     void SetLoop(bool loop) override { looping = loop; }
     void SetPlaybackRate(float r) override {
-        rate = (r > 0.01f) ? r : 1.0f;
+        const gdouble newRate = (r > 0.01f) ? r : 1.0;
+        // A rate is applied through a flushing seek, so a "change" to the value
+        // already in effect must be a no-op: the engine pushes its configured
+        // (default 1.0) rate on every load, and a flushing seek at that moment
+        // — while the initial preroll is still settling — discards the
+        // prerolled first frame a paused still preview relies on.
+        if (std::abs(newRate - rate) < 0.001) return;
+        rate = newRate;
         Seek(GetPosition());
     }
 

@@ -46,8 +46,8 @@
 // solid colour (default white) or the checkered pattern familiar from image
 // editors (SetTransparentBackground / SetTransparentColor).
 //
-// Version: 1.3.0
-// Last Modified: 2026-08-05
+// Version: 1.3.1
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 #pragma once
 
