@@ -1180,15 +1180,21 @@ namespace UltraCanvas {
                         DispatchEventToElement(elementUnderPointer, enterEvent);
 
                         hoveredElement = elementUnderPointer;
-                        // Show tooltip if element has one
-                        if (!elementUnderPointer->GetTooltip().empty()) {
+                        // Show tooltip if element has one; a structured
+                        // TooltipContent wins over the plain-text tooltip
+                        auto& tooltipContent = elementUnderPointer->GetTooltipContent();
+                        if (tooltipContent && !tooltipContent->Empty()) {
+                            UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                    targetWindow, *tooltipContent,
+                                    event.pointerWindow);
+                        } else if (!elementUnderPointer->GetTooltip().empty()) {
                             UltraCanvasTooltipManager::UpdateAndShowTooltip(
                                     targetWindow, elementUnderPointer->GetTooltip(),
                                     event.pointerWindow);
                         }
                     }
                     // Update tooltip position as mouse moves
-                    if (!elementUnderPointer->GetTooltip().empty() &&
+                    if (elementUnderPointer->HasTooltip() &&
                         (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending())) {
                         UltraCanvasTooltipManager::UpdateTooltipPosition(
                             event.pointerWindow);

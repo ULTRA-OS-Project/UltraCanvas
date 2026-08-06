@@ -226,6 +226,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTabExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSplitPaneExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGroupBoxExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateTooltipExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBreadcrumbExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSlideshowExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAlbumExamples();

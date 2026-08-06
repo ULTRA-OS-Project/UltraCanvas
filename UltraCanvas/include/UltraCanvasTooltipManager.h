@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasTooltipTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasWindow.h"
@@ -13,89 +14,10 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace UltraCanvas {
-
-// ===== TOOLTIP CONFIGURATION =====
-    struct TooltipStyle {
-        // Appearance (defaults follow the modern dark tooltip look of
-        // current desktop environments; see Light() for a light variant)
-        Color backgroundColor = Color(45, 45, 48, 245);     // Dark neutral, slightly translucent
-        Color borderColor = Color(255, 255, 255, 36);       // Subtle light hairline
-        Color textColor = Color(242, 242, 242, 255);
-        Color shadowColor = Color(0, 0, 0, 90);
-
-        // Typography
-        std::string fontFamily = "Sans";
-        float fontSize = 11.0f;
-
-        // Layout
-        int paddingLeft = 10;
-        int paddingRight = 10;
-        int paddingTop = 7;
-        int paddingBottom = 7;
-        int maxWidth = 450;
-        int borderWidth = 1;
-        float cornerRadius = 6.0f;
-
-        // Shadow: soft drop shadow below the tooltip. shadowBlur is the
-        // spread in pixels; 0 gives the legacy hard-edged shadow.
-        bool hasShadow = true;
-        Point2Di shadowOffset = Point2Di(0, 3);
-        int shadowBlur = 10;
-
-        // Behavior
-        unsigned int showDelay = 300;        // milliseconds to wait before showing
-        unsigned int hideDelay = 200;        // milliseconds to wait before hiding
-        int offsetX = 10;              // Offset from cursor
-        int offsetY = 10;
-        bool followCursor = false;     // Whether tooltip follows mouse movement
-
-        TooltipStyle() = default;
-
-        // Preset: the default dark theme, spelled out for readability
-        static TooltipStyle Dark() {
-            return TooltipStyle();
-        }
-
-        // Preset: light theme for apps where a dark tooltip feels too heavy
-        static TooltipStyle Light() {
-            TooltipStyle s;
-            s.backgroundColor = Color(255, 255, 255, 250);
-            s.borderColor = Color(0, 0, 0, 28);
-            s.textColor = Color(36, 41, 47, 255);
-            s.shadowColor = Color(0, 0, 0, 60);
-            return s;
-        }
-
-        bool operator==(const TooltipStyle& other) const {
-            return backgroundColor == other.backgroundColor
-                && borderColor == other.borderColor
-                && textColor == other.textColor
-                && shadowColor == other.shadowColor
-                && fontFamily == other.fontFamily
-                && fontSize == other.fontSize
-                && paddingLeft == other.paddingLeft
-                && paddingRight == other.paddingRight
-                && paddingTop == other.paddingTop
-                && paddingBottom == other.paddingBottom
-                && maxWidth == other.maxWidth
-                && borderWidth == other.borderWidth
-                && cornerRadius == other.cornerRadius
-                && hasShadow == other.hasShadow
-                && shadowOffset == other.shadowOffset
-                && shadowBlur == other.shadowBlur
-                && showDelay == other.showDelay
-                && hideDelay == other.hideDelay
-                && offsetX == other.offsetX
-                && offsetY == other.offsetY
-                && followCursor == other.followCursor;
-        }
-
-        bool operator!=(const TooltipStyle& other) const {
-            return !(*this == other);
-        }
-    };
+    // TooltipStyle and TooltipContent live in UltraCanvasTooltipTypes.h
 
 // ===== TOOLTIP MANAGER CLASS =====
     class UltraCanvasTooltipManager {
@@ -117,7 +39,6 @@ namespace UltraCanvas {
 
         // Style and layout
         static TooltipStyle style;
-        static std::unique_ptr<ITextLayout> textLayout;
 
         // Global state
         static bool enabled;
@@ -125,12 +46,22 @@ namespace UltraCanvas {
     public:
         // ===== CORE FUNCTIONALITY =====
 
-        // Show tooltip for an element
+        // Show a plain-text tooltip (the text may contain Pango markup for
+        // inline styling, e.g. "<b>bold</b>")
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
 
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string& text, const Point2Di& position) {
             TooltipStyle style;
             UpdateAndShowTooltip(win, text, position, style);
+        }
+
+        // Show a structured tooltip (title, label/value rows, bullets, …).
+        // The explicit-style overload wins over content.styleOverride.
+        static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position, const TooltipStyle& newStyle);
+
+        static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {
+            UpdateAndShowTooltip(win, content, position,
+                                 content.styleOverride ? *content.styleOverride : TooltipStyle());
         }
 
         // Hide current tooltip
@@ -142,6 +73,11 @@ namespace UltraCanvas {
         static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position) {
             TooltipStyle style;
             UpdateAndShowTooltipImmediately(win, text, position, style);
+        }
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position, const TooltipStyle& newStyle);
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {
+            UpdateAndShowTooltipImmediately(win, content, position,
+                                            content.styleOverride ? *content.styleOverride : TooltipStyle());
         }
 
 

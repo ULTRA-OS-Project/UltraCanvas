@@ -14,6 +14,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasTooltipTypes.h"
 #include "CSSLayout/CSSLayout.h"
 #include <iostream>
 #include <string>
@@ -110,6 +111,7 @@ namespace UltraCanvas {
         std::unique_ptr<IRenderContext> renderContext = nullptr;
         UCMouseCursor mouseCursor = UCMouseCursor::Default;
         std::string tooltip;
+        std::shared_ptr<TooltipContent> tooltipContent;  // structured tooltip; wins over `tooltip`
         UltraCanvasWindowBase* window = nullptr;
         ElementStateFlags stateFlags;
         Color backgroundColor = Colors::Transparent;
@@ -448,6 +450,15 @@ namespace UltraCanvas {
 
         const std::string& GetTooltip() const { return tooltip; }
         void SetTooltip(const std::string& tooltipStr) { tooltip = tooltipStr; }
+
+        // Structured tooltip (title, label/value rows, bullets, …). When set,
+        // it takes precedence over the plain-text tooltip on hover.
+        const std::shared_ptr<TooltipContent>& GetTooltipContent() const { return tooltipContent; }
+        void SetTooltipContent(const TooltipContent& content) {
+            tooltipContent = std::make_shared<TooltipContent>(content);
+        }
+        void ClearTooltipContent() { tooltipContent.reset(); }
+        bool HasTooltip() const { return (tooltipContent && !tooltipContent->Empty()) || !tooltip.empty(); }
 
         bool IsVisible() const { return layout.display != CSSLayout::DisplayType::NoDisplay; }
         void SetVisible(bool visible);
