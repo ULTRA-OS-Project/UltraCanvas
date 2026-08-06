@@ -24,6 +24,29 @@
   of dropped — the printable filter on `event.text` kept only ASCII 32..126,
   so multi-byte characters (umlauts, accents, CJK, ...) typed into any text
   field vanished.
+- **UltraViewer app** *(1.0.0)*: new universal media viewer application
+  (`Apps/UltraViewer`, target `UltraViewer`, `BUILD_ULTRAVIEWER_APP`, default
+  ON). One full-window `UltraCanvasMediaViewer` displays bitmaps, vector
+  graphics, video and audio (with the player elements' transport controls:
+  play / pause / seek / scrub / volume), documents (PDF), e-books,
+  spreadsheets (ODS/CSV/TSV), 3D models (STL), text / source / markdown and
+  UltraCanvas Document containers (*.ucd). Command line takes a folder (browse
+  it), a file (browse its folder with the file shown first), several files
+  (exactly that playlist) or nothing (use Open / drag & drop). New app icon
+  `media/appicon/UltraViewer.png`.
+- **UltraCanvasMediaViewer** *(1.4.0)*: two new media kinds.
+  `MediaKind::Book` — e-books (EPUB / FB2 / MOBI / PRC / AZW / AZW3) open in
+  an embedded `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing
+  content); the zoom toolbar drives the reading text scale and PageUp /
+  PageDown switch chapters while Left / Right keep browsing the folder.
+  `MediaKind::UCDoc` — UltraCanvas Document containers (*.ucd) are recognised
+  by the UCD v2 fixed header: the viewer shows the embedded raw HEIC/PNG
+  preview thumbnail (readable without parsing the body, as the format
+  intends) on the image surface, or a header summary in the text view when
+  there is none; the info bar labels the file `UC DOCUMENT` and the details
+  popup lists the container fields (type descriptor, version, body encoding,
+  compression, encryption, thumbnail). Full rendering arrives with the UCD
+  v2 engine. New doc: `Docs/UltraCanvas/UltraCanvasMediaViewer.md`.
 
 #### 2026-08-06 *0.3.27*
 - **UltraCanvasMediaViewer** *(1.3.1)*: the `Still` video preview mode shows
