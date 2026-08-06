@@ -1,7 +1,12 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.6
-// Last Modified: 2026-07-21
+// Version: 0.1.7
+// Last Modified: 2026-08-06
+// V0.1.7: Loading a source resets the per-file frame state (shown frame, scrub
+//   throttle, time readout). The surface previously kept displaying the last
+//   frame of the previous file until the new one delivered a frame — which,
+//   with a paused still preview, could be never — so switching files in the
+//   UltraFiler preview appeared to do nothing.
 // V0.1.6: The transport bar is greyed out and non-interactive when no media is
 //   loaded — controls draw in VideoPlayerStyle::disabledColor with no seek knob,
 //   and OnEvent ignores control clicks/hover in that state.
@@ -65,6 +70,7 @@ UltraCanvasVideoPlayerElement::~UltraCanvasVideoPlayerElement() {
 }
 
 bool UltraCanvasVideoPlayerElement::LoadFromFile(const std::string& filePath) {
+    ResetFrameState();                  // don't keep showing the previous file
     bool ok = player->LoadFromFile(filePath);
     if (ok) StartFrameTimer();          // timer runs while a source is loaded
     lastInteractionTime = NowSeconds();
@@ -73,10 +79,23 @@ bool UltraCanvasVideoPlayerElement::LoadFromFile(const std::string& filePath) {
 }
 
 bool UltraCanvasVideoPlayerElement::LoadFromUrl(const std::string& url) {
+    ResetFrameState();                  // don't keep showing the previous file
     bool ok = player->LoadFromUrl(url);
     if (ok) StartFrameTimer();          // timer runs while a source is loaded
     RequestRedraw();
     return ok;
+}
+
+void UltraCanvasVideoPlayerElement::ResetFrameState() {
+    // A new source invalidates everything derived from the old one: the shown
+    // frame (or the surface displays the previous video until — with a paused
+    // still preview, possibly never — a new frame arrives), a scrub target
+    // still pending from the old timeline, and the time readout.
+    shownFrame.reset();
+    haveFrame = false;
+    lastShownSecond = -1;
+    pendingScrubSeek = false;
+    draggingSeek = draggingVolume = false;
 }
 
 void UltraCanvasVideoPlayerElement::ShowOpenDialog() {

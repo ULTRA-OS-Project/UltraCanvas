@@ -1,3 +1,23 @@
+#### 2026-08-06 *0.3.27*
+- **UltraCanvasMediaViewer** *(1.3.1)*: the `Still` video preview mode shows
+  the first frame instead of staying on "Buffering...". The mode relied on the
+  load-time preroll frame alone, whose single emission could be flushed away
+  while the pipeline was still settling; the `Still` paths now request the
+  frame explicitly (a paused seek to 0 re-prerolls and delivers it — the same
+  mechanism as a paused scrub) whenever no frame of the current file has been
+  shown yet.
+- **UltraCanvasVideoPlayerElement** *(0.1.7)*: loading a source resets the
+  per-file frame state (shown frame, scrub throttle, time readout), so
+  switching files updates the preview instead of keeping the previous video's
+  last frame. New `HasVideoFrame()` reports whether a frame of the current
+  source has been shown yet.
+- **UltraCanvasVideoPlayer** *(0.1.2)* / **GStreamer backend** *(0.1.11)*: a
+  freshly opened session no longer receives a spurious playback-rate "change"
+  to the default 1.0. Backends apply a rate through a flushing seek, and
+  issuing one during the initial preroll discarded the prerolled first frame a
+  paused session depends on; the GStreamer backend also skips the seek for any
+  unchanged rate (as the MediaFoundation backend already did for 1x).
+
 #### 2026-08-05 *0.3.26*
 - **UltraCanvasMediaViewer** *(1.3.0)*: configurable backdrop behind
   transparent images. New `TransparentImageBackground` enum
