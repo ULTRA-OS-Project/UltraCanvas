@@ -5,10 +5,12 @@
 `UltraCanvasChartEngineElement` is the chart engine's render driver: a chart
 type derives from it, implements **phase 2** — its own drawing — plus small
 descriptor methods, and receives everything else. Phase 1 (background, grid
-derived from the axis ticks, limiter lines, axes with decluttered tick labels)
-and phase 3 (the solved label plan, the legend, the interaction overlay) are
-engine-supplied, and phase 2 is clipped to the plot area so a chart cannot
-paint over the axes or legend by accident.
+derived from the axis ticks, limiter lines, edge axes with decluttered tick
+labels) and phase 3 (in-plot axes, the solved label plan, the legend, the
+interaction overlay) are engine-supplied, and phase 2 is clipped to the plot
+area so a chart cannot paint over the edge axes or legend by accident. In-plot
+axes render **above** the content, so a dense chart cannot bury its own axis
+rules and value labels under its data marks.
 
 Live demo: **Charts → Chart Engine** in the demo application
 (`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one ~90-line bar-chart
@@ -24,7 +26,7 @@ production client is the parallel coordinate chart
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-02
+**Last Modified:** 2026-08-06
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -66,7 +68,7 @@ reimplemented:
 | Inversion | `inverted` |
 | Ticks | `GenerateTicks(n)` - nice steps, decades on Log, one per category; **explicit `tickValues` override everything** (category slots under bars, hand-picked thresholds) |
 | Formatting | `decimals`, `unitPrefix`/`unitSuffix`, `compactNumbers` (`$1.3M`), or a custom `formatter` |
-| Endpoint labels | `showEndpointLabels` (in-plot axes) |
+| In-plot value labels | `showTickLabels` (integrated tick labels along the rule) **or** `showEndpointLabels` (min/max at the ends) — never both: endpoint labels are suppressed while the integrated axis is active, so the extremes are not printed twice |
 
 `Normalize(value)` maps into `[0,1]`; out-of-range values map outside rather
 than clamping. Tick labels are decluttered by the 1-D pass
@@ -90,7 +92,9 @@ ring sectors under Polar with no chart-side change.
   are solved into the label plan so they never overprint value labels.
 - **Layout is measured, not guessed**: axis tick labels, titles and the legend
   reserve their measured space in the measure pass; `MeasureContent` adds
-  chart-specific needs. `SolvePlotArea` never returns an empty plot.
+  chart-specific needs. `SolvePlotArea` never returns an empty plot. The chart
+  title owns an exclusive band above every other top reservation, so axis
+  endpoint labels can never overprint it.
 
 ## Phase-3 services
 

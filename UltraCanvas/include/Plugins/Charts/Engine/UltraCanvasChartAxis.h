@@ -64,6 +64,12 @@ public:
     // along an edge. The engine's axes layer renders both kinds.
     bool inPlot = false;
     double plotPosition = 0.0;      // 0..1 along the domain direction
+    // In-plot axes label their values one of two ways, never both: an
+    // integrated axis (tick labels along the rule, showTickLabels) or bare
+    // min/max endpoint labels at the ends (showEndpointLabels). When the
+    // integrated axis is active the endpoint labels are suppressed - they
+    // would only repeat the outermost ticks.
+    bool showTickLabels = true;
     bool showEndpointLabels = false; // min/max printed at the axis ends
     std::string title;              // drawn by the axes layer; may differ from name
     double logBase = 10.0;
