@@ -1,7 +1,7 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
@@ -134,10 +134,14 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
     // ---- measure pass -------------------------------------------------------
     ChartLayoutRequest request;
 
+    // The title band is added on top of every other top reservation after the
+    // measure pass. Reserve() merges by max, which would let axis endpoint
+    // labels or top-side tick labels land in the same band and overprint the
+    // title.
+    double titleBand = 0.0;
     if (!chartTitle.empty()) {
         ctx->SetFontSize(titleFontSize);
-        request.Reserve(ChartAxisEdge::Top,
-                        ctx->GetTextLineHeight(chartTitle) + 10.0);
+        titleBand = ctx->GetTextLineHeight(chartTitle) + 10.0;
     }
 
     ctx->SetFontSize(axisFontSize);
@@ -187,6 +191,7 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
     }
 
     MeasureContent(ctx, request);
+    request.margins.top += titleBand;
 
     // ---- solve --------------------------------------------------------------
     const Rect2Dd chartArea(0.0, 0.0, static_cast<double>(GetWidth()),
@@ -358,11 +363,14 @@ void UltraCanvasChartEngineElement::RenderPhaseUnder(IRenderContext* ctx) {
     RenderEngineBackground(ctx);   // slot 100
     RenderEngineGrid(ctx);         // slot 300
     RenderEngineLimiters(ctx);     // slot 400
-    RenderEngineAxes(ctx);         // slot 500
+    RenderEngineAxes(ctx);         // slot 500 - edge axes only
     RenderEngineTitle(ctx);
 }
 
 void UltraCanvasChartEngineElement::RenderPhaseOver(IRenderContext* ctx) {
+    // In-plot axes sit above the content: a dense chart would otherwise bury
+    // its own axis rules and value labels under the data marks.
+    RenderEngineInPlotAxes(ctx);
     RenderPlannedLabels(ctx);      // slot 800
     RenderEngineLegend(ctx);       // slot 800
     ctx->PushState();
@@ -412,93 +420,109 @@ void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
 
 void UltraCanvasChartEngineElement::RenderEngineAxes(IRenderContext* ctx) {
     ctx->SetFontSize(axisFontSize);
-
     for (size_t i = 0; i < engineAxes.Count(); ++i) {
         const ChartAxis& axis = engineAxes.At(i);
-        if (!axis.visible) continue;
+        if (!axis.visible || axis.inPlot) continue;
+        RenderAxisFurniture(ctx, i);
+    }
+}
 
-        Point2Dd lowEnd, highEnd;
-        AxisScreenLine(axis, lowEnd, highEnd);
+void UltraCanvasChartEngineElement::RenderEngineInPlotAxes(IRenderContext* ctx) {
+    ctx->SetFontSize(axisFontSize);
+    for (size_t i = 0; i < engineAxes.Count(); ++i) {
+        const ChartAxis& axis = engineAxes.At(i);
+        if (!axis.visible || !axis.inPlot) continue;
+        RenderAxisFurniture(ctx, i);
+    }
+}
 
-        ctx->SetStrokePaint(axisLineColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(lowEnd, highEnd);
+void UltraCanvasChartEngineElement::RenderAxisFurniture(IRenderContext* ctx, size_t i) {
+    const ChartAxis& axis = engineAxes.At(i);
 
-        const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
-        // Ticks point away from the plot for edge axes, left for in-plot ones.
-        double tickDx = 0.0, tickDy = 0.0;
+    Point2Dd lowEnd, highEnd;
+    AxisScreenLine(axis, lowEnd, highEnd);
+
+    ctx->SetStrokePaint(axisLineColor);
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawLine(lowEnd, highEnd);
+
+    const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
+    // Ticks point away from the plot for edge axes, left for in-plot ones.
+    double tickDx = 0.0, tickDy = 0.0;
+    if (alongY) {
+        tickDx = (axis.side == ChartAxisSide::Right && !axis.inPlot) ? tickLength
+                                                                     : -tickLength;
+    } else {
+        tickDy = (axis.side == ChartAxisSide::Top && !axis.inPlot) ? -tickLength
+                                                                   : tickLength;
+    }
+
+    const std::vector<ChartTick> ticks = axis.GenerateTicks(targetTickCount);
+    const std::vector<bool>* visible =
+        (i < labelPlan.tickVisible.size()) ? &labelPlan.tickVisible[i] : nullptr;
+
+    for (size_t t = 0; t < ticks.size(); ++t) {
+        const ChartTick& tick = ticks[t];
+        const Point2Dd p{
+            lowEnd.x + (highEnd.x - lowEnd.x) * tick.normalized,
+            lowEnd.y + (highEnd.y - lowEnd.y) * tick.normalized};
+
+        ctx->SetStrokePaint(axisTickColor);
+        ctx->DrawLine(p, Point2Dd(p.x + tickDx, p.y + tickDy));
+
+        if (visible && t < visible->size() && !(*visible)[t]) continue;
+        if (axis.inPlot && !axis.showTickLabels) continue;
+
+        ctx->SetTextPaint(axisLabelColor);
+        const Size2Di size = ctx->GetTextLineDimensions(tick.label);
+        Point2Dd labelPos;
         if (alongY) {
-            tickDx = (axis.side == ChartAxisSide::Right && !axis.inPlot) ? tickLength
-                                                                         : -tickLength;
+            const double x = (tickDx < 0.0)
+                ? p.x + tickDx - tickLabelGap - size.width
+                : p.x + tickDx + tickLabelGap;
+            labelPos = Point2Dd(x, p.y - size.height * 0.5);
         } else {
-            tickDy = (axis.side == ChartAxisSide::Top && !axis.inPlot) ? -tickLength
-                                                                       : tickLength;
+            const double y = (tickDy < 0.0)
+                ? p.y + tickDy - tickLabelGap - size.height
+                : p.y + tickDy + tickLabelGap;
+            labelPos = Point2Dd(p.x - size.width * 0.5, y);
         }
+        ctx->DrawText(tick.label, labelPos);
+    }
 
-        const std::vector<ChartTick> ticks = axis.GenerateTicks(targetTickCount);
-        const std::vector<bool>* visible =
-            (i < labelPlan.tickVisible.size()) ? &labelPlan.tickVisible[i] : nullptr;
+    // Endpoint min/max labels for in-plot axes (parallel coordinates) - only
+    // when the integrated tick labels are off, so the extremes are not printed
+    // a second time above and below the same axis.
+    const bool endpointsDrawn = axis.inPlot && axis.showEndpointLabels &&
+                                !axis.showTickLabels;
+    if (endpointsDrawn) {
+        ctx->SetTextPaint(axisLabelColor);
+        const std::string lowText = axis.FormatValue(axis.inverted ? axis.Max() : axis.Min());
+        const std::string highText = axis.FormatValue(axis.inverted ? axis.Min() : axis.Max());
+        const Size2Di lowSize = ctx->GetTextLineDimensions(lowText);
+        const Size2Di highSize = ctx->GetTextLineDimensions(highText);
+        ctx->DrawText(lowText, Point2Dd(lowEnd.x - lowSize.width * 0.5,
+                                        lowEnd.y + 3.0));
+        ctx->DrawText(highText, Point2Dd(highEnd.x - highSize.width * 0.5,
+                                         highEnd.y - highSize.height - 3.0));
+    }
 
-        for (size_t t = 0; t < ticks.size(); ++t) {
-            const ChartTick& tick = ticks[t];
-            const Point2Dd p{
-                lowEnd.x + (highEnd.x - lowEnd.x) * tick.normalized,
-                lowEnd.y + (highEnd.y - lowEnd.y) * tick.normalized};
-
-            ctx->SetStrokePaint(axisTickColor);
-            ctx->DrawLine(p, Point2Dd(p.x + tickDx, p.y + tickDy));
-
-            if (visible && t < visible->size() && !(*visible)[t]) continue;
-            if (axis.inPlot && !axis.showEndpointLabels) continue;
-
-            ctx->SetTextPaint(axisLabelColor);
-            const Size2Di size = ctx->GetTextLineDimensions(tick.label);
-            Point2Dd labelPos;
-            if (alongY) {
-                const double x = (tickDx < 0.0)
-                    ? p.x + tickDx - tickLabelGap - size.width
-                    : p.x + tickDx + tickLabelGap;
-                labelPos = Point2Dd(x, p.y - size.height * 0.5);
-            } else {
-                const double y = (tickDy < 0.0)
-                    ? p.y + tickDy - tickLabelGap - size.height
-                    : p.y + tickDy + tickLabelGap;
-                labelPos = Point2Dd(p.x - size.width * 0.5, y);
-            }
-            ctx->DrawText(tick.label, labelPos);
-        }
-
-        // Endpoint min/max labels for in-plot axes (parallel coordinates).
-        if (axis.inPlot && axis.showEndpointLabels) {
-            ctx->SetTextPaint(axisLabelColor);
-            const std::string lowText = axis.FormatValue(axis.inverted ? axis.Max() : axis.Min());
-            const std::string highText = axis.FormatValue(axis.inverted ? axis.Min() : axis.Max());
-            const Size2Di lowSize = ctx->GetTextLineDimensions(lowText);
-            const Size2Di highSize = ctx->GetTextLineDimensions(highText);
-            ctx->DrawText(lowText, Point2Dd(lowEnd.x - lowSize.width * 0.5,
-                                            lowEnd.y + 3.0));
-            ctx->DrawText(highText, Point2Dd(highEnd.x - highSize.width * 0.5,
-                                             highEnd.y - highSize.height - 3.0));
-        }
-
-        // Axis title below (in-plot / bottom) or rotated placement is left to
-        // the label plan for charts that promote titles to solved labels; the
-        // engine default puts the title past the low end.
-        if (!axis.title.empty()) {
-            ctx->SetTextPaint(axisLabelColor);
-            const Size2Di size = ctx->GetTextLineDimensions(axis.title);
-            const double extra = (axis.inPlot && axis.showEndpointLabels)
-                                     ? size.height + 6.0 : 6.0;
-            if (alongY) {
-                ctx->DrawText(axis.title,
-                              Point2Dd(lowEnd.x - size.width * 0.5,
-                                       lowEnd.y + extra + tickLength));
-            } else {
-                ctx->DrawText(axis.title,
-                              Point2Dd((lowEnd.x + highEnd.x - size.width) * 0.5,
-                                       lowEnd.y + tickLength + tickLabelGap +
-                                           size.height + extra));
-            }
+    // Axis title below (in-plot / bottom) or rotated placement is left to
+    // the label plan for charts that promote titles to solved labels; the
+    // engine default puts the title past the low end.
+    if (!axis.title.empty()) {
+        ctx->SetTextPaint(axisLabelColor);
+        const Size2Di size = ctx->GetTextLineDimensions(axis.title);
+        const double extra = endpointsDrawn ? size.height + 6.0 : 6.0;
+        if (alongY) {
+            ctx->DrawText(axis.title,
+                          Point2Dd(lowEnd.x - size.width * 0.5,
+                                   lowEnd.y + extra + tickLength));
+        } else {
+            ctx->DrawText(axis.title,
+                          Point2Dd((lowEnd.x + highEnd.x - size.width) * 0.5,
+                                   lowEnd.y + tickLength + tickLabelGap +
+                                       size.height + extra));
         }
     }
 }

@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasParallelCoordinateChart.cpp
 // Parallel coordinate chart element - first native client of the chart engine
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasParallelCoordinateChart.h"
@@ -26,6 +26,23 @@ constexpr size_t kGroupPaletteSize = sizeof(kGroupPalette) / sizeof(kGroupPalett
 Color WithAlpha(Color c, uint8_t alpha) {
     c.a = alpha;
     return c;
+}
+
+// WCAG relative luminance, 0 (black) .. 1 (white).
+double RelativeLuminance(const Color& c) {
+    auto linear = [](double u) {
+        u /= 255.0;
+        return (u <= 0.03928) ? u / 12.92 : std::pow((u + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b);
+}
+
+// A highlighted line must contrast with the ordinary lines of the same colour
+// around it, whatever that colour is: the halo comes from the opposite end of
+// the luminance scale, so a pale line gets a dark casing and vice versa.
+Color HighlightHaloColor(const Color& base) {
+    return (RelativeLuminance(base) > 0.4) ? Color(25, 25, 30, 235)
+                                           : Color(255, 255, 255, 235);
 }
 
 } // namespace
@@ -273,7 +290,12 @@ void UltraCanvasParallelCoordinateChartElement::DescribeAxes(ChartAxisSet& axes)
     displayOrder = model.DisplayOrder();
 
     model.ConfigureAxes(axes);
-    for (ChartAxis& axis : axes) axis.showEndpointLabels = endpointLabels;
+    // The model decides which labelling system each axis uses (integrated
+    // ticks or endpoint min/max); the element's flag can only switch the
+    // endpoint labels off, never force them onto an integrated axis.
+    if (!endpointLabels) {
+        for (ChartAxis& axis : axes) axis.showEndpointLabels = false;
+    }
 
     // Common scale gains the shared value axis on the left, with gridlines
     // derived from its ticks - the Iris look. In-plot axes must stay first so
@@ -282,7 +304,8 @@ void UltraCanvasParallelCoordinateChartElement::DescribeAxes(ChartAxisSet& axes)
         double lo = 0.0, hi = 1.0;
         model.SharedRange(lo, hi);
         ChartAxis shared("value");
-        shared.title = "value";
+        // No title: a left-axis title lands below the plot at the same spot
+        // as the first in-plot axis's dimension title and would overprint it.
         shared.side = ChartAxisSide::Left;
         shared.SetRange(lo, hi);
         const size_t sharedIndex = axes.Add(shared);
@@ -406,8 +429,12 @@ void UltraCanvasParallelCoordinateChartElement::RenderChartContent(
         const bool emphasised = (static_cast<int>(r) == hoveredRecord) ||
                                 pinnedRecords.count(r);
         if (!emphasised) continue;
-        StrokeRecord(ctx, frame, r, WithAlpha(RecordColor(r), 255),
-                     lineWidth * 2.0f);
+        // Luminance-opposed casing first, full-strength colour on top: the
+        // pair stays visible against neighbours of the very same colour.
+        const Color base = RecordColor(r);
+        StrokeRecord(ctx, frame, r, HighlightHaloColor(base),
+                     lineWidth * 2.0f + 3.0f);
+        StrokeRecord(ctx, frame, r, WithAlpha(base, 255), lineWidth * 2.0f);
     }
 }
 

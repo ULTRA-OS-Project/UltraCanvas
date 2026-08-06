@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasParallelAxisModel.cpp
 // Parallel coordinate data model
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
@@ -183,7 +183,12 @@ void ParallelAxisModel::ConfigureAxes(ChartAxisSet& axes) const {
         axis.inPlot = true;
         axis.plotPosition = AxisU(k);
         axis.inverted = invertedFlags[dim];
-        axis.showEndpointLabels = true;
+        // Exactly one value-labelling system per axis. Per-axis normalisation
+        // gets the integrated axis (tick labels along the rule); the common
+        // scale reads from the shared edge axis, so its in-plot axes carry
+        // only the original-unit min/max at the ends.
+        axis.showTickLabels = (normalization == PCPNormalization::PerAxis);
+        axis.showEndpointLabels = (normalization == PCPNormalization::CommonScale);
 
         if (normalization == PCPNormalization::CommonScale) {
             // Every axis maps the same (standardised) band onto [0,1]. For a
