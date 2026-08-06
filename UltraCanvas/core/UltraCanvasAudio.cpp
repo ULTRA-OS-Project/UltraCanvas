@@ -7,9 +7,28 @@
 
 #include "UltraCanvasAudio.h"
 #include "../libspecific/Audio/IAudioBackend.h"
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 
 namespace UltraCanvas {
+
+AudioFormat AudioFormatFromExtension(const std::string& extension) {
+    std::string e;
+    e.reserve(extension.size());
+    for (char c : extension) {
+        if (c == '.' && e.empty()) continue;   // strip a leading dot
+        e.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (e == "wav" || e == "wave")  return AudioFormat::WAV;
+    if (e == "mp3")                 return AudioFormat::MP3;
+    if (e == "ogg" || e == "oga")   return AudioFormat::OGG;
+    if (e == "flac")                return AudioFormat::FLAC;
+    if (e == "aac" || e == "m4a")   return AudioFormat::AAC;
+    if (e == "opus")                return AudioFormat::Opus;
+    if (e == "pcm" || e == "raw")   return AudioFormat::PCM;
+    return AudioFormat::Unknown;
+}
 
 size_t AudioBufferInfo::BytesPerSample() const {
     switch (sampleType) {

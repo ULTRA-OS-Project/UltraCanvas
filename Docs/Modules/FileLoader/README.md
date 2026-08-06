@@ -47,7 +47,7 @@ UltraCanvas object through the native file dialog:
 // Decode an image into a UCImage
 UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
 
-// Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC)
+// Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
 UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
@@ -121,7 +121,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Images** (libvips, build-dependent): PNG, JPEG, WebP, AVIF, HEIC/HEIF, GIF, BMP, TIFF, TGA, HDR, EXR, JPEG XL, JPEG 2000, Netpbm, QOI, PSD, ICO, FITS
 **Vector:** SVG/SVGZ (load); CorelDRAW, Xara (via plugins)
 **3D Models:** STL (load + save, via plugin)
-**Audio** (miniaudio): WAV (load + save); MP3, FLAC (load)
+**Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save)

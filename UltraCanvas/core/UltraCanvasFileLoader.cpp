@@ -241,14 +241,23 @@ namespace UltraCanvas {
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open Audio File";
         if (effective.filters.empty()) {
-            effective
-                .AddFilter("Audio files",
-                           std::vector<std::string>{"wav", "mp3", "flac", "ogg", "oga"})
-                .AddFilter("Wave audio (*.wav)", "wav")
-                .AddFilter("MP3 audio (*.mp3)", "mp3")
-                .AddFilter("FLAC audio (*.flac)", "flac")
-                .AddFilter("Ogg Vorbis (*.ogg)", "ogg")
-                .AddFilter("All files (*.*)", "*");
+            // Filters follow the runtime supported-format inventory, so the
+            // dialog only offers what this build can actually decode.
+            auto formats = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
+            std::vector<std::string> loadable;
+            for (const auto& f : formats) {
+                if (!f.canLoad) continue;
+                loadable.push_back(f.extension);
+                loadable.insert(loadable.end(), f.aliases.begin(), f.aliases.end());
+            }
+            if (!loadable.empty()) effective.AddFilter("Audio files", loadable);
+            for (const auto& f : formats) {
+                if (!f.canLoad) continue;
+                std::vector<std::string> exts{ f.extension };
+                exts.insert(exts.end(), f.aliases.begin(), f.aliases.end());
+                effective.AddFilter(f.description + " (*." + f.extension + ")", exts);
+            }
+            effective.AddFilter("All files (*.*)", "*");
         }
 
         OpenFileDialog(effective, [onResult](DialogResult r, const std::string& path) {

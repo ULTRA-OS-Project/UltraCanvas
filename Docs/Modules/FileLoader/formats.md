@@ -103,17 +103,21 @@ engines linked into the binary are reported. RTF is **not** supported.
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
 
-### Audio — miniaudio
+### Audio — miniaudio + optional codec libraries
 
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
 | WAV | `.wav` | ✅ | ✅ |
-| MP3 | `.mp3` | ✅ | — |
-| FLAC | `.flac` | ✅ | — |
+| MP3 | `.mp3` | ✅ | ✅ * |
+| FLAC | `.flac` | ✅ | ✅ * |
+| Ogg Vorbis | `.ogg`, `.oga` | ✅ * | ✅ * |
+| Opus | `.opus` | ✅ * | ✅ * |
 
-The bundled miniaudio backend decodes WAV/MP3/FLAC and encodes WAV only.
-Ogg Vorbis, AAC/M4A, Opus and WMA are **not** decoded — no decoder for them is
-wired into the backend.
+The bundled miniaudio backend decodes WAV/MP3/FLAC and encodes WAV. The
+cells marked * come from the optional system codec libraries detected at
+configure time: libFLAC (FLAC save), LAME (MP3 save), libvorbis (OGG
+load + save), opusfile + libopusenc (Opus load + save). AAC/M4A and WMA are
+**not** supported — no codec for them is wired into the backend.
 
 ### Video — platform backend §
 
