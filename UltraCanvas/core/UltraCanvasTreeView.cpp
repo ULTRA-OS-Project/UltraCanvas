@@ -25,10 +25,14 @@ namespace UltraCanvas {
         TreeNode *childPtr = child.get();
         children.push_back(std::move(child));
 
-        // Update state if this was a leaf node
+        // Update state if this was a leaf node, restoring the expanded state
+        // if the node only became a leaf by having all its children removed
+        // while expanded (e.g. a lazy-load placeholder being swapped out).
         if (state == TreeNodeState::Leaf) {
-            state = TreeNodeState::Collapsed;
+            state = wasExpandedBeforeEmptied ? TreeNodeState::Expanded
+                                             : TreeNodeState::Collapsed;
         }
+        wasExpandedBeforeEmptied = false;
 
         return childPtr;
     }
@@ -42,8 +46,10 @@ namespace UltraCanvas {
                 children.end()
         );
 
-        // Update state if no more children
-        if (children.empty()) {
+        // Update state if no more children. Remember an expanded state so it
+        // survives a transient empty phase (see wasExpandedBeforeEmptied).
+        if (children.empty() && state != TreeNodeState::Leaf) {
+            wasExpandedBeforeEmptied = (state == TreeNodeState::Expanded);
             state = TreeNodeState::Leaf;
         }
     }

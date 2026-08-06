@@ -588,9 +588,12 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     if (!node || node->children.size() != 1 || !IsPlaceholderNode(node->children[0].get()))
         return;
     const std::string path = node->data.nodeId;
-    folderTree->RemoveNode(PlaceholderId(path));
+    // Add the real children before removing the placeholder: a node whose
+    // last child is removed is demoted to a leaf, which drops its expanded
+    // state and made the first expansion of a folder appear to do nothing.
     for (const fs::path& dir : ListSubdirectories(path))
         AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder.png");
+    folderTree->RemoveNode(PlaceholderId(path));
 }
 
 void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
