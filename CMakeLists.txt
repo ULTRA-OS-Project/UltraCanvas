@@ -44,6 +44,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # ===== BUILD OPTIONS =====
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
+option(BUILD_ULTRAVIEWER_APP "Build the UltraViewer universal media viewer application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
@@ -612,6 +613,52 @@ if (BUILD_ULTRAFILER_APP)
     message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
 
+# ===== ULTRAVIEWER APPLICATION =====
+# Universal media viewer: one full-window UltraCanvasMediaViewer displaying
+# bitmaps, vector graphics, video/audio (with player transport controls),
+# documents (PDF), e-books, spreadsheets, 3D models, text and UltraCanvas
+# Document containers (*.ucd).
+if (BUILD_ULTRAVIEWER_APP)
+    message(STATUS "")
+    message(STATUS "── Building UltraViewer Application ──")
+
+    add_executable(UltraViewer
+            Apps/UltraViewer/main.cpp
+            Apps/UltraViewer/UltraViewerWindow.cpp
+    )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraViewer PROPERTIES ENABLE_EXPORTS ON)
+
+    target_include_directories(UltraViewer PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraViewer
+    )
+
+    target_link_libraries(UltraViewer PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+    target_link_libraries(UltraViewer PRIVATE fmt::fmt)
+
+    target_compile_features(UltraViewer PRIVATE cxx_std_20)
+
+    target_compile_definitions(UltraViewer PRIVATE
+            ULTRAVIEWER_VERSION="${PROJECT_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/UltraViewer.png"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraViewer
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraViewer.png")
+
+    # Embed manifest with UTF-8 active code page (Windows only) - the viewer
+    # opens arbitrary paths, so narrow Win32/CRT calls must read them as UTF-8.
+    ultracanvas_embed_windows_manifest(UltraViewer)
+
+    message(STATUS "  UltraViewer executable: UltraViewer")
+endif()
+
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
@@ -786,6 +833,9 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     if(BUILD_ULTRAFILER_APP)
         set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
+    if(BUILD_ULTRAVIEWER_APP)
+        set_target_properties(UltraViewer PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
     if(BUILD_FILEMANAGER_APP)
         set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
@@ -808,6 +858,9 @@ endif()
 if(BUILD_ULTRAFILER_APP)
     add_dependencies(UltraFiler copy_assets)
 endif()
+if(BUILD_ULTRAVIEWER_APP)
+    add_dependencies(UltraViewer copy_assets)
+endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so
 # nothing forces it to rebuild when a core interface header (e.g. IRenderContext)
@@ -816,7 +869,7 @@ endif()
 # crashing on the first cross-module virtual call. Take an explicit build-order
 # dependency (NOT a link) so any app that can load the module always rebuilds it.
 if(TARGET UltraCanvasLaTeX)
-    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraFiler UltraAIApp UCFileManager EBookViewerTest)
+    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraFiler UltraViewer UltraAIApp UCFileManager EBookViewerTest)
         if(TARGET ${_uc_app})
             add_dependencies(${_uc_app} UltraCanvasLaTeX)
         endif()
