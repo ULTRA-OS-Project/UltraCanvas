@@ -31,8 +31,8 @@
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
 // even then is dropped from the front of the last line, which opens with "…".
-// Version: 1.7.0
-// Last Modified: 2026-08-04
+// Version: 1.8.0
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -429,6 +429,19 @@ namespace UltraCanvas {
         std::vector<FilerEntry> GetSelectedEntries() const;
         void ClearSelection();
         void SelectAll();
+        // Scroll so the first selected entry is fully in view. The scroll is
+        // applied against the next recomputed layout, so a resize still in
+        // flight — e.g. the host opening a preview pane that narrows the
+        // widget — is taken into account instead of the stale geometry.
+        void EnsureSelectionVisible();
+        // True while an interaction inside the widget claims the Escape key
+        // (the inline rename editor, a running item drag, the compress
+        // dialog). Hosts with their own window-level Escape shortcut should
+        // stand back while this is set so those interactions keep their
+        // cancel key.
+        bool WantsEscapeKey() const {
+            return renamingIndex >= 0 || draggingItems || compressDlg.active;
+        }
 
         // ===== FILE OPERATIONS (also wired to the context / icon menus) =====
         // Copy / Cut mirror the selection to the OS clipboard (file-manager
@@ -574,6 +587,9 @@ namespace UltraCanvas {
         int  contentWidth = 0;
         int  contentHeight = 0;
         int  lastAreaW = -1, lastAreaH = -1;
+        // Entry to scroll into view right after the next EnsureLayout() pass
+        // (set by EnsureSelectionVisible; -1 = nothing pending).
+        int  pendingRevealEntry = -1;
         bool effectiveSizesValid = false;         // recursive dir sizes computed
 
         // Details-view columns (recomputed with the layout).
@@ -898,6 +914,9 @@ namespace UltraCanvas {
         ScrollbarGeom ScrollbarGeometry() const;
         void ScrollThumbTo(int thumbLeadPx);
         void EnsureVisible(size_t entryIndex);
+        // The scroll correction of EnsureVisible against the current layout
+        // (assumes EnsureLayout already ran).
+        void ScrollEntryIntoView(size_t entryIndex);
 
         // ===== DRAWING =====
         // The folder view + chrome (has several early-return branches); the
