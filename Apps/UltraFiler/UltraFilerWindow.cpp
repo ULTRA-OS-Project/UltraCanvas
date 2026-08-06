@@ -5,9 +5,9 @@
 // search field and the media preview (UltraCanvasMediaViewer). The Settings
 // menu opens the settings window (UltraFilerSettingsDialog); persisted
 // settings load at startup and configure the preview's transparent-image
-// backdrop.
-// Version: 1.3.0
-// Last Modified: 2026-08-05
+// backdrop. Esc closes an open media preview.
+// Version: 1.4.0
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -18,6 +18,7 @@
 #include "UltraFilerSettingsDialog.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <system_error>
@@ -33,6 +34,11 @@ namespace {
 
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
+
+    // Split-pane minimum widths (px): the folder display and the media
+    // preview never get narrower than these.
+    constexpr int kFilerMinWidth   = 360;
+    constexpr int kPreviewMinWidth = 260;
 
     void ApplyDropdownFontSize(UltraCanvasDropdown* dropdown) {
         DropdownStyle s = dropdown->GetStyle();
@@ -201,6 +207,21 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     window->layout.SetFlexColumn()
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(249, 249, 251, 255));
+
+    // Esc closes the media preview, wherever the keyboard focus sits (the
+    // filer usually holds it after the click that selected the file). The
+    // filter steps back while another interaction claims the key: an open
+    // popup / menu, the filer's inline rename, item drag or compress dialog,
+    // and the search field.
+    window->InstallEventFilter("ufl-preview-escape",
+            [this](const UCEvent& e) -> bool {
+        if (e.virtualKey != UCKeys::Escape || !previewShown) return false;
+        if (window->GetActivePopupElement()) return false;
+        if (filer && filer->WantsEscapeKey()) return false;
+        if (window->GetFocusedElement() == searchInput.get()) return false;
+        SetPreviewEnabled(false);
+        return true;
+    }, { UCEventType::KeyDown });
 
     preview = CreateMediaViewer("ufl-preview", 0, 0, 0, 0);
     // The pane is added / removed as the selection changes; the viewer must
@@ -877,7 +898,7 @@ void UltraFilerWindow::BuildSplitLayout() {
     treePane->AddChild(folderTree);
 
     auto filerPane = split->AddPane(2.7);
-    split->SetPaneMinSize(1, 360);
+    split->SetPaneMinSize(1, kFilerMinWidth);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     filerPane->AddChild(tabbedContainer);
@@ -1009,21 +1030,56 @@ void UltraFilerWindow::UpdatePreviewPane() {
                                             : std::string();
     if (!path.empty()) {
         if (!previewShown) {
+            // Pane sizing is weight-proportional, so plain AddPane would
+            // shrink every pane — visibly moving the tree | filer splitter.
+            // Capture the arranged widths first and hand the preview its
+            // width from the filer pane only; the tree keeps its position.
+            const int treeW  = static_cast<int>(split->GetPane(0)->GetWidth());
+            const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
+
             previewShown = true;
             previewPane = split->AddPane(1.4);
-            split->SetPaneMinSize(split->PaneCount() - 1, 260);
+            split->SetPaneMinSize(split->PaneCount() - 1, kPreviewMinWidth);
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             previewPane->AddChild(preview);
+
+            if (treeW > 0 && filerW > 0) {
+                // The new split line takes its thickness from the filer side
+                // too, so the three sizes sum to exactly the available axis.
+                const int line = split->EffectiveSplitterThickness();
+                int previewW = previewPaneWidth > 0
+                        ? previewPaneWidth
+                        : static_cast<int>(std::lround(filerW * 1.4 / 4.1));
+                previewW = std::max(previewW, kPreviewMinWidth);
+                previewW = std::min(previewW, filerW - line - kFilerMinWidth);
+                if (previewW >= kPreviewMinWidth)
+                    split->SetPaneSizes({treeW, filerW - line - previewW, previewW});
+                // else: too narrow for both minimums - let the weight
+                // distribution and the min-size clamps sort it out.
+            }
+            // The narrowed folder display may now cut off the selected file
+            // (the preview covers its spot) - keep it scrolled into view.
+            if (filer) filer->EnsureSelectionVisible();
         }
         if (preview->GetCurrentPath() != path) preview->OpenFile(path);
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.
         previewShown = false;
+        const int treeW  = static_cast<int>(split->GetPane(0)->GetWidth());
+        const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
+        const int prevW  = static_cast<int>(previewPane->GetWidth());
+        if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
         preview->StopPlayback();
         previewPane->RemoveChild(preview);
         split->RemovePane(previewPane.get());
         previewPane.reset();
+        // Return the preview's width (and its split line) to the filer pane
+        // only, keeping the tree | filer splitter where the user put it.
+        if (treeW > 0 && filerW > 0 && prevW > 0) {
+            const int line = split->EffectiveSplitterThickness();
+            split->SetPaneSizes({treeW, filerW + line + prevW});
+        }
     }
 }
 

@@ -41,7 +41,12 @@ components:
 - **Preview:** selecting a single previewable file shows it in the preview
   pane; double-click / Enter opens it there too. While nothing previewable
   is selected the pane folds away, so the folder display always gets the
-  whole width — the Preview toggle only enables / disables the feature.
+  whole width — the Preview toggle only enables / disables the feature, and
+  **Esc** closes an open preview (turning the toggle off). The pane takes
+  its width from the folder display only, so the folder tree and its
+  splitter never move when the preview opens or closes; the width the pane
+  is dragged to is restored on reopen, and the selected file is kept
+  scrolled into view when the narrowed folder display would cut it off.
   The viewer provides zoom, rotation, color adjustments, slideshow, and
   per-kind views for documents, spreadsheets, models, audio and video.
 - **Video preview mode:** the command bar "Video" dropdown selects how a

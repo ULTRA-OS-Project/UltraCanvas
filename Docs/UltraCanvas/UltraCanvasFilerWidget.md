@@ -225,6 +225,17 @@ Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
 
+## Selection access
+
+`GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
+`SelectAll()` change the selection programmatically, and
+`EnsureSelectionVisible()` scrolls so the first selected entry is fully in
+view. The scroll is applied against the **next** recomputed layout, so a host
+that resizes the widget in the same frame — e.g. opening a preview pane that
+narrows the folder display (the UltraFiler does exactly that) — can call it
+right away and the entry stays visible at the new width instead of being
+corrected against the stale geometry.
+
 ## Hover icon menu
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
@@ -328,6 +339,11 @@ is already the only selected one starts an inline rename after a short delay
 (Windows style — the delay is what separates a rename click from the first
 click of a double-click). The rename editor uses the same font size as the
 displayed name, commits on Enter and cancels on Esc.
+
+Escape is also the cancel key of a running item drag and of the compress
+dialog. A host that binds its own window-level Escape shortcut (the UltraFiler
+closes its preview pane with it) should check `WantsEscapeKey()` first and
+stand back while it returns true, so those interactions keep their cancel key.
 
 ## Directory scanning
 

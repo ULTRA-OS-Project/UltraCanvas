@@ -2721,6 +2721,13 @@ namespace UltraCanvas {
             RecomputeLayout();
             layoutValid = true;
         }
+        // A reveal requested while a resize was still in flight (see
+        // EnsureSelectionVisible) is applied here, against the settled layout.
+        if (pendingRevealEntry >= 0) {
+            size_t idx = static_cast<size_t>(pendingRevealEntry);
+            pendingRevealEntry = -1;
+            ScrollEntryIntoView(idx);
+        }
     }
 
     void UltraCanvasFilerWidget::RecomputeLayout() {
@@ -3116,6 +3123,20 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::EnsureVisible(size_t entryIndex) {
         EnsureLayout();
+        ScrollEntryIntoView(entryIndex);
+    }
+
+    void UltraCanvasFilerWidget::EnsureSelectionVisible() {
+        if (selection.empty()) return;
+        // Deferred to the next EnsureLayout() (every Render runs one): when
+        // the widget is being resized in the same frame — the UltraFiler
+        // preview pane opening narrows the folder display — the reveal then
+        // uses the new geometry instead of the stale one.
+        pendingRevealEntry = static_cast<int>(selection.front());
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::ScrollEntryIntoView(size_t entryIndex) {
         for (const ItemLayout& it : items) {
             if (it.entryIndex != entryIndex) continue;
             auto b = GetLocalBounds();

@@ -8,11 +8,11 @@
 // (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
 // the media preview (UltraCanvasMediaViewer, shown only while a previewable
-// file is selected), plus a status bar describing the folder and the
-// selection (kept in step with the folder listing through the filer's
-// onFolderRefreshed callback).
-// Version: 1.3.0
-// Last Modified: 2026-08-05
+// file is selected; Esc closes it), plus a status bar describing the folder
+// and the selection (kept in step with the folder listing through the
+// filer's onFolderRefreshed callback).
+// Version: 1.4.0
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -102,11 +102,15 @@ private:
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
-    // Turns the preview feature on/off (the command bar toggle).
+    // Turns the preview feature on/off (the command bar toggle; Esc while
+    // the preview is shown turns it off the same way).
     void SetPreviewEnabled(bool enabled);
     // Shows the preview pane only while the preview is enabled AND a
     // previewable file is selected; otherwise the folder display gets the
-    // whole width. Adds / removes the split pane accordingly.
+    // whole width. Adds / removes the split pane accordingly. The preview
+    // takes its width from the folder display only — the tree pane (and the
+    // splitter the user dragged) stays where it is — and the selected file
+    // is kept scrolled into view when the pane narrows the folder display.
     void UpdatePreviewPane();
     // Path of the single selected previewable file, or "" when there is
     // nothing to preview.
@@ -146,6 +150,7 @@ private:
     bool syncingControls = false;          // dropdowns driven by filer callbacks
     bool previewEnabled = true;            // the command bar toggle state
     bool previewShown = false;             // preview pane currently in the split
+    int  previewPaneWidth = 0;             // last shown width (px), restored on reopen
     UltraFilerSettings settings;           // persisted application settings
 };
 
