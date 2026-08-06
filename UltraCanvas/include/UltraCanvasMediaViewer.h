@@ -42,8 +42,12 @@
 // view owns the bare arrows itself (spreadsheet cell movement) Alt+Left /
 // Alt+Right still browse.
 //
-// Version: 1.2.0
-// Last Modified: 2026-08-01
+// Transparent images draw over a configurable backdrop: either a preset
+// solid colour (default white) or the checkered pattern familiar from image
+// editors (SetTransparentBackground / SetTransparentColor).
+//
+// Version: 1.3.0
+// Last Modified: 2026-08-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +95,14 @@ enum class MediaTransition {
     SlideHorizontal,   // Old slides left while new slides in from the right
     SlideVertical,     // Old slides up while new slides in from the bottom
     ZoomFade           // New image zooms in from slightly enlarged while cross-fading
+};
+
+// ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
+// What is drawn directly behind the image, visible wherever the image has
+// transparent pixels. Independent of the surrounding canvas colour.
+enum class TransparentImageBackground {
+    SolidColor,   // flat preset colour (default white)
+    Checkered     // light/dark checkerboard, as used by image editors
 };
 
 // ===== TONE / COLOUR ADJUSTMENTS =====
@@ -157,6 +169,17 @@ public:
 
     void SetCanvasColor(const Color& c) { canvasColor = c; RequestRedraw(); }
 
+    // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
+    // Drawn under the image (matching its displayed rectangle) so transparent
+    // pixels read against a defined background instead of the canvas colour.
+    void SetTransparentBackground(TransparentImageBackground mode) {
+        transparentBackground = mode; RequestRedraw();
+    }
+    TransparentImageBackground GetTransparentBackground() const { return transparentBackground; }
+    // The preset colour used by TransparentImageBackground::SolidColor.
+    void SetTransparentColor(const Color& c) { transparentColor = c; RequestRedraw(); }
+    const Color& GetTransparentColor() const { return transparentColor; }
+
     // Called when the user navigates by click / arrow (delta -1 == previous,
     // +1 == next) and when the view geometry changes (to refresh the info bar).
     std::function<void(int)> onNavigate;
@@ -182,6 +205,13 @@ private:
               double scale, double cx, double cy, int rotQ, bool fH, bool fV,
               double alpha);
 
+    // Draw the transparency backdrop (solid colour or checkerboard) under the
+    // image's displayed rectangle, clipped to the widget bounds `b`. Rotation
+    // is in 90° steps, so the rectangle stays axis-aligned; `alpha` matches
+    // the image layer's opacity during transitions.
+    void DrawBackdrop(IRenderContext* ctx, const Rect2Df& b, double iw, double ih,
+                      double scale, double cx, double cy, int rotQ, double alpha);
+
     void DrawCurrent(IRenderContext* ctx, const Rect2Df& b);
     void DrawInfoOverlay(IRenderContext* ctx, const Rect2Df& b);
     void StartTransitionTimer(int durationMs);
@@ -198,6 +228,10 @@ private:
     UCImageAnimationController animator;
 
     Color canvasColor = Color(24, 24, 28, 255);
+
+    // Backdrop under transparent images (see SetTransparentBackground).
+    TransparentImageBackground transparentBackground = TransparentImageBackground::SolidColor;
+    Color transparentColor = Color(255, 255, 255, 255);
 
     // View geometry for the current image.
     double zoom = 1.0;        // multiple of the fit scale (1.0 == fit)
@@ -295,6 +329,15 @@ public:
     void StopPlayback();
 
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
+
+    // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
+    // Forwarded to the display surface: what transparent image pixels read
+    // against — a preset solid colour (default white) or the checkered
+    // pattern used by image editors.
+    void SetTransparentBackground(TransparentImageBackground mode);
+    TransparentImageBackground GetTransparentBackground() const;
+    void SetTransparentColor(const Color& c);
+    Color GetTransparentColor() const;
 
     // ===== TOP BARS (EMBEDDED MODE) =====
     // Show/hide everything above the display surface: the folder breadcrumb,
