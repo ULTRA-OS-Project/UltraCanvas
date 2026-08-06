@@ -20,8 +20,14 @@
 // for the space they are drawn in show the full name in a hover tooltip.
 // Tile captions (thumbnail grids, treemap) wrap long names over several lines
 // instead of cutting them off after one (see WRAPPED CAPTIONS).
-// Version: 1.7.0
-// Last Modified: 2026-08-04
+// Besides clicking, entries are selected with a rubber band: dragging from
+// empty space draws a selection rectangle and everything it touches becomes
+// the selection (Ctrl adds the rectangle to the selection held before).
+// The inline rename editor is a real UltraCanvasTextInput overlaid on the
+// item's name, and video files show their poster frame in the thumbnail
+// views (decoded on the same worker threads as the image thumbnails).
+// Version: 1.8.0
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -46,6 +52,8 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextInput.h"
+#include "UltraCanvasVideoThumbnail.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -308,6 +316,15 @@ namespace UltraCanvas {
             std::transform(ext.begin(), ext.end(), ext.begin(),
                            [](unsigned char c) { return std::tolower(c); });
             return ext;
+        }
+
+        // True when `path` names a video file (by extension). Such thumbnail
+        // requests decode a poster frame via CaptureVideoThumbnailPixmap
+        // instead of going through the image pipeline.
+        bool IsVideoFilePath(const std::string& path) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(LowerExtension(path));
+            return it != m.end() && it->second.category == FilerFileCategory::Video;
         }
 
         bool IsBrowsableArchiveExt(const std::string& ext) {
@@ -999,6 +1016,10 @@ namespace UltraCanvas {
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         CancelPendingRename();      // the timer callback captures `this`
+        // Detach the rename editor now: its callbacks capture `this`, and the
+        // container teardown dropping its focus must not commit into a
+        // half-destroyed widget.
+        DestroyRenameInput(false);
         if (dragMouseCaptured) {    // never leave the pointer grabbed
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
             dragMouseCaptured = false;
@@ -2156,42 +2177,158 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
         if (entryIndex >= entries.size()) return;
         CancelPendingRename();   // the editor opens now; drop any armed click
+        if (renamingIndex >= 0) CancelRename();   // only one editor at a time
         renamingIndex = static_cast<int>(entryIndex);
-        renameBuffer = entries[entryIndex].name;
         EnsureVisible(entryIndex);
-        SetFocus(true);
+
+        // A real text field, created fresh per rename so no caret / selection /
+        // undo state leaks from an earlier edit. It is positioned over the
+        // item's name by PositionRenameInput() on every frame.
+        const FilerEntry& e = entries[entryIndex];
+        renameInput = CreateTextInput("filer-rename-input", 1, 1, 120, 24);
+        TextInputStyle ts;
+        ts.backgroundColor  = style.renameFieldColor;
+        ts.borderColor      = style.renameBorderColor;
+        ts.focusBorderColor = style.renameBorderColor;
+        ts.textColor        = style.textColor;
+        ts.caretColor       = style.textColor;
+        ts.selectionColor   = Color(style.selectionColor.r, style.selectionColor.g,
+                                    style.selectionColor.b, 170);
+        ts.borderWidth = 1;
+        ts.borderRadius = 0;
+        ts.paddingLeft = 3;
+        ts.paddingRight = 3;
+        ts.paddingTop = 1;
+        ts.paddingBottom = 1;
+        ts.fontStyle.fontFamily = style.fontFamily;
+        ts.fontStyle.fontSize = ItemNameFontSize();  // match the on-screen name
+        renameInput->SetStyle(ts);
+        // A rename field is not a form: no validation state (its ✓/✗ glyph
+        // would sit inside the narrow field) and no clear button.
+        renameInput->SetShowValidationState(false);
+        renameInput->SetText(e.name);
+        // Windows-style initial selection: the base name without the extension
+        // (folders select whole), so typing replaces the name and keeps ".ext".
+        size_t selEnd = e.name.size();
+        if (!e.isDirectory) {
+            size_t dot = e.name.rfind('.');
+            if (dot != std::string::npos && dot > 0) selEnd = dot;
+        }
+        renameInput->SetSelection(0, selEnd);
+        renameInput->onEnterPressed = [this](const std::string&) {
+            CommitRename();
+            return true;
+        };
+        renameInput->onEscapePressed = [this]() {
+            CancelRename();
+            return true;
+        };
+        // Clicking anywhere else — another entry, another widget — takes the
+        // focus and commits, Explorer-style. Commit drops renamingIndex before
+        // tearing the editor down, so the teardown's own focus loss cannot
+        // re-enter. restoreFocus=false: whatever took the focus keeps it.
+        renameInput->onFocusLost = [this]() {
+            if (renamingIndex >= 0) CommitRename(false);
+        };
+        AddChild(renameInput);
+        PositionRenameInput();
+        renameInput->SetFocus(true);
         RequestRedraw();
     }
 
-    void UltraCanvasFilerWidget::CommitRename() {
+    void UltraCanvasFilerWidget::CommitRename(bool restoreFocus) {
         if (renamingIndex < 0 || renamingIndex >= (int)entries.size()) {
             renamingIndex = -1;
+            DestroyRenameInput(restoreFocus);
             return;
         }
-        const FilerEntry& e = entries[renamingIndex];
-        std::string newName = renameBuffer;
+        // Copies: Refresh() below rebuilds `entries`.
+        const std::string oldName = entries[renamingIndex].name;
+        const std::string oldPath = entries[renamingIndex].path;
+        std::string newName = renameInput ? renameInput->GetText() : std::string();
         renamingIndex = -1;
-        if (newName.empty() || newName == e.name ||
+        DestroyRenameInput(restoreFocus);
+        if (newName.empty() || newName == oldName ||
             newName.find('/') != std::string::npos) {
             RequestRedraw();
             return;
         }
         std::error_code ec;
-        fs::path target = fs::path(currentPath) / newName;
+        // Rename in place: in the file-list (search result) display the entry
+        // may live outside currentPath, so target its own parent folder.
+        fs::path target = fs::path(oldPath).parent_path() / newName;
         if (fs::exists(target, ec)) {
             ReportError("Rename failed: \"" + newName + "\" already exists");
             RequestRedraw();
             return;
         }
-        fs::rename(e.path, target, ec);
-        if (ec) ReportError("Rename failed for " + e.path + ": " + ec.message());
+        fs::rename(oldPath, target, ec);
+        if (ec) ReportError("Rename failed for " + oldPath + ": " + ec.message());
         Refresh();
     }
 
-    void UltraCanvasFilerWidget::CancelRename() {
-        if (renamingIndex == -1) return;
+    void UltraCanvasFilerWidget::CancelRename(bool restoreFocus) {
+        if (renamingIndex == -1 && !renameInput) return;
         renamingIndex = -1;
+        DestroyRenameInput(restoreFocus);
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::DestroyRenameInput(bool restoreFocus) {
+        if (!renameInput) return;
+        auto input = renameInput;
+        renameInput.reset();
+        // Teardown must not fire the finish callbacks again: RemoveChild drops
+        // the editor's focus, which would call onFocusLost mid-destruction.
+        input->onFocusLost = nullptr;
+        input->onEnterPressed = nullptr;
+        input->onEscapePressed = nullptr;
+        RemoveChild(input);
+        // Enter / Escape end the edit with the keyboard still "in" the editor;
+        // hand the focus back to the widget so list navigation carries on.
+        if (restoreFocus) SetFocus(true);
+    }
+
+    Rect2Di UltraCanvasFilerWidget::RenameFieldRect(const ItemLayout& item) const {
+        // The editable field sits where the item's name is shown.
+        if (viewType == FilerViewType::Details || viewType == FilerViewType::List ||
+            viewType == FilerViewType::BarSize) {
+            int x = item.imageRect.x + item.imageRect.width + 4;
+            Rect2Di field(x, item.rect.y + 1,
+                          std::max(80, item.rect.width - (x - item.rect.x) - 8),
+                          item.rect.height - 2);
+            if (viewType == FilerViewType::Details && !detailsColumns.empty()) {
+                field.width = std::max(80, detailsColumns[0].x
+                                       + detailsColumns[0].width - x - 4);
+            }
+            return field;
+        }
+        // Thumbnails / treemap: the whole (possibly multi-line) caption band;
+        // the editor itself is a single line filling it.
+        int capTop = item.imageRect.y + item.imageRect.height;
+        return Rect2Di(item.rect.x + 2, capTop, item.rect.width - 4,
+                       std::max(CaptionBandHeight(item.captionLines),
+                                NameLineHeight() + 4));
+    }
+
+    void UltraCanvasFilerWidget::PositionRenameInput() {
+        if (renamingIndex < 0 || !renameInput) return;
+        for (const ItemLayout& it : items) {
+            if (static_cast<int>(it.entryIndex) != renamingIndex) continue;
+            Rect2Di field = RenameFieldRect(it);
+            Rect2Df want(field.x - scrollOffsetX, field.y - scrollOffsetY,
+                         field.width, field.height);
+            if (renameInput->GetBounds() == want) return;
+            // Keep the CSS-layout position in sync with the immediate bounds:
+            // the next Arrange pass must place the editor where it is drawn.
+            renameInput->layoutItem.position = CSSLayout::Position();
+            renameInput->layoutItem.position->left = CSSLayout::Dimension::Px(want.x);
+            renameInput->layoutItem.position->top  = CSSLayout::Dimension::Px(want.y);
+            renameInput->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+            renameInput->SetElementSize(Size2Df(want.width, want.height));
+            renameInput->SetBounds(want);
+            return;
+        }
     }
 
     void UltraCanvasFilerWidget::ArmPendingRenameTimer() {
@@ -3174,6 +3311,20 @@ namespace UltraCanvas {
 
         DrawViewContent(ctx, bounds);
 
+        // The inline rename editor is a child element the self-rendered view
+        // must draw itself (the widget's Render never paints children). Placed
+        // fresh each frame so it tracks scrolling and relayouts of its item.
+        if (renamingIndex >= 0 && renameInput) {
+            PositionRenameInput();
+            Rect2Df b = renameInput->GetBounds();
+            ctx->PushState();
+            ctx->ClipRect(Rect2Dd(lb.x, lb.y, lb.width, lb.height));
+            ctx->Translate(Point2Df(b.x, b.y));
+            renameInput->Render(ctx, Rect2Df(dirtyRect.x - b.x, dirtyRect.y - b.y,
+                                             dirtyRect.width, dirtyRect.height));
+            ctx->PopState();
+        }
+
         // Modal overlay painted last so it sits above the folder view and chrome.
         if (compressDlg.active) DrawCompressDialog(ctx, bounds);
     }
@@ -3258,14 +3409,6 @@ namespace UltraCanvas {
                 }
             }
         }
-        if (renamingIndex >= 0) {
-            for (const ItemLayout& item : items) {
-                if (static_cast<int>(item.entryIndex) == renamingIndex) {
-                    DrawRenameEditor(ctx, item);
-                    break;
-                }
-            }
-        }
         ctx->PopState();
 
         PrefetchThumbnails(ctx, bounds);
@@ -3277,6 +3420,8 @@ namespace UltraCanvas {
         DrawSelectionInfoBar(ctx, bounds);
         // Drag badge + drop highlight above the whole view (including chrome).
         if (draggingItems) DrawDragFeedback(ctx, bounds);
+        // Rubber-band rectangle of a running drag selection.
+        if (marqueeActive) DrawMarquee(ctx);
         ctx->PopState();
     }
 
@@ -3542,6 +3687,11 @@ namespace UltraCanvas {
             ImagePipelineLoadsExtension(e.extension)) {
             return e.path;
         }
+        // Videos thumbnail as their poster frame (the first frame of the
+        // clip), decoded by the same background workers. Without a video
+        // backend the capture fails once, the slot is marked Failed and the
+        // tile keeps its generic glyph.
+        if (e.category == FilerFileCategory::Video) return e.path;
         return {};
     }
 
@@ -3836,9 +3986,20 @@ namespace UltraCanvas {
             // GetPixmap populate the shared mutex-guarded caches, so later
             // synchronous users (e.g. the media viewer) get free cache hits.
             std::shared_ptr<UCPixmap> pm;
-            auto img = UCImage::Get(req.path);
-            if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+            if (IsVideoFilePath(req.path)) {
+                // Poster frame of a video (may block for a few seconds on a
+                // cold file — that is exactly what these workers are for).
+                VideoThumbnailRequest vreq;
+                vreq.maxWidth = std::max(
+                        1, static_cast<int>(std::lround(req.w * req.scale)));
+                vreq.maxHeight = std::max(
+                        1, static_cast<int>(std::lround(req.h * req.scale)));
+                pm = CaptureVideoThumbnailPixmap(req.path, vreq);
+            } else {
+                auto img = UCImage::Get(req.path);
+                if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                    pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                }
             }
 
             // "Compressed thumbnails": deflate here on the worker so the UI
@@ -4363,53 +4524,16 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasFilerWidget::DrawRenameEditor(IRenderContext* ctx,
-                                                  const ItemLayout& item) {
-        // The editable field sits where the item's name is shown.
-        Rect2Di field;
-        if (viewType == FilerViewType::Details || viewType == FilerViewType::List ||
-            viewType == FilerViewType::BarSize) {
-            int x = item.imageRect.x + item.imageRect.width + 4;
-            field = Rect2Di(x, item.rect.y + 1,
-                            std::max(80, item.rect.width
-                                     - (x - item.rect.x) - 8),
-                            item.rect.height - 2);
-            if (viewType == FilerViewType::Details && !detailsColumns.empty()) {
-                field.width = std::max(80, detailsColumns[0].x
-                                       + detailsColumns[0].width - x - 4);
-            }
-        } else {   // thumbnails / treemap
-            // Covers the whole (possibly multi-line) caption band; the editor
-            // itself stays a single line, centered in it.
-            int capTop = item.imageRect.y + item.imageRect.height;
-            field = Rect2Di(item.rect.x + 2, capTop, item.rect.width - 4,
-                            CaptionBandHeight(item.captionLines));
-        }
-
-        ctx->SetFillPaint(style.renameFieldColor);
-        ctx->FillRectangle(Rect2Dd(field));
-        ctx->SetStrokePaint(style.renameBorderColor);
-        ctx->SetStrokeWidth(1.5f);
-        ctx->DrawRectangle(Rect2Dd(field));
-
-        FontStyle fsty;
-        fsty.fontFamily = style.fontFamily;
-        fsty.fontSize = ItemNameFontSize();   // match the on-screen name size
-        ctx->SetFontStyle(fsty);
-        ctx->SetTextPaint(style.textColor);
-        ctx->PushState();
-        ctx->ClipRect(Rect2Dd(field));
-        Size2Di ts = ctx->GetTextLineDimensions(renameBuffer);
-        int tx = field.x + 4;
-        if (ts.width > field.width - 12) tx = field.x + field.width - 12 - ts.width;
-        int ty = field.y + (field.height - ts.height) / 2;
-        ctx->DrawText(renameBuffer, Point2Dd(tx, ty));
-        // Caret at the end of the text.
-        ctx->SetStrokePaint(style.textColor);
+    void UltraCanvasFilerWidget::DrawMarquee(IRenderContext* ctx) {
+        Rect2Di r = MarqueeRect();
+        Rect2Dd lr(r.x - scrollOffsetX, r.y - scrollOffsetY, r.width, r.height);
+        Color fill = style.selectionColor;
+        fill.a = 70;
+        ctx->SetFillPaint(fill);
+        ctx->FillRectangle(lr);
+        ctx->SetStrokePaint(style.selectionBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Dd(tx + ts.width + 1, field.y + 3),
-                      Point2Dd(tx + ts.width + 1, field.y + field.height - 3));
-        ctx->PopState();
+        ctx->DrawRectangle(lr);
     }
 
     void UltraCanvasFilerWidget::DrawScrollbar(IRenderContext* ctx) {
@@ -5372,51 +5496,86 @@ namespace UltraCanvas {
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
-    bool UltraCanvasFilerWidget::HandleRenameKey(const UCEvent& event) {
-        if (renamingIndex < 0) return false;
-        if (event.type == UCEventType::KeyDown) {
-            switch (event.virtualKey) {
-                case UCKeys::Return:
-                    CommitRename();
-                    return true;
-                case UCKeys::Escape:
-                    CancelRename();
-                    return true;
-                case UCKeys::Backspace: {
-                    if (!renameBuffer.empty()) {
-                        size_t cut = renameBuffer.size() - 1;
-                        while (cut > 0 &&
-                               (static_cast<unsigned char>(renameBuffer[cut]) & 0xC0) == 0x80)
-                            --cut;
-                        renameBuffer.erase(cut);
-                        RequestRedraw();
-                    }
-                    return true;
-                }
-                default:
-                    break;   // may carry a printable character, handled below
+    // ===== RUBBER-BAND SELECTION =====
+    Rect2Di UltraCanvasFilerWidget::MarqueeRect() const {
+        int x0 = std::min(marqueeAnchor.x, marqueeCurrent.x);
+        int y0 = std::min(marqueeAnchor.y, marqueeCurrent.y);
+        int x1 = std::max(marqueeAnchor.x, marqueeCurrent.x);
+        int y1 = std::max(marqueeAnchor.y, marqueeCurrent.y);
+        return Rect2Di(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    void UltraCanvasFilerWidget::UpdateMarquee(const Point2Di& localPoint) {
+        // Auto-scroll at the viewport edge so the rectangle can grow past it.
+        Rect2Di area = ContentBounds();
+        if (IsHorizontal()) {
+            if (localPoint.x > area.x + area.width)
+                scrollOffsetX += std::min(localPoint.x - (area.x + area.width),
+                                          kWheelStep);
+            else if (localPoint.x < area.x)
+                scrollOffsetX -= std::min(area.x - localPoint.x, kWheelStep);
+        } else {
+            if (localPoint.y > area.y + area.height)
+                scrollOffsetY += std::min(localPoint.y - (area.y + area.height),
+                                          kWheelStep);
+            else if (localPoint.y < area.y)
+                scrollOffsetY -= std::min(area.y - localPoint.y, kWheelStep);
+        }
+        ClampScroll();
+        marqueeCurrent = ToContentPoint(localPoint);
+
+        // Reselect from scratch every move: the rectangle's touch set plus —
+        // with Ctrl — whatever was selected when the band started.
+        Rect2Di r = MarqueeRect();
+        std::vector<size_t> newSel = marqueeAdditive ? marqueeBaseSelection
+                                                     : std::vector<size_t>();
+        for (const ItemLayout& it : items) {
+            if (!it.rect.Intersects(r)) continue;
+            if (std::find(newSel.begin(), newSel.end(), it.entryIndex)
+                == newSel.end()) {
+                newSel.push_back(it.entryIndex);
             }
-            if (event.ctrl || event.alt) return false;
-        } else if (event.type != UCEventType::TextInput) {
-            return false;
         }
-        // Printable characters are delivered on the KeyDown event itself
-        // (event.character / event.text) — the platform layers never emit a
-        // separate KeyChar/TextInput event. Same convention as
-        // UltraCanvasTextInput.
-        std::string in = event.text;
-        if (in.empty() && event.character >= 32) in.assign(1, event.character);
-        // Strip control characters and the path separator.
-        std::string filtered;
-        for (char c : in) {
-            if (static_cast<unsigned char>(c) >= 32 && c != '/') filtered += c;
+        if (newSel != selection) {
+            selection = std::move(newSel);
+            FireSelectionChanged();
         }
-        if (!filtered.empty()) {
-            renameBuffer += filtered;
-            RequestRedraw();
-            return true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::FinishMarquee() {
+        bool wasActive = marqueeActive;
+        marqueeArmed = false;
+        marqueeActive = false;
+        if (dragMouseCaptured) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+            dragMouseCaptured = false;
         }
-        return false;
+        if (!wasActive) {
+            // The press never moved: it was a plain click on empty space,
+            // which keeps its old meaning — clear the selection (a Ctrl
+            // click on empty space leaves it alone).
+            if (!marqueeAdditive) HandleItemClick(-1, false, false);
+        }
+        marqueeBaseSelection.clear();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::CancelMarquee() {
+        if (!marqueeArmed && !marqueeActive) return;
+        bool wasActive = marqueeActive;
+        marqueeArmed = false;
+        marqueeActive = false;
+        if (dragMouseCaptured) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+            dragMouseCaptured = false;
+        }
+        if (wasActive && selection != marqueeBaseSelection) {
+            selection = marqueeBaseSelection;   // back to the pre-band state
+            FireSelectionChanged();
+        }
+        marqueeBaseSelection.clear();
+        RequestRedraw();
     }
 
     // ===== EVENTS =====
@@ -5483,6 +5642,22 @@ namespace UltraCanvas {
                         }
                     }
                 }
+                // A running rubber-band selection owns the pointer as well.
+                if (marqueeActive) {
+                    UpdateMarquee(local);
+                    return true;
+                }
+                // Armed on empty space: past the slop the press becomes the
+                // rubber band instead of a click.
+                if (marqueeArmed) {
+                    int dx = local.x - marqueePressLocal.x;
+                    int dy = local.y - marqueePressLocal.y;
+                    if (dx * dx + dy * dy >= kDragStartSlop * kDragStartSlop) {
+                        marqueeActive = true;
+                        UpdateMarquee(local);
+                        return true;
+                    }
+                }
                 if (draggingScrollbar) {
                     ScrollThumbTo((IsHorizontal() ? local.x : local.y)
                                   - scrollbarGrabOffset);
@@ -5528,12 +5703,15 @@ namespace UltraCanvas {
                 // A running drag owns the pointer until it is released.
                 if (draggingItems) return true;
                 Point2Di local(event.pointer.x, event.pointer.y);
+                // Read before SetFocus: taking the focus away from the rename
+                // editor commits it (its onFocusLost), which already clears
+                // renamingIndex by the time SetFocus returns.
+                bool wasRenaming = renamingIndex >= 0;
                 SetFocus(true);
 
                 // Any new press supersedes a not-yet-fired rename click and
                 // whatever an earlier press left deferred (its release may
                 // have gone elsewhere).
-                bool wasRenaming = renamingIndex >= 0;
                 CancelPendingRename();
                 pendingSelectIndex = -1;
                 dragCollapseIndex = -1;
@@ -5667,9 +5845,23 @@ namespace UltraCanvas {
                             if (layout && IsOnItemName(*layout, content))
                                 pendingRenameIndex = index;
                         }
-                    } else {
+                    } else if (index >= 0) {
                         HandleItemClick(index, event.ctrl, event.shift);
                         dragCollapseIndex = -1;
+                    } else {
+                        // Empty space: arm the rubber band. What a plain
+                        // click means (clear the selection) waits for the
+                        // release, so a drag selects instead of clearing.
+                        marqueeArmed = true;
+                        marqueeAdditive = event.ctrl;
+                        marqueePressLocal = local;
+                        marqueeAnchor = content;
+                        marqueeCurrent = content;
+                        marqueeBaseSelection = selection;
+                        if (auto* app = UltraCanvasApplication::GetInstance()) {
+                            app->CaptureMouse(this);
+                            dragMouseCaptured = true;
+                        }
                     }
                     // Pressing on an item arms the drag gesture; the drag starts
                     // once the pointer moves past the slop threshold. The mouse
@@ -5692,6 +5884,10 @@ namespace UltraCanvas {
             case UCEventType::MouseUp: {
                 if (draggingSplitter >= 0) {
                     EndColumnSplitterDrag();
+                    return true;
+                }
+                if (marqueeArmed || marqueeActive) {
+                    FinishMarquee();
                     return true;
                 }
                 if (draggingItems) {
@@ -5736,6 +5932,10 @@ namespace UltraCanvas {
                 return ownedRelease;
             }
             case UCEventType::MouseDoubleClick: {
+                // While the rename editor is open a double-click can only be
+                // inside it (a click anywhere else commits on its MouseDown):
+                // it belongs to the editor, never opens the entry behind it.
+                if (renamingIndex >= 0) return true;
                 // The first click of this double-click may have armed the
                 // deferred rename — opening the entry supersedes it.
                 CancelPendingRename();
@@ -5756,9 +5956,16 @@ namespace UltraCanvas {
                     CancelItemDrag();
                     return true;
                 }
+                // Escape abandons a running rubber band (selection restored).
+                if (marqueeActive && event.virtualKey == UCKeys::Escape) {
+                    CancelMarquee();
+                    return true;
+                }
                 CancelPendingRename();   // keyboard action outruns the click
-                if (HandleRenameKey(event)) return true;
-                if (renamingIndex >= 0) return true;   // swallow while editing
+                // While the rename editor (a focused child) is open, the only
+                // keys that reach the widget are ones the editor did not
+                // consume — swallow them so shortcuts / navigation stay off.
+                if (renamingIndex >= 0) return true;
 
                 if (event.ctrl) {
                     switch (event.virtualKey) {
@@ -5830,8 +6037,6 @@ namespace UltraCanvas {
                 }
                 return false;
             }
-            case UCEventType::TextInput:
-                return HandleRenameKey(event);
             case UCEventType::Drop: {
                 // Files dragged in from other applications / windows are
                 // copied into the shown folder.
