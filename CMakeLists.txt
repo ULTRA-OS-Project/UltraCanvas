@@ -159,6 +159,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
+            Apps/DemoApp/UltraCanvasBarChartExamples.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
