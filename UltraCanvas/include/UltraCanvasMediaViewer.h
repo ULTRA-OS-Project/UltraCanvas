@@ -10,15 +10,21 @@
 // saved through the framework's file loader (UCImage / UltraCanvasFileLoader)
 // and pixel manipulation is performed with PixelFX (libvips).
 //
-// Beyond images it also opens documents, spreadsheets, 3D models, audio and
-// video: PDFs render through UltraCanvasPDFView (MuPDF), spreadsheets (ODS /
-// CSV / TSV) through UltraCanvasSpreadsheet, STL 3D models through the OpenGL
-// model viewer (UltraCanvasSTLElement), text / source / markdown files through a
-// read-only UltraCanvasTextArea (syntax highlighting + markdown rendering), and
-// audio / video through the framework's UltraCanvasAudioPlayerElement /
-// UltraCanvasVideoPlayerElement. The right view
-// is chosen automatically from the file kind; image-only tools (zoom, rotate,
-// adjustments, save) apply to images, and zoom also drives the PDF view.
+// Beyond images it also opens documents, spreadsheets, 3D models, e-books,
+// audio and video: PDFs render through UltraCanvasPDFView (MuPDF),
+// spreadsheets (ODS / CSV / TSV) through UltraCanvasSpreadsheet, STL 3D models
+// through the OpenGL model viewer (UltraCanvasSTLElement), text / source /
+// markdown files through a read-only UltraCanvasTextArea (syntax highlighting
+// + markdown rendering), e-books (EPUB / FB2 / MOBI / AZW) through
+// UltraCanvasEBookViewer (engine registry), and audio / video through the
+// framework's UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement.
+// UltraCanvas Document containers (*.ucd) are recognised too: until the UCD v2
+// engine lands, the viewer shows the container's embedded preview thumbnail
+// (readable without parsing the body — the format is designed for that) plus
+// the header details; files without a thumbnail get a header summary. The
+// right view is chosen automatically from the file kind; image-only tools
+// (zoom, rotate, adjustments, save) apply to images, and zoom also drives the
+// PDF and e-book views.
 // (ODT is an OpenDocument *text* document, not a spreadsheet, so it is not
 // handled by the spreadsheet engine.)
 //
@@ -46,7 +52,7 @@
 // solid colour (default white) or the checkered pattern familiar from image
 // editors (SetTransparentBackground / SetTransparentColor).
 //
-// Version: 1.3.1
+// Version: 1.4.0
 // Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 #pragma once
@@ -77,14 +83,18 @@ class UltraCanvasAudioPlayerElement; // audio playback (audio backend)
 class UltraCanvasSpreadsheet;        // ODS / CSV / TSV spreadsheets
 class UltraCanvasSTLElement;         // STL 3D models (OpenGL viewer, 2D fallback)
 class UltraCanvasTextArea;           // text / source / markdown (read-only)
+class UltraCanvasEBookViewer;        // EPUB / FB2 / MOBI e-books (engine registry)
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
 // documents through the PDF view, spreadsheets (ODS/CSV/TSV) through the
 // spreadsheet element, 3D models (STL) through the OpenGL model viewer, text /
-// source / markdown files through a read-only text area, and audio/video
-// through their player elements.
-enum class MediaKind { Image, Document, Sheet, Model, Text, Video, Audio };
+// source / markdown files through a read-only text area, e-books through the
+// eBook viewer, and audio/video through their player elements. UCDoc marks an
+// UltraCanvas Document container (*.ucd); it is displayed through the image
+// surface (embedded preview thumbnail) or the text area (header summary), so
+// it never becomes the active view kind itself.
+enum class MediaKind { Image, Document, Sheet, Model, Text, Book, UCDoc, Video, Audio };
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -387,6 +397,8 @@ private:
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
     static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsModelFile(const std::string& path);       // STL 3D models
+    static bool IsEBookFile(const std::string& path);       // EPUB / FB2 / MOBI / AZW
+    static bool IsUCDFile(const std::string& path);         // UltraCanvas Document (*.ucd)
     // Bitmaps and vector graphics the image pipeline rasterizes (SVG through
     // librsvg). Checked before IsTextFile so markup-based image formats show
     // their picture rather than their source code.
@@ -440,9 +452,14 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    sheetView;     // UltraCanvasSpreadsheet
     std::shared_ptr<UltraCanvasUIElement>    modelView;     // UltraCanvasSTLElement (3D)
     std::shared_ptr<UltraCanvasUIElement>    textView;      // UltraCanvasTextArea (read-only)
+    std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
     MediaKind activeKind = MediaKind::Image;
+
+    // Details text for the current UCD container (empty when the current file
+    // is not a *.ucd). Feeds the info popup instead of the image/text details.
+    std::string ucdDetails;
 
     MediaAdjustments adjustments;
 

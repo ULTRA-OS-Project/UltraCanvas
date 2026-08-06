@@ -1,7 +1,7 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.3.1
+// Version: 1.4.0
 // Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 
@@ -18,6 +18,8 @@
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
+#include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
+#include "Documents/eBook/TXTEngine.h" // RegisterBuiltinEBookEngines (idempotent)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #endif
@@ -84,6 +86,130 @@ static bool ReadTextFile(const std::string& path, std::string& out,
         out += "\n\n[... truncated ...]";
     }
     return true;
+}
+
+// ----- UCD v2 CONTAINER HEADER -----
+// Fixed 28-byte header of an UltraCanvas Document container, per
+// Docs/UltraCanvas/UCD-FileFormat-v2.md. The header (and the raw HEIC/PNG
+// preview thumbnail that follows it) is never compressed or encrypted, so a
+// viewer can identify the file and show a preview without the UCD v2 engine.
+struct UCDHeader {
+    bool        valid = false;      // signature matched (0x89 'U' 'C' … \r\n 0x1A)
+    std::string descriptor;         // "UCDoc", "UCForm", "UCVector", …
+    int         versionMajor = 0;
+    int         versionMinor = 0;
+    uint8_t     bodyEncoding = 0;   // 0 binary, 1 XML text, 2 JSON text
+    uint8_t     compression = 0;    // 0 none, 1 deflate, 2 gzip, 3 LZMA
+    uint8_t     encryption = 0;     // 0 none, 1 AES-256-GCM, 2 ChaCha20, 3 SuperVault
+    uint8_t     flags = 0;          // bit0 thumbnail, bit1 PNG (else HEIC),
+                                    // bit2 encrypted, bit3 private
+    uint32_t    thumbnailLength = 0;
+    uint32_t    extensionLength = 0;
+
+    bool HasThumbnail() const { return (flags & 0x01) && thumbnailLength > 0; }
+    bool ThumbnailIsPNG() const { return (flags & 0x02) != 0; }
+    bool IsEncrypted() const { return (flags & 0x04) != 0 || encryption != 0; }
+    bool IsPrivate() const { return (flags & 0x08) != 0; }
+};
+
+static uint32_t ReadLE32(const unsigned char* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static bool ReadUCDHeader(const std::string& path, UCDHeader& out) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    unsigned char h[28];
+    if (!f.read(reinterpret_cast<char*>(h), sizeof(h))) return false;
+    if (h[0] != 0x89 || h[1] != 'U' || h[2] != 'C' ||
+        h[9] != 0x0D || h[10] != 0x0A || h[11] != 0x1A) return false;
+    out.valid = true;
+    out.descriptor.assign(reinterpret_cast<const char*>(h + 1), 8);
+    if (auto z = out.descriptor.find('\0'); z != std::string::npos)
+        out.descriptor.resize(z);
+    out.versionMajor    = h[12];
+    out.versionMinor    = h[13];
+    out.bodyEncoding    = h[14];
+    out.compression     = h[15];
+    out.encryption      = h[16];
+    out.flags           = h[17];
+    out.thumbnailLength = ReadLE32(h + 20);
+    out.extensionLength = ReadLE32(h + 24);
+    return true;
+}
+
+// Extract the raw (HEIC/PNG) preview thumbnail stored directly after the fixed
+// header + header extension. Length-capped so a corrupt header can't allocate
+// wild amounts of memory.
+static bool ReadUCDThumbnail(const std::string& path, const UCDHeader& hdr,
+                             std::vector<uint8_t>& out) {
+    constexpr uint32_t kMaxThumbBytes = 64u * 1024u * 1024u;
+    if (!hdr.valid || !hdr.HasThumbnail() || hdr.IsPrivate() ||
+        hdr.thumbnailLength > kMaxThumbBytes) return false;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.seekg(28 + (std::streamoff)hdr.extensionLength);
+    out.resize(hdr.thumbnailLength);
+    return f.read(reinterpret_cast<char*>(out.data()), out.size()) ? true : false;
+}
+
+// Friendly name of the primary content type a UCD descriptor announces.
+static std::string UCDDescriptorName(const std::string& descriptor) {
+    if (descriptor == "UCDoc")    return "multi-page document";
+    if (descriptor == "UCForm")   return "saveable / fillable form";
+    if (descriptor == "UCVector") return "vector graphics";
+    if (descriptor == "UCWindow") return "window / UI description";
+    if (descriptor == "UCBitmap") return "bitmap graphics";
+    if (descriptor == "UCVideo")  return "video";
+    if (descriptor == "UCAudio")  return "audio";
+    if (descriptor == "UC3D")     return "3D scene / model";
+    return "unknown content type";
+}
+
+// Human-readable summary of a *.ucd file for the details popup (and the text
+// view when the container carries no preview thumbnail).
+static std::string BuildUCDDetailsText(const std::string& path,
+                                       const UCDHeader& hdr, bool thumbShown) {
+    std::ostringstream os;
+    os << "UltraCanvas Document (UCD)\n\n";
+    os << "File: " << BaseName(path) << "\n";
+    os << "Path: " << path << "\n";
+    std::error_code ec;
+    auto sz = fs::file_size(path, ec);
+    if (!ec) os << "Size: " << HumanSize(sz) << "\n";
+    if (!hdr.valid) {
+        os << "\nNot a UCD v2 container (no valid signature).\n"
+              "It may be a UCD v1 XML/JSON document or a different file.\n";
+        return os.str();
+    }
+    os << "Container: UCD v" << hdr.versionMajor << "." << hdr.versionMinor
+       << " (" << hdr.descriptor << " \xE2\x80\x94 "
+       << UCDDescriptorName(hdr.descriptor) << ")\n";
+    os << "Body encoding: "
+       << (hdr.bodyEncoding == 0 ? "binary" :
+           hdr.bodyEncoding == 1 ? "XML text (debug)" :
+           hdr.bodyEncoding == 2 ? "JSON text (debug)" : "unknown") << "\n";
+    os << "Compression: "
+       << (hdr.compression == 0 ? "none" :
+           hdr.compression == 1 ? "deflate" :
+           hdr.compression == 2 ? "gzip" :
+           hdr.compression == 3 ? "LZMA" : "unknown") << "\n";
+    os << "Encryption: "
+       << (hdr.encryption == 0 ? "none" :
+           hdr.encryption == 1 ? "AES-256-GCM" :
+           hdr.encryption == 2 ? "ChaCha20-Poly1305" :
+           hdr.encryption == 3 ? "SuperVault remote authorization" : "unknown")
+       << (hdr.IsPrivate() ? " (private)" : "") << "\n";
+    if (hdr.HasThumbnail()) {
+        os << "Thumbnail: " << (hdr.ThumbnailIsPNG() ? "PNG" : "HEIC") << ", "
+           << HumanSize(hdr.thumbnailLength)
+           << (thumbShown ? " (shown)" : " (could not be decoded)") << "\n";
+    } else {
+        os << "Thumbnail: none\n";
+    }
+    os << "\nPreview only \xE2\x80\x94 full rendering arrives with the UCD v2 engine.\n";
+    return os.str();
 }
 
 #ifdef HAS_LIBVIPS
@@ -871,6 +997,20 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(textView);
     }
 
+    // ----- EBOOK VIEW (EPUB / FB2 / MOBI / AZW) -----
+    // Complete reading widget: chapter toolbar, table of contents and reflowing
+    // chapter content. Engines come from the eBook registry; registering the
+    // built-ins here is idempotent, so the viewer works standalone too.
+    {
+        RegisterBuiltinEBookEngines();
+        auto bv = std::make_shared<UltraCanvasEBookViewer>("MV_Book", 0.f, 0.f);
+        bv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        bv->SetVisible(false);
+        bookView = bv;
+        AddChild(bookView);
+    }
+
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     // ----- VIDEO PLAYER (shown for video files) -----
     {
@@ -949,6 +1089,24 @@ bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
     return LowerExt(path) == "stl";
 }
 
+bool UltraCanvasMediaViewer::IsEBookFile(const std::string& path) {
+    // e-books open in UltraCanvasEBookViewer through the engine registry
+    // (EPUB / FB2 / MOBI and Kindle variants). Plain text stays in the text
+    // view even though a TXT e-book engine exists, so only the dedicated
+    // e-book container formats are claimed here.
+    static const std::vector<std::string> b = {
+        "epub", "fb2", "mobi", "prc", "azw", "azw3"
+    };
+    std::string e = LowerExt(path);
+    return !e.empty() && std::find(b.begin(), b.end(), e) != b.end();
+}
+
+bool UltraCanvasMediaViewer::IsUCDFile(const std::string& path) {
+    // UltraCanvas Document containers. Shown as the embedded preview thumbnail
+    // plus header details until the UCD v2 engine lands (see LoadCurrent).
+    return LowerExt(path) == "ucd";
+}
+
 // Image / vector formats the image pipeline can rasterize. Kept in one place
 // because both ClassifyFile() and IsSupportedMedia() need the same list.
 static const std::vector<std::string>& ImageExtensions() {
@@ -1020,9 +1178,11 @@ bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
 }
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
+    if (IsUCDFile(path))         return MediaKind::UCDoc;
     if (IsDocumentFile(path))    return MediaKind::Document;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
+    if (IsEBookFile(path))       return MediaKind::Book;
     if (IsVideoFile(path))       return MediaKind::Video;
     if (IsAudioFile(path))       return MediaKind::Audio;
     // Images before text: SVG (and XPM / XBM) are markup the syntax tokenizer
@@ -1037,9 +1197,10 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     std::string e = LowerExt(path);
     if (e.empty()) return false;
     if (IsImageFile(path)) return true;
-    // Documents / spreadsheets / 3D models / text / video / audio (video & audio
-    // gated by their backend being present).
+    // Documents / spreadsheets / 3D models / e-books / UCD containers / text /
+    // video / audio (video & audio gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
+           IsEBookFile(path) || IsUCDFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -1184,6 +1345,7 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (sheetView)   sheetView->SetVisible(kind == MediaKind::Sheet);
     if (modelView)   modelView->SetVisible(kind == MediaKind::Model);
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
+    if (bookView)    bookView->SetVisible(kind == MediaKind::Book);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
@@ -1258,6 +1420,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     MediaKind kind = ClassifyFile(path);
     (void)kind;
     bool handled = false;
+    ucdDetails.clear();   // only set while a *.ucd container is showing
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (kind == MediaKind::Document && pdfView) {
@@ -1318,6 +1481,45 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         }
         handled = true;
     }
+    if (!handled && kind == MediaKind::Book && bookView) {
+        // e-books open in the reading widget (chapter toolbar + TOC + content).
+        ShowView(MediaKind::Book);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* bv = static_cast<UltraCanvasEBookViewer*>(bookView.get());
+        if (!bv->LoadDocument(path) && infoLabel)
+            infoLabel->SetText("Failed to open e-book: " + BaseName(path) +
+                               " (" + bv->GetLastError() + ")");
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::UCDoc) {
+        // UltraCanvas Document container. Full rendering arrives with the UCD
+        // v2 engine; until then show the embedded preview thumbnail — stored
+        // raw right after the fixed header exactly so viewers can preview
+        // without parsing the body — or, without one, a header summary in the
+        // text view. The details popup gets the container information either way.
+        UCDHeader hdr;
+        std::shared_ptr<UCImage> thumb;
+        if (ReadUCDHeader(path, hdr)) {
+            std::vector<uint8_t> raw;
+            if (ReadUCDThumbnail(path, hdr, raw))
+                thumb = UCImage::LoadFromMemory(raw);
+        }
+        bool thumbShown = thumb && thumb->IsValid();
+        ucdDetails = BuildUCDDetailsText(path, hdr, thumbShown);
+        if (thumbShown) {
+            ShowView(MediaKind::Image);
+            surface->ShowImage(thumb, transition, transitionDurationMs, animated);
+        } else if (textView) {
+            ShowView(MediaKind::Text);
+            surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+            auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+            ta->SetEditingMode(TextAreaEditingMode::PlainText);
+            ta->SetHighlightSyntax(false);
+            ta->SetDisplayOnly(true);
+            ta->SetText(ucdDetails);
+        }
+        handled = true;
+    }
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     if (!handled && kind == MediaKind::Video && videoPlayer) {
         ShowView(MediaKind::Video);
@@ -1368,6 +1570,10 @@ void UltraCanvasMediaViewer::ZoomInAction() {
         return;
     }
 #endif
+    if (activeKind == MediaKind::Book && bookView) {
+        static_cast<UltraCanvasEBookViewer*>(bookView.get())->ZoomIn();
+        return;
+    }
     if (activeKind == MediaKind::Image && surface) surface->ZoomBy(1.25);
 }
 
@@ -1378,6 +1584,10 @@ void UltraCanvasMediaViewer::ZoomOutAction() {
         return;
     }
 #endif
+    if (activeKind == MediaKind::Book && bookView) {
+        static_cast<UltraCanvasEBookViewer*>(bookView.get())->ZoomOut();
+        return;
+    }
     if (activeKind == MediaKind::Image && surface) surface->ZoomBy(1.0 / 1.25);
 }
 
@@ -1388,6 +1598,11 @@ void UltraCanvasMediaViewer::ZoomFitAction() {
         return;
     }
 #endif
+    if (activeKind == MediaKind::Book && bookView) {
+        // Books reflow, so "fit" means a comfortable line measure across the pane.
+        static_cast<UltraCanvasEBookViewer*>(bookView.get())->ZoomToWidth();
+        return;
+    }
     if (activeKind == MediaKind::Image && surface) surface->ResetView();
 }
 
@@ -1398,6 +1613,11 @@ void UltraCanvasMediaViewer::ZoomPercentAction(double percent) {
         return;
     }
 #endif
+    if (activeKind == MediaKind::Book && bookView) {
+        static_cast<UltraCanvasEBookViewer*>(bookView.get())
+                ->SetZoom(static_cast<float>(percent / 100.0));
+        return;
+    }
     if (activeKind == MediaKind::Image && surface) surface->SetZoomPercent(percent);
 }
 
@@ -1408,6 +1628,19 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
     const std::string& path = playlist[currentIndex];
+
+    if (!ucdDetails.empty()) {
+        // A *.ucd container is showing (as its preview thumbnail or its header
+        // summary) — label it as a UCD regardless of which view carries it.
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   UC DOCUMENT";
+        std::error_code ec;
+        auto sz = fs::file_size(path, ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (activeKind == MediaKind::Document && pdfView) {
@@ -1428,11 +1661,12 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
 #endif
 
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
-        activeKind == MediaKind::Text || activeKind == MediaKind::Video ||
-        activeKind == MediaKind::Audio) {
+        activeKind == MediaKind::Text || activeKind == MediaKind::Book ||
+        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
         std::string kindLabel = activeKind == MediaKind::Video ? "VIDEO"
                               : activeKind == MediaKind::Audio ? "AUDIO"
                               : activeKind == MediaKind::Model ? "3D MODEL"
+                              : activeKind == MediaKind::Book  ? "EBOOK"
                               : activeKind == MediaKind::Text  ? "TEXT" : "SHEET";
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
@@ -1479,6 +1713,44 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     if (!surface || playlist.empty()) return;
     const std::string& path = playlist[currentIndex];
+
+    if (!ucdDetails.empty()) {
+        // The UCD container summary was built while loading the file.
+        surface->SetInfoText(ucdDetails);
+        return;
+    }
+
+    if (activeKind == MediaKind::Book && bookView) {
+        auto* bv = static_cast<UltraCanvasEBookViewer*>(bookView.get());
+        std::ostringstream bos;
+        bos << "eBook information\n\n";
+        bos << "File: " << BaseName(path) << "\n";
+        bos << "Path: " << path << "\n";
+        std::error_code bec;
+        auto bsz = fs::file_size(path, bec);
+        if (!bec) bos << "Size: " << HumanSize(bsz) << "\n";
+        std::string ext = LowerExt(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return (char)std::toupper(c); });
+        bos << "Type: eBook (" << ext << ")\n";
+        if (const EBookMetadata* md = bv->GetMetadata()) {
+            if (!md->title.empty()) bos << "Title: " << md->title << "\n";
+            if (!md->authors.empty()) {
+                bos << "Author: ";
+                for (size_t i = 0; i < md->authors.size(); ++i) {
+                    if (i) bos << ", ";
+                    bos << md->authors[i];
+                }
+                bos << "\n";
+            }
+            if (!md->publisher.empty()) bos << "Publisher: " << md->publisher << "\n";
+            if (!md->language.empty())  bos << "Language: " << md->language << "\n";
+        }
+        if (bv->IsDocumentLoaded())
+            bos << "Chapters: " << bv->GetChapterCount() << "\n";
+        surface->SetInfoText(bos.str());
+        return;
+    }
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (activeKind == MediaKind::Document && pdfView) {
@@ -1727,6 +1999,7 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
         case MediaKind::Sheet:    return sheetView.get();
         case MediaKind::Model:    return modelView.get();
         case MediaKind::Text:     return textView.get();
+        case MediaKind::Book:     return bookView.get();
         case MediaKind::Video:    return videoPlayer.get();
         case MediaKind::Audio:    return audioPlayer.get();
         case MediaKind::Image:
@@ -1738,8 +2011,8 @@ bool UltraCanvasMediaViewer::IsDisplayView(const UltraCanvasUIElement* element) 
     if (!element) return false;
     return element == surface.get()     || element == pdfView.get() ||
            element == sheetView.get()   || element == modelView.get() ||
-           element == textView.get()    || element == videoPlayer.get() ||
-           element == audioPlayer.get();
+           element == textView.get()    || element == bookView.get() ||
+           element == videoPlayer.get() || element == audioPlayer.get();
 }
 
 bool UltraCanvasMediaViewer::FocusForKeyboard() {
