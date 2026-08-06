@@ -18,28 +18,31 @@ namespace UltraCanvas {
 
 // ===== TOOLTIP CONFIGURATION =====
     struct TooltipStyle {
-        // Appearance
-        Color backgroundColor = Color(255, 255, 225, 240);  // Light yellow with transparency
-        Color borderColor = Color(118, 118, 118, 255);      // Gray border
-        Color textColor = Colors::Black;
-        Color shadowColor = Color(0, 0, 0, 64);
+        // Appearance (defaults follow the modern dark tooltip look of
+        // current desktop environments; see Light() for a light variant)
+        Color backgroundColor = Color(45, 45, 48, 245);     // Dark neutral, slightly translucent
+        Color borderColor = Color(255, 255, 255, 36);       // Subtle light hairline
+        Color textColor = Color(242, 242, 242, 255);
+        Color shadowColor = Color(0, 0, 0, 90);
 
         // Typography
         std::string fontFamily = "Sans";
         float fontSize = 11.0f;
 
         // Layout
-        int paddingLeft = 6;
-        int paddingRight = 6;
-        int paddingTop = 4;
-        int paddingBottom = 4;
+        int paddingLeft = 10;
+        int paddingRight = 10;
+        int paddingTop = 7;
+        int paddingBottom = 7;
         int maxWidth = 450;
         int borderWidth = 1;
-        float cornerRadius = 3.0f;
+        float cornerRadius = 6.0f;
 
-        // Shadow
+        // Shadow: soft drop shadow below the tooltip. shadowBlur is the
+        // spread in pixels; 0 gives the legacy hard-edged shadow.
         bool hasShadow = true;
-        Point2Di shadowOffset = Point2Di(2, 2);
+        Point2Di shadowOffset = Point2Di(0, 3);
+        int shadowBlur = 10;
 
         // Behavior
         unsigned int showDelay = 300;        // milliseconds to wait before showing
@@ -49,6 +52,21 @@ namespace UltraCanvas {
         bool followCursor = false;     // Whether tooltip follows mouse movement
 
         TooltipStyle() = default;
+
+        // Preset: the default dark theme, spelled out for readability
+        static TooltipStyle Dark() {
+            return TooltipStyle();
+        }
+
+        // Preset: light theme for apps where a dark tooltip feels too heavy
+        static TooltipStyle Light() {
+            TooltipStyle s;
+            s.backgroundColor = Color(255, 255, 255, 250);
+            s.borderColor = Color(0, 0, 0, 28);
+            s.textColor = Color(36, 41, 47, 255);
+            s.shadowColor = Color(0, 0, 0, 60);
+            return s;
+        }
 
         bool operator==(const TooltipStyle& other) const {
             return backgroundColor == other.backgroundColor
@@ -66,6 +84,7 @@ namespace UltraCanvas {
                 && cornerRadius == other.cornerRadius
                 && hasShadow == other.hasShadow
                 && shadowOffset == other.shadowOffset
+                && shadowBlur == other.shadowBlur
                 && showDelay == other.showDelay
                 && hideDelay == other.hideDelay
                 && offsetX == other.offsetX
@@ -164,6 +183,10 @@ namespace UltraCanvas {
         static Point2Di GetTooltipPosition() {
             return tooltipRect.TopLeft();
         }
+
+        // Top-left corner of the rendered surface (tooltip position minus the
+        // soft-shadow margins). Use this when compositing the Render() result.
+        static Point2Di GetCompositePosition();
 
         static Size2Di GetTooltipSize() {
             return tooltipRect.Size();

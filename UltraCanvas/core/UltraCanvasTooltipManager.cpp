@@ -10,6 +10,7 @@
 #include <string>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
@@ -33,6 +34,17 @@ namespace UltraCanvas {
 
     bool UltraCanvasTooltipManager::enabled = true;
 //    Rect2Di UltraCanvasTooltipManager::screenBounds = Rect2Di(0, 0, 1920, 1080);
+
+    // Margins the soft shadow needs around the tooltip body on each side
+    static void GetShadowMargins(const TooltipStyle& style, int& left, int& top, int& right, int& bottom) {
+        left = top = right = bottom = 0;
+        if (!style.hasShadow || style.shadowColor.a == 0) return;
+        int blur = std::max(0, style.shadowBlur);
+        left = std::max(0, blur - style.shadowOffset.x);
+        top = std::max(0, blur - style.shadowOffset.y);
+        right = std::max(0, blur + style.shadowOffset.x);
+        bottom = std::max(0, blur + style.shadowOffset.y);
+    }
 
     void UltraCanvasTooltipManager::CancelShowTimer() {
         if (showTimerId != InvalidTimerId) {
@@ -151,35 +163,68 @@ namespace UltraCanvas {
             return renderCtx.get();
         }
 
-        renderCtx = CreateRenderContext({tooltipRect.width + style.shadowOffset.x,
-                                         tooltipRect.height + style.shadowOffset.y}, win->GetNativeSurface());
+        int marginLeft, marginTop, marginRight, marginBottom;
+        GetShadowMargins(style, marginLeft, marginTop, marginRight, marginBottom);
+
+        renderCtx = CreateRenderContext({tooltipRect.width + marginLeft + marginRight,
+                                         tooltipRect.height + marginTop + marginBottom}, win->GetNativeSurface());
+
+        Rect2Di contentRect(marginLeft, marginTop, tooltipRect.width, tooltipRect.height);
+
         // Draw shadow first
-        if (style.hasShadow) {
+        if (style.hasShadow && style.shadowColor.a > 0) {
             Rect2Di shadowRect(
-                    style.shadowOffset.x,
-                    style.shadowOffset.y,
-                    tooltipRect.width,
-                    tooltipRect.height
+                    contentRect.x + style.shadowOffset.x,
+                    contentRect.y + style.shadowOffset.y,
+                    contentRect.width,
+                    contentRect.height
             );
 
-            renderCtx->DrawFilledRectangle(shadowRect, style.shadowColor, 0, Colors::Transparent, style.cornerRadius);
+            if (style.shadowBlur <= 0) {
+                renderCtx->DrawFilledRectangle(shadowRect, style.shadowColor, 0, Colors::Transparent, style.cornerRadius);
+            } else {
+                // No blur primitive in IRenderContext, so approximate a
+                // Gaussian falloff by stacking translucent rounded rectangles,
+                // each inflated by one more pixel. The per-layer alpha is
+                // chosen so the fully overlapped core reaches shadowColor.a.
+                int layers = style.shadowBlur;
+                float coreAlpha = style.shadowColor.a / 255.0f;
+                float layerAlpha = 1.0f - std::pow(1.0f - coreAlpha, 1.0f / static_cast<float>(layers));
+                Color layerColor = style.shadowColor;
+                layerColor.a = static_cast<uint8_t>(std::clamp(layerAlpha * 255.0f + 0.5f, 1.0f, 255.0f));
+                for (int i = layers; i >= 1; --i) {
+                    Rect2Di inflated(shadowRect.x - i, shadowRect.y - i,
+                                     shadowRect.width + 2 * i, shadowRect.height + 2 * i);
+                    renderCtx->DrawFilledRectangle(inflated, layerColor, 0, Colors::Transparent,
+                                                   style.cornerRadius + static_cast<float>(i));
+                }
+            }
         }
 
         // Draw tooltip background
-        renderCtx->DrawFilledRectangle(Rect2Di(0, 0, tooltipRect.width, tooltipRect.height), style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
+        renderCtx->DrawFilledRectangle(contentRect, style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
 
         // Draw text
         if (textLayout) {
             renderCtx->SetTextPaint(style.textColor);
             renderCtx->DrawTextLayout(*textLayout,
-                Point2Dd(style.paddingLeft,
-                         style.paddingTop));
+                Point2Dd(contentRect.x + style.paddingLeft,
+                         contentRect.y + style.paddingTop));
         }
 
         return renderCtx.get();
     }
 
+    Point2Di UltraCanvasTooltipManager::GetCompositePosition() {
+        int marginLeft, marginTop, marginRight, marginBottom;
+        GetShadowMargins(style, marginLeft, marginTop, marginRight, marginBottom);
+        return Point2Di(tooltipRect.x - marginLeft, tooltipRect.y - marginTop);
+    }
+
     void UltraCanvasTooltipManager::SetStyle(const TooltipStyle &newStyle) {
+        if (style != newStyle) {
+            renderCtx.reset();
+        }
         style = newStyle;
         if (visible) {
             CalculateTooltipLayout(); // Recalculate if currently visible
