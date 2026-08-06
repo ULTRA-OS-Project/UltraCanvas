@@ -1,7 +1,10 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.2
-// Last Modified: 2026-07-10
+// Version: 1.3.3
+// Last Modified: 2026-08-06
+// V1.3.3: Typed UTF-8 input is inserted instead of dropped — the printable
+//   filter on event.text kept only ASCII 32..126, so any multi-byte character
+//   (umlauts, accents, CJK, ...) typed into a text field vanished.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
@@ -1133,10 +1136,12 @@ namespace UltraCanvas {
             default:
                 // Check if it's a printable character using event.text field
                 if (!event.text.empty()) {
-                    // Filter to only allow printable characters
+                    // Strip ASCII control characters; keep everything else,
+                    // including multi-byte UTF-8 sequences (bytes >= 128).
                     std::string filteredText;
                     for (char c : event.text) {
-                        if (c >= 32 && c < 127) { // Printable ASCII
+                        unsigned char uc = static_cast<unsigned char>(c);
+                        if (uc >= 32 && uc != 127) {
                             filteredText += c;
                         }
                     }

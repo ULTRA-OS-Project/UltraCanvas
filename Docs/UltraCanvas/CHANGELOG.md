@@ -1,3 +1,30 @@
+#### 2026-08-06 *0.3.28*
+- **UltraCanvasFilerWidget** *(1.9.0)*: the inline rename editor is now a real
+  `UltraCanvasTextInput` overlaid on the item's name instead of a hand-drawn
+  append-only field. Typing, caret movement (arrows / Home / End),
+  click-to-position, Shift selection and Ctrl+C/X/V/Z all work; the editor
+  opens with the base name selected (extension kept, Explorer-style; folders
+  select the whole name), commits on Enter and on focus loss (a click
+  anywhere else), cancels on Esc. Renaming a search-result entry now renames
+  in the entry's own folder instead of resolving against the shown path.
+- **UltraCanvasFilerWidget**: rubber-band selection. Dragging from empty
+  space draws a selection rectangle; every entry it touches becomes the
+  selection, live while the band is dragged, and with Ctrl the rectangle
+  adds to the selection held at the press. The band auto-scrolls at the
+  viewport edge and Escape abandons it (restoring the previous selection);
+  `WantsEscapeKey()` covers it. A plain click on empty space still clears
+  the selection (a Ctrl click leaves it alone).
+- **UltraCanvasFilerWidget**: video files show their poster frame (grabbed
+  via `CaptureVideoThumbnailPixmap` a short way into the clip) as their
+  thumbnail in the thumbnail views, the Details/List mini icons, the drag
+  badge and the delete-confirmation preview. Decoded on the existing
+  background thumbnail workers, so the folder page never waits on a video;
+  without a video backend the tile keeps its generic glyph.
+- **UltraCanvasTextInput** *(1.3.3)*: typed UTF-8 input is inserted instead
+  of dropped — the printable filter on `event.text` kept only ASCII 32..126,
+  so multi-byte characters (umlauts, accents, CJK, ...) typed into any text
+  field vanished.
+
 #### 2026-08-06 *0.3.27*
 - **UltraCanvasMediaViewer** *(1.3.1)*: the `Still` video preview mode shows
   the first frame instead of staying on "Buffering...". The mode relied on the
