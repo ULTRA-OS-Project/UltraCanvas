@@ -23,6 +23,16 @@ jobs:
           - os: macos-latest
             arch_label: arm64
             install_deps: |
+              # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
+              # Homebrew's tap-trust check prints a multi-line "not trusted"
+              # warning on *every* brew invocation while it is present. We install
+              # nothing from it, so drop the tap — that is Homebrew's own first
+              # suggestion, and it is preferable to `brew trust aws/tap` (grants
+              # blanket trust to a tap we never use) or
+              # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
+              # for taps we *do* use). Tolerate the tap being absent so a future
+              # runner image that drops it cannot fail this step.
+              brew untap aws/tap 2>/dev/null || true
               brew install cmake pkg-config
               brew install cairo pango harfbuzz vips glib freetype tinyxml2
               brew install libcdr librevenge
