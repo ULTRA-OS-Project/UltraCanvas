@@ -128,8 +128,14 @@ For assistants:
    `main` usually moved while the session ran; resolve conflicts locally so
    the new PR is mergeable from the start.
 
+5. **CI needs an open PR.** The Build and llms.txt workflows run on pull
+   requests and on pushes to `main` — *not* on pushes to feature branches.
+   A commit pushed to a `claude/**` branch with no open PR gets no 3-OS
+   validation. Open the PR (draft counts) or dispatch the workflow manually
+   against the branch when a change needs checking before review.
+
 For maintainers:
 
-5. **Do not merge a session's PR while the session may still push to it.**
+6. **Do not merge a session's PR while the session may still push to it.**
    Merge after the session says it is done — or, if merging early, tell the
    session so it restarts from `main` and opens a fresh PR for the rest.
