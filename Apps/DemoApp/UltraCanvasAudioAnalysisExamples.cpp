@@ -335,6 +335,7 @@ namespace UltraCanvas {
         spectrum->SetFillGradientEnabled(true);
         spectrum->SetGradientColors(Color(99, 102, 241, 190), Color(99, 102, 241, 25));
         spectrum->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+        spectrum->SetShowValueLabels(false);   // hundreds of bins - values via tooltip
         spectrum->SetEnableTooltips(true);
         {
             std::vector<float> sig; double rate = kAnaRate;
@@ -361,6 +362,7 @@ namespace UltraCanvas {
         envelope->SetFillGradientEnabled(true);
         envelope->SetGradientColors(Color(20, 184, 166, 190), Color(20, 184, 166, 25));
         envelope->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+        envelope->SetShowValueLabels(false);   // ~240 blocks - values via tooltip
         envelope->SetEnableTooltips(true);
         {
             std::vector<float> sig; double rate = kAnaRate;
@@ -386,6 +388,7 @@ namespace UltraCanvas {
         correlogram->SetBarBorderWidth(0.5);
         correlogram->SetBarSpacing(0.25);
         correlogram->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+        correlogram->SetShowValueLabels(false);   // up to 160 bars - values via tooltip
         correlogram->SetEnableTooltips(true);
         {
             std::vector<float> sig; double rate = kAnaRate;

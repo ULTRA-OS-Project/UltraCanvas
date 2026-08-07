@@ -11,7 +11,14 @@
 // Self-rendered like UltraCanvasAlbum so large folders stay cheap. Image
 // thumbnails are decoded asynchronously on worker threads: the folder page
 // renders immediately with placeholder glyphs and tiles fill in as decodes
-// complete.
+// complete. Video files fill their tiles the same way with a poster frame
+// (the first frame of the clip) when a video backend is available.
+// Besides clicking, entries are selected with a rubber band: dragging from
+// empty space draws a selection rectangle and everything it touches becomes
+// the selection (Ctrl adds the rectangle to the selection held before).
+// The inline rename editor is a real UltraCanvasTextInput overlaid on the
+// item's name, so editing has a movable caret, click-to-position, text
+// selection and clipboard support.
 // Entries can be dragged: pressing an item and moving a few pixels picks it
 // (or the whole selection it belongs to) up. Inside the widget the drag is
 // shown as a badge following the cursor with the folder under it highlighted,
@@ -31,7 +38,7 @@
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
 // even then is dropped from the front of the last line, which opens with "…".
-// Version: 1.8.0
+// Version: 1.9.0
 // Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 #pragma once
@@ -60,6 +67,7 @@
 namespace UltraCanvas {
 
     class UltraCanvasMenu;
+    class UltraCanvasTextInput;
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -440,7 +448,8 @@ namespace UltraCanvas {
         // stand back while this is set so those interactions keep their
         // cancel key.
         bool WantsEscapeKey() const {
-            return renamingIndex >= 0 || draggingItems || compressDlg.active;
+            return renamingIndex >= 0 || draggingItems || marqueeActive ||
+                   compressDlg.active;
         }
 
         // ===== FILE OPERATIONS (also wired to the context / icon menus) =====
@@ -663,9 +672,14 @@ namespace UltraCanvas {
         };
         std::vector<IconMenuHit> iconMenuHits;
 
-        // Inline rename editor.
+        // Inline rename editor: a real UltraCanvasTextInput added as a child
+        // while a rename runs, overlaid on the item's name, so editing has a
+        // movable caret, click-to-position, selection and clipboard support.
+        // Enter commits, Escape cancels, and losing the keyboard focus
+        // (clicking anywhere else) commits, Explorer-style. The editor is
+        // created fresh per rename and removed when the rename ends.
         int renamingIndex = -1;
-        std::string renameBuffer;
+        std::shared_ptr<UltraCanvasTextInput> renameInput;
         // Windows-style rename trigger: pressing the name of the entry that is
         // already the sole selection records it here; releasing without a drag
         // arms a one-shot timer that opens the rename editor. The delay is
@@ -708,6 +722,20 @@ namespace UltraCanvas {
         // the release the same way, so a press that turns into a drag leaves
         // the selection (and any preview fed by it) untouched.
         int pendingSelectIndex = -1;
+
+        // ===== RUBBER-BAND (MARQUEE) SELECTION =====
+        // A left press on empty space arms it; moving past the drag slop
+        // starts the rectangle. While it runs, every entry it touches is
+        // selected (with Ctrl the rectangle adds to the selection held at the
+        // press). A press-and-release without movement keeps the old
+        // click-on-empty behaviour: the selection is cleared on release.
+        bool marqueeArmed = false;         // press may still become a marquee
+        bool marqueeActive = false;        // rectangle is being dragged
+        bool marqueeAdditive = false;      // Ctrl held at the press
+        Point2Di marqueePressLocal;        // widget-local press (slop test)
+        Point2Di marqueeAnchor;            // content-space fixed corner
+        Point2Di marqueeCurrent;           // content-space moving corner
+        std::vector<size_t> marqueeBaseSelection;  // selection at the press
 
         // ===== ASYNC THUMBNAILS =====
         // Decoding an image for a tile is expensive (full decode + resize).
@@ -941,7 +969,8 @@ namespace UltraCanvas {
         void DrawHoverIconMenu(IRenderContext* ctx, const ItemLayout& item);
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
                                const Rect2Di& button);
-        void DrawRenameEditor(IRenderContext* ctx, const ItemLayout& item);
+        // The selection rectangle of a running rubber-band drag.
+        void DrawMarquee(IRenderContext* ctx);
         void DrawCompressDialog(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDialogButton(IRenderContext* ctx, const Rect2Di& rect,
                               const std::string& label, bool primary, bool hovered);
@@ -1072,13 +1101,31 @@ namespace UltraCanvas {
         // Files dropped onto the widget from other applications / windows are
         // copied into the current folder (sources already there are skipped).
         void AcceptDroppedFiles(const std::vector<std::string>& paths);
-        void CommitRename();
-        void CancelRename();
+        // Commit / abandon the inline rename. `restoreFocus` gives the
+        // keyboard focus back to the widget after the editor is removed —
+        // the Enter / Escape / programmatic paths want that; the focus-loss
+        // path must not steal the focus back from whatever just took it.
+        void CommitRename(bool restoreFocus = true);
+        void CancelRename(bool restoreFocus = true);
+        // The name-field rectangle the rename editor covers (content space).
+        Rect2Di RenameFieldRect(const ItemLayout& item) const;
+        // Moves the rename editor onto the renamed item (widget-local, scroll
+        // applied); called every frame while a rename runs so the editor
+        // tracks scrolling and relayouts.
+        void PositionRenameInput();
+        // Removes the editor child (see CommitRename for restoreFocus).
+        void DestroyRenameInput(bool restoreFocus);
         // Deferred Windows-style rename (single click on the selected entry's
         // name): arm the delay timer on release / drop the pending rename.
         void ArmPendingRenameTimer();
         void CancelPendingRename();
-        bool HandleRenameKey(const UCEvent& event);
+        // ===== RUBBER-BAND SELECTION =====
+        Rect2Di MarqueeRect() const;       // normalized, content space
+        // Tracks the moving corner: auto-scrolls at the viewport edge and
+        // reselects the entries the rectangle touches.
+        void UpdateMarquee(const Point2Di& localPoint);
+        void FinishMarquee();              // release: keep the result
+        void CancelMarquee();              // Escape: restore the old selection
         void FireSelectionChanged();
         void ReportError(const std::string& message);
         std::string UniqueChildPath(const std::string& baseName) const;

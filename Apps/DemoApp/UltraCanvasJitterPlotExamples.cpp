@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
 // Enhanced jitter plot examples with professional styling
-// Version: 2.1.3
-// Last Modified: 2026-05-18
+// Version: 2.1.4
+// Last Modified: 2026-08-06
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   2.1.4 - Reduced Brazil example width 1500px -> 1030px so it fits the demo
+//           app's standard 1400px window (350px nav tree + border leave ~1049px
+//           of content area) without a horizontal scrollbar.
 //   2.1.3 - Vertically centered all filter/control row labels to align with
 //           adjacent 32px-tall dropdowns, inputs, and buttons.
 //   2.1.1 - Brazil example fixes after visual review:
@@ -45,13 +48,16 @@ namespace UltraCanvas {
 
 namespace {
 
-constexpr int kOuterWidth      = 1500;   // Use the full horizontal space available
+constexpr int kOuterWidth      = 1030;   // Fits the demo's standard 1400px window:
+                                         // 1400 - 350 (nav tree) - 1 (border) leaves
+                                         // ~1049px; keep a margin for the 12px
+                                         // scrollbar so no horizontal scroll appears
 constexpr int kOuterHeight     = 760;    // Fits in a typical viewport without scroll
 constexpr int kTabContentW     = kOuterWidth;
 constexpr int kTabContentH     = 700;    // Tabs strip uses ~32-40px, content gets the rest
 constexpr int kChartLeftMargin = 50;
 constexpr int kChartRightMargin = 50;
-constexpr int kChartWidth      = kTabContentW - kChartLeftMargin - kChartRightMargin; // = 1400
+constexpr int kChartWidth      = kTabContentW - kChartLeftMargin - kChartRightMargin; // = 930
 constexpr int kChartTopY       = 45;     // below the description label
 constexpr int kChartHeight     = 480;
 

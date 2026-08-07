@@ -21,7 +21,7 @@ unit-tested `ParallelAxisModel`.
   `RegisterParallelCoordinateChartElement()` to register)
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-01
+**Last Modified:** 2026-08-06
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -67,8 +67,8 @@ record's line and never poison an axis range.
 
 | Mode | Behaviour |
 |---|---|
-| `PerAxis` (default) | Each axis spans its own min..max — the classic look, per-axis endpoint labels |
-| `CommonScale` | All axes share one value band; a shared left value axis with gridlines appears |
+| `PerAxis` (default) | Each axis spans its own min..max — the classic look, with an integrated axis (tick labels along each rule) |
+| `CommonScale` | All axes share one value band; a shared left value axis with gridlines appears, and each in-plot axis carries only its original-unit min/max endpoint labels |
 | + `SetStandardize(ZScore)` | Columns are z-scored per column before the common scale, so different units compare (Iris) |
 
 ## Lines and colour
@@ -90,6 +90,9 @@ misrepresent values between axes.
 ## Interaction
 
 - **Hover** a line: it emphasises and a tooltip lists every dimension value.
+  Emphasised lines are drawn full-strength inside a luminance-opposed casing
+  (dark lines get a light halo, pale lines a dark one), so the highlight always
+  contrasts with ordinary lines of the same colour around it.
 - **Click** a line: pin it (bold, on top); click again to unpin.
 - **Drag on an axis**: create a range brush. Records failing any brushed axis
   dim to the context colour (`SetContextStyle`) or vanish

@@ -3,10 +3,11 @@
 //
 // A chart type derives from this element and implements only phase 2 - its own
 // drawing - plus small descriptor methods. Phase 1 (background, grid derived
-// from the axis ticks, limiters, axes with decluttered tick labels) and
-// phase 3 (the solved label plan, the legend, the interaction overlay) are
-// engine-supplied. Phase 2 is clipped to the plot area, so a chart cannot
-// paint over the axes or the legend by accident.
+// from the axis ticks, limiters, edge axes with decluttered tick labels) and
+// phase 3 (in-plot axes, the solved label plan, the legend, the interaction
+// overlay) are engine-supplied. Phase 2 is clipped to the plot area, so a
+// chart cannot paint over the edge axes or the legend by accident; in-plot
+// axes render above the content so the chart's marks cannot bury them.
 //
 // Layout is a measure/solve negotiation instead of hardcoded margins, and the
 // label plan is solved when the chart is created or invalidated - never on an
@@ -199,7 +200,10 @@ protected:
     virtual void RenderEngineBackground(IRenderContext* ctx);
     virtual void RenderEngineGrid(IRenderContext* ctx);
     virtual void RenderEngineLimiters(IRenderContext* ctx);
+    // Edge axes render under the content (slot 500); in-plot axes render in
+    // the Over phase so the chart's own marks cannot paint over them.
     virtual void RenderEngineAxes(IRenderContext* ctx);
+    virtual void RenderEngineInPlotAxes(IRenderContext* ctx);
     virtual void RenderEngineTitle(IRenderContext* ctx);
     virtual void RenderPlannedLabels(IRenderContext* ctx);
     virtual void RenderEngineLegend(IRenderContext* ctx);
@@ -268,6 +272,8 @@ private:
     void DeclutterAxisTickLabels(IRenderContext* ctx);
     // Screen segment of an axis rule (in-plot or edge) under the projection.
     void AxisScreenLine(const ChartAxis& axis, Point2Dd& lowEnd, Point2Dd& highEnd) const;
+    // One axis's rule, ticks, labels and title - shared by both axis passes.
+    void RenderAxisFurniture(IRenderContext* ctx, size_t axisIndex);
 };
 
 } // namespace UltraCanvas

@@ -7984,10 +7984,12 @@ FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
 `UltraCanvasChartEngineElement` is the chart engine's render driver: a chart
 type derives from it, implements **phase 2** — its own drawing — plus small
 descriptor methods, and receives everything else. Phase 1 (background, grid
-derived from the axis ticks, limiter lines, axes with decluttered tick labels)
-and phase 3 (the solved label plan, the legend, the interaction overlay) are
-engine-supplied, and phase 2 is clipped to the plot area so a chart cannot
-paint over the axes or legend by accident.
+derived from the axis ticks, limiter lines, edge axes with decluttered tick
+labels) and phase 3 (in-plot axes, the solved label plan, the legend, the
+interaction overlay) are engine-supplied, and phase 2 is clipped to the plot
+area so a chart cannot paint over the edge axes or legend by accident. In-plot
+axes render **above** the content, so a dense chart cannot bury its own axis
+rules and value labels under its data marks.
 
 Live demo: **Charts → Chart Engine** in the demo application
 (`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one ~90-line bar-chart
@@ -8047,7 +8049,7 @@ reimplemented:
 | Ticks | `GenerateTicks(n)` - nice steps, decades on Log, one per category; **explicit `tickValues` override everything** (category slots under bars, hand-picked thresholds) |
 | Slot padding | `categoryPadding` (Category scale, slot units): `0.5` extends the range half a slot past the outer categories, so bars and box plots centred on them keep their full footprint - no hand-rolled padded linear axis |
 | Formatting | `decimals`, `unitPrefix`/`unitSuffix`, `compactNumbers` (`$1.3M`), or a custom `formatter` |
-| Endpoint labels | `showEndpointLabels` (in-plot axes) |
+| In-plot value labels | `showTickLabels` (integrated tick labels along the rule) **or** `showEndpointLabels` (min/max at the ends) — never both: endpoint labels are suppressed while the integrated axis is active, so the extremes are not printed twice |
 
 `Normalize(value)` maps into `[0,1]`; out-of-range values map outside rather
 than clamping. Tick labels are decluttered by the 1-D pass
@@ -8071,7 +8073,9 @@ ring sectors under Polar with no chart-side change.
   are solved into the label plan so they never overprint value labels.
 - **Layout is measured, not guessed**: axis tick labels, titles and the legend
   reserve their measured space in the measure pass; `MeasureContent` adds
-  chart-specific needs. `SolvePlotArea` never returns an empty plot.
+  chart-specific needs. `SolvePlotArea` never returns an empty plot. The chart
+  title owns an exclusive band above every other top reservation, so axis
+  endpoint labels can never overprint it.
 
 ## Bar series geometry
 
@@ -14293,7 +14297,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -14593,17 +14597,33 @@ cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
 same shortcuts are shown next to their commands in the right-click context menu.
 Click, Ctrl+click and Shift+click select single items, toggle, and ranges.
+Dragging from **empty space** draws a **rubber band**: every entry the
+rectangle touches becomes the selection, live while the band is dragged
+(with Ctrl the rectangle *adds* to the selection held before). The band
+auto-scrolls at the viewport edge, Escape abandons it (the previous
+selection returns), and a press-and-release without movement keeps its old
+meaning — a plain click on empty space clears the selection (a Ctrl click
+leaves it alone).
 Double-clicking an entry opens/activates it (folders and archives are entered,
 files fire `onFileActivated`). A single click on the **name** of the entry that
 is already the only selected one starts an inline rename after a short delay
 (Windows style — the delay is what separates a rename click from the first
-click of a double-click). The rename editor uses the same font size as the
-displayed name, commits on Enter and cancels on Esc.
+click of a double-click).
 
-Escape is also the cancel key of a running item drag and of the compress
-dialog. A host that binds its own window-level Escape shortcut (the UltraFiler
-closes its preview pane with it) should check `WantsEscapeKey()` first and
-stand back while it returns true, so those interactions keep their cancel key.
+The rename editor is a real `UltraCanvasTextInput` overlaid on the item's
+name, so editing behaves like any text field: the caret moves with the
+arrow keys / Home / End, a click puts it at that position, Shift extends a
+selection, and Ctrl+C/X/V/Z work. It opens with the base name selected (the
+extension stays, Explorer-style; folders select the whole name) in the same
+font size as the displayed name, commits on Enter, cancels on Esc — and a
+click anywhere outside the field commits too, because the field losing the
+keyboard focus ends the edit.
+
+Escape is also the cancel key of a running item drag, a rubber-band
+selection and the compress dialog. A host that binds its own window-level
+Escape shortcut (the UltraFiler closes its preview pane with it) should
+check `WantsEscapeKey()` first and stand back while it returns true, so
+those interactions keep their cancel key.
 
 ## Directory scanning
 
@@ -26315,7 +26335,7 @@ unit-tested `ParallelAxisModel`.
   `RegisterParallelCoordinateChartElement()` to register)
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-01
+**Last Modified:** 2026-08-06
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -26361,8 +26381,8 @@ record's line and never poison an axis range.
 
 | Mode | Behaviour |
 |---|---|
-| `PerAxis` (default) | Each axis spans its own min..max — the classic look, per-axis endpoint labels |
-| `CommonScale` | All axes share one value band; a shared left value axis with gridlines appears |
+| `PerAxis` (default) | Each axis spans its own min..max — the classic look, with an integrated axis (tick labels along each rule) |
+| `CommonScale` | All axes share one value band; a shared left value axis with gridlines appears, and each in-plot axis carries only its original-unit min/max endpoint labels |
 | + `SetStandardize(ZScore)` | Columns are z-scored per column before the common scale, so different units compare (Iris) |
 
 ## Lines and colour
@@ -26384,6 +26404,9 @@ misrepresent values between axes.
 ## Interaction
 
 - **Hover** a line: it emphasises and a tooltip lists every dimension value.
+  Emphasised lines are drawn full-strength inside a luminance-opposed casing
+  (dark lines get a light halo, pale lines a dark one), so the highlight always
+  contrasts with ordinary lines of the same colour around it.
 - **Click** a line: pin it (bold, on top); click again to unpin.
 - **Drag on an axis**: create a range brush. Records failing any brushed axis
   dim to the context colour (`SetContextStyle`) or vanish
