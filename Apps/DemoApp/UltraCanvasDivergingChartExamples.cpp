@@ -7,6 +7,7 @@
 #include "UltraCanvasDemo.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
+#include "UltraCanvasSwitch.h"
 #include <sstream>
 #include <random>
 #include <map>
@@ -124,19 +125,15 @@ namespace UltraCanvas {
         int buttonSpacing = 10;
         int currentX = 10;
 
-        // Toggle buttons
-        auto btnToggleGrid = std::make_shared<UltraCanvasButton>("btnGrid", currentX, buttonY, buttonWidth, buttonHeight);
-        btnToggleGrid->SetText("Toggle Grid");
-        btnToggleGrid->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
-        btnToggleGrid->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::White);
-        btnToggleGrid->onClick = [likertChart, pyramidChart, tornadoChart]() {
-            static bool showGrid = true;
-            showGrid = !showGrid;
+        // Grid switch
+        auto swGrid = UltraCanvasSwitch::Create("swGrid", currentX, buttonY + 5, "Grid", true);
+        swGrid->onStateChanged = [likertChart, pyramidChart, tornadoChart](CheckedState, CheckedState newState) {
+            bool showGrid = (newState == CheckedState::Checked);
             likertChart->SetShowGrid(showGrid);
             pyramidChart->SetShowGrid(showGrid);
             tornadoChart->SetShowGrid(showGrid);
         };
-        container->AddChild(btnToggleGrid);
+        container->AddChild(swGrid);
         currentX += buttonWidth + buttonSpacing;
 
         auto btnGenerateData = std::make_shared<UltraCanvasButton>("btnGenerate", currentX, buttonY, buttonWidth, buttonHeight);
@@ -190,7 +187,7 @@ namespace UltraCanvas {
 
         // Info label
         auto infoLabel = std::make_shared<UltraCanvasLabel>("DivergingChartInfo", 740, 60, 250, 350);
-        infoLabel->SetText("Diverging Bar Chart Features:\n\n• Likert scale visualization\n• Population pyramid style\n• Tornado chart format\n• Interactive controls\n• Multiple data categories\n• Customizable colors\n• Grid and center line options\n• Dynamic data updates\n\nClick the buttons below to:\nn• Toggle grid display\n• Generate random data");
+        infoLabel->SetText("Diverging Bar Chart Features:\n\n• Likert scale visualization\n• Population pyramid style\n• Tornado chart format\n• Interactive controls\n• Multiple data categories\n• Customizable colors\n• Grid and center line options\n• Dynamic data updates\n\nUse the controls below to:\n• Switch the grid on or off\n• Generate random data");
         infoLabel->SetFontSize(11);
         infoLabel->SetTextColor(Color(80, 80, 80, 255));
         infoLabel->SetBackgroundColor(Color(250, 250, 250, 255));

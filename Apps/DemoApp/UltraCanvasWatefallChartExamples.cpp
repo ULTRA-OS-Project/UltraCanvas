@@ -136,7 +136,7 @@ namespace UltraCanvas {
         auto btnToggleStyle = std::make_shared<UltraCanvasButton>(
                 "btnToggleStyle", 520, 380, 200, 40
         );
-        btnToggleStyle->SetText("Toggle Bar Style");
+        btnToggleStyle->SetText("Cycle Bar Style");
 
         static int styleIndex = 0;
         btnToggleStyle->onClick = [revenueChart, cashFlowChart, performanceChart]() {
