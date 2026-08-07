@@ -1,9 +1,10 @@
 // Apps/DemoApp/UltraCanvasTooltipExamples.cpp
 // Tooltip system demonstration for the main demo app: plain text, inline
-// Pango markup, and structured TooltipContent (title, label/value rows with
-// color swatches, bullet lists, separators) plus style presets.
-// Version: 1.0.0
-// Last Modified: 2026-08-06
+// Pango markup, and structured TooltipContent (title, two- and three-column
+// table rows with color swatches and per-column alignment, bullet lists,
+// separators) plus style presets.
+// Version: 1.1.0
+// Last Modified: 2026-08-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -37,8 +38,9 @@ namespace UltraCanvas {
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("TooltipSubtitle", 20, 45, 920, 25);
         subtitle->SetText("Hover each button. Tooltips support plain text, inline Pango markup and "
-                          "structured content: title, label/value rows, color swatches, bullet lists "
-                          "and separators.");
+                          "structured content: title, two- and three-column table rows with "
+                          "definable per-column alignment, color swatches, bullet lists and "
+                          "separators.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(subtitle);
@@ -83,15 +85,18 @@ namespace UltraCanvas {
             auto btn = CreateButton("ttTable", colX[0], rowY, btnW, btnH, "Title + table");
             TooltipContent content;
             content.AddTitle("Batch S10")
-                   .AddRow("temperature", "209.79 °C")
-                   .AddRow("pressure", "2.26551 bar")
-                   .AddRow("flow", "53.1416 l/min")
-                   .AddRow("vibration", "0.279816 mm/s")
-                   .AddRow("yield", "95.2212 %");
+                   .AddRow("Temperature", "209.79", "°C")
+                   .AddRow("Pressure", "2.26551", "bar")
+                   .AddRow("Flow", "53.1416", "l/min")
+                   .AddRow("Vibration", "0.279816", "mm/s")
+                   .AddRow("Yield", "95.2212", "%")
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Left);
             btn->SetTooltipContent(content);
             mainContainer->AddChild(btn);
             mainContainer->AddChild(TooltipCaption("ttTableCap", colX[0], rowY + btnH + 4, btnW,
-                                                   "AddTitle() + AddRow(label, value) —\naligned columns, right-aligned values"));
+                                                   "AddRow(label, value, unit) —\nright, right, left aligned"));
         }
 
         // ===== 5. STRUCTURED: COLOR SWATCHES (chart series style) =====
@@ -175,6 +180,104 @@ namespace UltraCanvas {
             mainContainer->AddChild(btn);
             mainContainer->AddChild(TooltipCaption("ttEscapeCap", colX[2], rowY + btnH + 4, btnW,
                                                    "Row/title/bullet text is escaped —\nno markup injection from data"));
+        }
+        rowY += btnH + 55.0f;
+
+        // ===== 10. THREE-COLUMN TABLE =====
+        {
+            auto btn = CreateButton("ttThreeCol", colX[0], rowY, btnW, btnH, "3-column table");
+            TooltipContent content;
+            content.AddTitle("Regions — Q3 vs Q2")
+                   .AddRow(Color(66, 133, 244, 255), "Europe", "1 204 t", "+4.1 %")
+                   .AddRow(Color(219, 68, 55, 255), "Americas", "986 t", "-1.7 %")
+                   .AddRow(Color(244, 180, 0, 255), "Asia", "1 890 t", "+11.3 %")
+                   .AddRow(Color(15, 157, 88, 255), "Africa", "312 t", "+0.4 %");
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttThreeColCap", colX[0], rowY + btnH + 4, btnW,
+                                                   "AddRow(label, value, value2) —\nthree aligned columns"));
+        }
+
+        // ===== 11. CUSTOM COLUMN ALIGNMENT =====
+        {
+            auto btn = CreateButton("ttColAlign", colX[1], rowY, btnW, btnH, "Column alignment");
+            TooltipContent content;
+            content.AddTitle("Build matrix")
+                   .AddRow("platform", "arch", "status")
+                   .AddSeparator()
+                   .AddRow("Linux", "x86_64", "passed")
+                   .AddRow("Windows", "arm64", "passed")
+                   .AddRow("macOS", "x86_64", "failed")
+                   .SetColumnAlignment(TooltipColumnAlign::Left,
+                                       TooltipColumnAlign::Center,
+                                       TooltipColumnAlign::Right);
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttColAlignCap", colX[1], rowY + btnH + 4, btnW,
+                                                   "SetColumnAlignment(Left, Center, Right)\nper column, 2- and 3-column forms"));
+        }
+
+        // ===== 12. MIXED ROW ARITY =====
+        {
+            auto btn = CreateButton("ttMixedCols", colX[2], rowY, btnW, btnH, "Mixed 2 + 3 col");
+            TooltipContent content;
+            content.AddTitle("Invoice 2026-0184")
+                   .AddRow("Licenses", "12", "1 440.00 €")
+                   .AddRow("Support", "1", "390.00 €")
+                   .AddSeparator()
+                   .AddRow("Total", "1 830.00 €")   // two-column row, own grid
+                   // The quantity column is centered, the two-column total
+                   // keeps its amount flush right — separate grids, separate
+                   // alignment.
+                   .SetColumnAlignment(TooltipColumnAlign::Left, TooltipColumnAlign::Right)
+                   .SetColumnAlignment(TooltipColumnAlign::Left,
+                                       TooltipColumnAlign::Center,
+                                       TooltipColumnAlign::Right);
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttMixedColsCap", colX[2], rowY + btnH + 4, btnW,
+                                                   "2- and 3-column rows are separate\ntables, each aligned on its own"));
+        }
+        rowY += btnH + 55.0f;
+
+        // ===== 13. DECIMAL (COMMA) ALIGNMENT =====
+        {
+            auto btn = CreateButton("ttDecimal", colX[0], rowY, btnW, btnH, "Decimal alignment");
+            TooltipContent content;
+            content.AddTitle("Batch S10")
+                   .AddRow("Temperature", "209.79", "°C")
+                   .AddRow("Pressure", "2.26551", "bar")
+                   .AddRow("Flow", "53.1416", "l/min")
+                   .AddRow("Vibration", "0.279816", "mm/s")
+                   .AddRow("Yield", "95.2212", "%")
+                   // Same data as "Title + table", but the numbers line up on
+                   // the decimal point instead of on their right edge.
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Decimal,
+                                       TooltipColumnAlign::Left);
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttDecimalCap", colX[0], rowY + btnH + 4, btnW,
+                                                   "TooltipColumnAlign::Decimal —\nnumbers aligned on the separator"));
+        }
+
+        // ===== 14. DECIMAL WITH MIXED PRECISION AND SEPARATORS =====
+        {
+            auto btn = CreateButton("ttDecimalMixed", colX[1], rowY, btnW, btnH, "Decimal, mixed");
+            TooltipContent content;
+            content.AddTitle("Ledger")
+                   .AddRow("Opening", "1,204.50", "€")
+                   .AddRow("Fees", "-17.05", "€")
+                   .AddRow("Interest", "0.9", "€")
+                   .AddRow("Adjustment", "12", "€")      // no separator: anchors at its end
+                   .AddRow("Closing", "1,200.35", "€")
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Decimal,
+                                       TooltipColumnAlign::Left);
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttDecimalMixedCap", colX[1], rowY + btnH + 4, btnW,
+                                                   "Mixed precision, thousands separators\nand integers share one anchor"));
         }
         rowY += btnH + 55.0f;
 

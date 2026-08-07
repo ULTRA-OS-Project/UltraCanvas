@@ -451,7 +451,7 @@ namespace UltraCanvas {
         const std::string& GetTooltip() const { return tooltip; }
         void SetTooltip(const std::string& tooltipStr) { tooltip = tooltipStr; }
 
-        // Structured tooltip (title, label/value rows, bullets, …). When set,
+        // Structured tooltip (title, table rows, bullets, …). When set,
         // it takes precedence over the plain-text tooltip on hover.
         const std::shared_ptr<TooltipContent>& GetTooltipContent() const { return tooltipContent; }
         void SetTooltipContent(const TooltipContent& content) {

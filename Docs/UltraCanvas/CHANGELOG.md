@@ -1,3 +1,31 @@
+#### 2026-08-07 *0.3.30*
+- **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
+  three-column table rows and definable column alignment.
+  `AddRow(label, value, value2)` (and the swatch overload
+  `AddRow(color, label, value, value2)`) adds a three-column row next to the
+  existing two-column form. Alignment is set per column and separately for
+  each arity — `TooltipColumnAlign::Left | Center | Right` via
+  `TooltipStyle::columnAlign2` / `columnAlign3` (theme level) or
+  `TooltipContent::SetColumnAlignment(...)` (per tooltip, stored outside
+  `styleOverride` so `SetStyle()` does not reset it); the defaults reproduce
+  the previous look of labels left, values flush right. Two- and three-column
+  rows are measured as independent tables, so a two-column "Total" row cannot
+  disturb a three-column table above it. Column widths are natural when the
+  row fits and otherwise cap the label column at 55 % and share the rest in
+  proportion to the natural widths; surplus width is spread over the gaps so
+  the last column stays flush with the tooltip's right edge.
+- **UltraCanvasTooltipManager**: `TooltipColumnAlign::Decimal` aligns a column
+  of numbers on their decimal separator instead of on an edge. A cell's anchor
+  is the last `.` or `,` followed by a digit, so a thousands separator never
+  wins over the real decimal mark (`1,204.50` and `1.204,50` both resolve) and
+  a trailing period cannot steal it; a cell with no separator anchors at its
+  end, so integers meet the separator column. The column reserves the widest
+  integer part plus the widest fractional part — wider than any single cell —
+  so nothing is clipped to stay aligned, and a cell that still does not fit
+  falls back to right alignment. Demo tiles cover the three-column table,
+  custom alignment, mixed row arity and decimal alignment; the "Title + table"
+  tile is now a label / value / unit table with capitalized labels.
+
 #### 2026-08-07 *0.3.29*
 - **UltraCanvasSequenceDiagram** *(1.0.0)*: new UML 2 sequence diagram
   feature, layered like the class diagram. `UltraCanvasSequenceModel` is the
