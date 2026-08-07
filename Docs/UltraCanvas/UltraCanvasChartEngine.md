@@ -121,6 +121,14 @@ bars accumulate positives upward and negatives downward (a diverging stack),
 and percent stacking shares out the absolute total. Spans are normalised, so
 the same spans render under Vertical, Horizontal and Polar.
 
+`BuildBarOutline(projection, u0, v0, u1, v1, subdivisions, cornerRadiusPx)`
+turns a span into its screen outline under any projection — a rectangle when
+orthogonal, a ring sector under Polar. A non-zero corner radius rounds the
+four corners in screen space by trimming along the (possibly curved) edges and
+bridging with a sampled fillet, so rounded bars are rounded ring sectors under
+Polar rather than a fallback. The radius self-clamps against short edges, so a
+bar collapsing mid-animation degrades gracefully.
+
 ## Phase-3 services
 
 - **Label plan**: labels submitted in `CollectChartLabels` go through the

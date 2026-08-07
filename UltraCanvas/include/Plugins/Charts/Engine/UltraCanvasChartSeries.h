@@ -20,6 +20,7 @@
 #pragma once
 
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include <cstddef>
 #include <vector>
 
@@ -66,5 +67,18 @@ std::vector<ChartBarSpan> BuildBarSpans(const ChartAxis& valueAxis,
                                         size_t categoryCount,
                                         const std::vector<std::vector<double>>& series,
                                         const ChartBarLayoutOptions& options);
+
+// A bar span's screen outline under any projection: the four edges subdivided
+// so the shape follows the projection (a rectangle when orthogonal, a ring
+// sector under Polar). cornerRadiusPx > 0 rounds the four corners in screen
+// space - each corner is trimmed along its (possibly curved) edges by the
+// radius and bridged with a sampled fillet, so rounded bars work on ring
+// sectors too, not just rectangles. The radius is clamped so it never eats
+// more than a fraction of an edge; a bar collapsing during an animation
+// degrades gracefully to its plain outline.
+std::vector<Point2Dd> BuildBarOutline(const IChartProjection& projection,
+                                      double u0, double v0, double u1, double v1,
+                                      int subdivisions = 8,
+                                      double cornerRadiusPx = 0.0);
 
 } // namespace UltraCanvas

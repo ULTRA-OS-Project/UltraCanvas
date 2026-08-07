@@ -141,4 +141,123 @@ std::vector<ChartBarSpan> BuildBarSpans(const ChartAxis& valueAxis,
     return spans;
 }
 
+// =============================================================================
+// BAR OUTLINE
+// =============================================================================
+
+namespace {
+
+using Polyline = std::vector<Point2Dd>;
+
+double PolylineLength(const Polyline& pts) {
+    double length = 0.0;
+    for (size_t i = 1; i < pts.size(); ++i) {
+        length += std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    }
+    return length;
+}
+
+// Point at arc length s from the start (clamped to the ends).
+Point2Dd PointAtLength(const Polyline& pts, double s) {
+    if (s <= 0.0) return pts.front();
+    double walked = 0.0;
+    for (size_t i = 1; i < pts.size(); ++i) {
+        const double seg = std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        if (walked + seg >= s && seg > 0.0) {
+            const double t = (s - walked) / seg;
+            return Point2Dd(pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t,
+                            pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t);
+        }
+        walked += seg;
+    }
+    return pts.back();
+}
+
+// The polyline between arc lengths s0 and s1, endpoints interpolated.
+void AppendTrimmed(Polyline& out, const Polyline& pts, double s0, double s1) {
+    if (s1 <= s0) return;
+    out.push_back(PointAtLength(pts, s0));
+    double walked = 0.0;
+    for (size_t i = 1; i < pts.size(); ++i) {
+        const double seg = std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        walked += seg;
+        if (walked > s1) break;
+        if (walked > s0) out.push_back(pts[i]);
+    }
+    out.push_back(PointAtLength(pts, s1));
+}
+
+// Corner fillet: a sampled quadratic Bezier from A through the corner C to B.
+// For the near-right-angle corners of a bar it deviates from a true circular
+// arc by a few percent of the radius - invisible at chart scale, and it stays
+// well-behaved when the adjacent edges are curved (ring sectors).
+void AppendFillet(Polyline& out, const Point2Dd& a, const Point2Dd& c, const Point2Dd& b) {
+    constexpr int kSamples = 8;
+    for (int i = 0; i <= kSamples; ++i) {
+        const double t = static_cast<double>(i) / kSamples;
+        const double w0 = (1.0 - t) * (1.0 - t);
+        const double w1 = 2.0 * (1.0 - t) * t;
+        const double w2 = t * t;
+        out.push_back(Point2Dd(w0 * a.x + w1 * c.x + w2 * b.x,
+                               w0 * a.y + w1 * c.y + w2 * b.y));
+    }
+}
+
+} // namespace
+
+std::vector<Point2Dd> BuildBarOutline(const IChartProjection& projection,
+                                      double u0, double v0, double u1, double v1,
+                                      int subdivisions,
+                                      double cornerRadiusPx) {
+    const int steps = std::max(1, subdivisions);
+
+    // The four edges, wound corner 0 -> 1 -> 2 -> 3; corner k is edge k's
+    // first point.
+    auto makeEdge = [&](double ua, double va, double ub, double vb) {
+        Polyline edge;
+        edge.reserve(steps + 1);
+        for (int s = 0; s <= steps; ++s) {
+            const double t = static_cast<double>(s) / steps;
+            edge.push_back(projection.ToScreen(
+                ChartNormalizedPoint(ua + (ub - ua) * t, va + (vb - va) * t)));
+        }
+        return edge;
+    };
+    const Polyline edges[4] = {
+        makeEdge(u0, v0, u1, v0),
+        makeEdge(u1, v0, u1, v1),
+        makeEdge(u1, v1, u0, v1),
+        makeEdge(u0, v1, u0, v0),
+    };
+
+    std::vector<Point2Dd> outline;
+    if (cornerRadiusPx <= 0.0) {
+        for (const Polyline& edge : edges) {
+            outline.insert(outline.end(), edge.begin(), edge.end() - 1);
+        }
+        return outline;
+    }
+
+    double lengths[4];
+    for (int k = 0; k < 4; ++k) lengths[k] = PolylineLength(edges[k]);
+
+    // Corner k sits between edge k-1 and edge k; its radius may never eat
+    // more than 45% of either edge, so opposite fillets cannot overlap.
+    double radii[4];
+    for (int k = 0; k < 4; ++k) {
+        radii[k] = std::min({cornerRadiusPx,
+                             0.45 * lengths[(k + 3) % 4],
+                             0.45 * lengths[k]});
+    }
+
+    for (int k = 0; k < 4; ++k) {
+        const int prev = (k + 3) % 4;
+        const Point2Dd a = PointAtLength(edges[prev], lengths[prev] - radii[k]);
+        const Point2Dd b = PointAtLength(edges[k], radii[k]);
+        AppendFillet(outline, a, edges[k].front(), b);
+        AppendTrimmed(outline, edges[k], radii[k], lengths[k] - radii[(k + 1) % 4]);
+    }
+    return outline;
+}
+
 } // namespace UltraCanvas

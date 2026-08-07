@@ -318,6 +318,71 @@ static void TestBarSpansRaggedAndGapped() {
     CHECK(spans[1].u0 > spans[0].u1, "a group gap separates bars in a group");
 }
 
+static void TestBarOutlineRounding() {
+    std::printf("Bar outline: corner rounding under projections\n");
+
+    ChartVerticalProjection vertical;
+    vertical.SetPlotArea(Rect2Dd(0.0, 0.0, 200.0, 100.0));
+
+    // u 0.2..0.6, v 0..0.5 is a 80x50 screen rectangle.
+    const auto plain = BuildBarOutline(vertical, 0.2, 0.0, 0.6, 0.5, 8, 0.0);
+    CHECK(plain.size() == 4 * 8, "an unrounded outline is the subdivided quad");
+    const Point2Dd corner = vertical.ToScreen(ChartNormalizedPoint(0.2, 0.0));
+    bool hasCorner = false;
+    for (const auto& p : plain) {
+        if (Near(p.x, corner.x, 1e-6) && Near(p.y, corner.y, 1e-6)) hasCorner = true;
+    }
+    CHECK(hasCorner, "the unrounded outline passes through the corner");
+
+    const double radius = 10.0;
+    const auto rounded = BuildBarOutline(vertical, 0.2, 0.0, 0.6, 0.5, 8, radius);
+    CHECK(rounded.size() > plain.size(), "rounding adds fillet points");
+
+    // Every corner of the rectangle is cut back: no outline point comes
+    // closer to a corner than the fillet allows, and none leaves the box.
+    double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (const auto& p : plain) {
+        minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+        minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+    }
+    const Point2Dd corners[4] = {{minX, minY}, {maxX, minY}, {maxX, maxY}, {minX, maxY}};
+    double closestCorner = 1e9;
+    bool inBox = true;
+    for (const auto& p : rounded) {
+        for (const auto& c : corners) {
+            closestCorner = std::min(closestCorner, std::hypot(p.x - c.x, p.y - c.y));
+        }
+        if (p.x < minX - 0.01 || p.x > maxX + 0.01 ||
+            p.y < minY - 0.01 || p.y > maxY + 0.01) inBox = false;
+    }
+    // A quadratic fillet's nearest approach to the corner is radius/2 along
+    // the diagonal; anything clearly away from zero proves the cut.
+    CHECK(closestCorner > radius * 0.3, "rounded corners no longer touch the corner points");
+    CHECK(inBox, "the fillets stay inside the bar's bounding box");
+
+    // The trim points where the fillet meets the straight edges survive.
+    bool hasTrim = false;
+    for (const auto& p : rounded) {
+        if (Near(p.x, minX + radius, 0.5) && Near(p.y, minY, 0.5)) hasTrim = true;
+    }
+    CHECK(hasTrim, "the fillet joins the edge at the trim distance");
+
+    // A collapsed bar (animation start) degrades without blowing up.
+    const auto collapsed = BuildBarOutline(vertical, 0.2, 0.0, 0.6, 0.0, 8, radius);
+    CHECK(!collapsed.empty(), "a zero-height bar still yields an outline");
+
+    // Under Polar the same call rounds a ring sector's corners.
+    ChartPolarProjection polar;
+    polar.SetPlotArea(Rect2Dd(0.0, 0.0, 200.0, 200.0));
+    polar.SetInnerRadiusFraction(0.3);
+    const auto sector = BuildBarOutline(polar, 0.1, 0.2, 0.3, 0.9, 8, 6.0);
+    bool inPlot = !sector.empty();
+    for (const auto& p : sector) {
+        if (p.x < -0.5 || p.x > 200.5 || p.y < -0.5 || p.y > 200.5) inPlot = false;
+    }
+    CHECK(inPlot, "a rounded ring sector stays inside the plot");
+}
+
 static void TestTicksAndFormatting() {
     std::printf("Ticks and formatting\n");
 
@@ -798,6 +863,7 @@ int main() {
     TestStackedBarSpans();
     TestPercentStackedBarSpans();
     TestBarSpansRaggedAndGapped();
+    TestBarOutlineRounding();
     TestTicksAndFormatting();
     TestAxisSet();
     TestLayoutNegotiation();

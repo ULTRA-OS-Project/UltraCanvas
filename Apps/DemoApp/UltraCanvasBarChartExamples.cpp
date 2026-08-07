@@ -17,6 +17,9 @@
 //       hit regions with tooltips, the animation driver, legend swatch styles
 //       and image paint patterns (texture fills now survive the Polar
 //       projection, which the orientation dropdowns now offer).
+//     - Every fill style is projection-complete: BuildBarOutline's corner
+//       fillets round ring sectors, and polar pictograms stack their icons
+//       radially inside the sector clip.
 
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
@@ -141,6 +144,10 @@ public:
         const double zero = value.Normalize(0.0);
         const double progress = frame.animationProgress;
 
+        // Rounded bars are just the same outline with corner fillets - the
+        // engine's outline builder rounds ring sectors as readily as rects.
+        const double roundRadius = (fillStyle == BarFillStyle::Rounded) ? 8.0 : 0.0;
+
         for (const ChartBarSpan& span : BuildBarSpans(value, category,
                                                       categoryNames.size(),
                                                       SeriesValues(), LayoutOptions())) {
@@ -152,19 +159,20 @@ public:
             const bool hovered = (HoveredRegionId() == regionId);
             const Color& color = series[span.seriesIndex].color;
 
-            const std::vector<Point2Dd> quad =
-                ProjectedQuad(*frame.projection, span.u0, v0, span.u1, v1);
+            const std::vector<Point2Dd> quad = BuildBarOutline(
+                *frame.projection, span.u0, v0, span.u1, v1, 8, roundRadius);
+            if (quad.empty()) continue;
 
             if (orthogonal) {
                 const Point2Dd a = frame.projection->ToScreen(ChartNormalizedPoint(span.u0, v0));
                 const Point2Dd b = frame.projection->ToScreen(ChartNormalizedPoint(span.u1, v1));
                 const Rect2Dd rect(std::min(a.x, b.x), std::min(a.y, b.y),
                                    std::abs(b.x - a.x), std::abs(b.y - a.y));
-                RenderBar(ctx, quad, rect, color, hovered, true);
+                RenderBar(ctx, frame, span.u0, v0, span.u1, v1, quad, rect, color, hovered, true);
                 AddHitRegion(rect, regionId, TooltipFor(span, value));
             } else {
                 Rect2Dd bbox = QuadBounds(quad);
-                RenderBar(ctx, quad, bbox, color, hovered, false);
+                RenderBar(ctx, frame, span.u0, v0, span.u1, v1, quad, bbox, color, hovered, false);
                 AddHitRegion(quad, regionId, TooltipFor(span, value));
             }
         }
@@ -294,23 +302,6 @@ private:
         SetLegendEntries(legend);
     }
 
-    static std::vector<Point2Dd> ProjectedQuad(const IChartProjection& projection,
-                                               double u0, double v0, double u1, double v1) {
-        std::vector<Point2Dd> quad;
-        auto edge = [&](double ua, double va, double ub, double vb) {
-            for (int s = 0; s <= 8; ++s) {
-                const double t = s / 8.0;
-                quad.push_back(projection.ToScreen(
-                    ChartNormalizedPoint(ua + (ub - ua) * t, va + (vb - va) * t)));
-            }
-        };
-        edge(u0, v0, u1, v0);
-        edge(u1, v0, u1, v1);
-        edge(u1, v1, u0, v1);
-        edge(u0, v1, u0, v0);
-        return quad;
-    }
-
     static Rect2Dd QuadBounds(const std::vector<Point2Dd>& quad) {
         double minX = quad[0].x, maxX = quad[0].x, minY = quad[0].y, maxY = quad[0].y;
         for (const Point2Dd& p : quad) {
@@ -341,12 +332,13 @@ private:
         ctx->DrawLinePath(quad, true);
     }
 
-    // One bar under any projection: `quad` is the projected outline (the exact
-    // rectangle when orthogonal), `bbox` its screen bounds. The value-direction
-    // styles orient by the projection; the shape-dependent ones (Rounded,
-    // Pictogram) keep their rectangle-only fast path and fall back to Solid
-    // under Polar.
-    void RenderBar(IRenderContext* ctx, const std::vector<Point2Dd>& quad,
+    // One bar under any projection: `quad` is the projected outline (already
+    // corner-rounded for the Rounded style), `bbox` its screen bounds, and
+    // (u0, v0)-(u1, v1) the bar's normalised span for styles that need to walk
+    // the projection themselves (radial pictograms).
+    void RenderBar(IRenderContext* ctx, const ChartEngineFrame& frame,
+                   double u0, double v0, double u1, double v1,
+                   const std::vector<Point2Dd>& quad,
                    const Rect2Dd& bbox, const Color& seriesColor,
                    bool hovered, bool orthogonal) {
         const Color fill = hovered ? Lighten(seriesColor, 40) : seriesColor;
@@ -369,18 +361,14 @@ private:
             StrokeQuad(ctx, quad, border, borderWidth);
             break;
         }
-        case BarFillStyle::Rounded: {
-            if (orthogonal) {
-                const float radius = static_cast<float>(
-                    std::min({8.0, bbox.width * 0.5, bbox.height * 0.5}));
-                ctx->DrawFilledRectangle(bbox, fill, borderWidth, border, radius);
-            } else {
-                ctx->SetFillPaint(fill);
-                ctx->FillLinePath(quad);
-                StrokeQuad(ctx, quad, border, borderWidth);
-            }
+        case BarFillStyle::Rounded:
+            // The outline arrived with its corners already filleted by
+            // BuildBarOutline - rounded rectangles and rounded ring sectors
+            // are the same fill here.
+            ctx->SetFillPaint(fill);
+            ctx->FillLinePath(quad);
+            StrokeQuad(ctx, quad, border, borderWidth);
             break;
-        }
         case BarFillStyle::Outline: {
             Color ghost = seriesColor;
             ghost.a = hovered ? 80 : 36;
@@ -428,7 +416,13 @@ private:
             break;
         }
         case BarFillStyle::Pictogram: {
-            if (!fillImagePath.empty() && orthogonal) {
+            if (fillImagePath.empty()) {
+                ctx->SetFillPaint(fill);
+                ctx->FillLinePath(quad);
+                StrokeQuad(ctx, quad, border, borderWidth);
+                break;
+            }
+            if (orthogonal) {
                 ctx->PushState();
                 ctx->ClipRect(bbox);
                 if (horizontal) {
@@ -452,9 +446,38 @@ private:
                 ctx->PopState();
                 if (hovered) StrokeQuad(ctx, quad, border, 2.0f);
             } else {
-                ctx->SetFillPaint(fill);
-                ctx->FillLinePath(quad);
-                if (!orthogonal) StrokeQuad(ctx, quad, border, borderWidth);
+                // Polar: icons march radially out of the base edge, upright,
+                // clipped to the ring sector - the sector cuts the last icon
+                // to the exact fraction, same as the rectangular clip does.
+                const double uMid = (u0 + u1) * 0.5;
+                const Point2Dd base = frame.projection->ToScreen(ChartNormalizedPoint(uMid, v0));
+                const Point2Dd tip = frame.projection->ToScreen(ChartNormalizedPoint(uMid, v1));
+                const double radial = std::hypot(tip.x - base.x, tip.y - base.y);
+                const Point2Dd sideA = frame.projection->ToScreen(
+                    ChartNormalizedPoint(u0, (v0 + v1) * 0.5));
+                const Point2Dd sideB = frame.projection->ToScreen(
+                    ChartNormalizedPoint(u1, (v0 + v1) * 0.5));
+                const double chord = std::hypot(sideB.x - sideA.x, sideB.y - sideA.y);
+                const double cell = std::min({34.0, chord, radial > 0.0 ? radial : 34.0});
+                if (radial < 2.0 || cell < 4.0) {
+                    ctx->SetFillPaint(fill);
+                    ctx->FillLinePath(quad);
+                    StrokeQuad(ctx, quad, border, borderWidth);
+                    break;
+                }
+                const double dirX = (tip.x - base.x) / radial;
+                const double dirY = (tip.y - base.y) / radial;
+                ctx->PushState();
+                ClipQuad(ctx, quad);
+                for (double d = 0.0; d < radial; d += cell) {
+                    const double cx = base.x + dirX * (d + cell * 0.5);
+                    const double cy = base.y + dirY * (d + cell * 0.5);
+                    ctx->DrawImage(fillImagePath,
+                                   Rect2Dd(cx - cell * 0.5, cy - cell * 0.5, cell, cell),
+                                   ImageFitMode::Contain);
+                }
+                ctx->PopState();
+                if (hovered) StrokeQuad(ctx, quad, border, 2.0f);
             }
             break;
         }
@@ -681,7 +704,7 @@ std::shared_ptr<UltraCanvasContainer> MakeStylesTab() {
     tab->AddChild(MakeCaption(
         "BarStylesCaption",
         "One dataset, four fill treatments of the same bar geometry: gradient, rounded, outline and hatched.\n"
-        "Each chart's legend swatch is painted in its fill style - the engine's legend understands non-solid series."));
+        "Legend swatches are painted in the fill style, and every style survives all three projections - rounded ring sectors included."));
 
     auto addRow = [&tab](const std::string& id,
                          std::shared_ptr<UltraCanvasUIElement> left,
@@ -727,8 +750,8 @@ std::shared_ptr<UltraCanvasContainer> MakeGraphicFillTab() {
 
     auto tab = MakeChartRowTab(
         "BarGraphic",
-        "Bars filled with graphics: the left chart floods each bar with an image paint pattern (texture -\n"
-        "try Polar: the pattern survives ring sectors); the right stacks a repeated icon cut to the fraction.",
+        "Bars filled with graphics: the left chart floods each bar with an image paint pattern; the right stacks\n"
+        "a repeated icon cut to the exact fraction. Both survive Polar - icons march radially, clipped to the sector.",
         {texture, pictogram});
     tab->AddChild(MakeControlStrip("BarGraphic", {texture, pictogram}));
     return tab;
