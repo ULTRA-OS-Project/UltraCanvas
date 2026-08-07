@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include <algorithm>
 #include <cmath>
 
 namespace UltraCanvas {
@@ -301,40 +302,65 @@ namespace UltraCanvas {
         ctx->SetTextPaint(valueLabelColor);
         ctx->SetFontSize(valueLabelFontSize);
 
+        // Labels are placed greedily in point order: each is drawn only if its
+        // bounds do not overlap a label already drawn, so dense series degrade
+        // to a readable subset instead of painting every value over its
+        // neighbors.
+        std::vector<Rect2Dd> placedLabels;
+        const double labelPadding = 2.0;
+
         for (size_t i = 0; i < dataSource->GetPointCount() && i < screenPositions.size(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Dd labelPos = CalculateValueLabelPosition(screenPositions[i], i, dataSource->GetPointCount());
 
-            // Format the value - use the formatted value from ChartDataPoint if available
-            std::string valueText;
-//            if (point.value != 0) {
-//                // Use the pre-formatted value if it's set
-//                std::ostringstream oss;
-//                oss << std::fixed << std::setprecision(0) << point.value;
-//                valueText = oss.str();
-//            } else {
-//                // Fall back to Y value
-            valueText = FormatAxisLabel(point.y);
-//            }
+            std::string valueText = FormatAxisLabel(point.y);
+            Size2Di txtSize = ctx->GetTextLineDimensions(valueText);
 
-            // Handle rotation if needed
+            double rotation = 0.0;
             if (valueLabelAutoRotate && dataSource->GetPointCount() > 10) {
-                // Auto-rotate for crowded charts
-                ctx->PushState();
-                ctx->Translate(labelPos.x, labelPos.y);
-                ctx->Rotate(-45 * M_PI / 180.0f);
-                ctx->DrawText(valueText, {0, 0});
-                ctx->PopState();
+                rotation = -45.0;
             } else if (valueLabelRotation != 0.0f) {
-                // Manual rotation
+                rotation = valueLabelRotation;
+            }
+
+            Rect2Dd bounds;
+            if (rotation != 0.0) {
+                // Axis-aligned bounds of the text rect rotated around labelPos.
+                double rad = rotation * M_PI / 180.0;
+                double c = std::cos(rad), s = std::sin(rad);
+                double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
+                const double cx[3] = {static_cast<double>(txtSize.width), 0.0,
+                                      static_cast<double>(txtSize.width)};
+                const double cy[3] = {0.0, static_cast<double>(txtSize.height),
+                                      static_cast<double>(txtSize.height)};
+                for (int k = 0; k < 3; ++k) {
+                    double rx = cx[k] * c - cy[k] * s;
+                    double ry = cx[k] * s + cy[k] * c;
+                    minX = std::min(minX, rx); maxX = std::max(maxX, rx);
+                    minY = std::min(minY, ry); maxY = std::max(maxY, ry);
+                }
+                bounds = Rect2Dd(labelPos.x + minX - labelPadding, labelPos.y + minY - labelPadding,
+                                 maxX - minX + 2 * labelPadding, maxY - minY + 2 * labelPadding);
+            } else {
+                bounds = Rect2Dd(labelPos.x - txtSize.width / 2.0 - labelPadding, labelPos.y - labelPadding,
+                                 txtSize.width + 2 * labelPadding, txtSize.height + 2 * labelPadding);
+            }
+
+            bool overlaps = false;
+            for (const auto& placed : placedLabels) {
+                if (bounds.Intersects(placed)) { overlaps = true; break; }
+            }
+            if (overlaps) continue;
+            placedLabels.push_back(bounds);
+
+            if (rotation != 0.0) {
                 ctx->PushState();
                 ctx->Translate(labelPos.x, labelPos.y);
-                ctx->Rotate(valueLabelRotation * M_PI / 180.0f);
+                ctx->Rotate(rotation * M_PI / 180.0);
                 ctx->DrawText(valueText, {0, 0});
                 ctx->PopState();
             } else {
                 // No rotation - center the text
-                Size2Di txtSize = ctx->GetTextLineDimensions(valueText);
                 ctx->DrawText(valueText, {labelPos.x - txtSize.width/2, labelPos.y});
             }
         }
