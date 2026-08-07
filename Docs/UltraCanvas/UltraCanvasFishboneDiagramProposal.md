@@ -1,8 +1,30 @@
 # UltraCanvasFishboneDiagram — Research & Feature Proposal
 
-**Status:** Investigation / pre-implementation research. **Nothing exists yet.**
-A repository-wide search for `fishbone` / `ishikawa` / `cause-and-effect` returns
-no element, no header, no demo slot and no test — the only hits are
+**Status:** **Phases 1–3 are implemented** as `UltraCanvasFishboneDiagram` — see
+[`UltraCanvasFishboneDiagram.md`](UltraCanvasFishboneDiagram.md) for the guide.
+This document remains the research write-up and the roadmap for the rest.
+
+Delivered: all eight designs of §6 (not just the Phase 1 four), the data model
+of §5 including sub-causes, the trimming rib solver of §7, side policies, rib
+angle control, head/tail shapes, effect placement, cause markers, palettes, dark
+theme, per-category icons, wrapping and chip ellipsis, hover/selection/tooltips
+with the `FishboneRef` handle, collapse/expand, weight and root-cause markers,
+the seven category presets (C2), three samples (C3), validation, and the whole
+of Phase 3: Mermaid `ishikawa-beta` and indented-outline import/export with
+`Tests/FishboneModelTest.cpp` covering both codecs.
+
+One deviation from §9 Q4 as written: the answer there was "no separate model".
+The data structs and the text codecs did move into `UltraCanvasFishboneModel.h`
+/ `…Model.cpp` / `…Text.cpp` after all — not to separate concerns, but because a
+UI-free header is what lets the test compile without the widget stack, exactly
+as `UltraCanvasSequenceModel` does. The element still owns all geometry.
+
+Still open (Phase 4): the pan/zoom viewport, entrance animation, keyboard
+navigation, JSON/CSV interchange (X3/X4), and the re-scoped mind map L5.
+
+The original finding, for the record: a repository-wide search for `fishbone` /
+`ishikawa` / `cause-and-effect` returned no element, no header, no demo slot and
+no test — the only hits were
 `Docs/UltraCanvas/UltraCanvasMindMapProposal.md` (feature **L5**, deferred to
 its Phase 3) and unrelated text in vendored `third_party/curl` files.
 
