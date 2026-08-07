@@ -2,17 +2,28 @@
 // Tooltip style and structured tooltip content types.
 // Shared by UltraCanvasTooltipManager (rendering) and UltraCanvasUIElement
 // (per-element tooltip storage) — keep this header lightweight.
-// Version: 1.0.0
-// Last Modified: 2026-08-06
+// Version: 1.1.0
+// Last Modified: 2026-08-07
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace UltraCanvas {
+
+// ===== TABLE COLUMN ALIGNMENT =====
+// Horizontal placement of a row cell inside its column box. Two- and
+// three-column rows are measured as two independent tables, so each has its
+// own alignment vector (see TooltipStyle::columnAlign2 / columnAlign3).
+    enum class TooltipColumnAlign {
+        Left,
+        Center,
+        Right
+    };
 
 // ===== TOOLTIP CONFIGURATION =====
     struct TooltipStyle {
@@ -38,8 +49,18 @@ namespace UltraCanvas {
         int maxWidth = 450;
         int borderWidth = 1;
         float cornerRadius = 6.0f;
-        int columnGap = 14;             // gap between label and value columns
+        int columnGap = 14;             // gap between adjacent table columns
         int rowSpacing = 2;             // vertical gap between content blocks
+
+        // Column alignment of label/value rows, index 0 = left-most column.
+        // Two-column rows (AddRow(label, value)) and three-column rows
+        // (AddRow(label, value, value2)) form separate tables, each with its
+        // own alignment. The defaults reproduce the classic tooltip look:
+        // labels left, numbers flush right.
+        std::array<TooltipColumnAlign, 2> columnAlign2 = {
+            TooltipColumnAlign::Left, TooltipColumnAlign::Right};
+        std::array<TooltipColumnAlign, 3> columnAlign3 = {
+            TooltipColumnAlign::Left, TooltipColumnAlign::Right, TooltipColumnAlign::Right};
 
         // Shadow: soft drop shadow below the tooltip. shadowBlur is the
         // spread in pixels; 0 gives the legacy hard-edged shadow.
@@ -55,6 +76,19 @@ namespace UltraCanvas {
         bool followCursor = false;     // Whether tooltip follows mouse movement
 
         TooltipStyle() = default;
+
+        // Alignment of two-column rows, left column first
+        TooltipStyle& SetColumnAlignment(TooltipColumnAlign c1, TooltipColumnAlign c2) {
+            columnAlign2 = {c1, c2};
+            return *this;
+        }
+
+        // Alignment of three-column rows, left column first
+        TooltipStyle& SetColumnAlignment(TooltipColumnAlign c1, TooltipColumnAlign c2,
+                                         TooltipColumnAlign c3) {
+            columnAlign3 = {c1, c2, c3};
+            return *this;
+        }
 
         // Preset: the default dark theme, spelled out for readability
         static TooltipStyle Dark() {
@@ -92,6 +126,8 @@ namespace UltraCanvas {
                 && cornerRadius == other.cornerRadius
                 && columnGap == other.columnGap
                 && rowSpacing == other.rowSpacing
+                && columnAlign2 == other.columnAlign2
+                && columnAlign3 == other.columnAlign3
                 && hasShadow == other.hasShadow
                 && shadowOffset == other.shadowOffset
                 && shadowBlur == other.shadowBlur
@@ -110,8 +146,9 @@ namespace UltraCanvas {
 // ===== STRUCTURED TOOLTIP CONTENT =====
 // A tooltip is either a plain string (optionally containing Pango markup for
 // inline styling) or a TooltipContent: an ordered list of blocks the manager
-// lays out natively — bold title, aligned label/value rows with optional
-// color swatch, bullet list items, free markup text and separators.
+// lays out natively — bold title, aligned two- or three-column table rows
+// with optional color swatch, bullet list items, free markup text and
+// separators.
 //
 // Text passed to AddTitle/AddRow/AddBullet is treated as plain data and is
 // markup-escaped by the renderer; only AddText interprets Pango markup.
@@ -119,22 +156,26 @@ namespace UltraCanvas {
     enum class TooltipBlockType {
         Title,      // bold, slightly larger text line
         Text,       // free text line/paragraph; Pango markup is interpreted
-        Row,        // two-column table row: muted label left, value right-aligned
+        Row,        // table row of two or three aligned columns
         Bullet,     // list item with a bullet glyph and hanging indent
         Separator   // thin horizontal hairline
     };
 
     struct TooltipBlock {
         TooltipBlockType type = TooltipBlockType::Text;
-        std::string text;                       // Title/Text/Bullet content; Row label
-        std::string value;                      // Row value
+        std::string text;                       // Title/Text/Bullet content; Row column 1
+        std::string value;                      // Row column 2
+        std::string value2;                     // Row column 3 (three-column rows only)
         Color swatch = Color(0, 0, 0, 0);       // Row color swatch; alpha 0 = none
+        int columns = 2;                        // Row column count: 2 or 3
 
         bool operator==(const TooltipBlock& other) const {
             return type == other.type
                 && text == other.text
                 && value == other.value
-                && swatch == other.swatch;
+                && value2 == other.value2
+                && swatch == other.swatch
+                && columns == other.columns;
         }
         bool operator!=(const TooltipBlock& other) const {
             return !(*this == other);
@@ -148,6 +189,11 @@ namespace UltraCanvas {
         // the tooltip is shown (per-element/per-chart theming).
         std::optional<TooltipStyle> styleOverride;
 
+        // When set, these win over the style's columnAlign2 / columnAlign3, so
+        // a tooltip can pick its table alignment without replacing the theme.
+        std::optional<std::array<TooltipColumnAlign, 2>> columnAlign2Override;
+        std::optional<std::array<TooltipColumnAlign, 3>> columnAlign3Override;
+
         TooltipContent& AddTitle(const std::string& text) {
             blocks.push_back({TooltipBlockType::Title, text});
             return *this;
@@ -160,14 +206,25 @@ namespace UltraCanvas {
             return *this;
         }
 
+        // Two-column row: label in column 1, value in column 2
         TooltipContent& AddRow(const std::string& label, const std::string& value) {
-            blocks.push_back({TooltipBlockType::Row, label, value});
-            return *this;
+            return AddRowBlock(Color(0, 0, 0, 0), label, value, std::string(), 2);
         }
 
         TooltipContent& AddRow(const Color& swatch, const std::string& label, const std::string& value) {
-            blocks.push_back({TooltipBlockType::Row, label, value, swatch});
-            return *this;
+            return AddRowBlock(swatch, label, value, std::string(), 2);
+        }
+
+        // Three-column row: the two- and three-column rows of a tooltip are
+        // measured as separate tables, each with its own column alignment.
+        TooltipContent& AddRow(const std::string& label, const std::string& value,
+                               const std::string& value2) {
+            return AddRowBlock(Color(0, 0, 0, 0), label, value, value2, 3);
+        }
+
+        TooltipContent& AddRow(const Color& swatch, const std::string& label,
+                               const std::string& value, const std::string& value2) {
+            return AddRowBlock(swatch, label, value, value2, 3);
         }
 
         TooltipContent& AddBullet(const std::string& text) {
@@ -185,14 +242,51 @@ namespace UltraCanvas {
             return *this;
         }
 
+        // Column alignment for this tooltip's two-column rows. Set
+        // independently of SetStyle(), so switching theme keeps the layout.
+        TooltipContent& SetColumnAlignment(TooltipColumnAlign c1, TooltipColumnAlign c2) {
+            columnAlign2Override = std::array<TooltipColumnAlign, 2>{c1, c2};
+            return *this;
+        }
+
+        // Column alignment for this tooltip's three-column rows
+        TooltipContent& SetColumnAlignment(TooltipColumnAlign c1, TooltipColumnAlign c2,
+                                           TooltipColumnAlign c3) {
+            columnAlign3Override = std::array<TooltipColumnAlign, 3>{c1, c2, c3};
+            return *this;
+        }
+
         bool Empty() const { return blocks.empty(); }
-        void Clear() { blocks.clear(); styleOverride.reset(); }
+        void Clear() {
+            blocks.clear();
+            styleOverride.reset();
+            columnAlign2Override.reset();
+            columnAlign3Override.reset();
+        }
 
         bool operator==(const TooltipContent& other) const {
-            return blocks == other.blocks && styleOverride == other.styleOverride;
+            return blocks == other.blocks
+                && styleOverride == other.styleOverride
+                && columnAlign2Override == other.columnAlign2Override
+                && columnAlign3Override == other.columnAlign3Override;
         }
         bool operator!=(const TooltipContent& other) const {
             return !(*this == other);
+        }
+
+    private:
+        TooltipContent& AddRowBlock(const Color& swatch, const std::string& label,
+                                    const std::string& value, const std::string& value2,
+                                    int columns) {
+            TooltipBlock block;
+            block.type = TooltipBlockType::Row;
+            block.text = label;
+            block.value = value;
+            block.value2 = value2;
+            block.swatch = swatch;
+            block.columns = columns;
+            blocks.push_back(std::move(block));
+            return *this;
         }
     };
 

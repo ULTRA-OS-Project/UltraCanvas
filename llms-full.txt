@@ -39638,8 +39638,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.2.0  
-**Last Modified:** 2026-08-06  
+**Version:** 2.3.0  
+**Last Modified:** 2026-08-07  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -39661,9 +39661,10 @@ Tooltip content comes in two forms:
 - a **plain string**, optionally containing Pango markup for inline styling
   (`"<b>bold</b>"`, `"<i>italic</i>"`, colored `<span>`s), and
 - a **`TooltipContent`** value: an ordered list of structured blocks — bold
-  title, aligned label/value rows with optional color swatch, bullet list
-  items, free markup text and separators — laid out natively by the manager
-  (defined in `UltraCanvasTooltipTypes.h`, included by the manager header).
+  title, two- or three-column table rows with optional color swatch and
+  definable per-column alignment, bullet list items, free markup text and
+  separators — laid out natively by the manager (defined in
+  `UltraCanvasTooltipTypes.h`, included by the manager header).
 
 ## Basic Usage
 
@@ -39712,8 +39713,10 @@ UltraCanvasTooltipManager::HideTooltipImmediately();  // no delay
 ```cpp
 TooltipContent content;
 content.AddTitle("Sales 2026-08")                       // bold, titleFontSize
-       .AddRow("Europe", "1 204 t")                     // label/value table row
-       .AddRow(Color(66,133,244,255), "Asia", "1 890 t") // row with color swatch
+       .AddRow("Europe", "1 204 t")                     // two-column table row
+       .AddRow(Color(66,133,244,255), "Asia", "1 890 t") // ... with color swatch
+       .AddRow("Africa", "312 t", "+0.4 %")             // three-column table row
+       .AddRow(Color(15,157,88,255), "Americas", "986 t", "-1.7 %")
        .AddBullet("wraps with a hanging indent")        // list item
        .AddSeparator()                                  // thin hairline
        .AddText("free text, <b>markup allowed</b>");    // Pango markup line
@@ -39722,10 +39725,35 @@ content.SetStyle(TooltipStyle::Light());                // optional per-tooltip 
 
 Layout rules:
 
-- **Rows** form a two-column table: labels (muted `secondaryTextColor`) are
-  left-aligned in a shared column; values are right-aligned to the tooltip's
-  right edge. Labels keep their natural width up to 55 % of the available
-  space. If any row carries a swatch, all labels shift so the columns align.
+- **Rows** form a table of two or three columns. `AddRow(label, value)` makes
+  a two-column row, `AddRow(label, value, value2)` a three-column row; both
+  have an overload taking a leading `Color` swatch. Column 1 is drawn in the
+  muted `secondaryTextColor`, the value columns in `textColor`.
+- **Column widths** are the columns' natural widths when the row fits. When it
+  does not, the first column is capped at 55 % of the available width and the
+  remaining columns share what is left in proportion to their natural widths;
+  over-wide cells wrap inside their column. Surplus width — a wide `AddText`
+  block, say — is spread evenly over the gaps, so the last column always ends
+  flush with the tooltip's right edge. If any row carries a swatch, all rows
+  shift by the swatch gutter so the columns stay aligned.
+- **Two- and three-column rows are separate tables.** Each arity is measured
+  into its own grid and aligned by its own setting, so a two-column "Total"
+  row appended to a three-column table never disturbs that table's columns.
+- **Column alignment** is definable per column, separately for the two- and
+  three-column table (`TooltipColumnAlign::Left | Center | Right`):
+
+  ```cpp
+  content.SetColumnAlignment(TooltipColumnAlign::Left,     // two-column rows
+                             TooltipColumnAlign::Right);
+  content.SetColumnAlignment(TooltipColumnAlign::Left,     // three-column rows
+                             TooltipColumnAlign::Center,
+                             TooltipColumnAlign::Right);
+  ```
+
+  These per-tooltip settings win over the style's `columnAlign2` /
+  `columnAlign3`; because they are stored outside `styleOverride`, switching
+  theme with `SetStyle()` leaves the alignment untouched. The defaults —
+  label left, values right — reproduce the classic tooltip look.
 - **Escaping:** text passed to `AddTitle`, `AddRow` and `AddBullet` is treated
   as plain data — Pango markup characters (`&`, `<`, `>`) are escaped
   automatically, so arbitrary labels/values can never corrupt the rendering.
@@ -39748,6 +39776,8 @@ bool HasTooltip() const;   // structured content or non-empty plain text
 Defined in `UltraCanvasTooltipTypes.h` (re-exported by the manager header):
 
 ```cpp
+enum class TooltipColumnAlign { Left, Center, Right };  // row cell placement
+
 struct TooltipStyle {
     // Appearance (defaults = dark theme, see presets below)
     Color backgroundColor = Color(45, 45, 48, 245);  // dark neutral, slightly translucent
@@ -39768,8 +39798,17 @@ struct TooltipStyle {
     int maxWidth = 450;        // text wraps beyond this width
     int borderWidth = 1;
     float cornerRadius = 6.0f;
-    int columnGap = 14;        // gap between label and value columns
+    int columnGap = 14;        // gap between adjacent table columns
     int rowSpacing = 2;        // vertical gap between content blocks
+
+    // Column alignment, index 0 = left-most column. Two- and three-column
+    // rows are separate tables, so each has its own alignment vector.
+    std::array<TooltipColumnAlign, 2> columnAlign2 = {Left, Right};
+    std::array<TooltipColumnAlign, 3> columnAlign3 = {Left, Right, Right};
+    // convenience setters, chainable:
+    TooltipStyle& SetColumnAlignment(TooltipColumnAlign c1, TooltipColumnAlign c2);
+    TooltipStyle& SetColumnAlignment(TooltipColumnAlign c1, TooltipColumnAlign c2,
+                                     TooltipColumnAlign c3);
 
     // Shadow: soft drop shadow below the tooltip.
     bool hasShadow = true;

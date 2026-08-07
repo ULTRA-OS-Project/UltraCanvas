@@ -1,12 +1,13 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
-// Version: 2.2.0
-// Last Modified: 2026-08-06
+// Version: 2.3.0
+// Last Modified: 2026-08-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
+#include <array>
 #include <string>
 #include <algorithm>
 #include <chrono>
@@ -37,14 +38,18 @@ namespace UltraCanvas {
 // ===== INTERNAL LAYOUT STATE =====
     // One laid-out block of the current tooltip content, positioned in
     // content-local coordinates (0,0 = inside the padding).
+    static constexpr int kMaxRowColumns = 3;
+
     struct TooltipBlockLayout {
         TooltipBlockType type = TooltipBlockType::Text;
-        std::unique_ptr<ITextLayout> textLayout;   // Title/Text/Bullet text; Row label
-        std::unique_ptr<ITextLayout> valueLayout;  // Row value
+        std::unique_ptr<ITextLayout> textLayout;   // Title/Text/Bullet text
+        // Row cells, left to right; only the first `columns` entries are set
+        std::array<std::unique_ptr<ITextLayout>, kMaxRowColumns> cells;
+        std::array<int, kMaxRowColumns> cellWidth = {0, 0, 0};   // drawn width per cell
+        int columns = 0;                           // Row column count (2 or 3)
         Color swatch = Color(0, 0, 0, 0);
         int y = 0;
         int height = 0;
-        int valueWidth = 0;                        // drawn width of the value column entry
     };
 
     static TooltipContent currentContent;
@@ -52,11 +57,100 @@ namespace UltraCanvas {
     static std::unique_ptr<ITextLayout> bulletGlyphLayout;
     static int rowLabelIndent = 0;   // label x-offset when any row carries a swatch
 
+    // Column grids: two- and three-column rows are measured as independent
+    // tables, so a "Total" row of a different arity never disturbs the other.
+    static std::array<int, 2> rowGrid2 = {0, 0};
+    static std::array<int, 3> rowGrid3 = {0, 0, 0};
+    static std::array<TooltipColumnAlign, 2> rowAlign2 = {
+        TooltipColumnAlign::Left, TooltipColumnAlign::Right};
+    static std::array<TooltipColumnAlign, 3> rowAlign3 = {
+        TooltipColumnAlign::Left, TooltipColumnAlign::Right, TooltipColumnAlign::Right};
+
     // Row swatch and bullet metrics
     static constexpr int kSwatchSize = 9;
     static constexpr int kSwatchGap = 6;
     static constexpr int kBulletIndent = 13;
     static constexpr int kSeparatorMargin = 3;   // extra space above/below separators
+    // Share of the row width the first (label) column may claim before the
+    // remaining columns get their say, applied only when the row overflows.
+    static constexpr int kFirstColumnMaxPercent = 55;
+
+    // Split `avail` pixels over `n` columns whose natural widths are `nat`.
+    // Everything fits => natural widths; otherwise the first column is capped
+    // and the rest share what is left in proportion to their natural width.
+    static void DistributeColumns(const int* nat, int n, int avail, int* out) {
+        for (int i = 0; i < n; ++i) out[i] = 0;
+        if (avail <= 0) return;
+
+        int total = 0;
+        for (int i = 0; i < n; ++i) total += nat[i];
+        if (total <= avail) {
+            for (int i = 0; i < n; ++i) out[i] = nat[i];
+            return;
+        }
+
+        out[0] = std::min(nat[0], avail * kFirstColumnMaxPercent / 100);
+        const int remaining = avail - out[0];
+        const int restNat = total - nat[0];
+        int assigned = 0;
+        for (int i = 1; i < n; ++i) {
+            int share = restNat > 0
+                ? static_cast<int>(static_cast<long long>(remaining) * nat[i] / restNat)
+                : 0;
+            out[i] = std::min(nat[i], share);
+            assigned += out[i];
+        }
+        // Columns narrower than their share leave slack; hand it to the ones
+        // still clipped so no space is wasted.
+        int slack = remaining - assigned;
+        for (int i = 1; i < n && slack > 0; ++i) {
+            int grow = std::min(slack, nat[i] - out[i]);
+            out[i] += grow;
+            slack -= grow;
+        }
+        // A column holding text never collapses to nothing, however tight the
+        // budget — a zero-width text layout has nothing to render into.
+        for (int i = 0; i < n; ++i) {
+            if (nat[i] > 0 && out[i] == 0) out[i] = 1;
+        }
+    }
+
+    // Left edge of every column box, stretched so the last column ends flush
+    // with the tooltip's content width. Surplus space is spread over the gaps.
+    static void ComputeColumnOrigins(const int* colWidth, int n, int contentWidth,
+                                     int indent, int gap, int* outX) {
+        int sum = 0;
+        for (int i = 0; i < n; ++i) sum += colWidth[i];
+        int extra = contentWidth - indent - sum - (n - 1) * gap;
+        if (extra < 0) extra = 0;
+
+        int x = indent;
+        for (int i = 0; i < n; ++i) {
+            outX[i] = x;
+            if (i < n - 1) {
+                x += colWidth[i] + gap + extra / (n - 1) + (i < extra % (n - 1) ? 1 : 0);
+            }
+        }
+    }
+
+    static TextAlignment ToTextAlignment(TooltipColumnAlign align) {
+        switch (align) {
+            case TooltipColumnAlign::Center: return TextAlignment::Center;
+            case TooltipColumnAlign::Right:  return TextAlignment::Right;
+            case TooltipColumnAlign::Left:
+            default:                         return TextAlignment::Left;
+        }
+    }
+
+    // x of a cell's text inside its column box
+    static int AlignedCellX(int boxX, int boxWidth, int cellWidth, TooltipColumnAlign align) {
+        switch (align) {
+            case TooltipColumnAlign::Center: return boxX + (boxWidth - cellWidth) / 2;
+            case TooltipColumnAlign::Right:  return boxX + boxWidth - cellWidth;
+            case TooltipColumnAlign::Left:
+            default:                         return boxX;
+        }
+    }
 
     static std::string EscapeMarkup(const std::string& s) {
         std::string out;
@@ -87,6 +181,9 @@ namespace UltraCanvas {
             out += block.text;
             if (block.type == TooltipBlockType::Row) {
                 out += ": " + block.value;
+                if (block.columns >= 3) {
+                    out += "\t" + block.value2;
+                }
             }
         }
         return out;
@@ -316,14 +413,20 @@ namespace UltraCanvas {
                                            kSwatchSize, kSwatchSize);
                         renderCtx->DrawFilledRectangle(swatchRect, bl.swatch, 0, Colors::Transparent, 2.0f);
                     }
-                    if (bl.textLayout) {
-                        renderCtx->SetTextPaint(style.secondaryTextColor);
-                        renderCtx->DrawTextLayout(*bl.textLayout, Point2Dd(baseX + rowLabelIndent, baseY + bl.y));
-                    }
-                    if (bl.valueLayout) {
-                        renderCtx->SetTextPaint(style.textColor);
-                        renderCtx->DrawTextLayout(*bl.valueLayout,
-                            Point2Dd(baseX + contentWidth - bl.valueWidth, baseY + bl.y));
+
+                    const int n = bl.columns;
+                    const int* colWidth = (n == 3) ? rowGrid3.data() : rowGrid2.data();
+                    const TooltipColumnAlign* align = (n == 3) ? rowAlign3.data() : rowAlign2.data();
+                    int colX[kMaxRowColumns] = {0, 0, 0};
+                    ComputeColumnOrigins(colWidth, n, contentWidth, rowLabelIndent,
+                                         style.columnGap, colX);
+
+                    for (int i = 0; i < n; ++i) {
+                        if (!bl.cells[i]) continue;
+                        // Labels are muted, the value columns use the main text color
+                        renderCtx->SetTextPaint(i == 0 ? style.secondaryTextColor : style.textColor);
+                        int x = AlignedCellX(colX[i], colWidth[i], bl.cellWidth[i], align[i]);
+                        renderCtx->DrawTextLayout(*bl.cells[i], Point2Dd(baseX + x, baseY + bl.y));
                     }
                     break;
                 }
@@ -361,6 +464,12 @@ namespace UltraCanvas {
         blockLayouts.clear();
         bulletGlyphLayout.reset();
         rowLabelIndent = 0;
+        rowGrid2 = {0, 0};
+        rowGrid3 = {0, 0, 0};
+        rowAlign2 = currentContent.columnAlign2Override
+            ? *currentContent.columnAlign2Override : style.columnAlign2;
+        rowAlign3 = currentContent.columnAlign3Override
+            ? *currentContent.columnAlign3Override : style.columnAlign3;
         if (currentContent.Empty() || !targetWindow) return;
 
         auto ctx = targetWindow->GetRenderContext();
@@ -379,8 +488,12 @@ namespace UltraCanvas {
             bulletGlyphLayout = ctx->CreateTextLayout(SpanMarkup(style, style.fontSize, false, "•"), true);
         }
 
-        // Pass 1: create layouts and measure natural widths
-        int maxLabelWidth = 0, maxValueWidth = 0, maxBlockWidth = 0;
+        // Pass 1: create layouts and measure natural widths. The two- and
+        // three-column rows are measured separately, into their own grid.
+        int maxBlockWidth = 0;
+        std::array<int, 2> natural2 = {0, 0};
+        std::array<int, 3> natural3 = {0, 0, 0};
+        bool anyRow2 = false, anyRow3 = false;
         for (const auto& block : currentContent.blocks) {
             TooltipBlockLayout bl;
             bl.type = block.type;
@@ -400,30 +513,42 @@ namespace UltraCanvas {
                     bl.textLayout = ctx->CreateTextLayout(
                         SpanMarkup(style, style.fontSize, false, EscapeMarkup(block.text)), true);
                     break;
-                case TooltipBlockType::Row:
-                    bl.textLayout = ctx->CreateTextLayout(
-                        SpanMarkup(style, style.fontSize, false, EscapeMarkup(block.text)), true);
-                    bl.valueLayout = ctx->CreateTextLayout(
-                        SpanMarkup(style, style.fontSize, false, EscapeMarkup(block.value)), true);
-                    maxLabelWidth = std::max(maxLabelWidth,
-                        static_cast<int>(bl.textLayout->GetLayoutSize().width));
-                    maxValueWidth = std::max(maxValueWidth,
-                        static_cast<int>(bl.valueLayout->GetLayoutSize().width));
+                case TooltipBlockType::Row: {
+                    bl.columns = std::clamp(block.columns, 2, kMaxRowColumns);
+                    const std::string* cellText[kMaxRowColumns] = {
+                        &block.text, &block.value, &block.value2};
+                    int* natural = (bl.columns == 3) ? natural3.data() : natural2.data();
+                    if (bl.columns == 3) anyRow3 = true; else anyRow2 = true;
+                    for (int i = 0; i < bl.columns; ++i) {
+                        bl.cells[i] = ctx->CreateTextLayout(
+                            SpanMarkup(style, style.fontSize, false, EscapeMarkup(*cellText[i])), true);
+                        natural[i] = std::max(natural[i],
+                            static_cast<int>(bl.cells[i]->GetLayoutSize().width));
+                    }
                     break;
+                }
                 case TooltipBlockType::Separator:
                     break;
             }
             blockLayouts.push_back(std::move(bl));
         }
 
-        // Column widths: labels keep their natural width up to 55% of the
-        // available space; values get the rest
-        const int rowSpace = innerMax - rowLabelIndent - style.columnGap;
-        const int labelColWidth = std::min(maxLabelWidth, rowSpace * 55 / 100);
-        const int valueColWidth = std::min(maxValueWidth, rowSpace - labelColWidth);
-        if (maxLabelWidth > 0) {
+        // Column widths per grid, and the width each grid needs. The floor on
+        // the available space keeps a cell from collapsing to zero width when
+        // padding and gaps eat the whole of maxWidth.
+        if (anyRow2) {
+            DistributeColumns(natural2.data(), 2,
+                              std::max(2, innerMax - rowLabelIndent - style.columnGap),
+                              rowGrid2.data());
             maxBlockWidth = std::max(maxBlockWidth,
-                rowLabelIndent + labelColWidth + style.columnGap + valueColWidth);
+                rowLabelIndent + rowGrid2[0] + style.columnGap + rowGrid2[1]);
+        }
+        if (anyRow3) {
+            DistributeColumns(natural3.data(), 3,
+                              std::max(3, innerMax - rowLabelIndent - 2 * style.columnGap),
+                              rowGrid3.data());
+            maxBlockWidth = std::max(maxBlockWidth,
+                rowLabelIndent + rowGrid3[0] + rowGrid3[1] + rowGrid3[2] + 2 * style.columnGap);
         }
 
         // Pass 2: wrap over-wide blocks and take final measurements
@@ -449,15 +574,20 @@ namespace UltraCanvas {
                     break;
                 }
                 case TooltipBlockType::Row: {
-                    if (static_cast<int>(bl.textLayout->GetLayoutSize().width) > labelColWidth) {
-                        bl.textLayout->SetExplicitWidth(labelColWidth);
+                    const int* colWidth = (bl.columns == 3) ? rowGrid3.data() : rowGrid2.data();
+                    const TooltipColumnAlign* align =
+                        (bl.columns == 3) ? rowAlign3.data() : rowAlign2.data();
+                    for (int i = 0; i < bl.columns; ++i) {
+                        int w = static_cast<int>(bl.cells[i]->GetLayoutSize().width);
+                        if (w > colWidth[i]) {
+                            // Cell wraps inside its column: its own lines follow
+                            // the column alignment too, not just the cell box.
+                            bl.cells[i]->SetExplicitWidth(colWidth[i]);
+                            bl.cells[i]->SetAlignment(ToTextAlignment(align[i]));
+                            w = colWidth[i];
+                        }
+                        bl.cellWidth[i] = w;
                     }
-                    int vw = static_cast<int>(bl.valueLayout->GetLayoutSize().width);
-                    if (vw > valueColWidth) {
-                        bl.valueLayout->SetExplicitWidth(valueColWidth);
-                        vw = valueColWidth;
-                    }
-                    bl.valueWidth = vw;
                     break;
                 }
                 case TooltipBlockType::Separator:
@@ -479,9 +609,11 @@ namespace UltraCanvas {
                     bl.height = static_cast<int>(bl.textLayout->GetLayoutSize().height);
                     break;
                 case TooltipBlockType::Row: {
-                    int lh = static_cast<int>(bl.textLayout->GetLayoutSize().height);
-                    int vh = static_cast<int>(bl.valueLayout->GetLayoutSize().height);
-                    bl.height = std::max({lh, vh, bl.swatch.a > 0 ? kSwatchSize : 0});
+                    bl.height = bl.swatch.a > 0 ? kSwatchSize : 0;
+                    for (int i = 0; i < bl.columns; ++i) {
+                        bl.height = std::max(bl.height,
+                            static_cast<int>(bl.cells[i]->GetLayoutSize().height));
+                    }
                     break;
                 }
                 case TooltipBlockType::Separator:
