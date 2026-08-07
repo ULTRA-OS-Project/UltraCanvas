@@ -9,6 +9,7 @@
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabelPlacement.h"
 #include "UltraCanvasUIElement.h"
@@ -344,11 +345,22 @@ namespace UltraCanvas {
             by += 24.0f;
         };
 
+        auto addSwitch = [&](const std::string& id, const std::string& text, bool initial,
+                             std::function<void(bool)> action) {
+            auto s = UltraCanvasSwitch::Create(id, bx, by + 4.0f, text, initial);
+            s->onStateChanged = [action, refreshStatus](CheckedState, CheckedState newState) {
+                action(newState == CheckedState::Checked);
+                refreshStatus();
+            };
+            tab->AddChild(s);
+            by += 36.0f;
+        };
+
         sectionLabel("LPSecSolver", "Solver");
-        addButton("LPToggleSolver", "Toggle solver on / off",
-                  [canvas]() { canvas->SetSolverEnabled(!canvas->GetSolverEnabled()); });
-        addButton("LPToggleLines", "Toggle lines as obstacles",
-                  [canvas]() { canvas->SetLinesAreObstacles(!canvas->GetLinesAreObstacles()); });
+        addSwitch("LPToggleSolver", "Solver", canvas->GetSolverEnabled(),
+                  [canvas](bool on) { canvas->SetSolverEnabled(on); });
+        addSwitch("LPToggleLines", "Lines as obstacles", canvas->GetLinesAreObstacles(),
+                  [canvas](bool on) { canvas->SetLinesAreObstacles(on); });
 
         by += 8.0f;
         sectionLabel("LPSecStyle", "Preferred position");

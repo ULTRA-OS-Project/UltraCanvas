@@ -9,6 +9,7 @@
 #include "Plugins/Charts/UltraCanvasScatterPlot3D.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasSwitch.h"
 #include <sstream>
 #include <random>
 #include <map>
@@ -92,10 +93,10 @@ static struct ChartControls {
         lineChart->SetChartTitle("Monthly Sales Trend");
         lineChart->SetLineColor(Color(0, 102, 204, 255));       // Blue line
         lineChart->SetLineWidth(3.0f);
-        lineChart->SetShowDataPoints(true);
+        lineChart->SetShowDataPoints(chartControl.showPoints);
         lineChart->SetPointColor(Color(255, 99, 71, 255));      // Tomato red points
         lineChart->SetPointRadius(5.0f);
-        lineChart->SetSmoothingEnabled(true);
+        lineChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
         lineChart->SetEnableTooltips(true);
         lineChart->SetEnableZoom(true);
         lineChart->SetEnablePan(true);
@@ -157,41 +158,35 @@ static struct ChartControls {
         };
         container->AddChild(btnLoadRandom);
 
-        // Toggle Data Points button
+        // Data Points switch
         buttonX += buttonWidth + buttonSpacing;
-        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints",
-                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
-        btnTogglePoints->SetText("Toggle Points");
-        btnTogglePoints->onClick = [lineChart]()  {
-            chartControl.showPoints = !chartControl.showPoints;
+        auto swPoints = UltraCanvasSwitch::Create("swTogglePoints",
+                                                  buttonX, buttonY + 7, "Points", chartControl.showPoints);
+        swPoints->onStateChanged = [lineChart](CheckedState, CheckedState newState) {
+            chartControl.showPoints = (newState == CheckedState::Checked);
             lineChart->SetShowDataPoints(chartControl.showPoints);
-            //lineChart->Invalidate();
         };
-        container->AddChild(btnTogglePoints);
+        container->AddChild(swPoints);
 
-        // Toggle Smoothing button
+        // Smoothing switch
         buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing",
-                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
-        btnToggleSmoothing->SetText("Toggle Smooth");
-        btnToggleSmoothing->onClick = [lineChart]()  {
-            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
+        auto swSmoothing = UltraCanvasSwitch::Create("swToggleSmoothing",
+                                                     buttonX, buttonY + 7, "Smooth", chartControl.smoothingEnabled);
+        swSmoothing->onStateChanged = [lineChart](CheckedState, CheckedState newState) {
+            chartControl.smoothingEnabled = (newState == CheckedState::Checked);
             lineChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-            //lineChart->Invalidate();
         };
-        container->AddChild(btnToggleSmoothing);
+        container->AddChild(swSmoothing);
 
+        // Value Labels switch
         buttonX += buttonWidth + buttonSpacing;
-
-        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels",
-                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
-        btnToggleValueLabels->SetText("Toggle Labels");
-        btnToggleValueLabels->onClick = [lineChart]()  {
-            chartControl.valueLabelsEnabled = !chartControl.valueLabelsEnabled;
+        auto swValueLabels = UltraCanvasSwitch::Create("swToggleValueLabels",
+                                                       buttonX, buttonY + 7, "Labels", chartControl.valueLabelsEnabled);
+        swValueLabels->onStateChanged = [lineChart](CheckedState, CheckedState newState) {
+            chartControl.valueLabelsEnabled = (newState == CheckedState::Checked);
             lineChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
-            //lineChart->Invalidate();
         };
-        container->AddChild(btnToggleValueLabels);
+        container->AddChild(swValueLabels);
 
         return container;
     }
@@ -436,16 +431,15 @@ static struct ChartControls {
         container->AddChild(btnCycleShapes);
 
         // Toggle the 2D correlation line
-        auto btnToggleTrend = std::make_shared<UltraCanvasButton>("btnToggleTrend",
-                                                                  30 + buttonWidth + 20, buttonY,
-                                                                  buttonWidth, buttonHeight);
-        btnToggleTrend->SetText("Toggle Correlation Line");
-        btnToggleTrend->SetOnClick([scatterPlot]() {
-            bool show = !scatterPlot->GetShowTrendLine();
+        auto swTrend = UltraCanvasSwitch::Create("swToggleTrend",
+                                                 30 + buttonWidth + 20, buttonY + 7,
+                                                 "Correlation Line", scatterPlot->GetShowTrendLine());
+        swTrend->onStateChanged = [scatterPlot](CheckedState, CheckedState newState) {
+            bool show = (newState == CheckedState::Checked);
             scatterPlot->SetShowTrendLine(show);
             scatterPlot->SetShowCorrelationInfo(show);
-        });
-        container->AddChild(btnToggleTrend);
+        };
+        container->AddChild(swTrend);
 
         // Reset the 3D camera
         auto btnResetView = std::make_shared<UltraCanvasButton>("btnResetView3D",
@@ -516,7 +510,7 @@ static struct ChartControls {
         areaChart->SetFillColor(Color(0, 150, 136, 120));        // Teal with transparency
         areaChart->SetLineColor(Color(0, 150, 136, 255));        // Solid teal line
         areaChart->SetLineWidth(3.0f);
-        areaChart->SetShowDataPoints(true);
+        areaChart->SetShowDataPoints(chartControl.showPoints);
         areaChart->SetPointColor(Color(255, 87, 34, 255));       // Deep orange points
         areaChart->SetPointRadius(4.0f);
         areaChart->SetFillGradientEnabled(true);
@@ -525,6 +519,7 @@ static struct ChartControls {
                 Color(0, 150, 136, 40)      // Faded teal bottom
         );
         areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
+        areaChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
         areaChart->SetEnableTooltips(true);
         areaChart->SetEnableZoom(true);
         areaChart->SetEnablePan(true);
@@ -585,40 +580,35 @@ static struct ChartControls {
         });
         container->AddChild(btnLoadRandom);
 
-        // Toggle Data Points button
+        // Data Points switch
         buttonX += buttonWidth + buttonSpacing;
-        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints",
-                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
-        btnTogglePoints->SetText("Toggle Points");
-        btnTogglePoints->SetOnClick([areaChart]() {
-            chartControl.showPoints = !chartControl.showPoints;
+        auto swPoints = UltraCanvasSwitch::Create("swTogglePoints",
+                                                  buttonX, buttonY + 7, "Points", chartControl.showPoints);
+        swPoints->onStateChanged = [areaChart](CheckedState, CheckedState newState) {
+            chartControl.showPoints = (newState == CheckedState::Checked);
             areaChart->SetShowDataPoints(chartControl.showPoints);
-            //areaChart->Invalidate();
-        });
-        container->AddChild(btnTogglePoints);
-
-        // Toggle Smoothing button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing",
-                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
-        btnToggleSmoothing->SetText("Toggle Smooth");
-        btnToggleSmoothing->SetOnClick([areaChart]() {
-            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
-            areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-            //areaChart->Invalidate();
-        });
-        container->AddChild(btnToggleSmoothing);
-
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels",
-                                                                        buttonX, buttonY, buttonWidth, buttonHeight);
-        btnToggleValueLabels->SetText("Toggle Labels");
-        btnToggleValueLabels->onClick = [areaChart]()  {
-            chartControl.valueLabelsEnabled = !chartControl.valueLabelsEnabled;
-            areaChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
-            //lineChart->Invalidate();
         };
-        container->AddChild(btnToggleValueLabels);
+        container->AddChild(swPoints);
+
+        // Smoothing switch
+        buttonX += buttonWidth + buttonSpacing;
+        auto swSmoothing = UltraCanvasSwitch::Create("swToggleSmoothing",
+                                                     buttonX, buttonY + 7, "Smooth", chartControl.smoothingEnabled);
+        swSmoothing->onStateChanged = [areaChart](CheckedState, CheckedState newState) {
+            chartControl.smoothingEnabled = (newState == CheckedState::Checked);
+            areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
+        };
+        container->AddChild(swSmoothing);
+
+        // Value Labels switch
+        buttonX += buttonWidth + buttonSpacing;
+        auto swValueLabels = UltraCanvasSwitch::Create("swToggleValueLabels",
+                                                       buttonX, buttonY + 7, "Labels", chartControl.valueLabelsEnabled);
+        swValueLabels->onStateChanged = [areaChart](CheckedState, CheckedState newState) {
+            chartControl.valueLabelsEnabled = (newState == CheckedState::Checked);
+            areaChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
+        };
+        container->AddChild(swValueLabels);
 
         return container;
     }

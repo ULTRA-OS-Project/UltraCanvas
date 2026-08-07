@@ -8,6 +8,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasDemo.h"
 #include <memory>
 #include <random>
@@ -123,18 +124,18 @@ namespace UltraCanvas {
         // INTERACTIVE CONTROLS
         // =============================================================================
 
-        auto btnToggleMode = std::make_shared<UltraCanvasButton>(
-                "btnMekkoToggleMode", 560, 390, 220, 36
+        // Mode switch for the two Marimekko charts (the cloud chart stays Bar-Mekko)
+        auto swMode = UltraCanvasSwitch::CreateWithSideLabels(
+                "swMekkoMode", 560, 397, "Marimekko", "Bar-Mekko", false
         );
-        btnToggleMode->SetText("Toggle Marimekko / Bar-Mekko");
-        btnToggleMode->onClick = [marketChart, salesChart]() {
-            auto newMode = (marketChart->GetMekkoMode() == UltraCanvasMekkoChartElement::MekkoMode::Marimekko)
+        swMode->onStateChanged = [marketChart, salesChart](CheckedState, CheckedState newState) {
+            auto newMode = (newState == CheckedState::Checked)
                            ? UltraCanvasMekkoChartElement::MekkoMode::BarMekko
                            : UltraCanvasMekkoChartElement::MekkoMode::Marimekko;
             marketChart->SetMekkoMode(newMode);
             salesChart->SetMekkoMode(newMode);
         };
-        container->AddChild(btnToggleMode);
+        container->AddChild(swMode);
 
         auto btnToggleLabels = std::make_shared<UltraCanvasButton>(
                 "btnMekkoToggleLabels", 560, 434, 220, 36

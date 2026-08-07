@@ -31,6 +31,7 @@
 #include "Plugins/Charts/UltraCanvasJitterPlotElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTextInput.h"
@@ -738,23 +739,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
     int btnY = 590;
     int btnX = 50;
     
-    auto btnToggleWhiskers = std::make_shared<UltraCanvasButton>("btnWhiskers", btnX, btnY, 150, 35);
-    btnToggleWhiskers->SetText("Toggle Whiskers");
-    btnToggleWhiskers->SetOnClick([jitter]() {
-        static bool showWhiskers = true;
-        showWhiskers = !showWhiskers;
-        jitter->SetBoxPlotSettings(showWhiskers, true, 0.6f);
-    });
-    container->AddChild(btnToggleWhiskers);
-    
-    auto btnToggleOutliers = std::make_shared<UltraCanvasButton>("btnOutliers", btnX + 160, btnY, 150, 35);
-    btnToggleOutliers->SetText("Toggle Outliers");
-    btnToggleOutliers->SetOnClick([jitter]() {
-        static bool showOutliers = true;
-        showOutliers = !showOutliers;
-        jitter->SetBoxPlotSettings(true, showOutliers, 0.6f);
-    });
-    container->AddChild(btnToggleOutliers);
+    // Shared state so the two switches don't clobber each other's setting.
+    struct BoxPlotToggles { bool whiskers = true; bool outliers = true; };
+    auto boxToggles = std::make_shared<BoxPlotToggles>();
+
+    auto swWhiskers = UltraCanvasSwitch::Create("swWhiskers", btnX, btnY + 7, "Whiskers", boxToggles->whiskers);
+    swWhiskers->onStateChanged = [jitter, boxToggles](CheckedState, CheckedState newState) {
+        boxToggles->whiskers = (newState == CheckedState::Checked);
+        jitter->SetBoxPlotSettings(boxToggles->whiskers, boxToggles->outliers, 0.6f);
+    };
+    container->AddChild(swWhiskers);
+
+    auto swOutliers = UltraCanvasSwitch::Create("swOutliers", btnX + 160, btnY + 7, "Outliers", boxToggles->outliers);
+    swOutliers->onStateChanged = [jitter, boxToggles](CheckedState, CheckedState newState) {
+        boxToggles->outliers = (newState == CheckedState::Checked);
+        jitter->SetBoxPlotSettings(boxToggles->whiskers, boxToggles->outliers, 0.6f);
+    };
+    container->AddChild(swOutliers);
     
     auto infoLabel = std::make_shared<UltraCanvasLabel>("BoxInfo", 50, 645, 800, 80);
     infoLabel->SetText(

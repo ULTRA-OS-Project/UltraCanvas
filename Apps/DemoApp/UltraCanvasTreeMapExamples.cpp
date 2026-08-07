@@ -7,6 +7,7 @@
 #include "Plugins/Diagrams/UltraCanvasTreeMapElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasSwitch.h"
 
 namespace UltraCanvas {
 
@@ -51,14 +52,6 @@ namespace UltraCanvas {
         auto btnCycleColor = std::make_shared<UltraCanvasButton>("btnCycleColor", 390, 530, 160, 30);
         btnCycleColor->SetText("Cycle Colors");
         container->AddChild(btnCycleColor);
-        
-        auto btnToggleValues = std::make_shared<UltraCanvasButton>("btnToggleValues", 50, 570, 160, 30);
-        btnToggleValues->SetText("Toggle Values");
-        container->AddChild(btnToggleValues);
-        
-        auto btnToggleLabels = std::make_shared<UltraCanvasButton>("btnToggleLabels", 220, 570, 160, 30);
-        btnToggleLabels->SetText("Toggle Labels");
-        container->AddChild(btnToggleLabels);
         
         auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 390, 570, 160, 30);
         btnReset->SetText("Reset");
@@ -108,22 +101,30 @@ namespace UltraCanvas {
             treeMap->SetColorScheme(colorSchemes[currentColor]);
         });
 
-        btnToggleValues->SetOnClick([treeMap]() {
-            showValues = !showValues;
-            treeMap->SetDisplayOptions(showLabels, showValues, false, true);
-        });
+        treeMap->SetDisplayOptions(showLabels, showValues, false, true);
 
-        btnToggleLabels->SetOnClick([treeMap]() {
-            showLabels = !showLabels;
+        auto swValues = UltraCanvasSwitch::Create("swToggleValues", 50, 574, "Values", showValues);
+        swValues->onStateChanged = [treeMap](CheckedState, CheckedState newState) {
+            showValues = (newState == CheckedState::Checked);
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
-        });
+        };
+        container->AddChild(swValues);
 
-        btnReset->SetOnClick([treeMap]() {
+        auto swLabels = UltraCanvasSwitch::Create("swToggleLabels", 220, 574, "Labels", showLabels);
+        swLabels->onStateChanged = [treeMap](CheckedState, CheckedState newState) {
+            showLabels = (newState == CheckedState::Checked);
+            treeMap->SetDisplayOptions(showLabels, showValues, false, true);
+        };
+        container->AddChild(swLabels);
+
+        btnReset->SetOnClick([treeMap, swValues, swLabels]() {
             currentAlgorithm = 0;
             currentStyle = 0;
             currentColor = 0;
             showValues = true;
             showLabels = true;
+            swValues->SetChecked(true);
+            swLabels->SetChecked(true);
             
             std::vector<std::tuple<std::string, std::string, double, double>> data = {
                 {"Technology", "Computers", 45000, 500},
