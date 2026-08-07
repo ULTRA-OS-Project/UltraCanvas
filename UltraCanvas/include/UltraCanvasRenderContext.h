@@ -263,6 +263,17 @@ namespace UltraCanvas {
         virtual std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
                                                                            double cx2, double cy2, double r2,
                                                                            const std::vector<GradientStop>& stops) = 0;
+        // Image-backed paint: the image is fitted to anchorRect (Cover crops,
+        // Fill stretches, Contain letterboxes) and, when repeat is set, tiles
+        // outward from it. Use as fill/stroke paint to flood any path with a
+        // graphic - non-rectangular shapes included. Backends without image
+        // pattern support return nullptr; callers fall back to a plain fill.
+        virtual std::shared_ptr<IPaintPattern> CreateImagePattern(const std::string& imagePath,
+                                                                  const Rect2Dd& anchorRect,
+                                                                  ImageFitMode fitMode = ImageFitMode::Cover,
+                                                                  bool repeat = false) {
+            return nullptr;
+        }
         virtual void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) = 0;
         virtual void SetFillPaint(const Color& color) = 0;
         virtual void SetStrokePaint(std::shared_ptr<IPaintPattern> pattern) = 0;

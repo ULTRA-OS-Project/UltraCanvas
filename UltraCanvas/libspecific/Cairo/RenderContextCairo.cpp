@@ -1439,6 +1439,71 @@ namespace UltraCanvas {
         }
     }
 
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateImagePattern(const std::string& imagePath,
+                                                                          const Rect2Dd& anchorRect,
+                                                                          ImageFitMode fitMode,
+                                                                          bool repeat) {
+        if (anchorRect.width <= 0.0 || anchorRect.height <= 0.0) return nullptr;
+        auto img = UCImage::Get(imagePath);
+        if (!img) return nullptr;
+        auto pixmap = img->GetPixmap(static_cast<int>(anchorRect.width),
+                                     static_cast<int>(anchorRect.height),
+                                     fitMode, GetDeviceScale());
+        if (!pixmap || !pixmap->GetSurface()) return nullptr;
+
+        // Logical dimensions; the surface's device_scale handles raw pixels.
+        const double pw = static_cast<double>(pixmap->GetWidth());
+        const double ph = static_cast<double>(pixmap->GetHeight());
+        if (pw <= 0.0 || ph <= 0.0) return nullptr;
+
+        // Same fit arithmetic as DrawPixmapOrMask, expressed as a pattern
+        // matrix instead of a context transform.
+        double scaleX = 1.0, scaleY = 1.0, offsetX = 0.0, offsetY = 0.0;
+        switch (fitMode) {
+            case ImageFitMode::Fill:
+                scaleX = anchorRect.width / pw;
+                scaleY = anchorRect.height / ph;
+                break;
+            case ImageFitMode::Contain:
+            case ImageFitMode::ScaleDown: {
+                double s = std::min(anchorRect.width / pw, anchorRect.height / ph);
+                if (fitMode == ImageFitMode::ScaleDown) s = std::min(1.0, s);
+                scaleX = scaleY = s;
+                offsetX = (anchorRect.width - pw * s) / 2.0;
+                offsetY = (anchorRect.height - ph * s) / 2.0;
+                break;
+            }
+            case ImageFitMode::Cover: {
+                const double s = std::max(anchorRect.width / pw, anchorRect.height / ph);
+                scaleX = scaleY = s;
+                offsetX = (anchorRect.width - pw * s) / 2.0;
+                offsetY = (anchorRect.height - ph * s) / 2.0;
+                break;
+            }
+            case ImageFitMode::NoScale:
+            default:
+                break;
+        }
+
+        cairo_pattern_t* pattern = cairo_pattern_create_for_surface(pixmap->GetSurface());
+        cairo_matrix_t matrix;
+        cairo_matrix_init_translate(&matrix, anchorRect.x + offsetX, anchorRect.y + offsetY);
+        cairo_matrix_scale(&matrix, scaleX, scaleY);
+        if (cairo_matrix_invert(&matrix) != CAIRO_STATUS_SUCCESS) {
+            cairo_pattern_destroy(pattern);
+            return nullptr;
+        }
+        cairo_pattern_set_matrix(pattern, &matrix);
+        cairo_pattern_set_extend(pattern, repeat ? CAIRO_EXTEND_REPEAT : CAIRO_EXTEND_PAD);
+        cairo_pattern_set_filter(pattern, CAIRO_FILTER_GOOD);
+
+        if (cairo_pattern_status(pattern) == CAIRO_STATUS_SUCCESS) {
+            return std::make_shared<PaintPatternCairo>(pattern);
+        }
+        cairo_pattern_destroy(pattern);
+        return nullptr;
+    }
+
     void RenderContextCairo::SetFillPaint(std::shared_ptr<IPaintPattern> pattern) {
         currentState.fillSourcePattern = pattern;
         currentState.fillSourceColor = Colors::Transparent;

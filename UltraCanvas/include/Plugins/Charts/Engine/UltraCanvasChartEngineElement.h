@@ -27,6 +27,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "UltraCanvasElementProperties.h"
+#include <cstdint>
 #include <memory>
 
 namespace UltraCanvas {
@@ -59,9 +60,15 @@ struct ChartLimiter {
     Color captionColor = Color(120, 40, 40, 255);
 };
 
+// How a legend swatch is painted, so a series drawn with a non-solid fill is
+// represented faithfully instead of by a colour square that matches nothing.
+enum class ChartLegendSwatch { Solid, Gradient, Outline, Hatched, Image };
+
 struct ChartLegendEntry {
     std::string label;
     Color color;
+    ChartLegendSwatch swatch = ChartLegendSwatch::Solid;
+    std::string imagePath;           // ChartLegendSwatch::Image only
 };
 
 // =============================================================================
@@ -119,6 +126,41 @@ public:
     void SetShowLegend(bool show);
     void SetLegendEntries(const std::vector<ChartLegendEntry>& entries);
 
+    // =========================================================================
+    // ANIMATION DRIVER
+    // =========================================================================
+    // Drives frame.animationProgress from 0 to 1 (ease-out cubic) and keeps
+    // repainting until it arrives - no chart-side timers. Content that wants
+    // an entrance animation scales its geometry by frame.animationProgress.
+
+    void StartEngineAnimation(float durationSeconds = 0.8f);
+    // Restart the animation automatically whenever ChartDirty::Data is marked.
+    void SetAnimateOnDataChange(bool enable, float durationSeconds = 0.8f);
+    bool IsEngineAnimating() const { return engineAnimating; }
+
+    // =========================================================================
+    // HIT REGIONS AND TOOLTIPS
+    // =========================================================================
+    // Content registers its interactive geometry while rendering phase 2 (the
+    // engine clears the list first); the engine then owns hover tracking:
+    // MouseMove hit-tests the regions (last added wins - draw order), hover
+    // changes repaint via ChartDirty::Hover without re-running layout or the
+    // label solver, and a region's tooltip is shown through the standard
+    // tooltip manager when tooltips are enabled.
+
+    void AddHitRegion(const Rect2Dd& bounds, int64_t regionId,
+                      const std::string& tooltip = std::string());
+    // Non-rectangular content (polar sectors, wedges): point-in-polygon test.
+    void AddHitRegion(const std::vector<Point2Dd>& polygon, int64_t regionId,
+                      const std::string& tooltip = std::string());
+    void ClearHitRegions();
+    // The hovered region's id, -1 when none. Ids are chart-defined (encode a
+    // series/category pair, a data index, ...).
+    int64_t HoveredRegionId() const { return hoveredRegionId; }
+    virtual void OnHitRegionHoverChanged(int64_t regionId) {}
+
+    bool OnEvent(const UCEvent& event) override;
+
     // Invalidation. Ordinary redraws reuse the frozen frame and the solved
     // plan; only these rebuild them.
     void MarkEngineDirty(ChartDirty flags);
@@ -165,6 +207,8 @@ protected:
     virtual void RenderEngineTitle(IRenderContext* ctx);
     virtual void RenderPlannedLabels(IRenderContext* ctx);
     virtual void RenderEngineLegend(IRenderContext* ctx);
+    virtual void RenderLegendSwatch(IRenderContext* ctx, const Rect2Dd& box,
+                                    const ChartLegendEntry& entry);
 
     // Layout/plan lifecycle. Both are cheap no-ops when nothing is dirty.
     void EnsureEngineLayout(IRenderContext* ctx);
@@ -204,6 +248,22 @@ private:
     bool showLegend = false;
     std::vector<ChartLegendEntry> legendEntries;
     Rect2Dd legendRect;
+
+    // Animation driver state
+    bool engineAnimating = false;
+    bool animateOnDataChange = false;
+    float animateOnDataDuration = 0.8f;
+
+    // Hit regions (element-local space, rebuilt by content every render)
+    struct ChartHitRegion {
+        Rect2Dd bounds;
+        std::vector<Point2Dd> polygon;   // empty = rectangular region
+        int64_t id = -1;
+        std::string tooltip;
+    };
+    std::vector<ChartHitRegion> hitRegions;
+    int64_t hoveredRegionId = -1;
+    const ChartHitRegion* HitTestRegions(const Point2Dd& point) const;
 
     UCPropertyBag engineProperties;
 

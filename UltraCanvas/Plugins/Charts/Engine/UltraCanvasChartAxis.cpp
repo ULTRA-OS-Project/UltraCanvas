@@ -121,10 +121,14 @@ void ChartAxis::Finalize() {
     degenerate = false;
 
     if (scale == ChartScale::Category) {
-        effectiveMin = 0.0;
-        effectiveMax = categories.empty() ? 1.0
-                                          : static_cast<double>(categories.size() - 1);
-        if (categories.size() == 1) { effectiveMax = 1.0; degenerate = true; }
+        effectiveMin = -categoryPadding;
+        effectiveMax = (categories.empty() ? 1.0
+                                           : static_cast<double>(categories.size() - 1))
+                       + categoryPadding;
+        if (categories.size() == 1 && categoryPadding == 0.0) {
+            effectiveMax = 1.0;
+            degenerate = true;
+        }
         return;
     }
 

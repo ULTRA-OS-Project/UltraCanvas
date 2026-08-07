@@ -80,6 +80,11 @@ public:
     bool compactNumbers = false;    // 12'500 -> "12.5K"
     ValueFormatter formatter;       // wins over every built-in formatting rule
     std::vector<std::string> categories;   // Category scale slot labels
+    // Category scale only: extra range beyond the outer slots, in slot units.
+    // 0 spans exactly 0..n-1, so marks centred on the outer slots (bars,
+    // box plots) are clipped in half; 0.5 gives every slot the same width and
+    // the outer marks their full footprint. Ignored by the other scales.
+    double categoryPadding = 0.0;
     // Explicit tick positions: when non-empty, GenerateTicks emits exactly
     // these (formatted through the axis), overriding every generation rule -
     // category slots under bars, hand-picked decades, threshold lists.

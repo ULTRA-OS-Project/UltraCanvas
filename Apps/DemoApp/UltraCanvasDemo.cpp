@@ -981,8 +981,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("barcharts", "Bar Chart", "Bar chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateBarChartsExamples(); },
-                             "DemoApp/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasBarChartElement.md");
+                             "DemoApp/UltraCanvasBarChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasChartEngine.md");
 
         chartBuilder.AddItem("scattercharts", "Scatter Plot Chart", "Scatter plot chart data visualization",
                              ImplementationStatus::FullyImplemented,

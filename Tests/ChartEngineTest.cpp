@@ -13,6 +13,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
 
 #include <algorithm>
@@ -175,6 +176,211 @@ static void TestCategoryAxis() {
     const std::vector<ChartTick> ticks = axis.GenerateTicks(10);
     CHECK(ticks.size() == 3, "one tick per category regardless of the target count");
     CHECK(ticks[2].label == "virginica", "tick labels are the category names");
+}
+
+static void TestCategoryPadding() {
+    std::printf("Category axis slot padding\n");
+
+    ChartAxis axis;
+    axis.scale = ChartScale::Category;
+    axis.categories = {"A", "B", "C", "D"};
+    axis.categoryPadding = 0.5;
+    axis.Finalize();
+
+    // Range -0.5 .. 3.5: every slot is 1/4 of the domain and the outer slots
+    // have the same width as the inner ones.
+    CHECK(Near(axis.Min(), -0.5) && Near(axis.Max(), 3.5),
+          "the padded range extends half a slot past the outer categories");
+    CHECK(Near(axis.Normalize(0.0), 0.125), "the first slot centre sits half a slot in");
+    CHECK(Near(axis.Normalize(3.0), 0.875), "the last slot centre sits half a slot short of the end");
+    CHECK(Near(axis.Normalize(1.0) - axis.Normalize(0.0), 0.25),
+          "neighbouring slot centres are one slot apart");
+
+    ChartAxis single;
+    single.scale = ChartScale::Category;
+    single.categories = {"only"};
+    single.categoryPadding = 0.5;
+    single.Finalize();
+    CHECK(Near(single.Normalize(0.0), 0.5), "a padded single category is centred");
+    CHECK(!single.IsDegenerate(), "padding keeps a single category non-degenerate");
+}
+
+// =============================================================================
+// BAR SERIES GEOMETRY
+// =============================================================================
+
+static ChartAxis MakeBarCategoryAxis(size_t count) {
+    ChartAxis axis;
+    axis.scale = ChartScale::Category;
+    for (size_t i = 0; i < count; ++i) axis.categories.push_back("C" + std::to_string(i));
+    axis.categoryPadding = 0.5;
+    axis.Finalize();
+    return axis;
+}
+
+static void TestGroupedBarSpans() {
+    std::printf("Bar spans: grouped\n");
+
+    const std::vector<std::vector<double>> series = {{10.0, 20.0}, {30.0, 40.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::Grouped;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+    CHECK(value.Min() <= 0.0 && value.Max() >= 40.0,
+          "the observed range covers zero and the largest value");
+
+    const ChartAxis category = MakeBarCategoryAxis(2);
+    const auto spans = BuildBarSpans(value, category, 2, series, options);
+    CHECK(spans.size() == 4, "two series x two categories = four bars");
+
+    // Category 0 occupies u 0..0.5; 70% fill = 0.175 half-width around 0.25.
+    CHECK(Near(spans[0].u0, 0.25 - 0.175) && Near(spans[1].u1, 0.25 + 0.175),
+          "the group fills the slot fraction around the slot centre");
+    CHECK(Near(spans[0].u1, spans[1].u0), "bars in a group touch with zero group gap");
+    CHECK(spans[0].v1 > spans[0].v0, "a positive bar's value edge is above its base");
+    CHECK(Near(spans[0].v0, value.Normalize(0.0)), "grouped bars grow from zero");
+}
+
+static void TestStackedBarSpans() {
+    std::printf("Bar spans: stacked, negatives diverge\n");
+
+    const std::vector<std::vector<double>> series = {{10.0}, {-4.0}, {20.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::Stacked;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+    CHECK(value.Min() <= -4.0 && value.Max() >= 30.0,
+          "the range covers the positive stack total and the negative total");
+
+    const ChartAxis category = MakeBarCategoryAxis(1);
+    const auto spans = BuildBarSpans(value, category, 1, series, options);
+    CHECK(spans.size() == 3, "one span per series");
+
+    CHECK(Near(spans[0].v0, value.Normalize(0.0)) &&
+          Near(spans[0].v1, value.Normalize(10.0)),
+          "the first positive segment runs 0 to 10");
+    CHECK(Near(spans[2].v0, value.Normalize(10.0)) &&
+          Near(spans[2].v1, value.Normalize(30.0)),
+          "the next positive segment stacks on the positive total, skipping the negative");
+    CHECK(Near(spans[1].v0, value.Normalize(0.0)) &&
+          Near(spans[1].v1, value.Normalize(-4.0)),
+          "the negative segment diverges downward from zero");
+    CHECK(Near(spans[0].u0, spans[2].u0) && Near(spans[0].u1, spans[2].u1),
+          "stack segments share the same domain extent");
+}
+
+static void TestPercentStackedBarSpans() {
+    std::printf("Bar spans: 100%% stacked\n");
+
+    const std::vector<std::vector<double>> series = {{30.0, 10.0}, {70.0, 30.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::PercentStacked;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+    CHECK(value.Min() <= 0.0 && value.Max() >= 100.0,
+          "the percent range covers 0 to 100");
+
+    const ChartAxis category = MakeBarCategoryAxis(2);
+    const auto spans = BuildBarSpans(value, category, 2, series, options);
+    CHECK(spans.size() == 4, "one segment per series per category");
+
+    CHECK(Near(spans[0].plotted, 30.0) && Near(spans[1].plotted, 70.0),
+          "category 0 splits 30/70");
+    CHECK(Near(spans[2].plotted, 25.0) && Near(spans[3].plotted, 75.0),
+          "category 1 rescales 10/30 to 25/75");
+    CHECK(Near(spans[3].v1, value.Normalize(100.0)),
+          "every percent stack tops out at 100");
+    CHECK(Near(spans[0].value, 30.0), "the span still carries the raw value");
+}
+
+static void TestBarSpansRaggedAndGapped() {
+    std::printf("Bar spans: ragged series and group gaps\n");
+
+    // The second series has no value in category 1.
+    const std::vector<std::vector<double>> series = {{5.0, 7.0}, {3.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::Grouped;
+    options.groupGap = 0.5;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+
+    const ChartAxis category = MakeBarCategoryAxis(2);
+    const auto spans = BuildBarSpans(value, category, 2, series, options);
+    CHECK(spans.size() == 3, "a missing value simply has no bar");
+    CHECK(spans[1].u0 > spans[0].u1, "a group gap separates bars in a group");
+}
+
+static void TestBarOutlineRounding() {
+    std::printf("Bar outline: corner rounding under projections\n");
+
+    ChartVerticalProjection vertical;
+    vertical.SetPlotArea(Rect2Dd(0.0, 0.0, 200.0, 100.0));
+
+    // u 0.2..0.6, v 0..0.5 is a 80x50 screen rectangle.
+    const auto plain = BuildBarOutline(vertical, 0.2, 0.0, 0.6, 0.5, 8, 0.0);
+    CHECK(plain.size() == 4 * 8, "an unrounded outline is the subdivided quad");
+    const Point2Dd corner = vertical.ToScreen(ChartNormalizedPoint(0.2, 0.0));
+    bool hasCorner = false;
+    for (const auto& p : plain) {
+        if (Near(p.x, corner.x, 1e-6) && Near(p.y, corner.y, 1e-6)) hasCorner = true;
+    }
+    CHECK(hasCorner, "the unrounded outline passes through the corner");
+
+    const double radius = 10.0;
+    const auto rounded = BuildBarOutline(vertical, 0.2, 0.0, 0.6, 0.5, 8, radius);
+    CHECK(rounded.size() > plain.size(), "rounding adds fillet points");
+
+    // Every corner of the rectangle is cut back: no outline point comes
+    // closer to a corner than the fillet allows, and none leaves the box.
+    double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (const auto& p : plain) {
+        minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+        minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+    }
+    const Point2Dd corners[4] = {{minX, minY}, {maxX, minY}, {maxX, maxY}, {minX, maxY}};
+    double closestCorner = 1e9;
+    bool inBox = true;
+    for (const auto& p : rounded) {
+        for (const auto& c : corners) {
+            closestCorner = std::min(closestCorner, std::hypot(p.x - c.x, p.y - c.y));
+        }
+        if (p.x < minX - 0.01 || p.x > maxX + 0.01 ||
+            p.y < minY - 0.01 || p.y > maxY + 0.01) inBox = false;
+    }
+    // A quadratic fillet's nearest approach to the corner is radius/2 along
+    // the diagonal; anything clearly away from zero proves the cut.
+    CHECK(closestCorner > radius * 0.3, "rounded corners no longer touch the corner points");
+    CHECK(inBox, "the fillets stay inside the bar's bounding box");
+
+    // The trim points where the fillet meets the straight edges survive.
+    bool hasTrim = false;
+    for (const auto& p : rounded) {
+        if (Near(p.x, minX + radius, 0.5) && Near(p.y, minY, 0.5)) hasTrim = true;
+    }
+    CHECK(hasTrim, "the fillet joins the edge at the trim distance");
+
+    // A collapsed bar (animation start) degrades without blowing up.
+    const auto collapsed = BuildBarOutline(vertical, 0.2, 0.0, 0.6, 0.0, 8, radius);
+    CHECK(!collapsed.empty(), "a zero-height bar still yields an outline");
+
+    // Under Polar the same call rounds a ring sector's corners.
+    ChartPolarProjection polar;
+    polar.SetPlotArea(Rect2Dd(0.0, 0.0, 200.0, 200.0));
+    polar.SetInnerRadiusFraction(0.3);
+    const auto sector = BuildBarOutline(polar, 0.1, 0.2, 0.3, 0.9, 8, 6.0);
+    bool inPlot = !sector.empty();
+    for (const auto& p : sector) {
+        if (p.x < -0.5 || p.x > 200.5 || p.y < -0.5 || p.y > 200.5) inPlot = false;
+    }
+    CHECK(inPlot, "a rounded ring sector stays inside the plot");
 }
 
 static void TestTicksAndFormatting() {
@@ -652,6 +858,12 @@ int main() {
     TestLogAxis();
     TestZScoreAndPercentile();
     TestCategoryAxis();
+    TestCategoryPadding();
+    TestGroupedBarSpans();
+    TestStackedBarSpans();
+    TestPercentStackedBarSpans();
+    TestBarSpansRaggedAndGapped();
+    TestBarOutlineRounding();
     TestTicksAndFormatting();
     TestAxisSet();
     TestLayoutNegotiation();

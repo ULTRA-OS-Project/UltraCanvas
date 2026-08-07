@@ -157,6 +157,10 @@ namespace UltraCanvas {
                                                                    const std::vector<GradientStop>& stops) override;
         std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
                                                                    const std::vector<GradientStop>& stops) override;
+        std::shared_ptr<IPaintPattern> CreateImagePattern(const std::string& imagePath,
+                                                          const Rect2Dd& anchorRect,
+                                                          ImageFitMode fitMode,
+                                                          bool repeat) override;
         void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) override;
         void SetFillPaint(const Color& color) override;
         void SetStrokePaint(std::shared_ptr<IPaintPattern> pattern) override;
