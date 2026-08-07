@@ -51,6 +51,18 @@ UltraCanvasGLSurface(const GLSurfaceConfig& config,
 
 The class is non-copyable but movable.
 
+#### Positioning
+
+A non-zero `(x, y)` places the surface absolutely inside its parent — exactly like every other `UltraCanvasUIElement` built with an explicit origin — so the layout engine keeps it there instead of re-stacking it as an in-flow child. Pass `(0, 0)` (or use the size-only constructor) for a surface that a flex/grid parent should place and stretch.
+
+To move or resize a surface after construction, update its CSS box as well as its bounds; `SetBounds()` alone is undone by the next layout pass (hiding a sibling widget is enough to trigger one):
+
+```cpp
+surface->SetBounds(Rect2Df(x, y, w, h));            // bounds + FBO resize now
+surface->SetElementAbsolutePosition(Point2Df(x, y)); // what the layout pass re-applies
+surface->SetElementSize(Size2Df(w, h));
+```
+
 ### GLSurfaceConfig
 
 ```cpp
