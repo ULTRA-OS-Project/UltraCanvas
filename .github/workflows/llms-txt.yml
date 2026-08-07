@@ -4,9 +4,11 @@ name: llms.txt sync
 # with the markdown corpus. Fails when a docs change was committed without
 # rerunning scripts/generate_llms_txt.py.
 
+# Trigger policy matches build.yml: `pull_request` covers feature branches, so
+# listing them under `push` too would run this check twice per commit.
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
     paths:
       - 'Docs/**'
       - 'README.md'
@@ -26,6 +28,10 @@ on:
       - 'llms-full.txt'
       - '.github/workflows/llms-txt.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check:

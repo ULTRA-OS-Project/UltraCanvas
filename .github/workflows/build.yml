@@ -1,13 +1,28 @@
 name: Build
 
 on:
+  # Exactly one 3-OS build per commit. `pull_request` already covers feature
+  # branches (including 'claude/**') from the moment a PR opens, and rebuilds on
+  # every later push to it via the implicit `synchronize` event. Listing those
+  # branches under `push` as well double-built every commit — two full matrices,
+  # with macOS runners billed at 10x and Windows at 2x the Linux rate.
+  # To validate a branch that has no PR yet: open a draft PR, or run this
+  # workflow manually against the branch via workflow_dispatch.
   push:
-    # 'claude/**' lets feature branches validate the 3-OS build before merge;
-    # tighten or drop once the OpenGL work has landed on main.
-    branches: [main, 'claude/**']
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+# Supersede in-flight runs for the same branch when newer commits arrive, so a
+# rapid series of pushes to an open PR costs one build rather than one each.
+# The group key deliberately collapses to the same value for a branch's
+# `pull_request` runs (github.head_ref) and any `push`/dispatch run on it
+# (github.ref_name). Pushes to main are never cancelled — those runs produce the
+# signed, notarized release artifacts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -23,6 +38,16 @@ jobs:
           - os: macos-latest
             arch_label: arm64
             install_deps: |
+              # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
+              # Homebrew's tap-trust check prints a multi-line "not trusted"
+              # warning on *every* brew invocation while it is present. We install
+              # nothing from it, so drop the tap — that is Homebrew's own first
+              # suggestion, and it is preferable to `brew trust aws/tap` (grants
+              # blanket trust to a tap we never use) or
+              # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
+              # for taps we *do* use). Tolerate the tap being absent so a future
+              # runner image that drops it cannot fail this step.
+              brew untap aws/tap 2>/dev/null || true
               brew install cmake pkg-config
               brew install cairo pango harfbuzz vips glib freetype tinyxml2
               brew install libcdr librevenge
