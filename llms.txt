@@ -13,6 +13,7 @@
 ## Components and subsystems
 
 - [Bitmap Handling in GUI Programs](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/BitmapHandlingArchitecture.md): How modern GUI frameworks load, store, and draw raster images — and why.
+- [Circle Diagram Infographics — Investigation](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/CircleDiagramInfographicVariants.md): Related: `UltraCanvasCircularInfoGraphic` (sector-cell rings, implemented), `UltraCanvasCircularCharts` (family map), `UltraCanvasMindMap` (radial topic tree), `UltraCanvasNodeDiagram` (nodes + links),…
 - [UltraCanvas](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/README.md): A Modern Cross-Platform C++20 UI & Rendering Framework
 - [UltraCanvas Document File Format v2.0 (UCD v2)](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/UCD-FileFormat-v2.md): Status: Draft specification — reference for the v2 implementation of `UltraCanvas/Plugins/Documents/UltraCanvasDocument.`.
 - [UltraCanvasAdjacencyDiagram Documentation](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md): UltraCanvasAdjacencyDiagram is an architectural space-planning adjacency diagram. Rooms are drawn as area-proportional circles colored by their functional type (Public, Private, Service, Support, Circulation, or a…
