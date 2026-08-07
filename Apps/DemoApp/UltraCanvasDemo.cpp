@@ -1449,9 +1449,19 @@ namespace UltraCanvas {
                 .AddVariant("erdiagram", "Crow's Foot (physical schema)")
                 .AddVariant("erdiagram", "Relational (min,max + arrowheads)")
                 .AddVariant("erdiagram", "IDEF1X (key compartment, FK1/FK2)");
-    diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });
+    diagramBuilder.AddItem("sequencediagram", "Sequence Diagram",
+                               "UML sequence diagram: lifelines, execution bars, seven message "
+                               "forms, combined fragments and PlantUML/Mermaid export",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSequenceDiagramExamples(); },
+                               "DemoApp/UltraCanvasSequenceDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasSequenceDiagram.md")
+                .AddVariant("sequencediagram", "Card Game")
+                .AddVariant("sequencediagram", "User Login")
+                .AddVariant("sequencediagram", "Authentication")
+                .AddVariant("sequencediagram", "Online Shop (loop + alt)")
+                .AddVariant("sequencediagram", "Lifecycle (create/destroy)")
+                .AddVariant("sequencediagram", "UltraCanvas Event Flow");
     
       diagramBuilder.AddItem("classdiagram", "Class Diagram",
                                "UML class diagram: compartment boxes, seven relationship kinds, "
