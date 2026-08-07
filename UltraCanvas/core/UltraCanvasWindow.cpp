@@ -510,7 +510,10 @@ namespace UltraCanvas {
 
             auto tooltipCtx = UltraCanvasTooltipManager::Render(this);
             if (tooltipCtx) {
-                tooltipCtx->FlushToSurface(nativeSurface, UltraCanvasTooltipManager::GetTooltipPosition());
+                // CompositeToSurface (not FlushToSurface): the tooltip surface
+                // has transparent soft-shadow margins that must blend OVER the
+                // window content instead of overwriting it.
+                tooltipCtx->CompositeToSurface(nativeSurface, UltraCanvasTooltipManager::GetCompositePosition());
             }
 
             InvalidateWindowNative();

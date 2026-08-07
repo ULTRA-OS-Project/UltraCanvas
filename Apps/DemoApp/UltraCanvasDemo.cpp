@@ -590,6 +590,19 @@ namespace UltraCanvas {
                 .AddVariant("groupbox", "Checkable Group")
                 .AddVariant("groupbox", "Collapsible Group");
 
+        basicBuilder.AddItem("tooltip", "Tooltips",
+                             "Hover tooltips: plain text, inline markup and structured content",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTooltipExamples(); },
+                             "DemoApp/UltraCanvasTooltipExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTooltipManager.md")
+                .AddVariant("tooltip", "Plain Text")
+                .AddVariant("tooltip", "Inline Pango Markup")
+                .AddVariant("tooltip", "Title + Label/Value Table")
+                .AddVariant("tooltip", "Color Swatch Rows")
+                .AddVariant("tooltip", "Bullet List + Separator")
+                .AddVariant("tooltip", "Light/Custom Style Presets");
+
         basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTextInputExamples(); },

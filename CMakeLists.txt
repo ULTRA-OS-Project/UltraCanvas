@@ -151,6 +151,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp
             Apps/DemoApp/UltraCanvasGroupBoxExamples.cpp
+            Apps/DemoApp/UltraCanvasTooltipExamples.cpp
             Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp

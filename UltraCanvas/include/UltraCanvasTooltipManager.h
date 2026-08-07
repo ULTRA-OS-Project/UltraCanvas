@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasTooltipTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasWindow.h"
@@ -13,70 +14,10 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace UltraCanvas {
-
-// ===== TOOLTIP CONFIGURATION =====
-    struct TooltipStyle {
-        // Appearance
-        Color backgroundColor = Color(255, 255, 225, 240);  // Light yellow with transparency
-        Color borderColor = Color(118, 118, 118, 255);      // Gray border
-        Color textColor = Colors::Black;
-        Color shadowColor = Color(0, 0, 0, 64);
-
-        // Typography
-        std::string fontFamily = "Sans";
-        float fontSize = 11.0f;
-
-        // Layout
-        int paddingLeft = 6;
-        int paddingRight = 6;
-        int paddingTop = 4;
-        int paddingBottom = 4;
-        int maxWidth = 450;
-        int borderWidth = 1;
-        float cornerRadius = 3.0f;
-
-        // Shadow
-        bool hasShadow = true;
-        Point2Di shadowOffset = Point2Di(2, 2);
-
-        // Behavior
-        unsigned int showDelay = 300;        // milliseconds to wait before showing
-        unsigned int hideDelay = 200;        // milliseconds to wait before hiding
-        int offsetX = 10;              // Offset from cursor
-        int offsetY = 10;
-        bool followCursor = false;     // Whether tooltip follows mouse movement
-
-        TooltipStyle() = default;
-
-        bool operator==(const TooltipStyle& other) const {
-            return backgroundColor == other.backgroundColor
-                && borderColor == other.borderColor
-                && textColor == other.textColor
-                && shadowColor == other.shadowColor
-                && fontFamily == other.fontFamily
-                && fontSize == other.fontSize
-                && paddingLeft == other.paddingLeft
-                && paddingRight == other.paddingRight
-                && paddingTop == other.paddingTop
-                && paddingBottom == other.paddingBottom
-                && maxWidth == other.maxWidth
-                && borderWidth == other.borderWidth
-                && cornerRadius == other.cornerRadius
-                && hasShadow == other.hasShadow
-                && shadowOffset == other.shadowOffset
-                && showDelay == other.showDelay
-                && hideDelay == other.hideDelay
-                && offsetX == other.offsetX
-                && offsetY == other.offsetY
-                && followCursor == other.followCursor;
-        }
-
-        bool operator!=(const TooltipStyle& other) const {
-            return !(*this == other);
-        }
-    };
+    // TooltipStyle and TooltipContent live in UltraCanvasTooltipTypes.h
 
 // ===== TOOLTIP MANAGER CLASS =====
     class UltraCanvasTooltipManager {
@@ -98,7 +39,6 @@ namespace UltraCanvas {
 
         // Style and layout
         static TooltipStyle style;
-        static std::unique_ptr<ITextLayout> textLayout;
 
         // Global state
         static bool enabled;
@@ -106,12 +46,22 @@ namespace UltraCanvas {
     public:
         // ===== CORE FUNCTIONALITY =====
 
-        // Show tooltip for an element
+        // Show a plain-text tooltip (the text may contain Pango markup for
+        // inline styling, e.g. "<b>bold</b>")
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
 
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string& text, const Point2Di& position) {
             TooltipStyle style;
             UpdateAndShowTooltip(win, text, position, style);
+        }
+
+        // Show a structured tooltip (title, label/value rows, bullets, …).
+        // The explicit-style overload wins over content.styleOverride.
+        static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position, const TooltipStyle& newStyle);
+
+        static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {
+            UpdateAndShowTooltip(win, content, position,
+                                 content.styleOverride ? *content.styleOverride : TooltipStyle());
         }
 
         // Hide current tooltip
@@ -123,6 +73,11 @@ namespace UltraCanvas {
         static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position) {
             TooltipStyle style;
             UpdateAndShowTooltipImmediately(win, text, position, style);
+        }
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position, const TooltipStyle& newStyle);
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {
+            UpdateAndShowTooltipImmediately(win, content, position,
+                                            content.styleOverride ? *content.styleOverride : TooltipStyle());
         }
 
 
@@ -164,6 +119,10 @@ namespace UltraCanvas {
         static Point2Di GetTooltipPosition() {
             return tooltipRect.TopLeft();
         }
+
+        // Top-left corner of the rendered surface (tooltip position minus the
+        // soft-shadow margins). Use this when compositing the Render() result.
+        static Point2Di GetCompositePosition();
 
         static Size2Di GetTooltipSize() {
             return tooltipRect.Size();
