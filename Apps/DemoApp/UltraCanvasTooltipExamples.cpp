@@ -85,15 +85,18 @@ namespace UltraCanvas {
             auto btn = CreateButton("ttTable", colX[0], rowY, btnW, btnH, "Title + table");
             TooltipContent content;
             content.AddTitle("Batch S10")
-                   .AddRow("temperature", "209.79 °C")
-                   .AddRow("pressure", "2.26551 bar")
-                   .AddRow("flow", "53.1416 l/min")
-                   .AddRow("vibration", "0.279816 mm/s")
-                   .AddRow("yield", "95.2212 %");
+                   .AddRow("Temperature", "209.79", "°C")
+                   .AddRow("Pressure", "2.26551", "bar")
+                   .AddRow("Flow", "53.1416", "l/min")
+                   .AddRow("Vibration", "0.279816", "mm/s")
+                   .AddRow("Yield", "95.2212", "%")
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Left);
             btn->SetTooltipContent(content);
             mainContainer->AddChild(btn);
             mainContainer->AddChild(TooltipCaption("ttTableCap", colX[0], rowY + btnH + 4, btnW,
-                                                   "AddTitle() + AddRow(label, value) —\naligned columns, right-aligned values"));
+                                                   "AddRow(label, value, unit) —\nright, right, left aligned"));
         }
 
         // ===== 5. STRUCTURED: COLOR SWATCHES (chart series style) =====
@@ -234,6 +237,47 @@ namespace UltraCanvas {
             mainContainer->AddChild(btn);
             mainContainer->AddChild(TooltipCaption("ttMixedColsCap", colX[2], rowY + btnH + 4, btnW,
                                                    "2- and 3-column rows are separate\ntables, each aligned on its own"));
+        }
+        rowY += btnH + 55.0f;
+
+        // ===== 13. DECIMAL (COMMA) ALIGNMENT =====
+        {
+            auto btn = CreateButton("ttDecimal", colX[0], rowY, btnW, btnH, "Decimal alignment");
+            TooltipContent content;
+            content.AddTitle("Batch S10")
+                   .AddRow("Temperature", "209.79", "°C")
+                   .AddRow("Pressure", "2.26551", "bar")
+                   .AddRow("Flow", "53.1416", "l/min")
+                   .AddRow("Vibration", "0.279816", "mm/s")
+                   .AddRow("Yield", "95.2212", "%")
+                   // Same data as "Title + table", but the numbers line up on
+                   // the decimal point instead of on their right edge.
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Decimal,
+                                       TooltipColumnAlign::Left);
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttDecimalCap", colX[0], rowY + btnH + 4, btnW,
+                                                   "TooltipColumnAlign::Decimal —\nnumbers aligned on the separator"));
+        }
+
+        // ===== 14. DECIMAL WITH MIXED PRECISION AND SEPARATORS =====
+        {
+            auto btn = CreateButton("ttDecimalMixed", colX[1], rowY, btnW, btnH, "Decimal, mixed");
+            TooltipContent content;
+            content.AddTitle("Ledger")
+                   .AddRow("Opening", "1,204.50", "€")
+                   .AddRow("Fees", "-17.05", "€")
+                   .AddRow("Interest", "0.9", "€")
+                   .AddRow("Adjustment", "12", "€")      // no separator: anchors at its end
+                   .AddRow("Closing", "1,200.35", "€")
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Decimal,
+                                       TooltipColumnAlign::Left);
+            btn->SetTooltipContent(content);
+            mainContainer->AddChild(btn);
+            mainContainer->AddChild(TooltipCaption("ttDecimalMixedCap", colX[1], rowY + btnH + 4, btnW,
+                                                   "Mixed precision, thousands separators\nand integers share one anchor"));
         }
         rowY += btnH + 55.0f;
 

@@ -22,7 +22,15 @@ namespace UltraCanvas {
     enum class TooltipColumnAlign {
         Left,
         Center,
-        Right
+        Right,
+        // Numbers line up on their decimal separator instead of their edge.
+        // The anchor is the last '.' or ',' followed by a digit, so both
+        // "1,204.50" and "1.204,50" align correctly; a cell without a
+        // separator anchors at its end, so integers meet the separator
+        // column. The whole column's anchor is the widest integer part
+        // found in it, and the column reserves room for the widest
+        // fractional part, so no cell has to be clipped to stay aligned.
+        Decimal
     };
 
 // ===== TOOLTIP CONFIGURATION =====

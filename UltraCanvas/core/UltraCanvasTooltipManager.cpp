@@ -46,6 +46,8 @@ namespace UltraCanvas {
         // Row cells, left to right; only the first `columns` entries are set
         std::array<std::unique_ptr<ITextLayout>, kMaxRowColumns> cells;
         std::array<int, kMaxRowColumns> cellWidth = {0, 0, 0};   // drawn width per cell
+        // Width of the cell text up to its decimal anchor; Decimal columns only
+        std::array<int, kMaxRowColumns> cellPrefixWidth = {0, 0, 0};
         int columns = 0;                           // Row column count (2 or 3)
         Color swatch = Color(0, 0, 0, 0);
         int y = 0;
@@ -65,6 +67,9 @@ namespace UltraCanvas {
         TooltipColumnAlign::Left, TooltipColumnAlign::Right};
     static std::array<TooltipColumnAlign, 3> rowAlign3 = {
         TooltipColumnAlign::Left, TooltipColumnAlign::Right, TooltipColumnAlign::Right};
+    // Decimal columns: the column-wide anchor, i.e. the widest integer part
+    static std::array<int, 2> rowPrefix2 = {0, 0};
+    static std::array<int, 3> rowPrefix3 = {0, 0, 0};
 
     // Row swatch and bullet metrics
     static constexpr int kSwatchSize = 9;
@@ -133,20 +138,47 @@ namespace UltraCanvas {
         }
     }
 
+    // A Decimal cell that had to be clipped can no longer keep its anchor, so
+    // it falls back to Right — decimal alignment is a refinement of it.
     static TextAlignment ToTextAlignment(TooltipColumnAlign align) {
         switch (align) {
-            case TooltipColumnAlign::Center: return TextAlignment::Center;
-            case TooltipColumnAlign::Right:  return TextAlignment::Right;
+            case TooltipColumnAlign::Center:  return TextAlignment::Center;
+            case TooltipColumnAlign::Right:
+            case TooltipColumnAlign::Decimal: return TextAlignment::Right;
             case TooltipColumnAlign::Left:
-            default:                         return TextAlignment::Left;
+            default:                          return TextAlignment::Left;
         }
     }
 
-    // x of a cell's text inside its column box
-    static int AlignedCellX(int boxX, int boxWidth, int cellWidth, TooltipColumnAlign align) {
+    // Byte offset of a number's decimal separator: the last '.' or ',' that is
+    // followed by a digit, so a trailing unit ("1.5 sec.") cannot steal the
+    // anchor and both "1,204.50" and "1.204,50" resolve to their real comma.
+    // Returns the string length when there is no separator, which anchors an
+    // integer at its end — right where the separator column sits.
+    static size_t DecimalAnchor(const std::string& s) {
+        size_t anchor = s.size();
+        for (size_t i = 0; i + 1 < s.size(); ++i) {
+            if ((s[i] == '.' || s[i] == ',') && s[i + 1] >= '0' && s[i + 1] <= '9') {
+                anchor = i;
+            }
+        }
+        return anchor;
+    }
+
+    // x of a cell's text inside its column box. For Decimal, the cell shifts
+    // right by however much narrower its integer part is than the column's
+    // widest one, which puts every separator on the same pixel column.
+    static int AlignedCellX(int boxX, int boxWidth, int cellWidth,
+                            int cellPrefixWidth, int columnPrefixWidth,
+                            TooltipColumnAlign align) {
         switch (align) {
             case TooltipColumnAlign::Center: return boxX + (boxWidth - cellWidth) / 2;
             case TooltipColumnAlign::Right:  return boxX + boxWidth - cellWidth;
+            case TooltipColumnAlign::Decimal: {
+                const int room = std::max(0, boxWidth - cellWidth);
+                const int shift = std::max(0, columnPrefixWidth - cellPrefixWidth);
+                return boxX + std::min(shift, room);
+            }
             case TooltipColumnAlign::Left:
             default:                         return boxX;
         }
@@ -415,8 +447,10 @@ namespace UltraCanvas {
                     }
 
                     const int n = bl.columns;
-                    const int* colWidth = (n == 3) ? rowGrid3.data() : rowGrid2.data();
-                    const TooltipColumnAlign* align = (n == 3) ? rowAlign3.data() : rowAlign2.data();
+                    const bool wide = (n == 3);
+                    const int* colWidth = wide ? rowGrid3.data() : rowGrid2.data();
+                    const int* colPrefix = wide ? rowPrefix3.data() : rowPrefix2.data();
+                    const TooltipColumnAlign* align = wide ? rowAlign3.data() : rowAlign2.data();
                     int colX[kMaxRowColumns] = {0, 0, 0};
                     ComputeColumnOrigins(colWidth, n, contentWidth, rowLabelIndent,
                                          style.columnGap, colX);
@@ -425,7 +459,8 @@ namespace UltraCanvas {
                         if (!bl.cells[i]) continue;
                         // Labels are muted, the value columns use the main text color
                         renderCtx->SetTextPaint(i == 0 ? style.secondaryTextColor : style.textColor);
-                        int x = AlignedCellX(colX[i], colWidth[i], bl.cellWidth[i], align[i]);
+                        int x = AlignedCellX(colX[i], colWidth[i], bl.cellWidth[i],
+                                             bl.cellPrefixWidth[i], colPrefix[i], align[i]);
                         renderCtx->DrawTextLayout(*bl.cells[i], Point2Dd(baseX + x, baseY + bl.y));
                     }
                     break;
@@ -466,6 +501,8 @@ namespace UltraCanvas {
         rowLabelIndent = 0;
         rowGrid2 = {0, 0};
         rowGrid3 = {0, 0, 0};
+        rowPrefix2 = {0, 0};
+        rowPrefix3 = {0, 0, 0};
         rowAlign2 = currentContent.columnAlign2Override
             ? *currentContent.columnAlign2Override : style.columnAlign2;
         rowAlign3 = currentContent.columnAlign3Override
@@ -493,6 +530,9 @@ namespace UltraCanvas {
         int maxBlockWidth = 0;
         std::array<int, 2> natural2 = {0, 0};
         std::array<int, 3> natural3 = {0, 0, 0};
+        // Decimal columns split their measurement either side of the anchor
+        std::array<int, 2> prefix2 = {0, 0}, suffix2 = {0, 0};
+        std::array<int, 3> prefix3 = {0, 0, 0}, suffix3 = {0, 0, 0};
         bool anyRow2 = false, anyRow3 = false;
         for (const auto& block : currentContent.blocks) {
             TooltipBlockLayout bl;
@@ -517,13 +557,33 @@ namespace UltraCanvas {
                     bl.columns = std::clamp(block.columns, 2, kMaxRowColumns);
                     const std::string* cellText[kMaxRowColumns] = {
                         &block.text, &block.value, &block.value2};
-                    int* natural = (bl.columns == 3) ? natural3.data() : natural2.data();
-                    if (bl.columns == 3) anyRow3 = true; else anyRow2 = true;
+                    const bool wide = (bl.columns == 3);
+                    int* natural = wide ? natural3.data() : natural2.data();
+                    int* prefix = wide ? prefix3.data() : prefix2.data();
+                    int* suffix = wide ? suffix3.data() : suffix2.data();
+                    const TooltipColumnAlign* align = wide ? rowAlign3.data() : rowAlign2.data();
+                    if (wide) anyRow3 = true; else anyRow2 = true;
                     for (int i = 0; i < bl.columns; ++i) {
                         bl.cells[i] = ctx->CreateTextLayout(
                             SpanMarkup(style, style.fontSize, false, EscapeMarkup(*cellText[i])), true);
-                        natural[i] = std::max(natural[i],
-                            static_cast<int>(bl.cells[i]->GetLayoutSize().width));
+                        const int w = static_cast<int>(bl.cells[i]->GetLayoutSize().width);
+                        natural[i] = std::max(natural[i], w);
+
+                        if (align[i] != TooltipColumnAlign::Decimal) continue;
+                        // Measure the integer part on its own; the column then
+                        // reserves the widest integer part plus the widest
+                        // fractional part, which is wider than any single cell.
+                        const size_t anchor = DecimalAnchor(*cellText[i]);
+                        int pw = 0;
+                        if (anchor > 0) {
+                            auto head = ctx->CreateTextLayout(
+                                SpanMarkup(style, style.fontSize, false,
+                                           EscapeMarkup(cellText[i]->substr(0, anchor))), true);
+                            pw = std::min(w, static_cast<int>(head->GetLayoutSize().width));
+                        }
+                        bl.cellPrefixWidth[i] = pw;
+                        prefix[i] = std::max(prefix[i], pw);
+                        suffix[i] = std::max(suffix[i], w - pw);
                     }
                     break;
                 }
@@ -532,6 +592,21 @@ namespace UltraCanvas {
             }
             blockLayouts.push_back(std::move(bl));
         }
+
+        // A Decimal column has to hold the widest integer part and the widest
+        // fraction at once, which no single cell need be that wide.
+        for (int i = 0; i < 2; ++i) {
+            if (rowAlign2[i] == TooltipColumnAlign::Decimal) {
+                natural2[i] = std::max(natural2[i], prefix2[i] + suffix2[i]);
+            }
+        }
+        for (int i = 0; i < 3; ++i) {
+            if (rowAlign3[i] == TooltipColumnAlign::Decimal) {
+                natural3[i] = std::max(natural3[i], prefix3[i] + suffix3[i]);
+            }
+        }
+        rowPrefix2 = prefix2;
+        rowPrefix3 = prefix3;
 
         // Column widths per grid, and the width each grid needs. The floor on
         // the available space keeps a cell from collapsing to zero width when
