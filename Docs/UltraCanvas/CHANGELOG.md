@@ -1,3 +1,23 @@
+#### 2026-08-07 *0.3.29*
+- **UltraCanvasSequenceDiagram** *(1.0.0)*: new UML 2 sequence diagram
+  feature, layered like the class diagram. `UltraCanvasSequenceModel` is the
+  UI-free interaction model — lifelines (object / actor / boundary / control /
+  entity / database heads), the seven message forms (sync, async, return,
+  create, destroy, lost, found, plus self messages), combined fragments
+  (loop / alt / opt / par / break / critical) with guarded operands, and
+  anchored notes. Execution bars are computed from the message order
+  (`ComputeActivations`), message numbers sequentially or hierarchically
+  Visual-Paradigm style (`ComputeMessageNumbers`), and `Validate()` diagnoses
+  dangling endpoints, lifecycle misuse, unmatched returns and fragments that
+  cross without nesting. `SequenceTextExport` writes PlantUML and Mermaid,
+  including activations, fragments, notes and inline create declarations.
+  The rendering element solves lifeline spacing from head and label widths,
+  attaches arrows to the deepest execution bar, drops created heads onto
+  their create row, and offers six themes, zoom/pan/fit, hover + selection
+  callbacks, an optional "sd" frame and foot boxes. Six sample models —
+  among them the framework's own event pipeline — drive the new DemoApp tab;
+  unit tests in `Tests/SequenceModelTest.cpp` (target `SequenceModelTest`).
+
 #### 2026-08-06 *0.3.28*
 - **UltraCanvasFilerWidget** *(1.9.0)*: the inline rename editor is now a real
   `UltraCanvasTextInput` overlaid on the item's name instead of a hand-drawn

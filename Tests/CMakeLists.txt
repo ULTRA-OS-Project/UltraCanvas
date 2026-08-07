@@ -546,6 +546,28 @@ set_target_properties(UMLModelTest PROPERTIES
 add_test(NAME UMLModelTest COMMAND UMLModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: UMLModelTest")
+
+# ===== SEQUENCE MODEL TEST =====
+# Unit tests for the sequence diagram model: activation computation, message
+# numbering, fragment/note bookkeeping, validation and PlantUML/Mermaid
+# export. UI-free.
+message(STATUS "  Building SequenceModelTest...")
+add_executable(SequenceModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SequenceModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasSequenceModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasSequenceTextExport.cpp
+)
+target_include_directories(SequenceModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SequenceModelTest PRIVATE cxx_std_20)
+set_target_properties(SequenceModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SequenceModelTest COMMAND SequenceModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SequenceModelTest")
+
 # ===== REQUIREMENT MODEL TEST =====
 # Unit tests for the SysML requirement model: endpoint semantics, containment
 # cycle detection, hierarchical id assignment, derived-element compartments,
