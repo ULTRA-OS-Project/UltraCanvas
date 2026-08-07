@@ -673,6 +673,7 @@ add_executable(ChartEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
 )

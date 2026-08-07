@@ -79,7 +79,122 @@ void UltraCanvasChartEngineElement::SetLegendEntries(const std::vector<ChartLege
 
 void UltraCanvasChartEngineElement::MarkEngineDirty(ChartDirty flags) {
     pendingDirty |= flags;
+    if (animateOnDataChange && HasDirty(flags, ChartDirty::Data)) {
+        StartEngineAnimation(animateOnDataDuration);
+    }
     RequestRedraw();
+}
+
+// =============================================================================
+// ANIMATION DRIVER
+// =============================================================================
+
+void UltraCanvasChartEngineElement::StartEngineAnimation(float durationSeconds) {
+    animationDuration = std::max(0.05f, durationSeconds);
+    StartAnimation();                  // base class stamps the start time
+    engineAnimating = true;
+    RequestRedraw();
+}
+
+void UltraCanvasChartEngineElement::SetAnimateOnDataChange(bool enable,
+                                                           float durationSeconds) {
+    animateOnDataChange = enable;
+    animateOnDataDuration = durationSeconds;
+}
+
+// =============================================================================
+// HIT REGIONS AND TOOLTIPS
+// =============================================================================
+
+void UltraCanvasChartEngineElement::ClearHitRegions() {
+    hitRegions.clear();
+}
+
+void UltraCanvasChartEngineElement::AddHitRegion(const Rect2Dd& bounds, int64_t regionId,
+                                                 const std::string& tooltip) {
+    ChartHitRegion region;
+    region.bounds = bounds;
+    region.id = regionId;
+    region.tooltip = tooltip;
+    hitRegions.push_back(std::move(region));
+}
+
+void UltraCanvasChartEngineElement::AddHitRegion(const std::vector<Point2Dd>& polygon,
+                                                 int64_t regionId,
+                                                 const std::string& tooltip) {
+    if (polygon.size() < 3) return;
+    ChartHitRegion region;
+    region.polygon = polygon;
+    double minX = polygon[0].x, maxX = polygon[0].x;
+    double minY = polygon[0].y, maxY = polygon[0].y;
+    for (const Point2Dd& p : polygon) {
+        minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+        minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+    }
+    region.bounds = Rect2Dd(minX, minY, maxX - minX, maxY - minY);
+    region.id = regionId;
+    region.tooltip = tooltip;
+    hitRegions.push_back(std::move(region));
+}
+
+const UltraCanvasChartEngineElement::ChartHitRegion*
+UltraCanvasChartEngineElement::HitTestRegions(const Point2Dd& point) const {
+    // Last added wins: regions arrive in draw order, so the topmost mark of an
+    // overlap is the one the pointer means.
+    for (auto it = hitRegions.rbegin(); it != hitRegions.rend(); ++it) {
+        const ChartHitRegion& region = *it;
+        if (point.x < region.bounds.x || point.x > region.bounds.x + region.bounds.width ||
+            point.y < region.bounds.y || point.y > region.bounds.y + region.bounds.height) {
+            continue;
+        }
+        if (region.polygon.empty()) return &region;
+
+        // Even-odd ray cast for polygonal regions.
+        bool inside = false;
+        const size_t n = region.polygon.size();
+        for (size_t i = 0, j = n - 1; i < n; j = i++) {
+            const Point2Dd& a = region.polygon[i];
+            const Point2Dd& b = region.polygon[j];
+            if (((a.y > point.y) != (b.y > point.y)) &&
+                (point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x)) {
+                inside = !inside;
+            }
+        }
+        if (inside) return &region;
+    }
+    return nullptr;
+}
+
+bool UltraCanvasChartEngineElement::OnEvent(const UCEvent& event) {
+    if (event.type == UCEventType::MouseMove) {
+        const ChartHitRegion* hit =
+            HitTestRegions(Point2Dd(event.pointer.x, event.pointer.y));
+        const int64_t id = hit ? hit->id : -1;
+        if (id != hoveredRegionId) {
+            hoveredRegionId = id;
+            OnHitRegionHoverChanged(id);
+            MarkEngineDirty(ChartDirty::Hover);   // repaint only - the frozen
+        }                                         // frame and label plan stand
+        if (enableTooltips) {
+            if (hit && !hit->tooltip.empty()) {
+                const Point2Di mousePos(static_cast<int>(event.pointer.x),
+                                        static_cast<int>(event.pointer.y));
+                UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                    this->window, hit->tooltip, MapFromLocal(mousePos, nullptr));
+                isTooltipActive = true;
+            } else if (isTooltipActive) {
+                HideTooltip();
+            }
+        }
+    } else if (event.type == UCEventType::MouseLeave) {
+        if (hoveredRegionId != -1) {
+            hoveredRegionId = -1;
+            OnHitRegionHoverChanged(-1);
+            MarkEngineDirty(ChartDirty::Hover);
+        }
+        if (isTooltipActive) HideTooltip();
+    }
+    return UltraCanvasChartElementBase::OnEvent(event);
 }
 
 // =============================================================================
@@ -328,15 +443,30 @@ void UltraCanvasChartEngineElement::Render(IRenderContext* ctx, const Rect2Df&) 
     EnsureEngineLayout(ctx);
     EnsureLabelPlan(ctx);
 
+    // The animation driver advances the frame's progress; content scales its
+    // geometry by it. Ease-out cubic: fast start, settled landing.
+    if (engineAnimating) {
+        const double t = GetAnimationProgress();
+        frame.animationProgress = 1.0 - std::pow(1.0 - t, 3.0);
+        if (t >= 1.0) {
+            engineAnimating = false;
+            frame.animationProgress = 1.0;
+        }
+    } else {
+        frame.animationProgress = 1.0;
+    }
+
     // Phase 1 - everything under the chart.
     ctx->PushState();
     RenderPhaseUnder(ctx);
     ctx->PopState();
 
     // Phase 2 - the chart itself, clipped to the plot area so it cannot paint
-    // over the axes, tick labels or legend.
+    // over the axes, tick labels or legend. Hit regions are rebuilt by the
+    // content on every pass, so stale geometry can never be hovered.
     ctx->PushState();
     ctx->ClipRect(frame.plotArea);
+    ClearHitRegions();
     RenderChartContent(ctx, frame);
     ctx->PopState();
 
@@ -344,12 +474,15 @@ void UltraCanvasChartEngineElement::Render(IRenderContext* ctx, const Rect2Df&) 
     ctx->PushState();
     RenderPhaseOver(ctx);
     ctx->PopState();
+
+    if (engineAnimating) RequestRedraw();
 }
 
 void UltraCanvasChartEngineElement::RenderChart(IRenderContext* ctx) {
     // Legacy entry point from the base class; the engine path clips and routes.
     ctx->PushState();
     ctx->ClipRect(frame.plotArea);
+    ClearHitRegions();
     RenderChartContent(ctx, frame);
     ctx->PopState();
 }
@@ -558,13 +691,84 @@ void UltraCanvasChartEngineElement::RenderEngineLegend(IRenderContext* ctx) {
     const double rowHeight = ctx->GetTextLineHeight("Ag") + 6.0;
     double y = legendRect.y + pad;
     for (const ChartLegendEntry& entry : legendEntries) {
-        ctx->SetFillPaint(entry.color);
-        ctx->FillRoundedRectangle(
-            Rect2Dd(legendRect.x + pad, y + 1.0, swatch, rowHeight - 8.0), 2.0);
+        const Rect2Dd box(legendRect.x + pad, y + 1.0, swatch, rowHeight - 8.0);
+        RenderLegendSwatch(ctx, box, entry);
         ctx->SetTextPaint(legendTextColor);
         ctx->DrawText(entry.label,
                       Point2Dd(legendRect.x + pad + swatch + 6.0, y));
         y += rowHeight;
+    }
+}
+
+void UltraCanvasChartEngineElement::RenderLegendSwatch(IRenderContext* ctx,
+                                                       const Rect2Dd& box,
+                                                       const ChartLegendEntry& entry) {
+    switch (entry.swatch) {
+    case ChartLegendSwatch::Gradient: {
+        Color light = entry.color;
+        light.r = static_cast<uint8_t>(std::min(255, light.r + 70));
+        light.g = static_cast<uint8_t>(std::min(255, light.g + 70));
+        light.b = static_cast<uint8_t>(std::min(255, light.b + 70));
+        auto gradient = ctx->CreateLinearGradientPattern(
+            box.x, box.y, box.x, box.y + box.height,
+            {GradientStop(0.0, light), GradientStop(1.0, entry.color)});
+        if (gradient) {
+            ctx->SetFillPaint(gradient);
+            ctx->FillRoundedRectangle(box, 2.0);
+        } else {
+            ctx->SetFillPaint(entry.color);
+            ctx->FillRoundedRectangle(box, 2.0);
+        }
+        break;
+    }
+    case ChartLegendSwatch::Outline: {
+        Color ghost = entry.color;
+        ghost.a = 36;
+        ctx->SetFillPaint(ghost);
+        ctx->FillRoundedRectangle(box, 2.0);
+        ctx->SetStrokePaint(entry.color);
+        ctx->SetStrokeWidth(1.5f);
+        ctx->DrawRoundedRectangle(box, 2.0);
+        break;
+    }
+    case ChartLegendSwatch::Hatched: {
+        Color background = entry.color;
+        background.r = static_cast<uint8_t>(std::min(255, background.r + 90));
+        background.g = static_cast<uint8_t>(std::min(255, background.g + 90));
+        background.b = static_cast<uint8_t>(std::min(255, background.b + 90));
+        ctx->SetFillPaint(background);
+        ctx->FillRoundedRectangle(box, 2.0);
+        ctx->PushState();
+        ctx->ClipRect(box);
+        ctx->SetStrokePaint(entry.color);
+        ctx->SetStrokeWidth(1.0f);
+        for (double offset = 0.0; offset < box.width + box.height; offset += 4.0) {
+            ctx->DrawLine(Point2Dd(box.x + offset, box.y),
+                          Point2Dd(box.x + offset - box.height, box.y + box.height));
+        }
+        ctx->PopState();
+        break;
+    }
+    case ChartLegendSwatch::Image: {
+        if (!entry.imagePath.empty()) {
+            ctx->PushState();
+            ctx->ClipRect(box);
+            ctx->DrawImage(entry.imagePath, box, ImageFitMode::Cover);
+            ctx->PopState();
+            ctx->SetStrokePaint(Color(150, 150, 150, 255));
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRoundedRectangle(box, 2.0);
+        } else {
+            ctx->SetFillPaint(entry.color);
+            ctx->FillRoundedRectangle(box, 2.0);
+        }
+        break;
+    }
+    case ChartLegendSwatch::Solid:
+    default:
+        ctx->SetFillPaint(entry.color);
+        ctx->FillRoundedRectangle(box, 2.0);
+        break;
     }
 }
 

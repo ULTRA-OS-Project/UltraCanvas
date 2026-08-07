@@ -3,14 +3,24 @@
 // every bar arrangement and fill treatment. Each tab isolates one aspect -
 // vertical vs horizontal projection, clustered series, stacked and 100%
 // stacked, the fill styles, and bars filled with graphics (texture and
-// pictogram). The engine supplies axes, grid, layout, legend and the solved
-// value-label plan; this file adds only the bar content contract.
-// Version: 1.0.0
-// Last Modified: 2026-08-06
+// pictogram). The engine supplies axes, grid, layout, legend, the solved
+// value-label plan, hover hit-testing with tooltips, and the entrance
+// animation; this file adds only the bar content contract.
+// Version: 1.1.0
+// Last Modified: 2026-08-07
 // Author: UltraCanvas Framework
+//
+// Changelog:
+//   v1.1.0 (2026-08-07):
+//     - Moved onto the engine services added for the bar family: Category
+//       scale slot padding, ObserveBarSeries/BuildBarSpans geometry, engine
+//       hit regions with tooltips, the animation driver, legend swatch styles
+//       and image paint patterns (texture fills now survive the Polar
+//       projection, which the orientation dropdowns now offer).
 
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasLabel.h"
@@ -18,6 +28,7 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasButton.h"
 #include "CSSLayout/CSSLayout.h"
 #include <algorithm>
 #include <cmath>
@@ -31,7 +42,9 @@ namespace {
 // =============================================================================
 // THE BAR CHART. One engine content class covers single-series, clustered and
 // (100%) stacked bars under every projection; the fill style only changes how
-// a bar's quad is painted, never where it is.
+// a bar's quad is painted, never where it is. Geometry comes from the engine's
+// BuildBarSpans, hover and tooltips from its hit regions, growth from its
+// animation driver.
 // =============================================================================
 
 struct DemoBarSeries {
@@ -40,39 +53,39 @@ struct DemoBarSeries {
     std::vector<double> values;      // one value per category
 };
 
-enum class BarArrangement { Grouped, Stacked, PercentStacked };
-
 enum class BarFillStyle { Solid, Gradient, Rounded, Outline, Hatched, Texture, Pictogram };
 
 class EngineBarChart : public UltraCanvasChartEngineElement {
 public:
     EngineBarChart(const std::string& id, int x, int y, int w, int h)
-        : UltraCanvasChartEngineElement(id, x, y, w, h) {}
+        : UltraCanvasChartEngineElement(id, x, y, w, h) {
+        SetAnimateOnDataChange(true, 0.7f);   // bars grow in on every data change
+    }
 
     void SetData(std::vector<std::string> categories, std::vector<DemoBarSeries> seriesList) {
         categoryNames = std::move(categories);
         series = std::move(seriesList);
-        std::vector<ChartLegendEntry> legend;
-        for (const auto& s : series) legend.push_back({s.name, s.color});
-        SetLegendEntries(legend);
         SetShowLegend(series.size() > 1);
+        RefreshLegend();
         MarkEngineDirty(ChartDirty::Data);
     }
 
-    void SetArrangement(BarArrangement a) {
+    void SetArrangement(ChartBarArrangement a) {
         arrangement = a;                       // the value axis range changes
         MarkEngineDirty(ChartDirty::Data);
     }
-    BarArrangement GetArrangement() const { return arrangement; }
+    ChartBarArrangement GetArrangement() const { return arrangement; }
 
     void SetFillStyle(BarFillStyle style) {
         fillStyle = style;
+        RefreshLegend();                       // the swatch mirrors the fill
         MarkEngineDirty(ChartDirty::Style);
     }
 
     // Image used by the Texture and Pictogram fill styles.
     void SetFillImage(const std::string& path) {
         fillImagePath = path;
+        RefreshLegend();
         MarkEngineDirty(ChartDirty::Style);
     }
 
@@ -95,74 +108,66 @@ public:
 
         ChartAxis value("value");
         value.side = horizontal ? ChartAxisSide::Bottom : ChartAxisSide::Left;
-        value.unitPrefix = valuePrefix;
-        value.unitSuffix = valueSuffix;
-        value.compactNumbers = compactValues;
-        if (arrangement == BarArrangement::PercentStacked) {
-            value.SetRange(0.0, 100.0);
-            value.unitPrefix.clear();
+        if (arrangement == ChartBarArrangement::PercentStacked) {
             value.unitSuffix = "%";
-            value.compactNumbers = false;
         } else {
-            value.Observe(0.0);                // bars grow from zero
-            if (arrangement == BarArrangement::Stacked) {
-                for (size_t c = 0; c < categoryNames.size(); ++c) {
-                    value.Observe(CategoryTotal(c));
-                }
-            } else {
-                for (const auto& s : series) value.Observe(s.values);
-            }
+            value.unitPrefix = valuePrefix;
+            value.unitSuffix = valueSuffix;
+            value.compactNumbers = compactValues;
         }
+        // The engine derives the range from the arrangement: every value for
+        // grouped bars, the signed stack totals for stacked, percent extremes
+        // for 100% stacked.
+        ObserveBarSeries(value, SeriesValues(), LayoutOptions());
         axes.Add(value);
 
-        // Padded linear axis with one explicit tick per category slot: the
-        // engine's Category scale spans exactly 0..n-1, which would clip the
-        // outer bars, so every bar chart hand-rolls this instead.
+        // A padded Category axis: one slot per category, the outer slots as
+        // wide as the inner ones, one tick per slot - no hand-rolled ranges.
         ChartAxis category("category");
+        category.scale = ChartScale::Category;
         category.side = horizontal ? ChartAxisSide::Left : ChartAxisSide::Bottom;
-        category.SetRange(-0.6, static_cast<double>(categoryNames.size()) - 0.4);
-        for (size_t i = 0; i < categoryNames.size(); ++i) {
-            category.tickValues.push_back(static_cast<double>(i));
-        }
-        std::vector<std::string> names = categoryNames;
-        category.formatter = [names](double v) {
-            const long i = std::lround(v);
-            return (i >= 0 && static_cast<size_t>(i) < names.size())
-                       ? names[static_cast<size_t>(i)] : std::string();
-        };
+        category.categories = categoryNames;
+        category.categoryPadding = 0.5;
         axes.Add(category);
 
         SetGridAxis(0);
     }
 
     void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override {
-        hoverRects.clear();
         if (series.empty() || categoryNames.empty() || frame.axes->Count() < 2) return;
+        const ChartAxis& value = frame.axes->At(0);
+        const ChartAxis& category = frame.axes->At(1);
         const bool orthogonal = GetProjectionKind() != ChartProjectionKind::Polar;
+        const double zero = value.Normalize(0.0);
+        const double progress = frame.animationProgress;
 
-        ForEachBar(*frame.axes, [&](size_t s, size_t c, double displayValue,
-                                    double u0, double v0, double u1, double v1) {
-            const bool hovered = (static_cast<int>(s) == hoveredSeries &&
-                                  static_cast<int>(c) == hoveredCategory);
+        for (const ChartBarSpan& span : BuildBarSpans(value, category,
+                                                      categoryNames.size(),
+                                                      SeriesValues(), LayoutOptions())) {
+            // The whole stack grows out of the zero line together, so animated
+            // segments never separate.
+            const double v0 = zero + (span.v0 - zero) * progress;
+            const double v1 = zero + (span.v1 - zero) * progress;
+            const int64_t regionId = RegionId(span.seriesIndex, span.categoryIndex);
+            const bool hovered = (HoveredRegionId() == regionId);
+            const Color& color = series[span.seriesIndex].color;
+
+            const std::vector<Point2Dd> quad =
+                ProjectedQuad(*frame.projection, span.u0, v0, span.u1, v1);
+
             if (orthogonal) {
-                const Point2Dd a = frame.projection->ToScreen(ChartNormalizedPoint(u0, v0));
-                const Point2Dd b = frame.projection->ToScreen(ChartNormalizedPoint(u1, v1));
+                const Point2Dd a = frame.projection->ToScreen(ChartNormalizedPoint(span.u0, v0));
+                const Point2Dd b = frame.projection->ToScreen(ChartNormalizedPoint(span.u1, v1));
                 const Rect2Dd rect(std::min(a.x, b.x), std::min(a.y, b.y),
                                    std::abs(b.x - a.x), std::abs(b.y - a.y));
-                RenderBarRect(ctx, rect, series[s].color, hovered);
-                hoverRects.push_back({rect, s, c});
+                RenderBar(ctx, quad, rect, color, hovered, true);
+                AddHitRegion(rect, regionId, TooltipFor(span, value));
             } else {
-                // Polar (and any future projection): the bar as subdivided
-                // projected quad edges; the fancy fills need an axis-aligned
-                // rectangle, so they fall back to a solid fill here.
-                std::vector<Point2Dd> quad = ProjectedQuad(*frame.projection, u0, v0, u1, v1);
-                ctx->SetFillPaint(hovered ? Lighten(series[s].color, 40) : series[s].color);
-                ctx->FillLinePath(quad);
-                ctx->SetStrokePaint(Color(40, 40, 40, 120));
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLinePath(quad, true);
+                Rect2Dd bbox = QuadBounds(quad);
+                RenderBar(ctx, quad, bbox, color, hovered, false);
+                AddHitRegion(quad, regionId, TooltipFor(span, value));
             }
-        });
+        }
     }
 
     // Room for the value labels past the bar ends.
@@ -190,7 +195,7 @@ public:
     void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override {
         if (!showValueLabels || Frame().axes->Count() < 2) return;
         // 100% stacked: every column is 100, so per-bar totals say nothing.
-        if (arrangement == BarArrangement::PercentStacked) return;
+        if (arrangement == ChartBarArrangement::PercentStacked) return;
         const ChartAxis& value = Frame().axes->At(0);
         const ChartAxis& category = Frame().axes->At(1);
         ctx->SetFontSize(axisFontSize);
@@ -210,101 +215,83 @@ public:
             broker.Add(r);
         };
 
-        if (arrangement == BarArrangement::Stacked) {
-            // One total on top of each stack.
+        const auto spans = BuildBarSpans(value, category, categoryNames.size(),
+                                         SeriesValues(), LayoutOptions());
+        if (arrangement == ChartBarArrangement::Stacked) {
+            // One total on top of each stack: the furthest positive edge.
             for (size_t c = 0; c < categoryNames.size(); ++c) {
-                const double total = CategoryTotal(c);
+                double total = 0.0, top = value.Normalize(0.0);
+                bool any = false;
+                for (const ChartBarSpan& span : spans) {
+                    if (span.categoryIndex != c) continue;
+                    total += span.value;
+                    top = std::max(top, std::max(span.v0, span.v1));
+                    any = true;
+                }
+                if (!any) continue;
                 submit(value.FormatValue(total),
-                       category.Normalize(static_cast<double>(c)),
-                       value.Normalize(total), 0);
+                       category.Normalize(static_cast<double>(c)), top, 0);
             }
         } else {
             double maxValue = 0.0;
             for (const auto& s : series)
                 for (double v : s.values) maxValue = std::max(maxValue, v);
-            ForEachBar(*Frame().axes, [&](size_t s, size_t c, double displayValue,
-                                          double u0, double v0, double u1, double v1) {
-                submit(value.FormatValue(series[s].values[c]),
-                       (u0 + u1) * 0.5, v1, series[s].values[c] >= maxValue ? 10 : 0);
-            });
-        }
-    }
-
-    bool OnEvent(const UCEvent& event) override {
-        if (event.type == UCEventType::MouseMove) {
-            int hitSeries = -1, hitCategory = -1;
-            for (const auto& hr : hoverRects) {
-                if (event.pointer.x >= hr.rect.x && event.pointer.x <= hr.rect.x + hr.rect.width &&
-                    event.pointer.y >= hr.rect.y && event.pointer.y <= hr.rect.y + hr.rect.height) {
-                    hitSeries = static_cast<int>(hr.seriesIndex);
-                    hitCategory = static_cast<int>(hr.categoryIndex);
-                    break;
-                }
+            for (const ChartBarSpan& span : spans) {
+                submit(value.FormatValue(span.value),
+                       (span.u0 + span.u1) * 0.5, span.v1,
+                       span.value >= maxValue ? 10 : 0);
             }
-            if (hitSeries != hoveredSeries || hitCategory != hoveredCategory) {
-                hoveredSeries = hitSeries;      // Hover territory: repaint only,
-                hoveredCategory = hitCategory;  // no layout, no label re-solve
-                RequestRedraw();
-            }
-        } else if (event.type == UCEventType::MouseLeave && hoveredSeries != -1) {
-            hoveredSeries = hoveredCategory = -1;
-            RequestRedraw();
         }
-        return UltraCanvasChartElementBase::OnEvent(event);
     }
 
 private:
-    struct BarHoverRect {
-        Rect2Dd rect;
-        size_t seriesIndex = 0;
-        size_t categoryIndex = 0;
-    };
-
-    double CategoryTotal(size_t c) const {
-        double total = 0.0;
-        for (const auto& s : series)
-            if (c < s.values.size()) total += s.values[c];
-        return total;
+    static int64_t RegionId(size_t s, size_t c) {
+        return static_cast<int64_t>(s) * 1000 + static_cast<int64_t>(c);
     }
 
-    // Normalised (u, v) extents of every bar under the current arrangement.
-    // Shared by rendering, hover geometry and the label collector so the three
-    // can never disagree.
-    template <typename Fn>
-    void ForEachBar(const ChartAxisSet& axes, Fn&& fn) const {
-        const ChartAxis& value = axes.At(0);
-        const ChartAxis& category = axes.At(1);
-        const size_t n = categoryNames.size();
-        const size_t m = series.size();
-        if (n == 0 || m == 0) return;
-        const double slotHalf = 0.35 / static_cast<double>(n);   // bars fill 70% of a slot
+    std::string TooltipFor(const ChartBarSpan& span, const ChartAxis& value) const {
+        std::string text = categoryNames[span.categoryIndex];
+        if (series.size() > 1) text += " - " + series[span.seriesIndex].name;
+        text += ": " + value.FormatValue(
+            arrangement == ChartBarArrangement::PercentStacked ? span.plotted : span.value);
+        return text;
+    }
 
-        for (size_t c = 0; c < n; ++c) {
-            const double center = category.Normalize(static_cast<double>(c));
-            if (arrangement == BarArrangement::Grouped) {
-                const double barWidth = (slotHalf * 2.0) / static_cast<double>(m);
-                for (size_t s = 0; s < m; ++s) {
-                    if (c >= series[s].values.size()) continue;
-                    const double u0 = center - slotHalf + barWidth * static_cast<double>(s);
-                    fn(s, c, series[s].values[c],
-                       u0, value.Normalize(0.0),
-                       u0 + barWidth, value.Normalize(series[s].values[c]));
-                }
-            } else {
-                const double total = CategoryTotal(c);
-                const double scale = (arrangement == BarArrangement::PercentStacked && total > 0.0)
-                                         ? 100.0 / total : 1.0;
-                double running = 0.0;
-                for (size_t s = 0; s < m; ++s) {
-                    if (c >= series[s].values.size()) continue;
-                    const double v = series[s].values[c] * scale;
-                    fn(s, c, v,
-                       center - slotHalf, value.Normalize(running),
-                       center + slotHalf, value.Normalize(running + v));
-                    running += v;
-                }
+    std::vector<std::vector<double>> SeriesValues() const {
+        std::vector<std::vector<double>> values;
+        values.reserve(series.size());
+        for (const auto& s : series) values.push_back(s.values);
+        return values;
+    }
+
+    ChartBarLayoutOptions LayoutOptions() const {
+        ChartBarLayoutOptions options;
+        options.arrangement = arrangement;
+        options.slotFill = 0.7;
+        return options;
+    }
+
+    // The legend swatch mirrors how the bars are actually painted.
+    void RefreshLegend() {
+        std::vector<ChartLegendEntry> legend;
+        for (const auto& s : series) {
+            ChartLegendEntry entry;
+            entry.label = s.name;
+            entry.color = s.color;
+            switch (fillStyle) {
+                case BarFillStyle::Gradient: entry.swatch = ChartLegendSwatch::Gradient; break;
+                case BarFillStyle::Outline:  entry.swatch = ChartLegendSwatch::Outline;  break;
+                case BarFillStyle::Hatched:  entry.swatch = ChartLegendSwatch::Hatched;  break;
+                case BarFillStyle::Texture:
+                case BarFillStyle::Pictogram:
+                    entry.swatch = ChartLegendSwatch::Image;
+                    entry.imagePath = fillImagePath;
+                    break;
+                default: break;
             }
+            legend.push_back(entry);
         }
+        SetLegendEntries(legend);
     }
 
     static std::vector<Point2Dd> ProjectedQuad(const IChartProjection& projection,
@@ -324,17 +311,48 @@ private:
         return quad;
     }
 
+    static Rect2Dd QuadBounds(const std::vector<Point2Dd>& quad) {
+        double minX = quad[0].x, maxX = quad[0].x, minY = quad[0].y, maxY = quad[0].y;
+        for (const Point2Dd& p : quad) {
+            minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+            minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+        }
+        return Rect2Dd(minX, minY, maxX - minX, maxY - minY);
+    }
+
     static Color Lighten(const Color& c, int amount) {
         return Color(static_cast<uint8_t>(std::min(255, c.r + amount)),
                      static_cast<uint8_t>(std::min(255, c.g + amount)),
                      static_cast<uint8_t>(std::min(255, c.b + amount)), c.a);
     }
 
-    void RenderBarRect(IRenderContext* ctx, const Rect2Dd& rect,
-                       const Color& seriesColor, bool hovered) {
+    void ClipQuad(IRenderContext* ctx, const std::vector<Point2Dd>& quad) {
+        ctx->ClearPath();
+        ctx->MoveTo(quad[0].x, quad[0].y);
+        for (size_t i = 1; i < quad.size(); ++i) ctx->LineTo(quad[i].x, quad[i].y);
+        ctx->ClosePath();
+        ctx->ClipPath();
+    }
+
+    void StrokeQuad(IRenderContext* ctx, const std::vector<Point2Dd>& quad,
+                    const Color& color, float width) {
+        ctx->SetStrokePaint(color);
+        ctx->SetStrokeWidth(width);
+        ctx->DrawLinePath(quad, true);
+    }
+
+    // One bar under any projection: `quad` is the projected outline (the exact
+    // rectangle when orthogonal), `bbox` its screen bounds. The value-direction
+    // styles orient by the projection; the shape-dependent ones (Rounded,
+    // Pictogram) keep their rectangle-only fast path and fall back to Solid
+    // under Polar.
+    void RenderBar(IRenderContext* ctx, const std::vector<Point2Dd>& quad,
+                   const Rect2Dd& bbox, const Color& seriesColor,
+                   bool hovered, bool orthogonal) {
         const Color fill = hovered ? Lighten(seriesColor, 40) : seriesColor;
         const Color border(40, 40, 40, hovered ? 255 : 120);
         const bool horizontal = GetProjectionKind() == ChartProjectionKind::Horizontal;
+        const float borderWidth = hovered ? 2.0f : 1.0f;
 
         switch (fillStyle) {
         case BarFillStyle::Gradient: {
@@ -344,119 +362,119 @@ private:
                 GradientStop(1.0, fill)
             };
             auto gradient = horizontal
-                ? ctx->CreateLinearGradientPattern(rect.x + rect.width, rect.y, rect.x, rect.y, stops)
-                : ctx->CreateLinearGradientPattern(rect.x, rect.y, rect.x, rect.y + rect.height, stops);
-            std::vector<Point2Dd> path = {
-                {rect.x, rect.y}, {rect.x + rect.width, rect.y},
-                {rect.x + rect.width, rect.y + rect.height}, {rect.x, rect.y + rect.height}};
-            ctx->SetFillPaint(gradient);
-            ctx->FillLinePath(path);
-            ctx->SetStrokePaint(border);
-            ctx->SetStrokeWidth(hovered ? 2.0f : 1.0f);
-            ctx->DrawLinePath(path, true);
+                ? ctx->CreateLinearGradientPattern(bbox.x + bbox.width, bbox.y, bbox.x, bbox.y, stops)
+                : ctx->CreateLinearGradientPattern(bbox.x, bbox.y, bbox.x, bbox.y + bbox.height, stops);
+            if (gradient) ctx->SetFillPaint(gradient); else ctx->SetFillPaint(fill);
+            ctx->FillLinePath(quad);
+            StrokeQuad(ctx, quad, border, borderWidth);
             break;
         }
         case BarFillStyle::Rounded: {
-            const float radius = static_cast<float>(
-                std::min({8.0, rect.width * 0.5, rect.height * 0.5}));
-            ctx->DrawFilledRectangle(rect, fill, hovered ? 2.0f : 1.0f, border, radius);
+            if (orthogonal) {
+                const float radius = static_cast<float>(
+                    std::min({8.0, bbox.width * 0.5, bbox.height * 0.5}));
+                ctx->DrawFilledRectangle(bbox, fill, borderWidth, border, radius);
+            } else {
+                ctx->SetFillPaint(fill);
+                ctx->FillLinePath(quad);
+                StrokeQuad(ctx, quad, border, borderWidth);
+            }
             break;
         }
         case BarFillStyle::Outline: {
             Color ghost = seriesColor;
             ghost.a = hovered ? 80 : 36;
-            ctx->DrawFilledRectangle(rect, ghost);
-            ctx->SetStrokePaint(seriesColor);
-            ctx->SetStrokeWidth(hovered ? 3.0f : 2.0f);
-            std::vector<Point2Dd> path = {
-                {rect.x, rect.y}, {rect.x + rect.width, rect.y},
-                {rect.x + rect.width, rect.y + rect.height}, {rect.x, rect.y + rect.height}};
-            ctx->DrawLinePath(path, true);
+            ctx->SetFillPaint(ghost);
+            ctx->FillLinePath(quad);
+            StrokeQuad(ctx, quad, seriesColor, hovered ? 3.0f : 2.0f);
             break;
         }
         case BarFillStyle::Hatched: {
             Color background = Lighten(seriesColor, 90);
             background.a = hovered ? 255 : 220;
-            ctx->DrawFilledRectangle(rect, background);
+            ctx->SetFillPaint(background);
+            ctx->FillLinePath(quad);
             ctx->PushState();
-            ctx->ClipRect(rect);
-            ctx->SetStrokePaint(seriesColor);
+            ClipQuad(ctx, quad);                  // hatch stays inside the bar,
+            ctx->SetStrokePaint(seriesColor);     // ring sectors included
             ctx->SetStrokeWidth(1.5f);
-            const double span = rect.width + rect.height;
+            const double span = bbox.width + bbox.height;
             for (double offset = 0.0; offset < span; offset += 7.0) {
-                ctx->DrawLine(Point2Dd(rect.x + offset, rect.y),
-                              Point2Dd(rect.x + offset - rect.height, rect.y + rect.height),
+                ctx->DrawLine(Point2Dd(bbox.x + offset, bbox.y),
+                              Point2Dd(bbox.x + offset - bbox.height, bbox.y + bbox.height),
                               seriesColor);
             }
             ctx->PopState();
-            ctx->DrawFilledRectangle(rect, Colors::Transparent, hovered ? 2.0f : 1.0f, border);
+            StrokeQuad(ctx, quad, border, borderWidth);
             break;
         }
         case BarFillStyle::Texture: {
+            std::shared_ptr<IPaintPattern> pattern;
             if (!fillImagePath.empty()) {
-                ctx->PushState();
-                ctx->ClipRect(rect);
-                ctx->DrawImage(fillImagePath, rect, ImageFitMode::Cover);
-                if (hovered) {
-                    ctx->DrawFilledRectangle(rect, Color(255, 255, 255, 60));
-                }
-                ctx->PopState();
-            } else {
-                ctx->DrawFilledRectangle(rect, fill);
+                pattern = ctx->CreateImagePattern(fillImagePath, bbox, ImageFitMode::Cover, false);
             }
-            ctx->DrawFilledRectangle(rect, Colors::Transparent, hovered ? 2.5f : 1.5f, border);
+            if (pattern) {
+                ctx->SetFillPaint(pattern);
+                ctx->FillLinePath(quad);
+                if (hovered) {
+                    ctx->SetFillPaint(Color(255, 255, 255, 60));
+                    ctx->FillLinePath(quad);
+                }
+            } else {
+                ctx->SetFillPaint(fill);          // backend without image patterns
+                ctx->FillLinePath(quad);
+            }
+            StrokeQuad(ctx, quad, border, hovered ? 2.5f : 1.5f);
             break;
         }
         case BarFillStyle::Pictogram: {
-            if (!fillImagePath.empty()) {
+            if (!fillImagePath.empty() && orthogonal) {
                 ctx->PushState();
-                ctx->ClipRect(rect);
+                ctx->ClipRect(bbox);
                 if (horizontal) {
                     // Icons march from the base (left) toward the value end;
                     // the clip cuts the last icon to the exact fraction.
-                    const double cell = std::min(rect.height, 34.0);
-                    for (double x = rect.x; x < rect.x + rect.width; x += cell) {
+                    const double cell = std::min(bbox.height, 34.0);
+                    for (double x = bbox.x; x < bbox.x + bbox.width; x += cell) {
                         ctx->DrawImage(fillImagePath,
-                                       Rect2Dd(x, rect.y + (rect.height - cell) * 0.5, cell, cell),
+                                       Rect2Dd(x, bbox.y + (bbox.height - cell) * 0.5, cell, cell),
                                        ImageFitMode::Contain);
                     }
                 } else {
-                    const double cell = std::min(rect.width, 34.0);
-                    for (double y = rect.y + rect.height - cell;
-                         y > rect.y - cell; y -= cell) {
+                    const double cell = std::min(bbox.width, 34.0);
+                    for (double y = bbox.y + bbox.height - cell;
+                         y > bbox.y - cell; y -= cell) {
                         ctx->DrawImage(fillImagePath,
-                                       Rect2Dd(rect.x + (rect.width - cell) * 0.5, y, cell, cell),
+                                       Rect2Dd(bbox.x + (bbox.width - cell) * 0.5, y, cell, cell),
                                        ImageFitMode::Contain);
                     }
                 }
                 ctx->PopState();
-                if (hovered) {
-                    ctx->DrawFilledRectangle(rect, Colors::Transparent, 2.0f, border);
-                }
+                if (hovered) StrokeQuad(ctx, quad, border, 2.0f);
             } else {
-                ctx->DrawFilledRectangle(rect, fill);
+                ctx->SetFillPaint(fill);
+                ctx->FillLinePath(quad);
+                if (!orthogonal) StrokeQuad(ctx, quad, border, borderWidth);
             }
             break;
         }
         case BarFillStyle::Solid:
         default:
-            ctx->DrawFilledRectangle(rect, fill, hovered ? 2.0f : 1.0f, border);
+            ctx->SetFillPaint(fill);
+            ctx->FillLinePath(quad);
+            StrokeQuad(ctx, quad, border, borderWidth);
             break;
         }
     }
 
     std::vector<std::string> categoryNames;
     std::vector<DemoBarSeries> series;
-    BarArrangement arrangement = BarArrangement::Grouped;
+    ChartBarArrangement arrangement = ChartBarArrangement::Grouped;
     BarFillStyle fillStyle = BarFillStyle::Solid;
     std::string fillImagePath;
     std::string valuePrefix, valueSuffix;
     bool compactValues = false;
     bool showValueLabels = true;
-
-    std::vector<BarHoverRect> hoverRects;    // screen rects of the last render
-    int hoveredSeries = -1;
-    int hoveredCategory = -1;
 };
 
 // =============================================================================
@@ -532,7 +550,7 @@ std::shared_ptr<UltraCanvasContainer> MakeChartRowTab(
     return tab;
 }
 
-// Small control strip: orientation dropdown plus optional extras.
+// Small control strip: projection dropdown plus optional extras.
 std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
     const std::string& idPrefix,
     const std::vector<std::shared_ptr<EngineBarChart>>& charts,
@@ -543,7 +561,7 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     strip->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-    auto label = std::make_shared<UltraCanvasLabel>(idPrefix + "OrientLabel", 70, 20, "Orientation:");
+    auto label = std::make_shared<UltraCanvasLabel>(idPrefix + "OrientLabel", 70, 20, "Projection:");
     label->SetFontSize(11);
     label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     strip->AddChild(label);
@@ -551,12 +569,14 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
     auto orientation = std::make_shared<UltraCanvasDropdown>(idPrefix + "Orientation", 130, 24);
     orientation->AddItem("Vertical");
     orientation->AddItem("Horizontal");
+    orientation->AddItem("Polar");
     orientation->SetSelectedIndex(0);
     orientation->onSelectionChanged = [charts](int index, const DropdownItem&) {
-        for (const auto& chart : charts) {
-            chart->SetProjectionKind(index == 1 ? ChartProjectionKind::Horizontal
-                                                : ChartProjectionKind::Vertical);
-        }
+        const ChartProjectionKind kind =
+            index == 1 ? ChartProjectionKind::Horizontal
+                       : index == 2 ? ChartProjectionKind::Polar
+                                    : ChartProjectionKind::Vertical;
+        for (const auto& chart : charts) chart->SetProjectionKind(kind);
     };
     orientation->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     strip->AddChild(orientation);
@@ -571,6 +591,14 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
     };
     labelsCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     strip->AddChild(labelsCheckbox);
+
+    auto replayButton = std::make_shared<UltraCanvasButton>(idPrefix + "Animate", 0, 0, 120, 24);
+    replayButton->SetText("Replay grow-in");
+    replayButton->onClick = [charts]() {
+        for (const auto& chart : charts) chart->StartEngineAnimation(0.7f);
+    };
+    replayButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    strip->AddChild(replayButton);
 
     if (addExtras) addExtras(*strip);
     return strip;
@@ -599,8 +627,8 @@ std::shared_ptr<UltraCanvasContainer> MakeClusteredTab() {
 
     auto tab = MakeChartRowTab(
         "BarClustered",
-        "Clustered (grouped) bars: each category slot holds one bar per series, side by side.\n"
-        "The legend, the grid and the solved value labels come from the engine. Hover a bar to highlight it.",
+        "Clustered (grouped) bars: each category slot holds one bar per series, side by side. The legend,\n"
+        "grid, value labels, hover highlight and tooltips are engine services - hover a bar for its tooltip.",
         {chart});
     tab->AddChild(MakeControlStrip("BarClustered", {chart}));
     return tab;
@@ -609,13 +637,13 @@ std::shared_ptr<UltraCanvasContainer> MakeClusteredTab() {
 // ----- TAB 3: STACKED AND 100% STACKED -----
 std::shared_ptr<UltraCanvasContainer> MakeStackedTab() {
     auto chart = MakeRevenueChart("BarStacked");
-    chart->SetArrangement(BarArrangement::Stacked);
+    chart->SetArrangement(ChartBarArrangement::Stacked);
     chart->SetChartTitle("Quarterly revenue by region - stacked");
 
     auto tab = MakeChartRowTab(
         "BarStacked",
         "Stacked bars: series segments pile up per category and the label plan carries the stack totals.\n"
-        "100% stacking rescales every column to its share of the total, with a fixed 0-100% axis.",
+        "100% stacking rescales every column to its share of the total, with a fixed percent axis.",
         {chart});
     tab->AddChild(MakeControlStrip("BarStacked", {chart},
         [chart](UltraCanvasContainer& strip) {
@@ -623,8 +651,8 @@ std::shared_ptr<UltraCanvasContainer> MakeStackedTab() {
             percent->SetText("100% stacked");
             percent->onStateChanged = [chart](CheckedState, CheckedState newState) {
                 chart->SetArrangement(newState == CheckedState::Checked
-                                          ? BarArrangement::PercentStacked
-                                          : BarArrangement::Stacked);
+                                          ? ChartBarArrangement::PercentStacked
+                                          : ChartBarArrangement::Stacked);
                 chart->SetChartTitle(newState == CheckedState::Checked
                                          ? "Regional share of revenue - 100% stacked"
                                          : "Quarterly revenue by region - stacked");
@@ -642,6 +670,7 @@ std::shared_ptr<UltraCanvasContainer> MakeStylesTab() {
         chart->SetFillStyle(style);
         chart->SetChartTitle(title);
         chart->SetShowValueLabels(false);       // keep the small multiples clean
+        chart->SetShowLegend(true);             // the swatch mirrors the fill style
         return chart;
     };
 
@@ -651,8 +680,8 @@ std::shared_ptr<UltraCanvasContainer> MakeStylesTab() {
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     tab->AddChild(MakeCaption(
         "BarStylesCaption",
-        "One dataset, four fill treatments of the same bar geometry: a value-direction gradient,\n"
-        "rounded corners, an outline (hollow) style and a hatched fill built from a clipped line pattern."));
+        "One dataset, four fill treatments of the same bar geometry: gradient, rounded, outline and hatched.\n"
+        "Each chart's legend swatch is painted in its fill style - the engine's legend understands non-solid series."));
 
     auto addRow = [&tab](const std::string& id,
                          std::shared_ptr<UltraCanvasUIElement> left,
@@ -698,8 +727,8 @@ std::shared_ptr<UltraCanvasContainer> MakeGraphicFillTab() {
 
     auto tab = MakeChartRowTab(
         "BarGraphic",
-        "Bars filled with graphics: the left chart clips a photo to each bar (texture fill); the right\n"
-        "stacks a repeated icon and lets the clip cut the top one to the exact fractional value (pictogram).",
+        "Bars filled with graphics: the left chart floods each bar with an image paint pattern (texture -\n"
+        "try Polar: the pattern survives ring sectors); the right stacks a repeated icon cut to the fraction.",
         {texture, pictogram});
     tab->AddChild(MakeControlStrip("BarGraphic", {texture, pictogram}));
     return tab;
@@ -730,8 +759,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarChart
 
     auto descLabel = std::make_shared<UltraCanvasLabel>("BarDescLabel", 0, 42);
     descLabel->SetText(
-        "One bar-chart content class on UltraCanvasChartEngineElement: axes, grid, layout, legend and value labels are engine services.\n"
-        "The tabs cover the bar chart family: vertical and horizontal, clustered series, stacked and 100% stacked, fill styles, and graphic fills.");
+        "One bar-chart content class on UltraCanvasChartEngineElement: axes, grid, layout, legend, value labels, bar geometry,\n"
+        "hover tooltips and the grow-in animation are engine services. Tabs cover vertical/horizontal/polar, clustered, stacked, styles and graphic fills.");
     descLabel->SetFontSize(11);
     descLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     container->AddChild(descLabel);

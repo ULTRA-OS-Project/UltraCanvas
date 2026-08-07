@@ -18,13 +18,14 @@ production client is the parallel coordinate chart
 
 - Driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
 - Axis model: `include/Plugins/Charts/Engine/UltraCanvasChartAxis.h`
+- Bar series geometry: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.0.0
-**Last Modified:** 2026-08-02
+**Version:** 1.1.0
+**Last Modified:** 2026-08-07
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -65,6 +66,7 @@ reimplemented:
 | Placement | `side` (Left/Right/Top/Bottom edge) or `inPlot` + `plotPosition` (parallel coordinates) |
 | Inversion | `inverted` |
 | Ticks | `GenerateTicks(n)` - nice steps, decades on Log, one per category; **explicit `tickValues` override everything** (category slots under bars, hand-picked thresholds) |
+| Slot padding | `categoryPadding` (Category scale, slot units): `0.5` extends the range half a slot past the outer categories, so bars and box plots centred on them keep their full footprint - no hand-rolled padded linear axis |
 | Formatting | `decimals`, `unitPrefix`/`unitSuffix`, `compactNumbers` (`$1.3M`), or a custom `formatter` |
 | Endpoint labels | `showEndpointLabels` (in-plot axes) |
 
@@ -92,6 +94,33 @@ ring sectors under Polar with no chart-side change.
   reserve their measured space in the measure pass; `MeasureContent` adds
   chart-specific needs. `SolvePlotArea` never returns an empty plot.
 
+## Bar series geometry
+
+`UltraCanvasChartSeries.h` owns the arithmetic every bar-family chart used to
+reimplement. `ChartBarLayoutOptions` picks the arrangement — `Grouped`
+(clustered), `Stacked` or `PercentStacked` — plus `slotFill` and `groupGap`:
+
+```cpp
+ChartBarLayoutOptions options;
+options.arrangement = ChartBarArrangement::Stacked;
+
+// DescribeAxes: the value range follows the arrangement (all values for
+// grouped, the signed stack totals for stacked, percent extremes for 100%).
+ObserveBarSeries(valueAxis, seriesValues, options);
+
+// RenderChartContent: every bar as a normalised (u, v) span.
+for (const ChartBarSpan& span : BuildBarSpans(valueAxis, categoryAxis,
+                                              categoryCount, seriesValues, options)) {
+    // span.u0/u1 = domain extent, span.v0/v1 = base edge -> value edge,
+    // span.value = the datum, span.plotted = what is shown (percent share)
+}
+```
+
+Negative values are first-class: grouped bars grow downward from zero, stacked
+bars accumulate positives upward and negatives downward (a diverging stack),
+and percent stacking shares out the absolute total. Spans are normalised, so
+the same spans render under Vertical, Horizontal and Polar.
+
 ## Phase-3 services
 
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
@@ -100,8 +129,39 @@ ring sectors under Polar with no chart-side change.
   survive); leaders and rotation are drawn by the engine.
 - **Legend**: `SetShowLegend(true)` + `SetLegendEntries({{label, color}, ...})`
   — measured, reserved in layout, and an obstacle the solved labels avoid.
+  `ChartLegendEntry.swatch` picks how the swatch is painted —
+  `Solid | Gradient | Outline | Hatched | Image` (`imagePath` for `Image`) —
+  so a non-solid series is represented faithfully.
 - **Interaction overlay**: `RenderInteractionOverlay` draws hover emphasis,
   crosshairs, brush bands — last, over everything.
+
+## Hit regions and tooltips
+
+Content registers its interactive geometry while rendering phase 2 (the engine
+clears the list first): `AddHitRegion(rect, id, tooltip)` for rectangular
+marks, `AddHitRegion(polygon, id, tooltip)` for projected shapes (ring
+sectors, wedges). The engine then owns hover: MouseMove hit-tests the regions
+(last added wins — draw order), a change repaints via `ChartDirty::Hover`
+without re-running layout or the label solver, `HoveredRegionId()` tells the
+content what to emphasise, `OnHitRegionHoverChanged` notifies subclasses, and
+a region's tooltip is shown through the standard tooltip manager whenever
+tooltips are enabled (`SetEnableTooltips`).
+
+## Animation
+
+`StartEngineAnimation(seconds)` drives `frame.animationProgress` from 0 to 1
+(ease-out cubic) and keeps repainting until it lands — no chart-side timers.
+`SetAnimateOnDataChange(true, seconds)` restarts it on every
+`ChartDirty::Data`. Content scales its geometry by the progress (bars grow
+from the zero line); charts that ignore it simply render finished frames.
+
+## Image paint patterns
+
+`IRenderContext::CreateImagePattern(path, anchorRect, fitMode, repeat)`
+returns a paint pattern that floods **any path** with an image — fill a
+projected quad and the texture survives Polar's ring sectors, where a
+rect-clip + `DrawImage` cannot follow. Backends without image-pattern support
+return `nullptr`; fall back to a plain fill.
 
 ## The dirty model
 

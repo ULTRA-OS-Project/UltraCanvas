@@ -13,6 +13,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
 
 #include <algorithm>
@@ -175,6 +176,146 @@ static void TestCategoryAxis() {
     const std::vector<ChartTick> ticks = axis.GenerateTicks(10);
     CHECK(ticks.size() == 3, "one tick per category regardless of the target count");
     CHECK(ticks[2].label == "virginica", "tick labels are the category names");
+}
+
+static void TestCategoryPadding() {
+    std::printf("Category axis slot padding\n");
+
+    ChartAxis axis;
+    axis.scale = ChartScale::Category;
+    axis.categories = {"A", "B", "C", "D"};
+    axis.categoryPadding = 0.5;
+    axis.Finalize();
+
+    // Range -0.5 .. 3.5: every slot is 1/4 of the domain and the outer slots
+    // have the same width as the inner ones.
+    CHECK(Near(axis.Min(), -0.5) && Near(axis.Max(), 3.5),
+          "the padded range extends half a slot past the outer categories");
+    CHECK(Near(axis.Normalize(0.0), 0.125), "the first slot centre sits half a slot in");
+    CHECK(Near(axis.Normalize(3.0), 0.875), "the last slot centre sits half a slot short of the end");
+    CHECK(Near(axis.Normalize(1.0) - axis.Normalize(0.0), 0.25),
+          "neighbouring slot centres are one slot apart");
+
+    ChartAxis single;
+    single.scale = ChartScale::Category;
+    single.categories = {"only"};
+    single.categoryPadding = 0.5;
+    single.Finalize();
+    CHECK(Near(single.Normalize(0.0), 0.5), "a padded single category is centred");
+    CHECK(!single.IsDegenerate(), "padding keeps a single category non-degenerate");
+}
+
+// =============================================================================
+// BAR SERIES GEOMETRY
+// =============================================================================
+
+static ChartAxis MakeBarCategoryAxis(size_t count) {
+    ChartAxis axis;
+    axis.scale = ChartScale::Category;
+    for (size_t i = 0; i < count; ++i) axis.categories.push_back("C" + std::to_string(i));
+    axis.categoryPadding = 0.5;
+    axis.Finalize();
+    return axis;
+}
+
+static void TestGroupedBarSpans() {
+    std::printf("Bar spans: grouped\n");
+
+    const std::vector<std::vector<double>> series = {{10.0, 20.0}, {30.0, 40.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::Grouped;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+    CHECK(value.Min() <= 0.0 && value.Max() >= 40.0,
+          "the observed range covers zero and the largest value");
+
+    const ChartAxis category = MakeBarCategoryAxis(2);
+    const auto spans = BuildBarSpans(value, category, 2, series, options);
+    CHECK(spans.size() == 4, "two series x two categories = four bars");
+
+    // Category 0 occupies u 0..0.5; 70% fill = 0.175 half-width around 0.25.
+    CHECK(Near(spans[0].u0, 0.25 - 0.175) && Near(spans[1].u1, 0.25 + 0.175),
+          "the group fills the slot fraction around the slot centre");
+    CHECK(Near(spans[0].u1, spans[1].u0), "bars in a group touch with zero group gap");
+    CHECK(spans[0].v1 > spans[0].v0, "a positive bar's value edge is above its base");
+    CHECK(Near(spans[0].v0, value.Normalize(0.0)), "grouped bars grow from zero");
+}
+
+static void TestStackedBarSpans() {
+    std::printf("Bar spans: stacked, negatives diverge\n");
+
+    const std::vector<std::vector<double>> series = {{10.0}, {-4.0}, {20.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::Stacked;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+    CHECK(value.Min() <= -4.0 && value.Max() >= 30.0,
+          "the range covers the positive stack total and the negative total");
+
+    const ChartAxis category = MakeBarCategoryAxis(1);
+    const auto spans = BuildBarSpans(value, category, 1, series, options);
+    CHECK(spans.size() == 3, "one span per series");
+
+    CHECK(Near(spans[0].v0, value.Normalize(0.0)) &&
+          Near(spans[0].v1, value.Normalize(10.0)),
+          "the first positive segment runs 0 to 10");
+    CHECK(Near(spans[2].v0, value.Normalize(10.0)) &&
+          Near(spans[2].v1, value.Normalize(30.0)),
+          "the next positive segment stacks on the positive total, skipping the negative");
+    CHECK(Near(spans[1].v0, value.Normalize(0.0)) &&
+          Near(spans[1].v1, value.Normalize(-4.0)),
+          "the negative segment diverges downward from zero");
+    CHECK(Near(spans[0].u0, spans[2].u0) && Near(spans[0].u1, spans[2].u1),
+          "stack segments share the same domain extent");
+}
+
+static void TestPercentStackedBarSpans() {
+    std::printf("Bar spans: 100%% stacked\n");
+
+    const std::vector<std::vector<double>> series = {{30.0, 10.0}, {70.0, 30.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::PercentStacked;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+    CHECK(value.Min() <= 0.0 && value.Max() >= 100.0,
+          "the percent range covers 0 to 100");
+
+    const ChartAxis category = MakeBarCategoryAxis(2);
+    const auto spans = BuildBarSpans(value, category, 2, series, options);
+    CHECK(spans.size() == 4, "one segment per series per category");
+
+    CHECK(Near(spans[0].plotted, 30.0) && Near(spans[1].plotted, 70.0),
+          "category 0 splits 30/70");
+    CHECK(Near(spans[2].plotted, 25.0) && Near(spans[3].plotted, 75.0),
+          "category 1 rescales 10/30 to 25/75");
+    CHECK(Near(spans[3].v1, value.Normalize(100.0)),
+          "every percent stack tops out at 100");
+    CHECK(Near(spans[0].value, 30.0), "the span still carries the raw value");
+}
+
+static void TestBarSpansRaggedAndGapped() {
+    std::printf("Bar spans: ragged series and group gaps\n");
+
+    // The second series has no value in category 1.
+    const std::vector<std::vector<double>> series = {{5.0, 7.0}, {3.0}};
+    ChartBarLayoutOptions options;
+    options.arrangement = ChartBarArrangement::Grouped;
+    options.groupGap = 0.5;
+
+    ChartAxis value;
+    ObserveBarSeries(value, series, options);
+    value.Finalize();
+
+    const ChartAxis category = MakeBarCategoryAxis(2);
+    const auto spans = BuildBarSpans(value, category, 2, series, options);
+    CHECK(spans.size() == 3, "a missing value simply has no bar");
+    CHECK(spans[1].u0 > spans[0].u1, "a group gap separates bars in a group");
 }
 
 static void TestTicksAndFormatting() {
@@ -652,6 +793,11 @@ int main() {
     TestLogAxis();
     TestZScoreAndPercentile();
     TestCategoryAxis();
+    TestCategoryPadding();
+    TestGroupedBarSpans();
+    TestStackedBarSpans();
+    TestPercentStackedBarSpans();
+    TestBarSpansRaggedAndGapped();
     TestTicksAndFormatting();
     TestAxisSet();
     TestLayoutNegotiation();
