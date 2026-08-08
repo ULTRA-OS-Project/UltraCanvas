@@ -396,6 +396,14 @@ differs only in case is allowed: the "already exists" check ignores a target
 that resolves to the entry itself, which is what a case-insensitive filesystem
 (Windows, macOS) reports for it.
 
+The field is placed over the name wherever the name is drawn, which differs per
+view: beside the icon in Details / List / Size bars, over the caption band in
+the thumbnail grids, and **inside the cell, at the top**, in the treemap — a
+treemap cell has no caption band under an icon, the cell *is* the icon rect.
+Treemap cells are sized by their content, not by their captions, so a small
+cell gets a field widened to a usable minimum (pulled back inside the right
+edge when that would overflow it) rather than one a few pixels wide.
+
 Escape is also the cancel key of a running item drag, a rubber-band
 selection and the compress dialog. A host that binds its own window-level
 Escape shortcut (the UltraFiler closes its preview pane with it) should

@@ -2430,8 +2430,26 @@ namespace UltraCanvas {
             }
             return field;
         }
-        // Thumbnails / treemap: the whole (possibly multi-line) caption band;
-        // the editor itself is a single line filling it.
+        // A treemap cell has no caption band below its icon — the cell IS the
+        // icon rect and the name is drawn inside it, at the top — so the band
+        // formula below would put the editor under the cell, off the item
+        // entirely (it lands on the next cell or past the last row, which is
+        // why renaming looked like it did nothing here). Put it over the name.
+        if (viewType == FilerViewType::TreeMap) {
+            int h = NameLineHeight() + 4;
+            // Cells get arbitrarily small; keep the field usable by growing it
+            // over the neighbours rather than shrinking it to a few pixels,
+            // and keep it inside the viewport so it stays reachable.
+            int w = std::max(80, item.rect.width - 4);
+            int x = item.rect.x + 2;
+            // The treemap fills the viewport exactly, so its right edge is the
+            // visible one: pull a widened field back inside it.
+            if (contentWidth > 0 && x + w > contentWidth - 2)
+                x = std::max(0, contentWidth - 2 - w);
+            return Rect2Di(x, item.rect.y + 2, w, h);
+        }
+        // Thumbnails: the whole (possibly multi-line) caption band; the editor
+        // itself is a single line filling it.
         int capTop = item.imageRect.y + item.imageRect.height;
         return Rect2Di(item.rect.x + 2, capTop, item.rect.width - 4,
                        std::max(CaptionBandHeight(item.captionLines),
