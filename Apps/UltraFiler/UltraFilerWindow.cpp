@@ -658,7 +658,7 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // last child is removed is demoted to a leaf, which drops its expanded
     // state and made the first expansion of a folder appear to do nothing.
     for (const fs::path& dir : ListSubdirectories(path))
-        AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder.png");
+        AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder-brown.svg");
     folderTree->RemoveNode(PlaceholderId(path));
 }
 

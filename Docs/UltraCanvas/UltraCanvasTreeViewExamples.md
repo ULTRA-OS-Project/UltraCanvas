@@ -363,7 +363,7 @@ fileTree->AddNode("computer", driveC);
 
 // Add folders
 TreeNodeData documents("docs", "Documents");
-documents.leftIcon = TreeNodeIcon("folder.png");
+documents.leftIcon = TreeNodeIcon("folder-brown.svg");
 fileTree->AddNode("c_drive", documents);
 
 // Add files
