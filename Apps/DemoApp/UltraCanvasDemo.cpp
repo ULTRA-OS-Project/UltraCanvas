@@ -1564,6 +1564,18 @@ namespace UltraCanvas {
                 .AddVariant("circularinfo", "Multi-Track Genomic Style")
                 .AddVariant("circularinfo", "Decorative Mandala");
 
+        infoBuilder.AddItem("circlediagram", "Circle diagram",
+                            "Hub-and-spoke nodes threaded onto a backbone ring, each with a "
+                            "fan of satellites on leader lines",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateCircleDiagramExamples(); },
+                            "DemoApp/UltraCanvasCircleDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasCircleDiagram.md")
+                .AddVariant("circlediagram", "Satellite Wheel")
+                .AddVariant("circlediagram", "Banded Wheel")
+                .AddVariant("circlediagram", "Node Count Sweep")
+                .AddVariant("circlediagram", "Outside Labels");
+
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
                             ImplementationStatus::PartiallyImplemented,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });

@@ -1,3 +1,31 @@
+#### 2026-08-08 *0.3.31*
+- **UltraCanvasCircleDiagram** *(1.0.0)*: new hub-and-spoke circle diagram
+  infographic — a centre hub, a backbone ring, and equally sized labelled node
+  discs threaded onto that ring, each with a fan of satellites on leader lines.
+  It is the node-on-ring member of the circular family: every existing circular
+  element subdivides the ring into sectors, while this one threads discrete
+  discs onto it, so a node's radius is independent of ring thickness and it can
+  carry children outside the ring. Presentation-only (no viewport, dragging,
+  inline editing or undo); interaction is hover highlighting, tooltips and
+  `onNodeClick` / `onSatelliteClick`. Structure and colour are independent
+  presets — `CircleDiagramDesign` (`SatelliteWheel`, `BandedWheel`, `Custom`)
+  and `CircleDiagramPaletteKind` (seven themes plus `Custom`) — and both work
+  at any node count, because each palette is a hue ramp sampled at N points
+  rather than a fixed list. Every layout quantity derives from the per-node arc
+  of 360/N: the auto-fitted node radius is a share of the chord between
+  neighbours, the satellite fan is narrowed to what one node's wedge can hold
+  (shrinking auto-sized satellite discs when K of them will not fit side by
+  side), and anything outside the backbone — fans, or labels placed with
+  `CircleNodeLabelPlacement::Outside` — is reserved for by shrinking the
+  backbone radius so nothing is clipped. Disc labels shrink to fit, testing the
+  longest single word as well as the wrapped block, since a word too wide to
+  break ellipsizes rather than wrapping. Node discs are all one radius and
+  satellites another; `value` is tooltip/callback payload and never scales a
+  disc. `SetNodeCount()` clamps to 3–12 rather than degrading silently. Docs in
+  `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`, survey and roadmap in
+  `Docs/UltraCanvas/CircleDiagramInfographicVariants.md`, demo scene in
+  `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`.
+
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
   three-column table rows and definable column alignment.

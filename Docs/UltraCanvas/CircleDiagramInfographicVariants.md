@@ -1,6 +1,12 @@
 # Circle Diagram Infographics — Investigation
 
-**Status:** Design survey and gap analysis (pre-implementation research)
+**Status:** **P1 implemented** — `UltraCanvasCircleDiagram` ships the Family A
+satellite designs (`SatelliteWheel`, `BandedWheel`), the full palette set, the
+hub, backbone and satellite fans, with the API documented in
+[`UltraCanvasCircleDiagram.md`](UltraCanvasCircleDiagram.md) and a DemoApp
+scene at `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`. This document is
+kept as the research write-up and the roadmap for P2/P3 (cards, callouts,
+spokes, badges, cycle rings, petals).
 **Last Modified:** 2026-08-07
 **Author:** UltraCanvas Framework
 **Related:** [`UltraCanvasCircularInfoGraphic`](UltraCanvasCircularInfoGraphic.md)
