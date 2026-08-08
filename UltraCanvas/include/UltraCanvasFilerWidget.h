@@ -38,7 +38,7 @@
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
 // even then is dropped from the front of the last line, which opens with "…".
-// Version: 1.9.2
+// Version: 1.9.3
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
@@ -50,6 +50,7 @@
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <ctime>
@@ -300,6 +301,13 @@ namespace UltraCanvas {
 
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
+
+        // Background pre-scan of the shown folder's subfolders (one level), so
+        // entering one shows its content from memory instead of waiting for a
+        // cold directory scan. On by default; turning it off drops the cache
+        // and queue. See the FOLDER LISTING PREFETCH section for freshness.
+        void SetFolderPrefetchEnabled(bool enabled);
+        bool IsFolderPrefetchEnabled() const { return folderPrefetchEnabled; }
 
         // "Compressed thumbnails": hold finished thumbnails QOI-compressed in
         // memory (roughly 3-4x smaller for photos) instead of as raw ARGB32
@@ -909,13 +917,61 @@ namespace UltraCanvas {
         static bool clipboardCut;
 
         // ===== SCANNING =====
-        void ScanFolder();
+        // usePrefetched: serve the listing from the prefetch cache when a
+        // fresh one is there (SetPath navigations). Refresh and the file-list
+        // display always rescan — after a file operation the cache is exactly
+        // what must not be shown.
+        void ScanFolder(bool usePrefetched = false);
+        // The raw listing of a real directory: one readdir plus one stat per
+        // entry, no widget state touched — runs on the prefetch worker as well
+        // as the UI thread. With includeHidden the hidden entries are listed
+        // too (flagged), so a prefetched listing can serve either setting.
+        void ScanRealDirectory(const std::string& path, bool includeHidden,
+                               std::vector<FilerEntry>& out) const;
         // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
         void ApplyEntryTypeInfo(FilerEntry& e) const;
+
+        // ===== FOLDER LISTING PREFETCH =====
+        // After a folder settles, a low-priority worker pre-scans its visible
+        // subfolders (one level) so entering one serves the listing from
+        // memory instead of a cold directory scan — the win is largest on
+        // network volumes and spinning disks. A short grace delay keeps quick
+        // successive navigations from triggering wasted scans, and each batch
+        // is dropped the moment the user navigates again (generation bump).
+        // Freshness on use: the cached listing must be younger than
+        // kPrefetchMaxAgeSec AND the directory's mtime must be unchanged;
+        // anything else falls back to a normal scan. Oversized listings are
+        // scanned but not stored — the scan still warms the OS metadata
+        // cache, so the real scan on entry is fast anyway.
+        struct PrefetchedListing {
+            std::vector<FilerEntry> entries;   // raw listing, hidden included
+            std::time_t dirMtime = 0;          // dir mtime when scanned
+            std::chrono::steady_clock::time_point when;  // scan time
+        };
+        std::map<std::string, PrefetchedListing> prefetchCache;
+        std::deque<std::string> prefetchLru;   // insertion order for eviction
+        size_t prefetchCachedEntries = 0;      // entries held across the cache
+        std::deque<std::string> prefetchQueue; // folders to pre-scan
+        std::mutex prefetchMutex;
+        std::condition_variable prefetchCond;
+        std::thread prefetchWorker;
+        bool prefetchShutdown = false;
+        uint64_t prefetchGeneration = 0;       // bumped per navigation
+        bool folderPrefetchEnabled = true;
+
+        // Refills the queue with the current listing's subfolders.
+        void QueueFolderPrefetch();
+        // Moves a fresh cached listing of `path` into `out` (and drops it from
+        // the cache either way); false = miss or stale, scan normally.
+        bool TakePrefetchedListing(const std::string& path,
+                                   std::vector<FilerEntry>& out);
+        void StartFolderPrefetchWorkerLocked();
+        void StopFolderPrefetchWorker();
+        void FolderPrefetchWorkerMain();
 
         // ===== LAYOUT =====
         void InvalidateFilerLayout() { layoutValid = false; }

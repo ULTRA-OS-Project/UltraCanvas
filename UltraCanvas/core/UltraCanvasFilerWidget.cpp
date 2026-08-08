@@ -26,7 +26,7 @@
 // The inline rename editor is a real UltraCanvasTextInput overlaid on the
 // item's name, and video files show their poster frame in the thumbnail
 // views (decoded on the same worker threads as the image thumbnails).
-// Version: 1.8.2
+// Version: 1.8.3
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
@@ -1027,6 +1027,7 @@ namespace UltraCanvas {
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
         StopFolderStatsWorker();
+        StopFolderPrefetchWorker();
     }
 
     // ===== FOLDER =====
@@ -1038,7 +1039,8 @@ namespace UltraCanvas {
         CancelRename();
         CancelPendingRename();
         ClearSelection();
-        ScanFolder();
+        // A navigation may serve the listing straight from the prefetch cache.
+        ScanFolder(true);
         if (onPathChanged) onPathChanged(currentPath);
     }
 
@@ -1107,7 +1109,51 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasFilerWidget::ScanFolder() {
+    void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
+                                                   bool includeHidden,
+                                                   std::vector<FilerEntry>& out) const {
+        std::error_code ec;
+        for (fs::directory_iterator it(path, ec), end; it != end;
+             it.increment(ec)) {
+            if (ec) break;
+            FilerEntry e;
+            e.name = it->path().filename().string();
+            e.path = it->path().string();
+            e.isSymlink = it->is_symlink(ec);   // d_type, no extra syscall
+            e.isHidden = !e.name.empty() && e.name[0] == '.';
+            if (e.isHidden && !includeHidden) continue;
+
+            // One stat per entry: type, size, times and the write bit all
+            // come from the same call. Asking the directory_entry for
+            // file_size() and then ::stat()ing again for the times cost a
+            // second metadata lookup per file, which on a big or network
+            // folder doubled the scan time.
+            struct stat st{};
+            if (::stat(e.path.c_str(), &st) == 0) {
+                e.isDirectory = (st.st_mode & S_IFMT) == S_IFDIR;
+                if (!e.isDirectory)
+                    e.size = static_cast<uint64_t>(st.st_size);
+                e.modifiedTime = st.st_mtime;
+                e.createdTime = st.st_ctime;
+                e.isReadOnly = (st.st_mode & S_IWUSR) == 0;
+            } else {
+                // Broken symlink or a name stat() cannot resolve (e.g. a
+                // non-ACP name on Windows): keep the iterator's cached
+                // view so the entry still lists with its type and size.
+                e.isDirectory = it->is_directory(ec);
+                if (!e.isDirectory) {
+                    std::error_code sec;
+                    e.size = it->file_size(sec);
+                    if (sec) e.size = 0;
+                }
+            }
+            e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+            ApplyEntryTypeInfo(e);
+            out.push_back(std::move(e));
+        }
+    }
+
+    void UltraCanvasFilerWidget::ScanFolder(bool usePrefetched) {
         // `selection` indexes `entries`, which is rebuilt below — remember what
         // is selected by path so a rescan (Refresh after a file operation, a
         // drop, ...) keeps the same files selected instead of whatever ends up
@@ -1145,43 +1191,19 @@ namespace UltraCanvas {
                 entries.push_back(std::move(e));
             }
         } else if (isRealDir) {
-            for (fs::directory_iterator it(currentPath, ec), end; it != end;
-                 it.increment(ec)) {
-                if (ec) break;
-                FilerEntry e;
-                e.name = it->path().filename().string();
-                e.path = it->path().string();
-                e.isSymlink = it->is_symlink(ec);   // d_type, no extra syscall
-                e.isHidden = !e.name.empty() && e.name[0] == '.';
-                if (e.isHidden && !showHiddenFiles) continue;
-
-                // One stat per entry: type, size, times and the write bit all
-                // come from the same call. Asking the directory_entry for
-                // file_size() and then ::stat()ing again for the times cost a
-                // second metadata lookup per file, which on a big or network
-                // folder doubled the scan time.
-                struct stat st{};
-                if (::stat(e.path.c_str(), &st) == 0) {
-                    e.isDirectory = (st.st_mode & S_IFMT) == S_IFDIR;
-                    if (!e.isDirectory)
-                        e.size = static_cast<uint64_t>(st.st_size);
-                    e.modifiedTime = st.st_mtime;
-                    e.createdTime = st.st_ctime;
-                    e.isReadOnly = (st.st_mode & S_IWUSR) == 0;
-                } else {
-                    // Broken symlink or a name stat() cannot resolve (e.g. a
-                    // non-ACP name on Windows): keep the iterator's cached
-                    // view so the entry still lists with its type and size.
-                    e.isDirectory = it->is_directory(ec);
-                    if (!e.isDirectory) {
-                        std::error_code sec;
-                        e.size = it->file_size(sec);
-                        if (sec) e.size = 0;
-                    }
-                }
-                e.extension = e.isDirectory ? "" : LowerExtension(e.name);
-                ApplyEntryTypeInfo(e);
-                entries.push_back(std::move(e));
+            // A prefetched listing (navigation only) skips the directory scan
+            // entirely; it holds hidden entries too, so it serves either
+            // hidden-files setting. A miss or a stale hit scans normally.
+            std::vector<FilerEntry> listing;
+            bool fromCache = usePrefetched && folderPrefetchEnabled &&
+                             TakePrefetchedListing(currentPath, listing);
+            if (!fromCache)
+                ScanRealDirectory(currentPath, showHiddenFiles, listing);
+            if (fromCache && !showHiddenFiles) {
+                for (FilerEntry& e : listing)
+                    if (!e.isHidden) entries.push_back(std::move(e));
+            } else {
+                entries = std::move(listing);
             }
         }
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -1276,6 +1298,11 @@ namespace UltraCanvas {
 
         InvalidateFilerLayout();
         RequestRedraw();
+
+        // The folder is on screen — line up its subfolders for the prefetch
+        // worker so entering one of them can skip the cold scan.
+        if (!fileListMode && isRealDir) QueueFolderPrefetch();
+
         // The listing itself changed (entries added / removed / renamed) —
         // hosts use this to refresh what they show about the folder.
         if (onFolderRefreshed) onFolderRefreshed();
@@ -5018,6 +5045,169 @@ namespace UltraCanvas {
             }
             RequestRedraw();
         });
+    }
+
+    // ===== FOLDER LISTING PREFETCH =====
+
+    namespace {
+        // Grace delay before a batch starts: quick successive navigations
+        // replace the queue without any wasted scans, and the folder the user
+        // is looking at gets the disk first (thumbnails, stats).
+        constexpr auto kPrefetchGraceDelay = std::chrono::milliseconds(300);
+        // A cached listing older than this is discarded on use — there is no
+        // change watcher, so age bounds how stale a served listing can be.
+        constexpr auto kPrefetchMaxAge = std::chrono::seconds(60);
+        constexpr size_t kPrefetchMaxFolders = 24;     // cached listings
+        constexpr size_t kPrefetchMaxEntries = 50000;  // entries across them
+    }
+
+    void UltraCanvasFilerWidget::SetFolderPrefetchEnabled(bool enabled) {
+        if (folderPrefetchEnabled == enabled) return;
+        folderPrefetchEnabled = enabled;
+        std::lock_guard<std::mutex> lk(prefetchMutex);
+        ++prefetchGeneration;
+        prefetchQueue.clear();
+        prefetchCache.clear();
+        prefetchLru.clear();
+        prefetchCachedEntries = 0;
+    }
+
+    void UltraCanvasFilerWidget::QueueFolderPrefetch() {
+        if (!folderPrefetchEnabled) return;
+        std::lock_guard<std::mutex> lk(prefetchMutex);
+        if (prefetchShutdown) return;
+        ++prefetchGeneration;      // drops whatever the last folder queued
+        prefetchQueue.clear();
+        const auto now = std::chrono::steady_clock::now();
+        for (const FilerEntry& e : entries) {
+            // Real subfolders only: archives list through VirtualFS.
+            if (!e.isDirectory || e.isArchive) continue;
+            // A listing scanned moments ago is still good; older ones are
+            // re-queued so a hit at entry time passes the age check.
+            auto it = prefetchCache.find(e.path);
+            if (it != prefetchCache.end() &&
+                now - it->second.when < std::chrono::seconds(5))
+                continue;
+            prefetchQueue.push_back(e.path);
+            if (prefetchQueue.size() >= kPrefetchMaxFolders) break;
+        }
+        if (!prefetchQueue.empty()) {
+            StartFolderPrefetchWorkerLocked();
+            prefetchCond.notify_one();
+        }
+    }
+
+    bool UltraCanvasFilerWidget::TakePrefetchedListing(const std::string& path,
+                                                       std::vector<FilerEntry>& out) {
+        PrefetchedListing listing;
+        {
+            std::lock_guard<std::mutex> lk(prefetchMutex);
+            auto it = prefetchCache.find(path);
+            if (it == prefetchCache.end()) return false;
+            listing = std::move(it->second);
+            prefetchCachedEntries -= listing.entries.size();
+            prefetchCache.erase(it);   // it becomes the live listing (or is stale)
+        }
+        if (std::chrono::steady_clock::now() - listing.when > kPrefetchMaxAge)
+            return false;
+        // The folder must not have changed since the pre-scan. The mtime
+        // covers entries added / removed / renamed; a file merely growing
+        // inside the window is caught by the age bound above.
+        struct stat st{};
+        if (::stat(path.c_str(), &st) != 0 || st.st_mtime != listing.dirMtime)
+            return false;
+        out = std::move(listing.entries);
+        return true;
+    }
+
+    void UltraCanvasFilerWidget::StartFolderPrefetchWorkerLocked() {
+        if (prefetchWorker.joinable() || prefetchShutdown) return;
+        prefetchWorker = std::thread([this]() { FolderPrefetchWorkerMain(); });
+    }
+
+    void UltraCanvasFilerWidget::StopFolderPrefetchWorker() {
+        {
+            std::lock_guard<std::mutex> lk(prefetchMutex);
+            prefetchShutdown = true;
+            prefetchQueue.clear();
+        }
+        prefetchCond.notify_all();
+        if (prefetchWorker.joinable()) prefetchWorker.join();
+    }
+
+    void UltraCanvasFilerWidget::FolderPrefetchWorkerMain() {
+        // The worker never posts to the UI thread — it only fills the cache
+        // that the next SetPath reads — so teardown is a plain shutdown+join.
+        uint64_t gracedGeneration = 0;
+        for (;;) {
+            std::string path;
+            uint64_t gen;
+            {
+                std::unique_lock<std::mutex> lk(prefetchMutex);
+                prefetchCond.wait(lk, [this]() {
+                    return prefetchShutdown || !prefetchQueue.empty();
+                });
+                if (prefetchShutdown) return;
+                gen = prefetchGeneration;
+                if (gen != gracedGeneration) {
+                    // New batch: idle a moment first. A navigation during the
+                    // wait bumps the generation and restarts the grace.
+                    prefetchCond.wait_for(lk, kPrefetchGraceDelay, [this]() {
+                        return prefetchShutdown;
+                    });
+                    if (prefetchShutdown) return;
+                    gracedGeneration = gen;   // this batch had its grace
+                    if (gen != prefetchGeneration) continue;   // superseded:
+                    // the next round graces the replacing batch itself
+                }
+                if (prefetchQueue.empty()) continue;
+                path = std::move(prefetchQueue.front());
+                prefetchQueue.pop_front();
+            }
+
+            // Take the folder's mtime before the scan: a change while
+            // scanning then fails the equality check at entry time.
+            struct stat st{};
+            if (::stat(path.c_str(), &st) != 0) continue;
+
+            PrefetchedListing listing;
+            listing.dirMtime = st.st_mtime;
+            ScanRealDirectory(path, true, listing.entries);
+            listing.when = std::chrono::steady_clock::now();
+
+            // An oversized listing is not stored — the scan already warmed
+            // the OS metadata cache, which is most of the win — and neither
+            // is anything from a superseded batch.
+            if (listing.entries.size() > kPrefetchMaxEntries) continue;
+            {
+                std::lock_guard<std::mutex> lk(prefetchMutex);
+                if (prefetchShutdown) return;
+                if (gen != prefetchGeneration) continue;
+                auto it = prefetchCache.find(path);
+                if (it != prefetchCache.end()) {
+                    prefetchCachedEntries -= it->second.entries.size();
+                    prefetchCache.erase(it);
+                }
+                prefetchCachedEntries += listing.entries.size();
+                prefetchCache.emplace(path, std::move(listing));
+                prefetchLru.push_back(path);
+                // Evict oldest-inserted listings past the budget. The LRU
+                // deque may hold paths already taken or replaced; those
+                // simply no longer match a cache entry and are skipped.
+                while (!prefetchLru.empty() &&
+                       (prefetchCache.size() > kPrefetchMaxFolders ||
+                        prefetchCachedEntries > kPrefetchMaxEntries)) {
+                    std::string victim = std::move(prefetchLru.front());
+                    prefetchLru.pop_front();
+                    if (victim == path) continue;   // never evict the newest
+                    auto vit = prefetchCache.find(victim);
+                    if (vit != prefetchCache.end()) {
+                        prefetchCachedEntries -= vit->second.entries.size();
+                        prefetchCache.erase(vit);
+                    }
+                }
+            }
+        }
     }
 
     // ===== SELECTION INFO BAR =====

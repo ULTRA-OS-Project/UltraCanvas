@@ -227,6 +227,28 @@ painting its tile when the Length / Dimensions dataset fields are enabled —
 never opens the file on the UI thread; the detail appears with the next
 posted repaint, typically within a frame or two.
 
+## Folder listing prefetch
+
+With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
+the subfolders of the shown folder — one level deep — shortly after the folder
+settles, so entering one of them serves its listing from memory instead of
+waiting for a cold directory scan. The win is largest on network volumes and
+spinning disks.
+
+- **Idle behavior**: each batch starts after a short grace delay, and a new
+  navigation drops the pending batch immediately — quick click-throughs never
+  trigger wasted scans, and the folder on screen always gets the disk first.
+- **Freshness**: a cached listing is used only if it is under a minute old
+  *and* the folder's modification time is unchanged since the pre-scan
+  (catching entries added / removed / renamed in between); anything else falls
+  back to a normal scan. `Refresh()` — used after every file operation — always
+  rescans and never reads the cache.
+- **Bounds**: at most 24 listings / 50 000 entries are cached (oldest evicted
+  first); an oversized listing is scanned but not stored — the scan still
+  warms the OS metadata cache, so the real scan on entry stays fast. Cached
+  listings include hidden entries, so toggling hidden files needs no rescan
+  of the cache. Archives are excluded (they list through VirtualFS).
+
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).

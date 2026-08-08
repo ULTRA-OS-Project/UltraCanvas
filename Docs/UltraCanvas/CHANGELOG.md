@@ -19,6 +19,19 @@
   height, which the row layout already treats as its unknown case, and rows
   shorten as the measurements land. `aspectCache` moved under `statsMutex` and
   is dropped, with its queue, on every rescan.
+- **UltraCanvasFilerWidget** *(1.8.3)*: folder listing prefetch. A
+  low-priority worker pre-scans the shown folder's subfolders (one level)
+  shortly after it settles, so entering one serves the listing from memory
+  instead of a cold directory scan — the win is largest on network volumes
+  and spinning disks. Batches start after a short grace delay and are dropped
+  the moment the user navigates again, so quick click-throughs cost nothing.
+  A cached listing is served only when under a minute old and the folder's
+  mtime is unchanged; `Refresh()` (file operations) always rescans. The cache
+  is bounded (24 listings / 50 000 entries, oldest evicted); oversized
+  listings are scanned but not stored, which still warms the OS metadata
+  cache. Cached listings include hidden entries so either hidden-files
+  setting is served. `SetFolderPrefetchEnabled` toggles the feature
+  (default on).
 - **UltraCanvasFilerWidget** *(1.8.2)*: the info-bar / dataset media probes
   moved off the UI thread too. Selecting an audio / video file parsed its
   container headers synchronously, and an image in an exotic container
