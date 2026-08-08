@@ -1,3 +1,24 @@
+#### 2026-08-08 *0.3.32*
+- **UltraFiler — Extras > Open prompt**: a new menu bar entry starts the
+  operating system's command line program in the folder of the active tab.
+  The launch lives in `Apps/UltraFiler/UltraFilerPrompt` *(1.0.0)*, which
+  detaches the process (`fork` + `setsid` + `execvp` behind a reaped
+  intermediate child on POSIX, `ShellExecuteExW` on Windows), so closing the
+  file manager never takes the terminal with it and no zombie is left behind.
+  Without configuration the platform default is detected at run time:
+  `%COMSPEC%` on Windows, Terminal.app (started with `open -a <bundle>
+  <folder>`) on macOS, `$TERMINAL` or the first installed terminal emulator on
+  Linux; when nothing is found the failure is reported in an alert instead of
+  silently doing nothing.
+- **UltraFiler — settings**: the settings window gained an *Extras > Open
+  prompt* page holding the application that menu entry starts
+  (`extras.prompt.application` in the config file). The folder button next to
+  the path field opens the file dialog filtered to this platform's
+  applications, **Save app** persists the chosen program, **Use system
+  default** clears the setting again and **Test** starts the program in the
+  field to check the path. The dialog's buttons now come from one
+  `MakeButton` helper instead of per-button styling.
+
 #### 2026-08-07 *0.3.31*
 - **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
   now keeps that origin. The constructor delegated to the size-only base

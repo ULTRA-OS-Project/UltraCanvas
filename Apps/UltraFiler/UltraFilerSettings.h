@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.0.0
-// Last Modified: 2026-08-05
+// Version: 1.1.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -27,6 +27,11 @@ public:
     // pattern used by image editors, or a preset solid colour (default white).
     bool  previewCheckeredBackground = false;
     Color previewTransparentColor    = Color(255, 255, 255, 255);
+
+    // Extras > Open prompt: the command line program the "Open prompt" menu
+    // entry starts. Empty means "whatever this OS provides" - the platform
+    // default is detected at run time (see UltraFilerPrompt).
+    std::string promptApplication;
 
     // ===== PERSISTENCE =====
 
@@ -68,6 +73,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("preview.transparent.color");
         if (it != kv.end()) ParseColor(it->second, previewTransparentColor);
+        it = kv.find("extras.prompt.application");
+        if (it != kv.end()) promptApplication = it->second;
         return true;
     }
 
@@ -84,6 +91,7 @@ public:
              << (previewCheckeredBackground ? "true" : "false") << "\n";
         file << "preview.transparent.color = "
              << FormatColor(previewTransparentColor) << "\n";
+        file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
     }
 

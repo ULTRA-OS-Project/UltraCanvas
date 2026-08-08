@@ -3,11 +3,13 @@
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
 // search field and the media preview (UltraCanvasMediaViewer). The Settings
-// menu opens the settings window (UltraFilerSettingsDialog); persisted
-// settings load at startup and configure the preview's transparent-image
-// backdrop. Esc closes an open media preview.
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// menu opens the settings window (UltraFilerSettingsDialog); the Extras menu
+// starts the OS command line program in the current folder ("Open prompt",
+// see UltraFilerPrompt). Persisted settings load at startup and configure the
+// preview's transparent-image backdrop and the prompt application. Esc closes
+// an open media preview.
+// Version: 1.5.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -15,6 +17,7 @@
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraFilerPrompt.h"
 #include "UltraFilerSettingsDialog.h"
 
 #include <algorithm>
@@ -283,6 +286,10 @@ std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
                     MenuItemData::Action("Settings...",
                             [this]() { OpenSettingsDialog(); }),
             })
+            .AddSubmenu("Extras", {
+                    MenuItemData::Action("Open prompt",
+                            [this]() { OpenSystemPrompt(); }),
+            })
             .Build();
     menuBar->size.height = CSSLayout::Dimension::Px(24);
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -303,6 +310,19 @@ void UltraFilerWindow::ApplySettings() {
 void UltraFilerWindow::OpenSettingsDialog() {
     UltraFilerSettingsDialog::Show(window.get(), &settings,
                                    [this]() { ApplySettings(); });
+}
+
+// ===== EXTRAS =====
+
+void UltraFilerWindow::OpenSystemPrompt() {
+    // The prompt opens in the folder the active tab is showing, so the shell
+    // starts where the user is looking.
+    std::string folder = filer ? filer->GetPath() : std::string();
+    if (folder.empty()) folder = UserHomeDir();
+
+    std::string error;
+    if (!UltraFilerPrompt::Launch(settings.promptApplication, folder, error))
+        UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
 }
 
 // ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb) =====

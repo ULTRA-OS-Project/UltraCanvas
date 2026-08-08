@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
-// a menu bar (Settings menu opening the settings window),
+// a menu bar (Settings menu opening the settings window, Extras menu with
+// "Open prompt" starting the OS command line program in the current folder),
 // a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, folder
 // breadcrumb + recursive search field), a command bar (New folder / New file,
 // Cut / Copy / Paste / Rename / Delete, Sort and View dropdowns, video preview
@@ -11,8 +12,8 @@
 // file is selected; Esc closes it), plus a status bar describing the folder
 // and the selection (kept in step with the folder listing through the
 // filer's onFolderRefreshed callback).
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// Version: 1.5.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -126,6 +127,12 @@ private:
     // settings dialog after every change.
     void ApplySettings();
     void OpenSettingsDialog();
+
+    // ===== EXTRAS =====
+    // "Extras > Open prompt": starts the OS command line program in the folder
+    // of the active tab. Which application that is comes from the settings
+    // (Extras > Open prompt); an empty setting uses the platform default.
+    void OpenSystemPrompt();
 
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
