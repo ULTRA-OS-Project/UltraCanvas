@@ -1412,8 +1412,9 @@ and arcs, exactly as the implemented circular elements already do.
 image), backbone ring (hairline, band, or none), N nodes at even angles with
 per-node fill, border, icon and wrapped multi-line label; K satellites per
 node with fan angle, offset radius and leader-line style; correct outer-margin
-reservation; hover highlight, tooltips and `onNodeClick`/`onSatelliteClick`.
-Covers references 1 and 2 outright.
+reservation; hover highlight, tooltips and `onNodeClick`/`onSatelliteClick`;
+the `SatelliteWheel` and `BandedWheel` designs and the full palette set (§9).
+Covers references 1 and 2 outright, at any node count.
 
 The interaction surface stops there, by decision: the graphic is authored from
 code and rendered, exactly as `UltraCanvasCircularInfoGraphic` is. No node
@@ -1437,28 +1438,75 @@ Each phase carries the repo's usual companions: a component doc under
 
 ## 8. Decisions taken
 
+- **Element name: `UltraCanvasCircleDiagram`.** Header
+  `include/Plugins/Diagrams/UltraCanvasCircleDiagram.h`, factory
+  `CreateCircleDiagram(id, x, y, w, h)`, doc
+  `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`.
 - **Presentation-only.** The element is authored from code and rendered; it is
   not an editing surface. Consequences are folded into §6 and §7: base class
   `UltraCanvasChartElementBase`, no `UltraCanvasDiagramViewport`, no drag /
   inline edit / pan / zoom / undo, no IO layer. Interaction is limited to
   hover highlight, tooltips and click callbacks — the same surface
   `UltraCanvasCircularInfoGraphic` exposes.
+- **Ships design presets**, on two independent axes — structure and colour —
+  each working at a **variable segment count**. See §9.
+- **Nodes are equal-sized.** Node radius is one per-diagram constant, not
+  per-node data; `value` never scales a node the way `NodeDiagramSizing` does.
+  All five references are equal-sized, and equal radii are what keep the
+  satellite fan geometry uniform and the ring rhythm even. A per-node `value`
+  survives only as tooltip/callback payload.
 
-## 9. Open questions for the maintainer
+## 9. Preset model
 
-1. **Element name.** `UltraCanvasCircleDiagram` reads well next to
-   `UltraCanvasMindMap`, but it is one letter from
-   `UltraCanvasCircularInfoGraphic` in tab-completion. `UltraCanvasHubRing` or
-   `UltraCanvasCircleInfographic` are alternatives — worth settling before any
-   header exists.
-2. **Design presets.** `UltraCanvasPertChart` and `UltraCanvasGanttChart` ship
-   named designs, and `SWOTDiagramDesignVariants.md` proposed the same for
-   SWOT before `UltraCanvasSWOTDiagram` was built. Should the circle diagram
-   ship presets (`SaaSWheel`, `PolicyRing`, `ProcessCards`) or only the
-   primitives?
-3. **Data-driven sizing.** Should a node's `value` be allowed to scale its
-   radius (as `NodeDiagramSizing` does with a √ transfer), or are all nodes
-   deliberately equal in this genre? The references are all equal-sized.
+Following `UltraCanvasPertChart` (`PertNodeDesign` × `PertChartPaletteKind`)
+and `UltraCanvasSWOTDiagram` (`SWOTDesign`), presets are **two orthogonal
+enums plus a plain count**, never one enum encoding all three:
+
+```cpp
+enum class CircleDiagramDesign {        // structure — the §3 families
+    SatelliteWheel,   // Family A: nodes + fanned satellites   (refs 1, 2)
+    BandedWheel,      // Family A on a thick backbone band     (ref 2)
+    CardRing,         // Family B: nodes + dashed text cards   (ref 3)
+    PetalRing,        // Family F: overlapping discs, no ring
+    Custom            // structure assembled from the primitives
+};
+
+enum class CircleDiagramPaletteKind {   // colour — mirrors PertChartPaletteKind
+    Vibrant, Ocean, Mint, Pastel, Midnight, Dark, Monochrome,
+    Custom            // colours supplied via SetCustomPalette()
+};
+
+diagram->SetDesign(CircleDiagramDesign::SatelliteWheel);
+diagram->SetPalette(CircleDiagramPaletteKind::Vibrant);
+diagram->SetNodeCount(6);               // any N, independent of the two above
+```
+
+**Variable N is the constraint that shapes the implementation**, and it is
+worth stating plainly because it is easy to build presets that quietly assume
+the reference's node count:
+
+1. **Palettes must generate N colours, not carry a fixed list.** Each named
+   palette is a hue ramp sampled at N points (or a base hue rotated by
+   `360/N`), so `Vibrant` at 4 nodes and at 9 nodes are both coherent.
+   `PertChartPaletteKind`'s fixed role colours are the wrong model here —
+   this is a *categorical* palette. `Custom` takes an explicit
+   `std::vector<Color>`, cycled if shorter than N.
+2. **Every layout quantity derives from the per-node arc**, `360/N`: satellite
+   fan angle, label wrap width, card extent and the minimum ring radius needed
+   to keep neighbours apart. None of them may be constants tuned to one
+   reference.
+3. **Bound N and say so.** Below 3 the ring reads as a line; above roughly 10
+   labels and cards stop fitting at any sane radius — `CardRing` saturates
+   earliest because card width is tangential. Clamp with a documented range
+   per design rather than degrading silently, the way `SetTotalAngle()`
+   already clamps to 10°–360°.
+4. **A design preset sets defaults, it does not lock them.** Applying one
+   fills in ring thickness, node radius, satellite count, leader style and
+   fonts; every one stays individually settable afterwards, so `Custom` is a
+   starting point rather than the only escape hatch.
+
+Presets land with their phase: `SatelliteWheel` and `BandedWheel` in P1,
+`CardRing` in P2, `PetalRing` in P3.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/README.md
