@@ -1,3 +1,77 @@
+#### 2026-08-08 *0.3.31*
+- **UltraCanvasBreadcrumb**: opening a folder no longer stalls on the drive
+  list. `BuildFolderBreadcrumb` used to call `ListDriveRoots()` eagerly to fill
+  the `Computer` node's dropdown, and the strip is rebuilt on every navigation —
+  so every click paid for a full volume enumeration before the new folder could
+  be painted. The drive list is now filled by a `dropdownItemsProvider`, like
+  the per-segment sub-folder menus, so building the strip touches no
+  filesystem at all. `ListDriveRoots()` itself reads the Windows mount table
+  once via `GetLogicalDrives()` instead of probing `A:\` … `Z:\` with
+  `exists()`, which spun up empty optical / card readers and waited out the
+  timeout of every disconnected network mapping.
+- **UltraCanvasFilerWidget** *(1.6.1)*: the image-header probe that drives
+  `SetShrinkThumbnailRows` moved off the UI thread. The thumbnail layout asks
+  for the natural size of **every** entry of the folder, and `EntryAspect()`
+  answered by opening the file — so entering a folder of photos blocked the
+  window for one file open per image before anything appeared. Probes are now
+  queued onto the existing folder-statistics worker (ahead of the recursive
+  walks, which are far longer); a not-yet-measured image keeps the full tile
+  height, which the row layout already treats as its unknown case, and rows
+  shorten as the measurements land. `aspectCache` moved under `statsMutex` and
+  is dropped, with its queue, on every rescan.
+- **UltraCanvasFilerWidget** *(1.8.3)*: folder listing prefetch. A
+  low-priority worker pre-scans the shown folder's subfolders (one level)
+  shortly after it settles, so entering one serves the listing from memory
+  instead of a cold directory scan — the win is largest on network volumes
+  and spinning disks. Batches start after a short grace delay and are dropped
+  the moment the user navigates again, so quick click-throughs cost nothing.
+  A cached listing is served only when under a minute old and the folder's
+  mtime is unchanged; `Refresh()` (file operations) always rescans. The cache
+  is bounded (24 listings / 50 000 entries, oldest evicted); oversized
+  listings are scanned but not stored, which still warms the OS metadata
+  cache. Cached listings include hidden entries so either hidden-files
+  setting is served. `SetFolderPrefetchEnabled` toggles the feature
+  (default on).
+- **UltraCanvasFilerWidget** *(1.8.2)*: the info-bar / dataset media probes
+  moved off the UI thread too. Selecting an audio / video file parsed its
+  container headers synchronously, and an image in an exotic container
+  (AVIF, HEIC) was **fully decoded** on the spot via `UCImage::Get` just to
+  learn its pixel size; with the Length / Dimensions dataset fields enabled
+  the same probes ran for every visible tile on first paint. `EntryExtraInfo`
+  now returns the cached text or queues the probe on the folder-statistics
+  worker (between the aspect probes and the recursive walks) and the result
+  arrives with a posted repaint.
+- **UltraCanvasFilerWidget**: repaint and interaction hot paths de-quadratified
+  for large folders. Selection membership during a paint comes from a per-frame
+  flag array instead of a `std::find` over the selection per drawn item (a
+  hover move after Select All was O(visible × selected)); `EllipsizeText`
+  binary-searches the longest fitting prefix instead of re-measuring the text
+  once per trimmed code point; the draw and thumbnail-prefetch loops stop at
+  the first item past the viewport instead of testing every entry each frame
+  (all views except the unordered treemap); the rubber-band reselect
+  deduplicates through a flag array instead of `std::find` per touched item;
+  restoring the selection after a rescan matches paths through a hash set
+  instead of a linear scan per entry (Select All + refresh was O(n²)); and the
+  per-frame selection info bar no longer copies every selected `FilerEntry`
+  (eight strings each) just to sum sizes.
+- **UltraCanvasFilerWidget**: scanning a folder costs one metadata lookup per
+  entry instead of two — type, size, times and the write bit all come from the
+  single `stat()` call that was already made for the dates, instead of a
+  `file_size()` lookup and then `stat()` again. Hidden entries are skipped
+  before their metadata is fetched. New `GetSelectionIndices()` exposes the
+  selection copy-free for hosts; UltraFiler's status bar and preview lookup
+  use it instead of copying every selected entry on each selection change.
+- **UltraFiler**: expanding a folder tree node no longer blocks on its
+  children. "Does this folder have sub-folders?" — the question that gives a
+  node its expand button — costs a directory open per child, and one expansion
+  asked it once per child on the UI thread. The probes now run on a worker
+  thread and post their answers back, so the sub-folders appear at once and the
+  expand buttons follow. Tree nodes track whether their children have been
+  scanned instead of inferring it from the placeholder child, so navigating to
+  a folder whose ancestors are not expanded yet still walks the chain
+  correctly. The startup drive scan uses `ListDriveRoots()` for the same reason
+  the breadcrumb does.
+
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
   three-column table rows and definable column alignment.

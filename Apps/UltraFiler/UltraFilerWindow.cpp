@@ -6,13 +6,14 @@
 // menu opens the settings window (UltraFilerSettingsDialog); persisted
 // settings load at startup and configure the preview's transparent-image
 // backdrop. Esc closes an open media preview.
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// Version: 1.4.2
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerSettingsDialog.h"
@@ -52,13 +53,6 @@ namespace {
 
     std::string PlaceholderId(const std::string& folderPath) {
         return folderPath + kPlaceholderSuffix;
-    }
-
-    bool IsPlaceholderNode(const TreeNode* node) {
-        const std::string& id = node->data.nodeId;
-        const size_t sufLen = std::char_traits<char>::length(kPlaceholderSuffix);
-        return id.size() > sufLen &&
-               id.compare(id.size() - sufLen, sufLen, kPlaceholderSuffix) == 0;
     }
 
     std::string UserHomeDir() {
@@ -192,6 +186,11 @@ namespace {
 } // namespace
 
 // ===== INITIALIZATION =====
+
+UltraFilerWindow::~UltraFilerWindow() {
+    probeAlive->store(false);   // neutralize queued cross-thread tree updates
+    StopSubfolderProbeWorker();
+}
 
 bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     WindowConfig config;
@@ -589,6 +588,9 @@ void UltraFilerWindow::BuildFolderTree() {
 
     TreeNode* root = folderTree->SetRootNode(
             MakeFolderNodeData("ufl-computer", "Computer", "computer.png"));
+    // The root's children are the roots below, not a folder listing - never
+    // let EnsureTreeChildren try to scan "ufl-computer" as a path.
+    treeChildrenLoaded.insert("ufl-computer");
 
     const std::string home = UserHomeDir();
     if (!home.empty()) {
@@ -596,11 +598,13 @@ void UltraFilerWindow::BuildFolderTree() {
     }
 
 #ifdef _WIN32
-    for (char letter = 'A'; letter <= 'Z'; ++letter) {
-        const std::string drive = std::string(1, letter) + ":\\";
-        std::error_code ec;
-        if (fs::is_directory(drive, ec) && !ec)
-            AddTreeFolderNode("ufl-computer", drive, std::string(1, letter) + ":", "drive.png");
+    // ListDriveRoots() reads the mount table in one call. Probing every letter
+    // with is_directory() instead spins up empty optical drives and waits out
+    // the timeout of each disconnected network mapping before the window shows.
+    for (const std::string& drive : ListDriveRoots()) {
+        std::string label = fs::path(drive).root_name().string();  // "C:"
+        if (label.empty()) label = drive;
+        AddTreeFolderNode("ufl-computer", drive, label, "drive.png");
     }
 #else
     AddTreeFolderNode("ufl-computer", "/", "File System", "drive.png");
@@ -640,26 +644,89 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
                                          const std::string& iconFile) {
     if (!folderTree->AddNode(parentId, MakeFolderNodeData(path, label, iconFile)))
         return;
-    // The placeholder child gives folders with subfolders an expand button;
-    // it is swapped for the real children on first expansion.
-    if (HasSubdirectories(path)) {
-        TreeNodeData placeholder;
-        placeholder.nodeId = PlaceholderId(path);
-        placeholder.text = "...";
-        folderTree->AddNode(path, placeholder);
-    }
+    // The placeholder child that gives the node its expand button is added
+    // once the background probe reports that the folder has subfolders.
+    QueueSubfolderProbe(path);
 }
 
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
-    if (!node || node->children.size() != 1 || !IsPlaceholderNode(node->children[0].get()))
-        return;
+    if (!node) return;
     const std::string path = node->data.nodeId;
+    // Once per node: the placeholder is only a hint that a scan is due, and a
+    // node may reach this before its probe has even added one.
+    if (!treeChildrenLoaded.insert(path).second) return;
     // Add the real children before removing the placeholder: a node whose
     // last child is removed is demoted to a leaf, which drops its expanded
     // state and made the first expansion of a folder appear to do nothing.
     for (const fs::path& dir : ListSubdirectories(path))
         AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder.png");
     folderTree->RemoveNode(PlaceholderId(path));
+}
+
+// ===== FOLDER TREE: BACKGROUND "HAS SUBFOLDERS?" PROBE =====
+
+void UltraFilerWindow::QueueSubfolderProbe(const std::string& path) {
+    std::lock_guard<std::mutex> lk(probeMutex);
+    if (probeShutdown) return;
+    // Newest first: the folder the user just expanded is answered before the
+    // backlog of whatever was expanded earlier.
+    probeQueue.push_front(path);
+    StartSubfolderProbeWorkerLocked();
+    probeCond.notify_one();
+}
+
+void UltraFilerWindow::StartSubfolderProbeWorkerLocked() {
+    if (probeWorker.joinable() || probeShutdown) return;
+    probeWorker = std::thread([this]() { SubfolderProbeWorkerMain(); });
+}
+
+void UltraFilerWindow::StopSubfolderProbeWorker() {
+    {
+        std::lock_guard<std::mutex> lk(probeMutex);
+        probeShutdown = true;
+        probeQueue.clear();
+    }
+    probeCond.notify_all();
+    if (probeWorker.joinable()) probeWorker.join();
+}
+
+void UltraFilerWindow::SubfolderProbeWorkerMain() {
+    for (;;) {
+        std::string path;
+        {
+            std::unique_lock<std::mutex> lk(probeMutex);
+            probeCond.wait(lk, [this]() { return probeShutdown || !probeQueue.empty(); });
+            if (probeShutdown) return;
+            path = std::move(probeQueue.front());
+            probeQueue.pop_front();
+        }
+
+        // The directory open - outside the lock, off the UI thread.
+        const bool has = HasSubdirectories(path);
+        if (!has) continue;   // leaf folder: nothing to change on the node
+
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) continue;
+        auto alive = probeAlive;
+        app->PostToUIThread([this, alive, path]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            ApplySubfolderProbe(path, true);
+        });
+    }
+}
+
+void UltraFilerWindow::ApplySubfolderProbe(const std::string& path,
+                                           bool hasSubfolders) {
+    if (!hasSubfolders || !folderTree) return;
+    // A node that has since been expanded already holds its real children.
+    if (treeChildrenLoaded.count(path)) return;
+    TreeNode* node = folderTree->FindNode(path);
+    if (!node || !node->children.empty()) return;
+    TreeNodeData placeholder;
+    placeholder.nodeId = PlaceholderId(path);
+    placeholder.text = "...";
+    folderTree->AddNode(path, placeholder);
+    folderTree->RequestRedraw();   // the row gained its expand button
 }
 
 void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
@@ -995,13 +1062,18 @@ void UltraFilerWindow::UpdateNavButtons() {
 
 void UltraFilerWindow::UpdateStatusBar() {
     if (!statusLabel || !filer) return;
-    const size_t total = filer->GetEntries().size();
-    auto sel = filer->GetSelectedEntries();
-    std::string text = std::to_string(total) + (total == 1 ? " item" : " items");
+    // Indices, not GetSelectedEntries(): this runs on every selection change
+    // (each rubber-band mouse move included) and the entry copy scaled with
+    // the selection size.
+    const std::vector<FilerEntry>& entries = filer->GetEntries();
+    const std::vector<size_t>& sel = filer->GetSelectionIndices();
+    std::string text = std::to_string(entries.size())
+                     + (entries.size() == 1 ? " item" : " items");
     if (!sel.empty()) {
         uint64_t bytes = 0;
-        for (const FilerEntry& e : sel)
-            if (!e.isDirectory) bytes += e.size;
+        for (size_t idx : sel)
+            if (idx < entries.size() && !entries[idx].isDirectory)
+                bytes += entries[idx].size;
         text += "    |    " + std::to_string(sel.size())
               + (sel.size() == 1 ? " item selected" : " items selected");
         if (bytes > 0) text += " (" + FormatFileSize(bytes) + ")";
@@ -1011,10 +1083,14 @@ void UltraFilerWindow::UpdateStatusBar() {
 
 std::string UltraFilerWindow::PreviewablePathForSelection() const {
     if (!filer) return {};
-    auto sel = filer->GetSelectedEntries();
-    if (sel.size() != 1 || sel.front().isDirectory) return {};
-    if (!UltraCanvasMediaViewer::IsSupportedMedia(sel.front().path)) return {};
-    return sel.front().path;
+    const std::vector<size_t>& sel = filer->GetSelectionIndices();
+    if (sel.size() != 1) return {};
+    const std::vector<FilerEntry>& entries = filer->GetEntries();
+    if (sel.front() >= entries.size()) return {};
+    const FilerEntry& e = entries[sel.front()];
+    if (e.isDirectory) return {};
+    if (!UltraCanvasMediaViewer::IsSupportedMedia(e.path)) return {};
+    return e.path;
 }
 
 void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
