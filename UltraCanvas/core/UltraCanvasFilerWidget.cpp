@@ -1113,8 +1113,23 @@ namespace UltraCanvas {
         // drop, ...) keeps the same files selected instead of whatever ends up
         // at the old indices.
         std::vector<std::string> selectedPaths;
-        for (size_t idx : selection)
-            if (idx < entries.size()) selectedPaths.push_back(entries[idx].path);
+        for (size_t idx : selection) {
+            if (idx >= entries.size()) continue;
+            // A just-committed rename moved one of them: follow it to its new
+            // name instead of losing it (CommitRename sets the pair), so the
+            // renamed entry stays selected and the restore below counts it as
+            // unchanged — no spurious selection-changed for the host.
+            const std::string& path = entries[idx].path;
+            selectedPaths.push_back(
+                    (!renamedFromPath.empty() && path == renamedFromPath)
+                            ? renamedToPath : path);
+        }
+        // Kept for the reveal below: the new name can sort anywhere in the
+        // listing, so the entry the user just renamed is scrolled back into
+        // view rather than left wherever the new order put it.
+        const std::string renamedTo = renamedToPath;
+        renamedFromPath.clear();
+        renamedToPath.clear();
 
         entries.clear();
         effectiveSizesValid = false;
@@ -1278,6 +1293,20 @@ namespace UltraCanvas {
             bool changed = restored.size() != selectedPaths.size();
             selection.swap(restored);
             if (changed) FireSelectionChanged();
+        }
+
+        if (!renamedTo.empty()) {
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (entries[i].path != renamedTo) continue;
+                pendingRevealEntry = static_cast<int>(i);
+                // Shift-range anchor, but only when it really is selected —
+                // an icon-menu rename leaves the selection where it was.
+                if (std::find(selection.begin(), selection.end(), i)
+                    != selection.end()) {
+                    lastClickedIndex = static_cast<int>(i);
+                }
+                break;
+            }
         }
 
         InvalidateFilerLayout();
@@ -2339,13 +2368,29 @@ namespace UltraCanvas {
         // Rename in place: in the file-list (search result) display the entry
         // may live outside currentPath, so target its own parent folder.
         fs::path target = fs::path(oldPath).parent_path() / newName;
-        if (fs::exists(target, ec)) {
+        // "Already exists" must not fire when the target IS this entry: on a
+        // case-insensitive filesystem (Windows, macOS) "photos" -> "Photos"
+        // resolves to the same directory, and rejecting it would make a
+        // case-only rename impossible.
+        if (fs::exists(target, ec) && !fs::equivalent(oldPath, target, ec)) {
             ReportError("Rename failed: \"" + newName + "\" already exists");
             RequestRedraw();
             return;
         }
         fs::rename(oldPath, target, ec);
-        if (ec) ReportError("Rename failed for " + oldPath + ": " + ec.message());
+        if (ec) {
+            ReportError("Rename failed for " + oldPath + ": " + ec.message());
+        } else {
+            // The rescan restores the selection by path, and the renamed
+            // entry's old path is gone — without this substitution it drops
+            // out and the entry ends up unselected, which silently breaks
+            // every follow-up command that works on the selection (F2 and the
+            // Rename button most visibly: they need a single selected entry,
+            // so a second rename in a row did nothing at all). Renaming an
+            // entry that was not selected still leaves the selection alone.
+            renamedFromPath = oldPath;
+            renamedToPath = target.string();
+        }
         Refresh();
     }
 

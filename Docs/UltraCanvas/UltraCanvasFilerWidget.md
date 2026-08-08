@@ -384,6 +384,18 @@ font size as the displayed name, commits on Enter, cancels on Esc — and a
 click anywhere outside the field commits too, because the field losing the
 keyboard focus ends the edit.
 
+A committed rename **keeps the entry selected** under its new name and scrolls
+it back into view (the new name usually sorts somewhere else). The rescan that
+follows a rename restores the selection by path, so the entry is followed from
+its old path to its new one rather than dropped — leaving nothing selected
+would silently disable every command that needs a selection, F2 and the Rename
+button included, so a second rename in a row would do nothing at all. An entry
+renamed while it was *not* selected — the hover icon menu acting on the entry
+under the cursor — leaves the selection where it was. Renaming to a name that
+differs only in case is allowed: the "already exists" check ignores a target
+that resolves to the entry itself, which is what a case-insensitive filesystem
+(Windows, macOS) reports for it.
+
 Escape is also the cancel key of a running item drag, a rubber-band
 selection and the compress dialog. A host that binds its own window-level
 Escape shortcut (the UltraFiler closes its preview pane with it) should

@@ -575,6 +575,12 @@ namespace UltraCanvas {
         // (now gone) old selection — one selection change, none of it empty.
         bool selectNextAfterDelete = false;
         std::string selectAfterScanPath;
+        // A committed rename, so the rescan can follow the entry from its old
+        // path to its new one: the selection is restored by path, and without
+        // this the renamed entry would drop out of it (leaving nothing
+        // selected, which breaks the very next F2 / Rename command).
+        std::string renamedFromPath;
+        std::string renamedToPath;
 
         // Tooltip tracking: what the cursor is currently over, so a tooltip is
         // shown once when the cursor enters it and hidden when it leaves. An
