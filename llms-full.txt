@@ -14489,6 +14489,12 @@ finishes, so clicking or opening a folder with a deep subtree never blocks the
 window. The same statistics provide the directory weights of the BarSize and
 TreeMap views, whose layout reflows as the walks complete.
 
+The media probes (pixel dimensions, play length / codec) run on the same
+background worker, ahead of the folder walks: selecting a file — or first
+painting its tile when the Length / Dimensions dataset fields are enabled —
+never opens the file on the UI thread; the detail appears with the next
+posted repaint, typically within a frame or two.
+
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).

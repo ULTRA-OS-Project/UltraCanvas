@@ -19,6 +19,35 @@
   height, which the row layout already treats as its unknown case, and rows
   shorten as the measurements land. `aspectCache` moved under `statsMutex` and
   is dropped, with its queue, on every rescan.
+- **UltraCanvasFilerWidget** *(1.8.2)*: the info-bar / dataset media probes
+  moved off the UI thread too. Selecting an audio / video file parsed its
+  container headers synchronously, and an image in an exotic container
+  (AVIF, HEIC) was **fully decoded** on the spot via `UCImage::Get` just to
+  learn its pixel size; with the Length / Dimensions dataset fields enabled
+  the same probes ran for every visible tile on first paint. `EntryExtraInfo`
+  now returns the cached text or queues the probe on the folder-statistics
+  worker (between the aspect probes and the recursive walks) and the result
+  arrives with a posted repaint.
+- **UltraCanvasFilerWidget**: repaint and interaction hot paths de-quadratified
+  for large folders. Selection membership during a paint comes from a per-frame
+  flag array instead of a `std::find` over the selection per drawn item (a
+  hover move after Select All was O(visible × selected)); `EllipsizeText`
+  binary-searches the longest fitting prefix instead of re-measuring the text
+  once per trimmed code point; the draw and thumbnail-prefetch loops stop at
+  the first item past the viewport instead of testing every entry each frame
+  (all views except the unordered treemap); the rubber-band reselect
+  deduplicates through a flag array instead of `std::find` per touched item;
+  restoring the selection after a rescan matches paths through a hash set
+  instead of a linear scan per entry (Select All + refresh was O(n²)); and the
+  per-frame selection info bar no longer copies every selected `FilerEntry`
+  (eight strings each) just to sum sizes.
+- **UltraCanvasFilerWidget**: scanning a folder costs one metadata lookup per
+  entry instead of two — type, size, times and the write bit all come from the
+  single `stat()` call that was already made for the dates, instead of a
+  `file_size()` lookup and then `stat()` again. Hidden entries are skipped
+  before their metadata is fetched. New `GetSelectionIndices()` exposes the
+  selection copy-free for hosts; UltraFiler's status bar and preview lookup
+  use it instead of copying every selected entry on each selection change.
 - **UltraFiler**: expanding a folder tree node no longer blocks on its
   children. "Does this folder have sub-folders?" — the question that gives a
   node its expand button — costs a directory open per child, and one expansion

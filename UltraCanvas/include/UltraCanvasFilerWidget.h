@@ -38,7 +38,7 @@
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
 // even then is dropped from the front of the last line, which opens with "…".
-// Version: 1.9.1
+// Version: 1.9.2
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
@@ -435,6 +435,11 @@ namespace UltraCanvas {
         // ===== DATA ACCESS =====
         const std::vector<FilerEntry>& GetEntries() const { return entries; }
         std::vector<FilerEntry> GetSelectedEntries() const;
+        // The selected indices into GetEntries(), copy-free. Prefer this over
+        // GetSelectedEntries() for per-event or per-frame inspection — the
+        // latter copies every selected FilerEntry (eight strings each), which
+        // for a Select All in a large folder is the whole listing.
+        const std::vector<size_t>& GetSelectionIndices() const { return selection; }
         void ClearSelection();
         void SelectAll();
         // Scroll so the first selected entry is fully in view. The scroll is
@@ -549,6 +554,12 @@ namespace UltraCanvas {
         FilerStyle style;
 
         std::vector<size_t> selection;            // indices into `entries`
+        // Selection membership as one flag per entry, rebuilt at the top of
+        // each paint: the draw functions ask "is this item selected?" once per
+        // drawn item, and answering with std::find over `selection` made a
+        // repaint O(visible × selected) — after Select All in a big folder
+        // every hover-move crawled.
+        std::vector<uint8_t> frameSelected;
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
 
@@ -857,6 +868,24 @@ namespace UltraCanvas {
         std::unordered_map<std::string, float> aspectCache;
         std::deque<std::string> aspectQueue;                 // headers to read
 
+        // "Extra info" of a media file — image dimensions, audio / video
+        // duration + codec — shown in the info bar and the thumbnail dataset
+        // lines. Probing means opening the file (and for exotic image
+        // containers decoding it), so like the aspects it runs on the worker:
+        // EntryExtraInfo() returns the cached text, or "" after queueing the
+        // probe (ready == false marks the pending slot so it queues once).
+        struct MediaInfoSlot {
+            std::string text;
+            bool ready = false;
+        };
+        struct MediaProbeRequest {
+            std::string path;
+            std::string extension;
+            bool isImage = false;    // image dimensions vs. media duration
+        };
+        std::unordered_map<std::string, MediaInfoSlot> mediaInfoCache;
+        std::deque<MediaProbeRequest> mediaQueue;
+
         std::mutex statsMutex;              // guards caches/queues/generation
         std::condition_variable statsCond;
         std::thread statsWorker;
@@ -872,8 +901,6 @@ namespace UltraCanvas {
         void StopFolderStatsWorker();
         void FolderStatsWorkerMain();
         void PostFolderStatsRedraw();
-
-        mutable std::map<std::string, std::string> mediaInfoCache;  // path -> extra info
 
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
 
@@ -997,7 +1024,7 @@ namespace UltraCanvas {
                                     std::string& secondary);
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
-        std::string EntryExtraInfo(const FilerEntry& e) const;
+        std::string EntryExtraInfo(const FilerEntry& e);
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
         // Ellipsizes an entry's name for the space it is drawn in and records
@@ -1032,7 +1059,7 @@ namespace UltraCanvas {
 
         // Thumbnail dataset lines (Display > Dataset): the formatted values of
         // the enabled fields that apply to this entry, top to bottom.
-        std::vector<std::string> DatasetLinesFor(const FilerEntry& e) const;
+        std::vector<std::string> DatasetLinesFor(const FilerEntry& e);
         // How many enabled dataset fields there are — the number of caption
         // lines reserved per tile so the grid stays aligned across file kinds.
         int  DatasetLineCount() const;

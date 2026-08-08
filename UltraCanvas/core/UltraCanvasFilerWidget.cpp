@@ -26,7 +26,7 @@
 // The inline rename editor is a real UltraCanvasTextInput overlaid on the
 // item's name, and video files show their poster frame in the thumbnail
 // views (decoded on the same worker threads as the image thumbnails).
-// Version: 1.8.1
+// Version: 1.8.2
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
@@ -1112,9 +1112,9 @@ namespace UltraCanvas {
         // is selected by path so a rescan (Refresh after a file operation, a
         // drop, ...) keeps the same files selected instead of whatever ends up
         // at the old indices.
-        std::vector<std::string> selectedPaths;
+        std::unordered_set<std::string> selectedPaths;
         for (size_t idx : selection)
-            if (idx < entries.size()) selectedPaths.push_back(entries[idx].path);
+            if (idx < entries.size()) selectedPaths.insert(entries[idx].path);
 
         entries.clear();
         effectiveSizesValid = false;
@@ -1129,8 +1129,9 @@ namespace UltraCanvas {
             folderStatsCache.clear();
             aspectQueue.clear();
             aspectCache.clear();
+            mediaQueue.clear();
+            mediaInfoCache.clear();
         }
-        mediaInfoCache.clear();
         DropThumbnailCache();
 
         std::error_code ec;
@@ -1150,24 +1151,36 @@ namespace UltraCanvas {
                 FilerEntry e;
                 e.name = it->path().filename().string();
                 e.path = it->path().string();
-                e.isDirectory = it->is_directory(ec);
-                e.isSymlink = it->is_symlink(ec);
+                e.isSymlink = it->is_symlink(ec);   // d_type, no extra syscall
                 e.isHidden = !e.name.empty() && e.name[0] == '.';
-                if (!e.isDirectory) {
-                    std::error_code sec;
-                    e.size = it->file_size(sec);
-                    if (sec) e.size = 0;
-                }
-                e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+                if (e.isHidden && !showHiddenFiles) continue;
 
+                // One stat per entry: type, size, times and the write bit all
+                // come from the same call. Asking the directory_entry for
+                // file_size() and then ::stat()ing again for the times cost a
+                // second metadata lookup per file, which on a big or network
+                // folder doubled the scan time.
                 struct stat st{};
                 if (::stat(e.path.c_str(), &st) == 0) {
+                    e.isDirectory = (st.st_mode & S_IFMT) == S_IFDIR;
+                    if (!e.isDirectory)
+                        e.size = static_cast<uint64_t>(st.st_size);
                     e.modifiedTime = st.st_mtime;
                     e.createdTime = st.st_ctime;
                     e.isReadOnly = (st.st_mode & S_IWUSR) == 0;
+                } else {
+                    // Broken symlink or a name stat() cannot resolve (e.g. a
+                    // non-ACP name on Windows): keep the iterator's cached
+                    // view so the entry still lists with its type and size.
+                    e.isDirectory = it->is_directory(ec);
+                    if (!e.isDirectory) {
+                        std::error_code sec;
+                        e.size = it->file_size(sec);
+                        if (sec) e.size = 0;
+                    }
                 }
+                e.extension = e.isDirectory ? "" : LowerExtension(e.name);
                 ApplyEntryTypeInfo(e);
-                if (e.isHidden && !showHiddenFiles) continue;
                 entries.push_back(std::move(e));
             }
         }
@@ -1252,8 +1265,7 @@ namespace UltraCanvas {
         {
             std::vector<size_t> restored;
             for (size_t i = 0; i < entries.size(); ++i) {
-                if (std::find(selectedPaths.begin(), selectedPaths.end(),
-                              entries[i].path) != selectedPaths.end()) {
+                if (selectedPaths.count(entries[i].path)) {
                     restored.push_back(i);
                 }
             }
@@ -1393,7 +1405,7 @@ namespace UltraCanvas {
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::DatasetLinesFor(
-            const FilerEntry& e) const {
+            const FilerEntry& e) {
         std::vector<std::string> lines;
         if (datasetFields == 0) return lines;
 
@@ -3343,6 +3355,10 @@ namespace UltraCanvas {
         // be hovered, so their flags are always the current ones.
         if (nameTruncated.size() != entries.size())
             nameTruncated.assign(entries.size(), 0);
+        // Selection membership per entry for this paint (see frameSelected).
+        frameSelected.assign(entries.size(), 0);
+        for (size_t idx : selection)
+            if (idx < frameSelected.size()) frameSelected[idx] = 1;
 
         if (viewType == FilerViewType::GourceTree) {
             DrawPlaceholderView(ctx, bounds,
@@ -3377,9 +3393,19 @@ namespace UltraCanvas {
         thumbFrameWants.clear();
         ctx->PushState();
         ctx->Translate(-scrollOffsetX, -scrollOffsetY);
+        // Except for the treemap, `items` is ordered along the scroll axis
+        // (rows top-down, List columns left-to-right), so the loop can stop at
+        // the first item past the viewport instead of testing every entry of
+        // a large folder each frame.
+        const bool xOrdered = IsHorizontal();
+        const bool ordered = viewType != FilerViewType::TreeMap;
         for (const ItemLayout& item : items) {
             int top = item.rect.y - scrollOffsetY;
             int left = item.rect.x - scrollOffsetX;
+            if (ordered) {
+                if (!xOrdered && top > bounds.y + bounds.height) break;
+                if (xOrdered && left > bounds.x + bounds.width) break;
+            }
             if (top + item.rect.height < bounds.y || top > bounds.y + bounds.height) continue;
             if (left + item.rect.width < bounds.x || left > bounds.x + bounds.width) continue;
             bool hov = (static_cast<int>(item.entryIndex) == hoveredIndex);
@@ -3491,40 +3517,6 @@ namespace UltraCanvas {
         ctx->DrawTextInRect(message, Rect2Dd(bounds));
     }
 
-    std::string UltraCanvasFilerWidget::EllipsizeText(IRenderContext* ctx,
-                                                      const std::string& text,
-                                                      int maxWidth) const {
-        if (maxWidth <= 0) return "";
-        Size2Di ts = ctx->GetTextLineDimensions(text);
-        if (ts.width <= maxWidth) return text;
-        std::string s = text;
-        while (s.size() > 1) {
-            // Trim whole UTF-8 code points so multibyte names stay valid.
-            size_t cut = s.size() - 1;
-            while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
-            s.erase(cut);
-            ts = ctx->GetTextLineDimensions(s + "…");
-            if (ts.width <= maxWidth) return s + "…";
-        }
-        return "…";
-    }
-
-    std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
-                                                           size_t entryIndex,
-                                                           const std::string& name,
-                                                           int maxWidth) {
-        std::string shown = EllipsizeText(ctx, name, maxWidth);
-        if (entryIndex < nameTruncated.size())
-            nameTruncated[entryIndex] = (shown != name) ? 1 : 0;
-        return shown;
-    }
-
-    // ===== WRAPPED CAPTIONS =====
-    // Tile captions (thumbnail grids, treemap cells) are only as wide as the
-    // tile, which is far less than a file name often needs. Instead of cutting
-    // the name off after one line it is broken over up to captionMaxLines
-    // lines; only what does not fit even then is dropped, from the front of the
-    // last line, so the tail — the extension — always remains readable.
     namespace {
         // Byte offset of every UTF-8 code point start in `s`, plus s.size() as
         // the closing boundary: cutting on one never splits a multibyte
@@ -3548,6 +3540,48 @@ namespace UltraCanvas {
                    c == ';' || c == '(' || c == ')' || c == '[' || c == ']';
         }
     }
+
+    std::string UltraCanvasFilerWidget::EllipsizeText(IRenderContext* ctx,
+                                                      const std::string& text,
+                                                      int maxWidth) const {
+        if (maxWidth <= 0) return "";
+        Size2Di ts = ctx->GetTextLineDimensions(text);
+        if (ts.width <= maxWidth) return text;
+        // Longest prefix that fits with the trailing "…": binary search over
+        // the code-point boundaries (fit is monotone in prefix length). The
+        // one-code-point-at-a-time trim measured the text once per removed
+        // character — a long name in a narrow Details column cost hundreds of
+        // text measurements per cell, every frame.
+        std::vector<size_t> bounds = Utf8Boundaries(text);
+        size_t lo = 0, hi = bounds.size() - 1;   // prefix is text[0, bounds[i])
+        while (lo < hi) {
+            size_t mid = (lo + hi + 1) / 2;
+            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid]) + "…").width
+                    <= maxWidth)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        if (lo == 0) return "…";
+        return text.substr(0, bounds[lo]) + "…";
+    }
+
+    std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
+                                                           size_t entryIndex,
+                                                           const std::string& name,
+                                                           int maxWidth) {
+        std::string shown = EllipsizeText(ctx, name, maxWidth);
+        if (entryIndex < nameTruncated.size())
+            nameTruncated[entryIndex] = (shown != name) ? 1 : 0;
+        return shown;
+    }
+
+    // ===== WRAPPED CAPTIONS =====
+    // Tile captions (thumbnail grids, treemap cells) are only as wide as the
+    // tile, which is far less than a file name often needs. Instead of cutting
+    // the name off after one line it is broken over up to captionMaxLines
+    // lines; only what does not fit even then is dropped, from the front of the
+    // last line, so the tail — the extension — always remains readable.
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapText(
             IRenderContext* ctx, const std::string& text,
@@ -3658,8 +3692,8 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::DrawSelectionState(IRenderContext* ctx,
                                                     const ItemLayout& item,
                                                     bool hovered) {
-        bool selected = std::find(selection.begin(), selection.end(),
-                                  item.entryIndex) != selection.end();
+        bool selected = item.entryIndex < frameSelected.size() &&
+                        frameSelected[item.entryIndex];
         if (selected) {
             ctx->SetFillPaint(style.selectionColor);
             ctx->FillRectangle(Rect2Dd(item.rect));
@@ -3804,9 +3838,12 @@ namespace UltraCanvas {
         for (const ItemLayout& item : items) {
             int lead = horiz ? item.rect.x - scrollOffsetX
                              : item.rect.y - scrollOffsetY;
+            // Items are viewport-ordered (the treemap, which is not, returned
+            // above): past the prefetch band nothing further is wanted.
+            if (lead > viewEnd + band) break;
             // Items overlapping the viewport were already requested by their
             // draw call; take only the next viewport-sized band past it.
-            if (lead <= viewEnd || lead > viewEnd + band) continue;
+            if (lead <= viewEnd) continue;
             std::string src = ThumbSourceFor(entries[item.entryIndex]);
             if (src.empty()) continue;
             Rect2Di r;
@@ -4271,8 +4308,8 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::DrawThumbnailTile(IRenderContext* ctx,
                                                    const ItemLayout& item, bool hovered) {
         const FilerEntry& e = entries[item.entryIndex];
-        bool selected = std::find(selection.begin(), selection.end(),
-                                  item.entryIndex) != selection.end();
+        bool selected = item.entryIndex < frameSelected.size() &&
+                        frameSelected[item.entryIndex];
         if (selected || hovered) {
             ctx->SetFillPaint(selected ? style.selectionColor : style.hoverColor);
             ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
@@ -4397,8 +4434,8 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::DrawTreeMapCell(IRenderContext* ctx,
                                                  const ItemLayout& item, bool hovered) {
         const FilerEntry& e = entries[item.entryIndex];
-        bool selected = std::find(selection.begin(), selection.end(),
-                                  item.entryIndex) != selection.end();
+        bool selected = item.entryIndex < frameSelected.size() &&
+                        frameSelected[item.entryIndex];
         Color base = CategoryColor(e.category);
         // Vary the shade a little by index so equal categories stay separable.
         int delta = int(item.entryIndex % 5) * 6 - 12;
@@ -4818,6 +4855,7 @@ namespace UltraCanvas {
             statsShutdown = true;
             statsQueue.clear();
             aspectQueue.clear();
+            mediaQueue.clear();
         }
         statsCond.notify_all();
         if (statsWorker.joinable()) statsWorker.join();
@@ -4827,24 +4865,72 @@ namespace UltraCanvas {
         for (;;) {
             std::string path;
             std::string aspectPath;
+            MediaProbeRequest media;
+            bool haveMedia = false;
             uint64_t gen;
             {
                 std::unique_lock<std::mutex> lk(statsMutex);
                 statsCond.wait(lk, [this]() {
-                    return statsShutdown || !statsQueue.empty() || !aspectQueue.empty();
+                    return statsShutdown || !statsQueue.empty() ||
+                           !aspectQueue.empty() || !mediaQueue.empty();
                 });
                 if (statsShutdown) return;
-                // Image headers first: they are single short reads that settle
-                // the grid geometry the user is looking at, while a recursive
+                // Shortest jobs first: aspect probes (one header read) settle
+                // the grid geometry the user is looking at, media probes are a
+                // few reads for the info bar / dataset lines, and a recursive
                 // folder walk can run for seconds.
                 if (!aspectQueue.empty()) {
                     aspectPath = std::move(aspectQueue.front());
                     aspectQueue.pop_front();
+                } else if (!mediaQueue.empty()) {
+                    media = std::move(mediaQueue.front());
+                    mediaQueue.pop_front();
+                    haveMedia = true;
                 } else {
                     path = std::move(statsQueue.front());
                     statsQueue.pop_front();
                 }
                 gen = statsGeneration;
+            }
+
+            if (haveMedia) {
+                std::string out;
+                if (media.isImage) {
+                    int w = 0, h = 0;
+                    if (!ProbeImageDimensions(media.path, w, h)) {
+                        // Unknown container (AVIF, HEIC, ...): ask the shared
+                        // image cache — same call the thumbnail workers make,
+                        // so a later tile decode is a free cache hit.
+                        auto img = UCImage::Get(media.path);
+                        if (img) { w = img->GetWidth(); h = img->GetHeight(); }
+                    }
+                    if (w > 0 && h > 0)
+                        out = std::to_string(w) + " × " + std::to_string(h) + " px";
+                } else {
+                    FilerMediaProbe probe;
+                    if (ProbeMediaFile(media.path, media.extension, probe)) {
+                        out = FormatDuration(probe.seconds);
+                        if (!probe.codec.empty()) {
+                            if (!out.empty()) out += " · ";
+                            out += probe.codec;
+                        }
+                    }
+                }
+                bool report = false;
+                {
+                    std::lock_guard<std::mutex> lk(statsMutex);
+                    if (statsShutdown) return;
+                    if (gen == statsGeneration) {
+                        MediaInfoSlot& slot = mediaInfoCache[media.path];
+                        slot.text = std::move(out);
+                        slot.ready = true;
+                        // An empty answer changes nothing the pending ""
+                        // did not already show.
+                        report = !slot.text.empty();
+                    }
+                }
+                if (report) PostFolderStatsRedraw();
+                continue;
             }
 
             if (!aspectPath.empty()) {
@@ -4936,35 +5022,28 @@ namespace UltraCanvas {
 
     // ===== SELECTION INFO BAR =====
 
-    std::string UltraCanvasFilerWidget::EntryExtraInfo(const FilerEntry& e) const {
+    std::string UltraCanvasFilerWidget::EntryExtraInfo(const FilerEntry& e) {
         if (e.isDirectory) return "";
-        auto it = mediaInfoCache.find(e.path);
-        if (it != mediaInfoCache.end()) return it->second;
+        const bool isImage = e.category == FilerFileCategory::Image;
+        if (!isImage && e.category != FilerFileCategory::Audio &&
+            e.category != FilerFileCategory::Video)
+            return "";
 
-        std::string out;
-        if (e.category == FilerFileCategory::Image) {
-            int w = 0, h = 0;
-            if (!ProbeImageDimensions(e.path, w, h)) {
-                // Unknown container (AVIF, HEIC, ...): ask the shared image
-                // cache — the thumbnail views load these files anyway.
-                auto img = UCImage::Get(e.path);
-                if (img) { w = img->GetWidth(); h = img->GetHeight(); }
-            }
-            if (w > 0 && h > 0)
-                out = std::to_string(w) + " × " + std::to_string(h) + " px";
-        } else if (e.category == FilerFileCategory::Audio ||
-                   e.category == FilerFileCategory::Video) {
-            FilerMediaProbe probe;
-            if (ProbeMediaFile(e.path, e.extension, probe)) {
-                out = FormatDuration(probe.seconds);
-                if (!probe.codec.empty()) {
-                    if (!out.empty()) out += " · ";
-                    out += probe.codec;
-                }
-            }
-        }
-        mediaInfoCache.emplace(e.path, out);
-        return out;
+        std::lock_guard<std::mutex> lk(statsMutex);
+        auto it = mediaInfoCache.find(e.path);
+        if (it != mediaInfoCache.end())
+            return it->second.text;   // "" while the probe is still pending
+
+        // Probing opens the file — for an exotic image container it decodes
+        // it — and this is asked from the paint path (info bar, dataset
+        // lines), so the read goes to the worker. The pending slot keeps
+        // repeated calls from queueing the file twice; the finished probe
+        // posts a redraw that picks the text up.
+        mediaInfoCache.emplace(e.path, MediaInfoSlot{});
+        mediaQueue.push_back(MediaProbeRequest{e.path, e.extension, isImage});
+        StartFolderStatsWorkerLocked();
+        statsCond.notify_one();
+        return "";
     }
 
     void UltraCanvasFilerWidget::BuildSelectionInfoText(std::string& primary,
@@ -4988,7 +5067,13 @@ namespace UltraCanvas {
             return s;
         };
 
-        std::vector<FilerEntry> sel = GetSelectedEntries();
+        // The selection is inspected in place: this runs on every repaint, and
+        // copying the selected FilerEntrys (GetSelectedEntries) made each
+        // frame after a Select All duplicate the whole listing.
+        std::vector<const FilerEntry*> sel;
+        sel.reserve(selection.size());
+        for (size_t idx : selection)
+            if (idx < entries.size()) sel.push_back(&entries[idx]);
 
         if (sel.empty()) {
             // Folder summary: entry counts + non-recursive size of its files.
@@ -5005,7 +5090,7 @@ namespace UltraCanvas {
         }
 
         if (sel.size() == 1) {
-            const FilerEntry& e = sel.front();
+            const FilerEntry& e = *sel.front();
             primary = e.name;
             addPart(e.typeName);
             if (e.isDirectory) {
@@ -5033,7 +5118,8 @@ namespace UltraCanvas {
         // Multi selection: counts + summed sizes (folders counted recursively).
         uint64_t files = 0, folders = 0, bytes = 0;
         bool capped = false;
-        for (const FilerEntry& e : sel) {
+        for (const FilerEntry* ep : sel) {
+            const FilerEntry& e = *ep;
             if (e.isDirectory) {
                 ++folders;
                 FolderStats st = GetFolderStats(e.path);
@@ -5569,14 +5655,19 @@ namespace UltraCanvas {
         marqueeCurrent = ToContentPoint(localPoint);
 
         // Reselect from scratch every move: the rectangle's touch set plus —
-        // with Ctrl — whatever was selected when the band started.
+        // with Ctrl — whatever was selected when the band started. Membership
+        // is tracked in a flat flag array; deduplicating with std::find made
+        // every move of a band over thousands of items quadratic.
         Rect2Di r = MarqueeRect();
         std::vector<size_t> newSel = marqueeAdditive ? marqueeBaseSelection
                                                      : std::vector<size_t>();
+        std::vector<uint8_t> inSel(entries.size(), 0);
+        for (size_t idx : newSel)
+            if (idx < inSel.size()) inSel[idx] = 1;
         for (const ItemLayout& it : items) {
             if (!it.rect.Intersects(r)) continue;
-            if (std::find(newSel.begin(), newSel.end(), it.entryIndex)
-                == newSel.end()) {
+            if (it.entryIndex < inSel.size() && !inSel[it.entryIndex]) {
+                inSel[it.entryIndex] = 1;
                 newSel.push_back(it.entryIndex);
             }
         }

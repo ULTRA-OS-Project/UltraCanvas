@@ -11,7 +11,7 @@
 // file is selected; Esc closes it), plus a status bar describing the folder
 // and the selection (kept in step with the folder listing through the
 // filer's onFolderRefreshed callback).
-// Version: 1.4.1
+// Version: 1.4.2
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once

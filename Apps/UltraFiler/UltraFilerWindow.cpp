@@ -6,7 +6,7 @@
 // menu opens the settings window (UltraFilerSettingsDialog); persisted
 // settings load at startup and configure the preview's transparent-image
 // backdrop. Esc closes an open media preview.
-// Version: 1.4.1
+// Version: 1.4.2
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
@@ -1062,13 +1062,18 @@ void UltraFilerWindow::UpdateNavButtons() {
 
 void UltraFilerWindow::UpdateStatusBar() {
     if (!statusLabel || !filer) return;
-    const size_t total = filer->GetEntries().size();
-    auto sel = filer->GetSelectedEntries();
-    std::string text = std::to_string(total) + (total == 1 ? " item" : " items");
+    // Indices, not GetSelectedEntries(): this runs on every selection change
+    // (each rubber-band mouse move included) and the entry copy scaled with
+    // the selection size.
+    const std::vector<FilerEntry>& entries = filer->GetEntries();
+    const std::vector<size_t>& sel = filer->GetSelectionIndices();
+    std::string text = std::to_string(entries.size())
+                     + (entries.size() == 1 ? " item" : " items");
     if (!sel.empty()) {
         uint64_t bytes = 0;
-        for (const FilerEntry& e : sel)
-            if (!e.isDirectory) bytes += e.size;
+        for (size_t idx : sel)
+            if (idx < entries.size() && !entries[idx].isDirectory)
+                bytes += entries[idx].size;
         text += "    |    " + std::to_string(sel.size())
               + (sel.size() == 1 ? " item selected" : " items selected");
         if (bytes > 0) text += " (" + FormatFileSize(bytes) + ")";
@@ -1078,10 +1083,14 @@ void UltraFilerWindow::UpdateStatusBar() {
 
 std::string UltraFilerWindow::PreviewablePathForSelection() const {
     if (!filer) return {};
-    auto sel = filer->GetSelectedEntries();
-    if (sel.size() != 1 || sel.front().isDirectory) return {};
-    if (!UltraCanvasMediaViewer::IsSupportedMedia(sel.front().path)) return {};
-    return sel.front().path;
+    const std::vector<size_t>& sel = filer->GetSelectionIndices();
+    if (sel.size() != 1) return {};
+    const std::vector<FilerEntry>& entries = filer->GetEntries();
+    if (sel.front() >= entries.size()) return {};
+    const FilerEntry& e = entries[sel.front()];
+    if (e.isDirectory) return {};
+    if (!UltraCanvasMediaViewer::IsSupportedMedia(e.path)) return {};
+    return e.path;
 }
 
 void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
