@@ -221,10 +221,27 @@ architecture.
 | ULTRA OS native backend | Planned |
 | Plugins (SMTP, MQTT, SSH, …) | Tracked separately |
 
+Per-function status is not a table anyone has to maintain by hand: build and
+run **`UltraNetApiStatus`**, which probes every public entry point on the
+machine in front of you and reports it as WORKING, IMPLEMENTED (present but
+unverifiable here), NOT IMPLEMENTED, or BROKEN.
+
+```bash
+cmake -S . -B build -DULTRACANVAS_BUILD_NET_TESTS=ON
+cmake --build build --target UltraNetApiStatus
+./build/bin/UltraNetApiStatus                     # or --format=markdown / --format=json
+```
+
+It brings its own HTTP, WebSocket, TCP/UDP and TLS peers, so it needs no
+internet access. See [`ApiStatus.md`](ApiStatus.md).
+
 ---
 
 ## Reference
 
+* **API status report** — [`ApiStatus.md`](ApiStatus.md) (the
+  `UltraNetApiStatus` tool: statuses, options, how each area is verified,
+  how to add a probe).
 * **Master registry** — full function list, types, callbacks, plugin
   interfaces, reserved patterns, and security/performance rules.
 * **UltraAI integration** — `UltraAI/Docs/UltraNetIntegration.md`

@@ -1,3 +1,30 @@
+#### 2026-08-08 *0.3.31*
+- **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
+  target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
+  the whole public UltraNet surface and reports each entry as **WORKING**
+  (the probe drove the real code path and the result matched the contract),
+  **IMPLEMENTED** (present and reached, but unverifiable in this
+  environment), **NOT IMPLEMENTED** (documented stub / no-op / absent
+  backend) or **BROKEN** (ran and contradicted the API). 108 entries across
+  Core, URL, HTTP, Session, SSE, WebSocket, DNS, Socket, TLS, FTP, MIME and
+  Plugins; `--format=text|markdown|json`, `--area=`, `--output=`,
+  `--network`, `--strict`, and a `--serve` diagnostic that just holds the
+  probe origin open. Registered with CTest; exits non-zero only on BROKEN
+  (or, with `--strict`, on anything short of WORKING).
+- **UltraNet**: the status tool verifies offline by bringing its own peers —
+  an in-process HTTP/1.1 + RFC 6455 WebSocket origin written on UltraNet's
+  own TCP API (keep-alive, chunked bodies, `Expect: 100-continue`,
+  redirects, cookies, Basic-auth challenges, `text/event-stream`, a slow
+  route for cancellation, and a masked-frame echo endpoint with its own
+  SHA-1 for `Sec-WebSocket-Accept`), loopback TCP/UDP peers, and an
+  `openssl s_server` TLS peer whose throwaway certificate makes
+  `UltraNet_TlsSetCABundle` / `UltraNet_TlsAddTrustedCert` checkable in both
+  directions. No Python, no external service and no internet access
+  required.
+- Docs: `Docs/Modules/UltraNet/ApiStatus.md` documents the statuses, the
+  options, how each area is verified and how to add a probe; both UltraNet
+  READMEs point at it from their Status sections.
+
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
   three-column table rows and definable column alignment.
