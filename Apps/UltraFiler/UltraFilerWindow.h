@@ -115,6 +115,10 @@ private:
     // Path of the single selected previewable file, or "" when there is
     // nothing to preview.
     std::string PreviewablePathForSelection() const;
+    // Mirrors the preview toggle into every tab's filer: while the preview is
+    // on, deleting the previewed file hands the selection to the neighbouring
+    // entry, so the pane shows that file instead of folding away.
+    void ApplyPreviewSelectionPolicy();
 
     // ===== SETTINGS =====
     // Pushes the persisted settings into the widgets they configure (the

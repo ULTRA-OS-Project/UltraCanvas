@@ -466,6 +466,17 @@ namespace UltraCanvas {
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
+        // What a delete that wipes out the whole selection leaves selected.
+        // Off (default): nothing — the selection is simply gone. On: the entry
+        // that took the deleted one's place becomes the selection (the next
+        // one, or the previous one when the deleted entry was last). Hosts
+        // that feed a preview pane from onSelectionChanged switch this on
+        // while the preview is up, so deleting the previewed file walks the
+        // preview on to its neighbour instead of folding the pane away. The
+        // new selection is in place before onFolderRefreshed fires, so the
+        // host sees one selection change and no empty state in between.
+        void SetSelectNextAfterDelete(bool enabled) { selectNextAfterDelete = enabled; }
+        bool IsSelectNextAfterDelete() const { return selectNextAfterDelete; }
         // Pack the selection into an archive alongside it. The extension picks
         // the format (e.g. "zip", "7z", "tar", "tar.gz", "tar.bz2", "tar.xz",
         // "tar.zst"); defaults to a .zip archive.
@@ -558,6 +569,18 @@ namespace UltraCanvas {
         std::vector<size_t> selection;            // indices into `entries`
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
+        // SetSelectNextAfterDelete: when a delete takes the whole selection
+        // away, PerformDeletion parks the neighbour that should inherit it
+        // here and the rescan selects that path instead of restoring the
+        // (now gone) old selection — one selection change, none of it empty.
+        bool selectNextAfterDelete = false;
+        std::string selectAfterScanPath;
+        // A committed rename, so the rescan can follow the entry from its old
+        // path to its new one: the selection is restored by path, and without
+        // this the renamed entry would drop out of it (leaving nothing
+        // selected, which breaks the very next F2 / Rename command).
+        std::string renamedFromPath;
+        std::string renamedToPath;
 
         // Tooltip tracking: what the cursor is currently over, so a tooltip is
         // shown once when the cursor enters it and hidden when it leaves. An
@@ -1069,6 +1092,20 @@ namespace UltraCanvas {
         void OpenContextMenu(const Point2Di& localPoint);
         std::vector<size_t> SelectionOrItem(int index) const;
         void SelectionToClipboard(bool cut);
+        void EntriesToClipboard(const std::vector<FilerEntry>& targets, bool cut);
+        // What an action aimed at one entry operates on: the whole selection
+        // when that entry is part of it, otherwise just the entry itself. The
+        // hover icon-menu buttons use this so pressing one never has to select
+        // the entry first (which would re-target an attached preview).
+        std::vector<FilerEntry> SelectionOrEntry(size_t entryIndex) const;
+        // Delete an explicit set (confirmDelete / the built-in dialog still
+        // gate it). DeleteSelection() is this over the selected entries.
+        void DeleteEntries(const std::vector<FilerEntry>& victims);
+        // Entry that should inherit the selection once `victims` are gone:
+        // the first survivor after them, else the last one before them.
+        // Empty when the folder holds nothing else.
+        std::string NeighbourPathAfterRemoval(
+                const std::vector<FilerEntry>& victims) const;
         // Paste fallback when the clipboard holds no files: writes the raw
         // clipboard data (an image or text copied in another program) as a
         // new file into the current folder. False = nothing pastable there.

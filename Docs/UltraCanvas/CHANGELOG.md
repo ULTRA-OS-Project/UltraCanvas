@@ -1,4 +1,4 @@
-#### 2026-08-08 *0.3.31*
+#### 2026-08-08 *0.3.33*
 - **UltraCanvasCircleDiagram** *(1.0.0)*: new hub-and-spoke circle diagram
   infographic — a centre hub, a backbone ring, and equally sized labelled node
   discs threaded onto that ring, each with a fan of satellites on leader lines.
@@ -25,6 +25,46 @@
   `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`, survey and roadmap in
   `Docs/UltraCanvas/CircleDiagramInfographicVariants.md`, demo scene in
   `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`.
+#### 2026-08-08 *0.3.32*
+- **Version numbers** are now derived from the changelogs at build time, so the
+  version the demo app's info window shows can no longer disagree with the
+  version in the file name of the build it came from. The packaging scripts
+  already parsed `#### YYYY-MM-DD *x.y.z*` off the first changelog line for the
+  artefact names; the number compiled *into* the binaries was a separate
+  hand-maintained copy that only moved when someone remembered to run
+  `set-version.sh`, and it had fallen ten releases behind (the info window
+  reported 0.3.21 against a 0.3.31 changelog). The new
+  `cmake/UltraCanvasVersion.cmake` reads the same first line at configure time
+  and feeds `project(VERSION)`, `ULTRACANVAS_VERSION` and `ULTRATEXTER_VERSION`;
+  `UltraCanvas::versionString` and `UltraCanvasTextEditor::version` take their
+  value from those defines instead of a literal. Adding a changelog entry
+  re-triggers the configure step, so an existing build tree picks the new
+  version up rather than baking in the one it was first configured with.
+  `set-version.sh` now only writes the two Windows resource files that are read
+  from disk by windres (`UltraTexter.rc`, `UltraTexter.manifest`) — a configure
+  on any platform warns when those are stale.
+
+#### 2026-08-07 *0.3.31*
+- **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
+  now keeps that origin. The constructor delegated to the size-only base
+  constructor, so the origin was written straight to `finalBounds` without a CSS
+  position behind it: the first layout pass re-stacked the surface as an in-flow
+  child and the GL content composited in the top-left corner of its container
+  while every sibling widget stayed put. It now uses the `(id, x, y, w, h)` base
+  constructor, which stamps an AbsoluteUI position for a non-zero origin;
+  `(0, 0)` still leaves the surface in flow for flex/grid parents. The doc gained
+  a "Positioning" section covering this and the bounds + CSS-box pattern needed
+  to move or resize a surface at runtime.
+- **DemoApp — OpenGL 3D showcase**: all three tabs (3D Models, Shaders, Zarch)
+  share one maximize control, `gldemo::AddMaximizeControl()`. The icon sits in
+  the canvas's top-right corner with an 8px margin, and the button, a
+  double-click on the canvas or Esc toggles between the normal layout and a
+  canvas maximized over the whole tab. Maximizing works now that the zoom writes
+  the CSS box as well as the bounds (`gldemo::PlaceElement`) — hiding the chrome
+  invalidated the layout, which promptly restored the canvas's original size. A
+  new `media/icons/minimise.svg` marks the restore state, the Zarch and Models
+  panels match the Shaders tab's column geometry, and the Shaders info text was
+  trimmed to what fits its panel.
 
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained

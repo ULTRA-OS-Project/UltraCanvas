@@ -1532,6 +1532,22 @@ namespace UltraCanvas {
                 .AddVariant("swotdiagram", "Rows")
                 .AddVariant("swotdiagram", "Columns");
 
+        infoBuilder.AddItem("fishbonediagram", "Fishbone Diagram",
+                            "Ishikawa cause-and-effect analysis with eight design presets, "
+                            "category checklists and Mermaid ishikawa-beta interchange",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateFishboneDiagramExamples(); },
+                            "DemoApp/UltraCanvasFishboneDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasFishboneDiagram.md")
+                .AddVariant("fishbonediagram", "Spine Chips")
+                .AddVariant("fishbonediagram", "Classic")
+                .AddVariant("fishbonediagram", "Bracket")
+                .AddVariant("fishbonediagram", "Crossed Ribs")
+                .AddVariant("fishbonediagram", "Chevron Spine")
+                .AddVariant("fishbonediagram", "Columns")
+                .AddVariant("fishbonediagram", "Vertical")
+                .AddVariant("fishbonediagram", "Compact");
+
         infoBuilder.AddItem("timelinediagram", "Timeline Diagram",
                             "Narrative timeline infographic with nine design presets",
                             ImplementationStatus::FullyImplemented,

@@ -49,6 +49,12 @@ components:
   scrolled into view when the narrowed folder display would cut it off.
   The viewer provides zoom, rotation, color adjustments, slideshow, and
   per-kind views for documents, spreadsheets, models, audio and video.
+  While the preview is enabled, **deleting the previewed file selects its
+  neighbour** (the next entry, or the previous one when it was the last), so
+  the pane moves on to that file instead of folding away and snapping the
+  folder display back to full width. The hover icon menu's Copy / Cut /
+  Rename / Delete buttons act on the entry under the cursor without selecting
+  it, so pressing one never re-targets or pops open the preview.
 - **Video preview mode:** the command bar "Video" dropdown selects how a
   selected video plays in the preview: *Autoplay* (full playback with
   sound, the default), *5 s clip* (a five-second muted preview in the
