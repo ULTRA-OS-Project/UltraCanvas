@@ -809,6 +809,9 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     filerStyle.folderIconScale = 0.7f;
     state->filer->SetStyle(filerStyle);
     state->filer->SetViewType(FilerViewType::ThumbnailsMedium);
+    // With the preview up, a delete of the previewed file moves the selection
+    // (and with it the preview) on to the next entry instead of emptying it.
+    state->filer->SetSelectNextAfterDelete(previewEnabled);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
@@ -1097,7 +1100,13 @@ void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
     if (enabled == previewEnabled) return;
     previewEnabled = enabled;
     StyleToggleButton(previewButton.get(), previewEnabled);
+    ApplyPreviewSelectionPolicy();
     UpdatePreviewPane();
+}
+
+void UltraFilerWindow::ApplyPreviewSelectionPolicy() {
+    for (auto& state : tabStates)
+        if (state->filer) state->filer->SetSelectNextAfterDelete(previewEnabled);
 }
 
 void UltraFilerWindow::UpdatePreviewPane() {
