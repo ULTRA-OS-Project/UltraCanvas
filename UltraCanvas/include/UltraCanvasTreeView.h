@@ -49,6 +49,22 @@ enum class TreeSortMode {
     LastAccess = 2   // by data.accessSequence
 };
 
+// ===== SCROLL-TO-TOP BUTTON STYLE =====
+// Look and thresholds of the floating "move to the top" button that the tree
+// draws over the bottom-right corner of its content area once the rows overflow
+// the visible area. See UltraCanvasTreeView::SetShowScrollToTopButton().
+struct TreeScrollToTopStyle {
+    int   size            = 24;    // button width/height in px
+    int   margin          = 8;     // gap between the button and the content edges
+    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
+    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
+    Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);  // translucent so rows stay readable
+    Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
+    Color borderColor     = Color(0xFF, 0xFF, 0xFF, 0x60);
+    Color arrowColor      = Colors::White;
+};
+
 struct TreeNodeIcon {
     std::string iconPath;
     int width = 16;
@@ -216,6 +232,11 @@ private:
     int scrollOffsetY;             // Vertical scroll offset
     int maxScrollY;                // Maximum scroll value
 
+    // Floating "move to the top" button (bottom-right of the content area)
+    bool showScrollToTopButton = true;   // feature is on by default
+    bool scrollToTopHovered = false;     // pointer currently over the button
+    TreeScrollToTopStyle scrollToTopStyle;
+
     // Interaction state
 //    bool isDragging;               // Currently dragging scrollbar
 //    TreeNode* draggedNode;         // Node being dragged (for drag & drop)
@@ -315,7 +336,29 @@ public:
     // ===== SCROLLING =====
     void ScrollTo(TreeNode* node);
     void ScrollBy(int deltaY);
-    
+    // Jump back to the first row (animated when the scrollbar has smooth scrolling on).
+    void ScrollToTop();
+
+    // ===== SCROLL-TO-TOP BUTTON =====
+    // A floating "move to the top" button drawn over the bottom-right corner of
+    // the content area. It appears only when more than
+    // TreeScrollToTopStyle::minHiddenRows rows are outside the visible area, and
+    // slides up as the view nears the end of the list so it never covers the last
+    // TreeScrollToTopStyle::keepClearRows rows. Enabled by default.
+    void SetShowScrollToTopButton(bool show);
+    bool GetShowScrollToTopButton() const { return showScrollToTopButton; }
+
+    void SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style);
+    const TreeScrollToTopStyle& GetScrollToTopButtonStyle() const { return scrollToTopStyle; }
+
+    // True while the button is actually on screen (feature enabled AND enough
+    // rows hidden). Useful for tests and for callers that draw their own overlay.
+    bool IsScrollToTopButtonActive() const;
+
+    // Element-local rect the button occupies right now; empty when not active.
+    Rect2Di GetScrollToTopButtonRect() const;
+
+
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
     
@@ -373,9 +416,15 @@ private:
     void CreateScrollbar();
 
     void ClampScrollOffset();
-    
+
     int GetTotalVisibleHeight();
-    
+
+    // ===== SCROLL-TO-TOP BUTTON =====
+    void RenderScrollToTopButton(IRenderContext* ctx);
+    // Consume pointer events that land on the button (hover tracking + click).
+    // Returns true when the event was handled and must not reach the rows.
+    bool HandleScrollToTopButtonEvent(const UCEvent& event);
+
     int GetNodeDisplayY(TreeNode* node);
     
     TreeNode* GetNodeAtY(int y);
@@ -448,6 +497,16 @@ public:
 
     TreeViewBuilder& SetAutoSortChildren(bool enable, bool ascending = true) {
         treeView->SetAutoSortChildren(enable, ascending);
+        return *this;
+    }
+
+    TreeViewBuilder& SetShowScrollToTopButton(bool show) {
+        treeView->SetShowScrollToTopButton(show);
+        return *this;
+    }
+
+    TreeViewBuilder& SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style) {
+        treeView->SetScrollToTopButtonStyle(style);
         return *this;
     }
 

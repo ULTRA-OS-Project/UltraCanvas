@@ -276,6 +276,16 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasColumnsTreeView::OnEvent(const UCEvent &event) {
+        // The floating scroll-to-top button overlaps the rows near the right
+        // edge, where a column boundary may also sit. While the pointer is over
+        // the button it owns the event: no resize cursor, no resize drag.
+        if (dragCol_ < 0 && event.IsMouseEvent()) {
+            Rect2Di btn = GetScrollToTopButtonRect();
+            if (btn.width > 0 && btn.Contains(event.pointer)) {
+                return UltraCanvasTreeView::OnEvent(event);
+            }
+        }
+
         if (displayMode == TreeDisplayMode::Columns && resizable_) {
             switch (event.type) {
                 case UCEventType::MouseDown: {

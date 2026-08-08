@@ -506,6 +506,148 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::ScrollToTop() {
+        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
+            // Route through the scrollbar so the jump is animated when smooth
+            // scrolling is on; onScrollChange writes scrollOffsetY back to us.
+            verticalScrollbar->SmoothScrollTo(0);
+        } else {
+            scrollOffsetY = 0;
+            ClampScrollOffset();
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SetShowScrollToTopButton(bool show) {
+        if (showScrollToTopButton == show) return;
+        showScrollToTopButton = show;
+        if (!show) scrollToTopHovered = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SetScrollToTopButtonStyle(const TreeScrollToTopStyle &style) {
+        scrollToTopStyle = style;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasTreeView::IsScrollToTopButtonActive() const {
+        if (!showScrollToTopButton || !rootNode || rowHeight <= 0) return false;
+        if (maxScrollY <= 0) return false;
+
+        // Rows that cannot be shown at once. maxScrollY is exactly the pixel
+        // amount of content hanging outside the viewport, so a partially hidden
+        // row still counts as hidden (round up).
+        int hiddenRows = (maxScrollY + rowHeight - 1) / rowHeight;
+        return hiddenRows > scrollToTopStyle.minHiddenRows;
+    }
+
+    Rect2Di UltraCanvasTreeView::GetScrollToTopButtonRect() const {
+        if (!IsScrollToTopButtonActive()) return Rect2Di(0, 0, 0, 0);
+
+        Rect2Di contentRect = GetLocalContentRect();
+        const int size = std::max(8, scrollToTopStyle.size);
+        const int margin = std::max(0, scrollToTopStyle.margin);
+        const int headerHeight = GetHeaderHeight();
+
+        // Keep clear of the vertical scrollbar so the two never overlap.
+        int x = contentRect.Right() - GetVerticalScrollbarWidth() - margin - size;
+        x = std::max(contentRect.x, x);
+
+        // Resting place: bottom-right corner of the content area.
+        int bottom = contentRect.Bottom() - margin;
+
+        // As the view approaches the end of the list, slide the button up so the
+        // final keepClearRows rows stay fully readable. totalHeight is recovered
+        // from the scroll geometry (maxScrollY == totalHeight - viewHeight).
+        int keepClearRows = std::max(0, scrollToTopStyle.keepClearRows);
+        if (keepClearRows > 0) {
+            int viewHeight = static_cast<int>(GetHeight()) - headerHeight;
+            int totalHeight = maxScrollY + viewHeight;
+            int tailTop = contentRect.y + headerHeight + totalHeight
+                          - keepClearRows * rowHeight - scrollOffsetY;
+            bottom = std::min(bottom, tailTop);
+        }
+
+        // Never let the dodge push the button off the top of the content area.
+        int top = std::max(contentRect.y + headerHeight + margin, bottom - size);
+        return Rect2Di(x, top, size, size);
+    }
+
+    void UltraCanvasTreeView::RenderScrollToTopButton(IRenderContext *ctx) {
+        Rect2Di r = GetScrollToTopButtonRect();
+        if (r.width <= 0 || r.height <= 0) return;
+
+        const TreeScrollToTopStyle &s = scrollToTopStyle;
+        float radius = std::min(s.cornerRadius, r.width * 0.5f);
+        ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                 scrollToTopHovered ? s.hoverBackground : s.background,
+                                 1.0f, s.borderColor, radius);
+
+        // Glyph: a short bar ("the top") with an arrow pointing up at it.
+        double cx = r.x + r.width * 0.5;
+        double halfWidth = r.width * 0.22;
+        double barY = r.y + r.height * 0.26;
+        double barHeight = std::max(1.0, r.height * 0.09);
+        ctx->DrawFilledRectangle(Rect2Dd(cx - halfWidth, barY, halfWidth * 2, barHeight), s.arrowColor);
+
+        double headTop = r.y + r.height * 0.40;
+        double headBottom = r.y + r.height * 0.60;
+        ctx->PushState();
+        ctx->SetFillPaint(s.arrowColor);
+        ctx->FillLinePath({Point2Dd(cx, headTop),
+                           Point2Dd(cx + halfWidth, headBottom),
+                           Point2Dd(cx - halfWidth, headBottom)});
+        ctx->PopState();
+
+        double stemWidth = std::max(2.0, r.width * 0.11);
+        ctx->DrawFilledRectangle(Rect2Dd(cx - stemWidth * 0.5, headBottom - 1,
+                                         stemWidth, r.y + r.height * 0.78 - headBottom + 1),
+                                 s.arrowColor);
+    }
+
+    bool UltraCanvasTreeView::HandleScrollToTopButtonEvent(const UCEvent &event) {
+        bool isPointerEvent = event.type == UCEventType::MouseMove ||
+                              event.type == UCEventType::MouseDown ||
+                              event.type == UCEventType::MouseUp ||
+                              event.type == UCEventType::MouseDoubleClick ||
+                              event.type == UCEventType::MouseLeave;
+        if (!isPointerEvent) return false;
+
+        if (!IsScrollToTopButtonActive() || event.type == UCEventType::MouseLeave) {
+            if (scrollToTopHovered) {
+                scrollToTopHovered = false;
+                RequestRedraw();
+            }
+            return false;
+        }
+
+        bool inside = GetScrollToTopButtonRect().Contains(event.pointer);
+
+        if (event.type == UCEventType::MouseMove) {
+            if (inside != scrollToTopHovered) {
+                scrollToTopHovered = inside;
+                // The row under the button must not keep its hover highlight
+                // while the pointer is really over the button.
+                if (inside && hoveredNode) {
+                    hoveredNode->hovered = false;
+                    hoveredNode = nullptr;
+                }
+                SetMouseCursor(inside ? UCMouseCursor::Hand : UCMouseCursor::Default);
+                RequestRedraw();
+            }
+            return inside;
+        }
+
+        if (!inside) return false;
+
+        // Swallow every button event over the glyph so the row underneath is
+        // neither selected nor toggled; MouseDown does the actual scrolling.
+        if (event.type == UCEventType::MouseDown) {
+            ScrollToTop();
+        }
+        return true;
+    }
+
     bool UltraCanvasTreeView::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !IsVisible()) return false;
 
@@ -518,6 +660,12 @@ namespace UltraCanvas {
                     return true;
                 }
             }
+        }
+
+        // The floating scroll-to-top button sits on top of the rows, so it gets
+        // first refusal on pointer events inside its rect.
+        if (HandleScrollToTopButtonEvent(event)) {
+            return true;
         }
 
         switch (event.type) {
@@ -583,6 +731,9 @@ namespace UltraCanvas {
             verticalScrollbar->Render(ctx, dirtyRect);
             ctx->PopState();
         }
+
+        // Floating "move to the top" button, drawn over everything else.
+        RenderScrollToTopButton(ctx);
     }
 
     void UltraCanvasTreeView::UpdateScrollbars() {

@@ -1,3 +1,22 @@
+#### 2026-08-08 *0.3.34*
+- **UltraCanvasTreeView** *(1.1.0)*: long trees now offer a floating "move to
+  the top" button in the bottom-right corner of the content area. Walking a
+  fully expanded tree back to its root previously meant a long wheel-spin or a
+  scrollbar drag, and the tree had no shortcut of its own. The button appears
+  only when *more than* three rows are outside the visible area (so a tree that
+  overflows by a row or two never grows one), sits to the left of the vertical
+  scrollbar, and slides up as the view nears the end of the list so it never
+  covers the last three rows. Clicking it jumps back to the first row — animated
+  when the scrollbar has smooth scrolling on — and the click is consumed, so the
+  row underneath is neither selected nor expanded. The feature is on by default
+  and switched off per tree with `SetShowScrollToTopButton(false)`; size,
+  margin, colours and both row thresholds are configurable through
+  `TreeScrollToTopStyle`. `UltraCanvasColumnsTreeView` inherits it, placed below
+  its optional column-header band and kept clear of the column-resize handles.
+  The new public `ScrollToTop()` performs the same jump from code. The DemoApp's
+  Multi-Selection TreeView example grew enough rows to overflow, plus a checkbox
+  that toggles the button.
+
 #### 2026-08-08 *0.3.33*
 - **UltraCanvasCircleDiagram** *(1.0.0)*: new hub-and-spoke circle diagram
   infographic — a centre hub, a backbone ring, and equally sized labelled node
