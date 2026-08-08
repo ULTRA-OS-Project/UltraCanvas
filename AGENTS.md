@@ -85,6 +85,34 @@ The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
+## Versioning
+
+The **first line of a changelog is the single source of truth** for a version:
+
+| Changelog | Drives |
+|---|---|
+| `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, DemoApp, UltraFiler, UltraViewer, … |
+| `Docs/Texter/CHANGELOG.md` | UltraTexter |
+
+Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
+changelog — that is the whole bump. Do **not** hand-edit a version number
+anywhere else, and never introduce a new literal copy of one:
+
+- `cmake/UltraCanvasVersion.cmake` parses the first line at configure time and
+  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` (plus `_DOT4` / `_COMMA4`
+  variants for Windows resources). It feeds every `project(VERSION …)` and the
+  matching compile definitions. Editing a changelog re-triggers the configure
+  step, so existing build trees follow along.
+- Code that displays a version reads those defines —
+  `UltraCanvas::versionString` (`UltraCanvasUtils.cpp`, shown in the demo app's
+  info window) and `UltraCanvasTextEditor::version` (shown in Texter's splash).
+- The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
+  `package-macos.sh`) parse the same line for artefact file names.
+- Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still
+  hold literals, because windres reads them from disk. Run `./set-version.sh`
+  after bumping the UltraTexter version; a CMake configure on any platform
+  warns when they are stale.
+
 ## House rules for AI-generated changes
 
 1. Match the style of the file you are editing; PascalCase everywhere.

@@ -1,3 +1,22 @@
+#### 2026-08-08 *0.3.32*
+- **Version numbers** are now derived from the changelogs at build time, so the
+  version the demo app's info window shows can no longer disagree with the
+  version in the file name of the build it came from. The packaging scripts
+  already parsed `#### YYYY-MM-DD *x.y.z*` off the first changelog line for the
+  artefact names; the number compiled *into* the binaries was a separate
+  hand-maintained copy that only moved when someone remembered to run
+  `set-version.sh`, and it had fallen ten releases behind (the info window
+  reported 0.3.21 against a 0.3.31 changelog). The new
+  `cmake/UltraCanvasVersion.cmake` reads the same first line at configure time
+  and feeds `project(VERSION)`, `ULTRACANVAS_VERSION` and `ULTRATEXTER_VERSION`;
+  `UltraCanvas::versionString` and `UltraCanvasTextEditor::version` take their
+  value from those defines instead of a literal. Adding a changelog entry
+  re-triggers the configure step, so an existing build tree picks the new
+  version up rather than baking in the one it was first configured with.
+  `set-version.sh` now only writes the two Windows resource files that are read
+  from disk by windres (`UltraTexter.rc`, `UltraTexter.manifest`) — a configure
+  on any platform warns when those are stale.
+
 #### 2026-08-07 *0.3.31*
 - **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
   now keeps that origin. The constructor delegated to the size-only base
