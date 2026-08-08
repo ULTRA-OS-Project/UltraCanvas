@@ -6,8 +6,12 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# ULTRATEXTER_VERSION is read from the first line of Docs/Texter/CHANGELOG.md.
+# Must be included before project(), which uses it.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
+
 project(UltraTexter
-        VERSION 1.40
+        VERSION ${ULTRATEXTER_VERSION}
         DESCRIPTION "UltraTexter - Text Editor powered by UltraCanvas Framework"
         LANGUAGES CXX
 )
