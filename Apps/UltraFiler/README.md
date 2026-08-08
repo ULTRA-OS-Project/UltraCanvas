@@ -34,9 +34,12 @@ components:
   and folder display with the History view — a tabbed container with **Files**,
   **Folders** and **Apps** tabs, each a filer widget in *small thumbnails* mode
   listing the recently used paths (most recent first) instead of a folder's
-  content. Folders are remembered as they are browsed, files and applications
-  as they are opened (double-click / Enter); an entry whose file has meanwhile
-  been deleted drops out of the list. Activating a tile leaves the History view
+  content. Files and applications are remembered as they are opened
+  (double-click / Enter). A folder is remembered only once **work has been
+  done in it** — a file opened there, or something created, pasted, dropped in
+  or out, renamed, duplicated, deleted, packed or extracted; browsing through
+  a folder does not put it in the list. An entry whose file has meanwhile been
+  deleted drops out of the list. Activating a tile leaves the History view
   and shows the entry in the folder display — a folder is opened, a file is
   selected inside the folder it lives in (so the preview picks it up when it is
   media); the context menu's **Open path (in new tab)** opens its folder in a

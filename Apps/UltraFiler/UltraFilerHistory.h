@@ -28,7 +28,7 @@ namespace UltraCanvas {
 // UltraFilerHistory's lists, so keep them contiguous and starting at 0.
 enum class FilerHistoryKind {
     File = 0,     // a document that was opened
-    Folder,       // a folder that was browsed
+    Folder,       // a folder that was worked in (not merely browsed)
     App           // an application / installer that was launched
 };
 constexpr size_t kFilerHistoryKindCount = 3;

@@ -14696,6 +14696,29 @@ path, not by row index. Files that vanished drop out of it, which is reported
 through `onSelectionChanged`; every rescan also fires `onFolderRefreshed` so a
 host can refresh what it shows about the folder (item counts, status bar).
 
+## Folder modifications
+
+`onFolderRefreshed` answers "the listing changed", which includes plain
+rescans. `onFolderModified(folderPath)` answers the different question "the
+**user** changed something here": an entry created, pasted, dropped in or out,
+renamed, duplicated, deleted, packed or extracted — through the context menu,
+the icon menu, the keyboard or the API alike. Navigation, sorting, view
+switches and a bare `Refresh()` never fire it.
+
+The reported folder is normally the displayed one, but it is the folder that
+actually changed when that differs — files dropped onto a subfolder shown in
+the view, an archive written into the folder its dialog icon was dragged to,
+or the individual parent folders when a file list spanning several folders is
+deleted from. In a file-list display, changes whose folder cannot be named are
+not reported at all, since the displayed folder is not where they landed.
+
+```cpp
+// "Recently worked in" — folders the user actually did something in.
+filer->onFolderModified = [this](const std::string& folder) {
+    recentFolders.Record(folder);
+};
+```
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -14743,6 +14766,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

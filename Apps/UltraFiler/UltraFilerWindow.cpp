@@ -5,11 +5,12 @@
 // search field and the media preview (UltraCanvasMediaViewer). The toolbar's
 // clock button swaps that whole area for the History view — Files / Folders /
 // Apps tabs listing the recently used paths (UltraFilerHistory) as small
-// thumbnails. The Settings menu opens the settings window
-// (UltraFilerSettingsDialog) and clears the history; persisted settings load at
-// startup and configure the preview's transparent-image backdrop. Esc closes
-// the History view, or an open media preview.
-// Version: 1.5.0
+// thumbnails; folders get there by being worked in (the filer's
+// onFolderModified), not by being browsed. The Settings menu opens the settings
+// window (UltraFilerSettingsDialog) and clears the history; persisted settings
+// load at startup and configure the preview's transparent-image backdrop. Esc
+// closes the History view, or an open media preview.
+// Version: 1.6.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
@@ -511,6 +512,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
             if (statusLabel) statusLabel->SetText("Error: cannot create folder");
             return;
         }
+        // The folder is created here rather than by the widget, so the
+        // History record the widget would fire has to be made here too.
+        RecordFolderInHistory(folder.string());
         filer->Refresh();
         const auto& entries = filer->GetEntries();
         for (size_t i = 0; i < entries.size(); ++i) {
@@ -871,8 +875,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onFileActivated = [this, tab](const FilerEntry& entry) {
         if (entry.isDirectory) return;
         // Opening a file (or launching an application) puts it at the top of
-        // the matching History list.
+        // the matching History list, and counts as work done in its folder.
         RecordEntryInHistory(entry);
+        RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
         if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return;
         // Double-click / Enter opens the file in the preview, un-hiding it
@@ -907,6 +912,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             default: break;
         }
         syncingControls = false;
+    };
+    // Work done in a folder - a file created, pasted, dropped in or out,
+    // renamed, duplicated, deleted, packed or extracted - is what puts it in
+    // the History view's Folders tab. Merely looking at a folder does not.
+    tab->filer->onFolderModified = [this](const std::string& folder) {
+        RecordFolderInHistory(folder);
     };
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
@@ -1067,6 +1078,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onFolderRefreshed = [this]() { UpdateStatusBar(); };
         histFiler->onFileActivated = [this](const FilerEntry& entry) {
             RecordEntryInHistory(entry);
+            RecordFolderInHistory(fs::path(entry.path).parent_path().string());
             OpenHistoryEntry(entry.path, false);
         };
         // A folder tile is activated by the widget itself (it navigates into
@@ -1123,12 +1135,25 @@ void UltraFilerWindow::RefreshHistoryTabs() {
 
 void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
     if (entry.isDirectory) {
-        history.Record(FilerHistoryKind::Folder, entry.path);
+        RecordFolderInHistory(entry.path);
         return;
     }
     history.Record(IsApplicationEntry(entry) ? FilerHistoryKind::App
                                              : FilerHistoryKind::File,
                    entry.path);
+}
+
+void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
+    // Archive interiors are not real directories - they would only be pruned
+    // from the list again on the next read.
+    std::error_code ec;
+    if (folder.empty() || !fs::is_directory(folder, ec) || ec) return;
+    history.Record(FilerHistoryKind::Folder, folder);
+    // The Folders tab is stale now if it is on screen.
+    if (historyShown && historyFilers[HistoryFolders]) {
+        historyFilers[HistoryFolders]->ShowFileList(
+                history.Paths(FilerHistoryKind::Folder));
+    }
 }
 
 void UltraFilerWindow::OpenHistoryEntry(const std::string& path, bool isFolder) {
@@ -1187,12 +1212,6 @@ void UltraFilerWindow::NavigateUp() {
 }
 
 void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& path) {
-    // Every folder the user actually browsed goes into the History view's
-    // Folders tab. Archive interiors are not real directories and are skipped.
-    std::error_code pathEc;
-    if (fs::is_directory(path, pathEc) && !pathEc)
-        history.Record(FilerHistoryKind::Folder, path);
-
     if (!tab->navigatingHistory) {
         if (tab->historyIndex + 1 < tab->history.size())
             tab->history.erase(tab->history.begin() + tab->historyIndex + 1,

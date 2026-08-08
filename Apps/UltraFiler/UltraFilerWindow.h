@@ -14,8 +14,11 @@
 // The clock button swaps the whole tree + folder area for the History view: a
 // tabbed container (Files / Folders / Apps) whose pages are UltraCanvasFilerWidgets
 // in small-thumbnail mode showing the recently used paths (UltraFilerHistory)
-// as a file list instead of a folder listing.
-// Version: 1.5.0
+// as a file list instead of a folder listing. Files and applications enter the
+// history when they are opened; a folder enters it when work was done in it
+// (a file opened there, or content created / pasted / renamed / deleted / ...,
+// reported by the filer's onFolderModified) — not by being browsed.
+// Version: 1.6.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
@@ -113,6 +116,10 @@ private:
     void RefreshHistoryTabs();
     // Remembers an entry the user just opened, in the list its kind belongs to.
     void RecordEntryInHistory(const FilerEntry& entry);
+    // Remembers a folder the user did something in (opened a file there,
+    // created / pasted / renamed / deleted something, ...). Browsing a folder
+    // is not enough - the Folders tab lists folders that were worked in.
+    void RecordFolderInHistory(const std::string& folder);
     // A history tile was activated: leaves the History view and shows the path
     // in the browsing view (a folder is opened, a file's folder is opened).
     void OpenHistoryEntry(const std::string& path, bool isFolder);

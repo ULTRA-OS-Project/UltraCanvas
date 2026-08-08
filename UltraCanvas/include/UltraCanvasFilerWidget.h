@@ -41,7 +41,10 @@
 // An explicit file list (ShowFileList) is sorted like a folder listing unless
 // SetFileListOrderPreserved() asks for the given order to be kept — for lists
 // whose order is the information, such as a most-recently-used history.
-// Version: 1.10.0
+// Changes the user makes to a folder's content (create / paste / drop /
+// rename / duplicate / delete / compress / extract) are reported through
+// onFolderModified, apart from the rescan notification onFolderRefreshed.
+// Version: 1.11.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
@@ -518,6 +521,16 @@ namespace UltraCanvas {
         // their folder description (item counts, status bar) from it. The
         // selection survives a rescan on the files that are still there.
         std::function<void()> onFolderRefreshed;
+        // After the user changed a folder's content through this widget — an
+        // entry created, pasted, dropped in or out, renamed, duplicated,
+        // deleted, packed or extracted. The argument is the folder that
+        // changed; normally the displayed one, but a subfolder when that is
+        // where the change landed (files dropped onto it, an archive written
+        // into it). Unlike onFolderRefreshed this reports *user actions*, not
+        // rescans: navigation, sorting, view changes and a plain Refresh()
+        // never fire it. A file-list display (ShowFileList) only reports
+        // changes whose folder is known, since its entries span many folders.
+        std::function<void(const std::string& folderPath)> onFolderModified;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -1184,6 +1197,10 @@ namespace UltraCanvas {
         void FinishMarquee();              // release: keep the result
         void CancelMarquee();              // Escape: restore the old selection
         void FireSelectionChanged();
+        // Reports a user-made change to onFolderModified. An empty argument
+        // means the displayed folder (skipped in file-list mode, where the
+        // displayed folder is not where the change landed).
+        void NotifyFolderModified(const std::string& folderPath = "");
         void ReportError(const std::string& message);
         std::string UniqueChildPath(const std::string& baseName) const;
         // Same, but in an arbitrary folder (drop target of a drag).
