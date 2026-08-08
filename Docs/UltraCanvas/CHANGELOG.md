@@ -1,3 +1,30 @@
+#### 2026-08-09 *0.3.36*
+- **UltraCanvasFilerWidget** *(1.13.0)*: content previews are now **selectable
+  per file kind**. The context menu grew a `Display > Preview` submenu with a
+  checkbox for each of Bitmaps, Vector graphics, 3D, PDF, Text, Docs,
+  Spreadsheets and Videos — all enabled by default — mirrored in code by
+  `SetPreviewType()` / `SetPreviewTypes(mask)` / `IsPreviewTypeEnabled()` /
+  `GetPreviewTypes()` over the new `FilerPreviewType` bitmask. Switching a kind
+  off drops its entries back to the plain type glyph immediately *and* stops
+  the widget from opening those files at all, which is what makes a folder of
+  huge photos, videos or PDFs on a slow volume browsable.
+  Three kinds gained a real preview producer, all running on the existing
+  viewport-driven thumbnail workers so no preview ever blocks a frame:
+  **PDF** files render their first page through the PDF plugin (outlined as a
+  sheet of paper, since a page is white on a white widget), **STL** models are
+  rasterized in software as a shaded three-quarter view (the GL viewer needs a
+  window and a current context, which a background decode has neither of), and
+  **text, documents and spreadsheets** preview as a miniature page of their own
+  content — plain text and source code read directly, HTML stripped of its
+  tags, RTF of its control words, ODT / DOC / DOCX through the shared
+  rich-document reader, and ODS / XLSX / CSV / TSV laid out as a cell grid.
+  Page-shaped previews are only drawn from roughly a 40 px box up, so the icon
+  column of a Details or List row keeps its glyph and a folder listing does not
+  read every document in it. `FilerFileCategory` gained `Model3D` and the type
+  map learned the common 3D extensions (stl, obj, ply, 3ds, 3mf, gltf, glb,
+  dae, fbx) plus `tsv`, so those files sort and colour as models / text instead
+  of "File".
+
 #### 2026-08-08 *0.3.35*
 - Change Linux packager script, drop .appimage
 - Change GitHub build to produce package with all dependent libs
