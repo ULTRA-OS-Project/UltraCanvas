@@ -14607,13 +14607,41 @@ that already exist there get a " (2)" style suffix, a folder cannot be dropped
 into itself, and a drop anywhere but on a folder simply ends the drag. Escape
 abandons the drag without moving anything.
 
-**Leaving the widget** hands the same set over to the native OS drag (XDND on
-Linux), so it can be dropped on any other window or application — another
-Filer widget, another window of the same application, an external file manager,
-an editor, … There the drop target performs the copy or move itself; when it
+**Leaving the widget does not end the drag.** The badge keeps following the
+cursor over the rest of the window — it is handed to the window's
+[drag overlay](#drag-overlay) for that, because an element cannot paint outside
+its own bounds — and releasing over another element offers it the files as a
+`Drop` event, exactly like a drop arriving from another application. That is
+how a file reaches a second Filer pane, a folder tree or any other drop-aware
+widget of the same window; a release over something that does not take the drop
+just ends the drag.
+
+**Leaving the window** hands the same set over to the native OS drag (XDND on
+Linux, OLE `DoDragDrop` on Windows), so it can be dropped on any other
+application — an external file manager, an editor, another window of this
+application, … There the drop target performs the copy or move itself; when it
 reports a move the source folder is rescanned automatically. During that part
 of the drag the cursor shows whether the target accepts a copy or a move (hold
-Shift to suggest a move) and Escape cancels.
+Shift to suggest a move on Linux, Ctrl/Shift on Windows) and Escape cancels.
+On a platform with no native drag implementation (currently macOS) the
+window-wide drag simply keeps running instead of being dropped, so the gesture
+is never lost — it just cannot reach another application there.
+
+### Drag overlay
+
+The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
+window-level hook for content that has to be visible above every element:
+
+```cpp
+window->SetDragOverlay(this, badgeRectInWindowCoords,
+        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+...
+window->ClearDragOverlay(this);   // when the gesture ends
+```
+
+Setting it again moves it (both the rectangle it leaves and the one it enters
+are repainted), the first owner keeps it until it clears it, and the renderer
+draws in window coordinates.
 
 A drag **never changes the selection**: what a plain press would select is
 applied on the release instead, so dragging a file does not fire

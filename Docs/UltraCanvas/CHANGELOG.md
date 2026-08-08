@@ -1,3 +1,30 @@
+#### 2026-08-08 *0.3.33*
+- **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget
+  again. The drag was handed to the native OS drag the moment the cursor
+  crossed the widget's border, and that is where it visibly died: the badge is
+  drawn by the widget and therefore clipped to it, the OS drag draws nothing of
+  its own while the cursor is still over the application's own window (XDND
+  refuses a drop back onto the window that started it), and on Windows and
+  macOS `StartNativeFileDrag()` had no implementation at all, so the gesture
+  was dropped on the floor. Crossing the border now keeps the drag running: the
+  badge travels over the whole window on the new window drag overlay, a release
+  over another element hands it the files as a `Drop` event (a second Filer
+  pane, a folder tree, any drop-aware widget), and only leaving the *window*
+  turns the set into the native OS drag. A platform without one keeps the
+  window-wide drag alive instead of losing the gesture.
+- **UltraCanvasWindowBase** *(2.2.0)*: new `SetDragOverlay(owner, windowRect,
+  renderer)` / `ClearDragOverlay(owner)` — window-level content painted above
+  every element, for widgets that drag something across the whole window and
+  cannot paint outside their own bounds. Moving it repaints the rectangle it
+  leaves and the one it enters; the first owner keeps it until it clears it.
+- **Windows backend**: native file drags out of a window are implemented
+  (`UltraCanvasWindowsWindow::StartNativeFileDrag`) with a CF_HDROP
+  `IDataObject` plus an `IDropSource` driven by `DoDragDrop`, the counterpart of
+  the `IDropTarget` that was already there. Files can now be dragged from a
+  Filer widget into Explorer or any other application, and the accepted effect
+  (copy / move) is reported back so a move rescans the source folder. macOS
+  still has no drag-and-drop backend in either direction.
+
 #### 2026-08-08 *0.3.32*
 - **Version numbers** are now derived from the changelogs at build time, so the
   version the demo app's info window shows can no longer disagree with the

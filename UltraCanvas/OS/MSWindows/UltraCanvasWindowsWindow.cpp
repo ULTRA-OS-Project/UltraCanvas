@@ -819,6 +819,33 @@ namespace UltraCanvas {
         return reinterpret_cast<NativeWindowHandle>(hwnd);
     }
 
+// ===== NATIVE FILE DRAG SOURCE =====
+    bool UltraCanvasWindowsWindow::StartNativeFileDrag(
+            const std::vector<std::string>& filePaths,
+            std::function<void(bool accepted, bool moved)> onFinished) {
+        if (filePaths.empty() || !hwnd) return false;
+
+        // The gesture must not still hold the mouse: DoDragDrop runs its own
+        // modal loop and needs the shell to track the pointer.
+        if (GetCapture() == hwnd) ReleaseCapture();
+
+        auto* data = new UltraCanvasWindowsFileDataObject(filePaths);
+        auto* source = new UltraCanvasWindowsDragSource();
+
+        DWORD effect = DROPEFFECT_NONE;
+        HRESULT hr = DoDragDrop(data, source,
+                                DROPEFFECT_COPY | DROPEFFECT_MOVE, &effect);
+        data->Release();
+        source->Release();
+
+        bool accepted = (hr == DRAGDROP_S_DROP) && (effect != DROPEFFECT_NONE);
+        bool moved = accepted && (effect & DROPEFFECT_MOVE) != 0;
+        debugOutput << "UltraCanvas Windows: file drag finished hr=0x" << std::hex
+                    << hr << std::dec << " effect=" << effect << std::endl;
+        if (onFinished) onFinished(accepted, moved);
+        return true;
+    }
+
     void UltraCanvasWindowsWindow::GetWindowPosition(int& x, int& y) const {
         if (hwnd) {
             RECT r;
