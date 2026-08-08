@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.1
-// Last Modified: 2026-06-20
+// Version: 1.1.2
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
@@ -486,16 +486,28 @@ namespace UltraCanvas {
         return (w < 0) ? -1 : w / PANGO_SCALE_D;
     }
 
+    void UCTextLayout::ApplyPangoHeight() {
+        if (!layout) return;
+        // A no-wrap layout stays one line per paragraph whatever box it is
+        // vertically centred in — see the declaration for why a positive
+        // Pango height would let it wrap instead.
+        if (noWrap || explicitHeight < 0) {
+            pango_layout_set_height(layout, -1);
+        } else {
+            pango_layout_set_height(layout, explicitHeight * PANGO_SCALE);
+        }
+    }
+
     void UCTextLayout::SetExplicitHeight(double heightPixels) {
         extentsDirty = true;
-        explicitHeight = heightPixels;
-        pango_layout_set_height(layout, (heightPixels < 0) ? -1 : heightPixels * PANGO_SCALE);
+        explicitHeight = (heightPixels < 0) ? -1 : heightPixels;
+        ApplyPangoHeight();
     }
 
     double UCTextLayout::GetExplicitHeight() const {
-        if (!layout) return -1;
-        int h = pango_layout_get_height(layout);
-        return (h < 0) ? -1 : h / PANGO_SCALE_D;
+        // The requested height, not Pango's: a no-wrap layout deliberately
+        // leaves Pango's own height unset.
+        return (explicitHeight < 0) ? -1 : explicitHeight;
     }
 
     double UCTextLayout::GetLayoutVerticalOffset()  {
@@ -559,20 +571,21 @@ namespace UltraCanvas {
 
     void UCTextLayout::SetWrap(TextWrap wrap) {
         extentsDirty = true;
-        if (wrap == TextWrap::WrapNone) {
+        noWrap = (wrap == TextWrap::WrapNone);
+        if (noWrap) {
             pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
         } else {
             pango_layout_set_wrap(layout, ToPangoWrap(wrap));
             pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_NONE);
         }
+        // The wrap mode decides whether an explicit height reaches Pango, so
+        // re-apply it — SetWrap may well come after SetExplicitHeight.
+        ApplyPangoHeight();
     }
 
     TextWrap UCTextLayout::GetWrap() const {
         if (!layout) return TextWrap::WrapWord;
-        if (pango_layout_get_ellipsize(layout) == PANGO_ELLIPSIZE_END &&
-            pango_layout_get_width(layout) >= 0) {
-            return TextWrap::WrapNone;
-        }
+        if (noWrap) return TextWrap::WrapNone;
         return FromPangoWrap(pango_layout_get_wrap(layout));
     }
 
