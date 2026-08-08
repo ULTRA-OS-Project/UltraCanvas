@@ -243,6 +243,13 @@ Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
 so no icon assets are required.
 
+A button acts on the hovered entry — or on the **whole selection** when the
+hovered entry is part of it — and, like a drag, **never changes the selection**:
+pressing Delete on a file is "delete that file", not "show me that file", so it
+does not fire `onSelectionChanged` and cannot re-target (or pop open) a preview
+pane fed by it. The selection only moves when the icon menu deletes it, and then
+only as described under [Selection after a delete](#selection-after-a-delete).
+
 ## File operations
 
 All operations are also available programmatically:
@@ -260,6 +267,28 @@ filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Selection after a delete
+
+By default a delete leaves nothing selected. `SetSelectNextAfterDelete(true)`
+changes that for the case where the delete takes the **whole** selection away:
+the entry that fills its place inherits the selection — the first survivor
+after the deleted block, or the last one before it when the deleted entry was
+at the end — and the folder display scrolls it into view. Deleting entries that
+are *not* selected (the hover icon menu acting on the entry under the cursor)
+still leaves the selection alone, and a delete that only takes part of the
+selection keeps the rest as before.
+
+```cpp
+filer->SetSelectNextAfterDelete(true);   // preview follows the deleted file's neighbour
+```
+
+Hosts that feed a preview pane from `onSelectionChanged` turn this on while the
+preview is up — the UltraFiler does exactly that — so deleting the previewed
+file walks the preview on to the next file instead of folding the pane away and
+snapping the folder display back to full width. The new selection is installed
+**before** `onFolderRefreshed` fires, so the host sees a single selection change
+and never an empty one in between.
 
 `SetNewDocumentTypes()` replaces the default New > entries; each entry may name a
 `templatePath` that is copied instead of creating an empty file, and

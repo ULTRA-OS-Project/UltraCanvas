@@ -1245,10 +1245,29 @@ namespace UltraCanvas {
 
         SortEntries();
 
-        // Restore the selection on the entries that are still there. Files that
-        // vanished (moved away, deleted elsewhere) drop out of it, which is a
-        // real selection change and is reported.
-        {
+        // A delete that wiped out the whole selection left the entry that
+        // inherits it here (SetSelectNextAfterDelete): it replaces the restore
+        // below, so the new selection is in place before onFolderRefreshed
+        // fires and a host feeding a preview from it never sees an empty one.
+        if (!selectAfterScanPath.empty()) {
+            const std::string wanted = selectAfterScanPath;
+            selectAfterScanPath.clear();
+            selection.clear();
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (entries[i].path != wanted) continue;
+                selection.push_back(i);
+                lastClickedIndex = static_cast<int>(i);
+                // Deferred reveal: the layout is rebuilt below, and the host
+                // may narrow the widget in the same frame (its preview pane
+                // stays open), so the scroll uses the new geometry.
+                pendingRevealEntry = static_cast<int>(i);
+                break;
+            }
+            FireSelectionChanged();
+        } else {
+            // Restore the selection on the entries that are still there. Files
+            // that vanished (moved away, deleted elsewhere) drop out of it,
+            // which is a real selection change and is reported.
             std::vector<size_t> restored;
             for (size_t i = 0; i < entries.size(); ++i) {
                 if (std::find(selectedPaths.begin(), selectedPaths.end(),
@@ -1552,6 +1571,16 @@ namespace UltraCanvas {
         return {};
     }
 
+    std::vector<FilerEntry> UltraCanvasFilerWidget::SelectionOrEntry(
+            size_t entryIndex) const {
+        if (entryIndex >= entries.size()) return {};
+        if (std::find(selection.begin(), selection.end(), entryIndex)
+            != selection.end()) {
+            return GetSelectedEntries();
+        }
+        return {entries[entryIndex]};
+    }
+
     std::vector<FilerEntry> UltraCanvasFilerWidget::SelectionOrAll() const {
         std::vector<FilerEntry> out = GetSelectedEntries();
         if (out.empty()) out = entries;
@@ -1583,8 +1612,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::SelectionToClipboard(bool cut) {
+        EntriesToClipboard(GetSelectedEntries(), cut);
+    }
+
+    void UltraCanvasFilerWidget::EntriesToClipboard(
+            const std::vector<FilerEntry>& targets, bool cut) {
         clipboardPaths.clear();
-        for (const FilerEntry& e : GetSelectedEntries()) clipboardPaths.push_back(e.path);
+        for (const FilerEntry& e : targets) clipboardPaths.push_back(e.path);
         clipboardCut = cut && !clipboardPaths.empty();
         // Mirror to the system clipboard (text/uri-list + cut/copy marker) so
         // the files can be pasted in other programs.
@@ -1964,7 +1998,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {
-        std::vector<FilerEntry> victims = GetSelectedEntries();
+        DeleteEntries(GetSelectedEntries());
+    }
+
+    void UltraCanvasFilerWidget::DeleteEntries(
+            const std::vector<FilerEntry>& victims) {
         if (victims.empty()) return;
         // An app-provided veto takes precedence over the built-in dialog so
         // existing hosts keep full control of the confirmation flow.
@@ -1976,8 +2014,48 @@ namespace UltraCanvas {
         ShowDeleteConfirmation(victims);
     }
 
+    std::string UltraCanvasFilerWidget::NeighbourPathAfterRemoval(
+            const std::vector<FilerEntry>& victims) const {
+        auto isVictim = [&victims](const std::string& path) {
+            for (const FilerEntry& v : victims) if (v.path == path) return true;
+            return false;
+        };
+        // First / last position the removal touches, so a scattered
+        // multi-selection walks outwards from the block it spans.
+        size_t first = entries.size(), last = 0;
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (!isVictim(entries[i].path)) continue;
+            if (first == entries.size()) first = i;
+            last = i;
+        }
+        if (first == entries.size()) return {};   // nothing of it is listed
+        for (size_t i = last + 1; i < entries.size(); ++i)
+            if (!isVictim(entries[i].path)) return entries[i].path;
+        for (size_t i = first; i-- > 0; )
+            if (!isVictim(entries[i].path)) return entries[i].path;
+        return {};                                // the folder empties out
+    }
+
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims) {
+        // When the delete takes the whole selection away, hand the selection
+        // on to the entry that fills its place instead of leaving nothing
+        // selected (SetSelectNextAfterDelete). Picked here, while the old
+        // listing still describes the folder; the rescan below applies it.
+        // A delete of entries that are not selected — the hover icon menu
+        // acting on the entry under the cursor — leaves the selection alone.
+        if (selectNextAfterDelete && !selection.empty()) {
+            bool selectionSurvives = false;
+            for (const FilerEntry& s : GetSelectedEntries()) {
+                bool doomed = false;
+                for (const FilerEntry& v : victims)
+                    if (v.path == s.path) { doomed = true; break; }
+                if (!doomed) { selectionSurvives = true; break; }
+            }
+            if (!selectionSurvives)
+                selectAfterScanPath = NeighbourPathAfterRemoval(victims);
+        }
+
         std::error_code ec;
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         // Entries living inside an archive cannot be removed via the real
@@ -2018,7 +2096,11 @@ namespace UltraCanvas {
             fs::remove_all(e.path, ec);
             if (ec) ReportError("Delete failed for " + e.path + ": " + ec.message());
         }
-        ClearSelection();
+        // Silent clear when a neighbour is waiting to inherit the selection:
+        // the rescan reports that one change. Firing an empty selection first
+        // would fold an attached preview pane away and open it again.
+        if (selectAfterScanPath.empty()) ClearSelection();
+        else                             selection.clear();
         Refresh();
     }
 
@@ -5775,15 +5857,22 @@ namespace UltraCanvas {
                     size_t entryIdx = 0;
                     int action = IconMenuActionAt(local, entryIdx);
                     if (action >= 0) {
-                        if (std::find(selection.begin(), selection.end(), entryIdx)
-                            == selection.end()) {
-                            HandleItemClick(static_cast<int>(entryIdx), false, false);
-                        }
+                        // The buttons act on the hovered entry — or on the
+                        // whole selection when that entry is part of it — and
+                        // never change the selection themselves: pressing one
+                        // is "do this to that file", not "show me that file",
+                        // so it must not fire onSelectionChanged and re-target
+                        // (or open) a preview pane fed by it.
+                        std::vector<FilerEntry> targets = SelectionOrEntry(entryIdx);
                         switch (static_cast<IconMenuAction>(action)) {
-                            case IconMenuAction::Copy:   CopySelection(); break;
-                            case IconMenuAction::Cut:    CutSelection(); break;
-                            case IconMenuAction::Rename: StartRename(entryIdx); break;
-                            case IconMenuAction::Delete: DeleteSelection(); break;
+                            case IconMenuAction::Copy:
+                                EntriesToClipboard(targets, false); break;
+                            case IconMenuAction::Cut:
+                                EntriesToClipboard(targets, true); break;
+                            case IconMenuAction::Rename:
+                                StartRename(entryIdx); break;
+                            case IconMenuAction::Delete:
+                                DeleteEntries(targets); break;
                         }
                         return true;
                     }
