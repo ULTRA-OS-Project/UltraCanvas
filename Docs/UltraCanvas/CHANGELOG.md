@@ -1,40 +1,24 @@
 #### 2026-08-07 *0.3.31*
-- **UltraCanvasFishboneDiagram** *(1.0.0)*: new fishbone (Ishikawa)
-  cause-and-effect element for root cause analysis — one effect, cause
-  categories on the ribs, causes on the twigs and optional sub-causes for the
-  5-Whys tail. Eight design presets: `Classic` (textbook herringbone),
-  `SpineChips` (pills on a solid spine arrow with icon badges), `CrossedRibs`
-  (one stroke serving a category above and below), `Bracket` (parallelogram
-  bones with horizontal dot leaders), `ChevronSpine` (the spine as a chain of
-  arrow blocks feeding floating pills), `Columns` (rib-less tinted panels
-  straddling the spine), `Vertical` and `Compact`. Side policies
-  (alternate / all-above / all-below / per-category), rib angle control,
-  head shapes (arrow, triangle, box, fish head), tail shapes (chevron,
-  triangle, fish tail), effect placement (title, head box, hidden), cause
-  markers (dot, bullet, numbered, hidden), nine palettes, a dark theme,
-  per-category icons or glyphs, spine captions, waypoints, weight badges and
-  root-cause rings. Ribs are trimmed to their content and the rib roots are
-  placed only once the rib length is known, so a category with two causes does
-  not draw a rib sized for six and the outermost category still has room for
-  its labels against the frame edge; overflow is reported as a `+N` badge
-  rather than dropped. Hover, selection and collapse address categories,
-  causes and sub-causes through one `FishboneRef` handle, with tooltips and
-  five callbacks.
-- **UltraCanvasFishboneModel** *(1.0.0)*: the UI-free half — the document
-  model, seven named category checklists (6M, 5M+E, 8P, 4S, 5S, PEMPEM,
-  software delivery), three samples, validation, and text interchange in both
-  directions for Mermaid `ishikawa-beta` (Mermaid 11.13+) and a plain indented
-  outline. The parser accepts tabs or spaces at any consistent width, strips
-  `-` / `*` / `+` bullets, skips comments and `---` front matter, and reads
-  both indentation shapes found in the wild — the one where the effect and the
-  categories share a level and the one where they do not.
-- New demo page (Info Graphics > Fishbone Diagram) with a tab per design, live
-  theme/palette/side/marker/head controls, checklist loading and a Mermaid
-  export view; guide in `Docs/UltraCanvas/UltraCanvasFishboneDiagram.md`;
-  `Tests/FishboneModelTest.cpp` (target `FishboneModelTest`) covers the
-  presets, counting, depth, validation and both codecs round-trip. The research
-  behind giving the fishbone its own element rather than a mind map layout case
-  is in `Docs/UltraCanvas/UltraCanvasFishboneDiagramProposal.md`.
+- **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
+  now keeps that origin. The constructor delegated to the size-only base
+  constructor, so the origin was written straight to `finalBounds` without a CSS
+  position behind it: the first layout pass re-stacked the surface as an in-flow
+  child and the GL content composited in the top-left corner of its container
+  while every sibling widget stayed put. It now uses the `(id, x, y, w, h)` base
+  constructor, which stamps an AbsoluteUI position for a non-zero origin;
+  `(0, 0)` still leaves the surface in flow for flex/grid parents. The doc gained
+  a "Positioning" section covering this and the bounds + CSS-box pattern needed
+  to move or resize a surface at runtime.
+- **DemoApp — OpenGL 3D showcase**: all three tabs (3D Models, Shaders, Zarch)
+  share one maximize control, `gldemo::AddMaximizeControl()`. The icon sits in
+  the canvas's top-right corner with an 8px margin, and the button, a
+  double-click on the canvas or Esc toggles between the normal layout and a
+  canvas maximized over the whole tab. Maximizing works now that the zoom writes
+  the CSS box as well as the bounds (`gldemo::PlaceElement`) — hiding the chrome
+  invalidated the layout, which promptly restored the canvas's original size. A
+  new `media/icons/minimise.svg` marks the restore state, the Zarch and Models
+  panels match the Shaders tab's column geometry, and the Shaders info text was
+  trimmed to what fits its panel.
 
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
