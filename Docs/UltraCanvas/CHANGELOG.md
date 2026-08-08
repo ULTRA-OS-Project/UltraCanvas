@@ -71,6 +71,27 @@
   a folder whose ancestors are not expanded yet still walks the chain
   correctly. The startup drive scan uses `ListDriveRoots()` for the same reason
   the breadcrumb does.
+#### 2026-08-07 *0.3.31*
+- **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
+  now keeps that origin. The constructor delegated to the size-only base
+  constructor, so the origin was written straight to `finalBounds` without a CSS
+  position behind it: the first layout pass re-stacked the surface as an in-flow
+  child and the GL content composited in the top-left corner of its container
+  while every sibling widget stayed put. It now uses the `(id, x, y, w, h)` base
+  constructor, which stamps an AbsoluteUI position for a non-zero origin;
+  `(0, 0)` still leaves the surface in flow for flex/grid parents. The doc gained
+  a "Positioning" section covering this and the bounds + CSS-box pattern needed
+  to move or resize a surface at runtime.
+- **DemoApp — OpenGL 3D showcase**: all three tabs (3D Models, Shaders, Zarch)
+  share one maximize control, `gldemo::AddMaximizeControl()`. The icon sits in
+  the canvas's top-right corner with an 8px margin, and the button, a
+  double-click on the canvas or Esc toggles between the normal layout and a
+  canvas maximized over the whole tab. Maximizing works now that the zoom writes
+  the CSS box as well as the bounds (`gldemo::PlaceElement`) — hiding the chrome
+  invalidated the layout, which promptly restored the canvas's original size. A
+  new `media/icons/minimise.svg` marks the restore state, the Zarch and Models
+  panels match the Shaders tab's column geometry, and the Shaders info text was
+  trimmed to what fits its panel.
 
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained

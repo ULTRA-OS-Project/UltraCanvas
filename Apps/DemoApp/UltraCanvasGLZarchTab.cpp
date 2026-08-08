@@ -270,6 +270,10 @@ public:
                    float x, float y, float w, float h, std::shared_ptr<ZarchState> st)
         : UltraCanvasGLSurface(cfg, id, x, y, w, h), state_(std::move(st)) {}
 
+    // Takes keyboard focus so the maximized view receives the Escape key, which
+    // the app delivers to the focused element.
+    bool AcceptsFocus() const override { return true; }
+
     bool OnEvent(const UCEvent& event) override {
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -571,7 +575,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     root->AddChild(surface);
 
     // ---------------------------------------------------------- control panel
-    auto panel = std::make_shared<UltraCanvasContainer>("ZarchControls", 690, 40, 296, 560);
+    // Same column geometry as the Shaders tab: the canvas ends at x=676 and the
+    // panel runs from 690 to 1000 inside the 1004px-wide tab content area.
+    auto panel = std::make_shared<UltraCanvasContainer>("ZarchControls", 690, 40, 310, 560);
     panel->SetBackgroundColor(Color(246, 246, 248, 255));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
@@ -618,7 +624,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
         "• Cone 'trees' scattered on grass\n"
         "• Additive particle exhaust trail\n\n"
         "All composited back into the\n"
-        "UltraCanvas widget tree."
+        "UltraCanvas widget tree.\n\n"
+        "Click the icon in the canvas corner or\n"
+        "double-click the canvas to maximize it;\n"
+        "Esc or another double-click restores."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
@@ -626,6 +635,15 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     panel->AddChild(info);
 
     root->AddChild(panel);
+
+    // ---------------------------------------------------- maximize / zoom view
+    // Adds the maximize icon over the canvas's top-right corner and wires the
+    // button / double-click / Esc toggle that grows the canvas over the whole
+    // tab, hiding the title and the control panel. Steering keeps working while
+    // maximized: ZarchGLSurface handles the drag itself and only lets the
+    // double-click and Esc through to the zoom callback.
+    AddMaximizeControl(root, surface, {title.get(), panel.get()}, "ZarchZoomBtn");
+
     return root;
 }
 

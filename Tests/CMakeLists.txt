@@ -568,6 +568,27 @@ add_test(NAME SequenceModelTest COMMAND SequenceModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SequenceModelTest")
 
+# ===== FISHBONE MODEL TEST =====
+# Unit tests for the fishbone (Ishikawa) model: category presets, cause and
+# sub-cause counting, depth, validation, the indented-outline codec and the
+# Mermaid ishikawa-beta codec in both directions. UI-free.
+message(STATUS "  Building FishboneModelTest...")
+add_executable(FishboneModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FishboneModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasFishboneText.cpp
+)
+target_include_directories(FishboneModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(FishboneModelTest PRIVATE cxx_std_20)
+set_target_properties(FishboneModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FishboneModelTest COMMAND FishboneModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FishboneModelTest")
+
 # ===== REQUIREMENT MODEL TEST =====
 # Unit tests for the SysML requirement model: endpoint semantics, containment
 # cycle detection, hierarchical id assignment, derived-element compartments,
