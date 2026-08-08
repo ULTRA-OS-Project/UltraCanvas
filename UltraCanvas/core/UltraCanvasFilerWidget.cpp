@@ -26,8 +26,10 @@
 // The inline rename editor is a real UltraCanvasTextInput overlaid on the
 // item's name, and video files show their poster frame in the thumbnail
 // views (decoded on the same worker threads as the image thumbnails).
-// Version: 1.8.0
-// Last Modified: 2026-08-06
+// A file list shown with ShowFileList can keep the order it was handed over in
+// (SetFileListOrderPreserved) instead of being sorted.
+// Version: 1.9.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -1052,6 +1054,14 @@ namespace UltraCanvas {
         ScanFolder();
     }
 
+    void UltraCanvasFilerWidget::SetFileListOrderPreserved(bool preserved) {
+        if (preserveFileListOrder == preserved) return;
+        preserveFileListOrder = preserved;
+        // Turning it on has to restore the order the paths came in, which only
+        // a rescan of fileListPaths can do (the entries have been sorted).
+        if (fileListMode) Refresh();
+    }
+
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
@@ -1317,6 +1327,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::SortEntries() {
+        // A file list whose order is the information it carries (see
+        // SetFileListOrderPreserved) is left exactly as it was handed over.
+        if (fileListMode && preserveFileListOrder) return;
         const FilerSortField field = sortField;
         const bool asc = sortAscending;
         std::stable_sort(entries.begin(), entries.end(),
@@ -1587,6 +1600,20 @@ namespace UltraCanvas {
         for (size_t i = 0; i < entries.size(); ++i) selection.push_back(i);
         FireSelectionChanged();
         RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::SelectPath(const std::string& path) {
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].path != path) continue;
+            selection.clear();
+            selection.push_back(i);
+            lastClickedIndex = static_cast<int>(i);
+            EnsureSelectionVisible();
+            FireSelectionChanged();
+            RequestRedraw();
+            return true;
+        }
+        return false;
     }
 
     void UltraCanvasFilerWidget::FireSelectionChanged() {
