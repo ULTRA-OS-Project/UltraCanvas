@@ -22,8 +22,17 @@
 #include <cstdlib>
 #include <string>
 
+// ULTRACANVAS_VERSION is defined by UltraCanvas/CMakeLists.txt from the first
+// line of Docs/UltraCanvas/CHANGELOG.md, the same line the packaging scripts
+// use for the artefact file names — so what the demo app's info window shows
+// always matches the build it came from. The fallback only applies to builds
+// made outside CMake.
+#ifndef ULTRACANVAS_VERSION
+#define ULTRACANVAS_VERSION "0.0.0-dev"
+#endif
+
 namespace UltraCanvas {
-    const char* versionString = "0.3.21";
+    const char* versionString = ULTRACANVAS_VERSION;
 
 #if defined(_WIN32) || defined(_WIN64)
     std::wstring Utf8ToWide(const std::string& utf8) {

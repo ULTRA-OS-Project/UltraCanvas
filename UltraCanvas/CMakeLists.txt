@@ -22,7 +22,11 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.21")
+# ULTRACANVAS_VERSION is read from the first line of Docs/UltraCanvas/CHANGELOG.md.
+# The root CMakeLists.txt already includes this module (include_guard makes the
+# second include a no-op); the include here keeps a standalone library configure
+# working.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasVersion.cmake")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
