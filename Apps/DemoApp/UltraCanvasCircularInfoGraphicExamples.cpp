@@ -1,9 +1,21 @@
 // Apps/DemoApp/UltraCanvasCircularInfoGraphicExamples.cpp
 // Circular infographic demonstration: multi-ring cell layouts, value tracks,
 // decorative rings and cross-ring connections
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-07
 // Author: UltraCanvas Framework
+//
+// Changelog:
+//   v1.1.0 (2026-08-07):
+//     - Each example now sits in its own tab, so one infographic gets the whole
+//       display area instead of a quarter of it.
+//     - Migrated the page from absolute positioning to flex layout: the page is
+//       a stretchable flex column (title, description, tabs) that fills the host
+//       and grows with the window, and every tab is a flex row whose chart takes
+//       all the width the control panel leaves. No manual resize handler.
+//     - The control panel is per-tab and drives only that tab's chart, so its
+//       controls start out showing the geometry that chart really uses (the
+//       270-degree sweep, the mandala's small centre hole, and so on).
 
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/UltraCanvasCircularInfoGraphic.h"
@@ -12,6 +24,8 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTabbedContainer.h"
+#include "CSSLayout/CSSLayout.h"
 #include <cmath>
 #include <cstdio>
 
@@ -251,157 +265,125 @@ namespace UltraCanvas {
 
 // ===== CONTROL PANEL =====
 
-    static void CreateCircularControlPanel(
-        std::shared_ptr<UltraCanvasContainer> container,
-        std::vector<std::shared_ptr<UltraCanvasCircularInfoGraphic>> charts,
-        int x, int y)
-    {
-        int yOffset = y;
-        const int controlHeight = 25;
-        const int spacing = 8;
+    // The panel starts from the geometry its own chart was built with, so a
+    // control never shows a value the chart does not actually use.
+    struct CircularPanelDefaults {
+        float sweepAngle      = 360.0f;
+        float rotation        = -90.0f;
+        float innerFraction   = 0.25f;
+        float ringGap         = 2.0f;
+        float cellGap         = 0.5f;
+        int   connectionIndex = 0;   // Centre / Curve / Outside / Hidden
+    };
 
-        // Each chart is built with deliberate per-ring text styles; capture
-        // them so the style dropdown can restore the authored look.
-        auto originalStyles = std::make_shared<std::vector<std::vector<CircularTextStyle>>>();
-        for (auto& c : charts) {
-            std::vector<CircularTextStyle> styles;
-            for (size_t r = 0; r < c->GetRingCount(); ++r) {
-                const CircularRing* ring = c->GetRing(r);
-                styles.push_back(ring ? ring->textStyle : CircularTextStyle::Horizontal);
-            }
-            originalStyles->push_back(styles);
+    static constexpr int kCircularPanelWidth   = 214;
+    static constexpr int kCircularControlWidth = 190;
+
+    // Fixed-width side column driving a single chart. A side column costs a
+    // circular infographic nothing: the rings are sized by the smaller of width
+    // and height, and on a normal window that is the height.
+    static std::shared_ptr<UltraCanvasContainer> CreateCircularControlPanel(
+        const std::string& idPrefix,
+        std::shared_ptr<UltraCanvasCircularInfoGraphic> chart,
+        const CircularPanelDefaults& defaults)
+    {
+        auto panel = std::make_shared<UltraCanvasContainer>(idPrefix + "Panel",
+                                                           kCircularPanelWidth, 0);
+        panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        panel->SetPadding(8, 10);
+        panel->layout.SetFlexColumn().SetFlexGap(4)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+
+        // Controls are in flow (no explicit origin) and never grow or shrink,
+        // so the column keeps its natural height whatever the window does.
+        auto addHeader = [&](const std::string& suffix, const std::string& text) {
+            auto header = std::make_shared<UltraCanvasLabel>(
+                idPrefix + suffix, kCircularControlWidth, 17, text);
+            header->SetFontSize(11);
+            header->SetFontWeight(FontWeight::Bold);
+            header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            panel->AddChild(header);
+        };
+
+        auto addSlider = [&](const std::string& suffix, float minValue, float maxValue,
+                             float step, float value, std::function<void(float)> onChange) {
+            auto slider = std::make_shared<UltraCanvasSlider>(
+                idPrefix + suffix, kCircularControlWidth, 24);
+            slider->SetRange(minValue, maxValue);
+            slider->SetStep(step);
+            slider->SetValue(value);
+            slider->onValueChanged = std::move(onChange);
+            slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            panel->AddChild(slider);
+        };
+
+        addHeader("SweepHeader", "Sweep Angle (degrees):");
+        addSlider("Sweep", 90.0f, 360.0f, 5.0f, defaults.sweepAngle,
+                  [chart](float value) { chart->SetTotalAngle(value); });
+
+        addHeader("RotateHeader", "Rotation (degrees):");
+        addSlider("Rotate", -180.0f, 180.0f, 5.0f, defaults.rotation,
+                  [chart](float value) { chart->SetAngleOffset(value); });
+
+        // SetRadiusRange would pin explicit pixel radii; the fraction keeps the
+        // chart auto-fitting to whatever the tab gives it.
+        addHeader("HoleHeader", "Centre Hole:");
+        addSlider("Hole", 0.05f, 0.6f, 0.01f, defaults.innerFraction,
+                  [chart](float value) { chart->SetInnerRadiusFraction(value); });
+
+        addHeader("RingGapHeader", "Ring Gap (px):");
+        addSlider("RingGap", 0.0f, 12.0f, 0.5f, defaults.ringGap,
+                  [chart](float value) { chart->SetRingSpacing(value); });
+
+        addHeader("CellGapHeader", "Cell Gap (degrees):");
+        addSlider("CellGap", 0.0f, 6.0f, 0.25f, defaults.cellGap,
+                  [chart](float value) { chart->SetCellSpacingAngle(value); });
+
+        // The chart is built with deliberate per-ring text styles; capture them
+        // so "Per-ring" can restore the authored look after an override.
+        auto originalStyles = std::make_shared<std::vector<CircularTextStyle>>();
+        for (size_t r = 0; r < chart->GetRingCount(); ++r) {
+            const CircularRing* ring = chart->GetRing(r);
+            originalStyles->push_back(ring ? ring->textStyle : CircularTextStyle::Horizontal);
         }
 
-        auto geometryHeader = std::make_shared<UltraCanvasLabel>("CiGeomHeader", x, yOffset, 200, 20);
-        geometryHeader->SetText("Sweep Angle (degrees):");
-        geometryHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(geometryHeader);
-        yOffset += 25;
-
-        auto sweepSlider = std::make_shared<UltraCanvasSlider>("CiSweep", x, yOffset, 180, controlHeight);
-        sweepSlider->SetRange(90.0f, 360.0f);
-        sweepSlider->SetStep(5.0f);
-        sweepSlider->SetValue(360.0f);
-        sweepSlider->onValueChanged = [charts](float value) {
-            for (auto& c : charts) c->SetTotalAngle(value);
-        };
-        container->AddChild(sweepSlider);
-        yOffset += controlHeight + spacing;
-
-        auto rotateHeader = std::make_shared<UltraCanvasLabel>("CiRotateHeader", x, yOffset, 200, 20);
-        rotateHeader->SetText("Rotation (degrees):");
-        rotateHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(rotateHeader);
-        yOffset += 25;
-
-        auto rotateSlider = std::make_shared<UltraCanvasSlider>("CiRotate", x, yOffset, 180, controlHeight);
-        rotateSlider->SetRange(-180.0f, 180.0f);
-        rotateSlider->SetStep(5.0f);
-        rotateSlider->SetValue(-90.0f);
-        rotateSlider->onValueChanged = [charts](float value) {
-            for (auto& c : charts) c->SetAngleOffset(value);
-        };
-        container->AddChild(rotateSlider);
-        yOffset += controlHeight + spacing;
-
-        auto holeHeader = std::make_shared<UltraCanvasLabel>("CiHoleHeader", x, yOffset, 200, 20);
-        holeHeader->SetText("Centre Hole:");
-        holeHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(holeHeader);
-        yOffset += 25;
-
-        auto holeSlider = std::make_shared<UltraCanvasSlider>("CiHole", x, yOffset, 180, controlHeight);
-        holeSlider->SetRange(0.05f, 0.6f);
-        holeSlider->SetStep(0.01f);
-        holeSlider->SetValue(0.25f);
-        holeSlider->onValueChanged = [charts](float value) {
-            // SetRadiusRange would pin explicit pixel radii; the fraction keeps
-            // every chart auto-fitting to its own panel.
-            for (auto& c : charts) c->SetInnerRadiusFraction(value);
-        };
-        container->AddChild(holeSlider);
-        yOffset += controlHeight + spacing;
-
-        auto ringGapHeader = std::make_shared<UltraCanvasLabel>("CiRingGapHeader", x, yOffset, 200, 20);
-        ringGapHeader->SetText("Ring Gap (px):");
-        ringGapHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(ringGapHeader);
-        yOffset += 25;
-
-        auto ringGapSlider = std::make_shared<UltraCanvasSlider>("CiRingGap", x, yOffset, 180, controlHeight);
-        ringGapSlider->SetRange(0.0f, 12.0f);
-        ringGapSlider->SetStep(0.5f);
-        ringGapSlider->SetValue(2.0f);
-        ringGapSlider->onValueChanged = [charts](float value) {
-            for (auto& c : charts) c->SetRingSpacing(value);
-        };
-        container->AddChild(ringGapSlider);
-        yOffset += controlHeight + spacing;
-
-        auto cellGapHeader = std::make_shared<UltraCanvasLabel>("CiCellGapHeader", x, yOffset, 200, 20);
-        cellGapHeader->SetText("Cell Gap (degrees):");
-        cellGapHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(cellGapHeader);
-        yOffset += 25;
-
-        auto cellGapSlider = std::make_shared<UltraCanvasSlider>("CiCellGap", x, yOffset, 180, controlHeight);
-        cellGapSlider->SetRange(0.0f, 6.0f);
-        cellGapSlider->SetStep(0.25f);
-        cellGapSlider->SetValue(0.5f);
-        cellGapSlider->onValueChanged = [charts](float value) {
-            for (auto& c : charts) c->SetCellSpacingAngle(value);
-        };
-        container->AddChild(cellGapSlider);
-        yOffset += controlHeight + spacing * 2;
-
-        auto textHeader = std::make_shared<UltraCanvasLabel>("CiTextHeader", x, yOffset, 200, 20);
-        textHeader->SetText("Cell Text Style:");
-        textHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(textHeader);
-        yOffset += 25;
-
-        auto textDropdown = std::make_shared<UltraCanvasDropdown>("CiTextStyle", x, yOffset, 180, controlHeight);
+        addHeader("TextHeader", "Cell Text Style:");
+        auto textDropdown = std::make_shared<UltraCanvasDropdown>(
+            idPrefix + "TextStyle", kCircularControlWidth, 24);
         textDropdown->AddItem("Per-ring (authored)");
         textDropdown->AddItem("Horizontal");
         textDropdown->AddItem("Circular");
         textDropdown->AddItem("Radial");
         textDropdown->AddItem("Star (outboard)");
         textDropdown->SetSelectedIndex(0);
-        textDropdown->onSelectionChanged = [charts, originalStyles](int index, const DropdownItem&) {
-            for (size_t ci = 0; ci < charts.size(); ++ci) {
-                auto& chart = charts[ci];
-                for (size_t r = 0; r < chart->GetRingCount(); ++r) {
-                    CircularTextStyle style;
-                    switch (index) {
-                        case 1:  style = CircularTextStyle::Horizontal; break;
-                        case 2:  style = CircularTextStyle::Circular;   break;
-                        case 3:  style = CircularTextStyle::Radial;     break;
-                        case 4:  style = CircularTextStyle::StarStyle;  break;
-                        default:
-                            style = (ci < originalStyles->size() && r < (*originalStyles)[ci].size())
-                                  ? (*originalStyles)[ci][r] : CircularTextStyle::Horizontal;
-                            break;
-                    }
-                    chart->SetRingTextStyle(r, style);
+        textDropdown->onSelectionChanged = [chart, originalStyles](int index, const DropdownItem&) {
+            for (size_t r = 0; r < chart->GetRingCount(); ++r) {
+                CircularTextStyle style;
+                switch (index) {
+                    case 1:  style = CircularTextStyle::Horizontal; break;
+                    case 2:  style = CircularTextStyle::Circular;   break;
+                    case 3:  style = CircularTextStyle::Radial;     break;
+                    case 4:  style = CircularTextStyle::StarStyle;  break;
+                    default:
+                        style = (r < originalStyles->size()) ? (*originalStyles)[r]
+                                                             : CircularTextStyle::Horizontal;
+                        break;
                 }
+                chart->SetRingTextStyle(r, style);
             }
         };
-        container->AddChild(textDropdown);
-        yOffset += controlHeight + spacing;
+        textDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(textDropdown);
 
-        auto connHeader = std::make_shared<UltraCanvasLabel>("CiConnHeader", x, yOffset, 200, 20);
-        connHeader->SetText("Connection Routing:");
-        connHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(connHeader);
-        yOffset += 25;
-
-        auto connDropdown = std::make_shared<UltraCanvasDropdown>("CiConnType", x, yOffset, 180, controlHeight);
+        addHeader("ConnHeader", "Connection Routing:");
+        auto connDropdown = std::make_shared<UltraCanvasDropdown>(
+            idPrefix + "ConnType", kCircularControlWidth, 24);
         connDropdown->AddItem("Through Centre");
         connDropdown->AddItem("Direct Curve");
         connDropdown->AddItem("Around Outside");
         connDropdown->AddItem("Hidden");
-        connDropdown->SetSelectedIndex(0);
-        connDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
+        connDropdown->SetSelectedIndex(defaults.connectionIndex);
+        connDropdown->onSelectionChanged = [chart](int index, const DropdownItem&) {
             ConnectionLineType type;
             switch (index) {
                 case 1:  type = ConnectionLineType::DirectCurve; break;
@@ -409,118 +391,201 @@ namespace UltraCanvas {
                 case 3:  type = ConnectionLineType::None;        break;
                 default: type = ConnectionLineType::InsideCenter; break;
             }
-            for (auto& c : charts) c->SetConnectionLineType(type);
+            chart->SetConnectionLineType(type);
         };
-        container->AddChild(connDropdown);
-        yOffset += controlHeight + spacing * 2;
+        connDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(connDropdown);
 
-        auto groupCheckbox = std::make_shared<UltraCanvasCheckbox>("CiGroups", x, yOffset, 180, controlHeight);
+        auto groupCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            idPrefix + "Groups", kCircularControlWidth, 24);
         groupCheckbox->SetText("Show Group Outlines");
         groupCheckbox->SetChecked(false);
-        groupCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
-            for (auto& c : charts) c->SetShowGroupOutlines(newState == CheckedState::Checked);
+        groupCheckbox->onStateChanged = [chart](CheckedState, CheckedState newState) {
+            chart->SetShowGroupOutlines(newState == CheckedState::Checked);
         };
-        container->AddChild(groupCheckbox);
-        yOffset += controlHeight + spacing;
+        groupCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(groupCheckbox);
 
-        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("CiHover", x, yOffset, 180, controlHeight);
+        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            idPrefix + "Hover", kCircularControlWidth, 24);
         hoverCheckbox->SetText("Hover Highlight");
         hoverCheckbox->SetChecked(true);
-        hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
-            for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
+        hoverCheckbox->onStateChanged = [chart](CheckedState, CheckedState newState) {
+            chart->SetHoverHighlightEnabled(newState == CheckedState::Checked);
         };
-        container->AddChild(hoverCheckbox);
-        yOffset += controlHeight + spacing;
+        hoverCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(hoverCheckbox);
 
-        auto hintLabel = std::make_shared<UltraCanvasLabel>("CiHint", x, yOffset, 200, 70);
-        hintLabel->SetText("Hover a cell for its value and\ngroup. Sweep below 360 leaves a\ngap: clicks in that gap are\nignored, not misrouted.");
+        auto hintLabel = std::make_shared<UltraCanvasLabel>(
+            idPrefix + "Hint", kCircularControlWidth, 66,
+            "Hover a cell for its value and\ngroup. Sweep below 360 leaves a\ngap: clicks in that gap are\nignored, not misrouted.");
         hintLabel->SetFontSize(10);
         hintLabel->SetTextColor(Color(110, 110, 110, 255));
-        container->AddChild(hintLabel);
+        hintLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(hintLabel);
+
+        return panel;
+    }
+
+// ===== TAB ASSEMBLY =====
+
+    // One tab: a caption over a chart that takes every pixel the control panel
+    // leaves, both horizontally and vertically.
+    static std::shared_ptr<UltraCanvasContainer> MakeCircularTab(
+        const std::string& idPrefix,
+        const std::string& caption,
+        std::shared_ptr<UltraCanvasCircularInfoGraphic> chart,
+        const CircularPanelDefaults& defaults)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>(idPrefix + "Tab");
+        tab->layout.SetFlexRow().SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        tab->SetPadding(6);
+
+        auto chartColumn = std::make_shared<UltraCanvasContainer>(idPrefix + "ChartColumn");
+        chartColumn->layout.SetFlexColumn().SetFlexGap(4)
+                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        chartColumn->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        auto captionLabel = std::make_shared<UltraCanvasLabel>(
+            idPrefix + "Caption", 0, 22, caption);
+        captionLabel->SetFontSize(12);
+        captionLabel->SetTextColor(Color(90, 90, 100, 255));
+        captionLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        chartColumn->AddChild(captionLabel);
+
+        // The chart is built at zero size and sized entirely by the layout
+        // engine, so it re-fits its rings whenever the window changes.
+        chart->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        chartColumn->AddChild(chart);
+        tab->AddChild(chartColumn);
+
+        auto panel = CreateCircularControlPanel(idPrefix, chart, defaults);
+        panel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        tab->AddChild(panel);
+
+        return tab;
+    }
+
+    // ----- TAB 1: CORPORATE HIERARCHY -----
+    static std::shared_ptr<UltraCanvasContainer> MakeCorporateTab() {
+        auto chart = CreateCircularInfoGraphic("CorporateCircular", 0, 0, 0, 0);
+        BuildCorporateRings(chart);
+        chart->SetCenterText("Org");
+        chart->SetTooltipsEnabled(true);
+
+        return MakeCircularTab(
+            "CiCorp",
+            "Three rings, one per org level: horizontal labels with radial bars, circular labels with\n"
+            "progress arcs, and star labels over a closed line track. Connections route through the centre.",
+            chart, CircularPanelDefaults{});
+    }
+
+    // ----- TAB 2: TECH ECOSYSTEM, 270 DEGREE PARTIAL -----
+    static std::shared_ptr<UltraCanvasContainer> MakeTechEcosystemTab() {
+        auto chart = CreateCircularInfoGraphic("TechCircular", 0, 0, 0, 0);
+        BuildTechEcosystemRings(chart);
+        chart->SetTooltipsEnabled(true);
+
+        CircularPanelDefaults defaults;
+        defaults.sweepAngle      = 270.0f;
+        defaults.rotation        = -135.0f;
+        defaults.connectionIndex = 1;   // Direct Curve
+        return MakeCircularTab(
+            "CiTech",
+            "A 270-degree sweep leaves a quadrant open: radial labels inside, star labels with leader lines\n"
+            "outside, and connections drawn as direct curves rather than through the hole.",
+            chart, defaults);
+    }
+
+    // ----- TAB 3: CIRCOS-STYLE MULTI-TRACK -----
+    static std::shared_ptr<UltraCanvasContainer> MakeGenomicTrackTab() {
+        auto chart = CreateCircularInfoGraphic("TrackCircular", 0, 0, 0, 0);
+        BuildGenomicTrackRings(chart);
+        chart->SetTooltipsEnabled(true);
+
+        CircularPanelDefaults defaults;
+        defaults.innerFraction = 0.30f;
+        defaults.ringGap       = 3.0f;
+        defaults.cellGap       = 0.0f;
+        return MakeCircularTab(
+            "CiTrack",
+            "Circos-style stacked tracks: a categorical ideogram, a 36-bin coverage line, a density arc\n"
+            "track, and weighted links between segments whose thickness follows the link value.",
+            chart, defaults);
+    }
+
+    // ----- TAB 4: DECORATIVE MANDALA -----
+    static std::shared_ptr<UltraCanvasContainer> MakeMandalaTab() {
+        auto chart = CreateCircularInfoGraphic("MandalaCircular", 0, 0, 0, 0);
+        BuildMandalaRings(chart);
+        chart->SetShowBackground(true);
+        chart->SetBackgroundColor(Color(22, 22, 32, 255));
+        chart->SetCenterColor(Color(245, 245, 250, 255), Color(90, 90, 110, 255));
+        chart->SetTooltipsEnabled(false);
+
+        CircularPanelDefaults defaults;
+        defaults.innerFraction   = 0.12f;
+        defaults.ringGap         = 1.0f;
+        defaults.connectionIndex = 2;   // Around Outside
+        return MakeCircularTab(
+            "CiMandala",
+            "Five rings of 8 to 24 cells with roughly a third of them punched out, hue cycling by ring and\n"
+            "position, and connections routed around the outside of the outermost ring.",
+            chart, defaults);
     }
 
 // ===== MAIN CIRCULAR INFOGRAPHIC EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCircularInfoGraphicExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("CircularInfoContainer", 0, 0, 1200, 810);
+        // Stretchable flex column: title and description keep their height, the
+        // tabs take the rest. Auto size so the host's flex-grow/stretch sizes the
+        // page to the display area and a window resize propagates down through
+        // Measure/Arrange to each chart.
+        auto container = std::make_shared<UltraCanvasContainer>("CircularInfoContainer");
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+        container->SetPadding(8, 10);
+        container->layout.SetFlexColumn().SetFlexGap(6)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        container->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("CiTitleLabel", 20, 10, 1160, 35);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("CiTitleLabel", 0, 32);
         titleLabel->SetText("Circular Info Graphic Examples - Multi-Ring Cell Layouts");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
         titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
+        titleLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         container->AddChild(titleLabel);
 
-        // === DESCRIPTION ===
-        auto descLabel = std::make_shared<UltraCanvasLabel>("CiDescLabel", 20, 55, 1160, 60);
+        // Explicit line breaks and a fixed height rather than word wrap: the
+        // description is re-measured whenever the page is re-laid out, and a
+        // wrapped label re-measures against an unconstrained width, which leaves
+        // the text on one over-long line that the page then clips.
+        auto descLabel = std::make_shared<UltraCanvasLabel>("CiDescLabel", 0, 42);
         descLabel->SetText(
             "Concentric rings of individually styled cells. Each ring picks its own text style (horizontal, glyph-by-glyph\n"
             "circular, radial, or star-style with leader lines) and its own value track (radial bars, progress arcs, or a\n"
-            "closed line series). Cells carry colours, images, groups and values; connections link cells across rings and\n"
-            "route through the centre, directly, or around the outside."
+            "closed line series). Connections link cells across rings, through the centre, directly, or around the outside."
         );
         descLabel->SetFontSize(11);
-        descLabel->SetWrap(TextWrap::WrapWord);
+        descLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         container->AddChild(descLabel);
 
-        // ===== EXAMPLE 1: CORPORATE HIERARCHY =====
-        auto corpLabel = std::make_shared<UltraCanvasLabel>("CiCorpLabel", 240, 130, 460, 25);
-        corpLabel->SetText("Corporate Hierarchy (3 rings, bars + progress + line track)");
-        corpLabel->SetFontSize(13);
-        corpLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(corpLabel);
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("CircularInfoTabs", 0, 0, 0, 0);
+        tabs->SetTabPosition(TabPosition::Top);
+        tabs->SetTabStyle(TabStyle::Modern);
+        tabs->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        auto corpChart = CreateCircularInfoGraphic("CorporateCircular", 240, 160, 460, 320);
-        BuildCorporateRings(corpChart);
-        corpChart->SetCenterText("Org");
-        corpChart->SetTooltipsEnabled(true);
-        container->AddChild(corpChart);
+        tabs->AddTab("Corporate Hierarchy",       MakeCorporateTab());
+        tabs->AddTab("Technology Ecosystem",      MakeTechEcosystemTab());
+        tabs->AddTab("Multi-Track Genomic Style", MakeGenomicTrackTab());
+        tabs->AddTab("Decorative Mandala",        MakeMandalaTab());
 
-        // ===== EXAMPLE 2: TECH ECOSYSTEM, 270 DEGREE PARTIAL =====
-        auto techLabel = std::make_shared<UltraCanvasLabel>("CiTechLabel", 720, 130, 460, 25);
-        techLabel->SetText("Technology Ecosystem (270 degree sweep, radial + star labels)");
-        techLabel->SetFontSize(13);
-        techLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(techLabel);
-
-        auto techChart = CreateCircularInfoGraphic("TechCircular", 720, 160, 460, 320);
-        BuildTechEcosystemRings(techChart);
-        techChart->SetTooltipsEnabled(true);
-        container->AddChild(techChart);
-
-        // ===== EXAMPLE 3: CIRCOS-STYLE MULTI-TRACK =====
-        auto trackLabel = std::make_shared<UltraCanvasLabel>("CiTrackLabel", 240, 490, 460, 25);
-        trackLabel->SetText("Multi-Track Genomic Style (ideogram + coverage + density + links)");
-        trackLabel->SetFontSize(13);
-        trackLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(trackLabel);
-
-        auto trackChart = CreateCircularInfoGraphic("TrackCircular", 240, 520, 460, 280);
-        BuildGenomicTrackRings(trackChart);
-        trackChart->SetTooltipsEnabled(true);
-        container->AddChild(trackChart);
-
-        // ===== EXAMPLE 4: DECORATIVE MANDALA =====
-        auto mandalaLabel = std::make_shared<UltraCanvasLabel>("CiMandalaLabel", 720, 490, 460, 25);
-        mandalaLabel->SetText("Decorative Mandala (5 rings, punched cells, outside routing)");
-        mandalaLabel->SetFontSize(13);
-        mandalaLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(mandalaLabel);
-
-        auto mandalaChart = CreateCircularInfoGraphic("MandalaCircular", 720, 520, 460, 280);
-        BuildMandalaRings(mandalaChart);
-        mandalaChart->SetShowBackground(true);
-        mandalaChart->SetBackgroundColor(Color(22, 22, 32, 255));
-        mandalaChart->SetCenterColor(Color(245, 245, 250, 255), Color(90, 90, 110, 255));
-        mandalaChart->SetTooltipsEnabled(false);
-        container->AddChild(mandalaChart);
-
-        // === CONTROL PANEL (left column) ===
-        CreateCircularControlPanel(container,
-                                   {corpChart, techChart, trackChart, mandalaChart},
-                                   20, 130);
+        container->AddChild(tabs);
 
         return container;
     }

@@ -1154,6 +1154,367 @@ This is the same pattern GTK, WebKitGTK, and Firefox use. libvips' lazy/tiled de
 | Special-case animated formats? | **Yes** — frame decoder + timer + small frame cache. |
 
 ==============================================================================
+FILE: Docs/UltraCanvas/CircleDiagramInfographicVariants.md
+==============================================================================
+
+# Circle Diagram Infographics — Investigation
+
+**Status:** **P1 implemented** — `UltraCanvasCircleDiagram` ships the Family A
+satellite designs (`SatelliteWheel`, `BandedWheel`), the full palette set, the
+hub, backbone and satellite fans, with the API documented in
+[`UltraCanvasCircleDiagram.md`](UltraCanvasCircleDiagram.md) and a DemoApp
+scene at `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`. This document is
+kept as the research write-up and the roadmap for P2/P3 (cards, callouts,
+spokes, badges, cycle rings, petals).
+**Last Modified:** 2026-08-07
+**Author:** UltraCanvas Framework
+**Related:** [`UltraCanvasCircularInfoGraphic`](UltraCanvasCircularInfoGraphic.md)
+(sector-cell rings, implemented),
+[`UltraCanvasCircularCharts`](UltraCanvasCircularCharts.md) (family map),
+[`UltraCanvasMindMap`](UltraCanvasMindMapExamples.md) (radial topic tree),
+[`UltraCanvasNodeDiagram`](UltraCanvasNodeDiagramExamples.md) (nodes + links),
+[`UltraCanvasLabelPlacement`](UltraCanvasLabelPlacement.md) (leader lines)
+
+## Purpose
+
+"Circle diagram" is the name presentation tools (Visme, Canva, Venngage,
+Piktochart, SlideModel) give to a specific infographic layout: a **central
+theme, a ring around it, and a handful of labelled circular nodes arranged on
+that ring**, usually with secondary nodes, cards or callouts hanging off each
+one. It is a *relationship* graphic, not a value plot — the angles carry no
+quantity, and the node count is small (typically 4–8).
+
+This document surveys the layout families found in the genre, maps five
+representative references onto them, and establishes precisely which of them
+UltraCanvas can build today and which it cannot. It is the research write-up
+that a future implementation should be planned from; nothing here is
+implemented yet.
+
+## 1. What a circle diagram is — and what it is not
+
+The distinction that matters for element selection is **what fills the ring**:
+
+| | Ring is filled with | Angle means | UltraCanvas family |
+|---|---|---|---|
+| Pie / donut / sunburst / rose | Annular **sectors** that tile the circle | A share, a category, a hierarchy level | Circular *charts* |
+| Circular infographic (`UltraCanvasCircularInfoGraphic`) | Annular **cells** that tile each ring band | Nothing — cells are equal-width slots | Circular *charts* |
+| **Circle diagram (this document)** | Discrete **discs sitting on** the ring's circumference | Nothing — spacing is even and decorative | *Not covered by any element* |
+
+The third row is the gap. Every implemented circular element treats the ring
+as a band to be *subdivided*; a circle diagram treats it as a **track that
+nodes are threaded onto**, with the space between nodes left empty and the
+space outside the ring used for satellites, cards and callouts. A node has its
+own radius, its own fill, and its own children — none of which a sector cell
+has.
+
+Two things follow from that, and they drive the whole recommendation in §6:
+
+- Node radius is independent of ring thickness, so a node can (and normally
+  does) **overhang both edges of its ring**. Sector geometry cannot express
+  this at all.
+- Nodes have **satellites placed outside the ring**, which means the element
+  must reserve outer margin, fan children around a parent, and route leader
+  lines. Sector cells have no such notion.
+
+## 2. Anatomy and vocabulary
+
+Terms used consistently below and proposed as the API vocabulary:
+
+- **Hub** — the centre of the graphic: free text, an icon, a filled disc, or
+  an image. Carries the diagram's thesis ("Components of a SaaS Business").
+- **Backbone ring** — the circle the primary nodes sit on. Drawn as a hairline
+  outline, a thick coloured band, or not drawn at all (implicit).
+- **Node** — a primary disc on the backbone ring. Has fill, border, a
+  multi-line label, and optionally an icon stacked above the label.
+- **Satellite** — a secondary disc attached to one node, parked outward and
+  fanned around it, joined by a **leader line** (solid, dotted or dashed).
+- **Card** — a rounded rectangle of body text attached to a node instead of
+  (or as well as) satellites, placed radially outward.
+- **Callout** — like a satellite but attached to a *sector* rather than a
+  node, sitting outside the whole graphic with an **arrow** pointing back in.
+- **Spoke** — a radial divider line running from the hub out through one or
+  more rings, separating sectors.
+- **Badge** — a small disc pinned onto a ring at a sector boundary, usually
+  carrying a directional arrow to imply cycle order.
+
+## 3. Variant catalogue
+
+Families A–D are the ones the five surveyed references land on. E and F are
+included from the wider genre because they share the same anatomy and would
+otherwise be designed out of the model by accident.
+
+### Family A — Hub-and-spoke with satellites
+
+Backbone ring, N nodes on it, K satellites fanned outward from each node.
+
+*Reference 1 (“SaaS Circle Diagram”)*: hairline grey backbone ring; 5 nodes,
+each a different saturated fill with a white bold multi-line label; 3 white
+hairline-outlined satellites per node, fanned over roughly 150° of outward arc
+and joined by short straight grey lines; the hub is unboxed free text with
+mixed font weights. Node discs overhang the ring on both sides; the ring is
+visible only in the gaps between nodes.
+
+*Reference 2 (“Digital Policy Circle Diagram”)*: thick dark backbone band
+(~20 px); 6 mint nodes sitting on it, each with a line icon stacked above a
+two-line label; exactly one dark satellite per node, joined by a **dotted**
+leader line, alternating inside/outside the node's own angle; hub is an icon
+above a two-line caption, unboxed.
+
+Structural parameters this family needs: node count and radius, satellite
+count/radius/fan angle/offset radius, leader-line style, per-node colour, icon
+slot, ring thickness and colour (including "no ring").
+
+### Family B — Hub-and-card
+
+Nodes on an implicit ring, each carrying a **text card** outward; nodes linked
+to each other by arc segments rather than to the hub.
+
+*Reference 3 (“Machine Learning Circle Diagram”)*: 6 small nodes, no drawn
+backbone; each node has a rounded rectangle with a **dashed** border and 2–3
+lines of body text, sitting radially outward and tangentially oriented (not
+rotated); consecutive nodes joined by **dashed arcs** that read as a cycle;
+hub is free text. The cards are large relative to the nodes, so the layout is
+card-driven: the ring radius is a consequence of card size, not an input.
+
+This is the variant that most needs a real layout pass — cards must not
+collide, and at 6+ nodes their tangential extent exceeds the arc available.
+
+### Family C — Segmented wheel with external callouts
+
+A donut divided into N coloured sectors, each with an icon; each sector has an
+external **callout disc** outside the graphic with an arrow pointing inward.
+
+*Reference 5 (KPI wheel)*: 6 sectors, white line icon per sector, white hole
+containing a centre image; 6 callout discs colour-matched to their sector,
+each with a straight arrow from callout to sector, labels set multi-line
+inside the callout disc.
+
+Unlike A and B this family **is** sector-based — the ring is tiled. It is the
+closest of the five to what `UltraCanvasCircularInfoGraphic` already models.
+
+### Family D — Concentric labelled wheel
+
+Several concentric rings sharing one sector division, joined by spokes, with a
+label ring, an icon ring, a centre disc and boundary badges.
+
+*Reference 4 (“Business Incubation Circle Diagram”)*: outer white ring split
+into 8 sectors by spokes with horizontal labels; a pink middle ring carrying
+one line icon per sector; a dark centre disc with a three-line caption; eight
+small dark **arrow badges** pinned on the outer ring at the sector boundaries,
+each arrow tangential to imply rotation; the whole graphic bounded by a thin
+outer circle.
+
+Also sector-based, and also close to what is implemented — the missing parts
+are the spokes, the icon slot and the badges, not the geometry.
+
+### Family E — Cycle ring (genre, not in the references)
+
+Sectors drawn as **chevron/arrow arcs** rather than plain annular sectors, so
+each segment visually points at the next; usually numbered steps. Needs a
+per-sector arrow-head/tail on the sector outline — a variation on Family
+C/D's sector renderer, not a new topology.
+
+### Family F — Petal / overlapping discs (genre, not in the references)
+
+N large discs arranged around a centre with deliberate overlap, no ring at
+all, blend or transparency at the intersections. Topologically Family A with
+ring radius chosen so nodes touch, plus alpha compositing — worth keeping in
+mind so "no backbone ring" and "node radius > ring gap" stay legal states, but
+it is not a separate element.
+
+### Cross-cutting decorations
+
+Orthogonal to the geometry, and therefore style options rather than variants:
+icon-above-label vs. label-only nodes; numbered nodes (`01`…`06`); leader-line
+style (solid / dotted / dashed / none); node shadow; per-node palette vs. one
+accent colour; hub as disc vs. unboxed text; partial sweeps (a 270° "open"
+circle); outer bounding circle.
+
+## 4. What UltraCanvas can build today
+
+| Element | Fits which family | Where it stops |
+|---|---|---|
+| `UltraCanvasCircularInfoGraphic` | C and D, partially | Tiles rings with sectors — no discs on a ring. Cell `backgroundImage` is drawn `Cover`-clipped to the whole sector, so it cannot be an *icon beside a label*. No spokes, no badges, no external callout discs. `CircularTextStyle::StarStyle` parks **text** outside with a leader line, which is the nearest thing to a satellite but has no disc, no fill and no per-satellite styling. |
+| `UltraCanvasPieChartElement` (donut + centre KPI) | C's ring only | Sectors and a centre hole; no icons in sectors, no callout discs. |
+| `UltraCanvasSunburstChart` | D's ring stack only | Hierarchy-driven angles; sector sizes come from data, not from an even split. |
+| `UltraCanvasMindMap` (`MindMapStructure::Radial`) | A, topologically | Closest topology: hub in the middle, depth‑1 topics on a ring at `radialRingGap × 1`, depth‑2 further out. But wedges are sized by **leaf count** rather than evenly, node boxes are text-sized rather than fixed discs, satellites land on a *global* concentric ring instead of clustering around their parent, and no backbone ring is drawn. It is a working tool with editing, undo and drag-to-reparent — not a presentation primitive. |
+| `UltraCanvasNodeDiagram` (`NodeDiagramLayout::Circular`) | A, mechanically | Has `NodeShape::Circle`, per-node fill/border, links with `LinkStyle` and node sizing. Places nodes on a circle — but there is no hub, no backbone ring, no satellite fan (satellites would be free nodes needing manual coordinates), no multi-line label layout inside a disc, no icon slot, no cards. |
+| `PlaceShapeLabels()` | Leader lines for all families | Already solves non-overlapping labels around circles with leader lines and polyline obstacles — the right dependency for A/B/C label and card placement, and it is in core, so any element can link it. |
+| `ConnectionStyle` / `ConnectionGeometry` | Leader lines and arcs | Already supplies dashed lines (`dashLength`/`gapLength`), caps, curvature, gradients and `SampleArc`. Family B's dashed arcs and Family A's dotted leaders need no new drawing primitives. |
+
+The honest summary: **the drawing primitives all exist; the layout models do
+not.** Nothing in the tree places a disc of given radius on a ring, fans
+children around it, or reserves the outer margin that satellites and callouts
+need.
+
+## 5. Gap analysis
+
+Ordered by how much of the genre each unlocks.
+
+1. **Node-on-ring layout.** Place N discs at even angles on a ring of radius
+   R, each with independent radius, overhanging the band. No element does
+   this. *Blocks A, B, F.*
+2. **Satellite fan.** K children per node at an offset radius, spread over a
+   fan angle centred on the parent's outward normal, with leader lines and
+   collision-aware clamping against neighbouring fans. *Blocks A.*
+3. **Multi-line label inside a disc.** Wrap to the inscribed square, centre
+   vertically, shrink-to-fit, with an optional icon stacked above. Sector
+   cells draw a single text run; `DrawCellText` has no wrapping. *Blocks A, B,
+   C, D.*
+4. **Icon slot separate from background.** A per-cell/per-node image drawn at
+   a point with a size, not stretched to fill the shape. *Blocks C, D.*
+5. **Attached cards.** Rounded-rect text panels anchored to a node, placed
+   outward, non-overlapping. *Blocks B.*
+6. **External callouts with arrows.** A disc outside the outer radius bound to
+   a sector, with an arrow drawn back to the sector's mid-angle. *Blocks C.*
+7. **Spokes and boundary badges.** Radial dividers spanning selected rings,
+   and small discs pinned at sector boundaries. *Blocks D.*
+8. **Outer-margin reservation.** `CalculatePlotArea()` currently reserves room
+   for star labels by *estimating* text width from character count. Anything
+   outside the ring — satellites, cards, callouts — needs the same treatment
+   with real geometry. *Affects A, B, C.*
+9. **Chevron sector outlines.** Arrow-shaped sector paths for cycle rings.
+   *Blocks E.*
+
+## 6. Recommendation
+
+**Split the work along the sector/node seam, because that seam is real.**
+
+**New element `UltraCanvasCircleDiagram`, in the Diagrams plugin, for
+families A, B and F.** These are node-and-link graphics — a hub, a node ring,
+satellites, cards, leader lines — and every one of the gaps 1, 2, 5 and 8
+above is a *layout* concern with no sector analogue. Folding a node model into
+`UltraCanvasCircularInfoGraphic` would mean a mode flag that makes half the
+existing API (`CircularCell`, `ValueVisualizationType`, `ColorScale`,
+`ImportDataFromCSV`, cell hit-testing) meaningless in one mode and the new
+half meaningless in the other. The Diagrams plugin is the right home: this is
+`UltraCanvasMindMap`'s neighbour, not `UltraCanvasPieChart`'s.
+
+**It is a presentation-only element** (decided — see §8). That settles the base
+class rather than the plugin: it derives from `UltraCanvasChartElementBase`,
+following `UltraCanvasVennDiagramElement` and `UltraCanvasSWOTDiagram`, which
+are both presentation-only Diagrams elements on that base. Only five headers
+in the Diagrams plugin touch `UltraCanvasDiagramViewport` — the compositor,
+the mind map and the node diagram — so the plugin is already mostly
+presentation graphics, and being one does not pull the element towards Charts.
+The base gives chart title, tooltips, hover, `DrawEmptyState`,
+`CalculatePlotArea` and `RequestRedraw`-driven updates, all of which a static
+graphic wants; nothing in it implies an editing model.
+
+**Extend `UltraCanvasCircularInfoGraphic` for families C, D and E.** These are
+already sector graphics on concentric rings — the element's exact model. They
+need additive, backward-compatible features: an icon slot distinct from
+`backgroundImage`, wrapped multi-line cell text, spokes, boundary badges,
+external callouts, and a chevron sector style. No mode flag, no model change,
+and each one is independently useful to existing users.
+
+**Share, do not duplicate:** both paths should call `PlaceShapeLabels()` for
+label/card placement and `ConnectionStyle`/`ConnectionGeometry` for leaders
+and arcs, exactly as the implemented circular elements already do.
+
+## 7. Phased plan
+
+**P1 — `UltraCanvasCircleDiagram`, Family A.** Hub (text / icon / disc /
+image), backbone ring (hairline, band, or none), N nodes at even angles with
+per-node fill, border, icon and wrapped multi-line label; K satellites per
+node with fan angle, offset radius and leader-line style; correct outer-margin
+reservation; hover highlight, tooltips and `onNodeClick`/`onSatelliteClick`;
+the `SatelliteWheel` and `BandedWheel` designs and the full palette set (§9).
+Covers references 1 and 2 outright, at any node count.
+
+The interaction surface stops there, by decision: the graphic is authored from
+code and rendered, exactly as `UltraCanvasCircularInfoGraphic` is. No node
+dragging, no inline label editing, no pan/zoom, no undo stack, and therefore
+no `UltraCanvasDiagramViewport` dependency and no interchange-format layer of
+the kind `UltraCanvasMindMapIO` provides.
+
+**P2 — cards and callouts.** Family B's attached cards with dashed borders and
+non-overlapping placement, plus node-to-node arc connectors. In parallel, the
+`UltraCanvasCircularInfoGraphic` additions for reference 5: icon slot, wrapped
+cell text, external callout discs with arrows.
+
+**P3 — wheel furniture and cycle rings.** Spokes spanning selected rings,
+boundary badges with directional glyphs, an outer bounding circle (reference
+4); chevron sector outlines and step numbering (Family E); partial sweeps and
+petal overlap for Family F.
+
+Each phase carries the repo's usual companions: a component doc under
+`Docs/UltraCanvas/`, a DemoApp scene, `Masterfile_modules.md` and
+`Docs/UltraCanvas/CHANGELOG.md` entries, and a regenerated `llms.txt`.
+
+## 8. Decisions taken
+
+- **Element name: `UltraCanvasCircleDiagram`.** Header
+  `include/Plugins/Diagrams/UltraCanvasCircleDiagram.h`, factory
+  `CreateCircleDiagram(id, x, y, w, h)`, doc
+  `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`.
+- **Presentation-only.** The element is authored from code and rendered; it is
+  not an editing surface. Consequences are folded into §6 and §7: base class
+  `UltraCanvasChartElementBase`, no `UltraCanvasDiagramViewport`, no drag /
+  inline edit / pan / zoom / undo, no IO layer. Interaction is limited to
+  hover highlight, tooltips and click callbacks — the same surface
+  `UltraCanvasCircularInfoGraphic` exposes.
+- **Ships design presets**, on two independent axes — structure and colour —
+  each working at a **variable segment count**. See §9.
+- **Nodes are equal-sized.** Node radius is one per-diagram constant, not
+  per-node data; `value` never scales a node the way `NodeDiagramSizing` does.
+  All five references are equal-sized, and equal radii are what keep the
+  satellite fan geometry uniform and the ring rhythm even. A per-node `value`
+  survives only as tooltip/callback payload.
+
+## 9. Preset model
+
+Following `UltraCanvasPertChart` (`PertNodeDesign` × `PertChartPaletteKind`)
+and `UltraCanvasSWOTDiagram` (`SWOTDesign`), presets are **two orthogonal
+enums plus a plain count**, never one enum encoding all three:
+
+```cpp
+enum class CircleDiagramDesign {        // structure — the §3 families
+    SatelliteWheel,   // Family A: nodes + fanned satellites   (refs 1, 2)
+    BandedWheel,      // Family A on a thick backbone band     (ref 2)
+    CardRing,         // Family B: nodes + dashed text cards   (ref 3)
+    PetalRing,        // Family F: overlapping discs, no ring
+    Custom            // structure assembled from the primitives
+};
+
+enum class CircleDiagramPaletteKind {   // colour — mirrors PertChartPaletteKind
+    Vibrant, Ocean, Mint, Pastel, Midnight, Dark, Monochrome,
+    Custom            // colours supplied via SetCustomPalette()
+};
+
+diagram->SetDesign(CircleDiagramDesign::SatelliteWheel);
+diagram->SetPalette(CircleDiagramPaletteKind::Vibrant);
+diagram->SetNodeCount(6);               // any N, independent of the two above
+```
+
+**Variable N is the constraint that shapes the implementation**, and it is
+worth stating plainly because it is easy to build presets that quietly assume
+the reference's node count:
+
+1. **Palettes must generate N colours, not carry a fixed list.** Each named
+   palette is a hue ramp sampled at N points (or a base hue rotated by
+   `360/N`), so `Vibrant` at 4 nodes and at 9 nodes are both coherent.
+   `PertChartPaletteKind`'s fixed role colours are the wrong model here —
+   this is a *categorical* palette. `Custom` takes an explicit
+   `std::vector<Color>`, cycled if shorter than N.
+2. **Every layout quantity derives from the per-node arc**, `360/N`: satellite
+   fan angle, label wrap width, card extent and the minimum ring radius needed
+   to keep neighbours apart. None of them may be constants tuned to one
+   reference.
+3. **Bound N and say so.** Below 3 the ring reads as a line; above roughly 10
+   labels and cards stop fitting at any sane radius — `CardRing` saturates
+   earliest because card width is tangential. Clamp with a documented range
+   per design rather than degrading silently, the way `SetTotalAngle()`
+   already clamps to 10°–360°.
+4. **A design preset sets defaults, it does not lock them.** Applying one
+   fills in ring thickness, node radius, satellite count, leader style and
+   fonts; every one stays individually settable afterwards, so `Custom` is a
+   starting point rather than the only escape hatch.
+
+Presets land with their phase: `SatelliteWheel` and `BandedWheel` in P1,
+`CardRing` in P2, `PetalRing` in P3.
+
+==============================================================================
 FILE: Docs/UltraCanvas/README.md
 ==============================================================================
 
@@ -8804,6 +9165,209 @@ std::function<bool(const std::string&)> validator;   // return false to reject
   free-form multi-value entry, use `UltraCanvasTagInput`.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCircleDiagram.md
+==============================================================================
+
+# UltraCanvasCircleDiagram Documentation
+
+## Overview
+
+The `UltraCanvasCircleDiagram` is the **circle diagram** infographic: a central
+hub, a backbone ring, and equally sized labelled node discs *threaded onto* that
+ring, each carrying a fan of satellite discs on leader lines. It is the
+node-on-ring member of the circular family — for rings *subdivided* into sectors
+or cells use [`UltraCanvasCircularInfoGraphic`](UltraCanvasCircularInfoGraphic.md),
+and see [`UltraCanvasCircularCharts.md`](UltraCanvasCircularCharts.md) for the
+family map.
+
+**Namespace:** `UltraCanvas`
+**Header:** `include/Plugins/Diagrams/UltraCanvasCircleDiagram.h`
+**Base Class:** `UltraCanvasChartElementBase`
+**Version:** 1.0.0
+**Last Modified:** 2026-08-08
+**Author:** UltraCanvas Framework
+
+The design survey and the phased plan this element implements are in
+[`CircleDiagramInfographicVariants.md`](CircleDiagramInfographicVariants.md).
+This release is **P1**: the satellite families (references 1 and 2 of the
+survey). Cards, external callouts, spokes and badges are P2/P3.
+
+## Class Hierarchy
+
+```
+UltraCanvasUIElement
+    └── UltraCanvasChartElementBase
+            └── UltraCanvasCircleDiagram
+```
+
+## Presentation-only, by design
+
+The diagram is authored from code and rendered. There is **no** node dragging,
+inline label editing, pan/zoom or undo, and therefore no
+`UltraCanvasDiagramViewport` dependency and no interchange-format layer.
+Interaction is limited to hover highlighting, tooltips and click callbacks —
+the same surface `UltraCanvasCircularInfoGraphic` exposes.
+
+## Features
+
+- **Nodes on a ring:** N equally spaced discs on the backbone circle, each with
+  its own fill, border, icon and wrapped multi-line label
+- **Satellite fans:** K satellites per node, spread over a fan centred on the
+  node's outward radius and joined by solid, dashed or dotted leader lines
+- **Hub:** free text, an icon, or a filled disc with a caption in the middle
+- **Backbone:** hairline outline, thick coloured band, or none at all
+- **Designs:** `SatelliteWheel` and `BandedWheel` structure presets
+- **Palettes:** seven categorical themes plus `Custom`, all generating colours
+  for whatever node count is set
+- **Equal-sized nodes:** one radius per diagram; `value` never scales a disc
+- **Interactive:** hover highlighting, tooltips (per-node/per-satellite
+  override), `onNodeClick` / `onSatelliteClick` / hover callbacks
+
+## Data Model
+
+```cpp
+struct CircleSatellite {
+    std::string text;
+    Color fillColor, borderColor, textColor;   // transparent = derive
+    std::string iconImage;
+    std::string tooltip;
+    double value;              // tooltip/callback payload only
+};
+
+struct CircleNode {
+    std::string text;
+    Color fillColor, borderColor, textColor;   // transparent = palette / auto
+    std::string iconImage;     // drawn above the label, inside the disc
+    std::string tooltip;
+    double value;              // tooltip/callback payload only
+    std::vector<CircleSatellite> satellites;
+};
+```
+
+A fully transparent colour means "derive it": a node takes the palette colour
+for its index, and a label takes whichever of dark/white reads better on the
+resolved fill. A satellite falls back to the design's satellite colours.
+
+## Enumerations
+
+```cpp
+enum class CircleDiagramDesign      { SatelliteWheel, BandedWheel, Custom };
+enum class CircleDiagramPaletteKind { Vibrant, Ocean, Mint, Pastel,
+                                      Midnight, Dark, Monochrome, Custom };
+enum class CircleBackboneStyle      { NoRing, Hairline, Band };
+enum class CircleLeaderStyle        { NoLeader, Solid, Dashed, Dotted };
+enum class CircleNodeLabelPlacement { Inside, Outside };
+```
+
+## Public API
+
+### Design & palette
+| Method | Description |
+|---|---|
+| `SetDesign(d)` / `GetDesign()` | Structure preset; fills in defaults that stay individually settable |
+| `SetPalette(kind)` / `GetPalette()` | Colour theme |
+| `SetCustomPalette(colors)` | Explicit colours, cycled if shorter than the node count; selects `Custom` |
+| `PaletteColor(index, total)` | The colour the palette resolves for one node |
+
+### Nodes & satellites
+| Method | Description |
+|---|---|
+| `AddNode(node)` / `AddNode(text)` | Append a node; returns its index |
+| `SetNode(i, node)` / `GetNode(i)` / `GetNodeCount()` / `ClearNodes()` | Node access |
+| `SetNodeCount(n)` | Resize to exactly `n` nodes, clamped to 3–12 |
+| `UpdateNodeText(i, text)` | In-place update |
+| `AddSatellite(i, satellite)` / `AddSatellite(i, text)` | Attach a satellite |
+| `GetSatelliteCount(i)` / `GetSatellite(i, j)` / `ClearSatellites(i)` | Satellite access |
+
+### Hub
+| Method | Description |
+|---|---|
+| `SetHubText(text)` / `SetHubIcon(path)` | Centre caption and icon |
+| `SetShowHubDisc(on)` / `SetHubColor(fill, border)` / `SetHubTextColor(c)` | Centre disc |
+| `SetHubRadiusFraction(f)` | Hub size as a fraction of the backbone radius |
+
+### Geometry
+| Method | Description |
+|---|---|
+| `SetNodeRadius(px)` | Explicit node radius; 0 auto-fits from the per-node arc |
+| `SetSatelliteRadius(px)` | Explicit satellite radius; 0 uses 0.55 × node radius |
+| `SetSatelliteOffset(px)` / `SetSatelliteFanAngle(deg)` | Fan geometry (fan clamped 0–300) |
+| `SetAngleOffset(deg)` | Rotate the whole diagram (default −90°, 12 o'clock) |
+| `SetBackboneStyle(style)` / `SetBackboneThickness(px)` / `SetBackboneColor(c)` | The ring |
+
+### Appearance & interaction
+| Method | Description |
+|---|---|
+| `SetLeaderStyle(style)` / `SetLeaderColor(c)` / `SetLeaderWidth(px)` | Leader lines |
+| `SetNodeLabelPlacement(placement)` | Label inside the disc or parked outside |
+| `SetNodeFont` / `SetSatelliteFont` / `SetHubFont(family, size, weight)` | Fonts |
+| `SetNodeBorderWidth(px)` / `SetShowNodeIcons(on)` | Node decoration |
+| `SetHoverHighlightEnabled(on)` / `SetTooltipsEnabled(on)` | Interactivity |
+| `onNodeClick` / `onNodeHover` | `std::function<void(size_t node)>` |
+| `onSatelliteClick` / `onSatelliteHover` | `std::function<void(size_t node, size_t satellite)>` |
+| `customNodeTooltipGenerator` | `std::function<std::string(const CircleNode&)>` |
+
+## Usage Example
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasCircleDiagram.h"
+
+auto diagram = UltraCanvas::CreateCircleDiagram("saas", 20, 20, 580, 520);
+diagram->SetDesign(UltraCanvas::CircleDiagramDesign::SatelliteWheel);
+diagram->SetPalette(UltraCanvas::CircleDiagramPaletteKind::Vibrant);
+diagram->SetHubText("Components of a\nSaaS Business");
+
+size_t marketing = diagram->AddNode("Marketing\nAutomation");
+diagram->AddSatellite(marketing, "Leads targeting");
+diagram->AddSatellite(marketing, "Social Media Ads");
+diagram->AddSatellite(marketing, "Auto Emails");
+
+size_t billing = diagram->AddNode("Billing");
+diagram->AddSatellite(billing, "Invoicing");
+diagram->AddSatellite(billing, "Receipts");
+
+diagram->onNodeClick = [](size_t node) { /* ... */ };
+container->AddChild(diagram);
+```
+
+Convenience factory: `CreateCircleDiagramFromGroups(id, x, y, w, h, groupedData)`
+builds one node per `(nodeLabel, [satelliteLabel, ...])` pair.
+
+## Node count and layout
+
+Everything about the layout derives from the **per-node arc**, `360/N`, so a
+design preset is never tuned to one reference's node count:
+
+- The auto-fitted node radius is a share of the chord between neighbours, so
+  discs keep a readable gap at every N.
+- The satellite fan is narrowed to what one node's own wedge can hold, so fans
+  never reach into a neighbour's at high N. Auto-sized satellite discs also
+  shrink if K of them cannot fit that wedge side by side; an explicit
+  `SetSatelliteRadius()` is left alone.
+- Disc labels shrink to fit their disc, testing the longest single word as well
+  as the wrapped block, because a word too wide to break would otherwise
+  ellipsize instead of wrapping.
+- Whatever sits outside the backbone — satellite fans, or labels placed with
+  `CircleNodeLabelPlacement::Outside` — is reserved for by shrinking the
+  backbone radius, so nothing is clipped at the element edge.
+
+`SetNodeCount()` clamps to **3–12** (`kMinNodeCount` / `kMaxNodeCount`) rather
+than degrading silently, the same way `SetTotalAngle()` clamps elsewhere in the
+family. Below 3 the ring reads as a line; above 12 labels collide at any radius.
+`AddNode()` is not clamped — it is the explicit, one-at-a-time path.
+
+## Notes & Conventions
+
+- The element owns its node model — `SetDataSource` from the chart base class
+  is not used.
+- Node discs are all one radius and satellites another; `value` is carried for
+  tooltips and callbacks only and never scales a disc.
+- Start angle defaults to **−90° (12 o'clock)**, matching the rest of the
+  circular family.
+- Demo: `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`
+  (DemoApp → Info Graphics → Circle diagram).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCircularCharts.md
 ==============================================================================
 
@@ -8835,7 +9399,18 @@ link to its component doc.
 | Multivariate profiles on fixed spokes | Radius on N axes | `UltraCanvasRadarChartElement` | [UltraCanvasRadarChartElement.md](UltraCanvasRadarChartElement.md) |
 | Flows between entities | Arc segments + ribbons | `UltraCanvasChordChart` | [UltraCanvasChordChartExamples.md](UltraCanvasChordChartExamples.md) |
 | Rings of styled text/image cells, cross-ring connections | Cell grid on concentric rings | `UltraCanvasCircularInfoGraphic` | [UltraCanvasCircularInfoGraphic.md](UltraCanvasCircularInfoGraphic.md) |
+| A theme, a ring, and a few labelled topics with sub-topics | Discs **threaded onto** a ring, satellites on leader lines | `UltraCanvasCircleDiagram` (Diagrams plugin) | [UltraCanvasCircleDiagram.md](UltraCanvasCircleDiagram.md) |
 | A single instrument-style value (dial, ring, battery) | Needle angle or arc fill against a scale | `UltraCanvasGaugeDiagramElement` (Diagrams plugin) | [UltraCanvasGaugeExamples.md](UltraCanvasGaugeExamples.md) |
+
+## Sectors vs. nodes
+
+The last two rows look alike and are not. Every element above
+`UltraCanvasCircleDiagram` **subdivides** the ring — sectors or cells tile it,
+and a cell's extent is the band's thickness. The circle diagram **threads
+discs onto** the ring: a node's radius is independent of the ring, it normally
+overhangs both edges, and it can carry satellites outside the ring. If your
+graphic is "a whole ring, divided up", you want the infographic; if it is "a
+few things sitting on a ring", you want the circle diagram.
 
 ## The two "radial bar" charts
 
@@ -14315,6 +14890,8 @@ Fields: `Name`, `Size`, `Type`, `ModifiedDate`, `CreatedDate`. Directories alway
 list before files. In the Details view a click on a sortable column header
 selects that field (a second click flips the direction) and the header shows a
 ▲ / ▼ indicator. `onSortChanged(field, ascending)` fires on every change.
+Sorting can be switched off for a file-list display whose order matters — see
+[File list](#file-list-search-results).
 
 ## Resizable columns
 
@@ -14492,7 +15069,7 @@ rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
-`SelectAll()` change the selection programmatically, and
+`SelectAll()` / `SelectPath(path)` change the selection programmatically, and
 `EnsureSelectionVisible()` scrolls so the first selected entry is fully in
 view. The scroll is applied against the **next** recomputed layout, so a host
 that resizes the widget in the same frame — e.g. opening a preview pane that
@@ -14500,12 +15077,25 @@ narrows the folder display (the UltraFiler does exactly that) — can call it
 right away and the entry stays visible at the new width instead of being
 corrected against the stale geometry.
 
+`SelectPath(path)` makes one entry of the current display the selection and
+scrolls it into view, exactly as a click on it would (`onSelectionChanged`
+fires); it returns `false` when that path is not among the displayed entries.
+Use it to point the view at a file right after opening its folder — the
+UltraFiler does that when a tile of its History view is activated.
+
 ## Hover icon menu
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
 so no icon assets are required.
+
+A button acts on the hovered entry — or on the **whole selection** when the
+hovered entry is part of it — and, like a drag, **never changes the selection**:
+pressing Delete on a file is "delete that file", not "show me that file", so it
+does not fire `onSelectionChanged` and cannot re-target (or pop open) a preview
+pane fed by it. The selection only moves when the icon menu deletes it, and then
+only as described under [Selection after a delete](#selection-after-a-delete).
 
 ## File operations
 
@@ -14524,6 +15114,28 @@ filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Selection after a delete
+
+By default a delete leaves nothing selected. `SetSelectNextAfterDelete(true)`
+changes that for the case where the delete takes the **whole** selection away:
+the entry that fills its place inherits the selection — the first survivor
+after the deleted block, or the last one before it when the deleted entry was
+at the end — and the folder display scrolls it into view. Deleting entries that
+are *not* selected (the hover icon menu acting on the entry under the cursor)
+still leaves the selection alone, and a delete that only takes part of the
+selection keeps the rest as before.
+
+```cpp
+filer->SetSelectNextAfterDelete(true);   // preview follows the deleted file's neighbour
+```
+
+Hosts that feed a preview pane from `onSelectionChanged` turn this on while the
+preview is up — the UltraFiler does exactly that — so deleting the previewed
+file walks the preview on to the next file instead of folding the pane away and
+snapping the folder display back to full width. The new selection is installed
+**before** `onFolderRefreshed` fires, so the host sees a single selection change
+and never an empty one in between.
 
 `SetNewDocumentTypes()` replaces the default New > entries; each entry may name a
 `templatePath` that is copied instead of creating an empty file, and
@@ -14619,6 +15231,26 @@ font size as the displayed name, commits on Enter, cancels on Esc — and a
 click anywhere outside the field commits too, because the field losing the
 keyboard focus ends the edit.
 
+A committed rename **keeps the entry selected** under its new name and scrolls
+it back into view (the new name usually sorts somewhere else). The rescan that
+follows a rename restores the selection by path, so the entry is followed from
+its old path to its new one rather than dropped — leaving nothing selected
+would silently disable every command that needs a selection, F2 and the Rename
+button included, so a second rename in a row would do nothing at all. An entry
+renamed while it was *not* selected — the hover icon menu acting on the entry
+under the cursor — leaves the selection where it was. Renaming to a name that
+differs only in case is allowed: the "already exists" check ignores a target
+that resolves to the entry itself, which is what a case-insensitive filesystem
+(Windows, macOS) reports for it.
+
+The field is placed over the name wherever the name is drawn, which differs per
+view: beside the icon in Details / List / Size bars, over the caption band in
+the thumbnail grids, and **inside the cell, at the top**, in the treemap — a
+treemap cell has no caption band under an icon, the cell *is* the icon rect.
+Treemap cells are sized by their content, not by their captions, so a small
+cell gets a field widened to a usable minimum (pulled back inside the right
+edge when that would overflow it) rather than one a few pixels wide.
+
 Escape is also the cancel key of a running item drag, a rubber-band
 selection and the compress dialog. A host that binds its own window-level
 Escape shortcut (the UltraFiler closes its preview pane with it) should
@@ -14639,6 +15271,29 @@ path, not by row index. Files that vanished drop out of it, which is reported
 through `onSelectionChanged`; every rescan also fires `onFolderRefreshed` so a
 host can refresh what it shows about the folder (item counts, status bar).
 
+## Folder modifications
+
+`onFolderRefreshed` answers "the listing changed", which includes plain
+rescans. `onFolderModified(folderPath)` answers the different question "the
+**user** changed something here": an entry created, pasted, dropped in or out,
+renamed, duplicated, deleted, packed or extracted — through the context menu,
+the icon menu, the keyboard or the API alike. Navigation, sorting, view
+switches and a bare `Refresh()` never fire it.
+
+The reported folder is normally the displayed one, but it is the folder that
+actually changed when that differs — files dropped onto a subfolder shown in
+the view, an archive written into the folder its dialog icon was dragged to,
+or the individual parent folders when a file list spanning several folders is
+deleted from. In a file-list display, changes whose folder cannot be named are
+not reported at all, since the displayed folder is not where they landed.
+
+```cpp
+// "Recently worked in" — folders the user actually did something in.
+filer->onFolderModified = [this](const std::string& folder) {
+    recentFolders.Record(folder);
+};
+```
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -14652,6 +15307,18 @@ from different folders.
 untouched; `SetPath()` returns to the normal folder display and
 `IsShowingFileList()` reports which mode is active. `Refresh()` re-stats the
 list, dropping entries that vanished.
+
+A file list is sorted like a folder listing by default. When the order of the
+paths itself carries the meaning — a most-recently-used history, a ranked
+result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
+over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
+for the file list: `SetSort()` and the Details column headers leave the order
+alone until the widget returns to a folder listing, which is always sorted.
+
+```cpp
+filer->SetFileListOrderPreserved(true);
+filer->ShowFileList(recentlyUsedPaths);   // most recent first, kept that way
+```
 
 Pair it with `SetOpenPathMenuItemVisible(true, label)`, which puts an
 Open-Path item at the *top* of the context menu (followed by a separator) and
@@ -14674,6 +15341,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
@@ -15095,6 +15763,321 @@ The financial chart component is fully cross-platform and works on:
 | 1.2.0 | 2025-08-01 | Added moving averages and Heikin-Ashi support |
 | 1.1.0 | 2025-06-15 | Implemented interactive features (zoom, pan, tooltips) |
 | 1.0.0 | 2025-05-01 | Initial release with basic candlestick and OHLC charts |
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFishboneDiagram.md
+==============================================================================
+
+# UltraCanvasFishboneDiagram
+
+A **fishbone (Ishikawa) cause-and-effect diagram** — the standard root-cause
+analysis picture — with eight design presets. One **effect** at the head of a
+spine, **cause categories** on the ribs, **causes** on the twigs, and optional
+**sub-causes** for the 5-Whys tail.
+
+**Pick the right element:**
+
+| You want | Use |
+|---|---|
+| Root causes of one problem, grouped into categories | `UltraCanvasFishboneDiagram` (this element) |
+| A free-form topic tree with any structure | [`UltraCanvasMindMap`](UltraCanvasMindMapExamples.md) |
+| Four factor lists: strengths, weaknesses, opportunities, threats | [`UltraCanvasSWOTDiagram`](UltraCanvasSWOTDiagramExamples.md) |
+| An ordered story along a decorative path | [`UltraCanvasTimelineDiagram`](UltraCanvasTimelineDiagram.md) |
+| Process steps with branches and decisions | [`UltraCanvasFlowChart`](UltraCanvasFlowChartExamples.md) |
+
+**Namespace:** `UltraCanvas`
+**Headers:** `include/Plugins/Diagrams/UltraCanvasFishboneDiagram.h` (element),
+`include/Plugins/Diagrams/UltraCanvasFishboneModel.h` (UI-free model + text interchange)
+**Sources:** `Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp`,
+`Plugins/Diagrams/UltraCanvasFishboneModel.cpp`,
+`Plugins/Diagrams/UltraCanvasFishboneText.cpp`
+**Base class:** `UltraCanvasChartElementBase`
+**Demo:** `Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp` (Info Graphics > Fishbone Diagram)
+**Tests:** `Tests/FishboneModelTest.cpp` (target `FishboneModelTest`)
+**Research:** [`UltraCanvasFishboneDiagramProposal.md`](UltraCanvasFishboneDiagramProposal.md)
+**Version:** 1.0.0
+**Last Modified:** 2026-08-07
+**Author:** UltraCanvas Framework
+
+## Class hierarchy
+
+```
+UltraCanvasUIElement
+    └── UltraCanvasChartElementBase
+            └── UltraCanvasFishboneDiagram
+```
+
+## Quick start
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasFishboneDiagram.h"
+using namespace UltraCanvas;
+
+auto fishbone = CreateFishboneDiagramElement("rca", 10, 10, 900, 520,
+                                             FishboneDesign::SpineChips);
+fishbone->SetEffect("Quality Control Issues");
+
+const size_t man = fishbone->AddCategory("Man (Human Factors)");
+fishbone->AddCause(man, "Inadequate training");
+fishbone->AddCause(man, "Operator error");
+
+const size_t machines = fishbone->AddCategory("Machines (Equipment)");
+fishbone->AddCause(machines, "Calibration issues");
+fishbone->AddCause(machines, "Outdated technology");
+
+fishbone->SetPalette(FishbonePalette::Vibrant);
+fishbone->onCauseSelect = [](const FishboneRef& ref, const FishboneCause& cause) {
+    // ref identifies category / cause / sub-cause
+};
+```
+
+Or start from a named checklist and fill it in:
+
+```cpp
+fishbone->SetEffect("Release Slipped Two Sprints");
+fishbone->LoadCategoryPreset(FishboneCategoryPreset::Software);
+fishbone->AddCause(0, "Scope added mid-sprint");
+```
+
+Or load the whole diagram from text (see [Text interchange](#text-interchange)):
+
+```cpp
+fishbone->LoadMermaid(R"(ishikawa-beta
+    Blurry Photo
+    Process
+        Out of focus
+    Equipment
+        Dirty lens
+)");
+```
+
+## Data model
+
+The model lives in `UltraCanvasFishboneModel.h` and has no UI dependencies, so
+it can be built, parsed and unit-tested without a window.
+
+```cpp
+struct FishboneCause {
+    std::string text;
+    std::vector<FishboneCause> subCauses;  // 5-Whys tail; usually empty
+    Color       markerColor;               // transparent = category accent
+    std::string tooltip;                   // overrides the generated tooltip
+    bool        highlighted;               // extra emphasis (a suspected cause)
+    bool        isRootCause;               // drawn with a ring around the marker
+    double      weight;                    // optional score; 0 = unweighted
+};
+
+struct FishboneCategory {
+    std::string title;
+    std::string iconPath;    // image drawn inside the badge
+    std::string iconGlyph;   // short text used when no image is set
+    Color       accentColor; // transparent = take the next palette entry
+    int         side;        // -1 above/left, +1 below/right, 0 = side policy
+    bool        collapsed;   // draw the rib and label but not the causes
+    std::vector<FishboneCause> causes;
+};
+
+struct FishboneDocument {
+    std::string effect;
+    std::vector<FishboneCategory> categories;
+};
+```
+
+Structure is fixed by the diagram, not by the data: depth 0 is the effect,
+depth 1 a category, depth 2 a cause, depth 3+ sub-causes. Categories never
+nest; causes do.
+
+> `FishboneDocument::AddCategory()` and `FishboneCategory::AddCause()` return a
+> reference that the *next* add on the same container may invalidate — the
+> `std::vector::emplace_back` rule. Finish with the reference, or index into the
+> vector, before adding the next element.
+
+Element-side accessors mirror the model: `SetDocument` / `GetDocument`,
+`SetEffect`, `AddCategory`, `SetCategories`, `RemoveCategory`, `AddCause`,
+`AddSubCause`, `RemoveCause`, `ClearCauses`, `CountCategories`, `CountCauses`,
+`CountAllCauses(includeSubCauses)`, plus `SetCategoryTitle` / `SetCategoryAccent`
+/ `SetCategoryIcon` / `SetCategoryGlyph` / `SetCategorySide` /
+`SetCategoryCollapsed`.
+
+## Designs
+
+`SetDesign(FishboneDesign)` picks the geometry. Every design draws the same
+document; only the spine, the ribs and the cause placement change.
+
+| Design | Description |
+|---|---|
+| `Classic` | Textbook herringbone: thin spine, straight angled ribs, category chips at the rib tips, causes on the twigs |
+| `SpineChips` | Solid tapered spine arrow; category pills sit **on** the spine and end in a circular icon badge; dot-terminated twigs |
+| `CrossedRibs` | One stroke crosses the spine and serves two categories at once — one above, one below; badge at each crossing |
+| `Bracket` | Parallelogram bones (slanted edge plus a horizontal shelf) with horizontal dot leaders, so cause text stays level |
+| `ChevronSpine` | The spine is a chain of chevron blocks, one per category, each with a pictogram; hairline leaders reach floating pills |
+| `Columns` | No ribs: each category is a tinted panel straddling the spine with an icon badge at the far end and its causes inside |
+| `Vertical` | Spine top-to-bottom, ribs left and right — the portrait form |
+| `Compact` | Every category on one side of a low spine; halves the height at the cost of length |
+
+## Layout
+
+The solver is described in full in the proposal (§7). Two behaviours are worth
+knowing when authoring:
+
+- **Ribs are trimmed to their content.** A rib is only as long as its causes
+  need, so a category with two causes does not draw a rib sized for six.
+- **Roots are placed after the rib length is known**, so the outermost category
+  always has room for its labels against the frame edge.
+
+Options:
+
+| Call | Effect |
+|---|---|
+| `SetSidePolicy(FishboneSidePolicy)` | `Alternate` (default), `AllAbove`, `AllBelow`, `PerCategory` (uses `FishboneCategory::side`) |
+| `SetRibAngle(degrees)` | Angle between a rib and the spine, clamped to 25–80. The solver may steepen it further when ribs would otherwise collide |
+| `SetHeadShape(FishboneHeadShape)` | `Arrow`, `Triangle` (default), `Box`, `FishHead`, `Hidden` |
+| `SetTailShape(FishboneTailShape)` | `Hidden`, `Chevron` (default), `Triangle`, `FishTail` |
+| `SetEffectPlacement(FishboneEffectPlacement)` | `Title` (default — the surveyed infographics all put it there), `HeadBox`, `Hidden` |
+| `SetCauseMarker(FishboneCauseMarker)` | `Dot` (default), `Bullet`, `Numbered`, `Hidden` |
+| `SetLabelPlacement(FishboneLabelPlacement)` | `Auto` (default, per design), `RibTip`, `OnSpine`, `BesideSpine`, `PanelHeader` |
+| `SetSpineThickness(px)` | Spine stroke width / solid-bar thickness |
+
+When a category has more causes than its rib can hold, the overflow is reported
+as a `+N` badge under the category chip rather than being silently dropped.
+
+## Palettes and color
+
+`SetPalette(FishbonePalette)` selects `CorporateBlue`, `Vibrant` (default),
+`Pastel`, `Ocean`, `Sunset`, `Forest`, `Slate`, `Mono` or `Custom`.
+`SetCustomPalette(std::vector<Color>)` supplies the custom entries and switches
+to `Custom`.
+
+Color is per **category**: the accent drives the chip, the badge, the rib, the
+cause markers and the panel tint. A category with a non-transparent
+`accentColor` keeps it; otherwise it takes the next palette entry.
+`SetDarkTheme(bool)` switches the background, text and spine colors.
+
+## Style toggles
+
+All are orthogonal to the design:
+
+`SetShowCategoryIcons` (badges/glyphs), `SetShowCauses`, `SetShowSubCauses`,
+`SetShowSpineCaption` + `SetSpineCaption` (an inline caption on the spine near
+the tail, e.g. "Potential Causes"), `SetShowWaypoints` (small chevrons at each
+rib root), `SetShowWeights` (numeric badge on weighted causes),
+`SetCauseFontSize`, `SetCategoryFontSize`.
+
+Icons: set `iconPath` for an image (drawn `ImageFitMode::Contain` inside the
+badge) or `iconGlyph` for a short text mark. With neither, the first character
+of the title is used.
+
+## Text handling
+
+Cause labels wrap to the width the solver allocates and are edge-aligned to
+their marker — right-aligned when the text runs back toward the tail,
+left-aligned when it runs toward the head. Category chips size to their title
+and ellipsize (`...`) when the available pitch cannot hold it.
+
+## Interaction
+
+Hover and selection address categories, causes and sub-causes through one
+handle:
+
+```cpp
+struct FishboneRef {
+    int category, cause, subCause;   // -1 where not applicable
+    bool IsValid() const; bool IsCategory() const;
+    bool IsCause() const; bool IsSubCause() const;
+};
+```
+
+- Click a cause or a category chip to select it; click empty space to clear.
+- Double-click a category chip to collapse/expand its causes.
+- Hover shows a tooltip (category, cause text, root-cause flag, weight and
+  sub-cause count), unless `SetEnableTooltips(false)`.
+
+Callbacks: `onCategorySelect`, `onCauseSelect`, `onCauseHover`,
+`onCauseDoubleClick`, `onSelectionChange`. Selection and tooltips are enabled
+through the base class (`SetEnableSelection`, `SetEnableTooltips`).
+
+Marking causes from code: `SetCauseHighlighted(ref, bool)`,
+`SetCauseRootCause(ref, bool)`, `SetCauseWeight(ref, double)` and
+`FindCause(ref)`.
+
+## Geometry queries
+
+Valid after the first render: `GetSpineLine(start, end)`,
+`GetCategoryLabelRect(index, rect)`, `GetCategoryColor(index, color)`.
+
+## Category presets
+
+`LoadCategoryPreset(FishboneCategoryPreset)` fills in the titles and glyphs of a
+named checklist and leaves the causes empty:
+
+| Preset | Categories |
+|---|---|
+| `SixM` | Man, Machine, Material, Method, Measurement, Mother Nature |
+| `FiveME` | Man, Machine, Material, Method, Environment |
+| `EightP` | Product, Price, Place, Promotion, People, Process, Physical Evidence, Productivity |
+| `FourS` | Surroundings, Suppliers, Systems, Skills |
+| `FiveS` | Surroundings, Suppliers, Systems, Skills, Safety |
+| `PEMPEM` | People, Equipment, Materials, Process, Environment, Management |
+| `Software` | Requirements, Design, Code, Test, Process, Tooling, People, Environment |
+
+`FishboneCategoryPresetName(preset)` returns a human-readable name.
+
+## Text interchange
+
+Two notations, both indentation-based, implemented in
+`UltraCanvasFishboneText.cpp`:
+
+**Mermaid `ishikawa-beta`** (Mermaid 11.13+) — `LoadMermaid(text, &error)` /
+`ExportMermaid()`:
+
+```
+ishikawa-beta
+    Blurry Photo
+    Process
+        Out of focus
+        Shutter speed too slow
+    Equipment
+        LENS
+            Damaged lens
+            Dirty lens
+```
+
+**Indented outline** — `LoadOutline(text, &error)` / `ExportOutline()`: the same
+shape without the keyword. The first non-blank line is the effect; the line
+after it fixes the category level; anything deeper is a cause, nested by how
+much deeper.
+
+The parser is deliberately forgiving: tabs or spaces, any consistent indent
+width, `-` / `*` / `+` bullets stripped, blank lines and `//`, `#`, `%%`
+comments ignored, `---` front matter skipped, and text with no keyword read as a
+plain outline. Both notations round-trip through the model — see
+`Tests/FishboneModelTest.cpp`.
+
+## Validation and queries
+
+- `Validate()` returns human-readable problems (no effect, no categories, an
+  empty category title, a category with no causes, blank cause text). It never
+  blocks rendering.
+- `FishboneDepth(document)` — 0 none, 1 categories, 2 causes, 3+ sub-causes.
+- `CountFishboneCauses(categories, includeSubCauses)`.
+
+## Sample data
+
+`LoadSampleData()` loads the quality-control example. The full set lives in
+`namespace FishboneSamples`:
+
+| Sample | Content |
+|---|---|
+| `QualityControl()` | "Quality Control Issues", 4 categories from the 6M set, 12 causes |
+| `CustomerChurn()` | "Customer Churn", the 4S set, with sub-causes and a marked root cause |
+| `SoftwareDelivery()` | "Release Slipped Two Sprints", 5 categories, a highlighted weighted cause |
+
+## Not yet implemented
+
+Deferred from the proposal's later phases: pan/zoom through
+`UltraCanvasDiagramViewport`, entrance animation, keyboard navigation, JSON and
+CSV import/export, and the `MindMapStructure::Fishbone` layout case that draws
+an existing mind map as ribs.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFlowChartExamples.md
@@ -15916,6 +16899,18 @@ UltraCanvasGLSurface(const GLSurfaceConfig& config,
 ```
 
 The class is non-copyable but movable.
+
+#### Positioning
+
+A non-zero `(x, y)` places the surface absolutely inside its parent — exactly like every other `UltraCanvasUIElement` built with an explicit origin — so the layout engine keeps it there instead of re-stacking it as an in-flow child. Pass `(0, 0)` (or use the size-only constructor) for a surface that a flex/grid parent should place and stretch.
+
+To move or resize a surface after construction, update its CSS box as well as its bounds; `SetBounds()` alone is undone by the next layout pass (hiding a sibling widget is enough to trigger one):
+
+```cpp
+surface->SetBounds(Rect2Df(x, y, w, h));            // bounds + FBO resize now
+surface->SetElementAbsolutePosition(Point2Df(x, y)); // what the layout pass re-applies
+surface->SetElementSize(Size2Df(w, h));
+```
 
 ### GLSurfaceConfig
 

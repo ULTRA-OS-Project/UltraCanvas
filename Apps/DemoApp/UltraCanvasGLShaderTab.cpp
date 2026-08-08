@@ -1023,34 +1023,25 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             surface->RequestRender();
         };
 
-    auto info = std::make_shared<UltraCanvasLabel>("ShaderInfo", 10, 318, 270, 232);
+    // The panel's content box ends at y=628, so the info text has ~310px here —
+    // the previous version listed every effect (the dropdown already does) and
+    // ran off the bottom of the panel, taking the interaction hints with it.
+    auto info = std::make_shared<UltraCanvasLabel>("ShaderInfo", 10, 318, 270, 310);
     info->SetText(
         "Most effects are a single fragment\n"
-        "shader over one full-screen triangle\n"
-        "(Circles is 2D geometry). The syntax-\n"
-        "highlighted source viewer below the\n"
-        "canvas shows the original formula and\n"
-        "the live source for the chosen effect.\n\n"
-        "Effects: Horizon (Twigl turbulent\n"
-        "landscape), Protostar2 (Twigl glowing\n"
-        "core), Plasma Orb (Twigl warped field),\n"
-        "Plasma, Raymarched Scene, Julia\n"
-        "Fractal, Tunnel,\n"
-        "Borg Sphere (Twigl one-liner),\n"
-        "Ball Surface (p5.js port),\n"
-        "Pulse (Twigl ray-fold),\n"
-        "Fragments (Twigl tube turbulence),\n"
-        "Mountains (Twigl fractal terrain),\n"
-        "Circles (openFrameworks network),\n"
-        "Alien Caterpillar (p5.js points).\n\n"
+        "shader over one full-screen triangle;\n"
+        "Circles and Alien Caterpillar are drawn\n"
+        "as native 2D GL geometry instead.\n\n"
+        "The viewer below the canvas shows the\n"
+        "original formula and the live source of\n"
+        "the chosen effect.\n\n"
         "The speed slider scales time. Select\n"
         "Ball Surface, Pulse, Fragments or\n"
         "Circles to reveal live parameter\n"
-        "sliders above — e.g. change the\n"
-        "Circles node count and link range.\n\n"
-        "Click the ⛶ icon or double-click the\n"
-        "canvas to maximize it; press Esc or\n"
-        "click once to restore."
+        "sliders above.\n\n"
+        "Click the icon in the canvas corner or\n"
+        "double-click the canvas to maximize it;\n"
+        "Esc or another double-click restores."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
@@ -1060,91 +1051,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     root->AddChild(panel);
 
     // ---------------------------------------------------- maximize / zoom view
-    // A maximize icon button overlays the top-right corner of the canvas (the GL
-    // surface composites into the 2D layer, so a later sibling draws on top of
-    // it). It maximizes the canvas over the whole tab, hiding the controls and
-    // source viewer; double-clicking the canvas does the same, and Esc or a
-    // single click restores. The button stays visible so it can toggle back.
-    const Point2Df homePos{16.0f, 36.0f};
-    const float homeW = 660.0f, homeH = 360.0f;
-    const float btnSize = 28.0f, btnMargin = 4.0f;
-
-    auto zoomBtn = std::make_shared<UltraCanvasButton>(
-        "ShaderZoomBtn",
-        homePos.x + homeW - btnSize - btnMargin, homePos.y + btnMargin,
-        btnSize, btnSize, "");
-    // The SVG is a single black shape on transparent; render it as a mask filled
-    // with a black text colour over a light translucent button so the icon reads
-    // clearly (a white icon on the dark canvas was hard to see).
-    zoomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/maximise.svg"));
-    zoomBtn->SetIconPosition(ButtonIconPosition::Center);
-    zoomBtn->SetIconSize(16, 16);
-    zoomBtn->SetUseIconAsMask(true);
-    zoomBtn->SetBackgroundColor(Color(255, 255, 255, 190));
-    zoomBtn->SetTextColors(Color(0, 0, 0, 255));   // mask fill colour (black icon)
-    zoomBtn->SetCornerRadius(4.0f);
-    zoomBtn->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
-    root->AddChild(zoomBtn);
-
-    // Raw pointers are captured deliberately: the surface/button own the
-    // callbacks below and every element here outlives them via `root`, so
-    // capturing shared_ptrs would form a reference cycle that leaks the tab.
-    auto zoomActive = std::make_shared<bool>(false);
-    UltraCanvasGLSurface* surf = surface.get();
-    UltraCanvasContainer* rootPtr = root.get();
-    UltraCanvasButton* btnPtr = zoomBtn.get();
-    std::vector<UltraCanvasUIElement*> chrome = {
-        title.get(), codeTitle.get(), codeArea.get(), panel.get()
-    };
-
-    // Pin the button to the top-right corner of the surface's current bounds.
-    auto placeButton = [btnPtr, surf, btnSize, btnMargin]() {
-        Rect2Df b = surf->GetBounds();
-        btnPtr->SetBounds(Rect2Df(b.x + b.width - btnSize - btnMargin,
-                                  b.y + btnMargin, btnSize, btnSize));
-    };
-
-    // Shared toggle, called by both the button and the canvas gestures.
-    // We resize the surface with SetBounds rather than SetElementSize: the GL
-    // surface only grows its framebuffer from its SetBounds override, and the tab
-    // content is absolutely positioned (no layout pass re-applies a CSS size), so
-    // SetElementSize alone left the canvas at its original size.
-    auto toggleZoom = std::make_shared<std::function<void()>>();
-    *toggleZoom = [zoomActive, surf, rootPtr, chrome, homePos, homeW, homeH, placeButton, btnPtr]() {
-        if (!*zoomActive) {
-            *zoomActive = true;
-            for (auto* el : chrome) el->SetVisible(false);
-            Rect2Di area = rootPtr->GetContentArea();
-            surf->SetBounds(Rect2Df(0.0f, 0.0f, (float)area.width, (float)area.height));
-            placeButton();
-            btnPtr->SetTooltip("Restore canvas (Esc or click)");
-            surf->SetFocus(true);   // route Esc (sent to the focused element) here
-            surf->RequestRender();
-        } else {
-            *zoomActive = false;
-            surf->SetBounds(Rect2Df(homePos.x, homePos.y, homeW, homeH));
-            placeButton();
-            btnPtr->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
-            for (auto* el : chrome) el->SetVisible(true);
-            surf->RequestRender();
-        }
-    };
-
-    zoomBtn->SetOnClick([toggleZoom]() { (*toggleZoom)(); });
-
-    surf->SetEventCallback([zoomActive, toggleZoom](const UCEvent& e) -> bool {
-        if (!*zoomActive) {
-            if (e.type == UCEventType::MouseDoubleClick) { (*toggleZoom)(); return true; }
-            return false;
-        }
-        // Maximized: a single click or Esc returns to the normal layout.
-        if (e.type == UCEventType::MouseDown ||
-            (e.type == UCEventType::KeyDown && e.virtualKey == UCKeys::Escape)) {
-            (*toggleZoom)();
-            return true;
-        }
-        return false;
-    });
+    // Adds the maximize icon over the canvas's top-right corner and wires the
+    // button / double-click / Esc toggle that grows the canvas over the whole
+    // tab, hiding the title, the source viewer and the control panel.
+    AddMaximizeControl(root, surface,
+                       {title.get(), codeTitle.get(), codeArea.get(), panel.get()},
+                       "ShaderZoomBtn");
 
     return root;
 }

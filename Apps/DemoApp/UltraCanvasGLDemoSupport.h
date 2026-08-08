@@ -32,9 +32,16 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab();
 #include <GL/glext.h>
 #endif
 
+#include "UltraCanvasGLSurface.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
+
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <vector>
 #include <array>
@@ -414,6 +421,109 @@ inline Mesh MakeIcosphere(int subdivisions = 2) {
     mesh.boundsMin = {-1, -1, -1};
     mesh.boundsMax = {1, 1, 1};
     return mesh;
+}
+
+// ====================================================== layout / zoom helpers
+// Moves and resizes an absolutely-placed element so the change survives the next
+// layout pass. SetBounds() alone only writes finalBounds; any later
+// InvalidateLayout() — SetVisible() on a sibling is enough — re-runs the layout
+// engine, which re-applies the element's CSS position/size and undoes the move.
+// Bounds are written first so the damage rect covers old ∪ new and a GL surface
+// resizes its framebuffer immediately; the CSS box then follows.
+inline void PlaceElement(UltraCanvasUIElement& el, float x, float y, float w, float h) {
+    el.SetBounds(Rect2Df(x, y, w, h));
+    el.SetElementAbsolutePosition(Point2Df(x, y));
+    // SetElementAbsolutePosition() stamps plain Absolute; elements built with a
+    // non-zero origin start out AbsoluteUI (identical placement, but the child
+    // also grows an auto-sized parent). Restore it so moving an element never
+    // changes how its container measures itself.
+    el.layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    el.SetElementSize(Size2Df(w, h));
+}
+
+// Overlays a maximize/restore icon button on the top-right corner of a GL
+// surface and wires the zoom behaviour shared by the showcase tabs: activating
+// it grows the canvas over the whole tab and hides every `chrome` element; the
+// button again, a double-click on the canvas, or Esc restores the layout. The
+// button is added to `root` last so it draws over the GL composite (the surface
+// composites into the 2D layer, so a later sibling paints on top of it).
+//
+// The surface must accept focus (override AcceptsFocus()) for Esc — delivered to
+// the focused element — to reach it. Raw pointers are captured deliberately: the
+// button and the surface's event callback own the captures below, and every
+// element involved outlives them via `root`, so capturing shared_ptrs would form
+// a reference cycle that leaks the tab.
+inline std::shared_ptr<UltraCanvasButton> AddMaximizeControl(
+        const std::shared_ptr<UltraCanvasContainer>& root,
+        const std::shared_ptr<UltraCanvasGLSurface>& surface,
+        std::vector<UltraCanvasUIElement*> chrome,
+        const std::string& buttonId) {
+    constexpr float kBtnSize = 28.0f;
+    constexpr float kBtnMargin = 8.0f;
+
+    const Rect2Df home = surface->GetBounds();
+
+    auto btn = std::make_shared<UltraCanvasButton>(
+        buttonId,
+        home.x + home.width - kBtnSize - kBtnMargin, home.y + kBtnMargin,
+        kBtnSize, kBtnSize, "");
+    // The icon SVGs are single black shapes on transparent; render them as a mask
+    // filled with a black text colour over a light translucent button so the icon
+    // reads clearly (a white icon on the dark canvas was hard to see).
+    btn->SetIconPosition(ButtonIconPosition::Center);
+    btn->SetIconSize(16, 16);
+    btn->SetUseIconAsMask(true);
+    btn->SetBackgroundColor(Color(255, 255, 255, 190));
+    btn->SetTextColors(Color(0, 0, 0, 255));   // mask fill colour (black icon)
+    btn->SetCornerRadius(4.0f);
+    root->AddChild(btn);
+
+    auto zoomed = std::make_shared<bool>(false);
+    UltraCanvasGLSurface* surf = surface.get();
+    UltraCanvasContainer* rootPtr = root.get();
+    UltraCanvasButton* btnPtr = btn.get();
+
+    auto applyIcon = [btnPtr](bool isZoomed) {
+        btnPtr->SetIcon(NormalizePath(GetResourcesDir() +
+            (isZoomed ? "media/icons/minimise.svg" : "media/icons/maximise.svg")));
+        btnPtr->SetTooltip(isZoomed
+            ? "Restore canvas (Esc, or double-click the canvas)"
+            : "Maximize canvas (or double-click the canvas; Esc to restore)");
+    };
+    applyIcon(false);
+
+    auto toggle = std::make_shared<std::function<void()>>();
+    *toggle = [zoomed, surf, rootPtr, btnPtr, chrome, home, applyIcon]() {
+        *zoomed = !*zoomed;
+        if (*zoomed) {
+            // Hide the chrome first: the tab's content area shrinks by a scrollbar
+            // track while any child still overflows it.
+            for (auto* el : chrome) el->SetVisible(false);
+            Rect2Di area = rootPtr->GetContentArea();
+            PlaceElement(*surf, 0.0f, 0.0f, (float)area.width, (float)area.height);
+        } else {
+            PlaceElement(*surf, home.x, home.y, home.width, home.height);
+            for (auto* el : chrome) el->SetVisible(true);
+        }
+        // Keep the button pinned to the top-right corner of the canvas.
+        Rect2Df b = surf->GetBounds();
+        PlaceElement(*btnPtr, b.x + b.width - kBtnSize - kBtnMargin,
+                     b.y + kBtnMargin, kBtnSize, kBtnSize);
+        applyIcon(*zoomed);
+        surf->SetFocus(*zoomed);   // route Esc (sent to the focused element) here
+        surf->RequestRender();
+    };
+
+    btn->SetOnClick([toggle]() { (*toggle)(); });
+
+    surf->SetEventCallback([zoomed, toggle](const UCEvent& e) -> bool {
+        if (e.type == UCEventType::MouseDoubleClick) { (*toggle)(); return true; }
+        if (*zoomed && e.type == UCEventType::KeyDown &&
+            e.virtualKey == UCKeys::Escape) { (*toggle)(); return true; }
+        return false;
+    });
+
+    return btn;
 }
 
 } // namespace gldemo

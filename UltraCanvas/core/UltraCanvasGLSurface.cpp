@@ -14,11 +14,17 @@
 namespace UltraCanvas {
 
 // Constructors
+// Use the (id, x, y, w, h) base constructor, not the (id, w, h) one: only the
+// four-argument form turns a non-zero origin into an AbsoluteUI CSS position.
+// Without it the surface kept its (x, y) only until the first layout pass, which
+// re-stacked it as an in-flow child at the parent's content origin — the GL
+// content then composited in the top-left corner of its container while every
+// sibling widget stayed where it was placed. A (0, 0) origin still leaves the
+// surface in flow, so flex/grid children are unaffected.
 UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
                                            float x, float y, float width, float height)
-    : UltraCanvasUIElement(id, width, height)
+    : UltraCanvasUIElement(id, x, y, width, height)
 {
-    SetBounds(Rect2Di(x, y, width, height));
     surfaceWidth_ = width;
     surfaceHeight_ = height;
     lastRenderTime_ = std::chrono::steady_clock::now();

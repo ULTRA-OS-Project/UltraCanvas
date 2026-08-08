@@ -2,12 +2,16 @@
 // UltraFiler main window: Windows Explorer style file manager built from the
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
-// search field and the media preview (UltraCanvasMediaViewer). The Settings
-// menu opens the settings window (UltraFilerSettingsDialog); persisted
-// settings load at startup and configure the preview's transparent-image
-// backdrop. Esc closes an open media preview.
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// search field and the media preview (UltraCanvasMediaViewer). The toolbar's
+// clock button swaps that whole area for the History view — Files / Folders /
+// Apps tabs listing the recently used paths (UltraFilerHistory) as small
+// thumbnails; folders get there by being worked in (the filer's
+// onFolderModified), not by being browsed. The Settings menu opens the settings
+// window (UltraFilerSettingsDialog) and clears the history; persisted settings
+// load at startup and configure the preview's transparent-image backdrop. Esc
+// closes the History view, or an open media preview.
+// Version: 1.6.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -189,6 +193,49 @@ namespace {
         return name.empty() ? (path.empty() ? "New tab" : path) : name;
     }
 
+    // ===== HISTORY =====
+
+    // Tab captions of the History view, in HistoryTab order.
+    constexpr const char* kHistoryTabTitles[] = {"Files", "Folders", "Apps"};
+
+    // Does this entry belong in the History view's Apps tab rather than its
+    // Files tab? Program and installer extensions say so outright; on the
+    // Unixes a plain executable usually has no extension at all, so the
+    // execute bit decides there. FilerFileCategory::Executable is not used on
+    // its own because it also covers .so / .dll, which are libraries rather
+    // than things the user launches.
+    bool IsApplicationEntry(const FilerEntry& e) {
+        if (e.isDirectory) return false;
+        static const char* const kAppExtensions[] = {
+            "exe", "msi", "com", "bat", "cmd", "appimage", "desktop",
+            "app", "apk", "deb", "rpm", "flatpakref", "snap", "run"};
+        for (const char* ext : kAppExtensions)
+            if (e.extension == ext) return true;
+        if (!e.extension.empty()) return false;
+        std::error_code ec;
+        const fs::perms p = fs::status(e.path, ec).permissions();
+        if (ec) return false;
+        return (p & (fs::perms::owner_exec | fs::perms::group_exec |
+                     fs::perms::others_exec)) != fs::perms::none;
+    }
+
+    // "12 items    |    1 item selected (3.4 MB)" for a filer's current
+    // display — the status bar text of both the folder and the History views.
+    std::string DescribeFilerContent(const UltraCanvasFilerWidget* f) {
+        const size_t total = f->GetEntries().size();
+        std::string text = std::to_string(total) + (total == 1 ? " item" : " items");
+        const std::vector<FilerEntry> sel = f->GetSelectedEntries();
+        if (!sel.empty()) {
+            uint64_t bytes = 0;
+            for (const FilerEntry& e : sel)
+                if (!e.isDirectory) bytes += e.size;
+            text += "    |    " + std::to_string(sel.size())
+                  + (sel.size() == 1 ? " item selected" : " items selected");
+            if (bytes > 0) text += " (" + FormatFileSize(bytes) + ")";
+        }
+        return text;
+    }
+
 } // namespace
 
 // ===== INITIALIZATION =====
@@ -208,17 +255,24 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(249, 249, 251, 255));
 
-    // Esc closes the media preview, wherever the keyboard focus sits (the
-    // filer usually holds it after the click that selected the file). The
-    // filter steps back while another interaction claims the key: an open
-    // popup / menu, the filer's inline rename, item drag or compress dialog,
-    // and the search field.
+    // Esc leaves the History view, and otherwise closes the media preview,
+    // wherever the keyboard focus sits (the filer usually holds it after the
+    // click that selected the file). The filter steps back while another
+    // interaction claims the key: an open popup / menu, a filer's inline
+    // rename, item drag or compress dialog, and the search field.
     window->InstallEventFilter("ufl-preview-escape",
             [this](const UCEvent& e) -> bool {
-        if (e.virtualKey != UCKeys::Escape || !previewShown) return false;
+        if (e.virtualKey != UCKeys::Escape) return false;
         if (window->GetActivePopupElement()) return false;
-        if (filer && filer->WantsEscapeKey()) return false;
         if (window->GetFocusedElement() == searchInput.get()) return false;
+        if (historyShown) {
+            UltraCanvasFilerWidget* hf = ActiveHistoryFiler();
+            if (hf && hf->WantsEscapeKey()) return false;
+            SetHistoryVisible(false);
+            return true;
+        }
+        if (!previewShown) return false;
+        if (filer && filer->WantsEscapeKey()) return false;
         SetPreviewEnabled(false);
         return true;
     }, { UCEventType::KeyDown });
@@ -231,9 +285,11 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // (no breadcrumb / toolbar rows above the image).
     preview->SetTopBarsVisible(false);
 
-    // Persisted settings (transparent-image backdrop of the preview, ...).
+    // Persisted settings (transparent-image backdrop of the preview, ...) and
+    // the recently used files / folders / applications behind the clock button.
     settings.Load();
     ApplySettings();
+    history.Load();
 
     BuildTabbedContainer();
 
@@ -243,6 +299,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     BuildFolderTree();
     BuildSplitLayout();
+    BuildHistoryView();
 
     // Status bar under the split.
     statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 24);
@@ -282,6 +339,14 @@ std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
             .AddSubmenu("Settings", {
                     MenuItemData::Action("Settings...",
                             [this]() { OpenSettingsDialog(); }),
+                    MenuItemData::Separator(),
+                    MenuItemData::Action("Clear History", [this]() {
+                        history.ClearAll();
+                        if (historyShown) {
+                            RefreshHistoryTabs();
+                            UpdateStatusBar();
+                        }
+                    }),
             })
             .Build();
     menuBar->size.height = CSSLayout::Dimension::Px(24);
@@ -328,12 +393,25 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
                                    [this]() { NavigateForward(); });
     upButton = MakeToolButton("ufl-up", "", "arrow-up.svg", 30,
                               [this]() { NavigateUp(); });
+    // Refresh re-reads whatever is on screen: the History lists while they are
+    // shown (dropping what has meanwhile been deleted), else the folder.
     auto refresh = MakeToolButton("ufl-refresh", "", "reload.svg", 30,
-                                  [this]() { if (filer) filer->Refresh(); });
+            [this]() {
+        if (historyShown) RefreshHistoryTabs();
+        else if (filer) filer->Refresh();
+    });
     row->AddChild(backButton);
     row->AddChild(forwardButton);
     row->AddChild(upButton);
     row->AddChild(refresh);
+
+    // The clock: shows the History view (Files / Folders / Apps) in place of
+    // the folder tree and folder display, and hides it again.
+    historyButton = MakeToolButton("ufl-history", "", "clock-five.svg", 30,
+            [this]() { SetHistoryVisible(!historyShown); });
+    historyButton->SetTooltip("History");
+    StyleToggleButton(historyButton.get(), historyShown);
+    row->AddChild(historyButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
@@ -360,6 +438,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 // ===== SEARCH =====
 
 void UltraFilerWindow::RunSearch(const std::string& query) {
+    // The results are shown in the folder display, so a search leaves the
+    // History view.
+    SetHistoryVisible(false);
     if (!filer) return;
 
     if (query.empty()) {
@@ -413,8 +494,12 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->SetPadding(2, 8, 6, 8);
     row->SetBorderBottom(1, Color(225, 225, 230, 255));
 
+    // The file commands work on the folder display and its selection, so each
+    // of them leaves the History view first - the change they make has to be
+    // visible (an inline rename editor especially).
     row->AddChild(MakeToolButton("ufl-new-folder", "New folder", "add-folder.svg", 0,
             [this]() {
+        SetHistoryVisible(false);
         if (!filer) return;
         const fs::path folder(filer->GetPath());
         fs::path candidate = folder / "New folder";
@@ -427,6 +512,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
             if (statusLabel) statusLabel->SetText("Error: cannot create folder");
             return;
         }
+        // The folder is created here rather than by the widget, so the
+        // History record the widget would fire has to be made here too.
+        RecordFolderInHistory(folder.string());
         filer->Refresh();
         const auto& entries = filer->GetEntries();
         for (size_t i = 0; i < entries.size(); ++i) {
@@ -435,6 +523,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     }));
     row->AddChild(MakeToolButton("ufl-new-file", "New file", "add-document.svg", 0,
             [this]() {
+        SetHistoryVisible(false);
         if (filer) filer->CreateNewDocument({"Text", "txt", ""});
     }));
 
@@ -445,13 +534,14 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(sep1);
 
     row->AddChild(MakeToolButton("ufl-cut", "", "scissors.svg", 30,
-            [this]() { if (filer) filer->CutSelection(); }));
+            [this]() { SetHistoryVisible(false); if (filer) filer->CutSelection(); }));
     row->AddChild(MakeToolButton("ufl-copy", "", "copy.svg", 30,
-            [this]() { if (filer) filer->CopySelection(); }));
+            [this]() { SetHistoryVisible(false); if (filer) filer->CopySelection(); }));
     row->AddChild(MakeToolButton("ufl-paste", "", "clipboard-list.svg", 30,
-            [this]() { if (filer) filer->Paste(); }));
+            [this]() { SetHistoryVisible(false); if (filer) filer->Paste(); }));
     row->AddChild(MakeToolButton("ufl-rename", "", "edit.svg", 30,
             [this]() {
+        SetHistoryVisible(false);
         if (!filer) return;
         auto sel = filer->GetSelectedEntries();
         if (sel.empty()) return;
@@ -462,6 +552,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     }));
     row->AddChild(MakeToolButton("ufl-delete", "", "delete.svg", 30,
             [this]() {
+        SetHistoryVisible(false);
         if (!filer) return;
         auto sel = filer->GetSelectedEntries();
         if (sel.empty()) return;
@@ -728,6 +819,9 @@ void UltraFilerWindow::BuildTabbedContainer() {
 }
 
 void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
+    // The new tab has to be visible, so opening one leaves the History view.
+    if (activate) SetHistoryVisible(false);
+
     auto state = std::make_unique<FilerTabState>();
     const std::string suffix = std::to_string(++tabCounter);
 
@@ -742,6 +836,9 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     filerStyle.folderIconScale = 0.7f;
     state->filer->SetStyle(filerStyle);
     state->filer->SetViewType(FilerViewType::ThumbnailsMedium);
+    // With the preview up, a delete of the previewed file moves the selection
+    // (and with it the preview) on to the next entry instead of emptying it.
+    state->filer->SetSelectNextAfterDelete(previewEnabled);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
@@ -776,7 +873,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         UpdatePreviewPane();
     };
     tab->filer->onFileActivated = [this, tab](const FilerEntry& entry) {
-        if (!IsActiveTab(tab) || entry.isDirectory) return;
+        if (entry.isDirectory) return;
+        // Opening a file (or launching an application) puts it at the top of
+        // the matching History list, and counts as work done in its folder.
+        RecordEntryInHistory(entry);
+        RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+        if (!IsActiveTab(tab)) return;
         if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return;
         // Double-click / Enter opens the file in the preview, un-hiding it
         // when needed.
@@ -811,6 +913,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         }
         syncingControls = false;
     };
+    // Work done in a folder - a file created, pasted, dropped in or out,
+    // renamed, duplicated, deleted, packed or extracted - is what puts it in
+    // the History view's Folders tab. Merely looking at a folder does not.
+    tab->filer->onFolderModified = [this](const std::string& folder) {
+        RecordFolderInHistory(folder);
+    };
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
@@ -835,10 +943,7 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
-    if (window && !path.empty()) {
-        const std::string name = fs::path(path).filename().string();
-        window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
-    }
+    UpdateWindowTitle();
 
     // Mirror the tab's sort / view settings into the command bar.
     syncingControls = true;
@@ -885,6 +990,15 @@ int UltraFilerWindow::TabIndexOf(const FilerTabState* tab) const {
 // ===== SPLIT LAYOUT (tree | tabbed filer | preview) =====
 
 void UltraFilerWindow::BuildSplitLayout() {
+    // Everything between the command bar and the status bar lives in this box:
+    // the split below, and the History view that replaces it (only one of the
+    // two is visible at a time).
+    contentBox = MakeLayoutBox("ufl-content");
+    contentBox->layout.SetFlexColumn()
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    contentBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
     split = std::make_shared<UltraCanvasSplitPane>("ufl-split", SplitOrientation::Horizontal);
     split->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -908,17 +1022,170 @@ void UltraFilerWindow::BuildSplitLayout() {
     // The preview pane is added by UpdatePreviewPane once a previewable file
     // is selected; until then the folder display uses the whole width.
 
-    window->AddChild(split);
+    contentBox->AddChild(split);
+    window->AddChild(contentBox);
+}
+
+// ===== HISTORY VIEW (Files | Folders | Apps) =====
+
+void UltraFilerWindow::BuildHistoryView() {
+    historyPane = MakeLayoutBox("ufl-history-pane");
+    historyPane->layout.SetFlexColumn()
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    historyPane->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    historyTabs = std::make_shared<UltraCanvasTabbedContainer>("ufl-history-tabs");
+    historyTabs->fontSize = static_cast<int>(kUiFontSize);
+    historyTabs->SetTabHeight(30);
+    historyTabs->SetTabMinWidth(90);
+    historyTabs->SetCloseMode(TabCloseMode::NoClose);
+    historyTabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    historyTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
+        UpdateStatusBar();
+    };
+
+    for (int i = 0; i < HistoryTabCount; ++i) {
+        const std::string suffix = std::to_string(i);
+
+        auto page = MakeLayoutBox("ufl-history-page-" + suffix);
+        page->layout.SetFlexColumn()
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+        auto histFiler = CreateFilerWidget("ufl-history-filer-" + suffix, 0, 0, 0, 0);
+        FilerStyle filerStyle = histFiler->GetStyle();
+        filerStyle.fontSize = kUiFontSize;
+        filerStyle.smallFontSize = kUiFontSize;
+        filerStyle.folderIconScale = 0.7f;
+        histFiler->SetStyle(filerStyle);
+        histFiler->SetViewType(FilerViewType::ThumbnailsSmall);
+        // The lists are handed over most recently used first, and that order
+        // is what a history is about - so it is kept instead of sorted.
+        histFiler->SetFileListOrderPreserved(true);
+        // A remembered path was opened deliberately, so it belongs in the list
+        // even when it is a dotfile / a folder under one.
+        histFiler->SetShowHiddenFiles(true);
+        // The entries come from all over the filesystem, so the context menu
+        // offers to open the folder an entry lives in.
+        histFiler->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+        histFiler->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        histFiler->onSelectionChanged = [this](const std::vector<FilerEntry>&) {
+            UpdateStatusBar();
+        };
+        histFiler->onFolderRefreshed = [this]() { UpdateStatusBar(); };
+        histFiler->onFileActivated = [this](const FilerEntry& entry) {
+            RecordEntryInHistory(entry);
+            RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+            OpenHistoryEntry(entry.path, false);
+        };
+        // A folder tile is activated by the widget itself (it navigates into
+        // the folder); hand that folder to the browsing view instead of
+        // browsing it inside the History view.
+        histFiler->onPathChanged = [this](const std::string& path) {
+            OpenHistoryEntry(path, true);
+        };
+        histFiler->onOpenPath = [this](const FilerEntry& entry) {
+            const std::string parent = fs::path(entry.path).parent_path().string();
+            if (parent.empty()) return;
+            SetHistoryVisible(false);
+            AddNewTab(parent, true);
+        };
+        histFiler->onError = [this](const std::string& message) {
+            if (statusLabel) statusLabel->SetText("Error: " + message);
+        };
+
+        page->AddChild(histFiler);
+        historyFilers[i] = histFiler;
+        historyTabs->AddTab(kHistoryTabTitles[i], page);
+    }
+    historyTabs->SetActiveTab(HistoryFiles);
+
+    historyPane->AddChild(historyTabs);
+    historyPane->SetVisible(false);   // the clock button turns it on
+    contentBox->AddChild(historyPane);
+}
+
+void UltraFilerWindow::SetHistoryVisible(bool visible) {
+    if (visible == historyShown || !historyPane || !split) return;
+    historyShown = visible;
+    StyleToggleButton(historyButton.get(), historyShown);
+
+    if (visible) {
+        RefreshHistoryTabs();
+        split->SetVisible(false);
+        historyPane->SetVisible(true);
+    } else {
+        historyPane->SetVisible(false);
+        split->SetVisible(true);
+    }
+    UpdateStatusBar();
+    UpdateWindowTitle();
+}
+
+void UltraFilerWindow::RefreshHistoryTabs() {
+    static const FilerHistoryKind kinds[HistoryTabCount] = {
+        FilerHistoryKind::File, FilerHistoryKind::Folder, FilerHistoryKind::App};
+    for (int i = 0; i < HistoryTabCount; ++i) {
+        if (historyFilers[i]) historyFilers[i]->ShowFileList(history.Paths(kinds[i]));
+    }
+}
+
+void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
+    if (entry.isDirectory) {
+        RecordFolderInHistory(entry.path);
+        return;
+    }
+    history.Record(IsApplicationEntry(entry) ? FilerHistoryKind::App
+                                             : FilerHistoryKind::File,
+                   entry.path);
+}
+
+void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
+    // Archive interiors are not real directories - they would only be pruned
+    // from the list again on the next read.
+    std::error_code ec;
+    if (folder.empty() || !fs::is_directory(folder, ec) || ec) return;
+    history.Record(FilerHistoryKind::Folder, folder);
+    // The Folders tab is stale now if it is on screen.
+    if (historyShown && historyFilers[HistoryFolders]) {
+        historyFilers[HistoryFolders]->ShowFileList(
+                history.Paths(FilerHistoryKind::Folder));
+    }
+}
+
+void UltraFilerWindow::OpenHistoryEntry(const std::string& path, bool isFolder) {
+    if (path.empty()) return;
+    SetHistoryVisible(false);
+    // A folder is opened; a file (or application) is shown selected inside the
+    // folder it lives in, which also hands it to the preview when it is media.
+    const std::string target = isFolder ? path
+                                        : fs::path(path).parent_path().string();
+    if (target.empty()) return;
+    NavigateTo(target);
+    if (!isFolder && filer) filer->SelectPath(path);
+}
+
+UltraCanvasFilerWidget* UltraFilerWindow::ActiveHistoryFiler() const {
+    if (!historyTabs) return nullptr;
+    const int index = historyTabs->GetActiveTab();
+    if (index < 0 || index >= HistoryTabCount) return nullptr;
+    return historyFilers[index].get();
 }
 
 // ===== NAVIGATION =====
 
 void UltraFilerWindow::NavigateTo(const std::string& path) {
+    // Navigating shows a folder, so it always brings the folder display back.
+    SetHistoryVisible(false);
     if (!filer || path.empty() || path == filer->GetPath()) return;
     filer->SetPath(path);
 }
 
 void UltraFilerWindow::NavigateBack() {
+    SetHistoryVisible(false);
     FilerTabState* tab = ActiveTabState();
     if (!tab || tab->historyIndex == 0 || tab->history.empty()) return;
     tab->navigatingHistory = true;
@@ -928,6 +1195,7 @@ void UltraFilerWindow::NavigateBack() {
 }
 
 void UltraFilerWindow::NavigateForward() {
+    SetHistoryVisible(false);
     FilerTabState* tab = ActiveTabState();
     if (!tab || tab->history.empty() || tab->historyIndex + 1 >= tab->history.size()) return;
     tab->navigatingHistory = true;
@@ -973,10 +1241,7 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     UpdateStatusBar();
     // Entering a folder clears the selection - fold the preview away.
     UpdatePreviewPane();
-    if (window) {
-        const std::string name = fs::path(path).filename().string();
-        window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
-    }
+    UpdateWindowTitle();
 }
 
 void UltraFilerWindow::UpdateNavButtons() {
@@ -994,19 +1259,31 @@ void UltraFilerWindow::UpdateNavButtons() {
 // ===== STATUS BAR / PREVIEW =====
 
 void UltraFilerWindow::UpdateStatusBar() {
-    if (!statusLabel || !filer) return;
-    const size_t total = filer->GetEntries().size();
-    auto sel = filer->GetSelectedEntries();
-    std::string text = std::to_string(total) + (total == 1 ? " item" : " items");
-    if (!sel.empty()) {
-        uint64_t bytes = 0;
-        for (const FilerEntry& e : sel)
-            if (!e.isDirectory) bytes += e.size;
-        text += "    |    " + std::to_string(sel.size())
-              + (sel.size() == 1 ? " item selected" : " items selected");
-        if (bytes > 0) text += " (" + FormatFileSize(bytes) + ")";
+    if (!statusLabel) return;
+    if (historyShown) {
+        const int index = historyTabs ? historyTabs->GetActiveTab() : -1;
+        std::string text = "History";
+        if (index >= 0 && index < HistoryTabCount)
+            text += " - " + std::string(kHistoryTabTitles[index]);
+        if (const UltraCanvasFilerWidget* hf = ActiveHistoryFiler())
+            text += "    |    " + DescribeFilerContent(hf);
+        statusLabel->SetText(text);
+        return;
     }
-    statusLabel->SetText(text);
+    if (!filer) return;
+    statusLabel->SetText(DescribeFilerContent(filer.get()));
+}
+
+void UltraFilerWindow::UpdateWindowTitle() {
+    if (!window) return;
+    if (historyShown) {
+        window->SetWindowTitle("History - UltraFiler");
+        return;
+    }
+    const std::string path = filer ? filer->GetPath() : std::string();
+    if (path.empty()) return;
+    const std::string name = fs::path(path).filename().string();
+    window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
 }
 
 std::string UltraFilerWindow::PreviewablePathForSelection() const {
@@ -1021,7 +1298,13 @@ void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
     if (enabled == previewEnabled) return;
     previewEnabled = enabled;
     StyleToggleButton(previewButton.get(), previewEnabled);
+    ApplyPreviewSelectionPolicy();
     UpdatePreviewPane();
+}
+
+void UltraFilerWindow::ApplyPreviewSelectionPolicy() {
+    for (auto& state : tabStates)
+        if (state->filer) state->filer->SetSelectNextAfterDelete(previewEnabled);
 }
 
 void UltraFilerWindow::UpdatePreviewPane() {

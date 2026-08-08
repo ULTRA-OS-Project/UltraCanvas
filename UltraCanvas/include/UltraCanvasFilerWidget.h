@@ -38,8 +38,14 @@
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
 // even then is dropped from the front of the last line, which opens with "…".
-// Version: 1.9.0
-// Last Modified: 2026-08-06
+// An explicit file list (ShowFileList) is sorted like a folder listing unless
+// SetFileListOrderPreserved() asks for the given order to be kept — for lists
+// whose order is the information, such as a most-recently-used history.
+// Changes the user makes to a folder's content (create / paste / drop /
+// rename / duplicate / delete / compress / extract) are reported through
+// onFolderModified, apart from the rescan notification onFolderRefreshed.
+// Version: 1.11.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -288,6 +294,15 @@ namespace UltraCanvas {
         void ShowFileList(const std::vector<std::string>& paths);
         bool IsShowingFileList() const { return fileListMode; }
 
+        // Show a file list exactly in the order the paths were handed over
+        // instead of sorting it — for lists whose order is the information
+        // (a most-recently-used history, a ranked result list). While this is
+        // on, sorting is inert for the file-list display (SetSort and the
+        // Details column headers leave the order alone); a folder listing is
+        // always sorted.
+        void SetFileListOrderPreserved(bool preserved);
+        bool IsFileListOrderPreserved() const { return preserveFileListOrder; }
+
         // ===== VIEW =====
         void SetViewType(FilerViewType type);
         FilerViewType GetViewType() const { return viewType; }
@@ -437,6 +452,11 @@ namespace UltraCanvas {
         std::vector<FilerEntry> GetSelectedEntries() const;
         void ClearSelection();
         void SelectAll();
+        // Makes `path` the only selected entry and scrolls it into view, as a
+        // click on it would (onSelectionChanged fires). False when the path is
+        // not among the entries currently displayed. Lets a host point the
+        // view at one file after opening its folder.
+        bool SelectPath(const std::string& path);
         // Scroll so the first selected entry is fully in view. The scroll is
         // applied against the next recomputed layout, so a resize still in
         // flight — e.g. the host opening a preview pane that narrows the
@@ -466,6 +486,17 @@ namespace UltraCanvas {
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
+        // What a delete that wipes out the whole selection leaves selected.
+        // Off (default): nothing — the selection is simply gone. On: the entry
+        // that took the deleted one's place becomes the selection (the next
+        // one, or the previous one when the deleted entry was last). Hosts
+        // that feed a preview pane from onSelectionChanged switch this on
+        // while the preview is up, so deleting the previewed file walks the
+        // preview on to its neighbour instead of folding the pane away. The
+        // new selection is in place before onFolderRefreshed fires, so the
+        // host sees one selection change and no empty state in between.
+        void SetSelectNextAfterDelete(bool enabled) { selectNextAfterDelete = enabled; }
+        bool IsSelectNextAfterDelete() const { return selectNextAfterDelete; }
         // Pack the selection into an archive alongside it. The extension picks
         // the format (e.g. "zip", "7z", "tar", "tar.gz", "tar.bz2", "tar.xz",
         // "tar.zst"); defaults to a .zip archive.
@@ -490,6 +521,16 @@ namespace UltraCanvas {
         // their folder description (item counts, status bar) from it. The
         // selection survives a rescan on the files that are still there.
         std::function<void()> onFolderRefreshed;
+        // After the user changed a folder's content through this widget — an
+        // entry created, pasted, dropped in or out, renamed, duplicated,
+        // deleted, packed or extracted. The argument is the folder that
+        // changed; normally the displayed one, but a subfolder when that is
+        // where the change landed (files dropped onto it, an archive written
+        // into it). Unlike onFolderRefreshed this reports *user actions*, not
+        // rescans: navigation, sorting, view changes and a plain Refresh()
+        // never fire it. A file-list display (ShowFileList) only reports
+        // changes whose folder is known, since its entries span many folders.
+        std::function<void(const std::string& folderPath)> onFolderModified;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
         // After a column splitter drag (or a programmatic width change) — the
@@ -536,6 +577,9 @@ namespace UltraCanvas {
         FilerViewType viewType = FilerViewType::Details;
         FilerSortField sortField = FilerSortField::Name;
         bool sortAscending = true;
+        // Leave a file-list display in the order it was given (see
+        // SetFileListOrderPreserved).
+        bool preserveFileListOrder = false;
         bool showHiddenFiles = false;
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
@@ -558,6 +602,18 @@ namespace UltraCanvas {
         std::vector<size_t> selection;            // indices into `entries`
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
+        // SetSelectNextAfterDelete: when a delete takes the whole selection
+        // away, PerformDeletion parks the neighbour that should inherit it
+        // here and the rescan selects that path instead of restoring the
+        // (now gone) old selection — one selection change, none of it empty.
+        bool selectNextAfterDelete = false;
+        std::string selectAfterScanPath;
+        // A committed rename, so the rescan can follow the entry from its old
+        // path to its new one: the selection is restored by path, and without
+        // this the renamed entry would drop out of it (leaving nothing
+        // selected, which breaks the very next F2 / Rename command).
+        std::string renamedFromPath;
+        std::string renamedToPath;
 
         // Tooltip tracking: what the cursor is currently over, so a tooltip is
         // shown once when the cursor enters it and hidden when it leaves. An
@@ -1069,6 +1125,20 @@ namespace UltraCanvas {
         void OpenContextMenu(const Point2Di& localPoint);
         std::vector<size_t> SelectionOrItem(int index) const;
         void SelectionToClipboard(bool cut);
+        void EntriesToClipboard(const std::vector<FilerEntry>& targets, bool cut);
+        // What an action aimed at one entry operates on: the whole selection
+        // when that entry is part of it, otherwise just the entry itself. The
+        // hover icon-menu buttons use this so pressing one never has to select
+        // the entry first (which would re-target an attached preview).
+        std::vector<FilerEntry> SelectionOrEntry(size_t entryIndex) const;
+        // Delete an explicit set (confirmDelete / the built-in dialog still
+        // gate it). DeleteSelection() is this over the selected entries.
+        void DeleteEntries(const std::vector<FilerEntry>& victims);
+        // Entry that should inherit the selection once `victims` are gone:
+        // the first survivor after them, else the last one before them.
+        // Empty when the folder holds nothing else.
+        std::string NeighbourPathAfterRemoval(
+                const std::vector<FilerEntry>& victims) const;
         // Paste fallback when the clipboard holds no files: writes the raw
         // clipboard data (an image or text copied in another program) as a
         // new file into the current folder. False = nothing pastable there.
@@ -1127,6 +1197,10 @@ namespace UltraCanvas {
         void FinishMarquee();              // release: keep the result
         void CancelMarquee();              // Escape: restore the old selection
         void FireSelectionChanged();
+        // Reports a user-made change to onFolderModified. An empty argument
+        // means the displayed folder (skipped in file-list mode, where the
+        // displayed folder is not where the change landed).
+        void NotifyFolderModified(const std::string& folderPath = "");
         void ReportError(const std::string& message);
         std::string UniqueChildPath(const std::string& baseName) const;
         // Same, but in an arbitrary folder (drop target of a drag).
