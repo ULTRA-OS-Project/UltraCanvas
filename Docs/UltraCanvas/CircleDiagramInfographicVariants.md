@@ -225,6 +225,17 @@ existing API (`CircularCell`, `ValueVisualizationType`, `ColorScale`,
 half meaningless in the other. The Diagrams plugin is the right home: this is
 `UltraCanvasMindMap`'s neighbour, not `UltraCanvasPieChart`'s.
 
+**It is a presentation-only element** (decided — see §8). That settles the base
+class rather than the plugin: it derives from `UltraCanvasChartElementBase`,
+following `UltraCanvasVennDiagramElement` and `UltraCanvasSWOTDiagram`, which
+are both presentation-only Diagrams elements on that base. Only five headers
+in the Diagrams plugin touch `UltraCanvasDiagramViewport` — the compositor,
+the mind map and the node diagram — so the plugin is already mostly
+presentation graphics, and being one does not pull the element towards Charts.
+The base gives chart title, tooltips, hover, `DrawEmptyState`,
+`CalculatePlotArea` and `RequestRedraw`-driven updates, all of which a static
+graphic wants; nothing in it implies an editing model.
+
 **Extend `UltraCanvasCircularInfoGraphic` for families C, D and E.** These are
 already sector graphics on concentric rings — the element's exact model. They
 need additive, backward-compatible features: an icon slot distinct from
@@ -242,8 +253,14 @@ and arcs, exactly as the implemented circular elements already do.
 image), backbone ring (hairline, band, or none), N nodes at even angles with
 per-node fill, border, icon and wrapped multi-line label; K satellites per
 node with fan angle, offset radius and leader-line style; correct outer-margin
-reservation; hover, tooltips and `onNodeClick`/`onSatelliteClick`. Covers
-references 1 and 2 outright.
+reservation; hover highlight, tooltips and `onNodeClick`/`onSatelliteClick`.
+Covers references 1 and 2 outright.
+
+The interaction surface stops there, by decision: the graphic is authored from
+code and rendered, exactly as `UltraCanvasCircularInfoGraphic` is. No node
+dragging, no inline label editing, no pan/zoom, no undo stack, and therefore
+no `UltraCanvasDiagramViewport` dependency and no interchange-format layer of
+the kind `UltraCanvasMindMapIO` provides.
 
 **P2 — cards and callouts.** Family B's attached cards with dashed borders and
 non-overlapping placement, plus node-to-node arc connectors. In parallel, the
@@ -259,7 +276,16 @@ Each phase carries the repo's usual companions: a component doc under
 `Docs/UltraCanvas/`, a DemoApp scene, `Masterfile_modules.md` and
 `Docs/UltraCanvas/CHANGELOG.md` entries, and a regenerated `llms.txt`.
 
-## 8. Open questions for the maintainer
+## 8. Decisions taken
+
+- **Presentation-only.** The element is authored from code and rendered; it is
+  not an editing surface. Consequences are folded into §6 and §7: base class
+  `UltraCanvasChartElementBase`, no `UltraCanvasDiagramViewport`, no drag /
+  inline edit / pan / zoom / undo, no IO layer. Interaction is limited to
+  hover highlight, tooltips and click callbacks — the same surface
+  `UltraCanvasCircularInfoGraphic` exposes.
+
+## 9. Open questions for the maintainer
 
 1. **Element name.** `UltraCanvasCircleDiagram` reads well next to
    `UltraCanvasMindMap`, but it is one letter from
@@ -267,12 +293,10 @@ Each phase carries the repo's usual companions: a component doc under
    `UltraCanvasCircleInfographic` are alternatives — worth settling before any
    header exists.
 2. **Design presets.** `UltraCanvasPertChart` and `UltraCanvasGanttChart` ship
-   named designs, and `SWOTDiagramDesignVariants.md` proposes the same for
-   SWOT. Should the circle diagram ship presets (`SaaSWheel`, `PolicyRing`,
-   `ProcessCards`) or only the primitives?
-3. **Editability.** Presentation-only (author from code, like the circular
-   infographic), or interactive like the mind map (drag nodes, edit labels)?
-   This decides whether `UltraCanvasDiagramViewport` is a dependency.
-4. **Data-driven sizing.** Should a node's `value` be allowed to scale its
+   named designs, and `SWOTDiagramDesignVariants.md` proposed the same for
+   SWOT before `UltraCanvasSWOTDiagram` was built. Should the circle diagram
+   ship presets (`SaaSWheel`, `PolicyRing`, `ProcessCards`) or only the
+   primitives?
+3. **Data-driven sizing.** Should a node's `value` be allowed to scale its
    radius (as `NodeDiagramSizing` does with a √ transfer), or are all nodes
    deliberately equal in this genre? The references are all equal-sized.
