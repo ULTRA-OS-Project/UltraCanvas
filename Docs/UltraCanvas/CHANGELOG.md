@@ -1,3 +1,41 @@
+#### 2026-08-07 *0.3.31*
+- **UltraCanvasFishboneDiagram** *(1.0.0)*: new fishbone (Ishikawa)
+  cause-and-effect element for root cause analysis — one effect, cause
+  categories on the ribs, causes on the twigs and optional sub-causes for the
+  5-Whys tail. Eight design presets: `Classic` (textbook herringbone),
+  `SpineChips` (pills on a solid spine arrow with icon badges), `CrossedRibs`
+  (one stroke serving a category above and below), `Bracket` (parallelogram
+  bones with horizontal dot leaders), `ChevronSpine` (the spine as a chain of
+  arrow blocks feeding floating pills), `Columns` (rib-less tinted panels
+  straddling the spine), `Vertical` and `Compact`. Side policies
+  (alternate / all-above / all-below / per-category), rib angle control,
+  head shapes (arrow, triangle, box, fish head), tail shapes (chevron,
+  triangle, fish tail), effect placement (title, head box, hidden), cause
+  markers (dot, bullet, numbered, hidden), nine palettes, a dark theme,
+  per-category icons or glyphs, spine captions, waypoints, weight badges and
+  root-cause rings. Ribs are trimmed to their content and the rib roots are
+  placed only once the rib length is known, so a category with two causes does
+  not draw a rib sized for six and the outermost category still has room for
+  its labels against the frame edge; overflow is reported as a `+N` badge
+  rather than dropped. Hover, selection and collapse address categories,
+  causes and sub-causes through one `FishboneRef` handle, with tooltips and
+  five callbacks.
+- **UltraCanvasFishboneModel** *(1.0.0)*: the UI-free half — the document
+  model, seven named category checklists (6M, 5M+E, 8P, 4S, 5S, PEMPEM,
+  software delivery), three samples, validation, and text interchange in both
+  directions for Mermaid `ishikawa-beta` (Mermaid 11.13+) and a plain indented
+  outline. The parser accepts tabs or spaces at any consistent width, strips
+  `-` / `*` / `+` bullets, skips comments and `---` front matter, and reads
+  both indentation shapes found in the wild — the one where the effect and the
+  categories share a level and the one where they do not.
+- New demo page (Info Graphics > Fishbone Diagram) with a tab per design, live
+  theme/palette/side/marker/head controls, checklist loading and a Mermaid
+  export view; guide in `Docs/UltraCanvas/UltraCanvasFishboneDiagram.md`;
+  `Tests/FishboneModelTest.cpp` (target `FishboneModelTest`) covers the
+  presets, counting, depth, validation and both codecs round-trip. The research
+  behind giving the fishbone its own element rather than a mind map layout case
+  is in `Docs/UltraCanvas/UltraCanvasFishboneDiagramProposal.md`.
+
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
   three-column table rows and definable column alignment.

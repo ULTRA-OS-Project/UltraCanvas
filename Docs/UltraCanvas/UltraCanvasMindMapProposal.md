@@ -339,7 +339,7 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 | L2 | `MindMapStructure::LogicRight` / `LogicLeft` — the whole tree grows to one side (XMind logic chart) | P1 |
 | L3 | `MindMapStructure::OrgChartDown` / `OrgChartUp` — top-down / bottom-up hierarchy | P2 |
 | L4 | `MindMapStructure::Radial` — children distributed over a full 360°, generation per orbit (image 1's four-diagonal look at level 1, image 3's free ring at level 2) | P1 |
-| L5 | `MindMapStructure::Fishbone` — angled ribs off a horizontal spine | P3 |
+| L5 | `MindMapStructure::Fishbone` — angled ribs off a horizontal spine. **Re-scoped:** a plain layout case only; the fishbone *product* (decorated spines, category chips, icon badges, design presets) belongs to the separate `UltraCanvasFishboneDiagram` element — see [`UltraCanvasFishboneDiagramProposal.md`](UltraCanvasFishboneDiagramProposal.md) §4 | P3 (late) |
 | ~~L6~~ | ~~Timeline~~ — **dropped** (§8.5); owned by the separately reserved `timelinediagram` element | — |
 | L7 | `MindMapStructure::TreeChart` — indented tree with a shared trunk. (Brace map moved to D10, §8.5) | P3 |
 | L8 | **Per-branch structure override** — a main topic may declare its own structure while the rest of the map keeps the default (XMind's combined structures) | P2 |
@@ -782,6 +782,15 @@ one of them.**
   the cheapest of the three to express as a structure: it reuses the entire
   model, needs no new node content, and is essentially one alternative
   `ComputeLayout` case.
+  **Superseded in part (2026-08-07):** a follow-up survey of the fishbone
+  design space — [`UltraCanvasFishboneDiagramProposal.md`](UltraCanvasFishboneDiagramProposal.md)
+  — found that the commercial fishbone *does* add semantics a topic tree lacks
+  (depth means effect / category / cause; a directed spine whose head is the
+  effect; category presets such as 6M / 8P / 4S) and that its real-world designs
+  are renderer features, not layout features. The fishbone product therefore
+  goes to its own element, following the SWOT and Timeline precedent. L5 keeps
+  only its residual use — drawing an *existing mind map* as ribs — and moves to
+  the back of Phase 3.
 - **Brace map (L7) — belongs here, but as a connector style.** A brace map is a
   tree drawn with `{` glyphs instead of branch strokes. That is R-group work
   (a connector that draws a brace spanning a sibling run), not a layout at all —
