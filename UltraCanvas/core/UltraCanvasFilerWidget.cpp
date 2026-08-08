@@ -26,8 +26,8 @@
 // The inline rename editor is a real UltraCanvasTextInput overlaid on the
 // item's name, and video files show their poster frame in the thumbnail
 // views (decoded on the same worker threads as the image thumbnails).
-// Version: 1.8.0
-// Last Modified: 2026-08-06
+// Version: 1.8.1
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -1127,9 +1127,10 @@ namespace UltraCanvas {
             ++statsGeneration;
             statsQueue.clear();
             folderStatsCache.clear();
+            aspectQueue.clear();
+            aspectCache.clear();
         }
         mediaInfoCache.clear();
-        aspectCache.clear();
         DropThumbnailCache();
 
         std::error_code ec;
@@ -3900,14 +3901,19 @@ namespace UltraCanvas {
         // Only raster images have a meaningful, cheaply-probeable pixel size.
         // Vectors scale to fill the tile, everything else draws a glyph.
         if (e.category != FilerFileCategory::Image) return 0.0f;
+        std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
-        int w = 0, h = 0;
-        float aspect = (ProbeImageDimensions(e.path, w, h) && w > 0 && h > 0)
-                           ? static_cast<float>(w) / static_cast<float>(h)
-                           : 0.0f;
-        aspectCache.emplace(e.path, aspect);
-        return aspect;
+        // Not probed yet. The layout asks this for every entry of the folder,
+        // so the header read goes to the background worker and the row keeps
+        // the full tile height until the answer lands (which the layout
+        // already treats as the "not yet measured" case). The 0 stored here
+        // doubles as the marker that the probe is queued.
+        aspectCache.emplace(e.path, 0.0f);
+        aspectQueue.push_back(e.path);
+        StartFolderStatsWorkerLocked();
+        statsCond.notify_one();
+        return 0.0f;
     }
 
     int UltraCanvasFilerWidget::ThumbnailImageHeight(const FilerEntry& e, int edge) {
@@ -4811,6 +4817,7 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lk(statsMutex);
             statsShutdown = true;
             statsQueue.clear();
+            aspectQueue.clear();
         }
         statsCond.notify_all();
         if (statsWorker.joinable()) statsWorker.join();
@@ -4819,16 +4826,49 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::FolderStatsWorkerMain() {
         for (;;) {
             std::string path;
+            std::string aspectPath;
             uint64_t gen;
             {
                 std::unique_lock<std::mutex> lk(statsMutex);
                 statsCond.wait(lk, [this]() {
-                    return statsShutdown || !statsQueue.empty();
+                    return statsShutdown || !statsQueue.empty() || !aspectQueue.empty();
                 });
                 if (statsShutdown) return;
-                path = std::move(statsQueue.front());
-                statsQueue.pop_front();
+                // Image headers first: they are single short reads that settle
+                // the grid geometry the user is looking at, while a recursive
+                // folder walk can run for seconds.
+                if (!aspectQueue.empty()) {
+                    aspectPath = std::move(aspectQueue.front());
+                    aspectQueue.pop_front();
+                } else {
+                    path = std::move(statsQueue.front());
+                    statsQueue.pop_front();
+                }
                 gen = statsGeneration;
+            }
+
+            if (!aspectPath.empty()) {
+                int w = 0, h = 0;
+                const float aspect =
+                        (ProbeImageDimensions(aspectPath, w, h) && w > 0 && h > 0)
+                            ? static_cast<float>(w) / static_cast<float>(h)
+                            : 0.0f;
+                bool report = false;
+                {
+                    std::lock_guard<std::mutex> lk(statsMutex);
+                    if (statsShutdown) return;
+                    if (gen == statsGeneration) {
+                        aspectCache[aspectPath] = aspect;
+                        // Only a landscape image shortens its row; anything
+                        // else keeps the full-height layout already drawn.
+                        report = aspect > 1.0f;
+                    }
+                }
+                if (report) {
+                    aspectsChanged.store(true);
+                    PostFolderStatsRedraw();
+                }
+                continue;
             }
 
             // The expensive walk — outside the lock, one folder at a time
@@ -4884,6 +4924,10 @@ namespace UltraCanvas {
             if (viewType == FilerViewType::BarSize ||
                 viewType == FilerViewType::TreeMap) {
                 effectiveSizesValid = false;
+                InvalidateFilerLayout();
+            }
+            // A freshly probed landscape image shortens the row it sits in.
+            if (aspectsChanged.exchange(false) && shrinkThumbnailRows) {
                 InvalidateFilerLayout();
             }
             RequestRedraw();

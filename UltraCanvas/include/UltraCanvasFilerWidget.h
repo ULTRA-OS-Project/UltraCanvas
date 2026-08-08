@@ -38,8 +38,8 @@
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
 // even then is dropped from the front of the last line, which opens with "…".
-// Version: 1.9.0
-// Last Modified: 2026-08-06
+// Version: 1.9.1
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -548,13 +548,6 @@ namespace UltraCanvas {
         uint32_t datasetFields = 0;
         FilerStyle style;
 
-        // Natural aspect ratio (width / height) of raster image entries, keyed
-        // by file path, filled lazily from image headers (ProbeImageDimensions,
-        // no decode) for the thumbnail-row shrinking. 0 = probed but has no
-        // usable dimensions (treated as full-height); absent = not yet probed.
-        // Cleared on rescan.
-        std::unordered_map<std::string, float> aspectCache;
-
         std::vector<size_t> selection;            // indices into `entries`
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
@@ -852,12 +845,25 @@ namespace UltraCanvas {
         };
         std::map<std::string, FolderStats> folderStatsCache; // by folder path
         std::deque<std::string> statsQueue;                  // paths to walk
-        std::mutex statsMutex;              // guards cache/queue/generation
+
+        // Natural aspect ratio (width / height) of raster image entries, keyed
+        // by file path, read from image headers (ProbeImageDimensions, no
+        // decode) for the thumbnail-row shrinking. 0 = no usable dimensions or
+        // not probed yet (both mean "full height"); an entry present with 0 is
+        // also the marker that its probe is already queued. Cleared on rescan.
+        // Filled by the same worker as the folder stats: the grid layout asks
+        // for every entry of the folder, and opening one file per image on the
+        // UI thread is what made a folder of photos take seconds to appear.
+        std::unordered_map<std::string, float> aspectCache;
+        std::deque<std::string> aspectQueue;                 // headers to read
+
+        std::mutex statsMutex;              // guards caches/queues/generation
         std::condition_variable statsCond;
         std::thread statsWorker;
         bool statsShutdown = false;
         uint64_t statsGeneration = 0;       // bumped to drop stale results
         std::atomic<bool> statsRedrawPosted{false};
+        std::atomic<bool> aspectsChanged{false};  // a probe changed a row height
 
         // Non-blocking: returns the cached stats, or a pending placeholder
         // (ready == false) after queueing a background walk of `path`.

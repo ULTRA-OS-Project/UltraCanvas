@@ -1,3 +1,35 @@
+#### 2026-08-08 *0.3.31*
+- **UltraCanvasBreadcrumb**: opening a folder no longer stalls on the drive
+  list. `BuildFolderBreadcrumb` used to call `ListDriveRoots()` eagerly to fill
+  the `Computer` node's dropdown, and the strip is rebuilt on every navigation —
+  so every click paid for a full volume enumeration before the new folder could
+  be painted. The drive list is now filled by a `dropdownItemsProvider`, like
+  the per-segment sub-folder menus, so building the strip touches no
+  filesystem at all. `ListDriveRoots()` itself reads the Windows mount table
+  once via `GetLogicalDrives()` instead of probing `A:\` … `Z:\` with
+  `exists()`, which spun up empty optical / card readers and waited out the
+  timeout of every disconnected network mapping.
+- **UltraCanvasFilerWidget** *(1.6.1)*: the image-header probe that drives
+  `SetShrinkThumbnailRows` moved off the UI thread. The thumbnail layout asks
+  for the natural size of **every** entry of the folder, and `EntryAspect()`
+  answered by opening the file — so entering a folder of photos blocked the
+  window for one file open per image before anything appeared. Probes are now
+  queued onto the existing folder-statistics worker (ahead of the recursive
+  walks, which are far longer); a not-yet-measured image keeps the full tile
+  height, which the row layout already treats as its unknown case, and rows
+  shorten as the measurements land. `aspectCache` moved under `statsMutex` and
+  is dropped, with its queue, on every rescan.
+- **UltraFiler**: expanding a folder tree node no longer blocks on its
+  children. "Does this folder have sub-folders?" — the question that gives a
+  node its expand button — costs a directory open per child, and one expansion
+  asked it once per child on the UI thread. The probes now run on a worker
+  thread and post their answers back, so the sub-folders appear at once and the
+  expand buttons follow. Tree nodes track whether their children have been
+  scanned instead of inferring it from the placeholder child, so navigating to
+  a folder whose ancestors are not expanded yet still walks the chain
+  correctly. The startup drive scan uses `ListDriveRoots()` for the same reason
+  the breadcrumb does.
+
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained
   three-column table rows and definable column alignment.
