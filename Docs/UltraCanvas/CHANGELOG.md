@@ -1,3 +1,7 @@
+#### 2026-08-08 *0.3.35*
+- Change Linux packager script, drop .appimage
+- Change GitHub build to produce package with all dependent libs
+
 #### 2026-08-08 *0.3.34*
 - **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget
   again. The drag was handed to the native OS drag the moment the cursor

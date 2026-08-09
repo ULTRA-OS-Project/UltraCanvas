@@ -71,6 +71,10 @@ jobs:
               sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
               sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
               sudo apt-get install -y libzbar-dev libmupdf-dev
+              # ImageMagick runtime: not a build dep, but package-linux.sh bundles
+              # it as libvips' delegate (coder modules + config), so the files must
+              # be present on the runner to match the developer package.
+              sudo apt-get install -y imagemagick libmagickcore-6.q16-6-extra
               # MuPDF third-party deps: Ubuntu's libmupdf.a is built with
               # USE_SYSTEM_LIBS and ships no libmupdf-third, so jbig2dec/mujs/gumbo
               # must be linked from system -dev packages (find_library needs the .so).
@@ -194,6 +198,7 @@ jobs:
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
+            -DULTRACANVAS_BUILD_SHARED=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} \
             -DULTRACANVAS_BUILD_NET_TESTS=ON 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -254,6 +259,12 @@ jobs:
         if: runner.os != 'Windows'
         working-directory: build
         run: ctest --output-on-failure -R UltraNet
+
+      # Bundle all apps into the portable multi-executable tree. Reuses the
+      # already-built shared `build` dir (SKIP_BUILD=1) rather than rebuilding.
+      - name: Package portable Linux bundle (Linux)
+        if: runner.os == 'Linux'
+        run: BUILDDIR="$PWD/build" SKIP_BUILD=1 ./package-linux.sh
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -323,9 +334,6 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v6
         with:
-          name: UCDemo-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}
-          path: |
-            build/lib/
-            build/bin/
-            build/share/
+          name: UltraCanvas-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}
+          path: dist/UltraCanvas-Linux-${{ env.VERSION }}-x86_64.tar.gz
           retention-days: 7
