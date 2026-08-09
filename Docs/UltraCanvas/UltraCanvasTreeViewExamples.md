@@ -290,8 +290,13 @@ void SetSelectionColor(const Color& color)
 void SetHoverColor(const Color& color)
 void SetLineColor(const Color& color)
 void SetTextColor(const Color& color)
+void SetExpandButtonColor(const Color& color)
+Color GetExpandButtonColor() const
 ```
 Sets various color properties for the tree view.
+
+`SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
+(default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
 
 ### Event Callbacks
 
@@ -358,7 +363,7 @@ fileTree->AddNode("computer", driveC);
 
 // Add folders
 TreeNodeData documents("docs", "Documents");
-documents.leftIcon = TreeNodeIcon("folder.png");
+documents.leftIcon = TreeNodeIcon("folder-brown.svg");
 fileTree->AddNode("c_drive", documents);
 
 // Add files

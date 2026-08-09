@@ -206,6 +206,7 @@ private:
     Color hoverColor;           // Hovered row background
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
+    Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
 
     ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
@@ -293,6 +294,7 @@ public:
     void SetHoverColor(const Color &color) { hoverColor = color; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
+    void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
 
     // ===== SORTING =====
     // Persistent option: keep children alphabetically sorted as nodes are added.
@@ -360,6 +362,7 @@ protected:
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
     Color GetTextColor()   const { return textColor; }
+    Color GetExpandButtonColor() const { return expandButtonColor; }
     // Width reserved on the right for the vertical scrollbar (0 when hidden).
     int   GetVerticalScrollbarWidth() const {
         return (verticalScrollbar && verticalScrollbar->IsVisible()) ? verticalScrollbar->GetWidth() : 0;

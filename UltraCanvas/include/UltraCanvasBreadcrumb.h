@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.4.2
-// Last Modified: 2026-07-31
+// Version: 1.4.3
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -192,18 +192,21 @@ namespace UltraCanvas {
     class UltraCanvasBreadcrumb;
 
 // ===== FOLDER PATH MECHANISM (shared by the Filer and the Media Viewer) =====
-// The drive roots / mounted volumes offered by the leading "Computer" node:
-// "A:\" ... "Z:\" on Windows, "/" plus the entries of /media, /mnt and
-// /Volumes elsewhere.
+// The drive roots / mounted volumes offered by the leading "Computer" node: the
+// mounted drive letters on Windows (read from the mount table, so no drive is
+// touched), "/" plus the entries of /media, /mnt and /Volumes elsewhere.
     std::vector<std::string> ListDriveRoots();
 
+    // Every dropdown below - the drives under "Computer" as much as the
+    // sub-folders under a path segment - is filled when it opens, so building
+    // the strip touches no filesystem at all and can be redone on each
+    // navigation without delaying it.
     struct FolderBreadcrumbOptions {
         // Leading node listing every drive / mounted volume in its dropdown.
         bool showComputerItem = true;
         std::string computerLabel = "Computer";
         // Per-segment dropdown listing the folders inside that segment, so the
-        // path can be extended one level straight from the strip. Filled lazily
-        // when the dropdown opens, so deep trees cost nothing to build.
+        // path can be extended one level straight from the strip.
         bool subFolderDropdowns = true;
     };
 
