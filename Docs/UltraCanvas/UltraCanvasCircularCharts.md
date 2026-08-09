@@ -26,7 +26,18 @@ link to its component doc.
 | Multivariate profiles on fixed spokes | Radius on N axes | `UltraCanvasRadarChartElement` | [UltraCanvasRadarChartElement.md](UltraCanvasRadarChartElement.md) |
 | Flows between entities | Arc segments + ribbons | `UltraCanvasChordChart` | [UltraCanvasChordChartExamples.md](UltraCanvasChordChartExamples.md) |
 | Rings of styled text/image cells, cross-ring connections | Cell grid on concentric rings | `UltraCanvasCircularInfoGraphic` | [UltraCanvasCircularInfoGraphic.md](UltraCanvasCircularInfoGraphic.md) |
+| A theme, a ring, and a few labelled topics with sub-topics | Discs **threaded onto** a ring, satellites on leader lines | `UltraCanvasCircleDiagram` (Diagrams plugin) | [UltraCanvasCircleDiagram.md](UltraCanvasCircleDiagram.md) |
 | A single instrument-style value (dial, ring, battery) | Needle angle or arc fill against a scale | `UltraCanvasGaugeDiagramElement` (Diagrams plugin) | [UltraCanvasGaugeExamples.md](UltraCanvasGaugeExamples.md) |
+
+## Sectors vs. nodes
+
+The last two rows look alike and are not. Every element above
+`UltraCanvasCircleDiagram` **subdivides** the ring — sectors or cells tile it,
+and a cell's extent is the band's thickness. The circle diagram **threads
+discs onto** the ring: a node's radius is independent of the ring, it normally
+overhangs both edges, and it can carry satellites outside the ring. If your
+graphic is "a whole ring, divided up", you want the infographic; if it is "a
+few things sitting on a ring", you want the circle diagram.
 
 ## The two "radial bar" charts
 

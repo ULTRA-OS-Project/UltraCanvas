@@ -10,6 +10,7 @@ components:
 | Preview (right pane) | `UltraCanvasMediaViewer` — images, video, audio, PDFs, spreadsheets, 3D models and text files |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
 | Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::ShowFileList()` |
+| History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
 
 ## Features
@@ -20,7 +21,7 @@ components:
   reordered by dragging and closed (the last one stays open).
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
-  tree with lazy expansion.
+  tree with lazy expansion, and the History toggle (see below).
 - **Search:** the field on the right of the path bar searches the current
   folder recursively for names containing the text (case-insensitive, up to
   1000 matches). Enter runs it; the matches are displayed in the tab's
@@ -29,6 +30,23 @@ components:
   selected match's folder in a new tab. Clearing the field (or navigating
   anywhere) returns to the normal folder display. Each tab keeps its own
   search.
+- **History:** the clock button in the navigation row replaces the folder tree
+  and folder display with the History view — a tabbed container with **Files**,
+  **Folders** and **Apps** tabs, each a filer widget in *small thumbnails* mode
+  listing the recently used paths (most recent first) instead of a folder's
+  content. Files and applications are remembered as they are opened
+  (double-click / Enter). A folder is remembered only once **work has been
+  done in it** — a file opened there, or something created, pasted, dropped in
+  or out, renamed, duplicated, deleted, packed or extracted; browsing through
+  a folder does not put it in the list. An entry whose file has meanwhile been
+  deleted drops out of the list. Activating a tile leaves the History view
+  and shows the entry in the folder display — a folder is opened, a file is
+  selected inside the folder it lives in (so the preview picks it up when it is
+  media); the context menu's **Open path (in new tab)** opens its folder in a
+  new tab instead. Clicking the clock again, **Esc**, or
+  any browsing action (navigation, search, a file command) returns to the
+  folder view. The lists survive restarts — they are stored next to the
+  settings as `history.txt` — and *Settings ▸ Clear History* empties them.
 - **Command bar:** New folder / New file (inline rename starts
   automatically), Cut / Copy / Paste (system clipboard interop), Rename,
   Delete (with confirmation), sort field + direction, view type selection,
