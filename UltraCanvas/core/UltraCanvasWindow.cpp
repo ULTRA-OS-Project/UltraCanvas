@@ -470,6 +470,11 @@ namespace UltraCanvas {
                 ctx->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
                 Render(ctx, rect);
                 RenderCustomContent(ctx, rect);
+                // Above every element: the drag overlay a widget handed over
+                // because it has to be visible outside that widget's bounds.
+                if (dragOverlayRenderer && dragOverlayRect.Intersects(rect)) {
+                    dragOverlayRenderer(ctx, dragOverlayRect);
+                }
                 ctx->PopState();
             }
             dirtyRectManager.Clear();
@@ -575,6 +580,28 @@ namespace UltraCanvas {
         Rect2Di clipped = windowRect.Intersection(winBounds);
         if (clipped.width <= 0 || clipped.height <= 0) return;
         dirtyRectManager.Add(clipped);
+    }
+
+    void UltraCanvasWindowBase::SetDragOverlay(UltraCanvasUIElement* owner,
+                                               const Rect2Di& windowRect,
+                                               WindowOverlayRenderer renderer) {
+        if (!owner || !renderer) return;
+        // The gesture that claimed the overlay keeps it until it clears it.
+        if (dragOverlayOwner && dragOverlayOwner != owner) return;
+        // Repaint what the overlay is leaving behind, then what it now covers.
+        if (dragOverlayRenderer) AddDirtyRectangle(dragOverlayRect);
+        dragOverlayOwner = owner;
+        dragOverlayRect = windowRect;
+        dragOverlayRenderer = std::move(renderer);
+        AddDirtyRectangle(dragOverlayRect);
+    }
+
+    void UltraCanvasWindowBase::ClearDragOverlay(UltraCanvasUIElement* owner) {
+        if (!dragOverlayRenderer || dragOverlayOwner != owner) return;
+        AddDirtyRectangle(dragOverlayRect);
+        dragOverlayRenderer = nullptr;
+        dragOverlayOwner = nullptr;
+        dragOverlayRect = Rect2Di(0, 0, 0, 0);
     }
 
     void UltraCanvasWindowBase::AddPopupDirtyRect(UltraCanvasUIElement* popup,

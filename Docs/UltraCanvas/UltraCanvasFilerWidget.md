@@ -33,7 +33,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -155,6 +155,8 @@ New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
 Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
                   Type    >  all view types
+                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                             Docs / Spreadsheets / Videos  (checkboxes, all on)
                   Dataset >  Size / Edit date / Creation date / Attributes /
                              Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
@@ -189,6 +191,8 @@ Notes:
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
   `CompressSelection(extension)` still performs an immediate, dialog-free
   compress for programmatic use.
+- **Display > Preview** switches content previews on and off per file kind —
+  see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
   thumbnail views: Size, Edit date, Creation date, Attributes, Length
   (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
@@ -196,6 +200,58 @@ Notes:
   appear on the file kinds they apply to (their values are probed lazily from
   the file headers and cached). Drive it in code with
   `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
+
+## Selective previews
+
+A **content preview** is a tile rendered from the file itself instead of the
+generic category glyph. Which kinds of file get one is selectable, and every
+kind is enabled by default:
+
+```cpp
+filer->SetPreviewType(FilerPreviewType::Videos, false);   // no poster frames
+filer->IsPreviewTypeEnabled(FilerPreviewType::PDF);       // true
+
+// Only the cheap ones (a slow network share, say):
+filer->SetPreviewTypes(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
+                       static_cast<uint32_t>(FilerPreviewType::Text));
+
+filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
+```
+
+| `FilerPreviewType` | Menu label | Applies to | What is shown |
+|---|---|---|---|
+| `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
+| `VectorGraphics` | Vector graphics | svg, eps, cdr, xar | the rendered drawing (formats the image pipeline can rasterize) |
+| `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
+| `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
+| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph) |
+| `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
+
+Notes:
+
+- Switching a kind off repaints its entries with the type glyph immediately and
+  stops the widget from opening those files at all — that is the point of the
+  switches: a folder of huge photos, videos or PDFs on a slow volume stays
+  browsable. Switching it back on re-uses whatever is still cached and reads the
+  rest in the background.
+- Previews are produced on the same background workers as the image
+  thumbnails, in the same viewport-driven order (visible tiles first, then one
+  screen of prefetch), so no preview ever blocks a frame. Image work has
+  priority over reading text.
+- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
+  a page is legible — from roughly a 40 px box up. The small icon column of the
+  Details and List rows keeps the type glyph, so a folder listing does not read
+  every document in it.
+- `FilerPreviewType` values are a bitmask; `GetPreviewTypes()` returns the
+  current set and `kFilerAllPreviewTypes` is the default. The preview kinds do
+  not map one to one onto `FilerFileCategory`: PDF is split out of the Document
+  category because it renders a page, and CSV / TSV count as spreadsheets
+  because they preview as a grid (their file category stays `Text`).
+  `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
+  (`NonePreview` for folders, audio, archives and programs, which never carry a
+  content preview).
 
 ## Selection info bar
 
@@ -222,6 +278,34 @@ selections) immediately and the exact counts fill in when the subtree walk
 finishes, so clicking or opening a folder with a deep subtree never blocks the
 window. The same statistics provide the directory weights of the BarSize and
 TreeMap views, whose layout reflows as the walks complete.
+
+The media probes (pixel dimensions, play length / codec) run on the same
+background worker, ahead of the folder walks: selecting a file — or first
+painting its tile when the Length / Dimensions dataset fields are enabled —
+never opens the file on the UI thread; the detail appears with the next
+posted repaint, typically within a frame or two.
+
+## Folder listing prefetch
+
+With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
+the subfolders of the shown folder — one level deep — shortly after the folder
+settles, so entering one of them serves its listing from memory instead of
+waiting for a cold directory scan. The win is largest on network volumes and
+spinning disks.
+
+- **Idle behavior**: each batch starts after a short grace delay, and a new
+  navigation drops the pending batch immediately — quick click-throughs never
+  trigger wasted scans, and the folder on screen always gets the disk first.
+- **Freshness**: a cached listing is used only if it is under a minute old
+  *and* the folder's modification time is unchanged since the pre-scan
+  (catching entries added / removed / renamed in between); anything else falls
+  back to a normal scan. `Refresh()` — used after every file operation — always
+  rescans and never reads the cache.
+- **Bounds**: at most 24 listings / 50 000 entries are cached (oldest evicted
+  first); an oversized listing is scanned but not stored — the scan still
+  warms the OS metadata cache, so the real scan on entry stays fast. Cached
+  listings include hidden entries, so toggling hidden files needs no rescan
+  of the cache. Archives are excluded (they list through VirtualFS).
 
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
@@ -343,13 +427,41 @@ that already exist there get a " (2)" style suffix, a folder cannot be dropped
 into itself, and a drop anywhere but on a folder simply ends the drag. Escape
 abandons the drag without moving anything.
 
-**Leaving the widget** hands the same set over to the native OS drag (XDND on
-Linux), so it can be dropped on any other window or application — another
-Filer widget, another window of the same application, an external file manager,
-an editor, … There the drop target performs the copy or move itself; when it
+**Leaving the widget does not end the drag.** The badge keeps following the
+cursor over the rest of the window — it is handed to the window's
+[drag overlay](#drag-overlay) for that, because an element cannot paint outside
+its own bounds — and releasing over another element offers it the files as a
+`Drop` event, exactly like a drop arriving from another application. That is
+how a file reaches a second Filer pane, a folder tree or any other drop-aware
+widget of the same window; a release over something that does not take the drop
+just ends the drag.
+
+**Leaving the window** hands the same set over to the native OS drag (XDND on
+Linux, OLE `DoDragDrop` on Windows), so it can be dropped on any other
+application — an external file manager, an editor, another window of this
+application, … There the drop target performs the copy or move itself; when it
 reports a move the source folder is rescanned automatically. During that part
 of the drag the cursor shows whether the target accepts a copy or a move (hold
-Shift to suggest a move) and Escape cancels.
+Shift to suggest a move on Linux, Ctrl/Shift on Windows) and Escape cancels.
+On a platform with no native drag implementation (currently macOS) the
+window-wide drag simply keeps running instead of being dropped, so the gesture
+is never lost — it just cannot reach another application there.
+
+### Drag overlay
+
+The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
+window-level hook for content that has to be visible above every element:
+
+```cpp
+window->SetDragOverlay(this, badgeRectInWindowCoords,
+        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+...
+window->ClearDragOverlay(this);   // when the gesture ends
+```
+
+Setting it again moves it (both the rectangle it leaves and the one it enters
+are repainted), the first owner keeps it until it clears it, and the renderer
+draws in window coordinates.
 
 A drag **never changes the selection**: what a plain press would select is
 applied on the release instead, so dragging a file does not fire

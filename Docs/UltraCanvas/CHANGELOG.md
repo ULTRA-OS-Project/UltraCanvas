@@ -1,25 +1,103 @@
+#### 2026-08-09 *0.3.36*
+- **UltraCanvasFilerWidget** *(1.13.0)*: content previews are now **selectable
+  per file kind**. The context menu grew a `Display > Preview` submenu with a
+  checkbox for each of Bitmaps, Vector graphics, 3D, PDF, Text, Docs,
+  Spreadsheets and Videos — all enabled by default — mirrored in code by
+  `SetPreviewType()` / `SetPreviewTypes(mask)` / `IsPreviewTypeEnabled()` /
+  `GetPreviewTypes()` over the new `FilerPreviewType` bitmask. Switching a kind
+  off drops its entries back to the plain type glyph immediately *and* stops
+  the widget from opening those files at all, which is what makes a folder of
+  huge photos, videos or PDFs on a slow volume browsable.
+  Three kinds gained a real preview producer, all running on the existing
+  viewport-driven thumbnail workers so no preview ever blocks a frame:
+  **PDF** files render their first page through the PDF plugin (outlined as a
+  sheet of paper, since a page is white on a white widget), **STL** models are
+  rasterized in software as a shaded three-quarter view (the GL viewer needs a
+  window and a current context, which a background decode has neither of), and
+  **text, documents and spreadsheets** preview as a miniature page of their own
+  content — plain text and source code read directly, HTML stripped of its
+  tags, RTF of its control words, ODT / DOC / DOCX through the shared
+  rich-document reader, and ODS / XLSX / CSV / TSV laid out as a cell grid.
+  Page-shaped previews are only drawn from roughly a 40 px box up, so the icon
+  column of a Details or List row keeps its glyph and a folder listing does not
+  read every document in it. `FilerFileCategory` gained `Model3D` and the type
+  map learned the common 3D extensions (stl, obj, ply, 3ds, 3mf, gltf, glb,
+  dae, fbx) plus `tsv`, so those files sort and colour as models / text instead
+  of "File".
+
+#### 2026-08-08 *0.3.35*
+- Change Linux packager script, drop .appimage
+- Change GitHub build to produce package with all dependent libs
+
 #### 2026-08-08 *0.3.34*
-- **UltraCanvasTreeView** *(1.1.0)*: long trees now offer a floating "move to
-  the top" button in the bottom-right corner of the content area. Walking a
-  fully expanded tree back to its root previously meant a long wheel-spin or a
-  scrollbar drag, and the tree had no shortcut of its own. The button appears
-  once the view has been scrolled down and *more than* three rows are outside
-  the visible area (so a tree that overflows by a row or two never grows one,
-  and a tree sitting at its first row never offers a no-op jump). It sits to
-  the left of the vertical scrollbar, and slides up as the view nears the end of
-  the list so it never covers the last three rows. Clicking it jumps back to the
-  first row — animated
-  when the scrollbar has smooth scrolling on — and the click is consumed, so the
-  row underneath is neither selected nor expanded. The feature is on by default
-  and switched off per tree with `SetShowScrollToTopButton(false)`; size,
-  margin, colours and both row thresholds are configurable through
-  `TreeScrollToTopStyle`. `UltraCanvasColumnsTreeView` inherits it, placed below
-  its optional column-header band and kept clear of the column-resize handles.
-  The new public `ScrollToTop()` performs the same jump from code. The DemoApp's
-  Multi-Selection TreeView example grew enough rows to overflow, plus a checkbox
-  that toggles the button.
+- **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget
+  again. The drag was handed to the native OS drag the moment the cursor
+  crossed the widget's border, and that is where it visibly died: the badge is
+  drawn by the widget and therefore clipped to it, the OS drag draws nothing of
+  its own while the cursor is still over the application's own window (XDND
+  refuses a drop back onto the window that started it), and on Windows and
+  macOS `StartNativeFileDrag()` had no implementation at all, so the gesture
+  was dropped on the floor. Crossing the border now keeps the drag running: the
+  badge travels over the whole window on the new window drag overlay, a release
+  over another element hands it the files as a `Drop` event (a second Filer
+  pane, a folder tree, any drop-aware widget), and only leaving the *window*
+  turns the set into the native OS drag. A platform without one keeps the
+  window-wide drag alive instead of losing the gesture.
+- **UltraCanvasWindowBase** *(2.2.0)*: new `SetDragOverlay(owner, windowRect,
+  renderer)` / `ClearDragOverlay(owner)` — window-level content painted above
+  every element, for widgets that drag something across the whole window and
+  cannot paint outside their own bounds. Moving it repaints the rectangle it
+  leaves and the one it enters; the first owner keeps it until it clears it.
+- **Windows backend**: native file drags out of a window are implemented
+  (`UltraCanvasWindowsWindow::StartNativeFileDrag`) with a CF_HDROP
+  `IDataObject` plus an `IDropSource` driven by `DoDragDrop`, the counterpart of
+  the `IDropTarget` that was already there. Files can now be dragged from a
+  Filer widget into Explorer or any other application, and the accepted effect
+  (copy / move) is reported back so a move rescans the source folder. macOS
+  still has no drag-and-drop backend in either direction.
+- **UCTextLayout** *(1.1.2)*: a `TextWrap::WrapNone` layout no longer wraps onto
+  a second line when it is also given an explicit height. Pango has no "never
+  wrap" flag — a no-wrap layout is one that Pango is told to ellipsize, and the
+  layout *height* decides when that kicks in: `-1` (the default) means "ellipsize
+  the first line of each paragraph", but a positive height means "ellipsize once
+  that many pixels are used up", so a box two lines tall lets the text word-wrap
+  once before anything is ellipsized. Widgets set an explicit height purely to
+  centre the glyphs vertically (`VerticalAlignment::Middle`), which silently
+  turned single-line text into two lines whenever the box was at least twice the
+  line height. `SetExplicitHeight` now keeps that value for the vertical
+  alignment maths only and leaves Pango's own height at `-1` while the layout is
+  in no-wrap mode; `SetWrap` re-applies it, since it may be called after the
+  height is set. `GetExplicitHeight` reports the requested height rather than
+  Pango's.
+- **UltraCanvasBreadcrumb / UltraCanvasLabel**: fixed as a result — the filer's
+  and media viewer's path strips kept long folder names such as
+  `UCDemo-Windows-0.3.24-x86_64 (1)` on one ellipsized line instead of breaking
+  them at the space and drawing two cramped lines inside a one-line strip.
+  Whether the break happened depended on the exact font line height against the
+  strip's height, which is why it showed on Windows and not on Linux. Long names
+  are still capped at `BreadcrumbStyle::maxItemTextWidth` (200px by default; set
+  it to `0` for no per-item limit).
 
 #### 2026-08-08 *0.3.33*
+- **UltraFiler — Extras > Open prompt**: a new menu bar entry starts the
+  operating system's command line program in the folder of the active tab.
+  The launch lives in `Apps/UltraFiler/UltraFilerPrompt` *(1.0.0)*, which
+  detaches the process (`fork` + `setsid` + `execvp` behind a reaped
+  intermediate child on POSIX, `ShellExecuteExW` on Windows), so closing the
+  file manager never takes the terminal with it and no zombie is left behind.
+  Without configuration the platform default is detected at run time:
+  `%COMSPEC%` on Windows, Terminal.app (started with `open -a <bundle>
+  <folder>`) on macOS, `$TERMINAL` or the first installed terminal emulator on
+  Linux; when nothing is found the failure is reported in an alert instead of
+  silently doing nothing.
+- **UltraFiler — settings**: the settings window gained an *Extras > Open
+  prompt* page holding the application that menu entry starts
+  (`extras.prompt.application` in the config file). The folder button next to
+  the path field opens the file dialog filtered to this platform's
+  applications, **Save app** persists the chosen program, **Use system
+  default** clears the setting again and **Test** starts the program in the
+  field to check the path. The dialog's buttons now come from one
+  `MakeButton` helper instead of per-button styling.
 - **UltraCanvasCircleDiagram** *(1.0.0)*: new hub-and-spoke circle diagram
   infographic — a centre hub, a backbone ring, and equally sized labelled node
   discs threaded onto that ring, each with a fan of satellites on leader lines.
@@ -46,6 +124,7 @@
   `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`, survey and roadmap in
   `Docs/UltraCanvas/CircleDiagramInfographicVariants.md`, demo scene in
   `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`.
+
 #### 2026-08-08 *0.3.32*
 - **Version numbers** are now derived from the changelogs at build time, so the
   version the demo app's info window shows can no longer disagree with the

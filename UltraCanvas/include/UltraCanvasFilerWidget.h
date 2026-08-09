@@ -44,8 +44,12 @@
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
-// Version: 1.11.0
-// Last Modified: 2026-08-08
+// Which file kinds show a real content preview instead of their type glyph is
+// selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
+// Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
+// expensive files can be browsed with only the cheap previews switched on.
+// Version: 1.13.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,6 +60,7 @@
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <ctime>
@@ -137,6 +142,7 @@ namespace UltraCanvas {
         Folder,
         Image,
         Vector,
+        Model3D,       // 3D models (stl, obj, ply, gltf, ...)
         Audio,
         Video,
         Document,
@@ -146,6 +152,33 @@ namespace UltraCanvas {
         Executable,
         Other
     };
+
+    // ===== PREVIEWABLE FILE KINDS =====
+    // Which kinds of file are shown with a real content preview — a thumbnail
+    // rendered from the file itself — instead of the generic type glyph.
+    // Combine as a bitmask; the Display > Preview submenu toggles them and
+    // every kind is enabled by default. Switching one off makes its entries
+    // fall back to the type glyph immediately (and stops the widget from
+    // reading those files at all), which is what makes browsing a folder of
+    // huge photos, videos or PDFs on a slow volume bearable.
+    //
+    // The kinds are grouped by what the preview costs to produce, not by
+    // FilerFileCategory: PDF is split out of Documents because it renders a
+    // page, and CSV / TSV count as Spreadsheets because they preview as a
+    // cell grid (their file category stays Text).
+    enum class FilerPreviewType : uint32_t {
+        NonePreview    = 0,
+        Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
+        VectorGraphics = 1u << 1,   // svg / eps / cdr / xar
+        Models3D       = 1u << 2,   // stl (rendered), other 3D formats
+        PDF            = 1u << 3,   // first page of the document
+        Text           = 1u << 4,   // txt / log / json / xml / source code / ...
+        Docs           = 1u << 5,   // odt / doc / docx / rtf / md / html / tex
+        Spreadsheets   = 1u << 6,   // ods / xls / xlsx / csv / tsv
+        Videos         = 1u << 7    // poster frame of the clip
+    };
+    // Every previewable kind — the default of SetPreviewTypes().
+    constexpr uint32_t kFilerAllPreviewTypes = 0xFFu;
 
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
@@ -316,6 +349,13 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
+        // Background pre-scan of the shown folder's subfolders (one level), so
+        // entering one shows its content from memory instead of waiting for a
+        // cold directory scan. On by default; turning it off drops the cache
+        // and queue. See the FOLDER LISTING PREFETCH section for freshness.
+        void SetFolderPrefetchEnabled(bool enabled);
+        bool IsFolderPrefetchEnabled() const { return folderPrefetchEnabled; }
+
         // "Compressed thumbnails": hold finished thumbnails QOI-compressed in
         // memory (roughly 3-4x smaller for photos) instead of as raw ARGB32
         // pixmaps. Tiles being drawn are decompressed on demand into a small
@@ -398,6 +438,22 @@ namespace UltraCanvas {
         void SetDatasetFields(uint32_t mask);
         uint32_t GetDatasetFields() const { return datasetFields; }
 
+        // ===== SELECTIVE PREVIEWS =====
+        // Which file kinds get a content preview instead of their type glyph
+        // (Display > Preview). All kinds are on by default. Switching a kind
+        // off repaints its entries with the type glyph and stops the widget
+        // from opening those files for a preview at all; switching it back on
+        // re-uses whatever is still cached and decodes the rest in the
+        // background as usual.
+        void SetPreviewType(FilerPreviewType type, bool on);
+        bool IsPreviewTypeEnabled(FilerPreviewType type) const;
+        void SetPreviewTypes(uint32_t mask);
+        uint32_t GetPreviewTypes() const { return previewTypes; }
+        // The preview kind an entry belongs to, or NonePreview for entries
+        // that never carry a content preview (folders, audio, archives,
+        // programs, unknown types).
+        static FilerPreviewType PreviewTypeOf(const FilerEntry& e);
+
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
 
@@ -450,6 +506,11 @@ namespace UltraCanvas {
         // ===== DATA ACCESS =====
         const std::vector<FilerEntry>& GetEntries() const { return entries; }
         std::vector<FilerEntry> GetSelectedEntries() const;
+        // The selected indices into GetEntries(), copy-free. Prefer this over
+        // GetSelectedEntries() for per-event or per-frame inspection — the
+        // latter copies every selected FilerEntry (eight strings each), which
+        // for a Select All in a large folder is the whole listing.
+        const std::vector<size_t>& GetSelectionIndices() const { return selection; }
         void ClearSelection();
         void SelectAll();
         // Makes `path` the only selected entry and scrolls it into view, as a
@@ -590,16 +651,17 @@ namespace UltraCanvas {
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
         uint32_t datasetFields = 0;
+        // Bitmask of FilerPreviewType values that may show a content preview.
+        uint32_t previewTypes = kFilerAllPreviewTypes;
         FilerStyle style;
 
-        // Natural aspect ratio (width / height) of raster image entries, keyed
-        // by file path, filled lazily from image headers (ProbeImageDimensions,
-        // no decode) for the thumbnail-row shrinking. 0 = probed but has no
-        // usable dimensions (treated as full-height); absent = not yet probed.
-        // Cleared on rescan.
-        std::unordered_map<std::string, float> aspectCache;
-
         std::vector<size_t> selection;            // indices into `entries`
+        // Selection membership as one flag per entry, rebuilt at the top of
+        // each paint: the draw functions ask "is this item selected?" once per
+        // drawn item, and answering with std::find over `selection` made a
+        // repaint O(visible × selected) — after Select All in a big folder
+        // every hover-move crawled.
+        std::vector<uint8_t> frameSelected;
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
         // SetSelectNextAfterDelete: when a delete takes the whole selection
@@ -752,9 +814,17 @@ namespace UltraCanvas {
         //   * inside the widget the drag is drawn here (a badge under the
         //     cursor, the folder below it highlighted) and a drop on a folder
         //     of the view moves the files into it (Ctrl drops a copy);
-        //   * once the cursor leaves the widget the same set is handed to the
-        //     native OS drag (window->StartNativeFileDrag), where the drop
+        //   * crossing the widget's border does NOT end the drag: the badge
+        //     keeps following the cursor over the rest of the window (drawn
+        //     through the window's drag overlay, since a widget cannot paint
+        //     outside its own bounds) and a release over another element hands
+        //     the files to it as a Drop event — that is how a file reaches a
+        //     folder tree or a second filer pane of the same window;
+        //   * only when the cursor leaves the WINDOW is the same set handed to
+        //     the native OS drag (window->StartNativeFileDrag), where the drop
         //     target performs the copy / move and a move refreshes this view.
+        //     Platforms without a native drag keep the window-wide drag alive
+        //     instead of dropping the gesture (dragNativeRefused).
         // Dragging never changes the selection: what a press would select is
         // deferred to the release (see pendingSelectIndex / dragCollapseIndex),
         // so dragging a file does not fire onSelectionChanged and does not
@@ -770,6 +840,14 @@ namespace UltraCanvas {
         std::string dragLabel;             // badge text ("photo.png" / "5 items")
         FilerEntry  dragLeadEntry;         // drives the badge icon / thumbnail
         int  dragDropFolderIndex = -1;     // folder highlighted under the cursor
+        // Badge size, measured once when the drag starts (the label does not
+        // change while it runs) so every move only has to place it.
+        Size2Di dragBadgeSize;
+        bool dragOverlayShown = false;     // badge registered with the window
+        // The native drag was offered the set and refused it (no window, no
+        // implementation on this platform, grab denied): don't ask again for
+        // the rest of this gesture, keep drawing the drag instead.
+        bool dragNativeRefused = false;
         // Press on an already-selected item keeps the (multi-)selection so it
         // can be dragged; the usual "select only this item" collapse is
         // deferred to the release and recorded here (-1 = nothing deferred).
@@ -887,6 +965,47 @@ namespace UltraCanvas {
         // Swaps thumbFrameWants into the worker queue and forgets pending
         // slots that fell out of the visible + prefetch bands.
         void CommitThumbnailWants();
+        // True when `e` may show a content preview right now: it belongs to a
+        // preview kind and that kind is enabled in previewTypes.
+        bool PreviewEnabledFor(const FilerEntry& e) const;
+        // True when a preview of `e` is worth drawing in a box that size. A
+        // page-shaped preview (PDF, 3D model, text page) needs a tile; in the
+        // icon column of a Details / List row it would be an indistinct
+        // smudge, so those rows keep the type glyph.
+        static bool PreviewFitsRect(const FilerEntry& e, const Rect2Di& rect);
+
+        // ===== TEXT-CONTENT PREVIEWS (Text / Docs / Spreadsheets) =====
+        // Text-shaped files have no image to decode, so their preview is the
+        // beginning of their own content drawn as a miniature page: the first
+        // lines for text and documents, the first cells as a grid for
+        // spreadsheets. Reading and un-wrapping the file (plain text, the
+        // XML inside an ODF / OOXML package, tags stripped from HTML) happens
+        // on the same background workers as the image decodes; the draw pass
+        // only ever consumes a finished snippet and paints the type glyph
+        // until then.
+        struct TextPreviewSnippet {
+            std::vector<std::string> lines;   // first lines, already trimmed
+            bool tabular = false;             // cells are '\t'-separated
+        };
+        enum class TextPreviewState { Pending, Ready, Failed };
+        struct TextPreviewSlot {
+            TextPreviewState state = TextPreviewState::Pending;
+            TextPreviewSnippet snippet;
+        };
+        std::unordered_map<std::string, TextPreviewSlot> textSlots;  // by path
+        std::deque<std::string> textQueue;             // paths to read
+        std::vector<std::string> textFrameWants;       // UI thread, per frame
+        std::unordered_set<std::string> textPathsInFlight;
+
+        // Copies the finished snippet into `out` and returns true; returns
+        // false (draw the glyph) after queueing a background read, while one
+        // runs, or when the file has no readable text.
+        bool AcquireTextPreview(const FilerEntry& e, TextPreviewSnippet& out);
+        // Swaps textFrameWants into the worker queue, like the thumbnails.
+        void CommitTextPreviewWants();
+        // Draws a snippet as a miniature page (or cell grid) inside `rect`.
+        void DrawTextPreview(IRenderContext* ctx, const Rect2Di& rect,
+                             const TextPreviewSnippet& snippet);
 
         // ===== ASYNC FOLDER STATS =====
         // Recursive folder statistics feed the selection info bar (content
@@ -908,12 +1027,43 @@ namespace UltraCanvas {
         };
         std::map<std::string, FolderStats> folderStatsCache; // by folder path
         std::deque<std::string> statsQueue;                  // paths to walk
-        std::mutex statsMutex;              // guards cache/queue/generation
+
+        // Natural aspect ratio (width / height) of raster image entries, keyed
+        // by file path, read from image headers (ProbeImageDimensions, no
+        // decode) for the thumbnail-row shrinking. 0 = no usable dimensions or
+        // not probed yet (both mean "full height"); an entry present with 0 is
+        // also the marker that its probe is already queued. Cleared on rescan.
+        // Filled by the same worker as the folder stats: the grid layout asks
+        // for every entry of the folder, and opening one file per image on the
+        // UI thread is what made a folder of photos take seconds to appear.
+        std::unordered_map<std::string, float> aspectCache;
+        std::deque<std::string> aspectQueue;                 // headers to read
+
+        // "Extra info" of a media file — image dimensions, audio / video
+        // duration + codec — shown in the info bar and the thumbnail dataset
+        // lines. Probing means opening the file (and for exotic image
+        // containers decoding it), so like the aspects it runs on the worker:
+        // EntryExtraInfo() returns the cached text, or "" after queueing the
+        // probe (ready == false marks the pending slot so it queues once).
+        struct MediaInfoSlot {
+            std::string text;
+            bool ready = false;
+        };
+        struct MediaProbeRequest {
+            std::string path;
+            std::string extension;
+            bool isImage = false;    // image dimensions vs. media duration
+        };
+        std::unordered_map<std::string, MediaInfoSlot> mediaInfoCache;
+        std::deque<MediaProbeRequest> mediaQueue;
+
+        std::mutex statsMutex;              // guards caches/queues/generation
         std::condition_variable statsCond;
         std::thread statsWorker;
         bool statsShutdown = false;
         uint64_t statsGeneration = 0;       // bumped to drop stale results
         std::atomic<bool> statsRedrawPosted{false};
+        std::atomic<bool> aspectsChanged{false};  // a probe changed a row height
 
         // Non-blocking: returns the cached stats, or a pending placeholder
         // (ready == false) after queueing a background walk of `path`.
@@ -923,8 +1073,6 @@ namespace UltraCanvas {
         void FolderStatsWorkerMain();
         void PostFolderStatsRedraw();
 
-        mutable std::map<std::string, std::string> mediaInfoCache;  // path -> extra info
-
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
 
         // Filer clipboard shared across instances (paths + cut flag).
@@ -932,13 +1080,61 @@ namespace UltraCanvas {
         static bool clipboardCut;
 
         // ===== SCANNING =====
-        void ScanFolder();
+        // usePrefetched: serve the listing from the prefetch cache when a
+        // fresh one is there (SetPath navigations). Refresh and the file-list
+        // display always rescan — after a file operation the cache is exactly
+        // what must not be shown.
+        void ScanFolder(bool usePrefetched = false);
+        // The raw listing of a real directory: one readdir plus one stat per
+        // entry, no widget state touched — runs on the prefetch worker as well
+        // as the UI thread. With includeHidden the hidden entries are listed
+        // too (flagged), so a prefetched listing can serve either setting.
+        void ScanRealDirectory(const std::string& path, bool includeHidden,
+                               std::vector<FilerEntry>& out) const;
         // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
         void ApplyEntryTypeInfo(FilerEntry& e) const;
+
+        // ===== FOLDER LISTING PREFETCH =====
+        // After a folder settles, a low-priority worker pre-scans its visible
+        // subfolders (one level) so entering one serves the listing from
+        // memory instead of a cold directory scan — the win is largest on
+        // network volumes and spinning disks. A short grace delay keeps quick
+        // successive navigations from triggering wasted scans, and each batch
+        // is dropped the moment the user navigates again (generation bump).
+        // Freshness on use: the cached listing must be younger than
+        // kPrefetchMaxAgeSec AND the directory's mtime must be unchanged;
+        // anything else falls back to a normal scan. Oversized listings are
+        // scanned but not stored — the scan still warms the OS metadata
+        // cache, so the real scan on entry is fast anyway.
+        struct PrefetchedListing {
+            std::vector<FilerEntry> entries;   // raw listing, hidden included
+            std::time_t dirMtime = 0;          // dir mtime when scanned
+            std::chrono::steady_clock::time_point when;  // scan time
+        };
+        std::map<std::string, PrefetchedListing> prefetchCache;
+        std::deque<std::string> prefetchLru;   // insertion order for eviction
+        size_t prefetchCachedEntries = 0;      // entries held across the cache
+        std::deque<std::string> prefetchQueue; // folders to pre-scan
+        std::mutex prefetchMutex;
+        std::condition_variable prefetchCond;
+        std::thread prefetchWorker;
+        bool prefetchShutdown = false;
+        uint64_t prefetchGeneration = 0;       // bumped per navigation
+        bool folderPrefetchEnabled = true;
+
+        // Refills the queue with the current listing's subfolders.
+        void QueueFolderPrefetch();
+        // Moves a fresh cached listing of `path` into `out` (and drops it from
+        // the cache either way); false = miss or stale, scan normally.
+        bool TakePrefetchedListing(const std::string& path,
+                                   std::vector<FilerEntry>& out);
+        void StartFolderPrefetchWorkerLocked();
+        void StopFolderPrefetchWorker();
+        void FolderPrefetchWorkerMain();
 
         // ===== LAYOUT =====
         void InvalidateFilerLayout() { layoutValid = false; }
@@ -1047,9 +1243,14 @@ namespace UltraCanvas {
                                     std::string& secondary);
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
-        std::string EntryExtraInfo(const FilerEntry& e) const;
+        std::string EntryExtraInfo(const FilerEntry& e);
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
+        // Plain cut to a width, without the "…" — for the cells of a
+        // spreadsheet preview, where a column is only a few characters wide
+        // and the ellipsis would be the only thing left of the value.
+        std::string TruncateTextToWidth(IRenderContext* ctx, const std::string& text,
+                                        int maxWidth) const;
         // Ellipsizes an entry's name for the space it is drawn in and records
         // whether it had to be shortened, so the hover tooltip only pops for
         // names that are actually cut off.
@@ -1082,7 +1283,7 @@ namespace UltraCanvas {
 
         // Thumbnail dataset lines (Display > Dataset): the formatted values of
         // the enabled fields that apply to this entry, top to bottom.
-        std::vector<std::string> DatasetLinesFor(const FilerEntry& e) const;
+        std::vector<std::string> DatasetLinesFor(const FilerEntry& e);
         // How many enabled dataset fields there are — the number of caption
         // lines reserved per tile so the grid stays aligned across file kinds.
         int  DatasetLineCount() const;
@@ -1147,11 +1348,13 @@ namespace UltraCanvas {
         // Picks up the pressed item (or the selection containing it) and runs
         // the in-widget drag; the pointer stays captured for its duration.
         void BeginItemDrag(const Point2Di& localPoint);
-        // Tracks the cursor: highlights the folder under it and hands the drag
-        // over to the native OS drag once the cursor leaves the widget.
+        // Tracks the cursor: highlights the folder under it, keeps the badge
+        // following it across the whole window and hands the drag over to the
+        // native OS drag once the cursor leaves the window.
         void UpdateItemDrag(const Point2Di& localPoint);
         // Drop: files land in the highlighted folder (moved, or copied when
-        // `copy`); a drop anywhere else is a no-op.
+        // `copy`); a release over another element of the window hands them to
+        // it, and a drop on nothing simply ends the drag.
         void FinishItemDrag(const Point2Di& localPoint, bool copy);
         void CancelItemDrag();             // Escape / lost pointer
         void EndDragGesture();             // clears the armed / running state
@@ -1162,8 +1365,26 @@ namespace UltraCanvas {
         // Folder entry under a widget-local point that the running drag may be
         // dropped on (never one of the dragged items), or -1.
         int  DragDropFolderAt(const Point2Di& localPoint) const;
-        // Drop-folder highlight + the badge that follows the cursor.
+        // Drop-folder highlight (the badge is drawn by the window overlay).
         void DrawDragFeedback(IRenderContext* ctx, const Rect2Di& bounds);
+        // ----- drag badge (window overlay, so it survives the widget border) -
+        // Widget-local → window coordinates.
+        Point2Di ToWindowPoint(const Point2Di& localPoint) const;
+        // Is a window-coordinate point still on the window's client area?
+        bool IsInsideWindow(const Point2Di& windowPoint) const;
+        // Measures dragLabel into dragBadgeSize (once per gesture).
+        void MeasureDragBadge();
+        // Badge rectangle for a cursor position, kept inside the window.
+        Rect2Di DragBadgeRect(const Point2Di& windowPoint) const;
+        // (Re)places the badge overlay on the window / takes it down again.
+        void UpdateDragOverlay(const Point2Di& localPoint);
+        void HideDragOverlay();
+        // Paints the badge; `badgeRect` is in window coordinates.
+        void DrawDragBadge(IRenderContext* ctx, const Rect2Di& badgeRect);
+        // Release over another element of the same window: the files are
+        // offered to it as a Drop event, exactly like an external drop.
+        void DeliverInWindowDrop(const Point2Di& windowPoint,
+                                 const std::vector<std::string>& paths);
         // Starts the native OS drag of the current selection (drag-out).
         bool StartNativeDragOfSelection();
         // Starts the native OS drag of an explicit file set.

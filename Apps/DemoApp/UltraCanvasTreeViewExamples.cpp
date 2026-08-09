@@ -40,7 +40,7 @@ namespace UltraCanvas {
         fileTree->AddNode("root", driveC);
 
         TreeNodeData documents("documents", "Documents");
-        documents.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
+        documents.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
         fileTree->AddNode("drive_c", documents);
 
         TreeNodeData file1("file1", "Document.txt");
@@ -48,7 +48,7 @@ namespace UltraCanvas {
         fileTree->AddNode("documents", file1);
 
         TreeNodeData pictures("pictures", "Pictures");
-        pictures.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
+        pictures.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
         fileTree->AddNode("drive_c", pictures);
 
         fileTree->onNodeSelected = [](TreeNode* node) {

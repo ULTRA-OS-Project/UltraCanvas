@@ -452,7 +452,7 @@ build_app_bundle() {
     local category="$5"
     local extra_plist="$6"
 
-    local exe_path="$BUILD_DIR/bin/$exe_name"
+    local exe_path="$BUILD_DIR/$exe_name"
     if [ ! -f "$exe_path" ]; then
         echo "Warning: Executable not found: $exe_path (skipping $display_name)"
         return 1
