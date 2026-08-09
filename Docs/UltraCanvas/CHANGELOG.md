@@ -24,6 +24,18 @@
 - Docs: `Docs/Modules/UltraNet/ApiStatus.md` documents the statuses, the
   options, how each area is verified and how to add a probe; both UltraNet
   READMEs point at it from their Status sections.
+- **UltraNet**: the macOS TLS backend now honours custom trust anchors —
+  found by the status tool's first CI run, whose trust-store probes came back
+  BROKEN on macOS. `OS/MacOS/UltraNetTlsImpl.mm` stored the global CA bundle
+  and `UltraNet_TlsAddTrustedCert` PEMs but `VerifyPeer` evaluated the peer
+  against the system keychain only, so `UltraNet_TlsSetCABundle` /
+  `UltraNet_TlsAddTrustedCert` (and the per-wrap
+  `UltraNetTlsOptions::caBundlePath`, equally unread) were silently ignored.
+  Wrap now parses the resolved PEMs into `SecCertificateRef` anchors and
+  `VerifyPeer` applies them via `SecTrustSetAnchorCertificates`; a CA bundle
+  replaces the system roots (matching the OpenSSL backend's
+  `SSL_CTX_load_verify_locations` semantics) while added PEMs alone extend
+  them (`SecTrustSetAnchorCertificatesOnly(false)`).
 
 #### 2026-08-09 *0.3.36*
 - **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole

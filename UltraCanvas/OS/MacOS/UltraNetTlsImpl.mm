@@ -49,6 +49,13 @@ struct Ctx {
     bool          verifyPeer        = true;
     bool          verifyHost        = true;
     std::string   sni;
+    // Custom trust anchors resolved at Wrap time from the per-call CA bundle,
+    // the global bundle, and any UltraNet_TlsAddTrustedCert PEMs. When
+    // anchorsOnly is true the bundle REPLACES the system roots (mirroring the
+    // OpenSSL backend, where a caBundlePath supersedes the default paths);
+    // otherwise the anchors extend them.
+    CFArrayRef    anchors     = nullptr;
+    bool          anchorsOnly = false;
 };
 
 OSStatus SocketRead(SSLConnectionRef connection, void* data, size_t* dataLen) {
@@ -144,6 +151,98 @@ std::string Sha256Fingerprint(SecCertificateRef cert) {
     return out;
 }
 
+// Minimal base64 decoder for PEM bodies (whitespace tolerated). Local so this
+// file keeps its CoreFoundation-only footprint (no Foundation import).
+bool Base64DecodePem(const std::string& text, std::vector<uint8_t>& out) {
+    out.clear();
+    int table[256];
+    for (int i = 0; i < 256; ++i) table[i] = -1;
+    const char* alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (int i = 0; i < 64; ++i) table[static_cast<unsigned char>(alphabet[i])] = i;
+
+    uint32_t acc = 0;
+    int      bits = 0;
+    for (char ch : text) {
+        if (ch == '=' ) break;
+        const int v = table[static_cast<unsigned char>(ch)];
+        if (v < 0) continue;                       // whitespace / line breaks
+        acc = (acc << 6) | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((acc >> bits) & 0xff));
+        }
+    }
+    return !out.empty();
+}
+
+// Parses every CERTIFICATE block in `pem` into SecCertificateRefs (DER via
+// SecCertificateCreateWithData). Caller owns the returned refs.
+void AppendPemCertificates(const std::string& pem,
+                           std::vector<SecCertificateRef>& out) {
+    static const char* kBegin = "-----BEGIN CERTIFICATE-----";
+    static const char* kEnd   = "-----END CERTIFICATE-----";
+    std::size_t pos = 0;
+    for (;;) {
+        const std::size_t b = pem.find(kBegin, pos);
+        if (b == std::string::npos) break;
+        const std::size_t bodyStart = b + std::strlen(kBegin);
+        const std::size_t e = pem.find(kEnd, bodyStart);
+        if (e == std::string::npos) break;
+        pos = e + std::strlen(kEnd);
+
+        std::vector<uint8_t> der;
+        if (!Base64DecodePem(pem.substr(bodyStart, e - bodyStart), der)) continue;
+        CFDataRef data = CFDataCreate(nullptr, der.data(),
+                                      static_cast<CFIndex>(der.size()));
+        if (!data) continue;
+        SecCertificateRef cert = SecCertificateCreateWithData(nullptr, data);
+        CFRelease(data);
+        if (cert) out.push_back(cert);
+    }
+}
+
+std::string ReadWholeFile(const std::string& path) {
+    if (path.empty()) return {};
+    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    if (!fp) return {};
+    std::string out;
+    char buf[4096];
+    std::size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, fp)) > 0) out.append(buf, n);
+    std::fclose(fp);
+    return out;
+}
+
+// Builds the Ctx anchor set from the per-call options plus the global trust
+// state. Returns a CFArray of SecCertificateRefs (retained by the array) or
+// nullptr when no custom trust is configured.
+CFArrayRef BuildAnchors(const UltraNetTlsOptions& opt, bool& outAnchorsOnly) {
+    std::string bundlePath = opt.caBundlePath;
+    std::string extraPem;
+    {
+        std::lock_guard<std::mutex> lk(g_globalMutex);
+        if (bundlePath.empty()) bundlePath = g_globalCaBundle;
+        extraPem = g_globalExtraPem;
+    }
+    std::vector<SecCertificateRef> certs;
+    AppendPemCertificates(ReadWholeFile(bundlePath), certs);
+    AppendPemCertificates(extraPem, certs);
+    if (certs.empty()) {
+        outAnchorsOnly = false;
+        return nullptr;
+    }
+    // A bundle replaces the system roots; extra PEMs alone extend them.
+    outAnchorsOnly = !bundlePath.empty();
+
+    CFArrayRef arr = CFArrayCreate(
+        nullptr, reinterpret_cast<const void**>(certs.data()),
+        static_cast<CFIndex>(certs.size()), &kCFTypeArrayCallBacks);
+    for (SecCertificateRef c : certs) CFRelease(c);   // array retains
+    return arr;
+}
+
 OSStatus VerifyPeer(Ctx* c) {
     SecTrustRef trust = nullptr;
     OSStatus s = SSLCopyPeerTrust(c->ssl, &trust);
@@ -164,6 +263,12 @@ OSStatus VerifyPeer(Ctx* c) {
             }
             CFRelease(host);
         }
+    }
+    // Custom trust: this is where UltraNet_TlsSetCABundle /
+    // UltraNet_TlsAddTrustedCert (and the per-call caBundlePath) take effect.
+    if (c->anchors) {
+        SecTrustSetAnchorCertificates(trust, c->anchors);
+        SecTrustSetAnchorCertificatesOnly(trust, c->anchorsOnly);
     }
     CFErrorRef err = nullptr;
     bool ok = SecTrustEvaluateWithError(trust, &err);
@@ -220,6 +325,7 @@ UltraNetResult Wrap(std::intptr_t fd,
     c->verifyPeer = opt.verifyPeer;
     c->verifyHost = opt.verifyHostname;
     c->sni        = sniHost;
+    c->anchors    = BuildAnchors(opt, c->anchorsOnly);
     *outCtx = c;
     return UltraNetResult::Ok();
 }
@@ -317,6 +423,7 @@ void Close(void* ctx) {
         if (c->handshakeComplete) SSLClose(c->ssl);
         CFRelease(c->ssl);
     }
+    if (c->anchors) CFRelease(c->anchors);
     delete c;
 }
 
