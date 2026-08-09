@@ -44,6 +44,10 @@
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
+// Which file kinds show a real content preview instead of their type glyph is
+// selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
+// Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
+// expensive files can be browsed with only the cheap previews switched on.
 // Version: 1.13.0
 // Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
@@ -139,6 +143,7 @@ namespace UltraCanvas {
         Folder,
         Image,
         Vector,
+        Model3D,       // 3D models (stl, obj, ply, gltf, ...)
         Audio,
         Video,
         Document,
@@ -148,6 +153,33 @@ namespace UltraCanvas {
         Executable,
         Other
     };
+
+    // ===== PREVIEWABLE FILE KINDS =====
+    // Which kinds of file are shown with a real content preview — a thumbnail
+    // rendered from the file itself — instead of the generic type glyph.
+    // Combine as a bitmask; the Display > Preview submenu toggles them and
+    // every kind is enabled by default. Switching one off makes its entries
+    // fall back to the type glyph immediately (and stops the widget from
+    // reading those files at all), which is what makes browsing a folder of
+    // huge photos, videos or PDFs on a slow volume bearable.
+    //
+    // The kinds are grouped by what the preview costs to produce, not by
+    // FilerFileCategory: PDF is split out of Documents because it renders a
+    // page, and CSV / TSV count as Spreadsheets because they preview as a
+    // cell grid (their file category stays Text).
+    enum class FilerPreviewType : uint32_t {
+        NonePreview    = 0,
+        Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
+        VectorGraphics = 1u << 1,   // svg / eps / cdr / xar
+        Models3D       = 1u << 2,   // stl (rendered), other 3D formats
+        PDF            = 1u << 3,   // first page of the document
+        Text           = 1u << 4,   // txt / log / json / xml / source code / ...
+        Docs           = 1u << 5,   // odt / doc / docx / rtf / md / html / tex
+        Spreadsheets   = 1u << 6,   // ods / xls / xlsx / csv / tsv
+        Videos         = 1u << 7    // poster frame of the clip
+    };
+    // Every previewable kind — the default of SetPreviewTypes().
+    constexpr uint32_t kFilerAllPreviewTypes = 0xFFu;
 
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
@@ -407,6 +439,22 @@ namespace UltraCanvas {
         void SetDatasetFields(uint32_t mask);
         uint32_t GetDatasetFields() const { return datasetFields; }
 
+        // ===== SELECTIVE PREVIEWS =====
+        // Which file kinds get a content preview instead of their type glyph
+        // (Display > Preview). All kinds are on by default. Switching a kind
+        // off repaints its entries with the type glyph and stops the widget
+        // from opening those files for a preview at all; switching it back on
+        // re-uses whatever is still cached and decodes the rest in the
+        // background as usual.
+        void SetPreviewType(FilerPreviewType type, bool on);
+        bool IsPreviewTypeEnabled(FilerPreviewType type) const;
+        void SetPreviewTypes(uint32_t mask);
+        uint32_t GetPreviewTypes() const { return previewTypes; }
+        // The preview kind an entry belongs to, or NonePreview for entries
+        // that never carry a content preview (folders, audio, archives,
+        // programs, unknown types).
+        static FilerPreviewType PreviewTypeOf(const FilerEntry& e);
+
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
 
@@ -604,6 +652,8 @@ namespace UltraCanvas {
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
         uint32_t datasetFields = 0;
+        // Bitmask of FilerPreviewType values that may show a content preview.
+        uint32_t previewTypes = kFilerAllPreviewTypes;
         FilerStyle style;
 
         std::vector<size_t> selection;            // indices into `entries`
@@ -916,6 +966,47 @@ namespace UltraCanvas {
         // Swaps thumbFrameWants into the worker queue and forgets pending
         // slots that fell out of the visible + prefetch bands.
         void CommitThumbnailWants();
+        // True when `e` may show a content preview right now: it belongs to a
+        // preview kind and that kind is enabled in previewTypes.
+        bool PreviewEnabledFor(const FilerEntry& e) const;
+        // True when a preview of `e` is worth drawing in a box that size. A
+        // page-shaped preview (PDF, 3D model, text page) needs a tile; in the
+        // icon column of a Details / List row it would be an indistinct
+        // smudge, so those rows keep the type glyph.
+        static bool PreviewFitsRect(const FilerEntry& e, const Rect2Di& rect);
+
+        // ===== TEXT-CONTENT PREVIEWS (Text / Docs / Spreadsheets) =====
+        // Text-shaped files have no image to decode, so their preview is the
+        // beginning of their own content drawn as a miniature page: the first
+        // lines for text and documents, the first cells as a grid for
+        // spreadsheets. Reading and un-wrapping the file (plain text, the
+        // XML inside an ODF / OOXML package, tags stripped from HTML) happens
+        // on the same background workers as the image decodes; the draw pass
+        // only ever consumes a finished snippet and paints the type glyph
+        // until then.
+        struct TextPreviewSnippet {
+            std::vector<std::string> lines;   // first lines, already trimmed
+            bool tabular = false;             // cells are '\t'-separated
+        };
+        enum class TextPreviewState { Pending, Ready, Failed };
+        struct TextPreviewSlot {
+            TextPreviewState state = TextPreviewState::Pending;
+            TextPreviewSnippet snippet;
+        };
+        std::unordered_map<std::string, TextPreviewSlot> textSlots;  // by path
+        std::deque<std::string> textQueue;             // paths to read
+        std::vector<std::string> textFrameWants;       // UI thread, per frame
+        std::unordered_set<std::string> textPathsInFlight;
+
+        // Copies the finished snippet into `out` and returns true; returns
+        // false (draw the glyph) after queueing a background read, while one
+        // runs, or when the file has no readable text.
+        bool AcquireTextPreview(const FilerEntry& e, TextPreviewSnippet& out);
+        // Swaps textFrameWants into the worker queue, like the thumbnails.
+        void CommitTextPreviewWants();
+        // Draws a snippet as a miniature page (or cell grid) inside `rect`.
+        void DrawTextPreview(IRenderContext* ctx, const Rect2Di& rect,
+                             const TextPreviewSnippet& snippet);
 
         // ===== ASYNC FOLDER STATS =====
         // Recursive folder statistics feed the selection info bar (content
@@ -1154,6 +1245,11 @@ namespace UltraCanvas {
         std::string EntryExtraInfo(const FilerEntry& e);
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
+        // Plain cut to a width, without the "…" — for the cells of a
+        // spreadsheet preview, where a column is only a few characters wide
+        // and the ellipsis would be the only thing left of the value.
+        std::string TruncateTextToWidth(IRenderContext* ctx, const std::string& text,
+                                        int maxWidth) const;
         // Ellipsizes an entry's name for the space it is drawn in and records
         // whether it had to be shortened, so the hover tooltip only pops for
         // names that are actually cut off.

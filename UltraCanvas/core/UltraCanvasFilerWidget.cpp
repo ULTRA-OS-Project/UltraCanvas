@@ -33,6 +33,12 @@
 // (SetFileListOrderPreserved) instead of being sorted. Every content change
 // the user makes is reported through onFolderModified with the folder it
 // landed in, next to the plain rescan notification onFolderRefreshed.
+// Content previews are produced per file kind (see SELECTIVE PREVIEWS): image
+// pipeline for bitmaps and vectors, poster frame for videos, first page for
+// PDFs, a shaded software render for 3D models and a miniature page of the
+// file's own text for text, documents and spreadsheets. Each kind can be
+// switched off individually (Display > Preview), which drops its entries back
+// to the plain type glyph and stops the widget from reading those files.
 // Version: 1.13.0
 // Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
@@ -62,13 +68,21 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasVideoThumbnail.h"
+#include "UltraCanvasZipPackage.h"
+#include "Models/STL/UltraCanvasSTLLoader.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#ifdef ULTRACANVAS_PLUGIN_PDF
+#include "Plugins/Documents/UltraCanvasPDF.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sys/stat.h>
 
@@ -167,6 +181,15 @@ namespace UltraCanvas {
                 {"eps",  {"EPS",  FilerFileCategory::Vector}},
                 {"cdr",  {"CorelDRAW", FilerFileCategory::Vector}},
                 {"xar",  {"Xara", FilerFileCategory::Vector}},
+                {"stl",  {"STL",  FilerFileCategory::Model3D}},
+                {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
+                {"ply",  {"PLY",  FilerFileCategory::Model3D}},
+                {"3ds",  {"3D Studio", FilerFileCategory::Model3D}},
+                {"3mf",  {"3MF",  FilerFileCategory::Model3D}},
+                {"gltf", {"glTF", FilerFileCategory::Model3D}},
+                {"glb",  {"glTF Binary", FilerFileCategory::Model3D}},
+                {"dae",  {"COLLADA", FilerFileCategory::Model3D}},
+                {"fbx",  {"FBX",  FilerFileCategory::Model3D}},
                 {"mp3",  {"MP3",  FilerFileCategory::Audio}},
                 {"wav",  {"WAV",  FilerFileCategory::Audio}},
                 {"flac", {"FLAC", FilerFileCategory::Audio}},
@@ -199,6 +222,7 @@ namespace UltraCanvas {
                 {"yaml", {"YAML", FilerFileCategory::Text}},
                 {"yml",  {"YAML", FilerFileCategory::Text}},
                 {"csv",  {"CSV",  FilerFileCategory::Text}},
+                {"tsv",  {"TSV",  FilerFileCategory::Text}},
                 {"cpp",  {"C++ Source", FilerFileCategory::Text}},
                 {"cc",   {"C++ Source", FilerFileCategory::Text}},
                 {"h",    {"C Header", FilerFileCategory::Text}},
@@ -236,6 +260,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Folder:      return "Folder";
                 case FilerFileCategory::Image:       return "Image";
                 case FilerFileCategory::Vector:      return "Vector";
+                case FilerFileCategory::Model3D:     return "Model";
                 case FilerFileCategory::Audio:       return "Audio";
                 case FilerFileCategory::Video:       return "Video";
                 case FilerFileCategory::Document:    return "Document";
@@ -252,6 +277,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Folder:      return Color(247, 190, 80, 255);
                 case FilerFileCategory::Image:       return Color(76, 175, 130, 255);
                 case FilerFileCategory::Vector:      return Color(0, 150, 167, 255);
+                case FilerFileCategory::Model3D:     return Color(126, 87, 194, 255);
                 case FilerFileCategory::Audio:       return Color(156, 89, 182, 255);
                 case FilerFileCategory::Video:       return Color(230, 106, 86, 255);
                 case FilerFileCategory::Document:    return Color(66, 133, 244, 255);
@@ -378,9 +404,608 @@ namespace UltraCanvas {
         // requests decode a poster frame via CaptureVideoThumbnailPixmap
         // instead of going through the image pipeline.
         bool IsVideoFilePath(const std::string& path) {
+        // ===== SELECTIVE PREVIEWS =====
+        // The preview kind a file belongs to — what a content preview for it
+        // would cost to produce, and therefore which Display > Preview switch
+        // governs it. The extension decides first because the kinds do not
+        // line up with FilerFileCategory one to one: PDF is its own kind
+        // (it renders a page) and CSV / TSV preview as a cell grid like the
+        // real spreadsheet formats although their category is Text.
+        FilerPreviewType PreviewTypeForFile(const std::string& ext,
+                                            FilerFileCategory category) {
+            if (ext == "pdf") return FilerPreviewType::PDF;
+            if (ext == "csv" || ext == "tsv") return FilerPreviewType::Spreadsheets;
+            switch (category) {
+                case FilerFileCategory::Image:       return FilerPreviewType::Bitmaps;
+                case FilerFileCategory::Vector:      return FilerPreviewType::VectorGraphics;
+                case FilerFileCategory::Model3D:     return FilerPreviewType::Models3D;
+                case FilerFileCategory::Video:       return FilerPreviewType::Videos;
+                case FilerFileCategory::Document:    return FilerPreviewType::Docs;
+                case FilerFileCategory::Text:        return FilerPreviewType::Text;
+                case FilerFileCategory::Spreadsheet: return FilerPreviewType::Spreadsheets;
+                default:                             return FilerPreviewType::NonePreview;
+            }
+        }
+
+        // Same answer for a bare path — used by the decode workers, which see
+        // only the file they were handed (that may be an entry's explicit
+        // thumbnail image rather than the entry itself).
+        FilerPreviewType PreviewTypeForPath(const std::string& path) {
+            const std::string ext = LowerExtension(path);
             const auto& m = ExtensionTypeMap();
-            auto it = m.find(LowerExtension(path));
-            return it != m.end() && it->second.category == FilerFileCategory::Video;
+            auto it = m.find(ext);
+            return PreviewTypeForFile(ext, it != m.end() ? it->second.category
+                                                         : FilerFileCategory::Other);
+        }
+
+        // True when this build can render a PDF page into a preview.
+        bool PdfPreviewAvailable() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+            return !PDFEngineFactory::Available().empty();
+#else
+            return false;
+#endif
+        }
+
+        // Straight (non-premultiplied) RGBA rows into a fresh pixmap. The
+        // pixmap holds premultiplied ARGB32 in little-endian byte order, which
+        // is what every Cairo-backed surface in the framework expects.
+        std::shared_ptr<UCPixmap> PixmapFromRGBA(const uint8_t* rgba, int w, int h,
+                                                 int srcStride) {
+            if (!rgba || w <= 0 || h <= 0) return nullptr;
+            auto pm = std::make_shared<UCPixmap>();
+            if (!pm->Init(w, h)) return nullptr;
+            uint32_t* dst = pm->GetPixelData();
+            if (!dst) return nullptr;
+            for (int y = 0; y < h; ++y) {
+                const uint8_t* src = rgba + static_cast<size_t>(y) * srcStride;
+                uint32_t* row = dst + static_cast<size_t>(y) * w;
+                for (int x = 0; x < w; ++x, src += 4) {
+                    const uint8_t r = src[0], g = src[1], b = src[2], a = src[3];
+                    row[x] = (uint32_t(a) << 24)
+                           | (uint32_t((uint16_t(r) * a + 127) / 255) << 16)
+                           | (uint32_t((uint16_t(g) * a + 127) / 255) << 8)
+                           |  uint32_t((uint16_t(b) * a + 127) / 255);
+                }
+            }
+            pm->MarkDirty();
+            return pm;
+        }
+
+        // ===== PDF PREVIEW (first page) =====
+        // Rendered on the thumbnail workers, so a folder of PDFs pages in the
+        // same way a folder of photos does. Each call opens its own document
+        // (and with it its own engine context), which is what makes it safe to
+        // run several of them on different threads at once.
+        std::shared_ptr<UCPixmap> RenderPdfPreviewPixmap(const std::string& path,
+                                                         int w, int h, float scale) {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+            const int maxDim = std::max(16, static_cast<int>(std::lround(
+                    std::max(w, h) * std::max(1.0f, scale))));
+            std::unique_ptr<IPDFDocument> doc = OpenPDF(path);
+            if (!doc || doc->GetPageCount() < 1) return nullptr;
+            PDFRenderedPage page = doc->RenderThumbnail(1, maxDim);
+            if (!page.IsValid() || page.colorMode != PDFColorMode::RGBA) return nullptr;
+            auto pm = PixmapFromRGBA(page.pixels.data(), page.width, page.height,
+                                     page.stride);
+            if (!pm) return nullptr;
+            // A page is white on a white widget: outline it so the tile shows
+            // a sheet of paper rather than floating text.
+            if (uint32_t* px = pm->GetPixelData()) {
+                constexpr uint32_t kEdge = 0xFFB4B4B8u;
+                for (int x = 0; x < page.width; ++x) {
+                    px[x] = kEdge;
+                    px[static_cast<size_t>(page.height - 1) * page.width + x] = kEdge;
+                }
+                for (int y = 0; y < page.height; ++y) {
+                    px[static_cast<size_t>(y) * page.width] = kEdge;
+                    px[static_cast<size_t>(y) * page.width + page.width - 1] = kEdge;
+                }
+                pm->MarkDirty();
+            }
+            return pm;
+#else
+            (void)path; (void)w; (void)h; (void)scale;
+            return nullptr;
+#endif
+        }
+
+        // ===== 3D MODEL PREVIEW =====
+        // A shaded three-quarter view of the mesh, rasterized in software on
+        // the worker thread: the GL-backed viewer needs a window and a current
+        // context, neither of which a background decode has. Flat shading off
+        // the triangle geometry (STL facet normals are often wrong or absent)
+        // with a single head-light, drawn onto a transparent background so the
+        // tile keeps the widget's colour behind the model.
+        constexpr size_t kModelPreviewTriangleCap = 2000000;
+
+        std::shared_ptr<UCPixmap> RenderModelPreviewPixmap(const std::string& path,
+                                                           int w, int h, float scale) {
+            if (!UltraCanvasSTLLoader::HasSTLExtension(path)) return nullptr;
+            Mesh3D mesh;
+            if (!UltraCanvasSTLLoader::Load(path, mesh) || mesh.Empty()) return nullptr;
+            if (mesh.TriangleCount() > kModelPreviewTriangleCap) return nullptr;
+            if (!mesh.bounds.IsValid()) mesh.ComputeBounds();
+
+            const int pw = std::max(8, static_cast<int>(std::lround(
+                    w * std::max(1.0f, scale))));
+            const int ph = std::max(8, static_cast<int>(std::lround(
+                    h * std::max(1.0f, scale))));
+
+            // Yaw / pitch of the standard "look at it from the front left and
+            // slightly above" pose used by model viewers.
+            constexpr float kYaw   = -0.55f;   // radians
+            constexpr float kPitch =  0.42f;
+            const float cy = std::cos(kYaw),   sy = std::sin(kYaw);
+            const float cp = std::cos(kPitch), sp = std::sin(kPitch);
+            auto rotate = [&](const Vec3& v) {
+                const float x1 =  v.x * cy + v.z * sy;
+                const float z1 = -v.x * sy + v.z * cy;
+                return Vec3{x1, v.y * cp - z1 * sp, v.y * sp + z1 * cp};
+            };
+
+            const Vec3 center = mesh.bounds.Center();
+            const float radius = mesh.bounds.Radius();
+            // 0.92 leaves a hair of margin so the silhouette never touches the
+            // tile edge; the rotated bounding sphere fits in either direction.
+            const float unit = 0.92f * 0.5f * static_cast<float>(std::min(pw, ph)) / radius;
+            const float ox = pw * 0.5f, oy = ph * 0.5f;
+
+            std::vector<float> depth(static_cast<size_t>(pw) * ph,
+                                     -std::numeric_limits<float>::max());
+            std::vector<uint32_t> pixels(static_cast<size_t>(pw) * ph, 0u);
+
+            const Vec3 light = Vec3{0.35f, 0.55f, 0.76f}.Normalized();
+            constexpr float kBaseR = 132.0f, kBaseG = 158.0f, kBaseB = 205.0f;
+
+            for (size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+                const uint32_t ia = mesh.indices[t], ib = mesh.indices[t + 1],
+                               ic = mesh.indices[t + 2];
+                if (ia >= mesh.positions.size() || ib >= mesh.positions.size() ||
+                    ic >= mesh.positions.size()) continue;
+                const Vec3 a = rotate(mesh.positions[ia] - center);
+                const Vec3 b = rotate(mesh.positions[ib] - center);
+                const Vec3 c = rotate(mesh.positions[ic] - center);
+                Vec3 n = (b - a).Cross(c - a).Normalized();
+                if (n.z < 0.0f) n = n * -1.0f;   // two-sided: light the facet we see
+                const float lambert = std::max(0.0f, n.Dot(light));
+                const float shade = 0.28f + 0.72f * lambert;
+
+                // Screen space: y grows downwards, so the model's up axis is
+                // negated. Depth is the rotated z (bigger = closer).
+                const float ax = ox + a.x * unit, ay = oy - a.y * unit;
+                const float bx = ox + b.x * unit, by = oy - b.y * unit;
+                const float cx2 = ox + c.x * unit, cy2 = oy - c.y * unit;
+                const float area = (bx - ax) * (cy2 - ay) - (by - ay) * (cx2 - ax);
+                if (std::fabs(area) < 1e-6f) continue;
+                const float invArea = 1.0f / area;
+
+                int minX = std::max(0, static_cast<int>(std::floor(std::min({ax, bx, cx2}))));
+                int maxX = std::min(pw - 1, static_cast<int>(std::ceil(std::max({ax, bx, cx2}))));
+                int minY = std::max(0, static_cast<int>(std::floor(std::min({ay, by, cy2}))));
+                int maxY = std::min(ph - 1, static_cast<int>(std::ceil(std::max({ay, by, cy2}))));
+                if (minX > maxX || minY > maxY) continue;
+
+                const uint8_t rr = static_cast<uint8_t>(std::min(255.0f, kBaseR * shade));
+                const uint8_t gg = static_cast<uint8_t>(std::min(255.0f, kBaseG * shade));
+                const uint8_t bb = static_cast<uint8_t>(std::min(255.0f, kBaseB * shade));
+                const uint32_t argb = 0xFF000000u | (uint32_t(rr) << 16)
+                                    | (uint32_t(gg) << 8) | uint32_t(bb);
+
+                for (int py = minY; py <= maxY; ++py) {
+                    const float fy = py + 0.5f;
+                    for (int px = minX; px <= maxX; ++px) {
+                        const float fx = px + 0.5f;
+                        float w0 = ((bx - ax) * (fy - ay) - (by - ay) * (fx - ax)) * invArea;
+                        float w1 = ((fx - ax) * (cy2 - ay) - (fy - ay) * (cx2 - ax)) * invArea;
+                        // w0 weights c, w1 weights b, the rest weights a.
+                        const float w2 = 1.0f - w0 - w1;
+                        if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) continue;
+                        const float z = a.z * w2 + b.z * w1 + c.z * w0;
+                        const size_t idx = static_cast<size_t>(py) * pw + px;
+                        if (z <= depth[idx]) continue;
+                        depth[idx] = z;
+                        pixels[idx] = argb;
+                    }
+                }
+            }
+
+            auto pm = std::make_shared<UCPixmap>();
+            if (!pm->Init(pw, ph)) return nullptr;
+            uint32_t* dst = pm->GetPixelData();
+            if (!dst) return nullptr;
+            std::memcpy(dst, pixels.data(), pixels.size() * sizeof(uint32_t));
+            pm->MarkDirty();
+            return pm;
+        }
+
+        // Smallest box a page-shaped preview is drawn in. Below it a page of
+        // text, a PDF page or a shaded model is an indistinct smudge, so the
+        // small icon slots of the Details / List rows keep the type glyph —
+        // and the widget never opens those files for a preview.
+        constexpr int kContentPreviewMinEdge = 40;
+
+        // ===== TEXT-CONTENT PREVIEWS (Text / Docs / Spreadsheets) =====
+        // These files have nothing to decode: their preview is the beginning
+        // of their own content, drawn later as a miniature page. Only the
+        // reading and un-wrapping happens here (on a worker thread) — enough
+        // lines to fill the biggest tile, each cut to a length no tile can
+        // show in full anyway.
+        constexpr size_t kPreviewMaxLines   = 18;
+        constexpr size_t kPreviewMaxColumns = 8;     // spreadsheet cells per row
+        constexpr size_t kPreviewLineChars  = 160;
+        constexpr size_t kPreviewReadBytes  = 128 * 1024;
+
+        // First bytes of a file, stopping at a NUL (binary files preview as
+        // nothing rather than as mojibake).
+        std::string ReadFileHead(const std::string& path, size_t maxBytes) {
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
+            if (!f) return {};
+            std::string buf(maxBytes, '\0');
+            f.read(buf.data(), static_cast<std::streamsize>(maxBytes));
+            buf.resize(static_cast<size_t>(std::max<std::streamsize>(0, f.gcount())));
+            size_t nul = buf.find('\0');
+            if (nul != std::string::npos) buf.resize(nul);
+            return buf;
+        }
+
+        // Collapses runs of whitespace, trims the ends and caps the length —
+        // one preview line is a single short line of prose whatever the file
+        // did with tabs, CRs and indentation. Tabs are kept when `keepTabs`
+        // is set, because they separate the cells of a tabular preview.
+        std::string TidyPreviewLine(const std::string& raw, bool keepTabs) {
+            std::string out;
+            out.reserve(std::min(raw.size(), kPreviewLineChars));
+            bool pendingSpace = false;
+            for (char ch : raw) {
+                const unsigned char c = static_cast<unsigned char>(ch);
+                if (ch == '\t' && keepTabs) {
+                    pendingSpace = false;
+                    out.push_back('\t');
+                    continue;
+                }
+                if (c < 0x20 || c == 0x7F) { pendingSpace = !out.empty(); continue; }
+                if (ch == ' ') { pendingSpace = !out.empty(); continue; }
+                if (pendingSpace) { out.push_back(' '); pendingSpace = false; }
+                out.push_back(ch);
+                if (out.size() >= kPreviewLineChars) break;
+            }
+            return out;
+        }
+
+        // Appends a line unless it is empty or the snippet is already full.
+        // Leading blank lines of a file are skipped so the preview starts on
+        // content instead of on the file's top margin.
+        void AppendPreviewLine(std::vector<std::string>& lines,
+                               const std::string& raw, bool keepTabs = false) {
+            if (lines.size() >= kPreviewMaxLines) return;
+            std::string tidy = TidyPreviewLine(raw, keepTabs);
+            if (tidy.empty()) return;
+            lines.push_back(std::move(tidy));
+        }
+
+        void SplitPreviewLines(const std::string& text,
+                               std::vector<std::string>& lines) {
+            size_t pos = 0;
+            while (pos <= text.size() && lines.size() < kPreviewMaxLines) {
+                size_t nl = text.find('\n', pos);
+                AppendPreviewLine(lines, text.substr(pos, nl == std::string::npos
+                                                              ? std::string::npos
+                                                              : nl - pos));
+                if (nl == std::string::npos) break;
+                pos = nl + 1;
+            }
+        }
+
+        // The five predefined XML / HTML entities plus numeric references —
+        // everything else is left as written, which is harmless in a preview.
+        std::string DecodeEntities(const std::string& in) {
+            std::string out;
+            out.reserve(in.size());
+            for (size_t i = 0; i < in.size(); ++i) {
+                if (in[i] != '&') { out.push_back(in[i]); continue; }
+                size_t end = in.find(';', i + 1);
+                if (end == std::string::npos || end - i > 10) { out.push_back('&'); continue; }
+                const std::string name = in.substr(i + 1, end - i - 1);
+                if      (name == "amp")  out.push_back('&');
+                else if (name == "lt")   out.push_back('<');
+                else if (name == "gt")   out.push_back('>');
+                else if (name == "quot") out.push_back('"');
+                else if (name == "apos") out.push_back('\'');
+                else if (name == "nbsp") out.push_back(' ');
+                else if (!name.empty() && name[0] == '#') out.push_back(' ');
+                else { out.push_back('&'); continue; }
+                i = end;
+            }
+            return out;
+        }
+
+        // Text of a markup document with the tags removed. `breakTags` names
+        // the elements that end a preview line (paragraphs, headings, rows);
+        // everything else is treated as inline. `<script>` / `<style>` bodies
+        // are dropped so an HTML preview shows the page, not its code.
+        void MarkupToPreviewLines(const std::string& markup,
+                                  const std::vector<std::string>& breakTags,
+                                  std::vector<std::string>& lines) {
+            auto isBreakTag = [&](const std::string& tag) {
+                for (const std::string& b : breakTags) {
+                    if (tag == b || tag.rfind(b + " ", 0) == 0) return true;
+                }
+                return false;
+            };
+            std::string current;
+            for (size_t i = 0; i < markup.size() && lines.size() < kPreviewMaxLines;) {
+                if (markup[i] != '<') { current.push_back(markup[i++]); continue; }
+                size_t end = markup.find('>', i + 1);
+                if (end == std::string::npos) break;
+                std::string tag = markup.substr(i + 1, end - i - 1);
+                i = end + 1;
+                if (!tag.empty() && (tag[0] == '!' || tag[0] == '?')) continue;
+                const bool closing = !tag.empty() && tag[0] == '/';
+                if (closing) tag.erase(0, 1);
+                std::string name = tag.substr(0, tag.find_first_of(" \t\r\n/"));
+                std::transform(name.begin(), name.end(), name.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (!closing && (name == "script" || name == "style")) {
+                    const std::string closeTag = "</" + name;
+                    size_t skip = markup.find(closeTag, i);
+                    i = (skip == std::string::npos) ? markup.size() : skip;
+                    continue;
+                }
+                if (isBreakTag(name) || name == "br") {
+                    AppendPreviewLine(lines, DecodeEntities(current));
+                    current.clear();
+                }
+            }
+            AppendPreviewLine(lines, DecodeEntities(current));
+        }
+
+        // RTF: drop the control words, the groups the reader is meant to skip
+        // and the braces, keeping the literal text.
+        void RtfToPreviewLines(const std::string& rtf,
+                               std::vector<std::string>& lines) {
+            std::string current;
+            for (size_t i = 0; i < rtf.size() && lines.size() < kPreviewMaxLines;) {
+                if (rtf[i] == '\\') {
+                    size_t j = i + 1;
+                    while (j < rtf.size() && (std::isalpha(static_cast<unsigned char>(rtf[j])))) ++j;
+                    const std::string word = rtf.substr(i + 1, j - i - 1);
+                    while (j < rtf.size() && (rtf[j] == '-' || std::isdigit(
+                            static_cast<unsigned char>(rtf[j])))) ++j;
+                    if (j < rtf.size() && rtf[j] == ' ') ++j;
+                    if (word == "par" || word == "line" || word == "pard") {
+                        AppendPreviewLine(lines, current);
+                        current.clear();
+                    } else if (word.empty() && j < rtf.size()) {
+                        ++j;   // escaped literal (\{, \}, \\)
+                    }
+                    i = j;
+                    continue;
+                }
+                if (rtf[i] == '{' || rtf[i] == '}') { ++i; continue; }
+                current.push_back(rtf[i++]);
+            }
+            AppendPreviewLine(lines, current);
+        }
+
+        // ODF spreadsheet: the first cells of the first rows of content.xml.
+        void OdsToPreviewLines(const std::string& contentXml,
+                               std::vector<std::string>& lines) {
+            size_t pos = 0;
+            while (lines.size() < kPreviewMaxLines) {
+                size_t rowStart = contentXml.find("<table:table-row", pos);
+                if (rowStart == std::string::npos) break;
+                size_t rowEnd = contentXml.find("</table:table-row>", rowStart);
+                const std::string row = contentXml.substr(
+                        rowStart, rowEnd == std::string::npos ? std::string::npos
+                                                              : rowEnd - rowStart);
+                pos = (rowEnd == std::string::npos) ? contentXml.size()
+                                                    : rowEnd + 18;
+                std::vector<std::string> cells;
+                size_t cpos = 0;
+                while (cells.size() < kPreviewMaxColumns) {
+                    size_t cellStart = row.find("<table:table-cell", cpos);
+                    if (cellStart == std::string::npos) break;
+                    size_t cellEnd = row.find("</table:table-cell>", cellStart);
+                    if (cellEnd == std::string::npos) {
+                        // Self-closing cell: an empty one.
+                        cells.emplace_back();
+                        cpos = cellStart + 17;
+                        continue;
+                    }
+                    std::vector<std::string> cellText;
+                    MarkupToPreviewLines(row.substr(cellStart, cellEnd - cellStart),
+                                         {"text:p"}, cellText);
+                    cells.push_back(cellText.empty() ? std::string() : cellText.front());
+                    cpos = cellEnd + 19;
+                }
+                std::string joined;
+                for (size_t i = 0; i < cells.size(); ++i) {
+                    if (i) joined.push_back('\t');
+                    joined += cells[i];
+                }
+                AppendPreviewLine(lines, joined, true);
+            }
+        }
+
+        // OOXML spreadsheet: the first sheet's rows, with the string cells
+        // resolved through the shared string table.
+        void XlsxToPreviewLines(const UCZipPackageReader& zip,
+                                std::vector<std::string>& lines) {
+            std::string sheetXml;
+            if (!zip.ReadEntry("xl/worksheets/sheet1.xml", sheetXml)) return;
+
+            std::vector<std::string> shared;
+            std::string sharedXml;
+            if (zip.ReadEntry("xl/sharedStrings.xml", sharedXml)) {
+                size_t pos = 0;
+                while (true) {
+                    size_t si = sharedXml.find("<si", pos);
+                    if (si == std::string::npos) break;
+                    size_t siEnd = sharedXml.find("</si>", si);
+                    if (siEnd == std::string::npos) break;
+                    std::vector<std::string> parts;
+                    MarkupToPreviewLines(sharedXml.substr(si, siEnd - si), {}, parts);
+                    shared.push_back(parts.empty() ? std::string() : parts.front());
+                    pos = siEnd + 5;
+                }
+            }
+
+            size_t pos = 0;
+            while (lines.size() < kPreviewMaxLines) {
+                size_t rowStart = sheetXml.find("<row", pos);
+                if (rowStart == std::string::npos) break;
+                size_t rowEnd = sheetXml.find("</row>", rowStart);
+                if (rowEnd == std::string::npos) break;
+                const std::string row = sheetXml.substr(rowStart, rowEnd - rowStart);
+                pos = rowEnd + 6;
+
+                std::vector<std::string> cells;
+                size_t cpos = 0;
+                while (cells.size() < kPreviewMaxColumns) {
+                    size_t cellStart = row.find("<c", cpos);
+                    if (cellStart == std::string::npos) break;
+                    size_t tagEnd = row.find('>', cellStart);
+                    if (tagEnd == std::string::npos) break;
+                    const std::string attrs = row.substr(cellStart, tagEnd - cellStart);
+                    const bool sharedString = attrs.find("t=\"s\"") != std::string::npos;
+                    size_t cellEnd = row.find("</c>", tagEnd);
+                    if (row[tagEnd - 1] == '/' || cellEnd == std::string::npos) {
+                        cells.emplace_back();
+                        cpos = tagEnd + 1;
+                        continue;
+                    }
+                    std::vector<std::string> value;
+                    MarkupToPreviewLines(row.substr(tagEnd + 1, cellEnd - tagEnd - 1),
+                                         {}, value);
+                    std::string text = value.empty() ? std::string() : value.front();
+                    if (sharedString) {
+                        const long idx = std::strtol(text.c_str(), nullptr, 10);
+                        text = (idx >= 0 && static_cast<size_t>(idx) < shared.size())
+                                       ? shared[static_cast<size_t>(idx)]
+                                       : std::string();
+                    }
+                    cells.push_back(std::move(text));
+                    cpos = cellEnd + 4;
+                }
+                std::string joined;
+                for (size_t i = 0; i < cells.size(); ++i) {
+                    if (i) joined.push_back('\t');
+                    joined += cells[i];
+                }
+                AppendPreviewLine(lines, joined, true);
+            }
+        }
+
+        // CSV / TSV: the separator becomes a tab so the drawing code lays the
+        // values out as cells. Quoted fields keep their separators.
+        void DelimitedToPreviewLines(const std::string& text, char separator,
+                                     std::vector<std::string>& lines) {
+            size_t pos = 0;
+            while (pos <= text.size() && lines.size() < kPreviewMaxLines) {
+                size_t nl = text.find('\n', pos);
+                const std::string row = text.substr(
+                        pos, nl == std::string::npos ? std::string::npos : nl - pos);
+                std::string cells;
+                bool quoted = false;
+                size_t columns = 1;
+                for (char ch : row) {
+                    if (ch == '"') { quoted = !quoted; continue; }
+                    if (ch == separator && !quoted) {
+                        if (++columns > kPreviewMaxColumns) break;
+                        cells.push_back('\t');
+                        continue;
+                    }
+                    cells.push_back(ch);
+                }
+                AppendPreviewLine(lines, cells, true);
+                if (nl == std::string::npos) break;
+                pos = nl + 1;
+            }
+        }
+
+        // Word-processing formats go through the shared rich-document reader,
+        // so ODT, DOCX and legacy DOC all preview from the same block model.
+        void RichDocumentToPreviewLines(const std::string& path,
+                                        std::vector<std::string>& lines) {
+            UCRichDocument doc;
+            std::string error;
+            if (!UCWordDocumentIO::Load(path, doc, error)) return;
+            for (const RichDocBlock& block : doc.blocks) {
+                if (lines.size() >= kPreviewMaxLines) break;
+                std::string text;
+                for (const RichTextRun& run : block.runs) {
+                    if (run.lineBreakBefore && !text.empty()) text.push_back(' ');
+                    text += run.text;
+                    if (text.size() > kPreviewLineChars) break;
+                }
+                if (text.empty() && !block.tableRows.empty()) {
+                    for (const RichTableRow& row : block.tableRows) {
+                        if (lines.size() >= kPreviewMaxLines) break;
+                        std::string joined;
+                        size_t column = 0;
+                        for (const RichTableCell& cell : row.cells) {
+                            if (++column > kPreviewMaxColumns) break;
+                            if (column > 1) joined.push_back('\t');
+                            for (const RichTextRun& run : cell.runs) joined += run.text;
+                        }
+                        AppendPreviewLine(lines, joined, true);
+                    }
+                    continue;
+                }
+                AppendPreviewLine(lines, text);
+            }
+        }
+
+        // Fills `lines` (and `tabular`) with the start of the file's content.
+        // False when this build cannot read the format — the entry then keeps
+        // its type glyph instead of showing an empty page.
+        bool ExtractTextPreview(const std::string& path,
+                                std::vector<std::string>& lines, bool& tabular) {
+            const std::string ext = LowerExtension(path);
+            tabular = false;
+
+            if (ext == "csv" || ext == "tsv") {
+                tabular = true;
+                DelimitedToPreviewLines(ReadFileHead(path, kPreviewReadBytes),
+                                        ext == "tsv" ? '\t' : ',', lines);
+                return true;
+            }
+            if (ext == "ods" || ext == "xlsx") {
+                UCZipPackageReader zip;
+                if (!zip.Open(path)) return false;
+                tabular = true;
+                if (ext == "ods") {
+                    std::string contentXml;
+                    if (!zip.ReadEntry("content.xml", contentXml)) return false;
+                    OdsToPreviewLines(contentXml, lines);
+                } else {
+                    XlsxToPreviewLines(zip, lines);
+                }
+                return true;
+            }
+            if (ext == "odt" || ext == "docx" || ext == "doc") {
+                RichDocumentToPreviewLines(path, lines);
+                return true;
+            }
+            if (ext == "html" || ext == "htm") {
+                MarkupToPreviewLines(ReadFileHead(path, kPreviewReadBytes),
+                                     {"p", "div", "li", "tr", "h1", "h2", "h3",
+                                      "h4", "h5", "h6", "title"}, lines);
+                return true;
+            }
+            if (ext == "rtf") {
+                RtfToPreviewLines(ReadFileHead(path, kPreviewReadBytes), lines);
+                return true;
+            }
+            // Everything else in the Text / Docs kinds is plain text already
+            // (txt, log, json, xml, yaml, markdown, LaTeX, source code, ...).
+            // Binary formats we have no reader for (xls, epub) come back empty
+            // from ReadFileHead and fall back to the glyph.
+            const std::string head = ReadFileHead(path, kPreviewReadBytes);
+            if (head.empty()) return false;
+            SplitPreviewLines(head, lines);
+            return true;
         }
 
         bool IsBrowsableArchiveExt(const std::string& ext) {
@@ -1537,6 +2162,54 @@ namespace UltraCanvas {
         if (datasetFields == mask) return;
         datasetFields = mask;
         // Each enabled field adds a caption line, so the tile height changes.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    // ===== SELECTIVE PREVIEWS =====
+    FilerPreviewType UltraCanvasFilerWidget::PreviewTypeOf(const FilerEntry& e) {
+        if (e.isDirectory) return FilerPreviewType::NonePreview;
+        return PreviewTypeForFile(e.extension, e.category);
+    }
+
+    bool UltraCanvasFilerWidget::PreviewEnabledFor(const FilerEntry& e) const {
+        const FilerPreviewType type = PreviewTypeOf(e);
+        // Entries of no preview kind (folders, audio, archives, programs) are
+        // never gated: a host that attached an explicit thumbnail to one still
+        // gets it drawn.
+        if (type == FilerPreviewType::NonePreview) return true;
+        return (previewTypes & static_cast<uint32_t>(type)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetPreviewType(FilerPreviewType type, bool on) {
+        const uint32_t bit = static_cast<uint32_t>(type);
+        SetPreviewTypes(on ? (previewTypes | bit) : (previewTypes & ~bit));
+    }
+
+    bool UltraCanvasFilerWidget::IsPreviewTypeEnabled(FilerPreviewType type) const {
+        return (previewTypes & static_cast<uint32_t>(type)) != 0;
+    }
+
+    bool UltraCanvasFilerWidget::PreviewFitsRect(const FilerEntry& e,
+                                                 const Rect2Di& rect) {
+        switch (PreviewTypeOf(e)) {
+            case FilerPreviewType::PDF:
+            case FilerPreviewType::Models3D:
+                return rect.width >= kContentPreviewMinEdge &&
+                       rect.height >= kContentPreviewMinEdge;
+            default:
+                // Bitmaps, vectors and video poster frames read fine even in
+                // the icon column of a Details row.
+                return true;
+        }
+    }
+
+    void UltraCanvasFilerWidget::SetPreviewTypes(uint32_t mask) {
+        mask &= kFilerAllPreviewTypes;
+        if (previewTypes == mask) return;
+        previewTypes = mask;
+        // A tile that falls back to the type glyph fills its square again, so
+        // the shrink-to-image row heights of the thumbnail grid change with it.
         InvalidateFilerLayout();
         RequestRedraw();
     }
@@ -3981,6 +4654,7 @@ namespace UltraCanvas {
 
         PrefetchThumbnails(ctx, bounds);
         CommitThumbnailWants();
+        CommitTextPreviewWants();
 
         if (viewType == FilerViewType::Details) DrawDetailsHeader(ctx, bounds);
         DrawColumnSplitters(ctx, bounds);
@@ -4110,6 +4784,26 @@ namespace UltraCanvas {
         }
         if (lo == 0) return "…";
         return text.substr(0, bounds[lo]) + "…";
+    }
+
+    std::string UltraCanvasFilerWidget::TruncateTextToWidth(IRenderContext* ctx,
+                                                            const std::string& text,
+                                                            int maxWidth) const {
+        if (maxWidth <= 0) return "";
+        if (ctx->GetTextLineDimensions(text).width <= maxWidth) return text;
+        // Same binary search as EllipsizeText, without the trailing "…": in a
+        // page preview the ellipsis would be most of what a narrow spreadsheet
+        // column has room for.
+        std::vector<size_t> bounds = Utf8Boundaries(text);
+        size_t lo = 0, hi = bounds.size() - 1;
+        while (lo < hi) {
+            size_t mid = (lo + hi + 1) / 2;
+            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid])).width <= maxWidth)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        return text.substr(0, bounds[lo]);
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
@@ -4262,18 +4956,35 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
+        // Display > Preview: a switched-off kind is never read at all.
+        if (!PreviewEnabledFor(e)) return {};
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
-        if ((e.category == FilerFileCategory::Image ||
-             e.category == FilerFileCategory::Vector) &&
-            ImagePipelineLoadsExtension(e.extension)) {
-            return e.path;
+        switch (PreviewTypeOf(e)) {
+            case FilerPreviewType::Bitmaps:
+            case FilerPreviewType::VectorGraphics:
+                // The Image/Vector categories are wider than what the image
+                // pipeline decodes (cdr/xar render through graphics plugins).
+                return ImagePipelineLoadsExtension(e.extension) ? e.path
+                                                                : std::string{};
+            // Videos thumbnail as their poster frame (the first frame of the
+            // clip), decoded by the same background workers. Without a video
+            // backend the capture fails once, the slot is marked Failed and the
+            // tile keeps its generic glyph.
+            case FilerPreviewType::Videos:
+                return e.path;
+            // The first page of the document, rendered by the PDF plugin.
+            case FilerPreviewType::PDF:
+                return PdfPreviewAvailable() ? e.path : std::string{};
+            // Only STL is rasterized so far; the other 3D formats have no
+            // loader that works without a GL context.
+            case FilerPreviewType::Models3D:
+                return UltraCanvasSTLLoader::HasSTLExtension(e.path)
+                               ? e.path : std::string{};
+            // Text, Docs and Spreadsheets have no image to decode: they
+            // preview through AcquireTextPreview instead.
+            default:
+                return {};
         }
-        // Videos thumbnail as their poster frame (the first frame of the
-        // clip), decoded by the same background workers. Without a video
-        // backend the capture fails once, the slot is marked Failed and the
-        // tile keeps its generic glyph.
-        if (e.category == FilerFileCategory::Video) return e.path;
-        return {};
     }
 
     void UltraCanvasFilerWidget::ThumbGeometryForItem(const ItemLayout& item,
@@ -4395,6 +5106,7 @@ namespace UltraCanvas {
             Rect2Di r;
             ImageFitMode fit;
             ThumbGeometryForItem(item, r, fit);
+            if (!PreviewFitsRect(entries[item.entryIndex], r)) continue;
             AcquireThumbnail(src, r.width, r.height, fit, scale);
         }
     }
@@ -4430,6 +5142,59 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== TEXT-CONTENT PREVIEWS =====
+    bool UltraCanvasFilerWidget::AcquireTextPreview(const FilerEntry& e,
+                                                    TextPreviewSnippet& out) {
+        if (e.isDirectory || e.path.empty()) return false;
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        auto it = textSlots.find(e.path);
+        if (it != textSlots.end()) {
+            if (it->second.state == TextPreviewState::Ready) {
+                out = it->second.snippet;
+                return true;
+            }
+            if (it->second.state == TextPreviewState::Failed) return false;
+            // Pending: re-record the want so the file keeps its place when the
+            // queue is rebuilt for this frame.
+        } else {
+            textSlots.emplace(e.path, TextPreviewSlot{});
+        }
+        textFrameWants.push_back(e.path);
+        return false;
+    }
+
+    void UltraCanvasFilerWidget::CommitTextPreviewWants() {
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        // Rebuilt from scratch each frame in want order, exactly like the
+        // image decode queue: only what the current viewport shows is read.
+        textQueue.clear();
+        std::unordered_set<std::string> wanted;
+        wanted.reserve(textFrameWants.size());
+        for (const std::string& p : textFrameWants) {
+            if (!wanted.insert(p).second) continue;
+            textQueue.push_back(p);
+        }
+        // Finished snippets are kept for scroll-back, but a folder with tens of
+        // thousands of documents must not grow the cache without limit: past
+        // the cap everything outside the current want set goes.
+        constexpr size_t kTextSlotCap = 4096;
+        const bool overCap = textSlots.size() > kTextSlotCap;
+        for (auto it = textSlots.begin(); it != textSlots.end();) {
+            const bool wantedNow = wanted.find(it->first) != wanted.end();
+            if (!wantedNow &&
+                (overCap || it->second.state == TextPreviewState::Pending)) {
+                it = textSlots.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        textFrameWants.clear();
+        if (!textQueue.empty()) {
+            StartThumbnailWorkersLocked();
+            thumbCond.notify_all();
+        }
+    }
+
     void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
         if (!thumbWorkers.empty() || thumbShutdown) return;
         unsigned hw = std::thread::hardware_concurrency();
@@ -4445,6 +5210,7 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lk(thumbMutex);
             thumbShutdown = true;
             thumbQueue.clear();
+            textQueue.clear();
         }
         thumbCond.notify_all();
         for (std::thread& t : thumbWorkers) {
@@ -4461,6 +5227,8 @@ namespace UltraCanvas {
         thumbBytes = 0;
         thumbHot.clear();
         thumbHotBytes = 0;
+        textQueue.clear();
+        textSlots.clear();
     }
 
     void UltraCanvasFilerWidget::SetCompressedThumbnails(bool enabled) {
@@ -4482,8 +5250,10 @@ namespace UltraCanvas {
 
     float UltraCanvasFilerWidget::EntryAspect(const FilerEntry& e) {
         // Only raster images have a meaningful, cheaply-probeable pixel size.
-        // Vectors scale to fill the tile, everything else draws a glyph.
+        // Vectors scale to fill the tile, everything else draws a glyph — and
+        // so does a bitmap whose preview kind is switched off.
         if (e.category != FilerFileCategory::Image) return 0.0f;
+        if (!PreviewEnabledFor(e)) return 0.0f;
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
@@ -4539,6 +5309,8 @@ namespace UltraCanvas {
 
         for (;;) {
             ThumbRequest req;
+            std::string textPath;      // set instead of req for a text preview
+            uint64_t textGeneration = 0;
             {
                 std::unique_lock<std::mutex> lk(thumbMutex);
                 for (;;) {
@@ -4567,27 +5339,82 @@ namespace UltraCanvas {
                         thumbPathsInFlight.insert(req.path);
                         break;
                     }
+                    // Nothing to decode: read a text-content preview instead.
+                    // Image work always wins, because a tile waiting for a
+                    // photo is the more visible gap.
+                    while (!textQueue.empty() && textPath.empty()) {
+                        std::string p = std::move(textQueue.front());
+                        textQueue.pop_front();
+                        auto sit = textSlots.find(p);
+                        if (sit == textSlots.end() ||
+                            sit->second.state != TextPreviewState::Pending ||
+                            textPathsInFlight.count(p) != 0) {
+                            continue;
+                        }
+                        textPathsInFlight.insert(p);
+                        textGeneration = thumbGeneration;
+                        textPath = std::move(p);
+                    }
+                    if (!textPath.empty()) break;
                     thumbCond.wait(lk);
                 }
+            }
+
+            if (!textPath.empty()) {
+                // Reading + un-wrapping a document, outside the lock.
+                TextPreviewSnippet snippet;
+                const bool readable = ExtractTextPreview(
+                        textPath, snippet.lines, snippet.tabular);
+                bool textReport = false;
+                {
+                    std::lock_guard<std::mutex> lk(thumbMutex);
+                    textPathsInFlight.erase(textPath);
+                    if (thumbShutdown) return;
+                    if (textGeneration == thumbGeneration) {
+                        TextPreviewSlot& slot = textSlots[textPath];
+                        slot.state = (readable && !snippet.lines.empty())
+                                             ? TextPreviewState::Ready
+                                             : TextPreviewState::Failed;
+                        slot.snippet = std::move(snippet);
+                        textReport = slot.state == TextPreviewState::Ready;
+                    }
+                }
+                if (textReport) PostThumbnailRedraw();
+                continue;
             }
 
             // The expensive part — outside the lock. UCImage::Get and
             // GetPixmap populate the shared mutex-guarded caches, so later
             // synchronous users (e.g. the media viewer) get free cache hits.
+            // Which producer runs is decided by the file itself, not by the
+            // entry: the request may name an entry's explicit thumbnail image
+            // rather than the entry's own file.
             std::shared_ptr<UCPixmap> pm;
-            if (IsVideoFilePath(req.path)) {
-                // Poster frame of a video (may block for a few seconds on a
-                // cold file — that is exactly what these workers are for).
-                VideoThumbnailRequest vreq;
-                vreq.maxWidth = std::max(
-                        1, static_cast<int>(std::lround(req.w * req.scale)));
-                vreq.maxHeight = std::max(
-                        1, static_cast<int>(std::lround(req.h * req.scale)));
-                pm = CaptureVideoThumbnailPixmap(req.path, vreq);
-            } else {
-                auto img = UCImage::Get(req.path);
-                if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                    pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+            switch (PreviewTypeForPath(req.path)) {
+                case FilerPreviewType::Videos: {
+                    // Poster frame of a video (may block for a few seconds on
+                    // a cold file — that is exactly what these workers are
+                    // for).
+                    VideoThumbnailRequest vreq;
+                    vreq.maxWidth = std::max(
+                            1, static_cast<int>(std::lround(req.w * req.scale)));
+                    vreq.maxHeight = std::max(
+                            1, static_cast<int>(std::lround(req.h * req.scale)));
+                    pm = CaptureVideoThumbnailPixmap(req.path, vreq);
+                    break;
+                }
+                case FilerPreviewType::PDF:
+                    pm = RenderPdfPreviewPixmap(req.path, req.w, req.h, req.scale);
+                    break;
+                case FilerPreviewType::Models3D:
+                    pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
+                    break;
+                default: {
+                    auto img = UCImage::Get(req.path);
+                    if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                        pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                    }
+                    break;
                 }
             }
 
@@ -4684,12 +5511,30 @@ namespace UltraCanvas {
         // pixmap is fetched from the async loader and the tile shows the
         // generic glyph until its decode lands (which then repaints us).
         std::string thumb = ThumbSourceFor(e);
+        if (!PreviewFitsRect(e, rect)) thumb.clear();
         if (!thumb.empty()) {
             auto pm = AcquireThumbnail(thumb, rect.width, rect.height,
                                        imageFit, ctx->GetDeviceScale());
             if (pm) {
                 ctx->DrawPixmap(*pm, Rect2Dd(rect), imageFit);
                 return;
+            }
+        }
+
+        // Text-shaped files (Text / Docs / Spreadsheets) preview as a
+        // miniature page of their own content once the background read
+        // finished. Only where a page would be legible at all: the icon
+        // column of the Details and List rows keeps the type glyph.
+        if (thumb.empty() && !e.isDirectory && rect.width >= kContentPreviewMinEdge &&
+            rect.height >= kContentPreviewMinEdge && PreviewEnabledFor(e)) {
+            const FilerPreviewType kind = PreviewTypeOf(e);
+            if (kind == FilerPreviewType::Text || kind == FilerPreviewType::Docs ||
+                kind == FilerPreviewType::Spreadsheets) {
+                TextPreviewSnippet snippet;
+                if (AcquireTextPreview(e, snippet)) {
+                    DrawTextPreview(ctx, rect, snippet);
+                    return;
+                }
             }
         }
 
@@ -4731,6 +5576,100 @@ namespace UltraCanvas {
             ctx->DrawText(ext, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
                                         rect.y + (rect.height - bandH - ts.height) / 2.0));
         }
+    }
+
+    void UltraCanvasFilerWidget::DrawTextPreview(IRenderContext* ctx,
+                                                 const Rect2Di& rect,
+                                                 const TextPreviewSnippet& snippet) {
+        // The sheet the content sits on: a white page with a hairline border,
+        // so a text preview reads as a document even where the content itself
+        // is too small to decipher.
+        ctx->SetFillPaint(Color(255, 255, 255, 255));
+        ctx->FillRoundedRectangle(Rect2Dd(rect), 2);
+        ctx->SetStrokePaint(Color(0, 0, 0, 45));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(rect), 2);
+
+        const int pad = std::max(2, rect.height / 18);
+        const Rect2Di inner(rect.x + pad, rect.y + pad,
+                            rect.width - 2 * pad, rect.height - 2 * pad);
+        if (inner.width < 8 || inner.height < 8 || snippet.lines.empty()) return;
+
+        // Scale the type to the tile: a maximized tile shows readable text, a
+        // small one shows the shape of the content.
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = std::max(4.5, std::min<double>(style.smallFontSize,
+                                                       inner.height / 11.0));
+        ctx->SetFontStyle(fsty);
+        const int lineH = std::max(4, static_cast<int>(
+                std::lround(fsty.fontSize * 1.35)));
+        const size_t maxLines = std::min<size_t>(
+                snippet.lines.size(),
+                std::max(1, inner.height / lineH));
+
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(inner));
+        if (snippet.tabular) {
+            // Spreadsheet-shaped content: the cells of each row spread over
+            // equal columns with the grid drawn behind them.
+            size_t columns = 1;
+            for (size_t i = 0; i < maxLines; ++i) {
+                columns = std::max<size_t>(
+                        columns,
+                        static_cast<size_t>(std::count(snippet.lines[i].begin(),
+                                                       snippet.lines[i].end(),
+                                                       '\t')) + 1);
+            }
+            const double colW = static_cast<double>(inner.width) / columns;
+            ctx->SetStrokePaint(Color(0, 0, 0, 28));
+            ctx->SetStrokeWidth(1.0f);
+            for (size_t c = 1; c < columns; ++c) {
+                const double x = inner.x + c * colW;
+                ctx->DrawLine(Point2Dd(x, inner.y),
+                              Point2Dd(x, inner.y + maxLines * lineH));
+            }
+            for (size_t i = 1; i <= maxLines; ++i) {
+                const double y = inner.y + i * lineH;
+                if (y > inner.y + inner.height) break;
+                ctx->DrawLine(Point2Dd(inner.x, y),
+                              Point2Dd(inner.x + inner.width, y));
+            }
+            for (size_t i = 0; i < maxLines; ++i) {
+                const std::string& row = snippet.lines[i];
+                size_t start = 0, column = 0;
+                while (start <= row.size() && column < columns) {
+                    const size_t tab = row.find('\t', start);
+                    const std::string cell = row.substr(
+                            start, tab == std::string::npos ? std::string::npos
+                                                            : tab - start);
+                    if (!cell.empty()) {
+                        ctx->SetTextPaint(i == 0 ? style.textColor
+                                                 : style.secondaryTextColor);
+                        // Cells are cut, not ellipsized: in a tile-sized grid
+                        // the "…" would be all that is left of the value.
+                        ctx->DrawText(TruncateTextToWidth(
+                                              ctx, cell, static_cast<int>(colW) - 3),
+                                      Point2Dd(inner.x + column * colW + 2,
+                                               inner.y + i * lineH + 1));
+                    }
+                    if (tab == std::string::npos) break;
+                    start = tab + 1;
+                    ++column;
+                }
+            }
+        } else {
+            // The first line stands out like a document title; what follows is
+            // body text. Lines are cut at the right margin the way a page cuts
+            // them, without an ellipsis.
+            ctx->SetTextPaint(style.textColor);
+            for (size_t i = 0; i < maxLines; ++i) {
+                if (i == 1) ctx->SetTextPaint(style.secondaryTextColor);
+                ctx->DrawText(TruncateTextToWidth(ctx, snippet.lines[i], inner.width),
+                              Point2Dd(inner.x, inner.y + i * lineH));
+            }
+        }
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawDetailsHeader(IRenderContext* ctx,
@@ -6212,9 +7151,31 @@ namespace UltraCanvas {
                         [this, f](bool on) { SetDatasetField(f, on); }));
             }
 
+            // Preview > which file kinds show their content instead of the
+            // plain type glyph. All on by default.
+            std::vector<MenuItemData> previewItems;
+            struct PreviewOption { const char* label; FilerPreviewType type; };
+            static const PreviewOption previewOptions[] = {
+                {"Bitmaps",         FilerPreviewType::Bitmaps},
+                {"Vector graphics", FilerPreviewType::VectorGraphics},
+                {"3D",              FilerPreviewType::Models3D},
+                {"PDF",             FilerPreviewType::PDF},
+                {"Text",            FilerPreviewType::Text},
+                {"Docs",            FilerPreviewType::Docs},
+                {"Spreadsheets",    FilerPreviewType::Spreadsheets},
+                {"Videos",          FilerPreviewType::Videos},
+            };
+            for (const PreviewOption& o : previewOptions) {
+                FilerPreviewType t = o.type;
+                previewItems.push_back(MenuItemData::Checkbox(
+                        o.label, IsPreviewTypeEnabled(t),
+                        [this, t](bool on) { SetPreviewType(t, on); }));
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
+            displayItems.push_back(MenuItemData::Submenu("Preview", previewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,

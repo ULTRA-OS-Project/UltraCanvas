@@ -17,6 +17,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Selection Modes**: Single, multiple, or no selection
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
+- **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
 - **Keyboard Navigation**: Full keyboard support with arrow keys
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
@@ -282,6 +283,76 @@ TreeLineStyle GetLineStyle() const
 ```
 Sets/gets the connecting line style.
 
+### Scroll-to-Top Button
+
+When a tree grows past its viewport, getting back to the root can take a lot of
+wheel turns. The tree therefore draws a small floating **"move to the top"**
+button over the bottom-right corner of its content area once the view has been
+scrolled down:
+
+```cpp
+void SetShowScrollToTopButton(bool show)
+bool GetShowScrollToTopButton() const
+
+void SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style)
+const TreeScrollToTopStyle& GetScrollToTopButtonStyle() const
+
+bool    IsScrollToTopButtonActive() const   // on screen right now?
+Rect2Di GetScrollToTopButtonRect() const    // element-local rect (empty when inactive)
+
+void ScrollToTop()                          // what the button does; callable directly
+```
+
+Behaviour:
+
+- **Enabled by default.** `SetShowScrollToTopButton(false)` turns it off, e.g.
+  for short trees inside dense dialogs where any overlay is a distraction.
+- **Appears only for genuinely long trees**: it stays hidden until *more than*
+  `TreeScrollToTopStyle::minHiddenRows` (3 by default) rows sit outside the
+  visible area, so a tree that overflows by a row or two never grows a button.
+- **Appears only once the user has scrolled down**: while the first row is on
+  screen there is nothing to go back to, so the button stays hidden.
+- **Dodges the end of the list**: as the view approaches the bottom, the button
+  slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
+  (3 by default) rows. Away from the bottom it rests in the corner.
+- **Never overlaps the vertical scrollbar** — it is placed to the left of it.
+- Clicking it jumps back to the first row, animated when the scrollbar has
+  smooth scrolling enabled. The click is consumed by the button, so the row
+  underneath is neither selected nor expanded.
+
+`UltraCanvasColumnsTreeView` inherits the button, and it is placed below the
+optional column header band.
+
+```cpp
+struct TreeScrollToTopStyle {
+    int   size            = 24;    // button width/height in px
+    int   margin          = 8;     // gap between the button and the content edges
+    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
+    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
+    Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);
+    Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
+    Color borderColor     = Color(0xFF, 0xFF, 0xFF, 0x60);
+    Color arrowColor      = Colors::White;
+};
+```
+
+Example — a larger, lighter button that keeps five rows clear:
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
+
+TreeScrollToTopStyle style;
+style.size            = 32;
+style.keepClearRows   = 5;
+style.background      = Color(0x20, 0x60, 0xC0, 0xC0);
+style.hoverBackground = Color(0x20, 0x60, 0xC0, 0xF0);
+tree->SetScrollToTopButtonStyle(style);
+
+// ...or switch the affordance off entirely:
+// tree->SetShowScrollToTopButton(false);
+```
+
 ### Color Properties
 
 ```cpp
@@ -418,6 +489,7 @@ auto treeView = TreeViewBuilder("MyTree", 10, 10, 300, 400)
     .SetIndentSize(20)
     .SetSelectionMode(TreeSelectionMode::Multiple)
     .SetLineStyle(TreeLineStyle::Dotted)
+    .SetShowScrollToTopButton(true)
     .SetBackgroundColor(Colors::White)
     .SetSelectionColor(Colors::Blue)
     .SetHoverColor(Color(230, 240, 250))
@@ -455,6 +527,8 @@ The tree view supports comprehensive keyboard navigation:
 ### Scrolling
 - **Mouse Wheel**: Scroll vertically
 - **Scrollbar Drag**: Direct scrolling control
+- **Scroll-to-Top Button**: Click the floating arrow in the bottom-right corner
+  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-button))
 
 ## Rendering Details
 
@@ -465,6 +539,8 @@ The tree view supports comprehensive keyboard navigation:
 4. **Selection Highlight**: Background color for selected nodes
 5. **Hover Highlight**: Background color for hovered nodes
 6. **Scrollbar**: Vertical scrollbar when content exceeds viewport
+7. **Scroll-to-Top Button**: Floating "move to the top" arrow over the
+   bottom-right corner of long trees that have been scrolled down
 
 ### Performance Optimizations
 - Only visible nodes are rendered (viewport culling)
@@ -516,6 +592,10 @@ std::vector<TreeNode*> GetVisibleChildren()
 | Hover Color | Light Blue (#E5F3FF) |
 | Line Color | Gray (#808080) |
 | Text Color | Black |
+| Show Scroll-to-Top Button | true |
+| Scroll-to-Top Button Size | 24 pixels |
+| Scroll-to-Top Min Hidden Rows | 3 |
+| Scroll-to-Top Keep-Clear Rows | 3 |
 
 ## Platform Integration
 
@@ -548,6 +628,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2024-12-19 | Initial release with full tree functionality |
+| 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
 
 ## See Also
 
