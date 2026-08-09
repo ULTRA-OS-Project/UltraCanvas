@@ -65,3 +65,34 @@ target_include_directories(UltraSocialEngine PUBLIC
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 
 message(STATUS "  [✓] UltraSocial engine - ENABLED (target: UltraSocialEngine)")
+
+# ── UltraSocial GUI application ──────────────────────────────────────────────
+# The compose window + account wizard on top of the engine. Needs the
+# UltraCanvas UI library, built by add_subdirectory(UltraCanvas) before this
+# directory, so ${ULTRACANVAS_LIBRARY} / ${ULTRACANVAS_INCLUDE_DIRS} are in
+# scope and carry the platform deps as PUBLIC.
+if(NOT ULTRACANVAS_LIBRARY)
+    message(STATUS "  [−] UltraSocial GUI app - SKIPPED (UltraCanvas UI library not built)")
+    return()
+endif()
+
+set(ULTRASOCIAL_UI_SOURCES
+    ui/UltraSocialApp.cpp
+    ui/UltraSocialAccountWizard.cpp
+    ui/UltraSocialComposeView.cpp
+)
+
+add_executable(UltraSocial main.cpp ${ULTRASOCIAL_UI_SOURCES})
+target_include_directories(UltraSocial PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+# Engine before the core: the engine (static) pulls UltraNet_* / JSON symbols
+# from the core library, and GNU ld resolves left-to-right, so the provider
+# must follow the consumer on the link line.
+target_link_libraries(UltraSocial PRIVATE UltraSocialEngine ${ULTRACANVAS_LIBRARY})
+if(TARGET fmt::fmt)
+    target_link_libraries(UltraSocial PRIVATE fmt::fmt)
+endif()
+target_compile_features(UltraSocial PRIVATE cxx_std_20)
+message(STATUS "  [✓] UltraSocial GUI app - ENABLED (target: UltraSocial)")

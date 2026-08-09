@@ -1,3 +1,16 @@
+#### 2026-08-09 *0.3.39*
+- **UltraSocial** *(Phase 1 UI)*: the GUI application (target `UltraSocial`)
+  on top of the engine — compose window with per-account target checkboxes
+  and live character counters (per network's limit, switching to the caption
+  limit when media is attached; amber badge + "will be shortened" warning
+  when over), media chips through the file picker, add-account wizard
+  (network picker with per-network fields and hints; Mastodon's browser
+  OAuth or pasted token, Bluesky app password, Telegram bot token), post
+  reporting per target, and the recent-history strip. Sign-in and publishing
+  run on worker threads; results marshal to the UI through a main-thread
+  timer queue, so the window stays live during the OAuth browser consent
+  and slow uploads.
+
 #### 2026-08-09 *0.3.38*
 - **UltraSocial** *(new, Phase 1 engine)*: the cross-posting app's headless
   engine (`Apps/UltraSocial/engine/`, target `UltraSocialEngine`) —

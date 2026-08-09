@@ -25,8 +25,17 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 >   single photo + caption via `sendPhoto` (multipart); `t.me` permalinks
 >   for channels with a public username.
 >
-> Still to come (see the concept's phasing): the compose window and account
-> wizard UI, the scheduling outbox, and the Tier-2 connectors (Reddit, X).
+> The **UI** (target `UltraSocial`) has the compose window — one text area,
+> per-account target checkboxes with live character counters that flip to a
+> warning badge over the limit, adaptation warnings, media chips via the
+> file picker, a Post button, and the recent-history strip — plus the
+> add-account wizard (network picker with per-network fields and hints).
+> Sign-in and publishing run on worker threads and marshal back through a
+> main-thread timer queue, so the window stays live while the browser
+> consent or a slow network round-trip is in flight.
+>
+> Still to come (see the concept's phasing): the scheduling outbox
+> (phase 2) and the Tier-2 connectors (Reddit, X).
 
 ## Layout
 
@@ -44,6 +53,12 @@ Apps/UltraSocial/
       UltraSocialMastodonConnector.{h,cpp}
       UltraSocialBlueskyConnector.{h,cpp}
       UltraSocialTelegramConnector.{h,cpp}
+  ui/
+    UltraSocialApp.{h,cpp}             app manager: store + vault + windows,
+                                       worker-thread sign-in/publish
+    UltraSocialAccountWizard.{h,cpp}   add-account dialog
+    UltraSocialComposeView.{h,cpp}     compose surface + targets + history
+  main.cpp                             UltraCanvasApplication bootstrap
 ```
 
 ## Building and testing
