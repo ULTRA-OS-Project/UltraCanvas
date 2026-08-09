@@ -400,10 +400,6 @@ namespace UltraCanvas {
             }
         }
 
-        // True when `path` names a video file (by extension). Such thumbnail
-        // requests decode a poster frame via CaptureVideoThumbnailPixmap
-        // instead of going through the image pipeline.
-        bool IsVideoFilePath(const std::string& path) {
         // ===== SELECTIVE PREVIEWS =====
         // The preview kind a file belongs to — what a content preview for it
         // would cost to produce, and therefore which Display > Preview switch
