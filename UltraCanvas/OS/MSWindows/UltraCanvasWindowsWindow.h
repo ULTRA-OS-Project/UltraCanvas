@@ -92,6 +92,12 @@ namespace UltraCanvas {
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
 
+        // ===== NATIVE FILE DRAG SOURCE =====
+        // Hands `filePaths` to the shell (CF_HDROP) and runs the OLE drag until
+        // the drop or Escape; `onFinished` reports what the target did.
+        bool StartNativeFileDrag(const std::vector<std::string>& filePaths,
+                                 std::function<void(bool accepted, bool moved)> onFinished = nullptr) override;
+
         // ===== WINDOWS-SPECIFIC METHODS =====
         HWND GetHWND() const { return hwnd; }
 

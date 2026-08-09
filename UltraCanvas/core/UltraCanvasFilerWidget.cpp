@@ -6,13 +6,16 @@
 // codec via lightweight header probes, recursive folder stats). Image
 // thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
 // never waits for image files.
-// Entries are draggable (see DRAGGING ENTRIES): inside the widget the drag is
-// drawn here and a drop on a folder of the view moves the files into it (Ctrl
-// copies), and once the cursor leaves the widget the same set continues as a
-// native OS drag onto other windows / applications. Dragging never changes the
-// selection. External drops are copied into the shown folder, and Copy / Cut /
-// Paste go through the system clipboard so files can be exchanged with other
-// programs (external file managers, editors, ...). Pasting a clipboard that
+// Entries are draggable (see DRAGGING ENTRIES): the drag is drawn here and a
+// drop on a folder of the view moves the files into it (Ctrl copies). Crossing
+// the widget's border does not end it — the badge keeps following the cursor
+// over the rest of the window (through the window's drag overlay) and a release
+// over another element hands it the files as a Drop event; only leaving the
+// window turns the same set into a native OS drag onto other applications.
+// Dragging never changes the selection. External drops are copied into the
+// shown folder, and Copy / Cut / Paste go through the system clipboard so
+// files can be exchanged with other programs (external file managers,
+// editors, ...). Pasting a clipboard that
 // holds raw data instead of files (an image or text copied elsewhere) writes
 // that content as a new file into the shown folder.
 // The column views (details, list, size bars) carry UltraCanvasSplitPane-style
@@ -30,7 +33,7 @@
 // (SetFileListOrderPreserved) instead of being sorted. Every content change
 // the user makes is reported through onFolderModified with the folder it
 // landed in, next to the plain rescan notification onFolderRefreshed.
-// Version: 1.10.0
+// Version: 1.12.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
@@ -1028,6 +1031,7 @@ namespace UltraCanvas {
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
             dragMouseCaptured = false;
         }
+        HideDragOverlay();          // its renderer captures `this`
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
         StopFolderStatsWorker();
@@ -1766,54 +1770,81 @@ namespace UltraCanvas {
         dragLeadEntry = lead;
 
         draggingItems = true;
+        dragNativeRefused = false;
         dragPos = localPoint;
         dragDropFolderIndex = DragDropFolderAt(localPoint);
         if (hoveredIndex != -1) hoveredIndex = -1;
         SetMouseCursor(UCMouseCursor::Hand);
+        MeasureDragBadge();
+        UpdateDragOverlay(localPoint);
         RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::UpdateItemDrag(const Point2Di& localPoint) {
         dragPos = localPoint;
 
-        // Left the widget: the same set continues as a native OS drag, so it
-        // can be dropped on any other window or application.
-        auto lb = GetLocalBounds();
-        Rect2Di local(static_cast<int>(lb.x), static_cast<int>(lb.y),
-                      static_cast<int>(lb.width), static_cast<int>(lb.height));
-        if (!local.Contains(localPoint)) {
+        // Left the window: the same set continues as a native OS drag, so it
+        // can be dropped on any other window or application. Crossing the
+        // widget's own border does NOT end the drag — the badge simply keeps
+        // travelling over the rest of the window (see UpdateDragOverlay).
+        Point2Di windowPoint = ToWindowPoint(localPoint);
+        if (!IsInsideWindow(windowPoint) && !dragNativeRefused) {
             std::vector<std::string> paths = dragPaths;
             EndDragGesture();
             if (!StartNativeDragOfPaths(paths)) {
-                // No native drag available (no window / refused grab): keep the
-                // in-widget drag running so the gesture is not lost.
+                // No native drag available (no window / no implementation on
+                // this platform / refused grab): keep our own drag running so
+                // the gesture is not lost, and stop asking for this gesture.
                 draggingItems = true;
+                dragNativeRefused = true;
                 dragPaths = paths;
                 dragPos = localPoint;
                 if (auto* app = UltraCanvasApplication::GetInstance()) {
                     app->CaptureMouse(this);
                     dragMouseCaptured = true;
                 }
+                UpdateDragOverlay(localPoint);
             }
             RequestRedraw();
             return;
         }
 
-        int folder = DragDropFolderAt(localPoint);
+        // Inside the widget the folder under the cursor is the drop target;
+        // outside it there is none to highlight.
+        auto lb = GetLocalBounds();
+        Rect2Di local(static_cast<int>(lb.x), static_cast<int>(lb.y),
+                      static_cast<int>(lb.width), static_cast<int>(lb.height));
+        int folder = local.Contains(localPoint) ? DragDropFolderAt(localPoint) : -1;
         if (folder != dragDropFolderIndex) dragDropFolderIndex = folder;
+        UpdateDragOverlay(localPoint);
         RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::FinishItemDrag(const Point2Di& localPoint,
                                                 bool copy) {
         std::vector<std::string> paths = dragPaths;
-        int folder = DragDropFolderAt(localPoint);
+        auto lb = GetLocalBounds();
+        Rect2Di local(static_cast<int>(lb.x), static_cast<int>(lb.y),
+                      static_cast<int>(lb.width), static_cast<int>(lb.height));
+        bool inWidget = local.Contains(localPoint);
+        int folder = inWidget ? DragDropFolderAt(localPoint) : -1;
         std::string destDir = (folder >= 0 && folder < static_cast<int>(entries.size()))
                 ? entries[folder].path : std::string();
+        Point2Di windowPoint = ToWindowPoint(localPoint);
         EndDragGesture();
         RequestRedraw();
-        // A drop that is not on a folder of this view just ends the drag.
-        if (!destDir.empty() && !paths.empty()) DropPathsInto(paths, destDir, copy);
+        if (!paths.empty()) {
+            if (!destDir.empty()) {
+                DropPathsInto(paths, destDir, copy);
+            } else if (!inWidget && IsInsideWindow(windowPoint)) {
+                // Released over another element of this window (a second filer
+                // pane, a folder tree, ...): offer it the files the same way an
+                // external drop would.
+                DeliverInWindowDrop(windowPoint, paths);
+            }
+            // A drop on nothing (empty space of this view, outside the window
+            // with no native drag) just ends the drag.
+        }
     }
 
     void UltraCanvasFilerWidget::CancelItemDrag() {
@@ -1828,12 +1859,108 @@ namespace UltraCanvas {
             dragMouseCaptured = false;
         }
         if (draggingItems) SetMouseCursor(UCMouseCursor::Default);
+        HideDragOverlay();
         draggingItems = false;
         dragOutArmed = false;
+        dragNativeRefused = false;
         dragPressIndex = -1;
         dragDropFolderIndex = -1;
         dragPaths.clear();
         dragLabel.clear();
+    }
+
+    Point2Di UltraCanvasFilerWidget::ToWindowPoint(const Point2Di& localPoint) const {
+        Point2Df origin = GetPositionInWindow();
+        return Point2Di(localPoint.x + static_cast<int>(origin.x),
+                        localPoint.y + static_cast<int>(origin.y));
+    }
+
+    bool UltraCanvasFilerWidget::IsInsideWindow(const Point2Di& windowPoint) const {
+        auto* win = GetWindow();
+        if (!win) return false;
+        int w = 0, h = 0;
+        win->GetWindowSize(w, h);
+        return windowPoint.x >= 0 && windowPoint.y >= 0 &&
+               windowPoint.x < w && windowPoint.y < h;
+    }
+
+    void UltraCanvasFilerWidget::MeasureDragBadge() {
+        // The label is fixed for the whole gesture, so one measurement is
+        // enough; without a render context (widget not on a window yet) an
+        // estimate keeps the badge roughly the right size.
+        const int iconSz = 20, padX = 8, padY = 6, gap = 6;
+        Size2Di ts(static_cast<int>(dragLabel.size()) * 7, 16);
+        if (IRenderContext* ctx = GetRenderContext()) {
+            FontStyle fsty;
+            fsty.fontFamily = style.fontFamily;
+            fsty.fontSize = style.smallFontSize;
+            ctx->PushState();
+            ctx->SetFontStyle(fsty);
+            ts = ctx->GetTextLineDimensions(EllipsizeText(ctx, dragLabel, 220));
+            ctx->PopState();
+        }
+        dragBadgeSize = Size2Di(padX * 2 + iconSz + gap + ts.width,
+                                std::max(iconSz, ts.height) + padY * 2);
+    }
+
+    Rect2Di UltraCanvasFilerWidget::DragBadgeRect(const Point2Di& windowPoint) const {
+        int bw = dragBadgeSize.width, bh = dragBadgeSize.height;
+        int bx = windowPoint.x + 14;
+        int by = windowPoint.y + 14;
+        auto* win = GetWindow();
+        if (win) {
+            // Keep it on screen: flipped above the cursor at the bottom edge.
+            int ww = 0, wh = 0;
+            win->GetWindowSize(ww, wh);
+            if (bx + bw > ww) bx = ww - bw;
+            if (by + bh > wh) by = windowPoint.y - bh - 6;
+            if (bx < 0) bx = 0;
+            if (by < 0) by = 0;
+        }
+        return Rect2Di(bx, by, bw, bh);
+    }
+
+    void UltraCanvasFilerWidget::UpdateDragOverlay(const Point2Di& localPoint) {
+        auto* win = GetWindow();
+        if (!win || !draggingItems || dragPaths.empty()) return;
+        Rect2Di badge = DragBadgeRect(ToWindowPoint(localPoint));
+        win->SetDragOverlay(this, badge,
+                [this](IRenderContext* ctx, const Rect2Di& rect) {
+                    DrawDragBadge(ctx, rect);
+                });
+        dragOverlayShown = true;
+    }
+
+    void UltraCanvasFilerWidget::HideDragOverlay() {
+        if (!dragOverlayShown) return;
+        dragOverlayShown = false;
+        if (auto* win = GetWindow()) win->ClearDragOverlay(this);
+    }
+
+    void UltraCanvasFilerWidget::DeliverInWindowDrop(
+            const Point2Di& windowPoint, const std::vector<std::string>& paths) {
+        auto* win = GetWindow();
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!win || !app || paths.empty()) return;
+
+        UCEvent drop;
+        drop.type = UCEventType::Drop;
+        drop.targetWindow = win->GetWindowWeakPtr();
+        drop.nativeWindowHandle = win->GetNativeHandle();
+        drop.pointerWindow = windowPoint;
+        drop.pointer = windowPoint;
+        drop.droppedFiles = paths;
+        drop.dragMimeType = "text/uri-list";
+        std::string joined;
+        for (const std::string& p : paths) {
+            if (!joined.empty()) joined += "\n";
+            joined += p;
+        }
+        drop.dragData = joined;
+        // Queued, not dispatched inline: the release that produced it is still
+        // being handled, and the drop is routed to the element under the
+        // cursor exactly like a drop arriving from another application.
+        app->PushEvent(drop);
     }
 
     int UltraCanvasFilerWidget::DragDropFolderAt(const Point2Di& localPoint) const {
@@ -3671,7 +3798,8 @@ namespace UltraCanvas {
         DrawColumnSplitters(ctx, bounds);
         DrawScrollbar(ctx);
         DrawSelectionInfoBar(ctx, bounds);
-        // Drag badge + drop highlight above the whole view (including chrome).
+        // Drop-folder highlight above the whole view (including chrome); the
+        // badge travels on the window overlay so it survives the widget border.
         if (draggingItems) DrawDragFeedback(ctx, bounds);
         // Rubber-band rectangle of a running drag selection.
         if (marqueeActive) DrawMarquee(ctx);
@@ -3696,40 +3824,44 @@ namespace UltraCanvas {
             }
         }
 
-        // Badge following the cursor: the dragged entry's icon plus its name
-        // (or the item count), so it is always visible what is being carried.
+        // The badge that follows the cursor is NOT drawn here: it has to stay
+        // visible after the cursor leaves this widget, and an element cannot
+        // paint outside its own bounds. It goes onto the window's drag overlay
+        // instead (UpdateDragOverlay → DrawDragBadge).
+    }
+
+    void UltraCanvasFilerWidget::DrawDragBadge(IRenderContext* ctx,
+                                               const Rect2Di& badgeRect) {
+        // The dragged entry's icon plus its name (or the item count), so it is
+        // always visible what is being carried. Window coordinates.
+        if (dragLabel.empty()) return;
+        const int iconSz = 20, padX = 8, padY = 6, gap = 6;
+
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
         fsty.fontSize = style.smallFontSize;
+        ctx->PushState();
         ctx->SetFontStyle(fsty);
         std::string label = EllipsizeText(ctx, dragLabel, 220);
         Size2Di ts = ctx->GetTextLineDimensions(label);
 
-        const int iconSz = 20, padX = 8, padY = 6, gap = 6;
-        int bw = padX * 2 + iconSz + gap + ts.width;
-        int bh = std::max(iconSz, ts.height) + padY * 2;
-        int bx = dragPos.x + 14;
-        int by = dragPos.y + 14;
-        // Keep the badge inside the widget so it never paints over neighbours.
-        if (bx + bw > bounds.x + bounds.width)  bx = bounds.x + bounds.width - bw;
-        if (by + bh > bounds.y + bounds.height) by = dragPos.y - bh - 6;
-        if (bx < bounds.x) bx = bounds.x;
-        if (by < bounds.y) by = bounds.y;
-        Rect2Di badge(bx, by, bw, bh);
-
         Color back = style.backgroundColor; back.a = 235;
         ctx->SetFillPaint(back);
-        ctx->FillRoundedRectangle(Rect2Dd(badge), 5);
+        ctx->FillRoundedRectangle(Rect2Dd(badgeRect), 5);
         ctx->SetStrokePaint(style.selectionBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRoundedRectangle(Rect2Dd(badge), 5);
+        ctx->DrawRoundedRectangle(Rect2Dd(badgeRect), 5);
 
         DrawEntryIcon(ctx, dragLeadEntry,
-                      Rect2Di(bx + padX, by + (bh - iconSz) / 2, iconSz, iconSz));
+                      Rect2Di(badgeRect.x + padX,
+                              badgeRect.y + (badgeRect.height - iconSz) / 2,
+                              iconSz, iconSz));
         ctx->SetFontStyle(fsty);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(label, Point2Dd(bx + padX + iconSz + gap,
-                                      by + (bh - ts.height) / 2.0));
+        ctx->DrawText(label,
+                      Point2Dd(badgeRect.x + padX + iconSz + gap,
+                               badgeRect.y + (badgeRect.height - ts.height) / 2.0));
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawPlaceholderView(IRenderContext* ctx,

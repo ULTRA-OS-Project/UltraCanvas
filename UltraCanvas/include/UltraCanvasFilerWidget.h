@@ -44,7 +44,7 @@
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
-// Version: 1.11.0
+// Version: 1.12.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
@@ -764,9 +764,17 @@ namespace UltraCanvas {
         //   * inside the widget the drag is drawn here (a badge under the
         //     cursor, the folder below it highlighted) and a drop on a folder
         //     of the view moves the files into it (Ctrl drops a copy);
-        //   * once the cursor leaves the widget the same set is handed to the
-        //     native OS drag (window->StartNativeFileDrag), where the drop
+        //   * crossing the widget's border does NOT end the drag: the badge
+        //     keeps following the cursor over the rest of the window (drawn
+        //     through the window's drag overlay, since a widget cannot paint
+        //     outside its own bounds) and a release over another element hands
+        //     the files to it as a Drop event — that is how a file reaches a
+        //     folder tree or a second filer pane of the same window;
+        //   * only when the cursor leaves the WINDOW is the same set handed to
+        //     the native OS drag (window->StartNativeFileDrag), where the drop
         //     target performs the copy / move and a move refreshes this view.
+        //     Platforms without a native drag keep the window-wide drag alive
+        //     instead of dropping the gesture (dragNativeRefused).
         // Dragging never changes the selection: what a press would select is
         // deferred to the release (see pendingSelectIndex / dragCollapseIndex),
         // so dragging a file does not fire onSelectionChanged and does not
@@ -782,6 +790,14 @@ namespace UltraCanvas {
         std::string dragLabel;             // badge text ("photo.png" / "5 items")
         FilerEntry  dragLeadEntry;         // drives the badge icon / thumbnail
         int  dragDropFolderIndex = -1;     // folder highlighted under the cursor
+        // Badge size, measured once when the drag starts (the label does not
+        // change while it runs) so every move only has to place it.
+        Size2Di dragBadgeSize;
+        bool dragOverlayShown = false;     // badge registered with the window
+        // The native drag was offered the set and refused it (no window, no
+        // implementation on this platform, grab denied): don't ask again for
+        // the rest of this gesture, keep drawing the drag instead.
+        bool dragNativeRefused = false;
         // Press on an already-selected item keeps the (multi-)selection so it
         // can be dragged; the usual "select only this item" collapse is
         // deferred to the release and recorded here (-1 = nothing deferred).
@@ -1236,11 +1252,13 @@ namespace UltraCanvas {
         // Picks up the pressed item (or the selection containing it) and runs
         // the in-widget drag; the pointer stays captured for its duration.
         void BeginItemDrag(const Point2Di& localPoint);
-        // Tracks the cursor: highlights the folder under it and hands the drag
-        // over to the native OS drag once the cursor leaves the widget.
+        // Tracks the cursor: highlights the folder under it, keeps the badge
+        // following it across the whole window and hands the drag over to the
+        // native OS drag once the cursor leaves the window.
         void UpdateItemDrag(const Point2Di& localPoint);
         // Drop: files land in the highlighted folder (moved, or copied when
-        // `copy`); a drop anywhere else is a no-op.
+        // `copy`); a release over another element of the window hands them to
+        // it, and a drop on nothing simply ends the drag.
         void FinishItemDrag(const Point2Di& localPoint, bool copy);
         void CancelItemDrag();             // Escape / lost pointer
         void EndDragGesture();             // clears the armed / running state
@@ -1251,8 +1269,26 @@ namespace UltraCanvas {
         // Folder entry under a widget-local point that the running drag may be
         // dropped on (never one of the dragged items), or -1.
         int  DragDropFolderAt(const Point2Di& localPoint) const;
-        // Drop-folder highlight + the badge that follows the cursor.
+        // Drop-folder highlight (the badge is drawn by the window overlay).
         void DrawDragFeedback(IRenderContext* ctx, const Rect2Di& bounds);
+        // ----- drag badge (window overlay, so it survives the widget border) -
+        // Widget-local → window coordinates.
+        Point2Di ToWindowPoint(const Point2Di& localPoint) const;
+        // Is a window-coordinate point still on the window's client area?
+        bool IsInsideWindow(const Point2Di& windowPoint) const;
+        // Measures dragLabel into dragBadgeSize (once per gesture).
+        void MeasureDragBadge();
+        // Badge rectangle for a cursor position, kept inside the window.
+        Rect2Di DragBadgeRect(const Point2Di& windowPoint) const;
+        // (Re)places the badge overlay on the window / takes it down again.
+        void UpdateDragOverlay(const Point2Di& localPoint);
+        void HideDragOverlay();
+        // Paints the badge; `badgeRect` is in window coordinates.
+        void DrawDragBadge(IRenderContext* ctx, const Rect2Di& badgeRect);
+        // Release over another element of the same window: the files are
+        // offered to it as a Drop event, exactly like an external drop.
+        void DeliverInWindowDrop(const Point2Di& windowPoint,
+                                 const std::vector<std::string>& paths);
         // Starts the native OS drag of the current selection (drag-out).
         bool StartNativeDragOfSelection();
         // Starts the native OS drag of an explicit file set.
