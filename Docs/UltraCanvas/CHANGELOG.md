@@ -1,4 +1,101 @@
 #### 2026-08-09 *0.3.36*
+- **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
+  name and stays editable. The suggested archive name was `stem()` of the
+  entry, which strips everything after the last dot — for a folder named
+  `UCDemo-Windows-0.3.27-x86_64` that left `UCDemo-Windows-0.3`, because
+  `.27-x86_64` looks like an extension to `std::filesystem`. A folder now keeps
+  its full name (a folder has no extension, so every dot in it belongs to the
+  name), and a file only loses a tail that is a plausible file type: short,
+  alphanumeric and not a pure number, with `.tar` dropped along with the
+  `.gz` / `.bz2` / `.xz` / `.zst` of a compound suffix. `CompressSelection()`
+  picks the same name.
+  The name field itself was a hand-rolled buffer fed by the dialog's own key
+  handler: it could only append and backspace at the end (no caret, no
+  selection, no clipboard — nothing could be corrected in the middle), and
+  because it read the keyboard through the widget's own focus it went silent
+  the moment anything else in the window claimed the focus, and stayed silent
+  for every dialog opened afterwards. It is now a real `UltraCanvasTextInput`
+  child, the same component the inline rename editor uses, opened with the
+  suggestion selected so typing replaces it; the dialog additionally installs a
+  window `KeyDown` filter for as long as it is up, so a keystroke reaches the
+  editor whoever the window currently considers focused. Closing the dialog
+  removes the filter and hands the keyboard back to the folder display. The
+  committed name is stripped of path separators and trimmed before it becomes
+  a file name.
+- **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog's Compress /
+  Cancel are `UltraCanvasButton` children now, replacing a private
+  `DrawDialogButton` painter and its own `okHover` / `cancelHover` flags and
+  hit-testing. They carry the framework's hover, press and disabled painting,
+  and a click reaches them as elements instead of being pattern-matched
+  against rectangles in the dialog's mouse handler.
+- **UltraCanvasTimePicker** *(1.2.0)*: the editable field is a real
+  `UltraCanvasTextInput` child (the picker is an `UltraCanvasContainer` now,
+  like every other composite widget), replacing a private `editBuffer` /
+  `caretPos` / `editing` triple and ~110 lines of hand-written key handling.
+  Typing a time gains selection, clipboard, undo, double-click word select and
+  multi-byte input, all of which the hand-rolled editor lacked; the popup
+  spinners, the clock dial, the wheel-over-field nudge, Up/Down to open, Enter
+  to commit and Escape to revert keep working as before. Two behaviours had to
+  be re-pointed at the new field: the spinner and dial paths wrote `value`
+  directly and so left the text stale, and the wheel guard tested
+  `IsHovered()`, which the editor now absorbs by being the element under the
+  pointer.
+- **UltraCanvasSpreadsheet** *(1.2.0)*: the cell / formula-bar editor is a real
+  `UltraCanvasTextInput` child (the widget is an `UltraCanvasContainer` now),
+  replacing an `editBuffer_` / `editCursorPos_` pair and its own key handling.
+  One editor moves between the active cell and the formula bar depending on the
+  edit mode. Cell text gains selection, clipboard, undo and multi-byte input;
+  typing to start an edit, Enter to commit and step down, Tab to commit and step
+  right, Escape to discard and formula entry all behave as before. `editBuffer_`
+  survives as a mirror of the editor's text, so the live formula preview and the
+  formula bar read it unchanged.
+  With this the UI-reuse baseline is **empty**: every control in the tree is
+  built from an UltraCanvas element.
+- **UltraCanvasDatePicker**, **UltraCanvasColorPicker** *(1.3.0)*: their typed
+  fields are real `UltraCanvasTextInput` children too, on the same pattern as
+  the time picker — both widgets derive from `UltraCanvasContainer` now. The
+  date field keeps its calendar popup, arrow-key month navigation (the popup
+  takes the keyboard off the field so the arrows drive dates, and hands it back
+  on close) and is read-only in the range / week / multiple modes, whose text
+  is a computed summary. The colour picker moves one editor between its hex box
+  and the channel boxes, keeps the per-field character filter — now applied to
+  paste as well as typing — and gains selection, clipboard and undo it never
+  had. Clicking a value box selects its contents (type to replace) instead of
+  placing a caret mid-value; a second click inside the editor places the caret
+  as usual. `DragTarget::TextDrag` is gone: dragging out a selection is the
+  editor's own gesture.
+- **UltraCanvasContainer** *(4.2.0)*: new `PlaceChildAt(child, rect)` for a
+  self-rendered widget that positions a child itself (an inline editor over a
+  field or a cell). `SetBounds()` alone is not enough — it writes only
+  `finalBounds`, which the next layout pass overwrites, and
+  `UltraCanvasTextInput::Arrange()` re-clamps its horizontal scroll whenever
+  its width changes, so an editor placed that way ended up showing the tail of
+  its own value ("F" instead of "#85FFFBFF"). `PlaceChildAt` writes the CSS
+  position and size the engine resolves from, so the rectangle survives
+  Arrange. The Filer's compress dialog uses it too.
+- **UltraCanvasFilerWidget**: fixed a build break in `ScanFolder()` — a merge
+  kept the rename-reveal block that reads `renamedTo` but dropped the lines
+  that declare it (and map the selection from the old path to the new one), so
+  the file did not compile and the renamed entry lost its selection.
+- **Docs**: new `Docs/UltraCanvas/UltraCanvasUIElements.md` — a catalogue of
+  every UI element the framework ships, grouped by what you are trying to
+  build, with each element's defining header. The corpus had ~150 per-component
+  documents and no index, so an element could only be found by someone who
+  already knew its name; that is why controls kept being painted by hand
+  instead of instantiated. AGENTS.md now carries the rule ("if it takes input,
+  shows a picture or presents a value, it is an element") and points at the
+  catalogue.
+- **Tooling**: new `scripts/check_ui_reuse.py` plus a `UI element reuse` CI
+  workflow. It reports the two shapes that are almost always a reinvented
+  element — a private edit buffer and caret fed from a `KeyDown` handler with
+  no `UltraCanvasTextInput` in the file, and a
+  `Draw*Button(IRenderContext*, …, bool hovered)` painter. The six controls
+  that already existed (`UltraCanvasColorPicker`, `UltraCanvasDatePicker`,
+  `UltraCanvasTimePicker` and `UltraCanvasSpreadsheet` edit fields, the Filer's
+  `DrawDialogButton`) were recorded in `scripts/ui_reuse_baseline.txt` so they
+  would not fail the build while only new ones did — and were then all ported
+  in this same release, leaving the baseline empty. Self-rendered views that legitimately
+  paint their own content opt out with a `// ui-reuse-exempt: <reason>` marker.
 - **UltraCanvasFilerWidget** *(1.13.0)*: content previews are now **selectable
   per file kind**. The context menu grew a `Display > Preview` submenu with a
   checkbox for each of Bitmaps, Vector graphics, 3D, PDF, Text, Docs,

@@ -3,6 +3,7 @@
 #include "UltraCanvasDatePicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextInput.h"
 #include <ctime>
 #include <cstdio>
 #include <cctype>
@@ -1391,7 +1392,8 @@ namespace UltraCanvas {
 
     UltraCanvasDatePicker::UltraCanvasDatePicker(const std::string& identifier,
                                                  float x, float y, float w, float h)
-            : UltraCanvasUIElement(identifier, x, y, w, h) {
+            : UltraCanvasContainer(identifier, x, y, w, h) {
+        BuildTextInput();
         calendar = std::make_shared<UltraCanvasCalendarView>(identifier + "_calendar", 0, 0, 0, 0);
         calendar->SetStyle(style.calendarStyle);
 
@@ -1422,10 +1424,53 @@ namespace UltraCanvas {
         SyncTextFromValue();
     }
 
+    bool UltraCanvasDatePicker::CanTypeInField() const {
+        return allowTextInput &&
+               calendar->GetSelectionMode() == DateSelectionMode::Single;
+    }
+
+    void UltraCanvasDatePicker::BuildTextInput() {
+        textInput = CreateTextInput(GetIdentifier() + "-field", 0, 0, 10, 10);
+        TextInputStyle ts;
+        // The picker paints the field box, the divider and the calendar glyph;
+        // the editor contributes the text, caret and selection only.
+        ts.backgroundColor = Colors::Transparent;
+        ts.borderWidth = 0;
+        ts.borderRadius = 0;
+        ts.textColor = style.textColor;
+        ts.caretColor = style.caretColor;
+        ts.placeholderColor = style.placeholderColor;
+        ts.fontStyle.fontFamily = style.fontFamily;
+        ts.fontStyle.fontSize = style.fontSize;
+        ts.paddingLeft = 0;
+        ts.paddingRight = 0;
+        ts.paddingTop = 0;
+        ts.paddingBottom = 0;
+        textInput->SetStyle(ts);
+        textInput->SetShowValidationState(false);
+        textInput->SetPlaceholder(placeholder);
+        textInput->onEnterPressed = [this](const std::string&) {
+            if (calendarOpen) { CloseCalendar(); return true; }
+            CommitTextInput();
+            return true;
+        };
+        textInput->onFocusLost = [this]() { CommitTextInput(); };
+        AddChild(textInput);
+    }
+
+    void UltraCanvasDatePicker::UpdateTextInputEditability() {
+        if (textInput) textInput->SetReadOnly(!CanTypeInField());
+    }
+
+    void UltraCanvasDatePicker::PositionTextInput() {
+        if (!textInput) return;
+        PlaceChildAt(textInput, TextRect());
+    }
+
     void UltraCanvasDatePicker::SetSelectionMode(DateSelectionMode mode) {
         calendar->SetSelectionMode(mode);
         // Free-text typing only makes sense for a single date.
-        editing = false;
+        UpdateTextInputEditability();
         SyncTextFromValue();
         RequestRedraw();
     }
@@ -1455,8 +1500,6 @@ namespace UltraCanvas {
 
     void UltraCanvasDatePicker::Clear(bool runCallbacks) {
         calendar->ClearSelection(false);
-        editBuffer.clear();
-        caretPos = 0;
         SyncTextFromValue();
         if (runCallbacks && onDateChanged) onDateChanged(UCDate());
         RequestRedraw();
@@ -1464,18 +1507,27 @@ namespace UltraCanvas {
 
     void UltraCanvasDatePicker::SetAllowTextInput(bool allow) {
         allowTextInput = allow;
-        if (!allow) editing = false;
+        UpdateTextInputEditability();
         RequestRedraw();
     }
 
     void UltraCanvasDatePicker::SetStyle(const DatePickerStyle& s) {
         style = s;
         calendar->SetStyle(style.calendarStyle);
+        if (textInput) {
+            TextInputStyle ts = textInput->GetStyle();
+            ts.textColor = style.textColor;
+            ts.caretColor = style.caretColor;
+            ts.placeholderColor = style.placeholderColor;
+            ts.fontStyle.fontFamily = style.fontFamily;
+            ts.fontStyle.fontSize = style.fontSize;
+            textInput->SetStyle(ts);
+        }
         RequestRedraw();
     }
 
     void UltraCanvasDatePicker::SetWindow(UltraCanvasWindowBase* win) {
-        UltraCanvasUIElement::SetWindow(win);
+        UltraCanvasContainer::SetWindow(win);
         if (calendar) calendar->SetWindow(win);
     }
 
@@ -1498,8 +1550,18 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDatePicker::SyncTextFromValue() {
-        editBuffer = BuildDisplayText();
-        caretPos = static_cast<int>(editBuffer.size());
+        if (!textInput) return;
+        syncingText = true;
+        // SetText() is a no-op on a read-only field, so a summary-mode field
+        // (range / multiple) is filled with the guard lifted.
+        bool wasReadOnly = textInput->IsReadOnly();
+        if (wasReadOnly) textInput->SetReadOnly(false);
+        textInput->SetText(BuildDisplayText());
+        // Show the value from its first character: SetText leaves the caret
+        // where the typing left it, which would keep the field scrolled.
+        textInput->SetSelection(0, 0);
+        if (wasReadOnly) textInput->SetReadOnly(true);
+        syncingText = false;
     }
 
     void UltraCanvasDatePicker::CommitTextInput() {
@@ -1508,7 +1570,8 @@ namespace UltraCanvas {
             SyncTextFromValue();
             return;
         }
-        std::string trimmed = editBuffer;
+        if (!textInput || syncingText) return;
+        std::string trimmed = textInput->GetText();
         // strip surrounding whitespace
         size_t a = trimmed.find_first_not_of(" \t");
         size_t b = trimmed.find_last_not_of(" \t");
@@ -1578,39 +1641,23 @@ namespace UltraCanvas {
 
         ctx->DrawFilledRectangle(b, bg, style.borderWidth, border, style.cornerRadius);
 
-        Rect2Df tr = TextRect();
-        ctx->PushState();
-        ctx->ClipRect(Rect2Dd(tr.x, tr.y, tr.width, tr.height));
-        ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(style.fontSize);
-
-        bool typing = editing && IsFocused() && allowTextInput &&
-                      calendar->GetSelectionMode() == DateSelectionMode::Single;
-        std::string shown = typing ? editBuffer : BuildDisplayText();
-
-        if (shown.empty() && !typing) {
-            ctx->SetTextPaint(style.placeholderColor);
-            Size2Di ts = ctx->GetTextLineDimensions(placeholder);
-            ctx->DrawText(placeholder, Point2Dd(tr.x, tr.y + (tr.height - ts.height) / 2.0f));
-        } else {
-            Color tc = IsDisabled() ? style.disabledTextColor : style.textColor;
-            ctx->SetTextPaint(tc);
-            Size2Di ts = ctx->GetTextLineDimensions(shown.empty() ? " " : shown);
-            float textY = tr.y + (tr.height - ts.height) / 2.0f;
-            if (!shown.empty())
-                ctx->DrawText(shown, Point2Dd(tr.x, textY));
-
-            // caret
-            if (typing) {
-                int cp = std::min(std::max(caretPos, 0), static_cast<int>(shown.size()));
-                std::string upto = shown.substr(0, cp);
-                int cx = upto.empty() ? 0 : ctx->GetTextLineDimensions(upto).width;
-                ctx->SetStrokePaint(style.caretColor);
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLine(Point2Dd(tr.x + cx, textY), Point2Dd(tr.x + cx, textY + ts.height));
+        // The text, caret and selection belong to the editor child; this
+        // widget renders its own content, so it draws the child itself.
+        PositionTextInput();
+        if (textInput) {
+            TextInputStyle ts = textInput->GetStyle();
+            Color wanted = IsDisabled() ? style.disabledTextColor : style.textColor;
+            if (ts.textColor != wanted) {
+                ts.textColor = wanted;
+                textInput->SetStyle(ts);
             }
+            Rect2Df cb = textInput->GetBounds();
+            ctx->PushState();
+            ctx->ClipRect(Rect2Dd(cb.x, cb.y, cb.width, cb.height));
+            ctx->Translate(Point2Df(cb.x, cb.y));
+            textInput->Render(ctx, Rect2Df(0, 0, cb.width, cb.height));
+            ctx->PopState();
         }
-        ctx->PopState();
 
         // Button + calendar icon
         Rect2Df btn = ButtonRect();
@@ -1663,10 +1710,15 @@ namespace UltraCanvas {
         settings.closeByClickOutside = true;
 
         calendarOpen = true;
+        // Take the keyboard off the field editor for as long as the month grid
+        // is up, so the arrow keys navigate dates instead of the text.
+        UltraCanvasContainer::SetFocus(true);
         window->OpenPopup(Point2Di(static_cast<int>(pos.x), static_cast<int>(pos.y)), *calendar, settings);
 
         calendar->onPopupClosed = [this](ClosePopupReason) {
             calendarOpen = false;
+            // Hand the keyboard back to the field.
+            if (CanTypeInField() && textInput) textInput->SetFocus(true);
             if (onCalendarClosed) onCalendarClosed();
             RequestRedraw();
         };
@@ -1681,39 +1733,38 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasDatePicker::InsertText(const std::string& s) {
-        if (caretPos < 0) caretPos = 0;
-        if (caretPos > static_cast<int>(editBuffer.size())) caretPos = static_cast<int>(editBuffer.size());
-        editBuffer.insert(static_cast<size_t>(caretPos), s);
-        caretPos += static_cast<int>(s.size());
-    }
-
     bool UltraCanvasDatePicker::HandleMouseDown(const UCEvent& event) {
         Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
         Rect2Df b = GetLocalBounds();
         if (!b.Contains(p)) return false;
 
-        SetFocus(true);
-
         bool onButton = ButtonRect().Contains(p);
-        bool canType = allowTextInput && calendar->GetSelectionMode() == DateSelectionMode::Single;
 
-        if (onButton || !canType) {
+        if (onButton || !CanTypeInField()) {
+            SetFocus(true);
             // Toggle the calendar.
             if (calendarOpen) CloseCalendar();
             else OpenCalendar();
-        } else {
-            // Begin text editing in the field.
-            editing = true;
-            if (BuildDisplayText().empty()) { editBuffer.clear(); caretPos = 0; }
-            else SyncTextFromValue();
+        } else if (textInput) {
+            // Hand the press to the editor so it places the caret (and can
+            // start a drag selection) exactly where the user clicked.
+            textInput->SetFocus(true);
+            UCEvent forwarded = event;
+            Rect2Df tr = textInput->GetBounds();
+            forwarded.pointer.x = event.pointer.x - static_cast<int>(tr.x);
+            forwarded.pointer.y = event.pointer.y - static_cast<int>(tr.y);
+            textInput->OnEvent(forwarded);
         }
         RequestRedraw();
         return true;
     }
 
     bool UltraCanvasDatePicker::HandleKeyDown(const UCEvent& event) {
-        // Forward navigation keys to an open calendar.
+        // Text editing — caret movement, selection, clipboard, undo — belongs
+        // to the field editor and reaches it directly while it holds the
+        // focus. What is left here drives the picker, and while the calendar
+        // is open the focus sits on the picker itself so the arrows navigate
+        // the month instead of the text.
         if (calendarOpen) {
             switch (event.virtualKey) {
                 case UCKeys::Up: case UCKeys::Down: case UCKeys::Left: case UCKeys::Right:
@@ -1724,66 +1775,20 @@ namespace UltraCanvas {
                     CloseCalendar();
                     return true;
                 default:
-                    break;
+                    return false;
             }
-        } else {
-            // Open with arrow keys when the field is focused and closed.
-            if (event.virtualKey == UCKeys::Down || event.virtualKey == UCKeys::Up) {
-                OpenCalendar();
-                return true;
-            }
-        }
-
-        bool canType = allowTextInput && calendar->GetSelectionMode() == DateSelectionMode::Single;
-        if (!canType) return false;
-
-        // Printable characters: digits and common date separators only.
-        if (event.character != 0 && event.character >= 32 && event.character < 127) {
-            char c = event.character;
-            if (std::isdigit(static_cast<unsigned char>(c)) ||
-                c == '/' || c == '-' || c == '.' || c == ' ') {
-                editing = true;
-                InsertText(std::string(1, c));
-                RequestRedraw();
-                return true;
-            }
-            return true; // swallow other printables
         }
 
         switch (event.virtualKey) {
-            case UCKeys::Backspace:
-                if (caretPos > 0) {
-                    editBuffer.erase(static_cast<size_t>(caretPos - 1), 1);
-                    caretPos--;
-                    editing = true;
-                    RequestRedraw();
-                }
+            case UCKeys::Down:
+            case UCKeys::Up:
+                OpenCalendar();
                 return true;
-            case UCKeys::Delete:
-                if (caretPos < static_cast<int>(editBuffer.size())) {
-                    editBuffer.erase(static_cast<size_t>(caretPos), 1);
-                    editing = true;
-                    RequestRedraw();
-                }
-                return true;
-            case UCKeys::Left:
-                if (caretPos > 0) { caretPos--; RequestRedraw(); }
-                return true;
-            case UCKeys::Right:
-                if (caretPos < static_cast<int>(editBuffer.size())) { caretPos++; RequestRedraw(); }
-                return true;
-            case UCKeys::Home:
-                caretPos = 0; RequestRedraw(); return true;
-            case UCKeys::End:
-                caretPos = static_cast<int>(editBuffer.size()); RequestRedraw(); return true;
             case UCKeys::Return:
                 CommitTextInput();
-                editing = false;
-                RequestRedraw();
                 return true;
             case UCKeys::Escape:
-                SyncTextFromValue();
-                editing = false;
+                SyncTextFromValue();   // abandon a half-typed date
                 RequestRedraw();
                 return true;
             default:
@@ -1808,11 +1813,8 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:
                 return HandleKeyDown(event);
             case UCEventType::FocusLost:
-                if (editing) {
-                    CommitTextInput();
-                    editing = false;
-                    RequestRedraw();
-                }
+                CommitTextInput();
+                RequestRedraw();
                 return false;
             default:
                 return false;
@@ -1820,11 +1822,15 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDatePicker::SetFocus(bool focus) {
-        bool r = UltraCanvasUIElement::SetFocus(focus);
-        if (!focus && editing) {
-            CommitTextInput();
-            editing = false;
+        // Focusing the picker means focusing its field — that is where the
+        // keyboard belongs. While the calendar is open the picker keeps the
+        // focus itself, so the arrow keys navigate the month.
+        if (focus && !calendarOpen && CanTypeInField() && textInput) {
+            bool r = textInput->SetFocus(true);
+            RequestRedraw();
+            return r;
         }
+        bool r = UltraCanvasContainer::SetFocus(focus);
         RequestRedraw();
         return r;
     }

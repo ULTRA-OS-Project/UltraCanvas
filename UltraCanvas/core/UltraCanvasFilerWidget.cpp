@@ -66,6 +66,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasVideoThumbnail.h"
 #include "UltraCanvasZipPackage.h"
 #include "Models/STL/UltraCanvasSTLLoader.h"
@@ -351,6 +352,58 @@ namespace UltraCanvas {
             return ext;
         }
 
+        // True when the tail after the last dot is a real file-type suffix and
+        // not simply part of the name. Version numbers and architecture tags
+        // carry dots too — "UCDemo-Windows-0.3.27-x86_64" ends in
+        // ".27-x86_64", which is no more an extension than ".3" is.
+        bool LooksLikeFileExtension(const std::string& lowerExt) {
+            if (lowerExt.empty() || lowerExt.size() > 8) return false;
+            bool anyAlpha = false;
+            for (unsigned char c : lowerExt) {
+                if (!std::isalnum(c)) return false;   // '-', '_', ' ' -> not a type
+                if (std::isalpha(c)) anyAlpha = true;
+            }
+            return anyAlpha;   // a pure number ("0.3", "2024") is not a type
+        }
+
+        // Default archive name for an entry: its name without the file-type
+        // suffix. Folders keep their full name — a folder has no extension, so
+        // every dot in it belongs to the name — and so do files whose tail is
+        // not a plausible extension.
+        std::string ArchiveBaseNameOf(const std::string& name, bool isDirectory) {
+            if (isDirectory) return name;
+            size_t dot = name.find_last_of('.');
+            if (dot == std::string::npos || dot == 0) return name;
+            if (!LooksLikeFileExtension(LowerExtension(name))) return name;
+            std::string base = name.substr(0, dot);
+            // Compound suffixes: dropping ".gz" off "sources.tar.gz" leaves a
+            // ".tar" that belongs to the suffix, not to the name.
+            if (base.size() > 4) {
+                std::string tail = base.substr(base.size() - 4);
+                std::transform(tail.begin(), tail.end(), tail.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (tail == ".tar") base.erase(base.size() - 4);
+            }
+            return base;
+        }
+
+        // Detaching a child from inside its own event handler must not drop the
+        // last reference to it: the handler keeps touching the object after the
+        // callback returns (UltraCanvasButton::OnEvent calls RequestRedraw()
+        // straight after onClick, and a text input's Enter/Escape callbacks
+        // return through HandleKeyDown). Park it on the UI queue so it dies a
+        // turn of the loop later instead. The task holds only the element.
+        void ReleaseAfterEventLoopTurn(std::shared_ptr<UltraCanvasUIElement> element) {
+            if (!element) return;
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+                app->PostToUIThread([element]() {});
+            }
+        }
+
+        // True when `path` names a video file (by extension). Such thumbnail
+        // requests decode a poster frame via CaptureVideoThumbnailPixmap
+        // instead of going through the image pipeline.
+        bool IsVideoFilePath(const std::string& path) {
         // ===== SELECTIVE PREVIEWS =====
         // The preview kind a file belongs to — what a content preview for it
         // would cost to produce, and therefore which Display > Preview switch
@@ -1648,6 +1701,11 @@ namespace UltraCanvas {
         // container teardown dropping its focus must not commit into a
         // half-destroyed widget.
         DestroyRenameInput(false);
+        // Same for the compress dialog's name editor and its window key filter:
+        // both hold callbacks bound to `this`.
+        RemoveCompressKeyFilter();
+        DestroyCompressNameInput();
+        DestroyCompressButtons();
         if (dragMouseCaptured) {    // never leave the pointer grabbed
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
             dragMouseCaptured = false;
@@ -1796,9 +1854,16 @@ namespace UltraCanvas {
         // drop, ...) keeps the same files selected instead of whatever ends up
         // at the old indices.
         std::unordered_set<std::string> selectedPaths;
-        for (size_t idx : selection)
-            if (idx < entries.size()) selectedPaths.insert(entries[idx].path);
-
+        for (size_t idx : selection) {
+            if (idx >= entries.size()) continue;
+            // A just-committed rename moved one of them: follow it to its new
+            // name instead of losing it (CommitRename sets the pair), so the
+            // renamed entry stays selected and the restore below counts it as
+            // unchanged — no spurious selection-changed for the host.
+            const std::string& path = entries[idx].path;
+            selectedPaths.insert((!renamedFromPath.empty() && path == renamedFromPath)
+                                 ? renamedToPath : path);
+        }
         // Kept for the reveal below: the new name can sort anywhere in the
         // listing, so the entry the user just renamed is scrolled back into
         // view rather than left wherever the new order put it.
@@ -3405,7 +3470,7 @@ namespace UltraCanvas {
         std::vector<std::string> paths;
         for (const FilerEntry& e : targets) paths.push_back(e.path);
         std::string base = (targets.size() == 1)
-                ? fs::path(targets[0].name).stem().string()
+                ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : fs::path(currentPath).filename().string();
         if (base.empty()) base = "archive";
         // The extension drives the archive format chosen by the VirtualFS bridge.
@@ -3476,33 +3541,192 @@ namespace UltraCanvas {
 
         // Same default name the direct CompressSelection() would pick.
         std::string base = (targets.size() == 1)
-                ? fs::path(targets[0].name).stem().string()
+                ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : fs::path(currentPath).filename().string();
         if (base.empty()) base = "archive";
         compressDlg.nameBuffer = base;
         compressDlg.destDir = currentPath;
-        compressDlg.nameFocused = true;
 
         if (renamingIndex >= 0) CancelRename();
-        SetFocus(true);
+
+        // A real editor for the name — the same component the inline rename
+        // uses, so the field has a caret, click-to-position, selection and
+        // clipboard instead of append-and-backspace-only editing.
+        DestroyCompressNameInput();
+        compressNameInput = CreateTextInput("filer-compress-name", 1, 1, 120, 26);
+        TextInputStyle ts;
+        ts.backgroundColor  = style.renameFieldColor;
+        ts.borderColor      = Color(0, 0, 0, 55);
+        ts.focusBorderColor = style.renameBorderColor;
+        ts.textColor        = style.textColor;
+        ts.caretColor       = style.textColor;
+        ts.selectionColor   = Color(style.selectionColor.r, style.selectionColor.g,
+                                    style.selectionColor.b, 170);
+        ts.borderWidth = 1;
+        ts.borderRadius = 4;
+        ts.paddingLeft = 7;
+        ts.paddingRight = 4;
+        ts.paddingTop = 1;
+        ts.paddingBottom = 1;
+        ts.fontStyle.fontFamily = style.fontFamily;
+        ts.fontStyle.fontSize = style.fontSize;
+        compressNameInput->SetStyle(ts);
+        compressNameInput->SetShowValidationState(false);
+        compressNameInput->SetText(base);
+        // Whole name selected, so typing replaces the suggestion outright.
+        compressNameInput->SelectAll();
+        compressNameInput->onTextChanged = [this](const std::string& t) {
+            compressDlg.nameBuffer = t;
+        };
+        compressNameInput->onEnterPressed = [this](const std::string&) {
+            CommitCompressDialog();
+            return true;
+        };
+        compressNameInput->onEscapePressed = [this]() {
+            CloseCompressDialog();
+            return true;
+        };
+        AddChild(compressNameInput);
+        PositionCompressNameInput();
+        compressNameInput->SetFocus(true);
+
+        DestroyCompressButtons();
+        compressOkButton = MakeCompressButton(
+                "filer-compress-ok", "Compress", true,
+                [this]() { CommitCompressDialog(); });
+        compressCancelButton = MakeCompressButton(
+                "filer-compress-cancel", "Cancel", false,
+                [this]() { CloseCompressDialog(); });
+
+        InstallCompressKeyFilter();
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::DestroyCompressNameInput() {
+        if (!compressNameInput) return;
+        auto input = compressNameInput;
+        compressNameInput.reset();
+        // Teardown must not fire the callbacks again: RemoveChild drops the
+        // editor's focus, which would otherwise re-enter this dialog.
+        input->onTextChanged = nullptr;
+        input->onEnterPressed = nullptr;
+        input->onEscapePressed = nullptr;
+        RemoveChild(input);
+        ReleaseAfterEventLoopTurn(input);
+    }
+
+    void UltraCanvasFilerWidget::DestroyCompressButtons() {
+        for (std::shared_ptr<UltraCanvasButton>* slot :
+                 {&compressOkButton, &compressCancelButton}) {
+            if (!*slot) continue;
+            auto button = *slot;
+            slot->reset();
+            button->onClick = nullptr;   // never re-enter a closing dialog
+            RemoveChild(button);
+            ReleaseAfterEventLoopTurn(button);
+        }
+    }
+
+    std::shared_ptr<UltraCanvasButton> UltraCanvasFilerWidget::MakeCompressButton(
+            const std::string& identifier, const std::string& label, bool primary,
+            std::function<void()> action) {
+        auto button = CreateButton(identifier, 0, 0, 104, 30, label);
+        ButtonStyle bs;
+        bs.normalColor   = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
+        bs.hoverColor    = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
+        bs.pressedColor  = primary ? Color(52, 112, 214, 255) : Color(214, 214, 220, 255);
+        bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
+                primary ? Colors::White : style.textColor;
+        bs.borderColor = Color(0, 0, 0, 40);
+        bs.borderWidth = primary ? 0.0f : 1.0f;
+        bs.cornerRadius = 5.0f;
+        bs.fontFamily = style.fontFamily;
+        bs.fontSize = style.fontSize;
+        bs.fontWeight = FontWeight::Bold;
+        button->SetStyle(bs);
+        // The name editor keeps the keyboard: a click on Compress / Cancel must
+        // not pull the focus out of the field it is about to act on.
+        button->SetAcceptsFocus(false);
+        button->SetOnClick(std::move(action));
+        AddChild(button);
+        return button;
+    }
+
+    void UltraCanvasFilerWidget::PositionCompressNameInput() {
+        PlaceChildAt(compressNameInput, Rect2Df(compressDlg.nameEditRect));
+    }
+
+    std::string UltraCanvasFilerWidget::CompressKeyFilterId() const {
+        return GetIdentifier() + "_compress_keys";
+    }
+
+    void UltraCanvasFilerWidget::InstallCompressKeyFilter() {
+        auto* win = GetWindow();
+        if (!win || compressKeyFilterInstalled) return;
+        compressKeyFilterInstalled = true;
+        win->InstallEventFilter(CompressKeyFilterId(),
+                [this](const UCEvent& e) -> bool {
+            return HandleCompressFilteredKey(e);
+        }, { UCEventType::KeyDown });
+    }
+
+    void UltraCanvasFilerWidget::RemoveCompressKeyFilter() {
+        if (!compressKeyFilterInstalled) return;
+        compressKeyFilterInstalled = false;
+        if (auto* win = GetWindow())
+            win->UnInstallWindowEventFilter(CompressKeyFilterId());
+    }
+
+    bool UltraCanvasFilerWidget::HandleCompressFilteredKey(const UCEvent& event) {
+        // The dialog is modal: while it is up every keystroke in the window
+        // belongs to it, whoever the window currently considers focused. Without
+        // this the field went dead as soon as anything else claimed the focus —
+        // and stayed dead for every dialog opened afterwards.
+        if (!compressDlg.active) return false;
+        auto* win = GetWindow();
+        if (!win) return false;
+        // A menu or dropdown on top owns the keyboard while it is up.
+        if (win->GetActivePopupElement()) return false;
+        UltraCanvasUIElement* focused = win->GetFocusedElement();
+        if (focused == compressNameInput.get()) return false;   // already there
+        if (focused == this) return false;                      // OnEvent handles it
+        return HandleCompressDialogEvent(event);
     }
 
     void UltraCanvasFilerWidget::CloseCompressDialog() {
         if (compressDlg.draggingIcon) {
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
         }
+        RemoveCompressKeyFilter();
+        DestroyCompressNameInput();
+        DestroyCompressButtons();
         compressDlg = CompressDialogState();
+        // The editor held the keyboard; hand it back so the folder display
+        // answers the arrow keys again.
+        SetFocus(true);
         RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::CommitCompressDialog() {
+        // Read the editor before closing tears it down.
+        if (compressNameInput) compressDlg.nameBuffer = compressNameInput->GetText();
         CompressDialogState d = compressDlg;   // copy: we close before the work
         CloseCompressDialog();
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         if (d.sourcePaths.empty()) return;
-        std::string baseName = d.nameBuffer.empty() ? std::string("archive")
-                                                     : d.nameBuffer;
+        // The editor accepts any text; a name is not a path, so separators are
+        // dropped and surrounding blanks trimmed before it becomes a file name.
+        std::string baseName;
+        for (char c : d.nameBuffer) {
+            if (c == '/' || c == '\\') continue;
+            if (static_cast<unsigned char>(c) < 32) continue;
+            baseName += c;
+        }
+        size_t first = baseName.find_first_not_of(' ');
+        size_t last  = baseName.find_last_not_of(' ');
+        baseName = (first == std::string::npos)
+                 ? std::string() : baseName.substr(first, last - first + 1);
+        if (baseName.empty()) baseName = "archive";
         std::string ext = d.extension.empty() ? std::string("zip") : d.extension;
 
         std::error_code ec;
@@ -3563,33 +3787,10 @@ namespace UltraCanvas {
         int by = py + ph - btnH - 14;
         d.cancelRect = Rect2Di(px + pw - 16 - btnW, by, btnW, btnH);
         d.okRect     = Rect2Di(d.cancelRect.x - gap - btnW, by, btnW, btnH);
+        PlaceChildAt(compressOkButton, Rect2Df(d.okRect));
+        PlaceChildAt(compressCancelButton, Rect2Df(d.cancelRect));
     }
 
-    void UltraCanvasFilerWidget::DrawDialogButton(IRenderContext* ctx,
-                                                  const Rect2Di& rect,
-                                                  const std::string& label,
-                                                  bool primary, bool hovered) {
-        Color fill = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
-        if (hovered) {
-            fill = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
-        }
-        ctx->SetFillPaint(fill);
-        ctx->FillRoundedRectangle(Rect2Dd(rect), 5);
-        if (!primary) {
-            ctx->SetStrokePaint(Color(0, 0, 0, 40));
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRoundedRectangle(Rect2Dd(rect), 5);
-        }
-        FontStyle fsty;
-        fsty.fontFamily = style.fontFamily;
-        fsty.fontSize = style.fontSize;
-        fsty.fontWeight = FontWeight::Bold;
-        ctx->SetFontStyle(fsty);
-        ctx->SetTextPaint(primary ? Colors::White : style.textColor);
-        Size2Di ts = ctx->GetTextLineDimensions(label);
-        ctx->DrawText(label, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
-                                      rect.y + (rect.height - ts.height) / 2.0));
-    }
 
     void UltraCanvasFilerWidget::DrawCompressDialog(IRenderContext* ctx,
                                                     const Rect2Di& bounds) {
@@ -3676,31 +3877,28 @@ namespace UltraCanvas {
                       Point2Dd(d.panel.x + (d.panel.width - hts.width) / 2.0,
                                fmtY + fts.height + 4));
 
-        // Name field.
-        ctx->SetFillPaint(style.renameFieldColor);
-        ctx->FillRoundedRectangle(Rect2Dd(d.nameRect), 4);
-        ctx->SetStrokePaint(d.nameFocused ? style.renameBorderColor
-                                          : Color(0, 0, 0, 55));
-        ctx->SetStrokeWidth(d.nameFocused ? 2.0f : 1.0f);
-        ctx->DrawRoundedRectangle(Rect2Dd(d.nameRect), 4);
-
+        // Name row: the editor holds the base name, the archive extension is
+        // fixed and shown next to it in grey. The editor is a real text input
+        // child, so it draws (and scrolls) its own content.
         ctx->SetFontStyle(bodyFont);
-        Size2Di baseSz = ctx->GetTextLineDimensions(
-                d.nameBuffer.empty() ? std::string("Ag") : d.nameBuffer);
-        int tx = d.nameRect.x + 8;
-        int ty = d.nameRect.y + (d.nameRect.height - baseSz.height) / 2;
-        Size2Di nameSz = ctx->GetTextLineDimensions(d.nameBuffer);
-        ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(d.nameBuffer, Point2Dd(tx, ty));
-        ctx->SetTextPaint(style.secondaryTextColor);
-        ctx->DrawText("." + d.extension, Point2Dd(tx + nameSz.width, ty));
-        if (d.nameFocused) {
-            int cx = tx + nameSz.width + 1;
-            ctx->SetStrokePaint(style.renameBorderColor);
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(Point2Dd(cx, d.nameRect.y + 5),
-                          Point2Dd(cx, d.nameRect.y + d.nameRect.height - 5));
+        const std::string extText = "." + d.extension;
+        Size2Di extSz = ctx->GetTextLineDimensions(extText);
+        int editW = std::max(80, d.nameRect.width - extSz.width - 8);
+        compressDlg.nameEditRect = Rect2Di(d.nameRect.x, d.nameRect.y,
+                                           editW, d.nameRect.height);
+        PositionCompressNameInput();
+        if (compressNameInput) {
+            Rect2Df b = compressNameInput->GetBounds();
+            ctx->PushState();
+            ctx->Translate(Point2Df(b.x, b.y));
+            compressNameInput->Render(ctx, Rect2Df(0, 0, b.width, b.height));
+            ctx->PopState();
         }
+        ctx->SetFontStyle(bodyFont);
+        ctx->SetTextPaint(style.secondaryTextColor);
+        ctx->DrawText(extText,
+                      Point2Dd(d.nameRect.x + editW + 6,
+                               d.nameRect.y + (d.nameRect.height - extSz.height) / 2.0));
 
         // Destination path shown separately as smaller text.
         ctx->SetFontStyle(smallFont);
@@ -3711,9 +3909,16 @@ namespace UltraCanvas {
         ctx->DrawText(pathText,
                       Point2Dd(d.panel.x + 16, d.nameRect.y + d.nameRect.height + 8));
 
-        // Buttons.
-        DrawDialogButton(ctx, d.okRect, "Compress", true, d.okHover);
-        DrawDialogButton(ctx, d.cancelRect, "Cancel", false, d.cancelHover);
+        // Buttons — real UltraCanvasButton children, drawn here because this
+        // widget renders its own content and never paints its children.
+        for (const auto& button : {compressOkButton, compressCancelButton}) {
+            if (!button) continue;
+            Rect2Df b = button->GetBounds();
+            ctx->PushState();
+            ctx->Translate(Point2Df(b.x, b.y));
+            button->Render(ctx, Rect2Df(0, 0, b.width, b.height));
+            ctx->PopState();
+        }
 
         // Ghost icon under the cursor, drawn last so it floats above everything.
         if (d.draggingIcon) {
@@ -3727,59 +3932,37 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::HandleCompressDialogEvent(const UCEvent& event) {
         CompressDialogState& d = compressDlg;
         switch (event.type) {
-            case UCEventType::KeyDown: {
-                if (event.virtualKey == UCKeys::Escape) { CloseCompressDialog(); return true; }
-                if (event.virtualKey == UCKeys::Return)  { CommitCompressDialog(); return true; }
-                if (event.virtualKey == UCKeys::Backspace) {
-                    if (d.nameFocused && !d.nameBuffer.empty()) {
-                        size_t cut = d.nameBuffer.size() - 1;
-                        while (cut > 0 &&
-                               (static_cast<unsigned char>(d.nameBuffer[cut]) & 0xC0) == 0x80)
-                            --cut;
-                        d.nameBuffer.erase(cut);
-                        RequestRedraw();
-                    }
-                    return true;
-                }
-                // Printable characters are delivered on the KeyDown event
-                // itself (event.character / event.text) — the platform layers
-                // never emit a separate KeyChar/TextInput event. Same
-                // convention as UltraCanvasTextInput.
-                if (d.nameFocused && !event.ctrl && !event.alt) {
-                    std::string in = event.text;
-                    if (in.empty() && event.character >= 32)
-                        in.assign(1, event.character);
-                    std::string filtered;
-                    for (char c : in) {
-                        if (static_cast<unsigned char>(c) >= 32 && c != '/' && c != '\\')
-                            filtered += c;
-                    }
-                    if (!filtered.empty()) { d.nameBuffer += filtered; RequestRedraw(); }
-                }
-                return true;   // stay modal: swallow every other key
-            }
+            case UCEventType::KeyDown:
             case UCEventType::TextInput: {
-                if (d.nameFocused) {
-                    std::string in = event.text;
-                    if (in.empty() && event.character >= 32)
-                        in.assign(1, static_cast<char>(event.character));
-                    std::string filtered;
-                    for (char c : in) {
-                        if (static_cast<unsigned char>(c) >= 32 && c != '/' && c != '\\')
-                            filtered += c;
-                    }
-                    if (!filtered.empty()) { d.nameBuffer += filtered; RequestRedraw(); }
+                if (event.virtualKey == UCKeys::Escape) { CloseCompressDialog(); return true; }
+                if (event.virtualKey == UCKeys::Return ||
+                    event.virtualKey == UCKeys::Enter) { CommitCompressDialog(); return true; }
+                // Everything else is text: hand it (and the keyboard) to the
+                // name editor. Reaching this point at all means the focus had
+                // drifted off the editor — anything from the click that opened
+                // the dialog to a background pane claiming it — and without
+                // this the field would simply stop responding. A key the
+                // editor already saw and declined bubbles up here too; it must
+                // not be delivered a second time.
+                auto* win = GetWindow();
+                bool editorHasKeys = compressNameInput && win &&
+                        win->GetFocusedElement() == compressNameInput.get();
+                if (compressNameInput && !editorHasKeys) {
+                    compressNameInput->SetFocus(true);
+                    compressNameInput->OnEvent(event);
+                    RequestRedraw();
                 }
-                return true;
+                return true;   // stay modal: no key escapes to the folder view
             }
             case UCEventType::MouseDown: {
                 if (event.button != UCMouseButton::Left) return true;
-                // Keyboard events are routed to the window's focused element,
-                // so any click while the modal is up must pull focus back to
-                // this widget or typing would go elsewhere.
-                SetFocus(true);
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (d.iconRect.Contains(local)) {
+                    // Keyboard events go to the window's focused element, so a
+                    // click that is not for the editor must not leave the focus
+                    // on it — but the dialog still needs the keys, which the
+                    // window key filter takes care of.
+                    SetFocus(true);
                     d.draggingIcon = true;
                     d.dragPos = local;
                     d.dropFolderIndex = -1;
@@ -3788,9 +3971,15 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
-                if (d.nameRect.Contains(local)) { d.nameFocused = true; RequestRedraw(); return true; }
-                if (d.okRect.Contains(local))     { CommitCompressDialog(); return true; }
-                if (d.cancelRect.Contains(local)) { CloseCompressDialog();  return true; }
+                // The Compress / Cancel buttons are child elements and are hit
+                // before this handler sees the press, so there is nothing to
+                // test for here. A click anywhere else in the modal (including
+                // the name row beside the editor) puts the caret back in the
+                // name.
+                if (compressNameInput) {
+                    compressNameInput->SetFocus(true);
+                    RequestRedraw();
+                }
                 return true;   // modal: clicks elsewhere do nothing
             }
             case UCEventType::MouseMove: {
@@ -3799,13 +3988,9 @@ namespace UltraCanvas {
                     d.dragPos = local;
                     d.dropFolderIndex = FolderIndexAtLocal(local);
                     RequestRedraw();
-                } else {
-                    bool ok = d.okRect.Contains(local);
-                    bool cn = d.cancelRect.Contains(local);
-                    if (ok != d.okHover || cn != d.cancelHover) {
-                        d.okHover = ok; d.cancelHover = cn; RequestRedraw();
-                    }
                 }
+                // Button hover is the buttons' own business — they get the
+                // move directly as the elements under the pointer.
                 return true;
             }
             case UCEventType::MouseUp: {

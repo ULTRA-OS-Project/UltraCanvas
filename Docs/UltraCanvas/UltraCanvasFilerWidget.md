@@ -182,8 +182,17 @@ Notes:
   default (system clipboard via `SetClipboardText`).
 - **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
   TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
-  showing the archive's file-type icon, an editable file name, and the
-  destination folder as smaller text. The icon can be dragged onto any folder in
+  showing the archive's file-type icon, an editable file name with the chosen
+  extension fixed beside it, and the destination folder as smaller text. The
+  name field is a real `UltraCanvasTextInput`, like the inline rename editor,
+  so it has a caret, click-to-position, selection, clipboard and undo; it opens
+  with the suggested name selected, so typing replaces it. The suggestion is
+  the entry's name without its file-type suffix — a folder keeps its full name
+  and so does a file whose tail is not a plausible extension, which is what
+  keeps version and architecture fragments (`UCDemo-Windows-0.3.27-x86_64`)
+  intact. While the dialog is up it also claims the window's `KeyDown` stream,
+  so the field keeps answering the keyboard even when something else in the
+  window holds the focus. The icon can be dragged onto any folder in
   the view to change the destination (the target folder highlights while
   dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
   unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
