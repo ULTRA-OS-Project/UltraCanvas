@@ -236,9 +236,10 @@ CFArrayRef BuildAnchors(const UltraNetTlsOptions& opt, bool& outAnchorsOnly) {
     // A bundle replaces the system roots; extra PEMs alone extend them.
     outAnchorsOnly = !bundlePath.empty();
 
+    std::vector<const void*> values(certs.begin(), certs.end());
     CFArrayRef arr = CFArrayCreate(
-        nullptr, reinterpret_cast<const void**>(certs.data()),
-        static_cast<CFIndex>(certs.size()), &kCFTypeArrayCallBacks);
+        nullptr, values.data(),
+        static_cast<CFIndex>(values.size()), &kCFTypeArrayCallBacks);
     for (SecCertificateRef c : certs) CFRelease(c);   // array retains
     return arr;
 }
