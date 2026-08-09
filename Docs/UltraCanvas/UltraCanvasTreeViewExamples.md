@@ -287,7 +287,8 @@ Sets/gets the connecting line style.
 
 When a tree grows past its viewport, getting back to the root can take a lot of
 wheel turns. The tree therefore draws a small floating **"move to the top"**
-button over the bottom-right corner of its content area:
+button over the bottom-right corner of its content area once the view has been
+scrolled down:
 
 ```cpp
 void SetShowScrollToTopButton(bool show)
@@ -309,6 +310,8 @@ Behaviour:
 - **Appears only for genuinely long trees**: it stays hidden until *more than*
   `TreeScrollToTopStyle::minHiddenRows` (3 by default) rows sit outside the
   visible area, so a tree that overflows by a row or two never grows a button.
+- **Appears only once the user has scrolled down**: while the first row is on
+  screen there is nothing to go back to, so the button stays hidden.
 - **Dodges the end of the list**: as the view approaches the bottom, the button
   slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
   (3 by default) rows. Away from the bottom it rests in the corner.
@@ -532,7 +535,7 @@ The tree view supports comprehensive keyboard navigation:
 5. **Hover Highlight**: Background color for hovered nodes
 6. **Scrollbar**: Vertical scrollbar when content exceeds viewport
 7. **Scroll-to-Top Button**: Floating "move to the top" arrow over the
-   bottom-right corner of long trees
+   bottom-right corner of long trees that have been scrolled down
 
 ### Performance Optimizations
 - Only visible nodes are rendered (viewport culling)

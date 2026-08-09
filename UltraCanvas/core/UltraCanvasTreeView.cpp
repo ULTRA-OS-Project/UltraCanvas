@@ -534,6 +534,10 @@ namespace UltraCanvas {
         if (!showScrollToTopButton || !rootNode || rowHeight <= 0) return false;
         if (maxScrollY <= 0) return false;
 
+        // Nothing to go back to while the first row is already on screen, so the
+        // button only appears once the user has actually scrolled down.
+        if (scrollOffsetY <= 0) return false;
+
         // Rows that cannot be shown at once. maxScrollY is exactly the pixel
         // amount of content hanging outside the viewport, so a partially hidden
         // row still counts as hidden (round up).

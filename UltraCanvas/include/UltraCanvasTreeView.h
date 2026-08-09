@@ -52,7 +52,8 @@ enum class TreeSortMode {
 // ===== SCROLL-TO-TOP BUTTON STYLE =====
 // Look and thresholds of the floating "move to the top" button that the tree
 // draws over the bottom-right corner of its content area once the rows overflow
-// the visible area. See UltraCanvasTreeView::SetShowScrollToTopButton().
+// the visible area and the view has been scrolled down.
+// See UltraCanvasTreeView::SetShowScrollToTopButton().
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
     int   margin          = 8;     // gap between the button and the content edges
@@ -341,7 +342,7 @@ public:
 
     // ===== SCROLL-TO-TOP BUTTON =====
     // A floating "move to the top" button drawn over the bottom-right corner of
-    // the content area. It appears only when more than
+    // the content area. It appears once the view is scrolled down AND more than
     // TreeScrollToTopStyle::minHiddenRows rows are outside the visible area, and
     // slides up as the view nears the end of the list so it never covers the last
     // TreeScrollToTopStyle::keepClearRows rows. Enabled by default.
@@ -351,8 +352,9 @@ public:
     void SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style);
     const TreeScrollToTopStyle& GetScrollToTopButtonStyle() const { return scrollToTopStyle; }
 
-    // True while the button is actually on screen (feature enabled AND enough
-    // rows hidden). Useful for tests and for callers that draw their own overlay.
+    // True while the button is actually on screen (feature enabled, view scrolled
+    // down AND enough rows hidden). Useful for tests and for callers that draw
+    // their own overlay.
     bool IsScrollToTopButtonActive() const;
 
     // Element-local rect the button occupies right now; empty when not active.
