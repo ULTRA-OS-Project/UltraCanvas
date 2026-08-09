@@ -1,3 +1,32 @@
+#### 2026-08-09 *0.3.35*
+- **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
+  name and stays editable. The suggested archive name was `stem()` of the
+  entry, which strips everything after the last dot — for a folder named
+  `UCDemo-Windows-0.3.27-x86_64` that left `UCDemo-Windows-0.3`, because
+  `.27-x86_64` looks like an extension to `std::filesystem`. A folder now keeps
+  its full name (a folder has no extension, so every dot in it belongs to the
+  name), and a file only loses a tail that is a plausible file type: short,
+  alphanumeric and not a pure number, with `.tar` dropped along with the
+  `.gz` / `.bz2` / `.xz` / `.zst` of a compound suffix. `CompressSelection()`
+  picks the same name.
+  The name field itself was a hand-rolled buffer fed by the dialog's own key
+  handler: it could only append and backspace at the end (no caret, no
+  selection, no clipboard — nothing could be corrected in the middle), and
+  because it read the keyboard through the widget's own focus it went silent
+  the moment anything else in the window claimed the focus, and stayed silent
+  for every dialog opened afterwards. It is now a real `UltraCanvasTextInput`
+  child, the same component the inline rename editor uses, opened with the
+  suggestion selected so typing replaces it; the dialog additionally installs a
+  window `KeyDown` filter for as long as it is up, so a keystroke reaches the
+  editor whoever the window currently considers focused. Closing the dialog
+  removes the filter and hands the keyboard back to the folder display. The
+  committed name is stripped of path separators and trimmed before it becomes
+  a file name.
+- **UltraCanvasFilerWidget**: fixed a build break in `ScanFolder()` — a merge
+  kept the rename-reveal block that reads `renamedTo` but dropped the lines
+  that declare it (and map the selection from the old path to the new one), so
+  the file did not compile and the renamed entry lost its selection.
+
 #### 2026-08-08 *0.3.34*
 - **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget
   again. The drag was handed to the native OS drag the moment the cursor

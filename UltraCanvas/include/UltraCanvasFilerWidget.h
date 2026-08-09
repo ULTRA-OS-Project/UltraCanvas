@@ -44,8 +44,8 @@
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
-// Version: 1.12.0
-// Last Modified: 2026-08-08
+// Version: 1.13.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1347,14 +1347,16 @@ namespace UltraCanvas {
             bool        active = false;
             std::string extension;      // archive extension, e.g. "zip", "tar.gz"
             std::string formatLabel;    // human label, e.g. "TAR + gzip"
-            std::string nameBuffer;     // editable base name (no extension)
+            std::string nameBuffer;     // base name (no extension), kept in sync
+                                        // with the editor below
             std::string destDir;        // folder the archive is written to
             std::vector<std::string> sourcePaths;  // captured at open time
 
             // Layout, recomputed each frame (widget-local coordinates).
             Rect2Di panel;
             Rect2Di iconRect;
-            Rect2Di nameRect;
+            Rect2Di nameRect;      // whole name row (editor + extension label)
+            Rect2Di nameEditRect;  // the editor alone; measured while drawing
             Rect2Di okRect;
             Rect2Di cancelRect;
 
@@ -1363,15 +1365,29 @@ namespace UltraCanvas {
             Point2Di dragPos;               // cursor while dragging (widget-local)
             int      dropFolderIndex = -1;  // folder entry highlighted under the icon
 
-            bool     nameFocused = true;
             bool     okHover = false;
             bool     cancelHover = false;
         };
         CompressDialogState compressDlg;
 
+        // The name field is a real UltraCanvasTextInput child, exactly like the
+        // inline rename editor: a hand-rolled key handler could only append and
+        // backspace at the end, and it went deaf the moment anything else in
+        // the window took the keyboard focus.
+        std::shared_ptr<UltraCanvasTextInput> compressNameInput;
+        // While the dialog is up it also claims the window's KeyDown stream, so
+        // a keystroke reaches the editor even when the focus sits elsewhere.
+        bool compressKeyFilterInstalled = false;
+        std::string CompressKeyFilterId() const;
+        void InstallCompressKeyFilter();
+        void RemoveCompressKeyFilter();
+        bool HandleCompressFilteredKey(const UCEvent& event);
+
         void OpenCompressDialog(const std::string& extension,
                                 const std::string& formatLabel);
         void LayoutCompressDialog(const Rect2Di& bounds);
+        void PositionCompressNameInput();
+        void DestroyCompressNameInput();
         bool HandleCompressDialogEvent(const UCEvent& event);
         void CommitCompressDialog();
         void CloseCompressDialog();
