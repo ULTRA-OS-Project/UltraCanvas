@@ -20,6 +20,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraFilerPrompt.h"
 #include "UltraFilerSettingsDialog.h"
 
 #include <algorithm>
@@ -347,6 +348,10 @@ std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
                         }
                     }),
             })
+            .AddSubmenu("Extras", {
+                    MenuItemData::Action("Open prompt",
+                            [this]() { OpenSystemPrompt(); }),
+            })
             .Build();
     menuBar->size.height = CSSLayout::Dimension::Px(24);
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -367,6 +372,19 @@ void UltraFilerWindow::ApplySettings() {
 void UltraFilerWindow::OpenSettingsDialog() {
     UltraFilerSettingsDialog::Show(window.get(), &settings,
                                    [this]() { ApplySettings(); });
+}
+
+// ===== EXTRAS =====
+
+void UltraFilerWindow::OpenSystemPrompt() {
+    // The prompt opens in the folder the active tab is showing, so the shell
+    // starts where the user is looking.
+    std::string folder = filer ? filer->GetPath() : std::string();
+    if (folder.empty()) folder = UserHomeDir();
+
+    std::string error;
+    if (!UltraFilerPrompt::Launch(settings.promptApplication, folder, error))
+        UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
 }
 
 // ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb) =====

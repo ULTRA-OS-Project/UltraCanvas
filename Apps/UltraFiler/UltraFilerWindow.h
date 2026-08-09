@@ -184,6 +184,12 @@ private:
     void ApplySettings();
     void OpenSettingsDialog();
 
+    // ===== EXTRAS =====
+    // "Extras > Open prompt": starts the OS command line program in the folder
+    // of the active tab. Which application that is comes from the settings
+    // (Extras > Open prompt); an empty setting uses the platform default.
+    void OpenSystemPrompt();
+
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
     std::shared_ptr<UltraCanvasMenu>            menuBar;

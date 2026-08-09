@@ -78,8 +78,32 @@ components:
   sound, the default), *5 s clip* (a five-second muted preview in the
   `UltraCanvasAlbum` hover style, then pause) or *Still image* (paused
   first frame).
-- **Status bar:** entry count of the folder, selection count and summed size —
-  or the entry / selection counts of the shown History tab.
+- **Status bar:** entry count of the folder, selection count and summed size.
+- **Extras > Open prompt:** starts the operating system's command line program
+  in the folder of the active tab, detached from UltraFiler (closing the file
+  manager leaves the terminal running). Without configuration it uses the
+  platform default — `%COMSPEC%` (cmd.exe) on Windows, Terminal.app on macOS,
+  `$TERMINAL` or the first installed terminal emulator on Linux.
+
+## Settings
+
+The **Settings > Settings...** menu entry opens the settings window: a tree of
+pages on the left, the selected page on the right. Every change applies to the
+running application immediately and is saved to the config file
+(`~/.config/UltraFiler/config.ini`, `%APPDATA%\UltraFiler\config.ini`,
+`~/Library/Application Support/UltraFiler/config.ini`).
+
+| Page | Setting |
+|---|---|
+| Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker` |
+| Extras > Open prompt | The command line application started by **Extras > Open prompt** |
+
+On the *Open prompt* page the folder button next to the path field opens the
+file dialog filtered to applications (`*.exe`, `*.com`, `*.bat`, `*.cmd` on
+Windows, `*.app` on macOS, all files on Linux); the chosen program lands in the
+field and **Save app** stores it. **Use system default** clears the setting so
+the platform's own command line program is used again, and **Test** starts the
+program in the field right away to check the path.
 
 ## Usage
 
