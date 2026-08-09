@@ -1,0 +1,14 @@
+# Known hand-rolled UI controls, recorded so CI can block *new* ones while
+# these are worked off. Each line is <path>::<kind>::<symbol>.
+#
+# Do not add to this file to silence a new finding — build the UI out of an
+# UltraCanvas element instead (AGENTS.md: "Build UI out of UltraCanvas
+# elements"). Remove a line when its control is ported to a real element;
+# regenerate with:
+#     python3 scripts/check_ui_reuse.py --update-baseline
+UltraCanvas/core/UltraCanvasColorPicker.cpp::hand-rolled-text-field::
+UltraCanvas/core/UltraCanvasDatePicker.cpp::hand-rolled-text-field::
+UltraCanvas/core/UltraCanvasFilerWidget.cpp::hand-rolled-button::DrawDialogButton
+UltraCanvas/core/UltraCanvasSpreadsheet.cpp::hand-rolled-text-field::
+UltraCanvas/core/UltraCanvasTimePicker.cpp::hand-rolled-text-field::
+UltraCanvas/include/UltraCanvasFilerWidget.h::hand-rolled-button::DrawDialogButton

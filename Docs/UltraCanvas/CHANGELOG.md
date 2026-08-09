@@ -26,6 +26,24 @@
   kept the rename-reveal block that reads `renamedTo` but dropped the lines
   that declare it (and map the selection from the old path to the new one), so
   the file did not compile and the renamed entry lost its selection.
+- **Docs**: new `Docs/UltraCanvas/UltraCanvasUIElements.md` — a catalogue of
+  every UI element the framework ships, grouped by what you are trying to
+  build, with each element's defining header. The corpus had ~150 per-component
+  documents and no index, so an element could only be found by someone who
+  already knew its name; that is why controls kept being painted by hand
+  instead of instantiated. AGENTS.md now carries the rule ("if it takes input,
+  shows a picture or presents a value, it is an element") and points at the
+  catalogue.
+- **Tooling**: new `scripts/check_ui_reuse.py` plus a `UI element reuse` CI
+  workflow. It reports the two shapes that are almost always a reinvented
+  element — a private edit buffer and caret fed from a `KeyDown` handler with
+  no `UltraCanvasTextInput` in the file, and a
+  `Draw*Button(IRenderContext*, …, bool hovered)` painter. The six controls
+  that already exist (`UltraCanvasColorPicker`, `UltraCanvasDatePicker`,
+  `UltraCanvasTimePicker` and `UltraCanvasSpreadsheet` edit fields, the Filer's
+  `DrawDialogButton`) are recorded in `scripts/ui_reuse_baseline.txt` and do
+  not fail the build, so only new ones do. Self-rendered views that legitimately
+  paint their own content opt out with a `// ui-reuse-exempt: <reason>` marker.
 
 #### 2026-08-08 *0.3.34*
 - **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget

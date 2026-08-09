@@ -1,0 +1,46 @@
+name: UI element reuse
+
+# Blocks new hand-rolled UI controls. The framework ships ~60 UI elements
+# (AGENTS.md: "Build UI out of UltraCanvas elements"); painting a text field or
+# a button by hand loses the caret, clipboard, keyboard focus, theming and DPI
+# behaviour the real element already has. Controls that predate the check are
+# listed in scripts/ui_reuse_baseline.txt and do not fail the build — only
+# additions do.
+
+# Trigger policy matches build.yml / llms-txt.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'UltraCanvas/core/**'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'Apps/**'
+      - 'scripts/check_ui_reuse.py'
+      - 'scripts/ui_reuse_baseline.txt'
+      - '.github/workflows/ui-reuse.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'UltraCanvas/core/**'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'Apps/**'
+      - 'scripts/check_ui_reuse.py'
+      - 'scripts/ui_reuse_baseline.txt'
+      - '.github/workflows/ui-reuse.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for hand-rolled UI controls
+        run: python3 scripts/check_ui_reuse.py --strict

@@ -23,3 +23,4 @@ UltraCanvasTexter.exe
 /UltraCanvas/Plugins/Vectorizer/vtracer-c/Cargo.lock
 /UltraCanvas/Plugins/Vectorizer/vtracer-c/target/
 /media/ocr/tessdata/
+__pycache__/
