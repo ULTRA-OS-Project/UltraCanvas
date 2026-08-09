@@ -1,4 +1,4 @@
-#### 2026-08-09 *0.3.35*
+#### 2026-08-09 *0.3.36*
 - **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
   name and stays editable. The suggested archive name was `stem()` of the
   entry, which strips everything after the last dot — for a folder named
@@ -90,11 +90,16 @@
   element — a private edit buffer and caret fed from a `KeyDown` handler with
   no `UltraCanvasTextInput` in the file, and a
   `Draw*Button(IRenderContext*, …, bool hovered)` painter. The six controls
-  that already exist (`UltraCanvasColorPicker`, `UltraCanvasDatePicker`,
+  that already existed (`UltraCanvasColorPicker`, `UltraCanvasDatePicker`,
   `UltraCanvasTimePicker` and `UltraCanvasSpreadsheet` edit fields, the Filer's
-  `DrawDialogButton`) are recorded in `scripts/ui_reuse_baseline.txt` and do
-  not fail the build, so only new ones do. Self-rendered views that legitimately
+  `DrawDialogButton`) were recorded in `scripts/ui_reuse_baseline.txt` so they
+  would not fail the build while only new ones did — and were then all ported
+  in this same release, leaving the baseline empty. Self-rendered views that legitimately
   paint their own content opt out with a `// ui-reuse-exempt: <reason>` marker.
+
+#### 2026-08-08 *0.3.35*
+- Change Linux packager script, drop .appimage
+- Change GitHub build to produce package with all dependent libs
 
 #### 2026-08-08 *0.3.34*
 - **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget
