@@ -107,8 +107,10 @@ filer and the media viewer show — use the shared builder, which produces a
 navigable strip instead of plain labels:
 
 ```cpp
-// The drive roots / mounted volumes offered by the "Computer" node:
-// "A:\" ... "Z:\" on Windows, "/" plus /media, /mnt and /Volumes entries elsewhere.
+// The drive roots / mounted volumes offered by the "Computer" node: the mounted
+// letters on Windows (read from the mount table with GetLogicalDrives, so empty
+// optical drives and disconnected network mappings are never touched), "/" plus
+// the /media, /mnt and /Volumes entries elsewhere.
 std::vector<std::string> ListDriveRoots();
 
 struct FolderBreadcrumbOptions {
@@ -130,8 +132,10 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
 Every node drops down its own sub-folders: `Computer` lists the drives, the
 drive node the folders of that drive, and each folder node the folders inside
 it — so the path can be extended one level straight from the strip. A folder
-without sub-folders shows a disabled `(no sub-folders)` entry. The lists are
-filled lazily when the menu opens, so a deep path costs nothing extra to build.
+without sub-folders shows a disabled `(no sub-folders)` entry. Every list —
+including the drive list of the `Computer` node — is filled lazily when that
+menu opens, so building the strip never touches the filesystem: rebuilding it on
+each navigation (the pattern below) costs nothing.
 
 ```cpp
 // Keep a filer and its path strip in sync.

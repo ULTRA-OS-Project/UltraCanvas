@@ -1,7 +1,7 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.4.2
-// Last Modified: 2026-07-31
+// Version: 1.4.3
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -13,6 +13,17 @@
 #include <optional>
 #include <sstream>
 #include <cmath>
+
+#ifdef _WIN32
+// GetLogicalDrives() for ListDriveRoots().
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace UltraCanvas {
 
@@ -1505,11 +1516,16 @@ namespace UltraCanvas {
 
     std::vector<std::string> ListDriveRoots() {
         std::vector<std::string> roots;
-        std::error_code ec;
 #ifdef _WIN32
-        for (char c = 'A'; c <= 'Z'; ++c) {
-            std::string drive = std::string(1, c) + ":\\";
-            if (std::filesystem::exists(drive, ec)) roots.push_back(drive);
+        // GetLogicalDrives() answers from the mount table alone: one call, no
+        // per-letter media or network access. Probing "A:\" ... "Z:\" with
+        // exists() instead spins up empty optical / card readers and waits out
+        // the SMB timeout of every disconnected mapped drive — seconds of
+        // stall, and this list is rebuilt on every navigation.
+        const DWORD mask = ::GetLogicalDrives();
+        for (int i = 0; i < 26; ++i) {
+            if (mask & (DWORD(1) << i))
+                roots.push_back(std::string(1, char('A' + i)) + ":\\");
         }
 #else
         roots.push_back("/");
@@ -1584,14 +1600,24 @@ namespace UltraCanvas {
             computer.onClick = [onNavigate, rootTarget]() {
                 if (onNavigate) onNavigate(rootTarget);
             };
-            std::vector<std::string> drives = ListDriveRoots();
-            if (!drives.empty()) {
-                computer.hasDropdown = true;
-                for (const std::string& d : drives) {
-                    computer.dropdownItems.emplace_back(
-                            d, [onNavigate, d]() { if (onNavigate) onNavigate(d); });
+            // Filled when the dropdown opens, like the sub-folder menus below:
+            // enumerating the volumes touches the filesystem, and the strip is
+            // rebuilt on every navigation.
+            computer.hasDropdown = true;
+            computer.dropdownItemsProvider = [onNavigate]() {
+                std::vector<MenuItemData> out;
+                for (const std::string& d : ListDriveRoots()) {
+                    out.emplace_back(d, [onNavigate, d]() {
+                        if (onNavigate) onNavigate(d);
+                    });
                 }
-            }
+                if (out.empty()) {
+                    MenuItemData empty("(no drives)");
+                    empty.enabled = false;
+                    out.push_back(empty);
+                }
+                return out;
+            };
             crumb->AddItem(computer);
         }
 

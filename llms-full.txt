@@ -6805,8 +6805,10 @@ filer and the media viewer show — use the shared builder, which produces a
 navigable strip instead of plain labels:
 
 ```cpp
-// The drive roots / mounted volumes offered by the "Computer" node:
-// "A:\" ... "Z:\" on Windows, "/" plus /media, /mnt and /Volumes entries elsewhere.
+// The drive roots / mounted volumes offered by the "Computer" node: the mounted
+// letters on Windows (read from the mount table with GetLogicalDrives, so empty
+// optical drives and disconnected network mappings are never touched), "/" plus
+// the /media, /mnt and /Volumes entries elsewhere.
 std::vector<std::string> ListDriveRoots();
 
 struct FolderBreadcrumbOptions {
@@ -6828,8 +6830,10 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
 Every node drops down its own sub-folders: `Computer` lists the drives, the
 drive node the folders of that drive, and each folder node the folders inside
 it — so the path can be extended one level straight from the strip. A folder
-without sub-folders shows a disabled `(no sub-folders)` entry. The lists are
-filled lazily when the menu opens, so a deep path costs nothing extra to build.
+without sub-folders shows a disabled `(no sub-folders)` entry. Every list —
+including the drive list of the `Computer` node — is filled lazily when that
+menu opens, so building the strip never touches the filesystem: rebuilding it on
+each navigation (the pattern below) costs nothing.
 
 ```cpp
 // Keep a filer and its path strip in sync.
@@ -14872,7 +14876,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -15061,6 +15065,34 @@ selections) immediately and the exact counts fill in when the subtree walk
 finishes, so clicking or opening a folder with a deep subtree never blocks the
 window. The same statistics provide the directory weights of the BarSize and
 TreeMap views, whose layout reflows as the walks complete.
+
+The media probes (pixel dimensions, play length / codec) run on the same
+background worker, ahead of the folder walks: selecting a file — or first
+painting its tile when the Length / Dimensions dataset fields are enabled —
+never opens the file on the UI thread; the detail appears with the next
+posted repaint, typically within a frame or two.
+
+## Folder listing prefetch
+
+With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
+the subfolders of the shown folder — one level deep — shortly after the folder
+settles, so entering one of them serves its listing from memory instead of
+waiting for a cold directory scan. The win is largest on network volumes and
+spinning disks.
+
+- **Idle behavior**: each batch starts after a short grace delay, and a new
+  navigation drops the pending batch immediately — quick click-throughs never
+  trigger wasted scans, and the folder on screen always gets the disk first.
+- **Freshness**: a cached listing is used only if it is under a minute old
+  *and* the folder's modification time is unchanged since the pre-scan
+  (catching entries added / removed / renamed in between); anything else falls
+  back to a normal scan. `Refresh()` — used after every file operation — always
+  rescans and never reads the cache.
+- **Bounds**: at most 24 listings / 50 000 entries are cached (oldest evicted
+  first); an oversized listing is scanned but not stored — the scan still
+  warms the OS metadata cache, so the real scan on entry stays fast. Cached
+  listings include hidden entries, so toggling hidden files needs no rescan
+  of the cache. Archives are excluded (they list through VirtualFS).
 
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,

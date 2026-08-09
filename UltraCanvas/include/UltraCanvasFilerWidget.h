@@ -56,6 +56,7 @@
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <ctime>
@@ -316,6 +317,13 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
+        // Background pre-scan of the shown folder's subfolders (one level), so
+        // entering one shows its content from memory instead of waiting for a
+        // cold directory scan. On by default; turning it off drops the cache
+        // and queue. See the FOLDER LISTING PREFETCH section for freshness.
+        void SetFolderPrefetchEnabled(bool enabled);
+        bool IsFolderPrefetchEnabled() const { return folderPrefetchEnabled; }
+
         // "Compressed thumbnails": hold finished thumbnails QOI-compressed in
         // memory (roughly 3-4x smaller for photos) instead of as raw ARGB32
         // pixmaps. Tiles being drawn are decompressed on demand into a small
@@ -450,6 +458,11 @@ namespace UltraCanvas {
         // ===== DATA ACCESS =====
         const std::vector<FilerEntry>& GetEntries() const { return entries; }
         std::vector<FilerEntry> GetSelectedEntries() const;
+        // The selected indices into GetEntries(), copy-free. Prefer this over
+        // GetSelectedEntries() for per-event or per-frame inspection — the
+        // latter copies every selected FilerEntry (eight strings each), which
+        // for a Select All in a large folder is the whole listing.
+        const std::vector<size_t>& GetSelectionIndices() const { return selection; }
         void ClearSelection();
         void SelectAll();
         // Makes `path` the only selected entry and scrolls it into view, as a
@@ -592,14 +605,13 @@ namespace UltraCanvas {
         uint32_t datasetFields = 0;
         FilerStyle style;
 
-        // Natural aspect ratio (width / height) of raster image entries, keyed
-        // by file path, filled lazily from image headers (ProbeImageDimensions,
-        // no decode) for the thumbnail-row shrinking. 0 = probed but has no
-        // usable dimensions (treated as full-height); absent = not yet probed.
-        // Cleared on rescan.
-        std::unordered_map<std::string, float> aspectCache;
-
         std::vector<size_t> selection;            // indices into `entries`
+        // Selection membership as one flag per entry, rebuilt at the top of
+        // each paint: the draw functions ask "is this item selected?" once per
+        // drawn item, and answering with std::find over `selection` made a
+        // repaint O(visible × selected) — after Select All in a big folder
+        // every hover-move crawled.
+        std::vector<uint8_t> frameSelected;
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
         // SetSelectNextAfterDelete: when a delete takes the whole selection
@@ -908,12 +920,43 @@ namespace UltraCanvas {
         };
         std::map<std::string, FolderStats> folderStatsCache; // by folder path
         std::deque<std::string> statsQueue;                  // paths to walk
-        std::mutex statsMutex;              // guards cache/queue/generation
+
+        // Natural aspect ratio (width / height) of raster image entries, keyed
+        // by file path, read from image headers (ProbeImageDimensions, no
+        // decode) for the thumbnail-row shrinking. 0 = no usable dimensions or
+        // not probed yet (both mean "full height"); an entry present with 0 is
+        // also the marker that its probe is already queued. Cleared on rescan.
+        // Filled by the same worker as the folder stats: the grid layout asks
+        // for every entry of the folder, and opening one file per image on the
+        // UI thread is what made a folder of photos take seconds to appear.
+        std::unordered_map<std::string, float> aspectCache;
+        std::deque<std::string> aspectQueue;                 // headers to read
+
+        // "Extra info" of a media file — image dimensions, audio / video
+        // duration + codec — shown in the info bar and the thumbnail dataset
+        // lines. Probing means opening the file (and for exotic image
+        // containers decoding it), so like the aspects it runs on the worker:
+        // EntryExtraInfo() returns the cached text, or "" after queueing the
+        // probe (ready == false marks the pending slot so it queues once).
+        struct MediaInfoSlot {
+            std::string text;
+            bool ready = false;
+        };
+        struct MediaProbeRequest {
+            std::string path;
+            std::string extension;
+            bool isImage = false;    // image dimensions vs. media duration
+        };
+        std::unordered_map<std::string, MediaInfoSlot> mediaInfoCache;
+        std::deque<MediaProbeRequest> mediaQueue;
+
+        std::mutex statsMutex;              // guards caches/queues/generation
         std::condition_variable statsCond;
         std::thread statsWorker;
         bool statsShutdown = false;
         uint64_t statsGeneration = 0;       // bumped to drop stale results
         std::atomic<bool> statsRedrawPosted{false};
+        std::atomic<bool> aspectsChanged{false};  // a probe changed a row height
 
         // Non-blocking: returns the cached stats, or a pending placeholder
         // (ready == false) after queueing a background walk of `path`.
@@ -923,8 +966,6 @@ namespace UltraCanvas {
         void FolderStatsWorkerMain();
         void PostFolderStatsRedraw();
 
-        mutable std::map<std::string, std::string> mediaInfoCache;  // path -> extra info
-
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
 
         // Filer clipboard shared across instances (paths + cut flag).
@@ -932,13 +973,61 @@ namespace UltraCanvas {
         static bool clipboardCut;
 
         // ===== SCANNING =====
-        void ScanFolder();
+        // usePrefetched: serve the listing from the prefetch cache when a
+        // fresh one is there (SetPath navigations). Refresh and the file-list
+        // display always rescan — after a file operation the cache is exactly
+        // what must not be shown.
+        void ScanFolder(bool usePrefetched = false);
+        // The raw listing of a real directory: one readdir plus one stat per
+        // entry, no widget state touched — runs on the prefetch worker as well
+        // as the UI thread. With includeHidden the hidden entries are listed
+        // too (flagged), so a prefetched listing can serve either setting.
+        void ScanRealDirectory(const std::string& path, bool includeHidden,
+                               std::vector<FilerEntry>& out) const;
         // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
         void ApplyEntryTypeInfo(FilerEntry& e) const;
+
+        // ===== FOLDER LISTING PREFETCH =====
+        // After a folder settles, a low-priority worker pre-scans its visible
+        // subfolders (one level) so entering one serves the listing from
+        // memory instead of a cold directory scan — the win is largest on
+        // network volumes and spinning disks. A short grace delay keeps quick
+        // successive navigations from triggering wasted scans, and each batch
+        // is dropped the moment the user navigates again (generation bump).
+        // Freshness on use: the cached listing must be younger than
+        // kPrefetchMaxAgeSec AND the directory's mtime must be unchanged;
+        // anything else falls back to a normal scan. Oversized listings are
+        // scanned but not stored — the scan still warms the OS metadata
+        // cache, so the real scan on entry is fast anyway.
+        struct PrefetchedListing {
+            std::vector<FilerEntry> entries;   // raw listing, hidden included
+            std::time_t dirMtime = 0;          // dir mtime when scanned
+            std::chrono::steady_clock::time_point when;  // scan time
+        };
+        std::map<std::string, PrefetchedListing> prefetchCache;
+        std::deque<std::string> prefetchLru;   // insertion order for eviction
+        size_t prefetchCachedEntries = 0;      // entries held across the cache
+        std::deque<std::string> prefetchQueue; // folders to pre-scan
+        std::mutex prefetchMutex;
+        std::condition_variable prefetchCond;
+        std::thread prefetchWorker;
+        bool prefetchShutdown = false;
+        uint64_t prefetchGeneration = 0;       // bumped per navigation
+        bool folderPrefetchEnabled = true;
+
+        // Refills the queue with the current listing's subfolders.
+        void QueueFolderPrefetch();
+        // Moves a fresh cached listing of `path` into `out` (and drops it from
+        // the cache either way); false = miss or stale, scan normally.
+        bool TakePrefetchedListing(const std::string& path,
+                                   std::vector<FilerEntry>& out);
+        void StartFolderPrefetchWorkerLocked();
+        void StopFolderPrefetchWorker();
+        void FolderPrefetchWorkerMain();
 
         // ===== LAYOUT =====
         void InvalidateFilerLayout() { layoutValid = false; }
@@ -1047,7 +1136,7 @@ namespace UltraCanvas {
                                     std::string& secondary);
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
-        std::string EntryExtraInfo(const FilerEntry& e) const;
+        std::string EntryExtraInfo(const FilerEntry& e);
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
         // Ellipsizes an entry's name for the space it is drawn in and records
@@ -1082,7 +1171,7 @@ namespace UltraCanvas {
 
         // Thumbnail dataset lines (Display > Dataset): the formatted values of
         // the enabled fields that apply to this entry, top to bottom.
-        std::vector<std::string> DatasetLinesFor(const FilerEntry& e) const;
+        std::vector<std::string> DatasetLinesFor(const FilerEntry& e);
         // How many enabled dataset fields there are — the number of caption
         // lines reserved per tile so the grid stays aligned across file kinds.
         int  DatasetLineCount() const;

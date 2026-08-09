@@ -39,14 +39,22 @@
 #include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
 
 class UltraFilerWindow {
 public:
+    ~UltraFilerWindow();
+
     // Creates the window and the whole UI; shows `startFolder` (falls back to
     // the user's home directory when empty or not a directory).
     bool Initialize(const std::string& startFolder = "");
@@ -92,14 +100,27 @@ private:
     int  TabIndexOf(const FilerTabState* tab) const;
 
     // ===== FOLDER TREE (lazy) =====
-    // Adds a folder node under `parentId`; a placeholder child marks folders
-    // with subfolders so the expand button shows before the real scan.
+    // Adds a folder node under `parentId`. Whether the folder has subfolders —
+    // and so gets an expand button, shown as a placeholder child — is answered
+    // by the background probe below, not here.
     void AddTreeFolderNode(const std::string& parentId, const std::string& path,
                            const std::string& label, const std::string& iconFile);
-    // Replaces the placeholder child with the real subfolder nodes.
+    // Scans `node`'s subfolders into real child nodes (once per node) and drops
+    // the placeholder that stood for them.
     void EnsureTreeChildren(TreeNode* node);
     // Selects (expanding ancestors as needed) the tree node of `path`.
     void SyncTreeSelection(const std::string& path);
+
+    // "Does this folder contain subfolders?" costs a directory open each, and a
+    // single expansion asks it once per child — on a slow or network volume
+    // that froze the window for seconds. The question is answered on a worker
+    // thread instead; each answer posts back to the UI thread and only then
+    // gives the node its expand button.
+    void QueueSubfolderProbe(const std::string& path);
+    void ApplySubfolderProbe(const std::string& path, bool hasSubfolders);
+    void StartSubfolderProbeWorkerLocked();
+    void StopSubfolderProbeWorker();
+    void SubfolderProbeWorkerMain();
 
     // ===== SEARCH =====
     // Searches the active tab's folder (recursively) for names containing
@@ -191,6 +212,21 @@ private:
     // ===== STATE =====
     std::vector<std::unique_ptr<FilerTabState>> tabStates;  // mirrors tab order
     int tabCounter = 0;                    // unique widget ids for new tabs
+
+    // Tree nodes whose real children have been scanned (EnsureTreeChildren runs
+    // once per node); keyed by node id, which is the folder path.
+    std::set<std::string> treeChildrenLoaded;
+    // Background "has subfolders?" probe (see QueueSubfolderProbe).
+    std::deque<std::string> probeQueue;
+    std::mutex probeMutex;
+    std::condition_variable probeCond;
+    std::thread probeWorker;
+    bool probeShutdown = false;
+    // Cleared on destruction so results still in flight drop instead of
+    // reaching a half-destroyed window.
+    std::shared_ptr<std::atomic<bool>> probeAlive =
+            std::make_shared<std::atomic<bool>>(true);
+
     bool syncingTree = false;              // tree selection driven by code
     bool syncingControls = false;          // dropdowns driven by filer callbacks
     bool previewEnabled = true;            // the command bar toggle state
