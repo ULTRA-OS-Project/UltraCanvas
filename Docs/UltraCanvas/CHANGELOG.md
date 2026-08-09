@@ -22,6 +22,24 @@
   removes the filter and hands the keyboard back to the folder display. The
   committed name is stripped of path separators and trimmed before it becomes
   a file name.
+- **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog's Compress /
+  Cancel are `UltraCanvasButton` children now, replacing a private
+  `DrawDialogButton` painter and its own `okHover` / `cancelHover` flags and
+  hit-testing. They carry the framework's hover, press and disabled painting,
+  and a click reaches them as elements instead of being pattern-matched
+  against rectangles in the dialog's mouse handler.
+- **UltraCanvasTimePicker** *(1.2.0)*: the editable field is a real
+  `UltraCanvasTextInput` child (the picker is an `UltraCanvasContainer` now,
+  like every other composite widget), replacing a private `editBuffer` /
+  `caretPos` / `editing` triple and ~110 lines of hand-written key handling.
+  Typing a time gains selection, clipboard, undo, double-click word select and
+  multi-byte input, all of which the hand-rolled editor lacked; the popup
+  spinners, the clock dial, the wheel-over-field nudge, Up/Down to open, Enter
+  to commit and Escape to revert keep working as before. Two behaviours had to
+  be re-pointed at the new field: the spinner and dial paths wrote `value`
+  directly and so left the text stale, and the wheel guard tested
+  `IsHovered()`, which the editor now absorbs by being the element under the
+  pointer.
 - **UltraCanvasFilerWidget**: fixed a build break in `ScanFolder()` — a merge
   kept the rename-reveal block that reads `renamedTo` but dropped the lines
   that declare it (and map the selection from the old path to the new one), so

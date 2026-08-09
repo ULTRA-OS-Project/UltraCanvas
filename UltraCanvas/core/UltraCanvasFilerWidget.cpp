@@ -60,6 +60,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasVideoThumbnail.h"
 #include <algorithm>
 #include <cmath>
@@ -358,6 +359,19 @@ namespace UltraCanvas {
                 if (tail == ".tar") base.erase(base.size() - 4);
             }
             return base;
+        }
+
+        // Detaching a child from inside its own event handler must not drop the
+        // last reference to it: the handler keeps touching the object after the
+        // callback returns (UltraCanvasButton::OnEvent calls RequestRedraw()
+        // straight after onClick, and a text input's Enter/Escape callbacks
+        // return through HandleKeyDown). Park it on the UI queue so it dies a
+        // turn of the loop later instead. The task holds only the element.
+        void ReleaseAfterEventLoopTurn(std::shared_ptr<UltraCanvasUIElement> element) {
+            if (!element) return;
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+                app->PostToUIThread([element]() {});
+            }
         }
 
         // True when `path` names a video file (by extension). Such thumbnail
@@ -1066,6 +1080,7 @@ namespace UltraCanvas {
         // both hold callbacks bound to `this`.
         RemoveCompressKeyFilter();
         DestroyCompressNameInput();
+        DestroyCompressButtons();
         if (dragMouseCaptured) {    // never leave the pointer grabbed
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
             dragMouseCaptured = false;
@@ -2902,6 +2917,14 @@ namespace UltraCanvas {
         PositionCompressNameInput();
         compressNameInput->SetFocus(true);
 
+        DestroyCompressButtons();
+        compressOkButton = MakeCompressButton(
+                "filer-compress-ok", "Compress", true,
+                [this]() { CommitCompressDialog(); });
+        compressCancelButton = MakeCompressButton(
+                "filer-compress-cancel", "Cancel", false,
+                [this]() { CloseCompressDialog(); });
+
         InstallCompressKeyFilter();
         RequestRedraw();
     }
@@ -2916,26 +2939,48 @@ namespace UltraCanvas {
         input->onEnterPressed = nullptr;
         input->onEscapePressed = nullptr;
         RemoveChild(input);
-        // Enter / Escape reach us from inside the editor's own key handler, so
-        // the detach above must not drop the last reference to it while that
-        // frame is still running. Hand it to the UI queue; it dies on the next
-        // turn of the loop. The task holds only the editor, never `this`.
-        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
-            app->PostToUIThread([input]() {});
+        ReleaseAfterEventLoopTurn(input);
+    }
+
+    void UltraCanvasFilerWidget::DestroyCompressButtons() {
+        for (std::shared_ptr<UltraCanvasButton>* slot :
+                 {&compressOkButton, &compressCancelButton}) {
+            if (!*slot) continue;
+            auto button = *slot;
+            slot->reset();
+            button->onClick = nullptr;   // never re-enter a closing dialog
+            RemoveChild(button);
+            ReleaseAfterEventLoopTurn(button);
         }
     }
 
+    std::shared_ptr<UltraCanvasButton> UltraCanvasFilerWidget::MakeCompressButton(
+            const std::string& identifier, const std::string& label, bool primary,
+            std::function<void()> action) {
+        auto button = CreateButton(identifier, 0, 0, 104, 30, label);
+        ButtonStyle bs;
+        bs.normalColor   = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
+        bs.hoverColor    = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
+        bs.pressedColor  = primary ? Color(52, 112, 214, 255) : Color(214, 214, 220, 255);
+        bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
+                primary ? Colors::White : style.textColor;
+        bs.borderColor = Color(0, 0, 0, 40);
+        bs.borderWidth = primary ? 0.0f : 1.0f;
+        bs.cornerRadius = 5.0f;
+        bs.fontFamily = style.fontFamily;
+        bs.fontSize = style.fontSize;
+        bs.fontWeight = FontWeight::Bold;
+        button->SetStyle(bs);
+        // The name editor keeps the keyboard: a click on Compress / Cancel must
+        // not pull the focus out of the field it is about to act on.
+        button->SetAcceptsFocus(false);
+        button->SetOnClick(std::move(action));
+        AddChild(button);
+        return button;
+    }
+
     void UltraCanvasFilerWidget::PositionCompressNameInput() {
-        if (!compressNameInput) return;
-        Rect2Di r = compressDlg.nameEditRect;
-        if (r.width <= 0 || r.height <= 0) return;
-        Rect2Df want(static_cast<float>(r.x), static_cast<float>(r.y),
-                     static_cast<float>(r.width), static_cast<float>(r.height));
-        Rect2Df have = compressNameInput->GetBounds();
-        if (have.x != want.x || have.y != want.y ||
-            have.width != want.width || have.height != want.height) {
-            compressNameInput->SetBounds(want);
-        }
+        PlaceChild(compressNameInput, compressDlg.nameEditRect);
     }
 
     std::string UltraCanvasFilerWidget::CompressKeyFilterId() const {
@@ -2981,6 +3026,7 @@ namespace UltraCanvas {
         }
         RemoveCompressKeyFilter();
         DestroyCompressNameInput();
+        DestroyCompressButtons();
         compressDlg = CompressDialogState();
         // The editor held the keyboard; hand it back so the folder display
         // answers the arrow keys again.
@@ -3068,32 +3114,20 @@ namespace UltraCanvas {
         int by = py + ph - btnH - 14;
         d.cancelRect = Rect2Di(px + pw - 16 - btnW, by, btnW, btnH);
         d.okRect     = Rect2Di(d.cancelRect.x - gap - btnW, by, btnW, btnH);
+        PlaceChild(compressOkButton, d.okRect);
+        PlaceChild(compressCancelButton, d.cancelRect);
     }
 
-    void UltraCanvasFilerWidget::DrawDialogButton(IRenderContext* ctx,
-                                                  const Rect2Di& rect,
-                                                  const std::string& label,
-                                                  bool primary, bool hovered) {
-        Color fill = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
-        if (hovered) {
-            fill = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
+    void UltraCanvasFilerWidget::PlaceChild(
+            const std::shared_ptr<UltraCanvasUIElement>& child, const Rect2Di& r) {
+        if (!child || r.width <= 0 || r.height <= 0) return;
+        Rect2Df want(static_cast<float>(r.x), static_cast<float>(r.y),
+                     static_cast<float>(r.width), static_cast<float>(r.height));
+        Rect2Df have = child->GetBounds();
+        if (have.x != want.x || have.y != want.y ||
+            have.width != want.width || have.height != want.height) {
+            child->SetBounds(want);
         }
-        ctx->SetFillPaint(fill);
-        ctx->FillRoundedRectangle(Rect2Dd(rect), 5);
-        if (!primary) {
-            ctx->SetStrokePaint(Color(0, 0, 0, 40));
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRoundedRectangle(Rect2Dd(rect), 5);
-        }
-        FontStyle fsty;
-        fsty.fontFamily = style.fontFamily;
-        fsty.fontSize = style.fontSize;
-        fsty.fontWeight = FontWeight::Bold;
-        ctx->SetFontStyle(fsty);
-        ctx->SetTextPaint(primary ? Colors::White : style.textColor);
-        Size2Di ts = ctx->GetTextLineDimensions(label);
-        ctx->DrawText(label, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
-                                      rect.y + (rect.height - ts.height) / 2.0));
     }
 
     void UltraCanvasFilerWidget::DrawCompressDialog(IRenderContext* ctx,
@@ -3213,9 +3247,16 @@ namespace UltraCanvas {
         ctx->DrawText(pathText,
                       Point2Dd(d.panel.x + 16, d.nameRect.y + d.nameRect.height + 8));
 
-        // Buttons.
-        DrawDialogButton(ctx, d.okRect, "Compress", true, d.okHover);
-        DrawDialogButton(ctx, d.cancelRect, "Cancel", false, d.cancelHover);
+        // Buttons — real UltraCanvasButton children, drawn here because this
+        // widget renders its own content and never paints its children.
+        for (const auto& button : {compressOkButton, compressCancelButton}) {
+            if (!button) continue;
+            Rect2Df b = button->GetBounds();
+            ctx->PushState();
+            ctx->Translate(Point2Df(b.x, b.y));
+            button->Render(ctx, Rect2Df(0, 0, b.width, b.height));
+            ctx->PopState();
+        }
 
         // Ghost icon under the cursor, drawn last so it floats above everything.
         if (d.draggingIcon) {
@@ -3268,10 +3309,11 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
-                if (d.okRect.Contains(local))     { CommitCompressDialog(); return true; }
-                if (d.cancelRect.Contains(local)) { CloseCompressDialog();  return true; }
-                // A click anywhere else in the modal (including the name row
-                // beside the editor) puts the caret back in the name.
+                // The Compress / Cancel buttons are child elements and are hit
+                // before this handler sees the press, so there is nothing to
+                // test for here. A click anywhere else in the modal (including
+                // the name row beside the editor) puts the caret back in the
+                // name.
                 if (compressNameInput) {
                     compressNameInput->SetFocus(true);
                     RequestRedraw();
@@ -3284,13 +3326,9 @@ namespace UltraCanvas {
                     d.dragPos = local;
                     d.dropFolderIndex = FolderIndexAtLocal(local);
                     RequestRedraw();
-                } else {
-                    bool ok = d.okRect.Contains(local);
-                    bool cn = d.cancelRect.Contains(local);
-                    if (ok != d.okHover || cn != d.cancelHover) {
-                        d.okHover = ok; d.cancelHover = cn; RequestRedraw();
-                    }
                 }
+                // Button hover is the buttons' own business — they get the
+                // move directly as the elements under the pointer.
                 return true;
             }
             case UCEventType::MouseUp: {

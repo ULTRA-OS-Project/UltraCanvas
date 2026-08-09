@@ -1,13 +1,14 @@
 // core/UltraCanvasTimePicker.cpp
 // Platform-independent time-of-day picker implementation.
-// Version: 1.1.0
-// Last Modified: 2026-07-19
+// Version: 1.2.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTimePicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasTextInput.h"
 #include <ctime>
 #include <cctype>
 #include <cstdio>
@@ -530,8 +531,61 @@ namespace UltraCanvas {
 
     UltraCanvasTimePicker::UltraCanvasTimePicker(const std::string& identifier,
                                                  float x, float y, float w, float h)
-            : UltraCanvasUIElement(identifier, x, y, w, h) {
+            : UltraCanvasContainer(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+        BuildTextInput();
+    }
+
+    void UltraCanvasTimePicker::BuildTextInput() {
+        textInput = CreateTextInput(GetIdentifier() + "-field", 0, 0, 10, 10);
+        TextInputStyle ts;
+        // The picker paints the field box itself (hover / focus / disabled
+        // colours and the clock button), so the editor contributes text only.
+        ts.backgroundColor  = Colors::Transparent;
+        ts.borderWidth = 0;
+        ts.borderRadius = 0;
+        ts.textColor = style.textColor;
+        ts.caretColor = style.caretColor;
+        ts.placeholderColor = style.placeholderColor;
+        ts.fontStyle.fontFamily = style.fontFamily;
+        ts.fontStyle.fontSize = style.fontSize;
+        ts.paddingLeft = 0;
+        ts.paddingRight = 0;
+        ts.paddingTop = 0;
+        ts.paddingBottom = 0;
+        textInput->SetStyle(ts);
+        textInput->SetShowValidationState(false);
+        textInput->SetPlaceholder(placeholder);
+        textInput->SetReadOnly(!allowTextInput);
+        textInput->onEnterPressed = [this](const std::string&) {
+            CommitTextInput();
+            return true;
+        };
+        textInput->onFocusLost = [this]() { CommitTextInput(); };
+        AddChild(textInput);
+        SyncTextInputFromValue();
+    }
+
+    void UltraCanvasTimePicker::SyncTextInputFromValue() {
+        if (!textInput) return;
+        syncingText = true;
+        textInput->SetText(BuildDisplayText());
+        // Show the value from its first character: SetText keeps the caret
+        // where the typing left it, and a formatted time is short enough that
+        // a field scrolled to the caret would hide most of it.
+        textInput->SetSelection(0, 0);
+        syncingText = false;
+    }
+
+    void UltraCanvasTimePicker::PositionTextInput() {
+        if (!textInput) return;
+        Rect2Df want = TextRect();
+        if (want.width <= 0 || want.height <= 0) return;
+        Rect2Df have = textInput->GetBounds();
+        if (have.x != want.x || have.y != want.y ||
+            have.width != want.width || have.height != want.height) {
+            textInput->SetBounds(want);
+        }
     }
 
     void UltraCanvasTimePicker::SetTime(const UCTime& t, bool runCallbacks) {
@@ -539,7 +593,7 @@ namespace UltraCanvas {
         if (nt.present) ApplyConstraints(nt);
         bool changed = (nt != value);
         value = nt;
-        editing = false;
+        SyncTextInputFromValue();
         if (popupOpen) SyncSpinnersFromValue();
         if (changed && runCallbacks && onTimeChanged) onTimeChanged(value);
         RequestRedraw();
@@ -548,8 +602,7 @@ namespace UltraCanvas {
     void UltraCanvasTimePicker::Clear(bool runCallbacks) {
         bool changed = value.present;
         value = UCTime();
-        editing = false;
-        editBuffer.clear();
+        SyncTextInputFromValue();
         if (changed && runCallbacks && onTimeChanged) onTimeChanged(value);
         RequestRedraw();
     }
@@ -576,7 +629,8 @@ namespace UltraCanvas {
 
     void UltraCanvasTimePicker::SetAllowTextInput(bool allow) {
         allowTextInput = allow;
-        if (!allow && editing) { editing = false; editBuffer.clear(); RequestRedraw(); }
+        if (textInput) textInput->SetReadOnly(!allow);
+        RequestRedraw();
     }
 
     std::string UltraCanvasTimePicker::EffectiveFormat() const {
@@ -597,14 +651,19 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTimePicker::CommitTextInput() {
-        editing = false;
-        caretPos = 0;
-        if (editBuffer.empty()) { RequestRedraw(); return; }
+        if (!textInput || syncingText) return;
+        const std::string typed = textInput->GetText();
+        if (typed.empty()) {
+            if (value.present) Clear(true);
+            RequestRedraw();
+            return;
+        }
         UCTime parsed;
-        if (UCTime::Parse(editBuffer, use24h, showSeconds, parsed)) {
+        if (UCTime::Parse(typed, use24h, showSeconds, parsed)) {
             SetTime(parsed, true);
         } else {
-            RequestRedraw();   // revert to last valid display
+            SyncTextInputFromValue();   // revert to the last valid display
+            RequestRedraw();
         }
     }
 
@@ -637,33 +696,21 @@ namespace UltraCanvas {
         Color border = (IsFocused() || popupOpen) ? style.focusBorderColor : style.borderColor;
         ctx->DrawFilledRectangle(b, bg, style.borderWidth, border, style.cornerRadius);
 
-        FontStyle fs;
-        fs.fontFamily = style.fontFamily;
-        fs.fontSize = style.fontSize;
-        ctx->SetFontStyle(fs);
-
-        // Text (or placeholder / edit buffer).
-        Rect2Df tr = TextRect();
-        std::string text = editing ? editBuffer : BuildDisplayText();
-        bool isPlaceholder = false;
-        if (text.empty() && !editing) { text = placeholder; isPlaceholder = true; }
-
-        Color txt = IsDisabled() ? style.disabledTextColor
-                    : (isPlaceholder ? style.placeholderColor : style.textColor);
-        ctx->SetTextPaint(txt);
-
-        Point2Di ts = ctx->GetTextDimension(text);
-        int textY = static_cast<int>(tr.y + (tr.height - ts.y) / 2);
-        ctx->DrawText(text, Point2Di(static_cast<int>(tr.x), textY));
-
-        if (editing && IsFocused()) {
-            std::string upToCaret = editBuffer.substr(0, std::min(caretPos, editBuffer.size()));
-            int caretX = static_cast<int>(tr.x) + ctx->GetTextLineWidth(upToCaret) + 1;
-            caretX = std::min(caretX, static_cast<int>(tr.x + tr.width));
-            ctx->SetStrokePaint(style.caretColor);
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(Point2Di(caretX, static_cast<int>(b.y + 4)),
-                          Point2Di(caretX, static_cast<int>(b.y + b.height - 4)));
+        // The text, caret and selection belong to the editor child; this
+        // widget renders its own content, so it draws the child itself.
+        PositionTextInput();
+        if (textInput) {
+            TextInputStyle ts = textInput->GetStyle();
+            Color wanted = IsDisabled() ? style.disabledTextColor : style.textColor;
+            if (ts.textColor != wanted) {
+                ts.textColor = wanted;
+                textInput->SetStyle(ts);
+            }
+            Rect2Df cb = textInput->GetBounds();
+            ctx->PushState();
+            ctx->Translate(Point2Df(cb.x, cb.y));
+            textInput->Render(ctx, Rect2Df(0, 0, cb.width, cb.height));
+            ctx->PopState();
         }
 
         // Clock icon button.
@@ -804,6 +851,7 @@ namespace UltraCanvas {
             ApplyConstraints(nt);
             bool changed = (nt != value);
             value = nt;
+            SyncTextInputFromValue();   // the field shows the value, not the dial
             if (nt != t) SyncSpinnersFromValue();   // constraint moved it: reflect back
             if (changed && onTimeChanged) onTimeChanged(value);
             RequestRedraw();
@@ -859,6 +907,7 @@ namespace UltraCanvas {
         ApplyConstraints(t);
         bool changed = (t != value);
         value = t;
+        SyncTextInputFromValue();   // the field shows the value, not the spinners
         // If constraints moved the value, reflect that back into the spinners.
         if (t.hour != h || (showSeconds && t.second != s) || t.minute != m) {
             SyncSpinnersFromValue();
@@ -928,20 +977,26 @@ namespace UltraCanvas {
 // ===== OVERRIDES =====
 
     void UltraCanvasTimePicker::SetWindow(UltraCanvasWindowBase* win) {
-        UltraCanvasUIElement::SetWindow(win);
+        UltraCanvasContainer::SetWindow(win);
         if (popup) popup->SetWindow(win);
     }
 
     bool UltraCanvasTimePicker::SetFocus(bool focus) {
-        bool result = UltraCanvasUIElement::SetFocus(focus);
-        if (!focus && editing) CommitTextInput();
+        // Focusing the picker means focusing its field — that is where the
+        // keyboard belongs, and it is what makes the caret appear.
+        if (focus && allowTextInput && textInput) {
+            bool result = textInput->SetFocus(true);
+            RequestRedraw();
+            return result;
+        }
+        bool result = UltraCanvasContainer::SetFocus(focus);
         RequestRedraw();
         return result;
     }
 
     bool UltraCanvasTimePicker::OnEvent(const UCEvent& event) {
         if (!IsVisible() || IsDisabled()) return false;
-        if (UltraCanvasUIElement::OnEvent(event)) return true;
+        if (UltraCanvasContainer::OnEvent(event)) return true;
 
         switch (event.type) {
             case UCEventType::MouseDown:  return HandleMouseDown(event);
@@ -962,7 +1017,7 @@ namespace UltraCanvas {
             case UCEventType::MouseEnter: SetHovered(true);  return true;
             case UCEventType::MouseLeave: SetHovered(false); return true;
             case UCEventType::FocusLost:
-                if (editing) CommitTextInput();
+                CommitTextInput();
                 return false;
             default:
                 break;
@@ -974,52 +1029,32 @@ namespace UltraCanvas {
         Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
         if (!GetLocalBounds().Contains(p)) return false;
 
-        SetFocus(true);
         bool onButton = ButtonRect().Contains(p);
 
         if (onButton || !allowTextInput) {
+            SetFocus(true);
             if (popupOpen) ClosePopup();
             else OpenPopup();
-        } else {
-            if (!editing) {
-                editing = true;
-                editBuffer = BuildDisplayText();   // seed with current text
-            }
-            // Place the caret between the characters nearest the click.
-            caretPos = CaretIndexFromX(p.x);
+        } else if (textInput) {
+            // Hand the press to the editor so it places the caret (and can
+            // start a drag selection) exactly where the user clicked.
+            textInput->SetFocus(true);
+            UCEvent forwarded = event;
+            Rect2Df tr = textInput->GetBounds();
+            forwarded.pointer.x = event.pointer.x - static_cast<int>(tr.x);
+            forwarded.pointer.y = event.pointer.y - static_cast<int>(tr.y);
+            textInput->OnEvent(forwarded);
         }
         RequestRedraw();
         return true;
     }
 
-    size_t UltraCanvasTimePicker::CaretIndexFromX(float x) const {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx || editBuffer.empty()) return editBuffer.size();
-
-        FontStyle fs;
-        fs.fontFamily = style.fontFamily;
-        fs.fontSize = style.fontSize;
-        ctx->SetFontStyle(fs);
-
-        float rel = x - TextRect().x;
-        if (rel <= 0) return 0;
-
-        // The buffer is short (a formatted time), so scan every boundary and
-        // pick the one closest to the click.
-        size_t bestIdx = 0;
-        float bestDist = rel;                     // boundary 0 sits at width 0
-        for (size_t i = 1; i <= editBuffer.size(); ++i) {
-            float w = static_cast<float>(ctx->GetTextLineWidth(editBuffer.substr(0, i)));
-            float d = std::fabs(w - rel);
-            if (d < bestDist) {
-                bestDist = d;
-                bestIdx = i;
-            }
-        }
-        return bestIdx;
-    }
-
     bool UltraCanvasTimePicker::HandleKeyDown(const UCEvent& event) {
+        // Text editing — caret movement, selection, clipboard, undo — is the
+        // field editor's business and reaches it directly, because the editor
+        // is the focused element. Only the keys that drive the *picker* are
+        // handled here, and those are exactly the ones a single-line editor
+        // declines and lets bubble up.
         switch (event.virtualKey) {
             case UCKeys::Down:
             case UCKeys::Up:
@@ -1027,78 +1062,31 @@ namespace UltraCanvas {
                 return false;
             case UCKeys::Escape:
                 if (popupOpen) { ClosePopup(); return true; }
-                if (editing)   { editing = false; caretPos = 0; RequestRedraw(); return true; }
-                return false;
+                // Abandon a half-typed entry: put the committed value back.
+                SyncTextInputFromValue();
+                RequestRedraw();
+                return true;
             case UCKeys::Return:
             case UCKeys::NumPadEnter:
-                if (editing) { CommitTextInput(); return true; }
                 if (popupOpen) { ClosePopup(); return true; }
-                return false;
-            case UCKeys::Backspace:
-                if (editing && caretPos > 0) {
-                    editBuffer.erase(caretPos - 1, 1);
-                    caretPos--;
-                    RequestRedraw();
-                    return true;
-                }
-                return false;
-            case UCKeys::Delete:
-                if (editing && caretPos < editBuffer.size()) {
-                    editBuffer.erase(caretPos, 1);
-                    RequestRedraw();
-                    return true;
-                }
-                return false;
-            case UCKeys::Left:
-                if (editing) {
-                    if (caretPos > 0) { caretPos--; RequestRedraw(); }
-                    return true;
-                }
-                return false;
-            case UCKeys::Right:
-                if (editing) {
-                    if (caretPos < editBuffer.size()) { caretPos++; RequestRedraw(); }
-                    return true;
-                }
-                return false;
-            case UCKeys::Home:
-                if (editing) { caretPos = 0; RequestRedraw(); return true; }
-                return false;
-            case UCKeys::End:
-                if (editing) { caretPos = editBuffer.size(); RequestRedraw(); return true; }
-                return false;
+                CommitTextInput();
+                return true;
             default:
-                HandleKeyChar(event);
                 break;
         }
         return false;
     }
 
-    bool UltraCanvasTimePicker::HandleKeyChar(const UCEvent& event) {
-        if (!IsFocused() || !allowTextInput) return false;
-        char c = event.character;
-        // Accept digits and the separators used by the time formats.
-        bool ok = std::isdigit(static_cast<unsigned char>(c)) ||
-                  c == ':' || c == ' ' || c == '.' ||
-                  c == 'A' || c == 'P' || c == 'M' ||
-                  c == 'a' || c == 'p' || c == 'm';
-        if (!ok) return false;
-        if (!editing) {
-            // Typing without clicking first starts a fresh entry.
-            editing = true;
-            editBuffer.clear();
-            caretPos = 0;
-        }
-        caretPos = std::min(caretPos, editBuffer.size());
-        editBuffer.insert(caretPos, 1, c);
-        caretPos++;
-        RequestRedraw();
-        return true;
-    }
-
     bool UltraCanvasTimePicker::HandleWheel(const UCEvent& event) {
-        if (!IsHovered() && !IsFocused()) return false;
         if (event.wheelDelta == 0 || popupOpen) return false;
+        // The field editor is the element under the pointer now, so it — not
+        // the picker — receives the MouseEnter that sets IsHovered(). Test the
+        // pointer against our own bounds instead; the wheel only reaches this
+        // handler at all when it was over the picker or bubbled up from the
+        // editor inside it.
+        Point2Df p(static_cast<float>(event.pointer.x),
+                   static_cast<float>(event.pointer.y));
+        if (!IsFocused() && !GetLocalBounds().Contains(p)) return false;
         UCTime base = value.present ? value : UCTime::Now();
         UCTime t = base.AddMinutes(event.wheelDelta > 0 ? minuteStep : -minuteStep);
         SetTime(t, true);

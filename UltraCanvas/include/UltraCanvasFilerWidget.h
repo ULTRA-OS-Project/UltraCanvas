@@ -74,6 +74,7 @@
 namespace UltraCanvas {
 
     class UltraCanvasMenu;
+    class UltraCanvasButton;
     class UltraCanvasTextInput;
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
@@ -1133,8 +1134,6 @@ namespace UltraCanvas {
         // The selection rectangle of a running rubber-band drag.
         void DrawMarquee(IRenderContext* ctx);
         void DrawCompressDialog(IRenderContext* ctx, const Rect2Di& bounds);
-        void DrawDialogButton(IRenderContext* ctx, const Rect2Di& rect,
-                              const std::string& label, bool primary, bool hovered);
         void DrawScrollbar(IRenderContext* ctx);
         // Rebuilds columnSplitters for the current view and paints the
         // dividers (hovered / dragged ones highlight like a split-pane
@@ -1365,8 +1364,6 @@ namespace UltraCanvas {
             Point2Di dragPos;               // cursor while dragging (widget-local)
             int      dropFolderIndex = -1;  // folder entry highlighted under the icon
 
-            bool     okHover = false;
-            bool     cancelHover = false;
         };
         CompressDialogState compressDlg;
 
@@ -1375,6 +1372,19 @@ namespace UltraCanvas {
         // backspace at the end, and it went deaf the moment anything else in
         // the window took the keyboard focus.
         std::shared_ptr<UltraCanvasTextInput> compressNameInput;
+        // Compress / Cancel are UltraCanvasButton children too, so they carry
+        // their own hover, press and disabled painting instead of a private
+        // hover flag and a bespoke painter.
+        std::shared_ptr<UltraCanvasButton> compressOkButton;
+        std::shared_ptr<UltraCanvasButton> compressCancelButton;
+        std::shared_ptr<UltraCanvasButton> MakeCompressButton(
+                const std::string& identifier, const std::string& label,
+                bool primary, std::function<void()> action);
+        void DestroyCompressButtons();
+        // Moves a child element onto a widget-local rectangle, no-op when it is
+        // already there (the dialog re-lays out on every frame).
+        void PlaceChild(const std::shared_ptr<UltraCanvasUIElement>& child,
+                        const Rect2Di& r);
         // While the dialog is up it also claims the window's KeyDown stream, so
         // a keystroke reaches the editor even when the focus sits elsewhere.
         bool compressKeyFilterInstalled = false;

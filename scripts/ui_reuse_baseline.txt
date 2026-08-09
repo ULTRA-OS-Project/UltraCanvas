@@ -8,7 +8,4 @@
 #     python3 scripts/check_ui_reuse.py --update-baseline
 UltraCanvas/core/UltraCanvasColorPicker.cpp::hand-rolled-text-field::
 UltraCanvas/core/UltraCanvasDatePicker.cpp::hand-rolled-text-field::
-UltraCanvas/core/UltraCanvasFilerWidget.cpp::hand-rolled-button::DrawDialogButton
 UltraCanvas/core/UltraCanvasSpreadsheet.cpp::hand-rolled-text-field::
-UltraCanvas/core/UltraCanvasTimePicker.cpp::hand-rolled-text-field::
-UltraCanvas/include/UltraCanvasFilerWidget.h::hand-rolled-button::DrawDialogButton

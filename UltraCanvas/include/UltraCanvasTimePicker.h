@@ -13,8 +13,8 @@
 // circular clock-face dial (UltraCanvasTimeClockView) with a Windows-10-style
 // dual-ring 24-hour face.
 //
-// Version: 1.1.0
-// Last Modified: 2026-07-19
+// Version: 1.2.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +29,7 @@
 #include <memory>
 
 namespace UltraCanvas {
+    class UltraCanvasTextInput;
 
 // ===== UCTime: lightweight time-of-day value =====
 // hour is 0-23, minute/second are 0-59. A default-constructed UCTime
@@ -212,7 +213,11 @@ namespace UltraCanvas {
     };
 
 // ===== TIME PICKER (dropdown popup) =====
-    class UltraCanvasTimePicker : public UltraCanvasUIElement {
+    // A container, not a bare element: the editable field is a real
+    // UltraCanvasTextInput child (caret, selection, clipboard, undo, IME)
+    // rather than a private buffer painted by hand. The popup's spinners
+    // were always real elements; the field is one now too.
+    class UltraCanvasTimePicker : public UltraCanvasContainer {
     public:
         // ===== CALLBACKS =====
         std::function<void(const UCTime&)> onTimeChanged;
@@ -290,7 +295,7 @@ namespace UltraCanvas {
         std::string EffectiveFormat() const;
         std::string BuildDisplayText() const;   // formatted value (or empty)
         void ApplyConstraints(UCTime& t) const; // clamp into [minTime, maxTime]
-        void CommitTextInput();                  // parse editBuffer -> value
+        void CommitTextInput();                  // parse the field -> value
 
         // ----- popup -----
         void BuildPopup();               // (re)create the popup container + spinners
@@ -301,13 +306,7 @@ namespace UltraCanvas {
         // ----- events -----
         bool HandleMouseDown(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
-        bool HandleKeyChar(const UCEvent& event);
         bool HandleWheel(const UCEvent& event);
-
-        // ----- caret -----
-        // Byte index in editBuffer for a click at field-local x (measures the
-        // rendered text, so the caret lands between the clicked characters).
-        size_t CaretIndexFromX(float x) const;
 
         // ----- state -----
         UCTime value;                    // may be empty (present == false)
@@ -328,10 +327,13 @@ namespace UltraCanvas {
         bool popupOpen = false;
         bool updatingSpinners = false;   // guard: suppress spinner/dial feedback
 
-        // text editing (active only when allowTextInput && focused)
-        std::string editBuffer;
-        size_t caretPos = 0;             // byte index into editBuffer
-        bool editing = false;
+        // The editable field. Always present; read-only while
+        // SetAllowTextInput(false) makes the picker popup-only.
+        std::shared_ptr<UltraCanvasTextInput> textInput;
+        void BuildTextInput();
+        void SyncTextInputFromValue();   // value -> field text
+        void PositionTextInput();        // field geometry -> child bounds
+        bool syncingText = false;        // guard: suppress onTextChanged feedback
 
         TimePickerStyle style;
     };
