@@ -39,8 +39,14 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 
+// Defined by the build from the first line of Docs/Texter/CHANGELOG.md — see
+// cmake/UltraCanvasVersion.cmake. The fallback only applies outside CMake.
+#ifndef ULTRATEXTER_VERSION
+#define ULTRATEXTER_VERSION "0.0-dev"
+#endif
+
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.40";
+    std::string UltraCanvasTextEditor::version = ULTRATEXTER_VERSION;
     
 namespace {
     std::string GetAppDataDirectory() {

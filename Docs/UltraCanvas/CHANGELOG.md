@@ -1,76 +1,49 @@
-#### 2026-08-08 *0.3.31*
-- **UltraCanvasBreadcrumb**: opening a folder no longer stalls on the drive
-  list. `BuildFolderBreadcrumb` used to call `ListDriveRoots()` eagerly to fill
-  the `Computer` node's dropdown, and the strip is rebuilt on every navigation —
-  so every click paid for a full volume enumeration before the new folder could
-  be painted. The drive list is now filled by a `dropdownItemsProvider`, like
-  the per-segment sub-folder menus, so building the strip touches no
-  filesystem at all. `ListDriveRoots()` itself reads the Windows mount table
-  once via `GetLogicalDrives()` instead of probing `A:\` … `Z:\` with
-  `exists()`, which spun up empty optical / card readers and waited out the
-  timeout of every disconnected network mapping.
-- **UltraCanvasFilerWidget** *(1.6.1)*: the image-header probe that drives
-  `SetShrinkThumbnailRows` moved off the UI thread. The thumbnail layout asks
-  for the natural size of **every** entry of the folder, and `EntryAspect()`
-  answered by opening the file — so entering a folder of photos blocked the
-  window for one file open per image before anything appeared. Probes are now
-  queued onto the existing folder-statistics worker (ahead of the recursive
-  walks, which are far longer); a not-yet-measured image keeps the full tile
-  height, which the row layout already treats as its unknown case, and rows
-  shorten as the measurements land. `aspectCache` moved under `statsMutex` and
-  is dropped, with its queue, on every rescan.
-- **UltraCanvasFilerWidget** *(1.8.3)*: folder listing prefetch. A
-  low-priority worker pre-scans the shown folder's subfolders (one level)
-  shortly after it settles, so entering one serves the listing from memory
-  instead of a cold directory scan — the win is largest on network volumes
-  and spinning disks. Batches start after a short grace delay and are dropped
-  the moment the user navigates again, so quick click-throughs cost nothing.
-  A cached listing is served only when under a minute old and the folder's
-  mtime is unchanged; `Refresh()` (file operations) always rescans. The cache
-  is bounded (24 listings / 50 000 entries, oldest evicted); oversized
-  listings are scanned but not stored, which still warms the OS metadata
-  cache. Cached listings include hidden entries so either hidden-files
-  setting is served. `SetFolderPrefetchEnabled` toggles the feature
-  (default on).
-- **UltraCanvasFilerWidget** *(1.8.2)*: the info-bar / dataset media probes
-  moved off the UI thread too. Selecting an audio / video file parsed its
-  container headers synchronously, and an image in an exotic container
-  (AVIF, HEIC) was **fully decoded** on the spot via `UCImage::Get` just to
-  learn its pixel size; with the Length / Dimensions dataset fields enabled
-  the same probes ran for every visible tile on first paint. `EntryExtraInfo`
-  now returns the cached text or queues the probe on the folder-statistics
-  worker (between the aspect probes and the recursive walks) and the result
-  arrives with a posted repaint.
-- **UltraCanvasFilerWidget**: repaint and interaction hot paths de-quadratified
-  for large folders. Selection membership during a paint comes from a per-frame
-  flag array instead of a `std::find` over the selection per drawn item (a
-  hover move after Select All was O(visible × selected)); `EllipsizeText`
-  binary-searches the longest fitting prefix instead of re-measuring the text
-  once per trimmed code point; the draw and thumbnail-prefetch loops stop at
-  the first item past the viewport instead of testing every entry each frame
-  (all views except the unordered treemap); the rubber-band reselect
-  deduplicates through a flag array instead of `std::find` per touched item;
-  restoring the selection after a rescan matches paths through a hash set
-  instead of a linear scan per entry (Select All + refresh was O(n²)); and the
-  per-frame selection info bar no longer copies every selected `FilerEntry`
-  (eight strings each) just to sum sizes.
-- **UltraCanvasFilerWidget**: scanning a folder costs one metadata lookup per
-  entry instead of two — type, size, times and the write bit all come from the
-  single `stat()` call that was already made for the dates, instead of a
-  `file_size()` lookup and then `stat()` again. Hidden entries are skipped
-  before their metadata is fetched. New `GetSelectionIndices()` exposes the
-  selection copy-free for hosts; UltraFiler's status bar and preview lookup
-  use it instead of copying every selected entry on each selection change.
-- **UltraFiler**: expanding a folder tree node no longer blocks on its
-  children. "Does this folder have sub-folders?" — the question that gives a
-  node its expand button — costs a directory open per child, and one expansion
-  asked it once per child on the UI thread. The probes now run on a worker
-  thread and post their answers back, so the sub-folders appear at once and the
-  expand buttons follow. Tree nodes track whether their children have been
-  scanned instead of inferring it from the placeholder child, so navigating to
-  a folder whose ancestors are not expanded yet still walks the chain
-  correctly. The startup drive scan uses `ListDriveRoots()` for the same reason
-  the breadcrumb does.
+#### 2026-08-08 *0.3.33*
+- **UltraCanvasCircleDiagram** *(1.0.0)*: new hub-and-spoke circle diagram
+  infographic — a centre hub, a backbone ring, and equally sized labelled node
+  discs threaded onto that ring, each with a fan of satellites on leader lines.
+  It is the node-on-ring member of the circular family: every existing circular
+  element subdivides the ring into sectors, while this one threads discrete
+  discs onto it, so a node's radius is independent of ring thickness and it can
+  carry children outside the ring. Presentation-only (no viewport, dragging,
+  inline editing or undo); interaction is hover highlighting, tooltips and
+  `onNodeClick` / `onSatelliteClick`. Structure and colour are independent
+  presets — `CircleDiagramDesign` (`SatelliteWheel`, `BandedWheel`, `Custom`)
+  and `CircleDiagramPaletteKind` (seven themes plus `Custom`) — and both work
+  at any node count, because each palette is a hue ramp sampled at N points
+  rather than a fixed list. Every layout quantity derives from the per-node arc
+  of 360/N: the auto-fitted node radius is a share of the chord between
+  neighbours, the satellite fan is narrowed to what one node's wedge can hold
+  (shrinking auto-sized satellite discs when K of them will not fit side by
+  side), and anything outside the backbone — fans, or labels placed with
+  `CircleNodeLabelPlacement::Outside` — is reserved for by shrinking the
+  backbone radius so nothing is clipped. Disc labels shrink to fit, testing the
+  longest single word as well as the wrapped block, since a word too wide to
+  break ellipsizes rather than wrapping. Node discs are all one radius and
+  satellites another; `value` is tooltip/callback payload and never scales a
+  disc. `SetNodeCount()` clamps to 3–12 rather than degrading silently. Docs in
+  `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`, survey and roadmap in
+  `Docs/UltraCanvas/CircleDiagramInfographicVariants.md`, demo scene in
+  `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`.
+#### 2026-08-08 *0.3.32*
+- **Version numbers** are now derived from the changelogs at build time, so the
+  version the demo app's info window shows can no longer disagree with the
+  version in the file name of the build it came from. The packaging scripts
+  already parsed `#### YYYY-MM-DD *x.y.z*` off the first changelog line for the
+  artefact names; the number compiled *into* the binaries was a separate
+  hand-maintained copy that only moved when someone remembered to run
+  `set-version.sh`, and it had fallen ten releases behind (the info window
+  reported 0.3.21 against a 0.3.31 changelog). The new
+  `cmake/UltraCanvasVersion.cmake` reads the same first line at configure time
+  and feeds `project(VERSION)`, `ULTRACANVAS_VERSION` and `ULTRATEXTER_VERSION`;
+  `UltraCanvas::versionString` and `UltraCanvasTextEditor::version` take their
+  value from those defines instead of a literal. Adding a changelog entry
+  re-triggers the configure step, so an existing build tree picks the new
+  version up rather than baking in the one it was first configured with.
+  `set-version.sh` now only writes the two Windows resource files that are read
+  from disk by windres (`UltraTexter.rc`, `UltraTexter.manifest`) — a configure
+  on any platform warns when those are stale.
+
 #### 2026-08-07 *0.3.31*
 - **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
   now keeps that origin. The constructor delegated to the size-only base

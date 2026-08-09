@@ -1,17 +1,24 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
 // a menu bar (Settings menu opening the settings window),
-// a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, folder
-// breadcrumb + recursive search field), a command bar (New folder / New file,
-// Cut / Copy / Paste / Rename / Delete, Sort and View dropdowns, video preview
-// mode, Preview toggle), a three-pane split with the lazy folder tree
-// (UltraCanvasTreeView), the tabbed folder content display
+// a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, the
+// History clock toggle, folder breadcrumb + recursive search field), a command
+// bar (New folder / New file, Cut / Copy / Paste / Rename / Delete, Sort and
+// View dropdowns, video preview mode, Preview toggle), a three-pane split with
+// the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
 // the media preview (UltraCanvasMediaViewer, shown only while a previewable
 // file is selected; Esc closes it), plus a status bar describing the folder
 // and the selection (kept in step with the folder listing through the
 // filer's onFolderRefreshed callback).
-// Version: 1.4.2
+// The clock button swaps the whole tree + folder area for the History view: a
+// tabbed container (Files / Folders / Apps) whose pages are UltraCanvasFilerWidgets
+// in small-thumbnail mode showing the recently used paths (UltraFilerHistory)
+// as a file list instead of a folder listing. Files and applications enter the
+// history when they are opened; a folder enters it when work was done in it
+// (a file opened there, or content created / pasted / renamed / deleted / ...,
+// reported by the filer's onFolderModified) — not by being browsed.
+// Version: 1.6.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 #pragma once
@@ -29,6 +36,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
 
 #include <atomic>
@@ -65,6 +73,10 @@ private:
         std::string searchQuery;               // active search ("" = folder display)
     };
 
+    // The three History tabs, in tab order. The enumerators index
+    // `historyFilers` and map onto FilerHistoryKind.
+    enum HistoryTab { HistoryFiles = 0, HistoryFolders, HistoryApps, HistoryTabCount };
+
     // ===== UI CONSTRUCTION =====
     std::shared_ptr<UltraCanvasMenu>      BuildMenuBar();
     std::shared_ptr<UltraCanvasContainer> BuildNavigationRow();
@@ -72,6 +84,9 @@ private:
     void BuildFolderTree();
     void BuildTabbedContainer();
     void BuildSplitLayout();
+    // The History view (hidden until the clock button turns it on): a tabbed
+    // container with one small-thumbnail filer per history kind.
+    void BuildHistoryView();
 
     // ===== TABS =====
     // Creates a tab with its own filer widget showing `path`.
@@ -113,6 +128,24 @@ private:
     // query returns the tab to its normal folder display.
     void RunSearch(const std::string& query);
 
+    // ===== HISTORY (the clock button) =====
+    // Swaps the tree + folder area for the History view and back. Showing it
+    // rebuilds the three lists from the recorded paths.
+    void SetHistoryVisible(bool visible);
+    // Re-reads the recorded paths into the three history filers (dropping the
+    // ones that no longer exist).
+    void RefreshHistoryTabs();
+    // Remembers an entry the user just opened, in the list its kind belongs to.
+    void RecordEntryInHistory(const FilerEntry& entry);
+    // Remembers a folder the user did something in (opened a file there,
+    // created / pasted / renamed / deleted something, ...). Browsing a folder
+    // is not enough - the Folders tab lists folders that were worked in.
+    void RecordFolderInHistory(const std::string& folder);
+    // A history tile was activated: leaves the History view and shows the path
+    // in the browsing view (a folder is opened, a file's folder is opened).
+    void OpenHistoryEntry(const std::string& path, bool isFolder);
+    UltraCanvasFilerWidget* ActiveHistoryFiler() const;
+
     // ===== NAVIGATION =====
     void NavigateTo(const std::string& path);
     void NavigateBack();
@@ -123,6 +156,9 @@ private:
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
+    // Window title from what is on screen (the active tab's folder, or the
+    // History view while it is shown).
+    void UpdateWindowTitle();
     // Turns the preview feature on/off (the command bar toggle; Esc while
     // the preview is shown turns it off the same way).
     void SetPreviewEnabled(bool enabled);
@@ -156,6 +192,10 @@ private:
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
     std::shared_ptr<UltraCanvasMediaViewer>     preview;
     std::shared_ptr<UltraCanvasSplitPane>       split;
+    std::shared_ptr<UltraCanvasContainer>       contentBox;    // holds the split OR the History view
+    std::shared_ptr<UltraCanvasContainer>       historyPane;   // History view root
+    std::shared_ptr<UltraCanvasTabbedContainer> historyTabs;   // Files / Folders / Apps
+    std::shared_ptr<UltraCanvasFilerWidget>     historyFilers[HistoryTabCount];
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
     std::shared_ptr<UltraCanvasBreadcrumb>      breadcrumb;
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
@@ -164,6 +204,7 @@ private:
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;
     std::shared_ptr<UltraCanvasButton>          previewButton;
+    std::shared_ptr<UltraCanvasButton>          historyButton;
     std::shared_ptr<UltraCanvasDropdown>        sortDropdown;
     std::shared_ptr<UltraCanvasDropdown>        viewDropdown;
     std::shared_ptr<UltraCanvasDropdown>        videoModeDropdown;
@@ -191,7 +232,9 @@ private:
     bool previewEnabled = true;            // the command bar toggle state
     bool previewShown = false;             // preview pane currently in the split
     int  previewPaneWidth = 0;             // last shown width (px), restored on reopen
+    bool historyShown = false;             // History view replaces the split
     UltraFilerSettings settings;           // persisted application settings
+    UltraFilerHistory  history;            // recently used files / folders / apps
 };
 
 } // namespace UltraCanvas

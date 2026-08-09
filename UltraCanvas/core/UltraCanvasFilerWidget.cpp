@@ -26,7 +26,11 @@
 // The inline rename editor is a real UltraCanvasTextInput overlaid on the
 // item's name, and video files show their poster frame in the thumbnail
 // views (decoded on the same worker threads as the image thumbnails).
-// Version: 1.8.3
+// A file list shown with ShowFileList can keep the order it was handed over in
+// (SetFileListOrderPreserved) instead of being sorted. Every content change
+// the user makes is reported through onFolderModified with the folder it
+// landed in, next to the plain rescan notification onFolderRefreshed.
+// Version: 1.10.0
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
@@ -1054,6 +1058,14 @@ namespace UltraCanvas {
         ScanFolder();
     }
 
+    void UltraCanvasFilerWidget::SetFileListOrderPreserved(bool preserved) {
+        if (preserveFileListOrder == preserved) return;
+        preserveFileListOrder = preserved;
+        // Turning it on has to restore the order the paths came in, which only
+        // a rescan of fileListPaths can do (the entries have been sorted).
+        if (fileListMode) Refresh();
+    }
+
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
@@ -1342,6 +1354,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::SortEntries() {
+        // A file list whose order is the information it carries (see
+        // SetFileListOrderPreserved) is left exactly as it was handed over.
+        if (fileListMode && preserveFileListOrder) return;
         const FilerSortField field = sortField;
         const bool asc = sortAscending;
         std::stable_sort(entries.begin(), entries.end(),
@@ -1614,8 +1629,30 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    bool UltraCanvasFilerWidget::SelectPath(const std::string& path) {
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].path != path) continue;
+            selection.clear();
+            selection.push_back(i);
+            lastClickedIndex = static_cast<int>(i);
+            EnsureSelectionVisible();
+            FireSelectionChanged();
+            RequestRedraw();
+            return true;
+        }
+        return false;
+    }
+
     void UltraCanvasFilerWidget::FireSelectionChanged() {
         if (onSelectionChanged) onSelectionChanged(GetSelectedEntries());
+    }
+
+    void UltraCanvasFilerWidget::NotifyFolderModified(const std::string& folderPath) {
+        if (!onFolderModified) return;
+        // A file list spans many folders, so its "current folder" is not where
+        // a change landed — only an explicitly named folder is reported there.
+        if (folderPath.empty() && (fileListMode || currentPath.empty())) return;
+        onFolderModified(folderPath.empty() ? currentPath : folderPath);
     }
 
     std::vector<size_t> UltraCanvasFilerWidget::SelectionOrItem(int index) const {
@@ -1859,7 +1896,12 @@ namespace UltraCanvas {
                                 + src + ": " + ec.message());
             else changed = true;
         }
-        if (changed) Refresh();
+        if (changed) {
+            Refresh();
+            NotifyFolderModified(destDir);
+            // A move also emptied the folder the files came from.
+            if (!copy) NotifyFolderModified();
+        }
     }
 
     // ===== NATIVE DRAG & DROP =====
@@ -1886,7 +1928,9 @@ namespace UltraCanvas {
                 [weakSelf](bool accepted, bool moved) {
                     if (!accepted || !moved) return;
                     if (auto self = weakSelf.lock()) {
-                        static_cast<UltraCanvasFilerWidget*>(self.get())->Refresh();
+                        auto* filer = static_cast<UltraCanvasFilerWidget*>(self.get());
+                        filer->Refresh();
+                        filer->NotifyFolderModified();   // files left this folder
                     }
                 });
     }
@@ -1919,7 +1963,7 @@ namespace UltraCanvas {
             if (ec) ReportError("Drop failed for " + src + ": " + ec.message());
             else changed = true;
         }
-        if (changed) Refresh();
+        if (changed) { Refresh(); NotifyFolderModified(); }
     }
 
     std::string UltraCanvasFilerWidget::UniquePathIn(const std::string& folder,
@@ -1987,6 +2031,7 @@ namespace UltraCanvas {
         }
         if (cut) { clipboardPaths.clear(); clipboardCut = false; }
         Refresh();
+        NotifyFolderModified();
     }
 
     namespace {
@@ -2035,6 +2080,7 @@ namespace UltraCanvas {
                 return false;
             }
             Refresh();
+            NotifyFolderModified();
             return true;
         }
 
@@ -2046,6 +2092,7 @@ namespace UltraCanvas {
                 return false;
             }
             Refresh();
+            NotifyFolderModified();
             return true;
         }
         return false;
@@ -2156,6 +2203,17 @@ namespace UltraCanvas {
         if (selectAfterScanPath.empty()) ClearSelection();
         else                             selection.clear();
         Refresh();
+        // Report every folder the deletion emptied: in a file-list display the
+        // victims can come from different folders. For a folder listing they
+        // all share currentPath, so this reports it once.
+        if (onFolderModified) {
+            std::unordered_set<std::string> reported;
+            for (const FilerEntry& e : victims) {
+                const std::string folder = fs::path(e.path).parent_path().string();
+                if (!folder.empty() && reported.insert(folder).second)
+                    NotifyFolderModified(folder);
+            }
+        }
     }
 
     void UltraCanvasFilerWidget::ShowDeleteConfirmation(
@@ -2308,6 +2366,7 @@ namespace UltraCanvas {
             if (ec) ReportError("Duplicate failed for " + e.path + ": " + ec.message());
         }
         Refresh();
+        NotifyFolderModified();
     }
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
@@ -2416,7 +2475,12 @@ namespace UltraCanvas {
             renamedFromPath = oldPath;
             renamedToPath = target.string();
         }
+        // The rescan below clears renamedToPath, so decide here whether the
+        // rename went through — only then was work done in the folder.
+        const bool renamed = !ec;
         Refresh();
+        if (renamed)
+            NotifyFolderModified(target.parent_path().string());
     }
 
     void UltraCanvasFilerWidget::CancelRename(bool restoreFocus) {
@@ -2550,6 +2614,7 @@ namespace UltraCanvas {
             return;
         }
         Refresh();
+        NotifyFolderModified(fs::path(dest).parent_path().string());
 #else
         (void)extension;
         ReportError("Compress requires the VirtualFS module");
@@ -2569,7 +2634,7 @@ namespace UltraCanvas {
                 ReportError("Extraction failed for " + e.path);
             }
         }
-        if (any) Refresh();
+        if (any) { Refresh(); NotifyFolderModified(); }
 #else
         ReportError("Extract requires the VirtualFS module");
 #endif
@@ -2655,6 +2720,8 @@ namespace UltraCanvas {
             return;
         }
         Refresh();
+        // The archive can be written into a folder the icon was dragged onto.
+        NotifyFolderModified(fs::path(dest).parent_path().string());
 #else
         (void)d;
         ReportError("Compress requires the VirtualFS module");
@@ -2964,6 +3031,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
         if (onNewDocument && onNewDocument(type, currentPath)) {
             Refresh();
+            NotifyFolderModified();
             return;
         }
         std::error_code ec;
@@ -2980,6 +3048,7 @@ namespace UltraCanvas {
             if (!out) { ReportError("New document failed: " + dest); return; }
         }
         Refresh();
+        NotifyFolderModified();
         // Put the fresh file straight into rename mode.
         for (size_t i = 0; i < entries.size(); ++i) {
             if (entries[i].path == dest) { StartRename(i); break; }

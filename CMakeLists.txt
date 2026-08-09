@@ -6,8 +6,13 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# Version comes from the first line of Docs/UltraCanvas/CHANGELOG.md — the same
+# line the packaging scripts read for the artefact file names. Must be included
+# before project(), which needs ULTRACANVAS_VERSION.
+include(cmake/UltraCanvasVersion.cmake)
+
 project(UltraCanvasDemoApp
-    VERSION 0.3.21
+    VERSION ${ULTRACANVAS_VERSION}
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -188,6 +193,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
@@ -531,6 +537,11 @@ endif()
     # Compile definitions
     target_compile_definitions(UltraCanvasTexter PRIVATE
             ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
+            # UltraTexter has its own changelog and its own version line; this
+            # target must define it too, or the editor built from here would
+            # report a different version than the one built from
+            # Apps/Texter/CMakeLists.txt.
+            ULTRATEXTER_VERSION="${ULTRATEXTER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/Texter.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )

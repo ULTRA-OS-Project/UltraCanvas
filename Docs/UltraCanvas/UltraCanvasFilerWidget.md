@@ -51,6 +51,8 @@ Fields: `Name`, `Size`, `Type`, `ModifiedDate`, `CreatedDate`. Directories alway
 list before files. In the Details view a click on a sortable column header
 selects that field (a second click flips the direction) and the header shows a
 ▲ / ▼ indicator. `onSortChanged(field, ascending)` fires on every change.
+Sorting can be switched off for a file-list display whose order matters — see
+[File list](#file-list-search-results).
 
 ## Resizable columns
 
@@ -256,13 +258,19 @@ rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
-`SelectAll()` change the selection programmatically, and
+`SelectAll()` / `SelectPath(path)` change the selection programmatically, and
 `EnsureSelectionVisible()` scrolls so the first selected entry is fully in
 view. The scroll is applied against the **next** recomputed layout, so a host
 that resizes the widget in the same frame — e.g. opening a preview pane that
 narrows the folder display (the UltraFiler does exactly that) — can call it
 right away and the entry stays visible at the new width instead of being
 corrected against the stale geometry.
+
+`SelectPath(path)` makes one entry of the current display the selection and
+scrolls it into view, exactly as a click on it would (`onSelectionChanged`
+fires); it returns `false` when that path is not among the displayed entries.
+Use it to point the view at a file right after opening its folder — the
+UltraFiler does that when a tile of its History view is activated.
 
 ## Hover icon menu
 
@@ -452,6 +460,29 @@ path, not by row index. Files that vanished drop out of it, which is reported
 through `onSelectionChanged`; every rescan also fires `onFolderRefreshed` so a
 host can refresh what it shows about the folder (item counts, status bar).
 
+## Folder modifications
+
+`onFolderRefreshed` answers "the listing changed", which includes plain
+rescans. `onFolderModified(folderPath)` answers the different question "the
+**user** changed something here": an entry created, pasted, dropped in or out,
+renamed, duplicated, deleted, packed or extracted — through the context menu,
+the icon menu, the keyboard or the API alike. Navigation, sorting, view
+switches and a bare `Refresh()` never fire it.
+
+The reported folder is normally the displayed one, but it is the folder that
+actually changed when that differs — files dropped onto a subfolder shown in
+the view, an archive written into the folder its dialog icon was dragged to,
+or the individual parent folders when a file list spanning several folders is
+deleted from. In a file-list display, changes whose folder cannot be named are
+not reported at all, since the displayed folder is not where they landed.
+
+```cpp
+// "Recently worked in" — folders the user actually did something in.
+filer->onFolderModified = [this](const std::string& folder) {
+    recentFolders.Record(folder);
+};
+```
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -465,6 +496,18 @@ from different folders.
 untouched; `SetPath()` returns to the normal folder display and
 `IsShowingFileList()` reports which mode is active. `Refresh()` re-stats the
 list, dropping entries that vanished.
+
+A file list is sorted like a folder listing by default. When the order of the
+paths itself carries the meaning — a most-recently-used history, a ranked
+result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
+over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
+for the file list: `SetSort()` and the Details column headers leave the order
+alone until the widget returns to a folder listing, which is always sorted.
+
+```cpp
+filer->SetFileListOrderPreserved(true);
+filer->ShowFileList(recentlyUsedPaths);   // most recent first, kept that way
+```
 
 Pair it with `SetOpenPathMenuItemVisible(true, label)`, which puts an
 Open-Path item at the *top* of the context menu (followed by a separator) and
@@ -487,6 +530,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
