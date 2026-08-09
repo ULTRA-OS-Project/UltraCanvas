@@ -81,12 +81,12 @@ UltraSocial should copy that layout, not invent one.
 
 ## 3. What is missing
 
-1. **An OAuth2 authorization-code + PKCE helper.** Nothing in UltraNet does
-   the browser-consent → loopback-redirect → code-for-token exchange → refresh
-   dance. Build it inside the UltraSocial engine first
-   (`UltraSocialOAuth.{h,cpp}`); promote it into UltraNet later if UltraMail
-   (OAuth IMAP: Gmail/Outlook) or UltraAI want it — the UltraNet public API is
-   locked at v1.0.0, so an engine-level start avoids a registry change now.
+1. ~~An OAuth2 authorization-code + PKCE helper.~~ **Done — now in UltraNet**
+   (`UltraNet/UltraNetOAuth2.h`, added 0.3.37): PKCE generation, consent-URL
+   building, the loopback redirect listener, code exchange, refresh, and the
+   one-call `UltraNet_OAuth2AuthorizeInteractive` orchestrator. UltraSocial
+   connectors call it directly; UltraMail (OAuth IMAP: Gmail/Outlook) and
+   UltraAI adapters can share it.
 2. **Per-network connectors** behind one interface (section 4). These are
    REST-over-HTTPS clients, not new wire protocols, so they belong to the app
    engine — not to UltraNet's `I<Category>ProtocolPlugin` DSO system. If a
@@ -103,10 +103,8 @@ Apps/UltraSocial/
     UltraSocialStore.{h,cpp}       accounts / queue / post history on UltraDatabase
     UltraSocialCredentialVault.{h,cpp}  tokens & secrets (UltraMail vault pattern;
                                    swaps to UltraVault when it exists)
-    UltraSocialOAuth.{h,cpp}       OAuth2 code+PKCE over UltraNet: OpenURL to the
-                                   consent page, UltraNet_TcpListen loopback
-                                   callback, token exchange + refresh
-    UltraSocialConnector.h         ISocialConnector interface
+    UltraSocialConnector.h         ISocialConnector interface (auth flows go
+                                   through UltraNet/UltraNetOAuth2.h directly)
     connectors/
       MastodonConnector.{h,cpp}    phase 1 (covers the whole Fediverse)
       BlueskyConnector.{h,cpp}     phase 1

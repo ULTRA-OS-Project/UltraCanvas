@@ -1,3 +1,23 @@
+#### 2026-08-09 *0.3.37*
+- **UltraNet**: new OAuth 2.0 helper (`UltraNet/UltraNetOAuth2.h`) — the
+  authorization-code flow with PKCE (RFC 6749 + 7636) for native apps:
+  `UltraNet_OAuth2GeneratePkce` / `UltraNet_OAuth2ChallengeFromVerifier`
+  (S256, verified against the RFC 7636 test vector),
+  `UltraNet_OAuth2BuildAuthUrl`, a loopback redirect listener
+  (`UltraNet_OAuth2WaitForCallback`, RFC 8252 style — binds 127.0.0.1/::1
+  only, answers stray requests with 404 and keeps waiting),
+  `UltraNet_OAuth2ExchangeCode` / `UltraNet_OAuth2Refresh` (client secret via
+  HTTP Basic or form body; server `error`/`error_description` surfaced in the
+  result), `UltraNet_OAuth2ParseTokenResponse`, and the one-call blocking
+  orchestrator `UltraNet_OAuth2AuthorizeInteractive`, which also resolves a
+  port-0 redirect URI to the ephemeral port actually bound. SHA-256 is
+  self-contained in the module, so no TLS-library crypto dependency.
+- **UltraNet** sockets: `UltraNetSocketOptions.bindAddress` restricts
+  listeners / UDP binds to one interface (e.g. loopback),
+  `UltraNet_TcpAccept` takes an optional timeout, and the new
+  `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
+  they let a port-0 listener discover its ephemeral port.
+
 #### 2026-08-09 *0.3.36*
 - **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
   name and stays editable. The suggested archive name was `stem()` of the
