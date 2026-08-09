@@ -56,6 +56,10 @@ struct Ctx {
     // otherwise the anchors extend them.
     CFArrayRef    anchors     = nullptr;
     bool          anchorsOnly = false;
+    // Why the last VerifyPeer failed — surfaced through Handshake's
+    // UltraNetResult so callers see the trust engine's own reason (and the
+    // anchor count) instead of a generic "verification failed".
+    std::string   lastVerifyError;
 };
 
 OSStatus SocketRead(SSLConnectionRef connection, void* data, size_t* dataLen) {
@@ -273,6 +277,20 @@ OSStatus VerifyPeer(Ctx* c) {
     }
     CFErrorRef err = nullptr;
     bool ok = SecTrustEvaluateWithError(trust, &err);
+    if (!ok) {
+        std::string why;
+        if (err) {
+            CFStringRef desc = CFErrorCopyDescription(err);
+            why = CFStringToUtf8(desc);
+            if (desc) CFRelease(desc);
+        }
+        char note[96];
+        std::snprintf(note, sizeof note, " (custom anchors: %ld%s)",
+                      c->anchors ? (long)CFArrayGetCount(c->anchors) : 0L,
+                      c->anchors && c->anchorsOnly ? ", replacing system roots"
+                                                   : "");
+        c->lastVerifyError = (why.empty() ? "trust evaluation failed" : why) + note;
+    }
     if (err) CFRelease(err);
     CFRelease(trust);
     return ok ? errSecSuccess : errSSLPeerBadCert;
@@ -348,9 +366,12 @@ UltraNetResult Handshake(void* ctx) {
             if (c->verifyPeer) {
                 OSStatus v = VerifyPeer(c);
                 if (v != errSecSuccess) {
+                    std::string msg = "peer certificate verification failed";
+                    if (!c->lastVerifyError.empty()) {
+                        msg += ": " + c->lastVerifyError;
+                    }
                     return UltraNetResult::Error(
-                        UltraNetResultCode::TlsCertificateInvalid,
-                        "peer certificate verification failed");
+                        UltraNetResultCode::TlsCertificateInvalid, msg);
                 }
             }
             continue;

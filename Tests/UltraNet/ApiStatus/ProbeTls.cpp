@@ -84,10 +84,17 @@ public:
         certPath_ = (dir_ / "cert.pem").string();
         keyPath_  = (dir_ / "key.pem").string();
 
+        // The EKU and keyUsage extensions are not optional decoration: Apple's
+        // TLS policy (macOS 10.15+) rejects a server certificate without an
+        // ExtendedKeyUsage containing serverAuth even when the certificate is
+        // an explicit trust anchor, so without them the macOS trust-store
+        // probes fail for a reason that has nothing to do with UltraNet.
         const std::string gen =
             "openssl req -x509 -newkey rsa:2048 -nodes -days 1 "
             "-subj \"/CN=localhost\" "
             "-addext \"subjectAltName=DNS:localhost,IP:127.0.0.1\" "
+            "-addext \"extendedKeyUsage=serverAuth\" "
+            "-addext \"keyUsage=digitalSignature,keyEncipherment\" "
             "-keyout \"" + keyPath_ + "\" -out \"" + certPath_ + "\" "
             "> /dev/null 2>&1";
         if (std::system(gen.c_str()) != 0 ||
