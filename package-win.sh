@@ -39,9 +39,10 @@ fi
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
-# Copy the executables
-cp ./build/bin/*.exe "$DIST_DIR/"
-cp ./build/bin/*.dll "$DIST_DIR/"
+# Copy the executables (and any co-located plugin/import DLLs). Executables now
+# output to the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY), not build/bin.
+cp ./build/*.exe "$DIST_DIR/"
+cp ./build/*.dll "$DIST_DIR/" 2>/dev/null || true
 echo "Copied EXE"
 
 if $DO_SIGN; then
