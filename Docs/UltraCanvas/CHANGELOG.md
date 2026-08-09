@@ -1,3 +1,27 @@
+#### 2026-08-08 *0.3.34*
+- **UCTextLayout** *(1.1.2)*: a `TextWrap::WrapNone` layout no longer wraps onto
+  a second line when it is also given an explicit height. Pango has no "never
+  wrap" flag — a no-wrap layout is one that Pango is told to ellipsize, and the
+  layout *height* decides when that kicks in: `-1` (the default) means "ellipsize
+  the first line of each paragraph", but a positive height means "ellipsize once
+  that many pixels are used up", so a box two lines tall lets the text word-wrap
+  once before anything is ellipsized. Widgets set an explicit height purely to
+  centre the glyphs vertically (`VerticalAlignment::Middle`), which silently
+  turned single-line text into two lines whenever the box was at least twice the
+  line height. `SetExplicitHeight` now keeps that value for the vertical
+  alignment maths only and leaves Pango's own height at `-1` while the layout is
+  in no-wrap mode; `SetWrap` re-applies it, since it may be called after the
+  height is set. `GetExplicitHeight` reports the requested height rather than
+  Pango's.
+- **UltraCanvasBreadcrumb / UltraCanvasLabel**: fixed as a result — the filer's
+  and media viewer's path strips kept long folder names such as
+  `UCDemo-Windows-0.3.24-x86_64 (1)` on one ellipsized line instead of breaking
+  them at the space and drawing two cramped lines inside a one-line strip.
+  Whether the break happened depended on the exact font line height against the
+  strip's height, which is why it showed on Windows and not on Linux. Long names
+  are still capped at `BreadcrumbStyle::maxItemTextWidth` (200px by default; set
+  it to `0` for no per-item limit).
+
 #### 2026-08-08 *0.3.33*
 - **UltraFiler — Extras > Open prompt**: a new menu bar entry starts the
   operating system's command line program in the folder of the active tab.
@@ -44,6 +68,7 @@
   `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`, survey and roadmap in
   `Docs/UltraCanvas/CircleDiagramInfographicVariants.md`, demo scene in
   `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`.
+
 #### 2026-08-08 *0.3.32*
 - **Version numbers** are now derived from the changelogs at build time, so the
   version the demo app's info window shows can no longer disagree with the
