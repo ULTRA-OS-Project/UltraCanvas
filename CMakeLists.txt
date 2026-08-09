@@ -122,6 +122,14 @@ if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraMail)
 endif()
 
+# ===== ULTRASOCIAL =====
+# Cross-posting to social networks. Phase 1 builds the headless engine
+# (connectors + store + composer); UI targets are added in later phases.
+option(BUILD_ULTRASOCIAL "Build the UltraSocial application" ON)
+if(BUILD_ULTRASOCIAL AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraSocial)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -493,6 +501,17 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     add_subdirectory(Tests/UltraMail)
     message(STATUS "")
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
+endif()
+
+# ===== ULTRASOCIAL ENGINE TESTS =====
+# Headless engine tests (composer, vault, store, connectors against
+# loopback fake servers); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS "Build the UltraSocial engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS AND TARGET UltraSocialEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraSocial)
+    message(STATUS "")
+    message(STATUS "── UltraSocial engine test suite enabled (target: UltraSocialEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====

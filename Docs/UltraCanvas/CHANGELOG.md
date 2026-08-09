@@ -1,3 +1,20 @@
+#### 2026-08-09 *0.3.38*
+- **UltraSocial** *(new, Phase 1 engine)*: the cross-posting app's headless
+  engine (`Apps/UltraSocial/engine/`, target `UltraSocialEngine`) —
+  compose-once → adapt-per-network composer (code-point counting,
+  word-boundary truncation with ellipsis, media trimming, caption limits),
+  per-account credential vault (UltraMail's file-backend pattern), account +
+  post-history store on UltraDatabase, and three connectors behind
+  `ISocialConnector`: **Mastodon** (dynamic OAuth client registration +
+  UltraNetOAuth2 interactive flow or pasted token; multipart media upload
+  with 202-processing poll; statuses with `Idempotency-Key`), **Bluesky**
+  (app-password session, `uploadBlob` + `app.bsky.feed.post` records,
+  transparent `ExpiredToken` refresh that hands the rewritten credential
+  blob back for the vault), **Telegram** (Bot API; `sendMessage` /
+  `sendPhoto` with caption; `t.me` permalinks). 26 engine tests against
+  scripted loopback HTTP fakes (`ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS`).
+  Design: `Docs/UltraSocial/Concept.md`.
+
 #### 2026-08-09 *0.3.37*
 - **UltraNet**: new OAuth 2.0 helper (`UltraNet/UltraNetOAuth2.h`) — the
   authorization-code flow with PKCE (RFC 6749 + 7636) for native apps:

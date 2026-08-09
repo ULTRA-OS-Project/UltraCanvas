@@ -1,7 +1,15 @@
 # UltraSocial — Investigation: automatic posting to social networks
 
-**Status:** Investigation / concept. Nothing of UltraSocial is implemented yet.
+**Status:** Concept + Phase 1 engine implemented (see below).
 **Date:** 2026-08-09
+
+> **Progress (2026-08-09):** the UltraNet OAuth2 helper (§3.1) shipped in
+> *0.3.37*, and the **Phase-1 headless engine** in *0.3.38*
+> (`Apps/UltraSocial/engine/`): types, `ISocialConnector`, the composer,
+> credential vault, account/history store, and the Mastodon / Bluesky /
+> Telegram connectors — all covered by `Tests/UltraSocial`. The compose
+> window and account wizard UI, the scheduling outbox (§5 phase 2), and the
+> Tier-2 connectors are still open.
 
 This document answers the question *"can we build an ULTRA OS app that posts
 automatically to different social networks?"* — network by network, and against
