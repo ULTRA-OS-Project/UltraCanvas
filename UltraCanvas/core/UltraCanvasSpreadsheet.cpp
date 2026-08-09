@@ -1,12 +1,13 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
-// Version: 1.1.0
-// Last Modified: 2026-06-15
+// Version: 1.2.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 
 #include <stdexcept>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasTextInput.h"
 #include <algorithm>
 #include <cmath>
 
@@ -17,7 +18,7 @@ namespace UltraCanvas {
 // ============================================================================
 
 UltraCanvasSpreadsheet::UltraCanvasSpreadsheet()
-    : UltraCanvasUIElement()
+    : UltraCanvasContainer("spreadsheet")
 {
     formulaEngine_ = std::make_unique<SpreadsheetFormulaEngine>();
     formulaEngine_->SetSpreadsheet(this);
@@ -27,7 +28,7 @@ UltraCanvasSpreadsheet::UltraCanvasSpreadsheet()
 UltraCanvasSpreadsheet::UltraCanvasSpreadsheet(
     const std::string& id,
     float x, float y, float width, float height)
-    : UltraCanvasUIElement(id, x, y, width, height)
+    : UltraCanvasContainer(id, x, y, width, height)
 {
     formulaEngine_ = std::make_unique<SpreadsheetFormulaEngine>();
     formulaEngine_->SetSpreadsheet(this);
@@ -77,7 +78,7 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     }
 
     if (IsEditing()) {
-        RenderEditCursor(ctx);
+        RenderCellEditor(ctx);
     }
 
     RenderAutoFillHandle(ctx);
@@ -333,22 +334,14 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
     const SpreadsheetCell* cell = sheet->GetCellIfExists(row, col);
 
     // In-cell editing: draw the live edit buffer over a clean background instead
-    // of the committed value. The caret is drawn separately by RenderEditCursor.
+    // of the committed value; both come from the editor child.
     if (editMode_ == SpreadsheetEditMode::InCellEditing &&
         row == editingCell_.row && col == editingCell_.col) {
         ctx->SetFillPaint(Colors::White);
         ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
 
-        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(11);
-        ctx->SetTextPaint(Colors::Black);
-
-        int padding = 3;
-        int textY = bounds.y + (bounds.height - ctx->GetTextLineHeight(editBuffer_)) / 2;
-        ctx->PushState();
-        ctx->ClipRect(Rect2Df(bounds.x + 1, bounds.y + 1, bounds.width - 2, bounds.height - 2));
-        ctx->DrawText(editBuffer_, Point2Df(bounds.x + padding, textY));
-        ctx->PopState();
+        // The live text and caret belong to the editor child, drawn by
+        // RenderCellEditor once the grid is done (so it sits on top).
         return;
     }
 
@@ -710,34 +703,15 @@ void UltraCanvasSpreadsheet::RenderScrollbars(IRenderContext* ctx) {
     }
 }
 
-void UltraCanvasSpreadsheet::RenderEditCursor(IRenderContext* ctx) {
-    if (!IsEditing()) return;
-
-    // Match the font used to render the edit text so the caret X lines up.
-    ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-    ctx->SetFontSize(11);
-
-    int caretChars = std::max(0, std::min(editCursorPos_, static_cast<int>(editBuffer_.length())));
-    int textWidth = ctx->GetTextLineWidth(editBuffer_.substr(0, caretChars));
-
-    int caretX, caretTop, caretBottom;
-    if (editMode_ == SpreadsheetEditMode::InCellEditing) {
-        Rect2Di bounds = GetCellBounds(editingCell_.row, editingCell_.col);
-        int padding = 3;
-        caretX = bounds.x + padding + textWidth;
-        caretTop = bounds.y + 3;
-        caretBottom = bounds.y + bounds.height - 3;
-    } else {
-        // Formula bar editing: text origin matches RenderFormulaBar.
-        int nameBoxWidth = 80;
-        caretX = formulaBarBounds_.x + nameBoxWidth + 10 + textWidth;
-        caretTop = formulaBarBounds_.y + 4;
-        caretBottom = formulaBarBounds_.y + formulaBarBounds_.height - 4;
-    }
-
-    ctx->SetStrokePaint(Colors::Black);
-    ctx->SetStrokeWidth(1.0f);
-    ctx->DrawLine(Point2Df(caretX, caretTop), Point2Df(caretX, caretBottom));
+void UltraCanvasSpreadsheet::RenderCellEditor(IRenderContext* ctx) {
+    if (!IsEditing() || !cellEditor) return;
+    PositionCellEditor();
+    Rect2Df eb = cellEditor->GetBounds();
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(eb.x, eb.y, eb.width, eb.height));
+    ctx->Translate(Point2Df(eb.x, eb.y));
+    cellEditor->Render(ctx, Rect2Df(0, 0, eb.width, eb.height));
+    ctx->PopState();
 }
 
 void UltraCanvasSpreadsheet::RenderClipboardIndicator(IRenderContext* ctx) {
@@ -1042,60 +1016,13 @@ void UltraCanvasSpreadsheet::HandleMouseWheel(const UCEvent& event) {
 
 void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
     if (IsEditing()) {
-        // Handle editing keys, operating on editBuffer_ / editCursorPos_.
-        int len = static_cast<int>(editBuffer_.length());
-        switch (event.virtualKey) {
-            case UCKeys::Enter:
-                StopEditing(true);
-                MoveActiveCell(event.shift ? -1 : 1, 0);
-                return;
-            case UCKeys::Tab:
-                StopEditing(true);
-                MoveActiveCell(0, event.shift ? -1 : 1);
-                return;
-            case UCKeys::Escape:
-                CancelEditing();
-                return;
-            case UCKeys::Backspace:
-                if (editCursorPos_ > 0) {
-                    editBuffer_.erase(editCursorPos_ - 1, 1);
-                    --editCursorPos_;
-                    if (onFormulaBarChange) onFormulaBarChange();
-                }
-                Invalidate();
-                return;
-            case UCKeys::Delete:
-                if (editCursorPos_ < len) {
-                    editBuffer_.erase(editCursorPos_, 1);
-                    if (onFormulaBarChange) onFormulaBarChange();
-                }
-                Invalidate();
-                return;
-            case UCKeys::Left:
-                editCursorPos_ = std::max(0, editCursorPos_ - 1);
-                Invalidate();
-                return;
-            case UCKeys::Right:
-                editCursorPos_ = std::min(len, editCursorPos_ + 1);
-                Invalidate();
-                return;
-            case UCKeys::Home:
-                editCursorPos_ = 0;
-                Invalidate();
-                return;
-            case UCKeys::End:
-                editCursorPos_ = len;
-                Invalidate();
-                return;
-            default:
-                break;
-        }
-        // Printable character: insert at caret (Linux delivers the character
-        // on the KeyDown event; there is no separate KeyChar event).
-        if (!event.ctrl && !event.alt && !event.meta &&
-            event.character >= 32 && event.character < 127) {
-            InsertTextAtCursor(std::string(1, static_cast<char>(event.character)));
-            Invalidate();
+        // Caret movement, selection, clipboard and undo belong to the editor
+        // child and reach it directly while it holds the focus; Enter and
+        // Escape arrive through its callbacks. Tab is the one editing key the
+        // sheet still owns, because it commits and steps to the next cell.
+        if (event.virtualKey == UCKeys::Tab) {
+            StopEditing(true);
+            MoveActiveCell(0, event.shift ? -1 : 1);
         }
         return;
     }
@@ -1109,10 +1036,7 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
     if (!ctrl && !event.alt && !event.meta &&
         event.character >= 32 && event.character < 127) {
         StartInCellEditing();
-        editBuffer_ = std::string(1, static_cast<char>(event.character));
-        editCursorPos_ = 1;
-        if (onFormulaBarChange) onFormulaBarChange();
-        Invalidate();
+        SetEditBuffer(std::string(1, static_cast<char>(event.character)));
         return;
     }
 
@@ -1214,9 +1138,7 @@ void UltraCanvasSpreadsheet::HandleKeyPress(const UCEvent& event) {
         // Start editing with the typed character
         if (event.character >= 32) {
             StartEditing();
-            editBuffer_ = std::string(1, static_cast<char>(event.character));
-            editCursorPos_ = 1;
-            Invalidate();
+            SetEditBuffer(std::string(1, static_cast<char>(event.character)));
         }
     }
 }
@@ -1528,6 +1450,88 @@ void UltraCanvasSpreadsheet::StartEditing() {
     StartEditingAt(active.row, active.col);
 }
 
+Rect2Df UltraCanvasSpreadsheet::EditorRect() const {
+    if (editMode_ == SpreadsheetEditMode::InCellEditing) {
+        Rect2Di b = GetCellBounds(editingCell_.row, editingCell_.col);
+        const int padding = 3;
+        return Rect2Df(static_cast<float>(b.x + padding),
+                       static_cast<float>(b.y + 2),
+                       static_cast<float>(std::max(8, b.width - 2 * padding)),
+                       static_cast<float>(std::max(8, b.height - 4)));
+    }
+    // Formula-bar editing: the text area to the right of the name box.
+    const int nameBoxWidth = 90;
+    float x = formulaBarBounds_.x + nameBoxWidth + 10;
+    return Rect2Df(x, formulaBarBounds_.y + 2,
+                   std::max(8.0f, formulaBarBounds_.width - (x - formulaBarBounds_.x) - 8.0f),
+                   std::max(8.0f, formulaBarBounds_.height - 4.0f));
+}
+
+void UltraCanvasSpreadsheet::PositionCellEditor() {
+    if (!cellEditor) return;
+    PlaceChildAt(cellEditor, EditorRect());
+}
+
+void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
+                                             bool selectAll) {
+    DestroyCellEditor();
+    cellEditor = CreateTextInput(GetIdentifier() + "-cell-editor", 0, 0, 10, 10);
+    TextInputStyle ts;
+    // The sheet paints the cell (or the formula bar) behind it; the editor
+    // contributes the text, caret and selection.
+    ts.backgroundColor = Colors::White;
+    ts.borderWidth = 0;
+    ts.borderRadius = 0;
+    ts.textColor = Colors::Black;
+    ts.caretColor = Colors::Black;
+    ts.fontStyle.fontFamily = "Arial";
+    ts.fontStyle.fontSize = 11;
+    ts.paddingLeft = 0;
+    ts.paddingRight = 0;
+    ts.paddingTop = 0;
+    ts.paddingBottom = 0;
+    cellEditor->SetStyle(ts);
+    cellEditor->SetShowValidationState(false);
+    // Attach and size before filling: SetText() scrolls the field to keep the
+    // caret visible, measured against whatever width it has at the time.
+    AddChild(cellEditor);
+    PositionCellEditor();
+    cellEditor->SetText(initialText);
+    cellEditor->onTextChanged = [this](const std::string& s) {
+        editBuffer_ = s;                 // the formula preview reads this
+        if (onFormulaBarChange) onFormulaBarChange();
+        Invalidate();
+    };
+    cellEditor->onEnterPressed = [this](const std::string&) {
+        StopEditing(true);
+        MoveActiveCell(1, 0);
+        return true;
+    };
+    cellEditor->onEscapePressed = [this]() {
+        CancelEditing();
+        return true;
+    };
+    cellEditor->SetFocus(true);
+    if (selectAll) cellEditor->SelectAll();
+    else           cellEditor->SetSelection(initialText.size(), initialText.size());
+    editBuffer_ = initialText;
+}
+
+void UltraCanvasSpreadsheet::DestroyCellEditor() {
+    if (!cellEditor) return;
+    auto editor = cellEditor;
+    cellEditor.reset();
+    // Enter / Escape reach us from inside the editor's own key handler, so
+    // detaching must not drop the last reference while that frame runs.
+    editor->onTextChanged = nullptr;
+    editor->onEnterPressed = nullptr;
+    editor->onEscapePressed = nullptr;
+    RemoveChild(editor);
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+        app->PostToUIThread([editor]() {});
+    }
+}
+
 void UltraCanvasSpreadsheet::StartEditingAt(int row, int col) {
     if (IsEditing()) {
         StopEditing(true);
@@ -1536,15 +1540,12 @@ void UltraCanvasSpreadsheet::StartEditingAt(int row, int col) {
     editingCell_ = CellAddress(row, col);
     editMode_ = SpreadsheetEditMode::Editing;
     
+    std::string initial;
     if (auto* cell = GetCellIfExists(row, col)) {
-        editBuffer_ = cell->HasFormula() ? cell->GetFormulaText() : cell->GetText();
-    } else {
-        editBuffer_.clear();
+        initial = cell->HasFormula() ? cell->GetFormulaText() : cell->GetText();
     }
-    
-    editCursorPos_ = static_cast<int>(editBuffer_.length());
-    editSelectionStart_ = -1;
-    
+    BuildCellEditor(initial, false);
+
     if (onFormulaBarChange) onFormulaBarChange();
     Invalidate();
 }
@@ -1554,15 +1555,12 @@ void UltraCanvasSpreadsheet::StartInCellEditing() {
     editingCell_ = active;
     editMode_ = SpreadsheetEditMode::InCellEditing;
     
+    std::string initial;
     if (auto* cell = GetCellIfExists(active.row, active.col)) {
-        editBuffer_ = cell->HasFormula() ? cell->GetFormulaText() : cell->GetText();
-    } else {
-        editBuffer_.clear();
+        initial = cell->HasFormula() ? cell->GetFormulaText() : cell->GetText();
     }
-    
-    editCursorPos_ = static_cast<int>(editBuffer_.length());
-    editSelectionStart_ = -1;
-    
+    BuildCellEditor(initial, false);
+
     if (onFormulaBarChange) onFormulaBarChange();
     Invalidate();
 }
@@ -1575,10 +1573,10 @@ void UltraCanvasSpreadsheet::StopEditing(bool confirm) {
     }
     
     editMode_ = SpreadsheetEditMode::Normal;
+    DestroyCellEditor();
     editBuffer_.clear();
-    editCursorPos_ = 0;
-    editSelectionStart_ = -1;
-    
+    SetFocus(true);   // the grid takes the keyboard back for navigation
+
     UpdateFormulaBar();
     Invalidate();
 }
@@ -1599,14 +1597,24 @@ void UltraCanvasSpreadsheet::CommitEdit() {
 
 void UltraCanvasSpreadsheet::SetEditBuffer(const std::string& text) {
     editBuffer_ = text;
-    editCursorPos_ = static_cast<int>(text.length());
+    if (cellEditor) {
+        cellEditor->SetText(text);
+        cellEditor->SetSelection(text.size(), text.size());
+    }
     if (onFormulaBarChange) onFormulaBarChange();
     Invalidate();
 }
 
 void UltraCanvasSpreadsheet::InsertTextAtCursor(const std::string& text) {
-    editBuffer_.insert(editCursorPos_, text);
-    editCursorPos_ += static_cast<int>(text.length());
+    // The editor owns the caret, so an insert is placed through it.
+    if (cellEditor) {
+        std::string cur = cellEditor->GetText();
+        size_t at = std::min(cellEditor->GetCaretPosition(), cur.size());
+        cur.insert(at, text);
+        cellEditor->SetText(cur);
+        cellEditor->SetSelection(at + text.size(), at + text.size());
+        editBuffer_ = cur;
+    }
     if (onFormulaBarChange) onFormulaBarChange();
 }
 

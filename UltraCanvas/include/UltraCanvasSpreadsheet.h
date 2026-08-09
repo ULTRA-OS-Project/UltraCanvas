@@ -1,11 +1,12 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
-// Version: 1.1.0
-// Last Modified: 2026-06-15
+// Version: 1.2.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasContainer.h"
 #include "UltraCanvasSpreadsheetTypes.h"
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetSheet.h"
@@ -18,6 +19,7 @@
 #include <stack>
 
 namespace UltraCanvas {
+class UltraCanvasTextInput;
 
 // Forward declarations
 class IRenderContext;
@@ -61,7 +63,10 @@ enum class SpreadsheetEditMode {
 // SPREADSHEET COMPONENT
 // ============================================================================
 
-class UltraCanvasSpreadsheet : public UltraCanvasUIElement {
+// A container, not a bare element: the cell / formula-bar editor is a real
+// UltraCanvasTextInput child (caret, selection, clipboard, undo, IME) rather
+// than a private buffer painted by hand.
+class UltraCanvasSpreadsheet : public UltraCanvasContainer {
 public:
     // ===== CALLBACKS (Base verb form per guidelines) =====
     std::function<void(int, int)> onCellClick;
@@ -86,10 +91,17 @@ private:
     std::map<std::string, NamedRange> namedRanges_;
     
     SpreadsheetEditMode editMode_ = SpreadsheetEditMode::Normal;
+    // The live text, mirrored from the editor child so the formula preview and
+    // the formula bar can read it without reaching into the editor.
     std::string editBuffer_;
-    int editCursorPos_ = 0;
-    int editSelectionStart_ = -1;
     CellAddress editingCell_;
+    // The editor itself: created when an edit starts, moved onto the cell or
+    // the formula bar depending on the mode, destroyed when the edit ends.
+    std::shared_ptr<UltraCanvasTextInput> cellEditor;
+    void BuildCellEditor(const std::string& initialText, bool selectAll);
+    void DestroyCellEditor();
+    void PositionCellEditor();
+    Rect2Df EditorRect() const;   // cell rect or formula-bar text rect
     
     ClipboardOperation clipboardOp_ = ClipboardOperation::None;
     CellRange clipboardRange_;
@@ -411,7 +423,7 @@ private:
     void RenderFreezeLines(IRenderContext* ctx);
     void RenderSheetTabs(IRenderContext* ctx);
     void RenderScrollbars(IRenderContext* ctx);
-    void RenderEditCursor(IRenderContext* ctx);
+    void RenderCellEditor(IRenderContext* ctx);   // draws the editor child
     void RenderClipboardIndicator(IRenderContext* ctx);
     void RenderAutoFillHandle(IRenderContext* ctx);
     

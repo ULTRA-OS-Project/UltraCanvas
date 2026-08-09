@@ -40,6 +40,17 @@
   directly and so left the text stale, and the wheel guard tested
   `IsHovered()`, which the editor now absorbs by being the element under the
   pointer.
+- **UltraCanvasSpreadsheet** *(1.2.0)*: the cell / formula-bar editor is a real
+  `UltraCanvasTextInput` child (the widget is an `UltraCanvasContainer` now),
+  replacing an `editBuffer_` / `editCursorPos_` pair and its own key handling.
+  One editor moves between the active cell and the formula bar depending on the
+  edit mode. Cell text gains selection, clipboard, undo and multi-byte input;
+  typing to start an edit, Enter to commit and step down, Tab to commit and step
+  right, Escape to discard and formula entry all behave as before. `editBuffer_`
+  survives as a mirror of the editor's text, so the live formula preview and the
+  formula bar read it unchanged.
+  With this the UI-reuse baseline is **empty**: every control in the tree is
+  built from an UltraCanvas element.
 - **UltraCanvasDatePicker**, **UltraCanvasColorPicker** *(1.3.0)*: their typed
   fields are real `UltraCanvasTextInput` children too, on the same pattern as
   the time picker — both widgets derive from `UltraCanvasContainer` now. The

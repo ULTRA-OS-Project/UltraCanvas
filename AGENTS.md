@@ -122,9 +122,10 @@ naturally owns its buffer and caret. Declare any other exception in the source:
 // ui-reuse-exempt: <why this one paints directly>
 ```
 
-`scripts/check_ui_reuse.py` enforces this and runs in CI. Known pre-existing
-controls sit in `scripts/ui_reuse_baseline.txt` and do not fail the build; new
-ones do. Do not add to that file to silence a finding.
+`scripts/check_ui_reuse.py` enforces this and runs in CI.
+`scripts/ui_reuse_baseline.txt` — which records pre-existing offenders — is
+empty, and the intent is that it stays empty. Do not add to it to silence a
+finding.
 
 ## Building and testing
 

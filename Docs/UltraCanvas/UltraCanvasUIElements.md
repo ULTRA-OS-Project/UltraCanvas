@@ -129,8 +129,13 @@ auto accept = CreateButton("ok", 101, 0, 0, 104, 30, "Compress");
 ```
 
 An element that belongs to a self-rendered view is added as a child of it and
-positioned each frame — see `UltraCanvasFilerWidget`'s rename editor and
-compress-dialog name field for the pattern.
+positioned each frame with `UltraCanvasContainer::PlaceChildAt(child, rect)` —
+**not** `SetBounds()`, which writes only `finalBounds` and is undone by the next
+layout pass. Getting that wrong is subtle rather than obvious: a text input
+re-clamps its horizontal scroll when its width changes, so an editor placed with
+`SetBounds()` renders scrolled to the tail of its own value. See
+`UltraCanvasFilerWidget`'s rename editor and compress dialog, the pickers'
+fields and the spreadsheet's cell editor for the pattern.
 
 ## The two legitimate exceptions
 
@@ -158,8 +163,9 @@ python3 scripts/check_ui_reuse.py            # report
 python3 scripts/check_ui_reuse.py --strict   # what CI runs
 ```
 
-Controls that predate the check are listed in `scripts/ui_reuse_baseline.txt`
-and do not fail the build; **new** ones do. Do not add to that file to silence a
+`scripts/ui_reuse_baseline.txt` records controls that predate the check —
+it is **empty**, because every control in the tree is now built from an
+element, and the intent is that it stays empty. Do not add to it to silence a
 finding. A genuine exception is declared in the source instead, with a reason:
 
 ```cpp
