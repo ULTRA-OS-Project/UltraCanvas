@@ -6,6 +6,4 @@
 # elements"). Remove a line when its control is ported to a real element;
 # regenerate with:
 #     python3 scripts/check_ui_reuse.py --update-baseline
-UltraCanvas/core/UltraCanvasColorPicker.cpp::hand-rolled-text-field::
-UltraCanvas/core/UltraCanvasDatePicker.cpp::hand-rolled-text-field::
 UltraCanvas/core/UltraCanvasSpreadsheet.cpp::hand-rolled-text-field::

@@ -2,8 +2,8 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 4.1.3
-// Last Modified: 2026-07-13
+// Version: 4.2.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -360,6 +360,18 @@ namespace UltraCanvas {
             onChildAdded(child.get());
         }
         InvalidateLayout();
+    }
+
+    void UltraCanvasContainer::PlaceChildAt(
+            const std::shared_ptr<UltraCanvasUIElement>& child, const Rect2Df& r) {
+        if (!child || r.width <= 0 || r.height <= 0) return;
+        Rect2Df have = child->GetBounds();
+        if (have.x == r.x && have.y == r.y &&
+            have.width == r.width && have.height == r.height) {
+            return;                      // already there: no layout churn
+        }
+        child->SetElementAbsolutePosition(Point2Df(r.x, r.y));
+        child->SetElementSize(Size2Df(r.width, r.height));
     }
 
     void UltraCanvasContainer::RemoveChild(std::shared_ptr<UltraCanvasUIElement> child) {

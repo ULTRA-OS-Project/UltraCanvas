@@ -2980,7 +2980,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::PositionCompressNameInput() {
-        PlaceChild(compressNameInput, compressDlg.nameEditRect);
+        PlaceChildAt(compressNameInput, Rect2Df(compressDlg.nameEditRect));
     }
 
     std::string UltraCanvasFilerWidget::CompressKeyFilterId() const {
@@ -3114,21 +3114,10 @@ namespace UltraCanvas {
         int by = py + ph - btnH - 14;
         d.cancelRect = Rect2Di(px + pw - 16 - btnW, by, btnW, btnH);
         d.okRect     = Rect2Di(d.cancelRect.x - gap - btnW, by, btnW, btnH);
-        PlaceChild(compressOkButton, d.okRect);
-        PlaceChild(compressCancelButton, d.cancelRect);
+        PlaceChildAt(compressOkButton, Rect2Df(d.okRect));
+        PlaceChildAt(compressCancelButton, Rect2Df(d.cancelRect));
     }
 
-    void UltraCanvasFilerWidget::PlaceChild(
-            const std::shared_ptr<UltraCanvasUIElement>& child, const Rect2Di& r) {
-        if (!child || r.width <= 0 || r.height <= 0) return;
-        Rect2Df want(static_cast<float>(r.x), static_cast<float>(r.y),
-                     static_cast<float>(r.width), static_cast<float>(r.height));
-        Rect2Df have = child->GetBounds();
-        if (have.x != want.x || have.y != want.y ||
-            have.width != want.width || have.height != want.height) {
-            child->SetBounds(want);
-        }
-    }
 
     void UltraCanvasFilerWidget::DrawCompressDialog(IRenderContext* ctx,
                                                     const Rect2Di& bounds) {

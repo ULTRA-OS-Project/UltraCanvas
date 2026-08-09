@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.2.5
-// Last Modified: 2026-07-21
+// Version: 1.3.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -9,6 +9,8 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasTextInput.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include <cstdio>
 #include <cstdlib>
@@ -21,7 +23,7 @@ namespace UltraCanvas {
     // ===================================================================
     UltraCanvasColorPicker::UltraCanvasColorPicker(const std::string& identifier,
                                                    float x, float y, float w, float h)
-            : UltraCanvasUIElement(identifier, x, y, w, h) {
+            : UltraCanvasContainer(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         previousColor = GetColor();
     }
@@ -715,7 +717,7 @@ namespace UltraCanvas {
                                   Scaled(style.cornerRadius));
 
         if (editing) {
-            RenderEditableText(ctx);
+            RenderFieldEditor(ctx);
         } else {
             SetFont(ctx);
             ctx->SetTextAlignment(TextAlignment::Left);
@@ -869,7 +871,7 @@ namespace UltraCanvas {
         }
 
         if (editing) {
-            RenderEditableText(ctx);
+            RenderFieldEditor(ctx);
         } else {
             SetFont(ctx);
             ctx->SetTextAlignment(TextAlignment::Center);
@@ -1043,14 +1045,11 @@ namespace UltraCanvas {
         // the selection, double-click selects all); clicking anywhere else
         // commits the edit first.
         if (editField != EditField::NoEdit) {
-            if (EditTextRect(editField).Contains(p)) {
-                if (event.type == UCEventType::MouseDoubleClick) {
-                    EditSelectAll();
-                } else {
-                    editCaret = CaretIndexFromPoint(p);
-                    editAnchor = editCaret;
-                    dragTarget = DragTarget::TextDrag;
-                }
+            if (EditTextRect(editField).Contains(p) && fieldEditor) {
+                // The editor is a child element: a press inside it is
+                // dispatched to it directly, with caret placement, word select
+                // and drag selection its own business.
+                fieldEditor->SetFocus(true);
                 RequestRedraw();
                 return true;
             }
@@ -1124,7 +1123,6 @@ namespace UltraCanvas {
         }
         if (hexFieldRect.Contains(p)) {
             BeginEdit(EditField::Hex, &p);
-            dragTarget = DragTarget::TextDrag;
             return true;
         }
         if (modeSelector == ColorPickerModeSelector::TabBar) {
@@ -1151,7 +1149,6 @@ namespace UltraCanvas {
                     EditField fields[4] = {EditField::Channel0, EditField::Channel1,
                                            EditField::Channel2, EditField::Alpha};
                     BeginEdit(fields[i], &p);
-                    dragTarget = DragTarget::TextDrag;
                     return true;
                 }
                 if (rowSliderRects[i].Contains(p)) {
@@ -1305,11 +1302,6 @@ namespace UltraCanvas {
 
     void UltraCanvasColorPicker::ApplyDrag(const Point2Df& p, bool finished) {
         switch (dragTarget) {
-            case DragTarget::TextDrag:
-                // Extend the text selection towards the pointer; no colour change.
-                editCaret = CaretIndexFromPoint(p);
-                RequestRedraw();
-                return;
             case DragTarget::HueRing:  UpdateHueFromPoint(p); break;
             case DragTarget::HueBar:   UpdateHueFromBar(p); break;
             case DragTarget::SVSquare: UpdateSVFromPoint(p); break;
@@ -1501,36 +1493,110 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasColorPicker::BuildFieldEditor(EditField field,
+                                                  const Point2Df* clickAt) {
+        DestroyFieldEditor();
+        fieldEditor = CreateTextInput(GetIdentifier() + "-edit", 0, 0, 10, 10);
+        TextInputStyle ts;
+        // The picker paints the field box and its spinner arrows; the editor
+        // contributes the text, caret and selection only.
+        ts.backgroundColor = Colors::Transparent;
+        ts.borderWidth = 0;
+        ts.borderRadius = 0;
+        ts.textColor = style.textColor;
+        ts.caretColor = style.textColor;
+        ts.selectionColor = style.accentColor.WithAlpha(110);
+        ts.textAlignment = EditTextCentered(field) ? TextAlignment::Center
+                                                   : TextAlignment::Left;
+        ts.fontStyle.fontFamily = style.fontFamily;
+        ts.fontStyle.fontSize = Scaled(style.fontSize);
+        ts.paddingLeft = 0;
+        ts.paddingRight = 0;
+        ts.paddingTop = 0;
+        ts.paddingBottom = 0;
+        fieldEditor->SetStyle(ts);
+        fieldEditor->SetShowValidationState(false);
+        // The longest valid content is "#RRGGBBAA".
+        fieldEditor->SetMaxLength(16);
+        // Attach first, then size, then fill: AddChild() invalidates the
+        // layout, which would overwrite bounds set before it, and SetText() /
+        // SelectAll() scroll the field to keep the caret visible — measured
+        // against whatever width the editor has at that moment. Getting this
+        // order wrong leaves a short value scrolled out of sight.
+        AddChild(fieldEditor);
+        PositionFieldEditor();
+        fieldEditor->SetText(CurrentFieldText(field));
+        // Per-field character filter, applied to typing *and* paste. Rewriting
+        // the text re-enters onTextChanged, so the guard breaks the loop.
+        fieldEditor->onTextChanged = [this](const std::string& s) {
+            if (filteringEditorText || !fieldEditor) return;
+            std::string kept;
+            for (char c : s) if (EditAcceptsChar(c)) kept += c;
+            if (kept == s) return;
+            filteringEditorText = true;
+            fieldEditor->SetText(kept);
+            fieldEditor->SetSelection(kept.size(), kept.size());
+            filteringEditorText = false;
+        };
+        fieldEditor->onEnterPressed = [this](const std::string&) {
+            CommitEdit();
+            return true;
+        };
+        fieldEditor->onEscapePressed = [this]() {
+            CancelEdit();
+            return true;
+        };
+        fieldEditor->SetFocus(true);
+
+        // Both entry paths select the whole value, so typing replaces it —
+        // the right default for a three-character channel or a hex triplet.
+        // Once the editor exists it is a child element in its own right, so a
+        // further click or drag inside it reaches it directly and places or
+        // extends the caret; nothing needs forwarding.
+        (void)clickAt;
+        fieldEditor->SelectAll();
+    }
+
+    void UltraCanvasColorPicker::DestroyFieldEditor() {
+        if (!fieldEditor) return;
+        auto editor = fieldEditor;
+        fieldEditor.reset();
+        // Enter / Escape reach us from inside the editor's own key handler, so
+        // detaching must not drop the last reference while that frame runs.
+        editor->onEnterPressed = nullptr;
+        editor->onEscapePressed = nullptr;
+        RemoveChild(editor);
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([editor]() {});
+        }
+    }
+
+    void UltraCanvasColorPicker::PositionFieldEditor() {
+        if (!fieldEditor || editField == EditField::NoEdit) return;
+        PlaceChildAt(fieldEditor, EditTextRect(editField));
+    }
+
     void UltraCanvasColorPicker::BeginEdit(EditField field, const Point2Df* clickAt) {
         if (dragTarget != DragTarget::NoneTarget) return;
         editField = field;
-        editBuffer = CurrentFieldText(field);
-        if (clickAt) {
-            // Mouse entry: place the caret under the click.
-            editCaret = CaretIndexFromPoint(*clickAt);
-            editAnchor = editCaret;
-        } else {
-            // Keyboard entry (Tab): select the whole text for quick replacement.
-            editAnchor = 0;
-            editCaret = editBuffer.size();
-        }
+        BuildFieldEditor(field, clickAt);
         RequestRedraw();
     }
 
     void UltraCanvasColorPicker::CancelEdit() {
         editField = EditField::NoEdit;
-        editBuffer.clear();
-        editCaret = editAnchor = 0;
+        DestroyFieldEditor();
+        SetFocus(true);   // the picker keeps the keyboard for Tab / shortcuts
         RequestRedraw();
     }
 
     void UltraCanvasColorPicker::CommitEdit() {
         if (editField == EditField::NoEdit) return;
         EditField field = editField;
-        std::string text = editBuffer;
+        std::string text = fieldEditor ? fieldEditor->GetText() : std::string();
         editField = EditField::NoEdit;
-        editBuffer.clear();
-        editCaret = editAnchor = 0;
+        DestroyFieldEditor();
+        SetFocus(true);   // the picker keeps the keyboard for Tab / shortcuts
 
         auto trim = [](std::string s) {
             size_t a = s.find_first_not_of(" \t");
@@ -1573,62 +1639,9 @@ namespace UltraCanvas {
     }
 
     // ===================================================================
-    // Inline text editor: selection / clipboard / navigation helpers
+    // Inline text editor: the editor child owns caret, selection, clipboard
+    // and undo; only field navigation and geometry live here.
     // ===================================================================
-    void UltraCanvasColorPicker::EditSelectAll() {
-        editAnchor = 0;
-        editCaret = editBuffer.size();
-        RequestRedraw();
-    }
-
-    void UltraCanvasColorPicker::EditDeleteSelection() {
-        if (!HasEditSelection()) return;
-        size_t a = EditSelMin(), b = EditSelMax();
-        editBuffer.erase(a, b - a);
-        editCaret = editAnchor = a;
-    }
-
-    void UltraCanvasColorPicker::EditInsert(const std::string& s) {
-        EditDeleteSelection();
-        std::string filtered;
-        for (char c : s) {
-            if (EditAcceptsChar(c)) filtered += c;
-        }
-        // Keep the buffer bounded; the longest valid content is #RRGGBBAA.
-        size_t room = (editBuffer.size() < 16) ? (16 - editBuffer.size()) : 0;
-        if (filtered.size() > room) filtered.resize(room);
-        if (!filtered.empty()) {
-            editBuffer.insert(editCaret, filtered);
-            editCaret += filtered.size();
-            editAnchor = editCaret;
-        }
-        RequestRedraw();
-    }
-
-    void UltraCanvasColorPicker::EditCopy() {
-        if (!HasEditSelection()) return;
-        SetClipboardText(editBuffer.substr(EditSelMin(), EditSelMax() - EditSelMin()));
-    }
-
-    void UltraCanvasColorPicker::EditCut() {
-        if (!HasEditSelection()) return;
-        EditCopy();
-        EditDeleteSelection();
-        RequestRedraw();
-    }
-
-    void UltraCanvasColorPicker::EditPaste() {
-        std::string clip;
-        GetClipboardText(clip);   // leaves the string empty on failure
-        // Single-line fields: strip line breaks entirely.
-        std::string flat;
-        for (char c : clip) {
-            if (c == '\r' || c == '\n') continue;
-            flat += c;
-        }
-        if (!flat.empty()) EditInsert(flat);
-    }
-
     bool UltraCanvasColorPicker::EditAcceptsChar(char c) const {
         switch (editField) {
             case EditField::Hex:
@@ -1690,169 +1703,31 @@ namespace UltraCanvas {
         return field != EditField::Hex;   // value boxes draw centered text
     }
 
-    float UltraCanvasColorPicker::EditTextWidth(IRenderContext* ctx,
-                                                const std::string& s) const {
-        if (s.empty()) return 0.0f;
-        return (float)ctx->GetTextLineDimensions(s).width;
-    }
-
-    float UltraCanvasColorPicker::EditTextStartX(IRenderContext* ctx) const {
-        Rect2Df tr = EditTextRect(editField);
-        if (!EditTextCentered(editField)) return tr.x;
-        float w = EditTextWidth(ctx, editBuffer);
-        return std::max(tr.x, tr.x + (tr.width - w) * 0.5f);
-    }
-
-    size_t UltraCanvasColorPicker::CaretIndexFromPoint(const Point2Df& p) {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return editBuffer.size();
-        SetFont(ctx);
-        float startX = EditTextStartX(ctx);
-        size_t best = 0;
-        float bestDist = std::fabs(p.x - startX);
-        for (size_t i = 1; i <= editBuffer.size(); ++i) {
-            float cx = startX + EditTextWidth(ctx, editBuffer.substr(0, i));
-            float d = std::fabs(p.x - cx);
-            if (d < bestDist) { bestDist = d; best = i; }
-        }
-        return best;
-    }
-
-    void UltraCanvasColorPicker::RenderEditableText(IRenderContext* ctx) {
-        Rect2Df tr = EditTextRect(editField);
-        SetFont(ctx);
-        float startX = EditTextStartX(ctx);
-
-        // Selection highlight behind the text
-        if (HasEditSelection()) {
-            float x1 = startX + EditTextWidth(ctx, editBuffer.substr(0, EditSelMin()));
-            float x2 = startX + EditTextWidth(ctx, editBuffer.substr(0, EditSelMax()));
-            ctx->SetFillPaint(style.accentColor.WithAlpha(110));
-            ctx->FillRectangle(Rect2Dd(x1, tr.y + 2.0f, x2 - x1, tr.height - 4.0f));
-        }
-
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Left);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(editBuffer,
-                            Rect2Dd(startX, tr.y, std::max(4.0f, tr.x + tr.width - startX),
-                                    tr.height));
-
-        // Caret
-        float cx = startX + EditTextWidth(ctx, editBuffer.substr(0, editCaret));
-        ctx->SetStrokePaint(style.textColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawLine(Point2Dd(cx, tr.y + 3.0f), Point2Dd(cx, tr.y + tr.height - 3.0f));
+    void UltraCanvasColorPicker::RenderFieldEditor(IRenderContext* ctx) {
+        // The editor is a child element; this widget renders its own content
+        // and never paints its children, so it draws the editor itself.
+        PositionFieldEditor();
+        if (!fieldEditor) return;
+        Rect2Df eb = fieldEditor->GetBounds();
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(eb.x, eb.y, eb.width, eb.height));
+        ctx->Translate(Point2Df(eb.x, eb.y));
+        fieldEditor->Render(ctx, Rect2Df(0, 0, eb.width, eb.height));
+        ctx->PopState();
     }
 
     bool UltraCanvasColorPicker::HandleKeyDown(const UCEvent& event) {
         if (editField == EditField::NoEdit) return false;
-
-        const size_t len = editBuffer.size();
-
-        // ----- Navigation, selection and clipboard shortcuts -----
-        switch (event.virtualKey) {
-            case UCKeys::Left:
-                if (event.shift) {
-                    if (editCaret > 0) editCaret--;
-                } else if (HasEditSelection()) {
-                    editCaret = editAnchor = EditSelMin();
-                } else if (editCaret > 0) {
-                    editCaret = editAnchor = editCaret - 1;
-                }
-                if (!event.shift) editAnchor = editCaret;
-                RequestRedraw();
-                return true;
-
-            case UCKeys::Right:
-                if (event.shift) {
-                    if (editCaret < len) editCaret++;
-                } else if (HasEditSelection()) {
-                    editCaret = editAnchor = EditSelMax();
-                } else if (editCaret < len) {
-                    editCaret = editAnchor = editCaret + 1;
-                }
-                if (!event.shift) editAnchor = editCaret;
-                RequestRedraw();
-                return true;
-
-            case UCKeys::Home:
-                editCaret = 0;
-                if (!event.shift) editAnchor = editCaret;
-                RequestRedraw();
-                return true;
-
-            case UCKeys::End:
-                editCaret = len;
-                if (!event.shift) editAnchor = editCaret;
-                RequestRedraw();
-                return true;
-
-            case UCKeys::A:
-                if (event.ctrl) { EditSelectAll(); return true; }
-                break;
-
-            case UCKeys::C:
-                if (event.ctrl) { EditCopy(); return true; }
-                break;
-
-            case UCKeys::X:
-                if (event.ctrl) { EditCut(); return true; }
-                break;
-
-            case UCKeys::V:
-                if (event.ctrl) { EditPaste(); return true; }
-                break;
-
-            case UCKeys::Insert:
-                // Ctrl+Insert = copy, Shift+Insert = paste (classic bindings).
-                if (event.ctrl)  { EditCopy(); return true; }
-                if (event.shift) { EditPaste(); return true; }
-                break;
-
-            case UCKeys::Return:
-                CommitEdit();
-                return true;
-
-            case UCKeys::Escape:
-                CancelEdit();
-                return true;
-
-            case UCKeys::Tab:
-                EditMoveToNextField(event.shift);
-                return true;
-
-            case UCKeys::Backspace:
-                if (HasEditSelection()) {
-                    EditDeleteSelection();
-                } else if (editCaret > 0) {
-                    editBuffer.erase(editCaret - 1, 1);
-                    editCaret = editAnchor = editCaret - 1;
-                }
-                RequestRedraw();
-                return true;
-
-            case UCKeys::Delete:
-                if (event.ctrl) { EditCut(); return true; }
-                if (HasEditSelection()) {
-                    EditDeleteSelection();
-                } else if (editCaret < len) {
-                    editBuffer.erase(editCaret, 1);
-                }
-                RequestRedraw();
-                return true;
-
-            default:
-                break;
-        }
-
-        // ----- Printable characters (never with Ctrl held: those are shortcuts) -----
-        if (!event.ctrl && event.character != 0 &&
-            event.character >= 32 && event.character < 127) {
-            EditInsert(std::string(1, event.character));
+        // Caret movement, selection, clipboard and undo are the editor's
+        // business and reach it directly while it holds the focus. Enter and
+        // Escape arrive through its callbacks. What is left is field-to-field
+        // navigation, plus swallowing the rest so no key escapes the panel
+        // while a value is being typed.
+        if (event.virtualKey == UCKeys::Tab) {
+            EditMoveToNextField(event.shift);
             return true;
         }
-        return true; // swallow remaining keys while editing
+        return true;
     }
 
 } // namespace UltraCanvas

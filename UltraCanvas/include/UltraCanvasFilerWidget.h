@@ -1381,10 +1381,6 @@ namespace UltraCanvas {
                 const std::string& identifier, const std::string& label,
                 bool primary, std::function<void()> action);
         void DestroyCompressButtons();
-        // Moves a child element onto a widget-local rectangle, no-op when it is
-        // already there (the dialog re-lays out on every frame).
-        void PlaceChild(const std::shared_ptr<UltraCanvasUIElement>& child,
-                        const Rect2Di& r);
         // While the dialog is up it also claims the window's KeyDown stream, so
         // a keystroke reaches the editor even when the focus sits elsewhere.
         bool compressKeyFilterInstalled = false;

@@ -19,7 +19,7 @@
 //                                "dropdown" philosophy). Combines fast keyboard
 //                                entry with point-and-click browsing.
 //
-// Last Modified: 2026-06-13
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -35,6 +35,7 @@
 #include <memory>
 
 namespace UltraCanvas {
+    class UltraCanvasTextInput;
 
 // ===== UCDate: lightweight calendar date value =====
 // A pure value type (no time-of-day). month is 1-12, day is 1-31.
@@ -453,7 +454,10 @@ namespace UltraCanvas {
     };
 
 // ===== DATE PICKER (dropdown calendar) =====
-    class UltraCanvasDatePicker : public UltraCanvasUIElement {
+    // A container, not a bare element: the editable field is a real
+    // UltraCanvasTextInput child (caret, selection, clipboard, undo, IME)
+    // rather than a private buffer painted by hand.
+    class UltraCanvasDatePicker : public UltraCanvasContainer {
     public:
         // ===== CALLBACKS =====
         std::function<void(const UCDate&)> onDateChanged;
@@ -533,13 +537,18 @@ namespace UltraCanvas {
         Point2Df CalculatePopupPosition() const;
 
         std::string BuildDisplayText() const;   // formatted value (or empty)
-        void SyncTextFromValue();             // refresh editBuffer from current value
-        void CommitTextInput();               // parse editBuffer -> value
+        void SyncTextFromValue();             // refresh the field from the value
+        void CommitTextInput();               // parse the field -> value
+        // Free text is only meaningful for a single date; the range / week /
+        // multiple modes show a computed summary the user cannot type.
+        bool CanTypeInField() const;
+        void BuildTextInput();
+        void PositionTextInput();
+        void UpdateTextInputEditability();
         void SetValueFromCalendarSingle(const UCDate& d);
 
         bool HandleMouseDown(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
-        void InsertText(const std::string& s);
 
         std::shared_ptr<UltraCanvasCalendarView> calendar;
         bool calendarOpen = false;
@@ -548,10 +557,10 @@ namespace UltraCanvas {
         std::string placeholder = "Select a date";
         bool allowTextInput = true;
 
-        // text editing state (active only when allowTextInput && focused)
-        std::string editBuffer;
-        int caretPos = 0;
-        bool editing = false;
+        // The editable field. Always present; read-only when typing does
+        // not apply (SetAllowTextInput(false), or a non-Single mode).
+        std::shared_ptr<UltraCanvasTextInput> textInput;
+        bool syncingText = false;        // guard: suppress field feedback
 
         DatePickerStyle style;
     };

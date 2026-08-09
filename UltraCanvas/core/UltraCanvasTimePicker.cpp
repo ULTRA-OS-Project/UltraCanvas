@@ -558,6 +558,7 @@ namespace UltraCanvas {
         textInput->SetPlaceholder(placeholder);
         textInput->SetReadOnly(!allowTextInput);
         textInput->onEnterPressed = [this](const std::string&) {
+            if (popupOpen) { ClosePopup(); return true; }
             CommitTextInput();
             return true;
         };
@@ -579,13 +580,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTimePicker::PositionTextInput() {
         if (!textInput) return;
-        Rect2Df want = TextRect();
-        if (want.width <= 0 || want.height <= 0) return;
-        Rect2Df have = textInput->GetBounds();
-        if (have.x != want.x || have.y != want.y ||
-            have.width != want.width || have.height != want.height) {
-            textInput->SetBounds(want);
-        }
+        PlaceChildAt(textInput, TextRect());
     }
 
     void UltraCanvasTimePicker::SetTime(const UCTime& t, bool runCallbacks) {

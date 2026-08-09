@@ -40,6 +40,28 @@
   directly and so left the text stale, and the wheel guard tested
   `IsHovered()`, which the editor now absorbs by being the element under the
   pointer.
+- **UltraCanvasDatePicker**, **UltraCanvasColorPicker** *(1.3.0)*: their typed
+  fields are real `UltraCanvasTextInput` children too, on the same pattern as
+  the time picker — both widgets derive from `UltraCanvasContainer` now. The
+  date field keeps its calendar popup, arrow-key month navigation (the popup
+  takes the keyboard off the field so the arrows drive dates, and hands it back
+  on close) and is read-only in the range / week / multiple modes, whose text
+  is a computed summary. The colour picker moves one editor between its hex box
+  and the channel boxes, keeps the per-field character filter — now applied to
+  paste as well as typing — and gains selection, clipboard and undo it never
+  had. Clicking a value box selects its contents (type to replace) instead of
+  placing a caret mid-value; a second click inside the editor places the caret
+  as usual. `DragTarget::TextDrag` is gone: dragging out a selection is the
+  editor's own gesture.
+- **UltraCanvasContainer** *(4.2.0)*: new `PlaceChildAt(child, rect)` for a
+  self-rendered widget that positions a child itself (an inline editor over a
+  field or a cell). `SetBounds()` alone is not enough — it writes only
+  `finalBounds`, which the next layout pass overwrites, and
+  `UltraCanvasTextInput::Arrange()` re-clamps its horizontal scroll whenever
+  its width changes, so an editor placed that way ended up showing the tail of
+  its own value ("F" instead of "#85FFFBFF"). `PlaceChildAt` writes the CSS
+  position and size the engine resolves from, so the rectangle survives
+  Arrange. The Filer's compress dialog uses it too.
 - **UltraCanvasFilerWidget**: fixed a build break in `ScanFolder()` — a merge
   kept the rename-reveal block that reads `renamedTo` but dropped the lines
   that declare it (and map the selection from the old path to the new one), so

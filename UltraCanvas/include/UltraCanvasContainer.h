@@ -2,8 +2,8 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
-// Version: 4.1.0
-// Last Modified: 2026-05-29
+// Version: 4.2.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -73,6 +73,16 @@ namespace UltraCanvas {
 
         // ===== CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
+        // Pins a child to an exact rectangle in this container's local space.
+        // Use this rather than SetBounds() for a child a self-rendered widget
+        // positions itself (an inline editor over a field or a cell): SetBounds
+        // only writes finalBounds, which the next layout pass overwrites — and
+        // a child that re-clamps on a width change, as UltraCanvasTextInput
+        // does with its horizontal scroll, is left showing the wrong slice of
+        // its content. This writes the CSS position and size the engine
+        // resolves from, so the rectangle survives Arrange.
+        void PlaceChildAt(const std::shared_ptr<UltraCanvasUIElement>& child,
+                          const Rect2Df& r);
         void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
         void ClearChildren();
         bool HasChild(UltraCanvasUIElement* elem);

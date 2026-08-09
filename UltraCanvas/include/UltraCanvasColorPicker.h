@@ -10,13 +10,14 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.2.5
-// Last Modified: 2026-07-21
+// Version: 1.3.0
+// Last Modified: 2026-08-09
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasContainer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include <string>
@@ -27,6 +28,7 @@
 #include <algorithm>
 
 namespace UltraCanvas {
+    class UltraCanvasTextInput;
 
 // ===== COLOUR MODEL USED BY THE CHANNEL EDITORS =====
     enum class ColorPickerModel {
@@ -164,7 +166,10 @@ namespace UltraCanvas {
     }
 
 // ===== MAIN WIDGET =====
-    class UltraCanvasColorPicker : public UltraCanvasUIElement {
+    // A container, not a bare element: the value being typed is edited in
+    // a real UltraCanvasTextInput child that moves to whichever field is
+    // in edit mode, rather than a private buffer painted by hand.
+    class UltraCanvasColorPicker : public UltraCanvasContainer {
     public:
         // ===== CONSTRUCTORS (standard UltraCanvas pattern) =====
         UltraCanvasColorPicker(const std::string& identifier, float x, float y, float w, float h);
@@ -313,8 +318,10 @@ namespace UltraCanvas {
         bool slidersExpanded = true;
 
         // ----- Interaction state -----
+        // No TextDrag member: selecting text by dragging is the editor
+        // child's own gesture, not one the picker tracks.
         enum class DragTarget { NoneTarget, HueRing, HueBar, SVSquare,
-                                Channel0, Channel1, Channel2, Alpha, TextDrag };
+                                Channel0, Channel1, Channel2, Alpha };
         DragTarget dragTarget = DragTarget::NoneTarget;
 
         // Right-button (Adjust) colour edits target the background instead of
@@ -328,11 +335,14 @@ namespace UltraCanvas {
 
         enum class EditField { NoEdit, Hex, Channel0, Channel1, Channel2, Alpha };
         EditField editField = EditField::NoEdit;
-        std::string editBuffer;
-        // Caret index and selection anchor into editBuffer; the selection is
-        // [min(caret,anchor), max(caret,anchor)) — empty when they are equal.
-        size_t editCaret = 0;
-        size_t editAnchor = 0;
+        // One editor, moved onto whichever field is being typed into. It
+        // exists only while an edit is running, like the Filer's inline
+        // rename editor, and brings caret, selection, clipboard and undo.
+        std::shared_ptr<UltraCanvasTextInput> fieldEditor;
+        bool filteringEditorText = false;   // guard: re-entrant onTextChanged
+        void BuildFieldEditor(EditField field, const Point2Df* clickAt);
+        void DestroyFieldEditor();
+        void PositionFieldEditor();
 
         bool dropdownOpen = false;
 
@@ -462,25 +472,15 @@ namespace UltraCanvas {
         void CancelEdit();
         std::string CurrentFieldText(EditField field) const;
 
-        // ----- Inline text editor (caret / selection / clipboard) -----
-        bool HasEditSelection() const { return editCaret != editAnchor; }
-        size_t EditSelMin() const { return std::min(editCaret, editAnchor); }
-        size_t EditSelMax() const { return std::max(editCaret, editAnchor); }
-        void EditSelectAll();
-        void EditDeleteSelection();
-        void EditInsert(const std::string& s);
-        void EditCopy();
-        void EditCut();
-        void EditPaste();
+        // ----- Inline text editor -----
+        // Caret, selection, clipboard and undo all come from the editor child;
+        // what stays here is where it sits and which field it edits.
         bool EditAcceptsChar(char c) const;          // per-field character filter
         void EditMoveToNextField(bool backwards);    // Tab / Shift+Tab
         Rect2Df EditFieldRect(EditField field) const;
         Rect2Df EditTextRect(EditField field) const; // inner text area
         bool EditTextCentered(EditField field) const;
-        float EditTextWidth(IRenderContext* ctx, const std::string& s) const;
-        float EditTextStartX(IRenderContext* ctx) const;
-        size_t CaretIndexFromPoint(const Point2Df& p);
-        void RenderEditableText(IRenderContext* ctx); // selection + text + caret
+        void RenderFieldEditor(IRenderContext* ctx); // draws the editor child
 
         // ----- Notification -----
         void Changed(bool finished);
