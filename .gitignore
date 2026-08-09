@@ -5,6 +5,7 @@ CMakeFiles/
 /cmake-build-debug/
 /cmake-build-release/
 /build/
+/dist/
 Apps/Texter/build/
 /1icons/
 
@@ -23,3 +24,4 @@ UltraCanvasTexter.exe
 /UltraCanvas/Plugins/Vectorizer/vtracer-c/Cargo.lock
 /UltraCanvas/Plugins/Vectorizer/vtracer-c/target/
 /media/ocr/tessdata/
+__pycache__/

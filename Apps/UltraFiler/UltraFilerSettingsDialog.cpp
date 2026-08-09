@@ -1,25 +1,35 @@
 // Apps/UltraFiler/UltraFilerSettingsDialog.cpp
 // UltraFiler settings window: settings-page tree on the left, the selected
-// page on the right. Currently one main page (Media Viewer) with one sub page
-// (Transparent Images): the backdrop behind transparent images — checkered
-// pattern or a preset colour chosen with the colour picker. Changes apply
-// live and are saved immediately.
-// Version: 1.0.0
-// Last Modified: 2026-08-05
+// page on the right. Two main pages: Media Viewer > Transparent Images (the
+// backdrop behind transparent images — checkered pattern or a preset colour
+// chosen with the colour picker) and Extras > Open prompt (the command line
+// program the Extras menu starts, picked with the file dialog and stored with
+// "Save app"). Changes apply live and are saved immediately.
+// Version: 1.1.0
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
+#include "UltraFilerPrompt.h"
 
+#include "UltraCanvasAlert.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColorPicker.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
+#include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
+#include <filesystem>
 #include <map>
 #include <memory>
+#include <string>
+#include <system_error>
 
 namespace UltraCanvas {
 
@@ -30,6 +40,8 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
+    constexpr const char* kPageExtras = "extras";
+    constexpr const char* kPageOpenPrompt = "extras/open-prompt";
 
     // The one open settings window (or the last closed one, until reopened).
     struct DialogState {
@@ -43,6 +55,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       checkeredRadio;
         UltraCanvasRadioGroup                   backgroundGroup;
         std::shared_ptr<UltraCanvasColorPicker> colorPicker;
+
+        // Extras > Open prompt
+        std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
+        std::shared_ptr<UltraCanvasLabel>     promptStatus;  // what will be started
 
         UltraFilerSettings*   settings = nullptr;
         std::function<void()> onChanged;
@@ -66,6 +82,36 @@ namespace {
         l->size.width  = CSSLayout::Dimension::Auto();
         l->size.height = CSSLayout::Dimension::Auto();
         return l;
+    }
+
+    std::string IconPath(const std::string& fileName) {
+        return NormalizePath(GetResourcesDir() + "media/icons/" + fileName);
+    }
+
+    // Standard dialog button (the Close button and the ones on the pages).
+    // `iconFile` may be empty; an empty `label` gives an icon-only button.
+    std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id,
+                                                  const std::string& label,
+                                                  int width,
+                                                  std::function<void()> onClick,
+                                                  const std::string& iconFile = "") {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
+        b->SetFontSize(kFontSize);
+        b->SetCornerRadius(4.0f);
+        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
+        b->SetTextColors(Color(40, 40, 44, 255));
+        b->SetBorder(1.0f, Color(0, 0, 0, 60));
+        if (!iconFile.empty()) {
+            b->SetIcon(IconPath(iconFile));
+            b->SetIconSize(15, 15);
+            b->SetIconPosition(ButtonIconPosition::Left);
+            b->SetIconSpacing(label.empty() ? 0 : 5);
+            b->SetUseIconAsMask(true);
+            b->SetIconMaskColor(Color(55, 55, 60, 255));
+        }
+        if (onClick) b->SetOnClick(std::move(onClick));
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        return b;
     }
 
     // A colour picker restyled for the dialog's light surface.
@@ -149,6 +195,154 @@ namespace {
         return page;
     }
 
+    // ===== EXTRAS > OPEN PROMPT =====
+
+    // Describes what "Extras > Open prompt" will start right now: the saved
+    // application, or the platform default while nothing is saved.
+    void UpdatePromptStatus(DialogState* d) {
+        if (!d->promptStatus || !d->settings) return;
+        const std::string& saved = d->settings->promptApplication;
+        if (!saved.empty()) {
+            d->promptStatus->SetText("Saved application: " + saved);
+        } else {
+            const std::string detected = UltraFilerPrompt::DetectSystemPrompt();
+            d->promptStatus->SetText(detected.empty()
+                    ? "No command line program was found on this system - "
+                      "choose one above."
+                    : "System default in use: " + detected);
+        }
+        d->promptStatus->RequestRedraw();
+    }
+
+    // Stores the application currently in the input field.
+    void SavePromptApplication(DialogState* d) {
+        if (!d->settings || !d->promptInput) return;
+        d->settings->promptApplication = Trim(d->promptInput->GetText(), " \t\"");
+        d->promptInput->SetText(d->settings->promptApplication);
+        ApplyAndSave(d);
+        UpdatePromptStatus(d);
+    }
+
+    // The file dialog for picking the application, filtered to the executables
+    // of this platform. The choice only lands in the input field - "Save app"
+    // is what persists it.
+    void BrowseForPromptApplication(DialogState* d) {
+        const UltraFilerPrompt::ApplicationFilter filter =
+                UltraFilerPrompt::GetApplicationFilter();
+
+        std::string initialDir = UltraFilerPrompt::GetApplicationsDirectory();
+        if (d->settings && !d->settings->promptApplication.empty()) {
+            std::error_code ec;
+            const std::filesystem::path parent =
+                    std::filesystem::path(d->settings->promptApplication).parent_path();
+            if (!parent.empty() && std::filesystem::is_directory(parent, ec) && !ec)
+                initialDir = parent.string();
+        }
+
+        FileDialogOptions opts;
+        opts.SetTitle("Select the command line application")
+            .SetInitialDirectory(initialDir)
+            // Picking a program is not a document the shell should remember.
+            .SetRegisterAsRecent(false)
+            .SetParentWindow(d->window.get())
+            .AddFilter(filter.description, filter.extensions);
+        // On platforms whose executables carry no extension the application
+        // filter already shows everything - a second all-files entry would
+        // just be the same list under another name.
+        const bool showsEverything =
+                filter.extensions.size() == 1 && filter.extensions.front() == "*";
+        if (!showsEverything) opts.AddFilter("All files", "*");
+
+        UltraCanvasFileLoader::OpenFileDialog(opts,
+                [d](DialogResult result, const std::string& path) {
+            if (result != DialogResult::OK || path.empty()) return;
+            if (!d->promptInput) return;
+            d->promptInput->SetText(path);
+            d->promptInput->RequestRedraw();
+            if (d->promptStatus) {
+                d->promptStatus->SetText("Selected: " + path +
+                                         " - press \"Save app\" to keep it.");
+                d->promptStatus->RequestRedraw();
+            }
+        });
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildOpenPromptPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-prompt");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-op-title", "Open prompt", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-op-caption",
+                "Application started by Extras > Open prompt. It opens in the "
+                "folder of the active tab."));
+        page->AddChild(MakeLabel("ufl-set-op-hint",
+                "Leave the field empty to use the command line program of this "
+                "operating system."));
+
+        // ----- application path + browse -----
+        auto pathRow = std::make_shared<UltraCanvasContainer>("ufl-set-op-row");
+        pathRow->layout.SetFlexRow().SetFlexGap(6)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        pathRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        pathRow->size.width  = CSSLayout::Dimension::Px(430);
+        pathRow->size.height = CSSLayout::Dimension::Px(32);
+
+        d->promptInput = CreateTextInput("ufl-set-op-path", 0, 0, 380, 26);
+        d->promptInput->SetFontSize(kFontSize);
+        d->promptInput->SetPlaceholder("Path to the application");
+        d->promptInput->SetText(d->settings ? d->settings->promptApplication
+                                            : std::string());
+        // Enter in the field saves, like the button next to it.
+        d->promptInput->onEnterPressed = [d](const std::string&) {
+            SavePromptApplication(d);
+            return true;
+        };
+        d->promptInput->size.width  = CSSLayout::Dimension::Px(380);
+        d->promptInput->size.height = CSSLayout::Dimension::Px(26);
+        d->promptInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        pathRow->AddChild(d->promptInput);
+
+        pathRow->AddChild(MakeButton("ufl-set-op-browse", "", 32,
+                [d]() { BrowseForPromptApplication(d); }, "folder-open.svg"));
+        page->AddChild(pathRow);
+
+        // ----- save / reset -----
+        auto buttonRow = std::make_shared<UltraCanvasContainer>("ufl-set-op-buttons");
+        buttonRow->layout.SetFlexRow().SetFlexGap(8)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        buttonRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        buttonRow->size.width  = CSSLayout::Dimension::Px(430);
+        buttonRow->size.height = CSSLayout::Dimension::Px(34);
+
+        buttonRow->AddChild(MakeButton("ufl-set-op-save", "Save app", 100,
+                [d]() { SavePromptApplication(d); }));
+        buttonRow->AddChild(MakeButton("ufl-set-op-default", "Use system default", 150,
+                [d]() {
+            if (d->promptInput) d->promptInput->SetText("");
+            SavePromptApplication(d);
+        }));
+        buttonRow->AddChild(MakeButton("ufl-set-op-test", "Test", 70, [d]() {
+            std::string error;
+            const std::string application = d->promptInput
+                    ? Trim(d->promptInput->GetText(), " \t\"") : std::string();
+            if (!UltraFilerPrompt::Launch(application, "", error))
+                UltraCanvasAlert::Error(error, "Open prompt", nullptr,
+                                        d->window.get());
+        }));
+        page->AddChild(buttonRow);
+
+        d->promptStatus = MakeLabel("ufl-set-op-status", "");
+        d->promptStatus->SetTextColor(Color(110, 110, 118, 255));
+        d->promptStatus->size.width  = CSSLayout::Dimension::Px(430);
+        d->promptStatus->size.height = CSSLayout::Dimension::Px(20);
+        page->AddChild(d->promptStatus);
+        UpdatePromptStatus(d);
+
+        return page;
+    }
+
     // Show the page of `nodeId`; a main page without its own panel falls
     // through to its first sub page.
     void ShowPage(DialogState* d, const std::string& nodeId) {
@@ -219,6 +413,16 @@ namespace {
         transparent.text = "Transparent Images";
         d->tree->AddNode(kPageMediaViewer, transparent);
 
+        TreeNodeData extras;
+        extras.nodeId = kPageExtras;
+        extras.text = "Extras";
+        d->tree->AddNode("settings", extras);
+
+        TreeNodeData openPrompt;
+        openPrompt.nodeId = kPageOpenPrompt;
+        openPrompt.text = "Open prompt";
+        d->tree->AddNode(kPageExtras, openPrompt);
+
         d->tree->ExpandAll();
         content->AddChild(d->tree);
 
@@ -236,6 +440,12 @@ namespace {
                                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageTransparentImages] = transparentPage;
         d->pageArea->AddChild(transparentPage);
+
+        auto openPromptPage = BuildOpenPromptPage(d);
+        openPromptPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageOpenPrompt] = openPromptPage;
+        d->pageArea->AddChild(openPromptPage);
 
         d->tree->onNodeSelected = [d](TreeNode* node) {
             if (node) ShowPage(d, node->data.nodeId);
@@ -256,16 +466,8 @@ namespace {
         bottom->SetPadding(8, 12, 8, 12);
         bottom->SetBorderTop(1, Color(225, 225, 230, 255));
 
-        auto closeButton = std::make_shared<UltraCanvasButton>(
-                "ufl-set-close", 0, 0, 90, 28, "Close");
-        closeButton->SetFontSize(kFontSize);
-        closeButton->SetCornerRadius(4.0f);
-        closeButton->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        closeButton->SetTextColors(Color(40, 40, 44, 255));
-        closeButton->SetBorder(1.0f, Color(0, 0, 0, 60));
-        closeButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        closeButton->SetOnClick([d]() { if (d->window) d->window->Close(); });
-        bottom->AddChild(closeButton);
+        bottom->AddChild(MakeButton("ufl-set-close", "Close", 90,
+                [d]() { if (d->window) d->window->Close(); }));
         d->window->AddChild(bottom);
 
         // Escape closes, matching the framework's dialog convention.

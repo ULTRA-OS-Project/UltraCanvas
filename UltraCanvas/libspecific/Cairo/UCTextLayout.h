@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.h
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.0
-// Last Modified: 2026-04-12
+// Version: 1.1.1
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -89,12 +89,24 @@ namespace UltraCanvas {
     class UCTextLayout : public ITextLayout {
     private:
         PangoLayout* layout = nullptr;
-        double explicitHeight = 0;
+        double explicitHeight = -1;
         VerticalAlignment valign = VerticalAlignment::Top;
         UCLayoutExtents extents;
         bool extentsDirty = true;
         double cachedAscentPU = 0;
         double cachedDescentPU = 0;
+        // TextWrap::WrapNone is in effect. Pango has no "never wrap" flag: a
+        // no-wrap layout is one Pango is told to keep to a single line per
+        // paragraph and ellipsize. See ApplyPangoHeight().
+        bool noWrap = false;
+
+        // Pushes explicitHeight into Pango, except for a no-wrap layout, which
+        // keeps Pango's height at -1 ("ellipsize the first line of each
+        // paragraph"). A positive Pango height means "ellipsize once this many
+        // pixels are used up", so a box two lines tall would let a no-wrap
+        // layout word-wrap to a second line before ellipsizing anything.
+        // explicitHeight is still remembered for vertical alignment.
+        void ApplyPangoHeight();
     public:
         explicit UCTextLayout(PangoContext* ctx);
         ~UCTextLayout() override;

@@ -125,6 +125,10 @@ public:
                    std::shared_ptr<ModelDemoState> state)
         : UltraCanvasGLSurface(cfg, id, x, y, w, h), state_(std::move(state)) {}
 
+    // Takes keyboard focus so the maximized view receives the Escape key, which
+    // the app delivers to the focused element.
+    bool AcceptsFocus() const override { return true; }
+
     bool OnEvent(const UCEvent& event) override {
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -325,7 +329,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     root->AddChild(surface);
 
     // ---------------------------------------------------------- control panel
-    auto panel = std::make_shared<UltraCanvasContainer>("ModelControls", 690, 40, 296, 560);
+    // Same column geometry as the other showcase tabs: the canvas ends at x=676
+    // and the panel runs from 690 to 1000 inside the 1004px tab content area.
+    auto panel = std::make_shared<UltraCanvasContainer>("ModelControls", 690, 40, 310, 560);
     panel->SetBackgroundColor(Color(246, 246, 248, 255));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
@@ -389,7 +395,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
         "The loader handles v / vn / faces,\n"
         "polygon triangulation and negative\n"
         "indices, and computes smooth normals\n"
-        "when a file provides none."
+        "when a file provides none.\n\n"
+        "Click the icon in the canvas corner or\n"
+        "double-click the canvas to maximize it;\n"
+        "Esc or another double-click restores."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
@@ -397,6 +406,15 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     panel->AddChild(info);
 
     root->AddChild(panel);
+
+    // ---------------------------------------------------- maximize / zoom view
+    // Adds the maximize icon over the canvas's top-right corner and wires the
+    // button / double-click / Esc toggle that grows the canvas over the whole
+    // tab, hiding the title and the control panel. Orbiting keeps working while
+    // maximized: OrbitGLSurface handles the drag and wheel itself and only lets
+    // the double-click and Esc through to the zoom callback.
+    AddMaximizeControl(root, surface, {title.get(), panel.get()}, "ModelZoomBtn");
+
     return root;
 }
 

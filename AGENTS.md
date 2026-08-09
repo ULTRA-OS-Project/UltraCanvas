@@ -24,6 +24,9 @@ before adding cross-module code.
 
 ## Documentation map (read before using a component)
 
+- `Docs/UltraCanvas/UltraCanvasUIElements.md` — **the UI element catalogue:
+  what exists, and which element to use for what.** Start here when building
+  UI; the per-component docs below only help once you know the name.
 - `Docs/UltraCanvas/` — ~100 per-component/per-subsystem docs with buildable
   C++ examples. Naming: `UltraCanvas<Component>.md` or
   `UltraCanvas<Component>Examples.md` (e.g. `UltraCanvasButtonExamples.md`,
@@ -52,6 +55,10 @@ before adding cross-module code.
   // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 101, 100, 50, 120, 40, "Click Me")
   ```
 
+- **Never hand-roll a UI element** — see
+  [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
+  below. If the thing you are drawing takes input, shows a picture or presents
+  a value, it is an element: use the framework's, or add one.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`
   (see `Apps/Texter/main.cpp` and `Apps/DemoApp/` for canonical structure).
 - **Platform separation:** platform-specific code goes only under
@@ -68,6 +75,57 @@ before adding cross-module code.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
+
+## Build UI out of UltraCanvas elements
+
+The framework ships ~60 UI elements. New UI is assembled from them; it is not
+painted from scratch. This is the single most-repeated mistake in this
+repository, so the rule is a prohibition rather than a lookup:
+
+> **If it takes input, shows a picture, or presents a value, it is an
+> element.** Never build one out of `ctx->DrawText` / `FillRoundedRectangle`
+> plus a private buffer, caret, `hovered`/`focused` flag or key handler. Take
+> the element from the catalogue, or add a new one to
+> `UltraCanvas/{include,core}` so the next caller finds it too.
+
+Hand-rolled controls look fine in a screenshot and then fail everywhere the
+framework already solved the problem: no caret or selection, no clipboard, no
+undo, no IME or multi-byte input, no keyboard-focus semantics, no theming, no
+DPI scaling, no tooltip. A real case: the Filer's compress dialog painted its
+own name field, so the name could only be appended to and backspaced at the
+end, and it stopped answering the keyboard entirely as soon as another element
+took the focus.
+
+**[`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md)
+is the catalogue** — every element, what it is for, and its defining header.
+Start there; the per-component docs only help once you know the name. The ones
+reinvented most often:
+
+| You need | Element |
+|---|---|
+| Text entry (single line / multi-line / with suggestions / tags / numeric) | `UltraCanvasTextInput`, `UltraCanvasTextArea`, `UltraCanvasAutoComplete`, `UltraCanvasTagInput`, `UltraCanvasSpinner` |
+| A button | `UltraCanvasButton` |
+| Checkbox, radio, on-off switch | `UltraCanvasCheckbox`, `UltraCanvasRadio`, `UltraCanvasSwitch` |
+| Pick one of a list | `UltraCanvasDropdown`, `UltraCanvasSegmentedControl` |
+| A value on a range | `UltraCanvasSlider`, `UltraCanvasRating`, `UltraCanvasStepper` |
+| Static text, status pill | `UltraCanvasLabel`, `UltraCanvasBadge`, `UltraCanvasChip` |
+| Show an image / any media file | `UltraCanvasImageElement`, `UltraCanvasMediaViewer` |
+| Scrolling, panes, tabs, toolbars | `UltraCanvasContainer`, `UltraCanvasSplitPane`, `UltraCanvasTabbedContainer`, `UltraCanvasToolbar` |
+| Menus, modal dialogs, tooltips | `UltraCanvasMenu`, `UltraCanvasModalDialog`, `UltraCanvasTooltipManager` |
+
+Two exceptions only: a **self-rendered view** may paint its own *content*
+(`UltraCanvasFilerWidget`, `UltraCanvasAlbum`, charts) — but it still adds real
+elements as children for fields, buttons and pickers; and **the element itself**
+naturally owns its buffer and caret. Declare any other exception in the source:
+
+```cpp
+// ui-reuse-exempt: <why this one paints directly>
+```
+
+`scripts/check_ui_reuse.py` enforces this and runs in CI.
+`scripts/ui_reuse_baseline.txt` — which records pre-existing offenders — is
+empty, and the intent is that it stays empty. Do not add to it to silence a
+finding.
 
 ## Building and testing
 
@@ -91,17 +149,51 @@ then `ctest --test-dir build`. Framework tests live under `Tests/`.
 BROKEN per function — run it before assuming a networking API is usable in a
 given build. See `Docs/Modules/UltraNet/ApiStatus.md`.
 
+## Versioning
+
+The **first line of a changelog is the single source of truth** for a version:
+
+| Changelog | Drives |
+|---|---|
+| `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, DemoApp, UltraFiler, UltraViewer, … |
+| `Docs/Texter/CHANGELOG.md` | UltraTexter |
+
+Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
+changelog — that is the whole bump. Do **not** hand-edit a version number
+anywhere else, and never introduce a new literal copy of one:
+
+- `cmake/UltraCanvasVersion.cmake` parses the first line at configure time and
+  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` (plus `_DOT4` / `_COMMA4`
+  variants for Windows resources). It feeds every `project(VERSION …)` and the
+  matching compile definitions. Editing a changelog re-triggers the configure
+  step, so existing build trees follow along.
+- Code that displays a version reads those defines —
+  `UltraCanvas::versionString` (`UltraCanvasUtils.cpp`, shown in the demo app's
+  info window) and `UltraCanvasTextEditor::version` (shown in Texter's splash).
+- The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
+  `package-macos.sh`) parse the same line for artefact file names.
+- Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still
+  hold literals, because windres reads them from disk. Run `./set-version.sh`
+  after bumping the UltraTexter version; a CMake configure on any platform
+  warns when they are stale.
+
 ## House rules for AI-generated changes
 
 1. Match the style of the file you are editing; PascalCase everywhere.
-2. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
+2. **Before painting any UI, check whether the element already exists** — the
+   catalogue is
+   [`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md).
+   Writing `DrawText` / `FillRoundedRectangle` plus a private buffer, caret or
+   `hovered` flag to make a control is a defect, not a shortcut. Run
+   `python3 scripts/check_ui_reuse.py` before pushing; CI runs it too.
+3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change.
-3. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
-4. Do not introduce new third-party dependencies without updating
+4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
+5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
    `THIRD_PARTY_LICENSES.md`.
-5. Docs changes: regenerate `llms.txt`/`llms-full.txt`
+6. Docs changes: regenerate `llms.txt`/`llms-full.txt`
    (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
 
 ## Branch and pull-request rules (AI sessions)

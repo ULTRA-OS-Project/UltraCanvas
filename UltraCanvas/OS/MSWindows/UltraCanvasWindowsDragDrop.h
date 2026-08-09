@@ -85,6 +85,64 @@ namespace UltraCanvas {
         POINT ScreenToClientPoint(POINTL pt);
     };
 
+    // ===== DRAG SOURCE (drag files OUT of a window) =====
+    // Counterpart of the drop target: hands a set of files to the shell so it
+    // can be dropped on Explorer, another application, or another UltraCanvas
+    // window. Both objects are OLE-reference-counted and delete themselves.
+
+    // A CF_HDROP data object built from a list of UTF-8 paths.
+    class UltraCanvasWindowsFileDataObject : public IDataObject {
+    public:
+        explicit UltraCanvasWindowsFileDataObject(const std::vector<std::string>& filePaths);
+        virtual ~UltraCanvasWindowsFileDataObject();
+
+        // ===== IUnknown =====
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override;
+        ULONG STDMETHODCALLTYPE AddRef() override;
+        ULONG STDMETHODCALLTYPE Release() override;
+
+        // ===== IDataObject =====
+        HRESULT STDMETHODCALLTYPE GetData(FORMATETC* format, STGMEDIUM* medium) override;
+        HRESULT STDMETHODCALLTYPE GetDataHere(FORMATETC* format, STGMEDIUM* medium) override;
+        HRESULT STDMETHODCALLTYPE QueryGetData(FORMATETC* format) override;
+        HRESULT STDMETHODCALLTYPE GetCanonicalFormatEtc(FORMATETC* in, FORMATETC* out) override;
+        HRESULT STDMETHODCALLTYPE SetData(FORMATETC* format, STGMEDIUM* medium,
+                                          BOOL release) override;
+        HRESULT STDMETHODCALLTYPE EnumFormatEtc(DWORD direction,
+                                                IEnumFORMATETC** ppEnum) override;
+        HRESULT STDMETHODCALLTYPE DAdvise(FORMATETC* format, DWORD advf,
+                                          IAdviseSink* sink, DWORD* connection) override;
+        HRESULT STDMETHODCALLTYPE DUnadvise(DWORD connection) override;
+        HRESULT STDMETHODCALLTYPE EnumDAdvise(IEnumSTATDATA** ppEnum) override;
+
+    private:
+        LONG refCount;
+        std::vector<std::string> paths;
+        // DROPFILES header + double-null-terminated wide path list.
+        HGLOBAL BuildHDrop() const;
+    };
+
+    // Standard IDropSource: Escape / losing the button ends the drag, the
+    // shell draws the feedback cursors.
+    class UltraCanvasWindowsDragSource : public IDropSource {
+    public:
+        UltraCanvasWindowsDragSource();
+        virtual ~UltraCanvasWindowsDragSource();
+
+        // ===== IUnknown =====
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override;
+        ULONG STDMETHODCALLTYPE AddRef() override;
+        ULONG STDMETHODCALLTYPE Release() override;
+
+        // ===== IDropSource =====
+        HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL escapePressed,
+                                                    DWORD grfKeyState) override;
+        HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD dwEffect) override;
+
+    private:
+        LONG refCount;
+    };
+
 } // namespace UltraCanvas
 
 #endif // ULTRACANVAS_WINDOWS_DRAGDROP_H

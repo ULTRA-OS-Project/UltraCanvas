@@ -33,7 +33,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -51,6 +51,8 @@ Fields: `Name`, `Size`, `Type`, `ModifiedDate`, `CreatedDate`. Directories alway
 list before files. In the Details view a click on a sortable column header
 selects that field (a second click flips the direction) and the header shows a
 ▲ / ▼ indicator. `onSortChanged(field, ascending)` fires on every change.
+Sorting can be switched off for a file-list display whose order matters — see
+[File list](#file-list-search-results).
 
 ## Resizable columns
 
@@ -153,6 +155,8 @@ New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
 Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
                   Type    >  all view types
+                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                             Docs / Spreadsheets / Videos  (checkboxes, all on)
                   Dataset >  Size / Edit date / Creation date / Attributes /
                              Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
@@ -178,8 +182,17 @@ Notes:
   default (system clipboard via `SetClipboardText`).
 - **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
   TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
-  showing the archive's file-type icon, an editable file name, and the
-  destination folder as smaller text. The icon can be dragged onto any folder in
+  showing the archive's file-type icon, an editable file name with the chosen
+  extension fixed beside it, and the destination folder as smaller text. The
+  name field is a real `UltraCanvasTextInput`, like the inline rename editor,
+  so it has a caret, click-to-position, selection, clipboard and undo; it opens
+  with the suggested name selected, so typing replaces it. The suggestion is
+  the entry's name without its file-type suffix — a folder keeps its full name
+  and so does a file whose tail is not a plausible extension, which is what
+  keeps version and architecture fragments (`UCDemo-Windows-0.3.27-x86_64`)
+  intact. While the dialog is up it also claims the window's `KeyDown` stream,
+  so the field keeps answering the keyboard even when something else in the
+  window holds the focus. The icon can be dragged onto any folder in
   the view to change the destination (the target folder highlights while
   dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
   unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
@@ -187,6 +200,8 @@ Notes:
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
   `CompressSelection(extension)` still performs an immediate, dialog-free
   compress for programmatic use.
+- **Display > Preview** switches content previews on and off per file kind —
+  see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
   thumbnail views: Size, Edit date, Creation date, Attributes, Length
   (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
@@ -194,6 +209,58 @@ Notes:
   appear on the file kinds they apply to (their values are probed lazily from
   the file headers and cached). Drive it in code with
   `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
+
+## Selective previews
+
+A **content preview** is a tile rendered from the file itself instead of the
+generic category glyph. Which kinds of file get one is selectable, and every
+kind is enabled by default:
+
+```cpp
+filer->SetPreviewType(FilerPreviewType::Videos, false);   // no poster frames
+filer->IsPreviewTypeEnabled(FilerPreviewType::PDF);       // true
+
+// Only the cheap ones (a slow network share, say):
+filer->SetPreviewTypes(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
+                       static_cast<uint32_t>(FilerPreviewType::Text));
+
+filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
+```
+
+| `FilerPreviewType` | Menu label | Applies to | What is shown |
+|---|---|---|---|
+| `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
+| `VectorGraphics` | Vector graphics | svg, eps, cdr, xar | the rendered drawing (formats the image pipeline can rasterize) |
+| `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
+| `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
+| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph) |
+| `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
+
+Notes:
+
+- Switching a kind off repaints its entries with the type glyph immediately and
+  stops the widget from opening those files at all — that is the point of the
+  switches: a folder of huge photos, videos or PDFs on a slow volume stays
+  browsable. Switching it back on re-uses whatever is still cached and reads the
+  rest in the background.
+- Previews are produced on the same background workers as the image
+  thumbnails, in the same viewport-driven order (visible tiles first, then one
+  screen of prefetch), so no preview ever blocks a frame. Image work has
+  priority over reading text.
+- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
+  a page is legible — from roughly a 40 px box up. The small icon column of the
+  Details and List rows keeps the type glyph, so a folder listing does not read
+  every document in it.
+- `FilerPreviewType` values are a bitmask; `GetPreviewTypes()` returns the
+  current set and `kFilerAllPreviewTypes` is the default. The preview kinds do
+  not map one to one onto `FilerFileCategory`: PDF is split out of the Document
+  category because it renders a page, and CSV / TSV count as spreadsheets
+  because they preview as a grid (their file category stays `Text`).
+  `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
+  (`NonePreview` for folders, audio, archives and programs, which never carry a
+  content preview).
 
 ## Selection info bar
 
@@ -221,6 +288,34 @@ finishes, so clicking or opening a folder with a deep subtree never blocks the
 window. The same statistics provide the directory weights of the BarSize and
 TreeMap views, whose layout reflows as the walks complete.
 
+The media probes (pixel dimensions, play length / codec) run on the same
+background worker, ahead of the folder walks: selecting a file — or first
+painting its tile when the Length / Dimensions dataset fields are enabled —
+never opens the file on the UI thread; the detail appears with the next
+posted repaint, typically within a frame or two.
+
+## Folder listing prefetch
+
+With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
+the subfolders of the shown folder — one level deep — shortly after the folder
+settles, so entering one of them serves its listing from memory instead of
+waiting for a cold directory scan. The win is largest on network volumes and
+spinning disks.
+
+- **Idle behavior**: each batch starts after a short grace delay, and a new
+  navigation drops the pending batch immediately — quick click-throughs never
+  trigger wasted scans, and the folder on screen always gets the disk first.
+- **Freshness**: a cached listing is used only if it is under a minute old
+  *and* the folder's modification time is unchanged since the pre-scan
+  (catching entries added / removed / renamed in between); anything else falls
+  back to a normal scan. `Refresh()` — used after every file operation — always
+  rescans and never reads the cache.
+- **Bounds**: at most 24 listings / 50 000 entries are cached (oldest evicted
+  first); an oversized listing is scanned but not stored — the scan still
+  warms the OS metadata cache, so the real scan on entry stays fast. Cached
+  listings include hidden entries, so toggling hidden files needs no rescan
+  of the cache. Archives are excluded (they list through VirtualFS).
+
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
@@ -228,7 +323,7 @@ rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
-`SelectAll()` change the selection programmatically, and
+`SelectAll()` / `SelectPath(path)` change the selection programmatically, and
 `EnsureSelectionVisible()` scrolls so the first selected entry is fully in
 view. The scroll is applied against the **next** recomputed layout, so a host
 that resizes the widget in the same frame — e.g. opening a preview pane that
@@ -236,12 +331,25 @@ narrows the folder display (the UltraFiler does exactly that) — can call it
 right away and the entry stays visible at the new width instead of being
 corrected against the stale geometry.
 
+`SelectPath(path)` makes one entry of the current display the selection and
+scrolls it into view, exactly as a click on it would (`onSelectionChanged`
+fires); it returns `false` when that path is not among the displayed entries.
+Use it to point the view at a file right after opening its folder — the
+UltraFiler does that when a tile of its History view is activated.
+
 ## Hover icon menu
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
 so no icon assets are required.
+
+A button acts on the hovered entry — or on the **whole selection** when the
+hovered entry is part of it — and, like a drag, **never changes the selection**:
+pressing Delete on a file is "delete that file", not "show me that file", so it
+does not fire `onSelectionChanged` and cannot re-target (or pop open) a preview
+pane fed by it. The selection only moves when the icon menu deletes it, and then
+only as described under [Selection after a delete](#selection-after-a-delete).
 
 ## File operations
 
@@ -260,6 +368,28 @@ filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Selection after a delete
+
+By default a delete leaves nothing selected. `SetSelectNextAfterDelete(true)`
+changes that for the case where the delete takes the **whole** selection away:
+the entry that fills its place inherits the selection — the first survivor
+after the deleted block, or the last one before it when the deleted entry was
+at the end — and the folder display scrolls it into view. Deleting entries that
+are *not* selected (the hover icon menu acting on the entry under the cursor)
+still leaves the selection alone, and a delete that only takes part of the
+selection keeps the rest as before.
+
+```cpp
+filer->SetSelectNextAfterDelete(true);   // preview follows the deleted file's neighbour
+```
+
+Hosts that feed a preview pane from `onSelectionChanged` turn this on while the
+preview is up — the UltraFiler does exactly that — so deleting the previewed
+file walks the preview on to the next file instead of folding the pane away and
+snapping the folder display back to full width. The new selection is installed
+**before** `onFolderRefreshed` fires, so the host sees a single selection change
+and never an empty one in between.
 
 `SetNewDocumentTypes()` replaces the default New > entries; each entry may name a
 `templatePath` that is copied instead of creating an empty file, and
@@ -306,13 +436,41 @@ that already exist there get a " (2)" style suffix, a folder cannot be dropped
 into itself, and a drop anywhere but on a folder simply ends the drag. Escape
 abandons the drag without moving anything.
 
-**Leaving the widget** hands the same set over to the native OS drag (XDND on
-Linux), so it can be dropped on any other window or application — another
-Filer widget, another window of the same application, an external file manager,
-an editor, … There the drop target performs the copy or move itself; when it
+**Leaving the widget does not end the drag.** The badge keeps following the
+cursor over the rest of the window — it is handed to the window's
+[drag overlay](#drag-overlay) for that, because an element cannot paint outside
+its own bounds — and releasing over another element offers it the files as a
+`Drop` event, exactly like a drop arriving from another application. That is
+how a file reaches a second Filer pane, a folder tree or any other drop-aware
+widget of the same window; a release over something that does not take the drop
+just ends the drag.
+
+**Leaving the window** hands the same set over to the native OS drag (XDND on
+Linux, OLE `DoDragDrop` on Windows), so it can be dropped on any other
+application — an external file manager, an editor, another window of this
+application, … There the drop target performs the copy or move itself; when it
 reports a move the source folder is rescanned automatically. During that part
 of the drag the cursor shows whether the target accepts a copy or a move (hold
-Shift to suggest a move) and Escape cancels.
+Shift to suggest a move on Linux, Ctrl/Shift on Windows) and Escape cancels.
+On a platform with no native drag implementation (currently macOS) the
+window-wide drag simply keeps running instead of being dropped, so the gesture
+is never lost — it just cannot reach another application there.
+
+### Drag overlay
+
+The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
+window-level hook for content that has to be visible above every element:
+
+```cpp
+window->SetDragOverlay(this, badgeRectInWindowCoords,
+        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+...
+window->ClearDragOverlay(this);   // when the gesture ends
+```
+
+Setting it again moves it (both the rectangle it leaves and the one it enters
+are repainted), the first owner keeps it until it clears it, and the renderer
+draws in window coordinates.
 
 A drag **never changes the selection**: what a plain press would select is
 applied on the release instead, so dragging a file does not fire
@@ -355,6 +513,26 @@ font size as the displayed name, commits on Enter, cancels on Esc — and a
 click anywhere outside the field commits too, because the field losing the
 keyboard focus ends the edit.
 
+A committed rename **keeps the entry selected** under its new name and scrolls
+it back into view (the new name usually sorts somewhere else). The rescan that
+follows a rename restores the selection by path, so the entry is followed from
+its old path to its new one rather than dropped — leaving nothing selected
+would silently disable every command that needs a selection, F2 and the Rename
+button included, so a second rename in a row would do nothing at all. An entry
+renamed while it was *not* selected — the hover icon menu acting on the entry
+under the cursor — leaves the selection where it was. Renaming to a name that
+differs only in case is allowed: the "already exists" check ignores a target
+that resolves to the entry itself, which is what a case-insensitive filesystem
+(Windows, macOS) reports for it.
+
+The field is placed over the name wherever the name is drawn, which differs per
+view: beside the icon in Details / List / Size bars, over the caption band in
+the thumbnail grids, and **inside the cell, at the top**, in the treemap — a
+treemap cell has no caption band under an icon, the cell *is* the icon rect.
+Treemap cells are sized by their content, not by their captions, so a small
+cell gets a field widened to a usable minimum (pulled back inside the right
+edge when that would overflow it) rather than one a few pixels wide.
+
 Escape is also the cancel key of a running item drag, a rubber-band
 selection and the compress dialog. A host that binds its own window-level
 Escape shortcut (the UltraFiler closes its preview pane with it) should
@@ -375,6 +553,29 @@ path, not by row index. Files that vanished drop out of it, which is reported
 through `onSelectionChanged`; every rescan also fires `onFolderRefreshed` so a
 host can refresh what it shows about the folder (item counts, status bar).
 
+## Folder modifications
+
+`onFolderRefreshed` answers "the listing changed", which includes plain
+rescans. `onFolderModified(folderPath)` answers the different question "the
+**user** changed something here": an entry created, pasted, dropped in or out,
+renamed, duplicated, deleted, packed or extracted — through the context menu,
+the icon menu, the keyboard or the API alike. Navigation, sorting, view
+switches and a bare `Refresh()` never fire it.
+
+The reported folder is normally the displayed one, but it is the folder that
+actually changed when that differs — files dropped onto a subfolder shown in
+the view, an archive written into the folder its dialog icon was dragged to,
+or the individual parent folders when a file list spanning several folders is
+deleted from. In a file-list display, changes whose folder cannot be named are
+not reported at all, since the displayed folder is not where they landed.
+
+```cpp
+// "Recently worked in" — folders the user actually did something in.
+filer->onFolderModified = [this](const std::string& folder) {
+    recentFolders.Record(folder);
+};
+```
+
 ## File list (search results)
 
 `ShowFileList(paths)` displays an explicit list of paths — typically search
@@ -388,6 +589,18 @@ from different folders.
 untouched; `SetPath()` returns to the normal folder display and
 `IsShowingFileList()` reports which mode is active. `Refresh()` re-stats the
 list, dropping entries that vanished.
+
+A file list is sorted like a folder listing by default. When the order of the
+paths itself carries the meaning — a most-recently-used history, a ranked
+result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
+over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
+for the file list: `SetSort()` and the Details column headers leave the order
+alone until the widget returns to a folder listing, which is always sorted.
+
+```cpp
+filer->SetFileListOrderPreserved(true);
+filer->ShowFileList(recentlyUsedPaths);   // most recent first, kept that way
+```
 
 Pair it with `SetOpenPathMenuItemVisible(true, label)`, which puts an
 Open-Path item at the *top* of the context menu (followed by a separator) and
@@ -410,6 +623,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
+| `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

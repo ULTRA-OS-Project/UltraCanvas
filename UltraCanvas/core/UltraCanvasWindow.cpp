@@ -52,10 +52,38 @@ namespace UltraCanvas {
 
         UltraCanvasUIElement* prev = _focusedElement;
 
-        // Remove focus from current element
-        if (_focusedElement) {
-            SendFocusLostEvent(_focusedElement);
+        // A focus handler may destroy the very element it is notifying: an
+        // inline editor that commits and tears itself down when it loses the
+        // focus (the filer's rename field) does exactly that, and the element
+        // is gone by the time the notification returns. Watch both elements
+        // through weak references so the focus-ring repaints below cannot
+        // touch freed memory. An element not owned by a shared_ptr cannot be
+        // watched — nothing to expire — so it keeps the old behaviour.
+        auto watch = [](UltraCanvasUIElement* e) {
+            return e ? e->weak_from_this() : std::weak_ptr<UltraCanvasUIElement>();
+        };
+        std::weak_ptr<UltraCanvasUIElement> prevWatch = watch(prev);
+        std::weak_ptr<UltraCanvasUIElement> nextWatch = watch(element);
+        bool prevWatched = !prevWatch.expired();
+        bool nextWatched = !nextWatch.expired();
+        auto died = [](const std::weak_ptr<UltraCanvasUIElement>& w, bool watched) {
+            return watched && w.expired();
+        };
+
+        // Drop the focus before notifying, so a handler that removes the
+        // element from its parent (RemoveChild clears the focus of what it
+        // detaches) does not deliver a second FocusLost to the same element.
+        _focusedElement = nullptr;
+        _focusedElementNotifiedActive = false;
+        if (prev) {
+            SendFocusLostEvent(prev);
+            if (died(prevWatch, prevWatched)) prev = nullptr;
         }
+        // The same handler may have taken the element we were about to focus
+        // down with it (an editor tearing down the panel it lived in), or just
+        // detached it — the window check above ran before the notification.
+        if (died(nextWatch, nextWatched)) element = nullptr;
+        if (element && element->GetWindow() != this) element = nullptr;
 
         // Set new focused element
         _focusedElement = element;
@@ -64,6 +92,10 @@ namespace UltraCanvas {
         // Set focus on new element
         if (_focusedElement) {
             SendFocusGainedEvent(_focusedElement);
+            if (died(nextWatch, nextWatched)) {
+                _focusedElement = nullptr;
+                _focusedElementNotifiedActive = false;
+            }
         }
 
         // Repaint focus rings on both old and new focused elements.
@@ -438,6 +470,11 @@ namespace UltraCanvas {
                 ctx->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
                 Render(ctx, rect);
                 RenderCustomContent(ctx, rect);
+                // Above every element: the drag overlay a widget handed over
+                // because it has to be visible outside that widget's bounds.
+                if (dragOverlayRenderer && dragOverlayRect.Intersects(rect)) {
+                    dragOverlayRenderer(ctx, dragOverlayRect);
+                }
                 ctx->PopState();
             }
             dirtyRectManager.Clear();
@@ -543,6 +580,28 @@ namespace UltraCanvas {
         Rect2Di clipped = windowRect.Intersection(winBounds);
         if (clipped.width <= 0 || clipped.height <= 0) return;
         dirtyRectManager.Add(clipped);
+    }
+
+    void UltraCanvasWindowBase::SetDragOverlay(UltraCanvasUIElement* owner,
+                                               const Rect2Di& windowRect,
+                                               WindowOverlayRenderer renderer) {
+        if (!owner || !renderer) return;
+        // The gesture that claimed the overlay keeps it until it clears it.
+        if (dragOverlayOwner && dragOverlayOwner != owner) return;
+        // Repaint what the overlay is leaving behind, then what it now covers.
+        if (dragOverlayRenderer) AddDirtyRectangle(dragOverlayRect);
+        dragOverlayOwner = owner;
+        dragOverlayRect = windowRect;
+        dragOverlayRenderer = std::move(renderer);
+        AddDirtyRectangle(dragOverlayRect);
+    }
+
+    void UltraCanvasWindowBase::ClearDragOverlay(UltraCanvasUIElement* owner) {
+        if (!dragOverlayRenderer || dragOverlayOwner != owner) return;
+        AddDirtyRectangle(dragOverlayRect);
+        dragOverlayRenderer = nullptr;
+        dragOverlayOwner = nullptr;
+        dragOverlayRect = Rect2Di(0, 0, 0, 0);
     }
 
     void UltraCanvasWindowBase::AddPopupDirtyRect(UltraCanvasUIElement* popup,

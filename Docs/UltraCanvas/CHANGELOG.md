@@ -1,4 +1,4 @@
-#### 2026-08-08 *0.3.31*
+#### 2026-08-09 *0.3.37*
 - **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
   target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
   the whole public UltraNet surface and reports each entry as **WORKING**
@@ -24,6 +24,271 @@
 - Docs: `Docs/Modules/UltraNet/ApiStatus.md` documents the statuses, the
   options, how each area is verified and how to add a probe; both UltraNet
   READMEs point at it from their Status sections.
+
+#### 2026-08-09 *0.3.36*
+- **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
+  name and stays editable. The suggested archive name was `stem()` of the
+  entry, which strips everything after the last dot — for a folder named
+  `UCDemo-Windows-0.3.27-x86_64` that left `UCDemo-Windows-0.3`, because
+  `.27-x86_64` looks like an extension to `std::filesystem`. A folder now keeps
+  its full name (a folder has no extension, so every dot in it belongs to the
+  name), and a file only loses a tail that is a plausible file type: short,
+  alphanumeric and not a pure number, with `.tar` dropped along with the
+  `.gz` / `.bz2` / `.xz` / `.zst` of a compound suffix. `CompressSelection()`
+  picks the same name.
+  The name field itself was a hand-rolled buffer fed by the dialog's own key
+  handler: it could only append and backspace at the end (no caret, no
+  selection, no clipboard — nothing could be corrected in the middle), and
+  because it read the keyboard through the widget's own focus it went silent
+  the moment anything else in the window claimed the focus, and stayed silent
+  for every dialog opened afterwards. It is now a real `UltraCanvasTextInput`
+  child, the same component the inline rename editor uses, opened with the
+  suggestion selected so typing replaces it; the dialog additionally installs a
+  window `KeyDown` filter for as long as it is up, so a keystroke reaches the
+  editor whoever the window currently considers focused. Closing the dialog
+  removes the filter and hands the keyboard back to the folder display. The
+  committed name is stripped of path separators and trimmed before it becomes
+  a file name.
+- **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog's Compress /
+  Cancel are `UltraCanvasButton` children now, replacing a private
+  `DrawDialogButton` painter and its own `okHover` / `cancelHover` flags and
+  hit-testing. They carry the framework's hover, press and disabled painting,
+  and a click reaches them as elements instead of being pattern-matched
+  against rectangles in the dialog's mouse handler.
+- **UltraCanvasTimePicker** *(1.2.0)*: the editable field is a real
+  `UltraCanvasTextInput` child (the picker is an `UltraCanvasContainer` now,
+  like every other composite widget), replacing a private `editBuffer` /
+  `caretPos` / `editing` triple and ~110 lines of hand-written key handling.
+  Typing a time gains selection, clipboard, undo, double-click word select and
+  multi-byte input, all of which the hand-rolled editor lacked; the popup
+  spinners, the clock dial, the wheel-over-field nudge, Up/Down to open, Enter
+  to commit and Escape to revert keep working as before. Two behaviours had to
+  be re-pointed at the new field: the spinner and dial paths wrote `value`
+  directly and so left the text stale, and the wheel guard tested
+  `IsHovered()`, which the editor now absorbs by being the element under the
+  pointer.
+- **UltraCanvasSpreadsheet** *(1.2.0)*: the cell / formula-bar editor is a real
+  `UltraCanvasTextInput` child (the widget is an `UltraCanvasContainer` now),
+  replacing an `editBuffer_` / `editCursorPos_` pair and its own key handling.
+  One editor moves between the active cell and the formula bar depending on the
+  edit mode. Cell text gains selection, clipboard, undo and multi-byte input;
+  typing to start an edit, Enter to commit and step down, Tab to commit and step
+  right, Escape to discard and formula entry all behave as before. `editBuffer_`
+  survives as a mirror of the editor's text, so the live formula preview and the
+  formula bar read it unchanged.
+  With this the UI-reuse baseline is **empty**: every control in the tree is
+  built from an UltraCanvas element.
+- **UltraCanvasDatePicker**, **UltraCanvasColorPicker** *(1.3.0)*: their typed
+  fields are real `UltraCanvasTextInput` children too, on the same pattern as
+  the time picker — both widgets derive from `UltraCanvasContainer` now. The
+  date field keeps its calendar popup, arrow-key month navigation (the popup
+  takes the keyboard off the field so the arrows drive dates, and hands it back
+  on close) and is read-only in the range / week / multiple modes, whose text
+  is a computed summary. The colour picker moves one editor between its hex box
+  and the channel boxes, keeps the per-field character filter — now applied to
+  paste as well as typing — and gains selection, clipboard and undo it never
+  had. Clicking a value box selects its contents (type to replace) instead of
+  placing a caret mid-value; a second click inside the editor places the caret
+  as usual. `DragTarget::TextDrag` is gone: dragging out a selection is the
+  editor's own gesture.
+- **UltraCanvasContainer** *(4.2.0)*: new `PlaceChildAt(child, rect)` for a
+  self-rendered widget that positions a child itself (an inline editor over a
+  field or a cell). `SetBounds()` alone is not enough — it writes only
+  `finalBounds`, which the next layout pass overwrites, and
+  `UltraCanvasTextInput::Arrange()` re-clamps its horizontal scroll whenever
+  its width changes, so an editor placed that way ended up showing the tail of
+  its own value ("F" instead of "#85FFFBFF"). `PlaceChildAt` writes the CSS
+  position and size the engine resolves from, so the rectangle survives
+  Arrange. The Filer's compress dialog uses it too.
+- **UltraCanvasFilerWidget**: fixed a build break in `ScanFolder()` — a merge
+  kept the rename-reveal block that reads `renamedTo` but dropped the lines
+  that declare it (and map the selection from the old path to the new one), so
+  the file did not compile and the renamed entry lost its selection.
+- **Docs**: new `Docs/UltraCanvas/UltraCanvasUIElements.md` — a catalogue of
+  every UI element the framework ships, grouped by what you are trying to
+  build, with each element's defining header. The corpus had ~150 per-component
+  documents and no index, so an element could only be found by someone who
+  already knew its name; that is why controls kept being painted by hand
+  instead of instantiated. AGENTS.md now carries the rule ("if it takes input,
+  shows a picture or presents a value, it is an element") and points at the
+  catalogue.
+- **Tooling**: new `scripts/check_ui_reuse.py` plus a `UI element reuse` CI
+  workflow. It reports the two shapes that are almost always a reinvented
+  element — a private edit buffer and caret fed from a `KeyDown` handler with
+  no `UltraCanvasTextInput` in the file, and a
+  `Draw*Button(IRenderContext*, …, bool hovered)` painter. The six controls
+  that already existed (`UltraCanvasColorPicker`, `UltraCanvasDatePicker`,
+  `UltraCanvasTimePicker` and `UltraCanvasSpreadsheet` edit fields, the Filer's
+  `DrawDialogButton`) were recorded in `scripts/ui_reuse_baseline.txt` so they
+  would not fail the build while only new ones did — and were then all ported
+  in this same release, leaving the baseline empty. Self-rendered views that legitimately
+  paint their own content opt out with a `// ui-reuse-exempt: <reason>` marker.
+- **UltraCanvasFilerWidget** *(1.13.0)*: content previews are now **selectable
+  per file kind**. The context menu grew a `Display > Preview` submenu with a
+  checkbox for each of Bitmaps, Vector graphics, 3D, PDF, Text, Docs,
+  Spreadsheets and Videos — all enabled by default — mirrored in code by
+  `SetPreviewType()` / `SetPreviewTypes(mask)` / `IsPreviewTypeEnabled()` /
+  `GetPreviewTypes()` over the new `FilerPreviewType` bitmask. Switching a kind
+  off drops its entries back to the plain type glyph immediately *and* stops
+  the widget from opening those files at all, which is what makes a folder of
+  huge photos, videos or PDFs on a slow volume browsable.
+  Three kinds gained a real preview producer, all running on the existing
+  viewport-driven thumbnail workers so no preview ever blocks a frame:
+  **PDF** files render their first page through the PDF plugin (outlined as a
+  sheet of paper, since a page is white on a white widget), **STL** models are
+  rasterized in software as a shaded three-quarter view (the GL viewer needs a
+  window and a current context, which a background decode has neither of), and
+  **text, documents and spreadsheets** preview as a miniature page of their own
+  content — plain text and source code read directly, HTML stripped of its
+  tags, RTF of its control words, ODT / DOC / DOCX through the shared
+  rich-document reader, and ODS / XLSX / CSV / TSV laid out as a cell grid.
+  Page-shaped previews are only drawn from roughly a 40 px box up, so the icon
+  column of a Details or List row keeps its glyph and a folder listing does not
+  read every document in it. `FilerFileCategory` gained `Model3D` and the type
+  map learned the common 3D extensions (stl, obj, ply, 3ds, 3mf, gltf, glb,
+  dae, fbx) plus `tsv`, so those files sort and colour as models / text instead
+  of "File".
+
+#### 2026-08-08 *0.3.35*
+- Change Linux packager script, drop .appimage
+- Change GitHub build to produce package with all dependent libs
+
+#### 2026-08-08 *0.3.34*
+- **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget
+  again. The drag was handed to the native OS drag the moment the cursor
+  crossed the widget's border, and that is where it visibly died: the badge is
+  drawn by the widget and therefore clipped to it, the OS drag draws nothing of
+  its own while the cursor is still over the application's own window (XDND
+  refuses a drop back onto the window that started it), and on Windows and
+  macOS `StartNativeFileDrag()` had no implementation at all, so the gesture
+  was dropped on the floor. Crossing the border now keeps the drag running: the
+  badge travels over the whole window on the new window drag overlay, a release
+  over another element hands it the files as a `Drop` event (a second Filer
+  pane, a folder tree, any drop-aware widget), and only leaving the *window*
+  turns the set into the native OS drag. A platform without one keeps the
+  window-wide drag alive instead of losing the gesture.
+- **UltraCanvasWindowBase** *(2.2.0)*: new `SetDragOverlay(owner, windowRect,
+  renderer)` / `ClearDragOverlay(owner)` — window-level content painted above
+  every element, for widgets that drag something across the whole window and
+  cannot paint outside their own bounds. Moving it repaints the rectangle it
+  leaves and the one it enters; the first owner keeps it until it clears it.
+- **Windows backend**: native file drags out of a window are implemented
+  (`UltraCanvasWindowsWindow::StartNativeFileDrag`) with a CF_HDROP
+  `IDataObject` plus an `IDropSource` driven by `DoDragDrop`, the counterpart of
+  the `IDropTarget` that was already there. Files can now be dragged from a
+  Filer widget into Explorer or any other application, and the accepted effect
+  (copy / move) is reported back so a move rescans the source folder. macOS
+  still has no drag-and-drop backend in either direction.
+- **UCTextLayout** *(1.1.2)*: a `TextWrap::WrapNone` layout no longer wraps onto
+  a second line when it is also given an explicit height. Pango has no "never
+  wrap" flag — a no-wrap layout is one that Pango is told to ellipsize, and the
+  layout *height* decides when that kicks in: `-1` (the default) means "ellipsize
+  the first line of each paragraph", but a positive height means "ellipsize once
+  that many pixels are used up", so a box two lines tall lets the text word-wrap
+  once before anything is ellipsized. Widgets set an explicit height purely to
+  centre the glyphs vertically (`VerticalAlignment::Middle`), which silently
+  turned single-line text into two lines whenever the box was at least twice the
+  line height. `SetExplicitHeight` now keeps that value for the vertical
+  alignment maths only and leaves Pango's own height at `-1` while the layout is
+  in no-wrap mode; `SetWrap` re-applies it, since it may be called after the
+  height is set. `GetExplicitHeight` reports the requested height rather than
+  Pango's.
+- **UltraCanvasBreadcrumb / UltraCanvasLabel**: fixed as a result — the filer's
+  and media viewer's path strips kept long folder names such as
+  `UCDemo-Windows-0.3.24-x86_64 (1)` on one ellipsized line instead of breaking
+  them at the space and drawing two cramped lines inside a one-line strip.
+  Whether the break happened depended on the exact font line height against the
+  strip's height, which is why it showed on Windows and not on Linux. Long names
+  are still capped at `BreadcrumbStyle::maxItemTextWidth` (200px by default; set
+  it to `0` for no per-item limit).
+
+#### 2026-08-08 *0.3.33*
+- **UltraFiler — Extras > Open prompt**: a new menu bar entry starts the
+  operating system's command line program in the folder of the active tab.
+  The launch lives in `Apps/UltraFiler/UltraFilerPrompt` *(1.0.0)*, which
+  detaches the process (`fork` + `setsid` + `execvp` behind a reaped
+  intermediate child on POSIX, `ShellExecuteExW` on Windows), so closing the
+  file manager never takes the terminal with it and no zombie is left behind.
+  Without configuration the platform default is detected at run time:
+  `%COMSPEC%` on Windows, Terminal.app (started with `open -a <bundle>
+  <folder>`) on macOS, `$TERMINAL` or the first installed terminal emulator on
+  Linux; when nothing is found the failure is reported in an alert instead of
+  silently doing nothing.
+- **UltraFiler — settings**: the settings window gained an *Extras > Open
+  prompt* page holding the application that menu entry starts
+  (`extras.prompt.application` in the config file). The folder button next to
+  the path field opens the file dialog filtered to this platform's
+  applications, **Save app** persists the chosen program, **Use system
+  default** clears the setting again and **Test** starts the program in the
+  field to check the path. The dialog's buttons now come from one
+  `MakeButton` helper instead of per-button styling.
+- **UltraCanvasCircleDiagram** *(1.0.0)*: new hub-and-spoke circle diagram
+  infographic — a centre hub, a backbone ring, and equally sized labelled node
+  discs threaded onto that ring, each with a fan of satellites on leader lines.
+  It is the node-on-ring member of the circular family: every existing circular
+  element subdivides the ring into sectors, while this one threads discrete
+  discs onto it, so a node's radius is independent of ring thickness and it can
+  carry children outside the ring. Presentation-only (no viewport, dragging,
+  inline editing or undo); interaction is hover highlighting, tooltips and
+  `onNodeClick` / `onSatelliteClick`. Structure and colour are independent
+  presets — `CircleDiagramDesign` (`SatelliteWheel`, `BandedWheel`, `Custom`)
+  and `CircleDiagramPaletteKind` (seven themes plus `Custom`) — and both work
+  at any node count, because each palette is a hue ramp sampled at N points
+  rather than a fixed list. Every layout quantity derives from the per-node arc
+  of 360/N: the auto-fitted node radius is a share of the chord between
+  neighbours, the satellite fan is narrowed to what one node's wedge can hold
+  (shrinking auto-sized satellite discs when K of them will not fit side by
+  side), and anything outside the backbone — fans, or labels placed with
+  `CircleNodeLabelPlacement::Outside` — is reserved for by shrinking the
+  backbone radius so nothing is clipped. Disc labels shrink to fit, testing the
+  longest single word as well as the wrapped block, since a word too wide to
+  break ellipsizes rather than wrapping. Node discs are all one radius and
+  satellites another; `value` is tooltip/callback payload and never scales a
+  disc. `SetNodeCount()` clamps to 3–12 rather than degrading silently. Docs in
+  `Docs/UltraCanvas/UltraCanvasCircleDiagram.md`, survey and roadmap in
+  `Docs/UltraCanvas/CircleDiagramInfographicVariants.md`, demo scene in
+  `Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp`.
+
+#### 2026-08-08 *0.3.32*
+- **Version numbers** are now derived from the changelogs at build time, so the
+  version the demo app's info window shows can no longer disagree with the
+  version in the file name of the build it came from. The packaging scripts
+  already parsed `#### YYYY-MM-DD *x.y.z*` off the first changelog line for the
+  artefact names; the number compiled *into* the binaries was a separate
+  hand-maintained copy that only moved when someone remembered to run
+  `set-version.sh`, and it had fallen ten releases behind (the info window
+  reported 0.3.21 against a 0.3.31 changelog). The new
+  `cmake/UltraCanvasVersion.cmake` reads the same first line at configure time
+  and feeds `project(VERSION)`, `ULTRACANVAS_VERSION` and `ULTRATEXTER_VERSION`;
+  `UltraCanvas::versionString` and `UltraCanvasTextEditor::version` take their
+  value from those defines instead of a literal. Adding a changelog entry
+  re-triggers the configure step, so an existing build tree picks the new
+  version up rather than baking in the one it was first configured with.
+  `set-version.sh` now only writes the two Windows resource files that are read
+  from disk by windres (`UltraTexter.rc`, `UltraTexter.manifest`) — a configure
+  on any platform warns when those are stale.
+
+#### 2026-08-07 *0.3.31*
+- **UltraCanvasGLSurface** *(1.0.1)*: a surface built with a non-zero `(x, y)`
+  now keeps that origin. The constructor delegated to the size-only base
+  constructor, so the origin was written straight to `finalBounds` without a CSS
+  position behind it: the first layout pass re-stacked the surface as an in-flow
+  child and the GL content composited in the top-left corner of its container
+  while every sibling widget stayed put. It now uses the `(id, x, y, w, h)` base
+  constructor, which stamps an AbsoluteUI position for a non-zero origin;
+  `(0, 0)` still leaves the surface in flow for flex/grid parents. The doc gained
+  a "Positioning" section covering this and the bounds + CSS-box pattern needed
+  to move or resize a surface at runtime.
+- **DemoApp — OpenGL 3D showcase**: all three tabs (3D Models, Shaders, Zarch)
+  share one maximize control, `gldemo::AddMaximizeControl()`. The icon sits in
+  the canvas's top-right corner with an 8px margin, and the button, a
+  double-click on the canvas or Esc toggles between the normal layout and a
+  canvas maximized over the whole tab. Maximizing works now that the zoom writes
+  the CSS box as well as the bounds (`gldemo::PlaceElement`) — hiding the chrome
+  invalidated the layout, which promptly restored the canvas's original size. A
+  new `media/icons/minimise.svg` marks the restore state, the Zarch and Models
+  panels match the Shaders tab's column geometry, and the Shaders info text was
+  trimmed to what fits its panel.
 
 #### 2026-08-07 *0.3.30*
 - **UltraCanvasTooltipManager** *(2.3.0)*: structured tooltips gained

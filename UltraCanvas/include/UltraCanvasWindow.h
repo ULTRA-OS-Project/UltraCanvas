@@ -1,7 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
-// Version: 2.1.0 - cross-platform HiDPI/deviceScale scaling in base
-// Last Modified: 2026-07-03
+// Version: 2.2.0 - window drag overlay (content drawn above all elements)
+// Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -20,6 +20,12 @@
 
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
+
+    // Draws window-level content above all elements (see SetDragOverlay).
+    // The rectangle is the one the overlay was registered with, in window
+    // coordinates; the context is the window's, untranslated.
+    using WindowOverlayRenderer = std::function<void(IRenderContext* ctx,
+                                                     const Rect2Di& overlayRect)>;
 
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
@@ -108,6 +114,13 @@ namespace UltraCanvas {
 
 
         std::list<PopupElement> popupElements = {};
+
+        // Drag overlay (see SetDragOverlay): drawn after the element tree of
+        // every dirty rectangle it touches. The owner pointer is only ever
+        // compared, never dereferenced.
+        UltraCanvasUIElement* dragOverlayOwner = nullptr;
+        Rect2Di dragOverlayRect;
+        WindowOverlayRenderer dragOverlayRenderer;
 
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
@@ -287,6 +300,19 @@ namespace UltraCanvas {
             (void)filePaths; (void)onFinished;
             return false;
         }
+
+        // ===== DRAG OVERLAY =====
+        // A small piece of content painted on top of every element of the
+        // window. An element cannot paint outside its own bounds, so a widget
+        // that drags something across the whole window (the filer's drag badge)
+        // hands the drawing to the window instead. `windowRect` is in window
+        // coordinates: it is what gets repainted when the overlay moves away
+        // and what the renderer draws into. The first owner keeps the overlay
+        // until it clears it, so two simultaneous gestures cannot fight over it.
+        void SetDragOverlay(UltraCanvasUIElement* owner, const Rect2Di& windowRect,
+                            WindowOverlayRenderer renderer);
+        void ClearDragOverlay(UltraCanvasUIElement* owner);
+        bool HasDragOverlay() const { return dragOverlayRenderer != nullptr; }
 
         // Overlay elements
         void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);

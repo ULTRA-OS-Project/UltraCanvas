@@ -6,8 +6,13 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# Version comes from the first line of Docs/UltraCanvas/CHANGELOG.md — the same
+# line the packaging scripts read for the artefact file names. Must be included
+# before project(), which needs ULTRACANVAS_VERSION.
+include(cmake/UltraCanvasVersion.cmake)
+
 project(UltraCanvasDemoApp
-    VERSION 0.3.21
+    VERSION ${ULTRACANVAS_VERSION}
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -36,10 +41,18 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_DEBUG} -pg" CACHE STRING "C++ fla
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -pg" CACHE STRING "Linker flags for Profile build" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" CACHE STRING "Shared linker flags for Profile build" FORCE)
 
+# Build every target position-independent so the static sublibs (UltraNet,
+# UltraDatabase, microtex_core, UltraMailEngine, VirtualFS) can be linked into
+# the shared libUltraCanvas.so (ULTRACANVAS_BUILD_SHARED). Negligible cost on
+# x86-64 and harmless for the static build.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# Executables go to the build root so the portable Linux package can place them
+# alongside lib/ and share/ (see package-linux.sh).
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ===== BUILD OPTIONS =====
 option(BUILD_TEXTER_APP "Build the texter application" ON)
@@ -188,6 +201,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineChartExamples.cpp
@@ -530,6 +545,11 @@ endif()
     # Compile definitions
     target_compile_definitions(UltraCanvasTexter PRIVATE
             ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
+            # UltraTexter has its own changelog and its own version line; this
+            # target must define it too, or the editor built from here would
+            # report a different version than the one built from
+            # Apps/Texter/CMakeLists.txt.
+            ULTRATEXTER_VERSION="${ULTRATEXTER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/Texter.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
@@ -564,6 +584,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/main.cpp
             Apps/UltraFiler/UltraFilerWindow.cpp
             Apps/UltraFiler/UltraFilerSettingsDialog.cpp
+            Apps/UltraFiler/UltraFilerPrompt.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
@@ -848,9 +869,9 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 add_custom_target(copy_assets
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/media ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/media
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Docs ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/Docs
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Apps/DemoApp ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/DemoApp
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/media ${CMAKE_CURRENT_BINARY_DIR}/share/media
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Docs ${CMAKE_CURRENT_BINARY_DIR}/share/Docs
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Apps/DemoApp ${CMAKE_CURRENT_BINARY_DIR}/share/DemoApp
 )
 if(BUILD_TEXTER_APP)
     add_dependencies(UltraCanvasTexter copy_assets)

@@ -22,7 +22,11 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.21")
+# ULTRACANVAS_VERSION is read from the first line of Docs/UltraCanvas/CHANGELOG.md.
+# The root CMakeLists.txt already includes this module (include_guard makes the
+# second include a no-op); the include here keeps a standalone library configure
+# working.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasVersion.cmake")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -415,6 +419,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneText.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasWordCloudDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogram.cpp
@@ -884,6 +892,18 @@ if(WIN32)
     # data, incl. vtables/typeinfo the LaTeX plugin needs) and emit an import lib.
     set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
         WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
+# When built SHARED on Linux, libUltraCanvas.so carries an intentional set of
+# undefined symbols that resolve at load time from its DT_NEEDED libs — notably
+# the vendored libcurl's versioned WebSocket symbols (curl_ws_*@CURL_OPENSSL_4),
+# which the system libcurl on an executable's link line does NOT provide.
+# VendoredCurl.cmake sets --allow-shlib-undefined so ld trusts those, but a
+# STATIC core propagates that flag to executables while a SHARED core boundary
+# does not. Re-export it here so every consumer of the shared core inherits it.
+if(ULTRACANVAS_BUILD_SHARED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(${ULTRACANVAS_LIB_NAME} INTERFACE
+        "-Wl,--allow-shlib-undefined")
 endif()
 
 # ===== INCLUDE DIRECTORIES =====

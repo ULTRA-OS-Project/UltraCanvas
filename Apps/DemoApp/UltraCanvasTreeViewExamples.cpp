@@ -40,7 +40,7 @@ namespace UltraCanvas {
         fileTree->AddNode("root", driveC);
 
         TreeNodeData documents("documents", "Documents");
-        documents.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
+        documents.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
         fileTree->AddNode("drive_c", documents);
 
         TreeNodeData file1("file1", "Document.txt");
@@ -48,7 +48,7 @@ namespace UltraCanvas {
         fileTree->AddNode("documents", file1);
 
         TreeNodeData pictures("pictures", "Pictures");
-        pictures.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
+        pictures.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
         fileTree->AddNode("drive_c", pictures);
 
         fileTree->onNodeSelected = [](TreeNode* node) {
@@ -85,7 +85,7 @@ namespace UltraCanvas {
         multiTree->SetSelectionMode(TreeSelectionMode::Multiple);
 
         TreeNodeData multiRoot("multi_root", "Categories");
-        TreeNode* multiRootNode = multiTree->SetRootNode(multiRoot);
+        multiTree->SetRootNode(multiRoot);
 
         TreeNodeData category1("cat1", "Category 1");
         multiTree->AddNode("multi_root", category1);
@@ -96,13 +96,33 @@ namespace UltraCanvas {
         multiTree->AddNode("multi_root", category2);
         multiTree->AddNode("cat2", TreeNodeData("item3", "Item 3"));
 
-        multiRootNode->Expand();
+        // Enough rows to overflow the 200px viewport, so the floating
+        // "move to the top" button in the bottom-right corner shows up.
+        for (int cat = 3; cat <= 8; ++cat) {
+            std::string catId = "cat" + std::to_string(cat);
+            multiTree->AddNode("multi_root", TreeNodeData(catId, "Category " + std::to_string(cat)));
+            for (int item = 1; item <= 3; ++item) {
+                multiTree->AddNode(catId, TreeNodeData(catId + "_item" + std::to_string(item),
+                                                       "Item " + std::to_string(item)));
+            }
+        }
+
+        multiTree->ExpandAll();
         container->AddChild(multiTree);
 
         auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiTreeLabel", 350, 260, 300, 20);
         multiLabel->SetText("Multi-Selection TreeView (Ctrl+Click)");
         multiLabel->SetFontSize(12);
         container->AddChild(multiLabel);
+
+        // Scroll-to-top button toggle (the feature is on by default).
+        auto scrollTopCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "ScrollToTopCheckbox", 350, 288, 300, 24, "Show \"move to the top\" button");
+        scrollTopCheckbox->SetChecked(true);
+        scrollTopCheckbox->onStateChanged = [multiTree](CheckedState, CheckedState newState) {
+            multiTree->SetShowScrollToTopButton(newState == CheckedState::Checked);
+        };
+        container->AddChild(scrollTopCheckbox);
 
         // ----- Debugger "Variables" panel: Classic vs Modern columns -----
         // Demonstrates the columnar display mode (Name / Type / Value with an accent

@@ -1532,6 +1532,22 @@ namespace UltraCanvas {
                 .AddVariant("swotdiagram", "Rows")
                 .AddVariant("swotdiagram", "Columns");
 
+        infoBuilder.AddItem("fishbonediagram", "Fishbone Diagram",
+                            "Ishikawa cause-and-effect analysis with eight design presets, "
+                            "category checklists and Mermaid ishikawa-beta interchange",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateFishboneDiagramExamples(); },
+                            "DemoApp/UltraCanvasFishboneDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasFishboneDiagram.md")
+                .AddVariant("fishbonediagram", "Spine Chips")
+                .AddVariant("fishbonediagram", "Classic")
+                .AddVariant("fishbonediagram", "Bracket")
+                .AddVariant("fishbonediagram", "Crossed Ribs")
+                .AddVariant("fishbonediagram", "Chevron Spine")
+                .AddVariant("fishbonediagram", "Columns")
+                .AddVariant("fishbonediagram", "Vertical")
+                .AddVariant("fishbonediagram", "Compact");
+
         infoBuilder.AddItem("timelinediagram", "Timeline Diagram",
                             "Narrative timeline infographic with nine design presets",
                             ImplementationStatus::FullyImplemented,
@@ -1563,6 +1579,18 @@ namespace UltraCanvas {
                 .AddVariant("circularinfo", "Technology Ecosystem (270°)")
                 .AddVariant("circularinfo", "Multi-Track Genomic Style")
                 .AddVariant("circularinfo", "Decorative Mandala");
+
+        infoBuilder.AddItem("circlediagram", "Circle diagram",
+                            "Hub-and-spoke nodes threaded onto a backbone ring, each with a "
+                            "fan of satellites on leader lines",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateCircleDiagramExamples(); },
+                            "DemoApp/UltraCanvasCircleDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasCircleDiagram.md")
+                .AddVariant("circlediagram", "Satellite Wheel")
+                .AddVariant("circlediagram", "Banded Wheel")
+                .AddVariant("circlediagram", "Node Count Sweep")
+                .AddVariant("circlediagram", "Outside Labels");
 
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
                             ImplementationStatus::PartiallyImplemented,
