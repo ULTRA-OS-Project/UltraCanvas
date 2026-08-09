@@ -95,6 +95,9 @@
   `DrawDialogButton`) are recorded in `scripts/ui_reuse_baseline.txt` and do
   not fail the build, so only new ones do. Self-rendered views that legitimately
   paint their own content opt out with a `// ui-reuse-exempt: <reason>` marker.
+#### 2026-08-08 *0.3.35*
+- Change Linux packager script, drop .appimage
+- Change GitHub build to produce package with all dependent libs
 
 #### 2026-08-08 *0.3.34*
 - **UltraCanvasFilerWidget** *(1.12.0)*: a dragged file can leave the widget

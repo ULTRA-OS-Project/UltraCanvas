@@ -1246,6 +1246,13 @@ namespace UltraCanvas {
         renamedFromPath.clear();
         renamedToPath.clear();
 
+        // Kept for the reveal below: the new name can sort anywhere in the
+        // listing, so the entry the user just renamed is scrolled back into
+        // view rather than left wherever the new order put it.
+        const std::string renamedTo = renamedToPath;
+        renamedFromPath.clear();
+        renamedToPath.clear();
+
         entries.clear();
         effectiveSizesValid = false;
         hoveredIndex = -1;
