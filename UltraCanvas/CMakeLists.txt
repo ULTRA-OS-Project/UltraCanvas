@@ -894,6 +894,18 @@ if(WIN32)
         WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
 
+# When built SHARED on Linux, libUltraCanvas.so carries an intentional set of
+# undefined symbols that resolve at load time from its DT_NEEDED libs — notably
+# the vendored libcurl's versioned WebSocket symbols (curl_ws_*@CURL_OPENSSL_4),
+# which the system libcurl on an executable's link line does NOT provide.
+# VendoredCurl.cmake sets --allow-shlib-undefined so ld trusts those, but a
+# STATIC core propagates that flag to executables while a SHARED core boundary
+# does not. Re-export it here so every consumer of the shared core inherits it.
+if(ULTRACANVAS_BUILD_SHARED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(${ULTRACANVAS_LIB_NAME} INTERFACE
+        "-Wl,--allow-shlib-undefined")
+endif()
+
 # ===== INCLUDE DIRECTORIES =====
 target_include_directories(${ULTRACANVAS_LIB_NAME}
     PUBLIC
