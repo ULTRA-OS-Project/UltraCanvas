@@ -154,15 +154,18 @@ ULTRANET_PROBE(kArea, UltraNet_HasHttp3) {
 // ---------------------------------------------------------------------------
 
 ULTRANET_PROBE(kArea, UltraNet_DetectSystemProxy) {
-#if defined(_WIN32) || defined(_WIN64)
+#if !defined(__linux__)
+    // Windows (WinHTTP) and macOS (CFNetworkCopySystemProxySettings) read the
+    // OS-level proxy configuration, which the probe cannot set to a known
+    // value without mutating real system state.
     UltraNetProxyConfig detected;
     UltraNet_DetectSystemProxy(detected);
-    return Implemented("WinHTTP-backed detection ran (found: " +
+    return Implemented("system-configuration-backed detection ran (found: " +
                        std::string(detected.IsEnabled() ? detected.host : "no proxy") +
                        "); the probe cannot force a known system setting to "
                        "check the parse against");
 #else
-    // Linux/macOS read the *_proxy environment variables at call time, so the
+    // Linux reads the *_proxy environment variables at call time, so the
     // probe can plant a known value and check the parse.
     const char* previous = std::getenv("https_proxy");
     const std::string saved = previous ? previous : "";
