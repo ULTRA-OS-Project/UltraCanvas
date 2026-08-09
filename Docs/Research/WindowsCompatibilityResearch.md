@@ -94,6 +94,21 @@ UltraCanvas-owned API and rendered *inside an UltraCanvas element*, so Windows
 apps would appear as native ULTRA OS windows — a deeper integration than
 WinBoat's Electron shell achieves.
 
+RemoteApp fine print (verified):
+
+- The RDP/RemoteApp *host* role requires a **Windows Pro/Enterprise guest**
+  (Home lacks it). Unattended-install tooling (dockur/windows, WinBoat)
+  installs Pro and pre-configures RemoteApp.
+- Apps must be allowed for RemoteApp in the guest registry (`TSAppAllowList`,
+  or `fDisabledAllowList = 1` to allow all) — a one-time guest-provisioning
+  step.
+- The stock `xfreerdp` client opens **one RDP connection per `/app`
+  invocation**; Microsoft's own client multiplexes many app windows over one
+  connection with additional `RAIL_ORDER_EXEC` PDUs (FreeRDP issue #12625).
+  Embedding **libfreerdp** (rather than shelling out to `xfreerdp`) lets an
+  UltraWin backend do the same multiplexing — another argument for wrapping
+  the library.
+
 ### 2.5 Hangover 11.0 + FEX-Emu / Box64 — the ARM64 answer
 
 - **Licenses:** Hangover follows Wine (LGPL); FEX-Emu MIT; Box64 MIT.
@@ -127,7 +142,39 @@ WinBoat's Electron shell achieves.
 
 ---
 
-## 3. Recommended architecture for ULTRA OS
+## 3. Meeting the two hard product requirements
+
+The stated goals are: **(a)** Windows apps appear as single windows with no
+Windows desktop visible, and **(b)** Windows apps see the same folders as the
+native OS. Both are met in both tiers, by different mechanisms:
+
+### 3.1 Single windows, no Windows desktop
+
+| Tier | Mechanism | Notes |
+|---|---|---|
+| Wine | **By construction** — there is no Windows desktop at all; every app window is a native X11/Wayland window with host window management | Avoid Wine's optional "virtual desktop" mode; default mode is already what we want |
+| QEMU/KVM | **RemoteApp / RAIL** over FreeRDP (`/app:` or `RAIL_ORDER_EXEC`) exports individual application windows; the guest desktop is never shown and the VM runs headless | Requires Windows Pro guest + `TSAppAllowList` provisioning (see §2.4); embed libfreerdp to multiplex all app windows over one connection |
+
+Full-desktop viewers (SPICE display, virt-viewer, Looking Glass) do **not**
+satisfy requirement (a) — they always show the whole guest desktop. RemoteApp
+is the only mature open source path to per-window integration for a VM, which
+is why the FreeRDP layer is not optional in tier 2.
+
+### 3.2 Shared folders — same files as the native OS
+
+| Tier | Mechanism | Semantics |
+|---|---|---|
+| Wine | **Drive mappings** — by default `Z:` is `/` and the prefix's `users` folder can symlink `Documents`, `Downloads`, etc. straight to the native ones | It *is* the host filesystem — no copy, no sync, full performance |
+| QEMU/KVM, preferred | **virtiofs** + WinFsp + the virtio-win `VirtioFsSvc` guest service: host directories mount as a real drive letter (default `Z:`, configurable via `-m` / `Mountpoint` registry value) | Local-filesystem semantics and near-local performance; the DAX window can map host page cache directly into the guest |
+| QEMU/KVM, fallback | **RDP drive redirection** (`/drive:home,/home/user` → `\\tsclient\home`), the mechanism WinApps/WinBoat use | Zero guest setup beyond RDP, but network-share semantics and slower for large trees |
+
+Recommended default: map the user's home directory (or the ULTRA OS
+equivalent) into both tiers under the same drive letter so an app behaves
+identically whichever tier launched it. File dialogs in the guest can be
+steered there by provisioning Windows "known folders" (Documents, Desktop,
+Downloads) onto the virtiofs drive.
+
+## 4. Recommended architecture for ULTRA OS
 
 Following the house rule that public engines are always wrapped behind an
 UltraCanvas-owned API (AGENTS.md — "Wrapped engines"), the capability would be
@@ -166,7 +213,7 @@ Key design points:
    licensed Windows image. Tier 1 (Wine) has no such requirement — another
    reason it must be the default.
 
-## 4. Suggested phasing
+## 5. Suggested phasing
 
 1. **Phase 1 — Wine tier:** bundle/detect Wine 11, prefix manager, launch +
    lifecycle API, `.exe` association in UltraFiler. Lowest effort, biggest
@@ -179,13 +226,16 @@ Key design points:
 
 ---
 
-## 5. Sources
+## 6. Sources
 
 - Wine 11.0 release (NTSYNC, WoW64, Wayland): phoronix.com/news/Wine-11.0-Tomorrow, 9to5linux.com/wine-11-officially-released-with-ntsync-support-vulkan-h-264-decoding-and-more
 - Wine 10.0 (Wayland default, ARM64EC): phoronix.com/news/Wine-10.0-Released
 - Hangover 11.0 (Wine + FEX/Box64 on ARM64): phoronix.com/news/Hangover-11.0-Released, github.com/AndreRH/hangover
 - FEX-Emu: fex-emu.com
 - WinBoat architecture (KVM-in-Docker + FreeRDP RemoteApp, MIT): winboat.app, windowsforum.com/threads/winboat-run-real-windows-apps-on-linux-with-kvm-in-docker-and-remoteapp.391795/
+- RAIL / RemoteApp protocol: learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdperp/485e6f6d-2401-4a9c-9330-46454f0c5aba
+- FreeRDP one-connection-per-/app limitation: github.com/FreeRDP/FreeRDP/issues/12625
+- virtiofs on Windows guests (WinFsp, drive letters): virtio-fs.gitlab.io/howto-windows.html, virtio-win.github.io/Knowledge-Base/Virtiofs-qs.html, sysguides.com/share-files-between-the-kvm-host-and-windows-guest-using-virtiofs
 - KVM vs QEMU roles: northflank.com/blog/kvm-vs-qemu
 - QEMU/KVM Windows 11 guest + virtio/virtiofs state: technologytales.com/windows-11-virtualisation-on-linux-using-kvm-and-qemu
 - 2026 state-of-the-ecosystem overviews: linuxnest.com/the-2026-state-of-running-windows-applications-on-linux, botmonster.com/self-hosting/run-windows-apps-linux-bottles-proton-2026
