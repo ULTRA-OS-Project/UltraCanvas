@@ -33,7 +33,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -155,6 +155,8 @@ New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
 Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
                   Type    >  all view types
+                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                             Docs / Spreadsheets / Videos  (checkboxes, all on)
                   Dataset >  Size / Edit date / Creation date / Attributes /
                              Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
@@ -189,6 +191,8 @@ Notes:
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
   `CompressSelection(extension)` still performs an immediate, dialog-free
   compress for programmatic use.
+- **Display > Preview** switches content previews on and off per file kind —
+  see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
   thumbnail views: Size, Edit date, Creation date, Attributes, Length
   (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
@@ -196,6 +200,58 @@ Notes:
   appear on the file kinds they apply to (their values are probed lazily from
   the file headers and cached). Drive it in code with
   `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
+
+## Selective previews
+
+A **content preview** is a tile rendered from the file itself instead of the
+generic category glyph. Which kinds of file get one is selectable, and every
+kind is enabled by default:
+
+```cpp
+filer->SetPreviewType(FilerPreviewType::Videos, false);   // no poster frames
+filer->IsPreviewTypeEnabled(FilerPreviewType::PDF);       // true
+
+// Only the cheap ones (a slow network share, say):
+filer->SetPreviewTypes(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
+                       static_cast<uint32_t>(FilerPreviewType::Text));
+
+filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
+```
+
+| `FilerPreviewType` | Menu label | Applies to | What is shown |
+|---|---|---|---|
+| `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
+| `VectorGraphics` | Vector graphics | svg, eps, cdr, xar | the rendered drawing (formats the image pipeline can rasterize) |
+| `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
+| `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
+| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph) |
+| `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
+
+Notes:
+
+- Switching a kind off repaints its entries with the type glyph immediately and
+  stops the widget from opening those files at all — that is the point of the
+  switches: a folder of huge photos, videos or PDFs on a slow volume stays
+  browsable. Switching it back on re-uses whatever is still cached and reads the
+  rest in the background.
+- Previews are produced on the same background workers as the image
+  thumbnails, in the same viewport-driven order (visible tiles first, then one
+  screen of prefetch), so no preview ever blocks a frame. Image work has
+  priority over reading text.
+- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
+  a page is legible — from roughly a 40 px box up. The small icon column of the
+  Details and List rows keeps the type glyph, so a folder listing does not read
+  every document in it.
+- `FilerPreviewType` values are a bitmask; `GetPreviewTypes()` returns the
+  current set and `kFilerAllPreviewTypes` is the default. The preview kinds do
+  not map one to one onto `FilerFileCategory`: PDF is split out of the Document
+  category because it renders a page, and CSV / TSV count as spreadsheets
+  because they preview as a grid (their file category stays `Text`).
+  `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
+  (`NonePreview` for folders, audio, archives and programs, which never carry a
+  content preview).
 
 ## Selection info bar
 
