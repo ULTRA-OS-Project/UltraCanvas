@@ -337,3 +337,41 @@ jobs:
           name: UltraCanvas-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: dist/UltraCanvas-Linux-${{ env.VERSION }}-x86_64.tar.gz
           retention-days: 7
+
+  # ===== ANDROID BACKEND CHECK =====
+  # Separate job, not a matrix row (investigation §5): there is no
+  # cross-compiled dependency sysroot yet, so a full Android build is not
+  # possible in CI. Until it exists, this is the anti-rot gate the plan
+  # requires (§6 lesson 1): every OS/Android translation unit is type-checked
+  # with the REAL NDK toolchain/headers (the runner preinstalls an NDK), and
+  # the Android CMake arms are exercised in a configure-only pass. Catches
+  # base-class signature drift, NDK API misuse, __linux__/__ANDROID__
+  # ordering regressions, and CMake breakage - not link errors.
+  android-check:
+    name: Android backend check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install host dependency headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config \
+            libcairo2-dev libpango1.0-dev libfontconfig-dev libglib2.0-dev \
+            libtinyxml2-dev libfreetype-dev libfmt-dev libssl-dev \
+            libcurl4-openssl-dev libc-ares-dev
+
+      - name: Syntax-check OS/Android against the NDK
+        run: scripts/android-syntax-check.sh "$ANDROID_NDK_LATEST_HOME"
+
+      - name: Configure-only test of the Android CMake arms
+        # -DANDROID=1 stands in for the toolchain file (host compilers, host
+        # pkg-config deps): validates platform detection, the glue-source
+        # wiring, forced-off GL/plugins, and the UltraNet Android arm with
+        # c-ares present. A full toolchain configure needs the dep sysroot.
+        run: |
+          cmake -B build-android-cfgtest \
+            -DANDROID=1 \
+            -DCMAKE_ANDROID_NDK="$ANDROID_NDK_LATEST_HOME" \
+            -DULTRACANVAS_ENABLE_NET=ON
