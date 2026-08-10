@@ -8,6 +8,11 @@
 #if defined(_WIN32) || defined(_WIN64)
     struct HWND__;   // matches windows.h's DECLARE_HANDLE(HWND)
     namespace UltraCanvas { using NativeWindowHandle = HWND__*; }      // == HWND
+#elif defined(__ANDROID__)
+    // Tested before __linux__ (bionic defines both): the handle is the
+    // ANativeWindow* the activity's surface currently wraps, kept opaque so
+    // this header needs no NDK include.
+    namespace UltraCanvas { using NativeWindowHandle = void*; }
 #elif defined(__linux__) || defined(__unix__)
     namespace UltraCanvas { using NativeWindowHandle = unsigned long; } // == XID/Window
 #elif defined(__APPLE__)

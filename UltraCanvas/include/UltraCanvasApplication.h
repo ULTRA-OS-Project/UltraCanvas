@@ -19,6 +19,9 @@
 #include <functional>
 #include <iostream>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 #include <queue>
 #include <optional>
 
@@ -309,7 +312,12 @@ namespace UltraCanvas {
     };
 }
 
-#if defined(__linux__) || defined(__unix__) || defined(__unix)
+// __ANDROID__ must be tested before __linux__: bionic defines __linux__, so the
+// Linux/X11 branch would otherwise shadow the Android one on every NDK build.
+#if defined(__ANDROID__)
+#include "../OS/Android/UltraCanvasAndroidApplication.h"
+namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplication; }
+#elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplication; }
 #elif defined(_WIN32) || defined(_WIN64)
@@ -328,9 +336,6 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
     #else
         #error "Unsupported Apple platform"
     #endif
-#elif defined(__ANDROID__)
-    #include "../OS/Android/UltraCanvasAndroidApplication.h"
-    namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplication; }
 #elif defined(__WASM__)
     // Web/WASM
     #include "../OS/Web/UltraCanvasWebApplication.h"

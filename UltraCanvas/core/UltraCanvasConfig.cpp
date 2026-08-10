@@ -35,6 +35,13 @@ namespace UltraCanvas {
 #elif defined(__APPLE__)
         std::string UC_DEFAULT_RESOURCES_DIR = "../Resources/"; // .app/Contents/Resources/
         resourcesDir = GetExecutableDir() + "/" + UC_DEFAULT_RESOURCES_DIR;
+#elif defined(__ANDROID__)
+        // Before the Linux arm (bionic defines __linux__). APK assets are not
+        // filesystem paths; the android_main glue extracts them into the
+        // app-private files dir and exports it as HOME, so path-based resource
+        // loading keeps working unchanged.
+        const char* home = std::getenv("HOME");
+        resourcesDir = std::string(home && *home ? home : ".") + "/share/";
 #else // Linux / Unix
         // The resources directory sits at a different offset from the executable
         // depending on how the app is deployed, so probe a set of candidates and

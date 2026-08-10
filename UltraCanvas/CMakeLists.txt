@@ -108,13 +108,20 @@ elseif(ANDROID)
     # Must be tested before UNIX: the Android NDK toolchain satisfies UNIX (and
     # bionic defines __linux__), so an Android build would otherwise silently
     # select the X11/Linux backend and fail on <X11/Xlib.h>.
+    #
+    # Requires a cross-compiled dependency sysroot (cairo/pango/glib/harfbuzz/
+    # fontconfig/freetype/tinyxml2) reachable through PKG_CONFIG_LIBDIR; see
+    # Docs/UltraCanvas/AndroidPortInvestigation.md §4.
     set(ULTRACANVAS_PLATFORM "Android")
     set(ULTRACANVAS_PLATFORM_DIR "OS/Android")
-    message(FATAL_ERROR
-        "Android is recognized as a target, but the OS/Android backend is not "
-        "implemented yet. See Docs/UltraCanvas/AndroidPortInvestigation.md for "
-        "the port plan (backend files, dependency sysroot, phases). This error "
-        "will be lifted when the OS/Android backend lands.")
+    # android_native_app_glue.c (compiled into the platform sources below) is C.
+    enable_language(C)
+    # GL surfaces need the GLES/EGL context manager, which lands in a later
+    # phase; chart elements degrade to their non-GL fallbacks automatically.
+    if(ULTRACANVAS_ENABLE_GL)
+        message(STATUS "OpenGL surfaces: DISABLED on Android (GLES context manager not implemented yet)")
+        set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+    endif()
 elseif(UNIX)
     set(ULTRACANVAS_PLATFORM "Linux")
     set(ULTRACANVAS_PLATFORM_DIR "OS/Linux")
@@ -562,7 +569,9 @@ set(ULTRACANVAS_CHART_MODULE_GRANULARITY "chart" CACHE STRING
     "Runtime module packaging: chart|family (family reserved for grouped packaging)")
 
 # Platforms without dlopen fall back to compile-time selection (proposal §12.11).
-if(EMSCRIPTEN AND ULTRACANVAS_CHART_RUNTIME_MODULES)
+# Android counts too: an app is a .so loaded by the VM (no host executable to
+# resolve core symbols from) and dlopen outside the APK's lib/ dir is blocked.
+if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_CHART_RUNTIME_MODULES)
     message(STATUS "Charts: no dynamic loading on this platform - runtime modules disabled")
     set(ULTRACANVAS_CHART_RUNTIME_MODULES OFF)
 endif()
@@ -682,6 +691,22 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             LANGUAGE OBJCXX
             COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
     )
+endif()
+
+# Android compiles the NDK's android_native_app_glue (C source) into the
+# platform sources: UltraCanvasAndroidMain.cpp provides android_main() on top
+# of it, and the application/window classes consume its android_app state.
+if(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    if(NOT CMAKE_ANDROID_NDK AND ANDROID_NDK)
+        set(CMAKE_ANDROID_NDK ${ANDROID_NDK})
+    endif()
+    set(_uc_ndk_glue_dir "${CMAKE_ANDROID_NDK}/sources/android/native_app_glue")
+    if(NOT EXISTS "${_uc_ndk_glue_dir}/android_native_app_glue.c")
+        message(FATAL_ERROR "android_native_app_glue not found under "
+                            "'${_uc_ndk_glue_dir}' - is CMAKE_ANDROID_NDK set?")
+    endif()
+    list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+        ${_uc_ndk_glue_dir}/android_native_app_glue.c)
 endif()
 
 # The OS-level UltraNet back-ends (UltraNetSupport / UltraNetTlsImpl /
@@ -1001,6 +1026,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             ${GLEW_LIBRARY_DIRS}
         )
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    # <android_native_app_glue.h> for the platform sources.
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${_uc_ndk_glue_dir}
+    )
 endif()
 
 # ===== LINK LIBRARIES =====
@@ -1069,6 +1099,15 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             opengl32
         )
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    # libandroid: ALooper/ANativeWindow/AConfiguration; liblog: __android_log_*.
+    # Bionic bundles pthread; the NDK ships no separate libpthread to link.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            android
+            log
+            dl
+            ${FONTCONFIG_LIBRARIES}
+    )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
@@ -1334,9 +1373,10 @@ if(ULTRACANVAS_ENABLE_NET)
         set(UC_CURL_LINK CURL::libcurl)
         message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} (WebSocket: OK)")
     endif()
-    # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux. Windows and
-    # macOS use Schannel / SecureTransport (no extra dependency).
-    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux and Android
+    # (which reuses the Linux implementation). Windows and macOS use
+    # Schannel / SecureTransport (no extra dependency).
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux" OR ULTRACANVAS_PLATFORM STREQUAL "Android")
         find_package(OpenSSL REQUIRED)
     endif()
 
@@ -1383,6 +1423,21 @@ if(ULTRACANVAS_ENABLE_NET)
         if(NOT ULTRANET_HAS_CARES)
             list(APPEND ULTRANET_SOURCES
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetDnsImpl.cpp)
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # Proxy detection (pure getenv) and OpenSSL TLS are bionic-compatible
+        # as-is: reuse the Linux sources (their #ifdef __linux__ guards are
+        # satisfied - bionic defines __linux__) instead of committing copies
+        # that would drift. The Linux DNS impl is NOT portable (bionic exports
+        # no res_n* API and has no libresolv), so c-ares is mandatory here.
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetTlsImpl.cpp)
+        if(NOT ULTRANET_HAS_CARES)
+            message(FATAL_ERROR "UltraNet on Android requires c-ares (libcares "
+                "in the dependency sysroot): bionic has no res_n*/libresolv "
+                "for the per-platform DNS fallback. Install c-ares or configure "
+                "with -DULTRACANVAS_ENABLE_NET=OFF.")
         endif()
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         list(APPEND ULTRANET_SOURCES
@@ -1435,6 +1490,10 @@ if(ULTRACANVAS_ENABLE_NET)
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # No -lresolv: bionic has no separate resolver library (and the c-ares
+        # path is mandatory here anyway).
+        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
         # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;

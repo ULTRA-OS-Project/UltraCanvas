@@ -328,6 +328,9 @@ namespace UltraCanvas {
         // Platform-specific window handle (X11 Window, HWND, etc.)
 #if defined(_WIN32) || defined(_WIN64)
         NativeWindowHandle nativeWindowHandle = nullptr;
+#elif defined(__ANDROID__)
+        // Before __linux__ (bionic defines both): Android handles are pointers.
+        NativeWindowHandle nativeWindowHandle = nullptr;
 #elif defined(__linux__) || defined(__unix__)
         NativeWindowHandle nativeWindowHandle = 0;
 #elif defined(__APPLE__)
