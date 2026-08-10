@@ -13,6 +13,7 @@ this backend implements its **Phase 1 — pixels on screen** scope.
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics as logged "Cancel" stubs. Real dialogs are callback-based JNI (AlertDialog / Storage Access Framework) and need an async bridge — phase 2 (investigation §3.5). |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
+| `GLContextManagerEGL_Android.cpp` | EGL + **OpenGL ES** context manager (ES 3 preferred, ES 2 fallback) behind the same `CreateGLContextManagerEGL()` factory symbol the dispatcher uses on Linux. Same offscreen model as the Linux EGL manager: 1×1 pbuffer made current, all real rendering into FBOs (`GLFramebuffer.cpp` compiles against `<GLES3/gl3.h>` on Android, and `ICompositeStrategy.cpp` reads back `GL_RGBA` + swizzles to Cairo's word order, since core GLES has no `GL_BGRA` readback). `GLSurfaceConfig`'s desktop fields (`glVersionMajor/Minor`, `coreProfile`) are ignored. Note: the FBO layer uses ES 3 sized formats (`GL_RGBA8`), so the ES 2 fallback context is best-effort only — every `minSdk 26` device ships ES 3.x. |
 
 **Not copied here on purpose:** UltraNet's platform glue. `OS/Linux/UltraNetSupport.cpp`
 (getenv proxy detection) and `OS/Linux/UltraNetTlsImpl.cpp` (OpenSSL) are
@@ -73,12 +74,13 @@ cmake -B build-android \
 The root CMakeLists defaults everything except the core library OFF for
 Android (apps, plugins, vips, audio/video, UltraNet, database, VirtualFS);
 each is an ordinary cache option that `-D...=ON` re-enables once its
-dependency exists in the sysroot. GL surfaces are forced OFF until the
-GLES/EGL context manager lands (phase 2).
+dependency exists in the sysroot. GL surfaces stay ON: EGL and GLESv3 come
+from the NDK sysroot itself (no pkg-config probing), wired through
+`GLContextManagerEGL_Android.cpp`.
 
 ## Still to come (phases 2–3, investigation §7)
 
 JNI clipboard,
 soft-keyboard/IME hook, SAF dialogs + `content://` adapter, UltraNet CA
-bundle, EGL/GLES context manager, real multi-touch in the core event model,
-audio/video/PDF, Gradle packaging + CI job.
+bundle, real multi-touch in the core event model,
+audio/video/PDF, Gradle packaging + a full sysroot CI build.

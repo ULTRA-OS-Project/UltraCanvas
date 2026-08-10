@@ -43,8 +43,15 @@ bool CompositeStrategyCPU::Composite(GLFramebuffer& framebuffer,
     }
 
     if (readback) {
+#ifdef __ANDROID__
+        // Core GLES only guarantees GL_RGBA/GL_UNSIGNED_BYTE for glReadPixels
+        // (GL_BGRA needs EXT_read_format_bgra); the pixmap copy below swaps
+        // R and B into Cairo's word order instead.
+        PixelFormat format = PixelFormat::RGBA8();
+#else
         // Use BGRA format for Cairo compatibility
         PixelFormat format = PixelFormat::BGRA8();
+#endif
 
         // Reallocate buffer and pixmap if size changed
         if (fbWidth != impl_->lastWidth || fbHeight != impl_->lastHeight) {
@@ -87,7 +94,18 @@ bool CompositeStrategyCPU::Composite(GLFramebuffer& framebuffer,
         for (int y = 0; y < fbHeight; ++y) {
             uint32_t* srcRow = reinterpret_cast<uint32_t*>(data + y * impl_->buffer.rowStride);
             uint32_t* dstRow = pixmapData + y * fbWidth;
+#ifdef __ANDROID__
+            // RGBA words (R,G,B,A bytes on little-endian) -> Cairo's ARGB32
+            // (B,G,R,A bytes): swap the R and B channels.
+            for (int x = 0; x < fbWidth; ++x) {
+                const uint32_t px = srcRow[x];
+                dstRow[x] = (px & 0xFF00FF00u)
+                          | ((px & 0x00FF0000u) >> 16)
+                          | ((px & 0x000000FFu) << 16);
+            }
+#else
             memcpy(dstRow, srcRow, fbWidth * sizeof(uint32_t));
+#endif
         }
         impl_->pixmap.MarkDirty();
     }

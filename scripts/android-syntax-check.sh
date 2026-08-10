@@ -61,6 +61,7 @@ if [ -d /usr/include/openssl ]; then
 fi
 
 flags=(-std=c++20 -fsyntax-only $target
+    -DULTRACANVAS_ENABLE_GL=1 -DULTRACANVAS_HAS_EGL=1
     -I "$repo/UltraCanvas/include"
     -I "$repo/UltraCanvas/core"
     -I "$repo/UltraCanvas/OS/Android"
@@ -86,6 +87,13 @@ echo "android-syntax-check: NDK $ndk"
 for f in "$repo"/UltraCanvas/OS/Android/*.cpp; do
     check "$f"
 done
+
+# Shared GL sources compiled into a GL-enabled Android build (GLES3 include
+# branches + the GLES-safe readback path in ICompositeStrategy).
+check "$repo/UltraCanvas/libspecific/GL/GLContextManager.cpp"
+check "$repo/UltraCanvas/libspecific/GL/GLFramebuffer.cpp"
+check "$repo/UltraCanvas/libspecific/GL/ICompositeStrategy.cpp"
+check "$repo/UltraCanvas/core/UltraCanvasGLSurface.cpp"
 
 # The Android UltraNet build reuses these Linux sources verbatim (their
 # #ifdef __linux__ guards are satisfied by bionic) - keep them compiling

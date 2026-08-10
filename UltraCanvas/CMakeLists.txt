@@ -116,12 +116,10 @@ elseif(ANDROID)
     set(ULTRACANVAS_PLATFORM_DIR "OS/Android")
     # android_native_app_glue.c (compiled into the platform sources below) is C.
     enable_language(C)
-    # GL surfaces need the GLES/EGL context manager, which lands in a later
-    # phase; chart elements degrade to their non-GL fallbacks automatically.
-    if(ULTRACANVAS_ENABLE_GL)
-        message(STATUS "OpenGL surfaces: DISABLED on Android (GLES context manager not implemented yet)")
-        set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
-    endif()
+    # GL surfaces run on the GLES/EGL context manager
+    # (OS/Android/GLContextManagerEGL_Android.cpp); EGL and GLESv3 come from
+    # the NDK sysroot, so no pkg-config probing is needed - see the
+    # platform-dependency section below.
 elseif(UNIX)
     set(ULTRACANVAS_PLATFORM "Linux")
     set(ULTRACANVAS_PLATFORM_DIR "OS/Linux")
@@ -253,6 +251,13 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    # EGL + GLES 3 headers/libraries ship in every NDK sysroot; the GLES
+    # context manager binds EGL_OPENGL_ES_API (ES 3 preferred, ES 2 fallback).
+    if(ULTRACANVAS_ENABLE_GL)
+        set(ULTRACANVAS_HAS_EGL TRUE)
+        message(STATUS "  EGL: NDK sysroot (OpenGL ES context backend)")
     endif()
 endif()
 
@@ -875,6 +880,12 @@ if(ULTRACANVAS_ENABLE_GL)
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/GLContextManagerWGL_MSWindows.cpp
             )
         endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        if(ULTRACANVAS_HAS_EGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Android/GLContextManagerEGL_Android.cpp
+            )
+        endif()
     endif()
 endif()
 
@@ -1108,6 +1119,10 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
             dl
             ${FONTCONFIG_LIBRARIES}
     )
+    if(ULTRACANVAS_HAS_EGL)
+        # From the NDK sysroot; GLESv3's lib also exports the ES2 entry points.
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC EGL GLESv3)
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
