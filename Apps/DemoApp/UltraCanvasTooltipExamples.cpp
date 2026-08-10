@@ -1,10 +1,10 @@
 // Apps/DemoApp/UltraCanvasTooltipExamples.cpp
 // Tooltip system demonstration for the main demo app: plain text, inline
 // Pango markup, and structured TooltipContent (title, two- and three-column
-// table rows with color swatches and per-column alignment, bullet lists,
-// separators) plus style presets.
-// Version: 1.1.0
-// Last Modified: 2026-08-07
+// table rows with color swatches and per-column alignment including decimal
+// alignment, bullet lists, separators) plus style presets.
+// Version: 1.2.0
+// Last Modified: 2026-08-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -69,14 +69,19 @@ namespace UltraCanvas {
                                                    "Plain string with Pango markup tags"));
         }
 
-        // ===== 3. MULTI-LINE / WRAPPED =====
+        // ===== 3. STRUCTURED: COLOR SWATCHES (chart series style) =====
         {
-            auto btn = CreateButton("ttWrap", colX[2], rowY, btnW, btnH, "Long text");
-            btn->SetTooltip("Long tooltip text wraps automatically at the style's maxWidth. "
-                            "Explicit line breaks work too:\nline two\nline three.");
+            auto btn = CreateButton("ttSwatch", colX[2], rowY, btnW, btnH, "Color swatches");
+            TooltipContent content;
+            content.AddTitle("Sales 2026-08")
+                   .AddRow(Color(66, 133, 244, 255), "Europe", "1 204 t")
+                   .AddRow(Color(219, 68, 55, 255), "Americas", "986 t")
+                   .AddRow(Color(244, 180, 0, 255), "Asia", "1 890 t")
+                   .AddRow(Color(15, 157, 88, 255), "Africa", "312 t");
+            btn->SetTooltipContent(content);
             mainContainer->AddChild(btn);
-            mainContainer->AddChild(TooltipCaption("ttWrapCap", colX[2], rowY + btnH + 4, btnW,
-                                                   "Word wrapping and explicit \\n breaks"));
+            mainContainer->AddChild(TooltipCaption("ttSwatchCap", colX[2], rowY + btnH + 4, btnW,
+                                                   "AddRow(swatchColor, label, value) —\nchart-series legend look"));
         }
         rowY += btnH + 55.0f;
 
@@ -99,19 +104,25 @@ namespace UltraCanvas {
                                                    "AddRow(label, value, unit) —\nright, right, left aligned"));
         }
 
-        // ===== 5. STRUCTURED: COLOR SWATCHES (chart series style) =====
+        // ===== 5. DECIMAL (COMMA) ALIGNMENT =====
         {
-            auto btn = CreateButton("ttSwatch", colX[1], rowY, btnW, btnH, "Color swatches");
+            auto btn = CreateButton("ttDecimal", colX[1], rowY, btnW, btnH, "Decimal alignment");
             TooltipContent content;
-            content.AddTitle("Sales 2026-08")
-                   .AddRow(Color(66, 133, 244, 255), "Europe", "1 204 t")
-                   .AddRow(Color(219, 68, 55, 255), "Americas", "986 t")
-                   .AddRow(Color(244, 180, 0, 255), "Asia", "1 890 t")
-                   .AddRow(Color(15, 157, 88, 255), "Africa", "312 t");
+            content.AddTitle("Batch S10")
+                   .AddRow("Temperature", "209.79", "°C")
+                   .AddRow("Pressure", "2.26551", "bar")
+                   .AddRow("Flow", "53.1416", "l/min")
+                   .AddRow("Vibration", "0.279816", "mm/s")
+                   .AddRow("Yield", "95.2212", "%")
+                   // Same data as "Title + table" to its left, but the numbers
+                   // line up on the decimal point instead of on their right edge.
+                   .SetColumnAlignment(TooltipColumnAlign::Right,
+                                       TooltipColumnAlign::Decimal,
+                                       TooltipColumnAlign::Left);
             btn->SetTooltipContent(content);
             mainContainer->AddChild(btn);
-            mainContainer->AddChild(TooltipCaption("ttSwatchCap", colX[1], rowY + btnH + 4, btnW,
-                                                   "AddRow(swatchColor, label, value) —\nchart-series legend look"));
+            mainContainer->AddChild(TooltipCaption("ttDecimalCap", colX[1], rowY + btnH + 4, btnW,
+                                                   "TooltipColumnAlign::Decimal —\nnumbers aligned on the separator"));
         }
 
         // ===== 6. STRUCTURED: BULLETS + SEPARATOR + FOOTER =====
@@ -217,53 +228,9 @@ namespace UltraCanvas {
                                                    "SetColumnAlignment(Left, Center, Right)\nper column, 2- and 3-column forms"));
         }
 
-        // ===== 12. MIXED ROW ARITY =====
+        // ===== 12. DECIMAL WITH MIXED PRECISION AND SEPARATORS =====
         {
-            auto btn = CreateButton("ttMixedCols", colX[2], rowY, btnW, btnH, "Mixed 2 + 3 col");
-            TooltipContent content;
-            content.AddTitle("Invoice 2026-0184")
-                   .AddRow("Licenses", "12", "1 440.00 €")
-                   .AddRow("Support", "1", "390.00 €")
-                   .AddSeparator()
-                   .AddRow("Total", "1 830.00 €")   // two-column row, own grid
-                   // The quantity column is centered, the two-column total
-                   // keeps its amount flush right — separate grids, separate
-                   // alignment.
-                   .SetColumnAlignment(TooltipColumnAlign::Left, TooltipColumnAlign::Right)
-                   .SetColumnAlignment(TooltipColumnAlign::Left,
-                                       TooltipColumnAlign::Center,
-                                       TooltipColumnAlign::Right);
-            btn->SetTooltipContent(content);
-            mainContainer->AddChild(btn);
-            mainContainer->AddChild(TooltipCaption("ttMixedColsCap", colX[2], rowY + btnH + 4, btnW,
-                                                   "2- and 3-column rows are separate\ntables, each aligned on its own"));
-        }
-        rowY += btnH + 55.0f;
-
-        // ===== 13. DECIMAL (COMMA) ALIGNMENT =====
-        {
-            auto btn = CreateButton("ttDecimal", colX[0], rowY, btnW, btnH, "Decimal alignment");
-            TooltipContent content;
-            content.AddTitle("Batch S10")
-                   .AddRow("Temperature", "209.79", "°C")
-                   .AddRow("Pressure", "2.26551", "bar")
-                   .AddRow("Flow", "53.1416", "l/min")
-                   .AddRow("Vibration", "0.279816", "mm/s")
-                   .AddRow("Yield", "95.2212", "%")
-                   // Same data as "Title + table", but the numbers line up on
-                   // the decimal point instead of on their right edge.
-                   .SetColumnAlignment(TooltipColumnAlign::Right,
-                                       TooltipColumnAlign::Decimal,
-                                       TooltipColumnAlign::Left);
-            btn->SetTooltipContent(content);
-            mainContainer->AddChild(btn);
-            mainContainer->AddChild(TooltipCaption("ttDecimalCap", colX[0], rowY + btnH + 4, btnW,
-                                                   "TooltipColumnAlign::Decimal —\nnumbers aligned on the separator"));
-        }
-
-        // ===== 14. DECIMAL WITH MIXED PRECISION AND SEPARATORS =====
-        {
-            auto btn = CreateButton("ttDecimalMixed", colX[1], rowY, btnW, btnH, "Decimal, mixed");
+            auto btn = CreateButton("ttDecimalMixed", colX[2], rowY, btnW, btnH, "Decimal, mixed");
             TooltipContent content;
             content.AddTitle("Ledger")
                    .AddRow("Opening", "1,204.50", "€")
@@ -276,7 +243,7 @@ namespace UltraCanvas {
                                        TooltipColumnAlign::Left);
             btn->SetTooltipContent(content);
             mainContainer->AddChild(btn);
-            mainContainer->AddChild(TooltipCaption("ttDecimalMixedCap", colX[1], rowY + btnH + 4, btnW,
+            mainContainer->AddChild(TooltipCaption("ttDecimalMixedCap", colX[2], rowY + btnH + 4, btnW,
                                                    "Mixed precision, thousands separators\nand integers share one anchor"));
         }
         rowY += btnH + 55.0f;

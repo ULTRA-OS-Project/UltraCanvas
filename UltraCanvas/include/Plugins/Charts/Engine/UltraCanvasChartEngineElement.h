@@ -17,8 +17,8 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
-// Version: 1.0.0
-// Last Modified: 2026-08-01
+// Version: 1.1.0
+// Last Modified: 2026-08-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -27,6 +27,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "UltraCanvasElementProperties.h"
+#include "UltraCanvasTimer.h"
 #include <cstdint>
 #include <memory>
 
@@ -132,6 +133,10 @@ public:
     // Drives frame.animationProgress from 0 to 1 (ease-out cubic) and keeps
     // repainting until it arrives - no chart-side timers. Content that wants
     // an entrance animation scales its geometry by frame.animationProgress.
+    // The frames come from a ~60fps periodic application timer: RequestRedraw()
+    // alone cannot advance an animation, because the event loop blocks until a
+    // native event or a timer wakes it, so a chart left to redraw itself would
+    // freeze at whatever progress its last paint happened to see.
 
     void StartEngineAnimation(float durationSeconds = 0.8f);
     // Restart the animation automatically whenever ChartDirty::Data is marked.
@@ -253,6 +258,8 @@ private:
     bool engineAnimating = false;
     bool animateOnDataChange = false;
     float animateOnDataDuration = 0.8f;
+    TimerId engineAnimationTimer = InvalidTimerId;   // ~60fps frame driver
+    void StopEngineAnimationTimer();
 
     // Hit regions (element-local space, rebuilt by content every render)
     struct ChartHitRegion {

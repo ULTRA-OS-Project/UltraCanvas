@@ -1,4 +1,4 @@
-#### 2026-08-09 *0.3.42*
+#### 2026-08-09 *0.3.43*
 - **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
   **LinkedIn connector** — OAuth2 code flow for the user's own
   confidential-client app (secret in the form body, no PKCE; redirect
@@ -15,7 +15,7 @@
   (`attach://` multipart, caption on the first). Wizard forms for both
   new networks. 10 new engine tests (47 total).
 
-#### 2026-08-09 *0.3.41*
+#### 2026-08-09 *0.3.42*
 - **UltraSocial** *(Phase 2)*: the "automatically" part plus the Tier-2
   networks. **Scheduling outbox** — "Post later…" opens a date + time
   dialog and queues one outbox row per selected account (UltraDatabase,
@@ -37,7 +37,7 @@
   attachments for such networks with a warning. 11 new engine tests
   (37 total).
 
-#### 2026-08-09 *0.3.40*
+#### 2026-08-09 *0.3.41*
 - **UltraSocial** *(Phase 1 UI)*: the GUI application (target `UltraSocial`)
   on top of the engine — compose window with per-account target checkboxes
   and live character counters (per network's limit, switching to the caption
@@ -50,7 +50,7 @@
   timer queue, so the window stays live during the OAuth browser consent
   and slow uploads.
 
-#### 2026-08-09 *0.3.39*
+#### 2026-08-09 *0.3.40*
 - **UltraSocial** *(new, Phase 1 engine)*: the cross-posting app's headless
   engine (`Apps/UltraSocial/engine/`, target `UltraSocialEngine`) —
   compose-once → adapt-per-network composer (code-point counting,
@@ -67,7 +67,7 @@
   scripted loopback HTTP fakes (`ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS`).
   Design: `Docs/UltraSocial/Concept.md`.
 
-#### 2026-08-09 *0.3.38*
+#### 2026-08-09 *0.3.39*
 - **UltraNet**: new OAuth 2.0 helper (`UltraNet/UltraNetOAuth2.h`) — the
   authorization-code flow with PKCE (RFC 6749 + 7636) for native apps:
   `UltraNet_OAuth2GeneratePkce` / `UltraNet_OAuth2ChallengeFromVerifier`
@@ -86,6 +86,27 @@
   `UltraNet_TcpAccept` takes an optional timeout, and the new
   `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
   they let a port-0 listener discover its ephemeral port.
+
+#### 2026-08-10 *0.3.38*
+- **UltraFiler**: Favorites (pinning). A new heart button next to the History
+  clock shows the Favorites view — the same Files / Folders / Apps tabbed
+  layout, but listing deliberately pinned paths (`UltraFilerFavorites`,
+  persisted as `favorites.txt` next to the settings) instead of recently used
+  ones. The new menu bar **Pin** menu pins the visible view's selection (or
+  the shown folder when nothing is selected): **Pin ▸ Favorites** into the
+  tab the entry's kind belongs to, **Pin ▸ Treeview** — enabled only while
+  the selection is a folder — into the folder tree's new **Pinned** section,
+  whose entries navigate like bookmarks. The folder tree gained a context
+  menu: **Copy / Delete / Paste** act on the folder under the cursor (Paste
+  only when a folder is under the cursor and the clipboard holds files,
+  Delete with confirmation and never on the top-level roots), **Unpin**
+  (pinned entries only) removes the bookmark without touching the folder.
+  *Settings ▸ Clear Favorites* empties the pins; Esc leaves the Favorites
+  view like it leaves the History view.
+- **UltraCanvasTreeView**: `onNodeRightClicked` now fires only for the right
+  mouse button (it used to fire on every mouse-up over a node) and passes the
+  `UCEvent` along so handlers can place a context menu at the pointer; a
+  right press no longer moves the selection to the node under the cursor.
 
 #### 2026-08-09 *0.3.37*
 - **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,

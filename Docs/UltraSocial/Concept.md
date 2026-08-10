@@ -4,16 +4,16 @@
 **Date:** 2026-08-09
 
 > **Progress (2026-08-09):** the UltraNet OAuth2 helper (§3.1) shipped in
-> *0.3.38*, the **Phase-1 headless engine** in *0.3.39*
+> *0.3.39*, the **Phase-1 headless engine** in *0.3.40*
 > (`Apps/UltraSocial/engine/`: types, `ISocialConnector`, the composer,
 > credential vault, account/history store, and the Mastodon / Bluesky /
 > Telegram connectors — all covered by `Tests/UltraSocial`), the
-> **Phase-1 UI** in *0.3.40* (compose window with live per-network
+> **Phase-1 UI** in *0.3.41* (compose window with live per-network
 > counters + warnings, media chips, account wizard, history strip), and
-> **Phase 2** in *0.3.41*: the scheduling outbox ("Post later…" queue on
+> **Phase 2** in *0.3.42*: the scheduling outbox ("Post later…" queue on
 > UltraDatabase, retry with backoff, scheduled-posts strip) and the
 > Tier-2 **Reddit** and **X** connectors (text posts; both
-> bring-your-own-client-id, §1). **Phase 3** in *0.3.42*: **LinkedIn**
+> bring-your-own-client-id, §1). **Phase 3** in *0.3.43*: **LinkedIn**
 > (own confidential-client app, versioned `/rest/posts`) and **Facebook
 > Pages** (pasted Page token, feed + photo posts) connectors, X image
 > uploads, and Telegram albums. Still open: Instagram (public-URL-only
@@ -99,7 +99,7 @@ UltraSocial should copy that layout, not invent one.
 ## 3. What is missing
 
 1. ~~An OAuth2 authorization-code + PKCE helper.~~ **Done — now in UltraNet**
-   (`UltraNet/UltraNetOAuth2.h`, added 0.3.38): PKCE generation, consent-URL
+   (`UltraNet/UltraNetOAuth2.h`, added 0.3.39): PKCE generation, consent-URL
    building, the loopback redirect listener, code exchange, refresh, and the
    one-call `UltraNet_OAuth2AuthorizeInteractive` orchestrator. UltraSocial
    connectors call it directly; UltraMail (OAuth IMAP: Gmail/Outlook) and

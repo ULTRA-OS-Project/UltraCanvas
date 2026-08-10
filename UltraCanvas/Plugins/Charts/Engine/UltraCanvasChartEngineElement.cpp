@@ -1,10 +1,21 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
-// Version: 1.0.0
-// Last Modified: 2026-08-06
+// Version: 1.1.0
+// Last Modified: 2026-08-10
+// V1.1.0: Two fixes the first animated / transposed client exposed.
+//   - The animation driver now advances on a ~60fps application timer.
+//     RequestRedraw() from inside the paint cannot produce the next frame (the
+//     event loop blocks until a native event or a timer wakes it), so an
+//     animating chart froze at whatever progress its last paint happened to
+//     see - bars stuck part-grown until something else caused a repaint.
+//   - AxisScreenLine derives the direction an edge axis runs from the
+//     projection instead of assuming bottom-to-top / left-to-right. Under the
+//     horizontal projection the domain runs downward, so the category ticks
+//     were laid out in the opposite order to the bars they label.
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
+#include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
 
@@ -21,7 +32,9 @@ UltraCanvasChartEngineElement::UltraCanvasChartEngineElement(
     engineProperties.Define("title", std::string());
 }
 
-UltraCanvasChartEngineElement::~UltraCanvasChartEngineElement() = default;
+UltraCanvasChartEngineElement::~UltraCanvasChartEngineElement() {
+    StopEngineAnimationTimer();      // the timer callback captures `this`
+}
 
 // =============================================================================
 // CONFIGURATION
@@ -93,7 +106,31 @@ void UltraCanvasChartEngineElement::StartEngineAnimation(float durationSeconds) 
     animationDuration = std::max(0.05f, durationSeconds);
     StartAnimation();                  // base class stamps the start time
     engineAnimating = true;
+
+    // Drive the frames with a ~60fps periodic timer. RequestRedraw() alone
+    // cannot advance the animation: the event loop blocks until a native event
+    // or a timer wakes it, so without this the chart freezes at whatever
+    // progress its last paint happened to see.
+    if (engineAnimationTimer == InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            engineAnimationTimer = app->StartTimer(16, true, [this](TimerId) {
+                if (!engineAnimating) {
+                    StopEngineAnimationTimer();
+                    return;
+                }
+                RequestRedraw();       // Render() advances and lands the progress
+            });
+        }
+    }
     RequestRedraw();
+}
+
+void UltraCanvasChartEngineElement::StopEngineAnimationTimer() {
+    if (engineAnimationTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        app->StopTimer(engineAnimationTimer);
+    }
+    engineAnimationTimer = InvalidTimerId;
 }
 
 void UltraCanvasChartEngineElement::SetAnimateOnDataChange(bool enable,
@@ -418,24 +455,35 @@ void UltraCanvasChartEngineElement::AxisScreenLine(const ChartAxis& axis,
         return;
     }
     const Rect2Dd& plot = frame.plotArea;
-    switch (axis.side) {
-        case ChartAxisSide::Left:
-            lowEnd = Point2Dd(plot.x, plot.Bottom());
-            highEnd = Point2Dd(plot.x, plot.y);
-            break;
-        case ChartAxisSide::Right:
-            lowEnd = Point2Dd(plot.Right(), plot.Bottom());
-            highEnd = Point2Dd(plot.Right(), plot.y);
-            break;
-        case ChartAxisSide::Top:
-            lowEnd = Point2Dd(plot.x, plot.y);
-            highEnd = Point2Dd(plot.Right(), plot.y);
-            break;
-        case ChartAxisSide::Bottom:
-        default:
-            lowEnd = Point2Dd(plot.x, plot.Bottom());
-            highEnd = Point2Dd(plot.Right(), plot.Bottom());
-            break;
+    const bool verticalEdge = (axis.side == ChartAxisSide::Left ||
+                               axis.side == ChartAxisSide::Right);
+
+    // Which way the axis runs on screen is a property of the projection, not of
+    // the side it sits on: the vertical projection maps the value upward, the
+    // horizontal one maps the domain downward. Probe the projection instead of
+    // assuming bottom-to-top, or a transposed chart lays its ticks out in the
+    // opposite order to its content - the first category labelled against the
+    // last row's marks.
+    const Point2Dd origin = engineProjection->ToScreen(ChartNormalizedPoint(0.0, 0.0));
+    const Point2Dd alongU = engineProjection->ToScreen(ChartNormalizedPoint(1.0, 0.0));
+    const Point2Dd alongV = engineProjection->ToScreen(ChartNormalizedPoint(0.0, 1.0));
+
+    if (verticalEdge) {
+        const double x = (axis.side == ChartAxisSide::Right) ? plot.Right() : plot.x;
+        // Whichever normalised coordinate actually drives screen-y along this
+        // edge decides where normalised 0 sits.
+        const double du = alongU.y - origin.y;
+        const double dv = alongV.y - origin.y;
+        const bool downward = ((std::abs(dv) >= std::abs(du)) ? dv : du) >= 0.0;
+        lowEnd  = Point2Dd(x, downward ? plot.y : plot.Bottom());
+        highEnd = Point2Dd(x, downward ? plot.Bottom() : plot.y);
+    } else {
+        const double y = (axis.side == ChartAxisSide::Top) ? plot.y : plot.Bottom();
+        const double du = alongU.x - origin.x;
+        const double dv = alongV.x - origin.x;
+        const bool rightward = ((std::abs(du) >= std::abs(dv)) ? du : dv) >= 0.0;
+        lowEnd  = Point2Dd(rightward ? plot.x : plot.Right(), y);
+        highEnd = Point2Dd(rightward ? plot.Right() : plot.x, y);
     }
 }
 
@@ -456,6 +504,7 @@ void UltraCanvasChartEngineElement::Render(IRenderContext* ctx, const Rect2Df&) 
         if (t >= 1.0) {
             engineAnimating = false;
             frame.animationProgress = 1.0;
+            StopEngineAnimationTimer();
         }
     } else {
         frame.animationProgress = 1.0;
