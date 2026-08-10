@@ -1,20 +1,31 @@
 // Apps/DemoApp/UltraCanvasChartEngineExamples.cpp
-// Chart engine showcase: one minimal bar-chart content class - DescribeAxes,
-// RenderChartContent and a label collector - rendered three times under three
-// projections. Everything else on screen (layout negotiation, axes, ticks,
-// grid, limiters with solved captions, legend, value-label decluttering,
-// hover overlay, clipping) is supplied by UltraCanvasChartEngineElement.
-// Version: 1.0.0
-// Last Modified: 2026-08-02
+// Chart engine showcase: ONE minimal bar-chart content class - DescribeAxes,
+// RenderChartContent and a label collector - driven from an option panel that
+// exercises the engine's whole surrounding API. Everything the options switch
+// (projections, axis scales including logarithmic, tick and number formatting,
+// grid source, limiters, legend swatches, the label plan, hit regions and
+// tooltips, the animation driver, the dirty model, named properties) is a
+// service of UltraCanvasChartEngineElement, not of this chart.
+// Version: 2.0.0
+// Last Modified: 2026-08-10
+// V2.0.0: Replaced the three static charts (vertical / horizontal / polar) with
+//   a single live chart plus album-style radio option rows covering the engine
+//   API. The projection row still shows all three projections from the one
+//   content implementation; the second and third chart are gone.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include <algorithm>
 #include <cmath>
-#include <numeric>
+#include <cstdio>
+#include <limits>
+#include <sstream>
+#include <string>
 #include <vector>
 
 namespace UltraCanvas {
@@ -22,306 +33,1119 @@ namespace UltraCanvas {
 namespace {
 
 // =============================================================================
-// THE ENTIRE CHART. A native engine chart implements phase 2 and two small
-// descriptors; the ~90 lines of this class are everything the bar chart adds
-// on top of the engine.
+// DATA
 // =============================================================================
-class EngineDemoBarChart : public UltraCanvasChartEngineElement {
-public:
-    EngineDemoBarChart(const std::string& id, int x, int y, int w, int h)
-        : UltraCanvasChartEngineElement(id, x, y, w, h) {}
 
-    void SetData(std::vector<std::string> names, std::vector<double> values,
-                 const Color& color) {
-        categoryNames = std::move(names);
-        barValues = std::move(values);
-        barColor = color;
+const Color kSeriesColor[3] = {
+    Color(68, 119, 170, 255),    // blue
+    Color(238, 102, 119, 255),   // red
+    Color(34, 136, 51, 255)      // green
+};
+
+struct EngineDataset {
+    std::string name;
+    std::string caption;                        // what it is good for
+    std::vector<std::string> categories;
+    std::vector<std::string> seriesNames;
+    std::vector<std::vector<double>> values;    // one vector per series
+};
+
+// Three shapes of data, because the axis scales answer different questions:
+// an ordinary positive set, one spanning six decades (what a Log axis is for)
+// and one with negatives (what SymLog and a diverging stack are for).
+std::vector<EngineDataset> MakeDatasets() {
+    std::vector<EngineDataset> sets;
+
+    EngineDataset revenue;
+    revenue.name = "Revenue";
+    revenue.caption = "ordinary positive data - the linear-scale case";
+    revenue.categories = {"Q1", "Q2", "Q3", "Q4", "Q5e"};
+    revenue.seriesNames = {"Product", "Services", "Licences"};
+    revenue.values = {{380000, 545000, 470000, 690000, 615000},
+                      {120000, 160000, 205000, 240000, 275000},
+                      { 60000,  75000,  90000, 130000, 150000}};
+    sets.push_back(revenue);
+
+    EngineDataset decades;
+    decades.name = "Wide range";
+    decades.caption = "six decades of traffic - unreadable on a linear axis, "
+                      "one tick per decade on Log";
+    decades.categories = {"Idle", "Web", "API", "Batch", "Peak"};
+    decades.seriesNames = {"Requests", "Retries", "Errors"};
+    decades.values = {{12, 340, 5600, 74000, 1250000},
+                      { 5, 120, 1900, 21000,  380000},
+                      { 2,  17,  260,  3100,   41000}};
+    sets.push_back(decades);
+
+    EngineDataset signed_;
+    signed_.name = "Signed";
+    signed_.caption = "positive and negative values - SymLog keeps the sign, "
+                      "stacks diverge around zero";
+    signed_.categories = {"Q1", "Q2", "Q3", "Q4", "Q5e"};
+    signed_.seriesNames = {"Cashflow", "Adjustments", "Hedging"};
+    signed_.values = {{ 120000, -80000, 260000, -45000, 310000},
+                      { -40000,  55000, -95000, 130000, -60000},
+                      {  25000,  30000, -15000,  40000,  35000}};
+    sets.push_back(signed_);
+
+    return sets;
+}
+
+Color Lighten(const Color& c, int amount) {
+    return Color(static_cast<uint8_t>(std::min(255, c.r + amount)),
+                 static_cast<uint8_t>(std::min(255, c.g + amount)),
+                 static_cast<uint8_t>(std::min(255, c.b + amount)),
+                 c.a);
+}
+
+// =============================================================================
+// THE ENTIRE CHART. A native engine chart implements phase 2 and three small
+// descriptors; everything the option panel below switches is engine-supplied.
+// =============================================================================
+class EngineFeatureChart : public UltraCanvasChartEngineElement {
+public:
+    enum class NumberFormat { CompactDollars, Plain, TwoDecimals, PercentSuffix, CustomFormatter };
+    // X11's Xlib.h #defines None, so the "no grid" case is named NoGrid
+    // (the framework's ChartDirty::Clean is spelled that way for the same reason).
+    enum class GridSource { ValueAxis, CategoryAxis, NoGrid };
+    enum class LimiterMode { NoLimiter, Average, AverageAndTarget, Thresholds };
+    enum class ValueLabelMode { All, Declutter, Off };
+    // How the bars are painted. The legend swatch follows this, which is what
+    // ChartLegendSwatch is for: a series drawn with a non-solid fill must not
+    // be represented by a colour square that matches nothing.
+    enum class SeriesPaint { Solid, Gradient, Outline, Hatched };
+
+    EngineFeatureChart(const std::string& id, int x, int y, int w, int h)
+        : UltraCanvasChartEngineElement(id, x, y, w, h) {
+        SetEnableTooltips(true);
+        SetAnimateOnDataChange(true, 0.8f);
+    }
+
+    // Which route the title takes to the engine - the same string either way,
+    // so the two are directly comparable.
+    enum class TitleMode { Direct, ViaProperty, NoTitle };
+
+    // ---- data --------------------------------------------------------------
+    void SetDataset(const EngineDataset& set) {
+        categoryNames = set.categories;
+        seriesNames = set.seriesNames;
+        seriesValues = set.values;
+        datasetName = set.name;
+        ApplyTitle();                           // the title names the data
+        RebuildLimiters();
+        RebuildLegend();
+        MarkEngineDirty(ChartDirty::Data);      // rebuilds axes, layout and plan
+    }
+
+    void SetTitleMode(TitleMode mode) { titleMode = mode; ApplyTitle(); }
+
+    // Re-jitters the current values (+/-30%) so the dirty model and the
+    // animation driver can be watched without changing anything else.
+    void ShuffleValues() {
+        for (auto& series : seriesValues) {
+            for (double& v : series) {
+                shuffleState = shuffleState * 6364136223846793005ULL + 1442695040888963407ULL;
+                const double f = 0.7 + 0.6 * static_cast<double>(
+                        (shuffleState >> 33) % 1000u) / 1000.0;
+                v *= f;
+            }
+        }
+        RebuildLimiters();
         MarkEngineDirty(ChartDirty::Data);
     }
 
-    // ---- engine contract ---------------------------------------------------
+    // ---- engine-facing options ---------------------------------------------
+    void SetValueScale(ChartScale scale) { valueScale = scale; Restyle(); }
+    void SetArrangement(ChartBarArrangement a) { arrangement = a; RebuildLimiters(); Restyle(); }
+    void SetBarCornerRadius(double px) { barCornerRadius = px; RequestRedraw(); }
+    void SetInvertValueAxis(bool on) { invertValueAxis = on; Restyle(); }
+    void SetAxesAtFarSide(bool on) { axesAtFarSide = on; Restyle(); }
+    void SetNumberFormat(NumberFormat f) { numberFormat = f; Restyle(); }
+    void SetSlotFill(double fill) { slotFill = fill; Restyle(); }
+    void SetCategoryPadding(double padding) { categoryPadding = padding; Restyle(); }
+    void SetTargetTickCount(int count) { targetTickCount = count; Restyle(); }
+    void SetShowChartBackground(bool on) { showBackground = on; RequestRedraw(); }
+
+    void SetGridSource(GridSource source) {
+        gridSource = source;
+        // SetGridAxis is re-applied by DescribeAxes; do it now too so a plain
+        // grid change repaints without waiting for the next axis rebuild.
+        ApplyGridAxis();
+        RequestRedraw();
+    }
+
+    void SetLimiterMode(LimiterMode mode) { limiterMode = mode; RebuildLimiters(); }
+
+    void SetSeriesPaint(SeriesPaint paint) {
+        seriesPaint = paint;
+        RebuildLegend();                     // the swatch mirrors the paint
+        RequestRedraw();
+    }
+
+    void SetShowLegendPanel(bool on) { showLegendPanel = on; RebuildLegend(); }
+
+    void SetValueLabelMode(ValueLabelMode mode) {
+        valueLabelMode = mode;
+        LabelPlacementOptions options;
+        options.minLabelSeparation = (mode == ValueLabelMode::Declutter) ? 4.0 : 0.0;
+        options.declutter = (mode == ValueLabelMode::Declutter)
+                                ? LabelDeclutterPolicy::SuppressColliding
+                                : LabelDeclutterPolicy::PlaceAll;
+        SetLabelOptions(options);               // marks Style dirty for us
+    }
+
+    // =========================================================================
+    // ENGINE CONTRACT
+    // =========================================================================
+
     void DescribeAxes(ChartAxisSet& axes) override {
-        // The projection transposes the content; the chart declares where its
-        // axes sit for each orientation.
         const bool horizontal = GetProjectionKind() == ChartProjectionKind::Horizontal;
 
+        // ---- axis 0: the value axis ----
         ChartAxis value("value");
-        value.side = horizontal ? ChartAxisSide::Bottom : ChartAxisSide::Left;
-        value.unitPrefix = "$";
-        value.compactNumbers = true;             // 1'250'000 -> "$1.3M"
-        value.Observe(0.0);                      // bars grow from zero
-        value.Observe(barValues);
-        axes.Add(value);
-
-        // Explicit ticks put one category label under each bar; the padded
-        // range keeps the outer bars fully inside the plot.
-        ChartAxis category("quarter");
-        category.side = horizontal ? ChartAxisSide::Left : ChartAxisSide::Bottom;
-        category.SetRange(-0.6, static_cast<double>(barValues.size()) - 0.4);
-        for (size_t i = 0; i < barValues.size(); ++i) {
-            category.tickValues.push_back(static_cast<double>(i));
+        value.scale = valueScale;
+        value.inverted = invertValueAxis;
+        value.side = horizontal
+                ? (axesAtFarSide ? ChartAxisSide::Top : ChartAxisSide::Bottom)
+                : (axesAtFarSide ? ChartAxisSide::Right : ChartAxisSide::Left);
+        if (valueScale == ChartScale::Percentile) {
+            // A percentile axis positions by rank, so its ticks ARE ranks on
+            // [0,1] - the number format belongs on the data, not on them.
+            value.formatter = [](double t) {
+                char buffer[16];
+                std::snprintf(buffer, sizeof(buffer), "P%.0f", t * 100.0);
+                return std::string(buffer);
+            };
+        } else {
+            ApplyNumberFormat(value);
         }
-        std::vector<std::string> names = categoryNames;
-        category.formatter = [names](double v) {
-            const long i = std::lround(v);
-            return (i >= 0 && static_cast<size_t>(i) < names.size())
-                       ? names[static_cast<size_t>(i)] : std::string();
-        };
-        axes.Add(category);
+        if (valueScale == ChartScale::Log) {
+            // A log axis has no zero to grow from and no use for the zero
+            // ObserveBarSeries feeds it, so the range is pinned to the whole
+            // decades around the plotted values instead.
+            double lo = 1.0, hi = 10.0;
+            LogDecadeRange(lo, hi);
+            value.SetRange(lo, hi);
+        } else {
+            // One call replaces the hand-rolled Observe loop every bar chart
+            // used to carry: it feeds zero, then the values, the signed stack
+            // totals or the percent extremes, whichever the arrangement plots.
+            ObserveBarSeries(value, seriesValues, BarOptions());
+        }
 
-        SetGridAxis(0);                          // gridlines from the value ticks
+        // ---- axis 1: the category axis ----
+        // A real Category scale: one slot per category, labels from the slot
+        // list, and categoryPadding deciding whether the outer bars keep their
+        // full footprint - no hand-padded linear axis.
+        ChartAxis category("category");
+        category.scale = ChartScale::Category;
+        category.categories = categoryNames;
+        category.categoryPadding = categoryPadding;
+        category.side = horizontal
+                ? (axesAtFarSide ? ChartAxisSide::Right : ChartAxisSide::Left)
+                : (axesAtFarSide ? ChartAxisSide::Top : ChartAxisSide::Bottom);
+
+        if (GetProjectionKind() == ChartProjectionKind::Polar) {
+            // Polar has no edges to hang furniture on: an edge axis is drawn
+            // along the rectangular plot bounds, which would be a straight rule
+            // beside a round chart. The value axis becomes an IN-PLOT axis
+            // instead - the engine maps those through the projection, so it
+            // comes out as a radial rule with its ticks along it - and the
+            // category axis stands down, its slots being the sectors themselves
+            // (named by the rim labels CollectChartLabels adds).
+            value.inPlot = true;
+            value.plotPosition = 0.0;
+            value.showTickLabels = true;
+            category.visible = false;
+        }
+        axes.Add(value);            // index 0 - the limiters and grid refer to it
+        axes.Add(category);         // index 1
+
+        ApplyGridAxis();
     }
 
     void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override {
-        if (barValues.empty() || frame.axes->Count() < 2) return;
+        if (seriesValues.empty() || !frame.axes || frame.axes->Count() < 2) return;
         const ChartAxis& value = frame.axes->At(0);
         const ChartAxis& category = frame.axes->At(1);
+        const ChartAxis datum = DatumFormatter();
+        const double progress = frame.animationProgress;
 
-        for (size_t i = 0; i < barValues.size(); ++i) {
-            const double center = category.Normalize(static_cast<double>(i));
-            const double half = 0.35 / static_cast<double>(barValues.size());
-            const double top = value.Normalize(barValues[i]);
-            const double base = value.Normalize(0.0);
+        for (const ChartBarSpan& span : Spans(value, category)) {
+            double v0 = span.v0, v1 = span.v1;
+            ClampToPlot(v0, v1);
+            v1 = v0 + (v1 - v0) * progress;     // entrance: bars grow from the base
 
-            // The bar as projected quad edges. Subdividing the edges is what
-            // lets the SAME code render rectangles under Vertical/Horizontal
-            // and ring sectors under Polar.
-            std::vector<Point2Dd> quad;
-            auto edge = [&](double u0, double v0, double u1, double v1) {
-                for (int s = 0; s <= 8; ++s) {
-                    const double t = s / 8.0;
-                    quad.push_back(frame.projection->ToScreen(
-                        ChartNormalizedPoint(u0 + (u1 - u0) * t, v0 + (v1 - v0) * t)));
-                }
-            };
-            edge(center - half, base, center + half, base);
-            edge(center + half, base, center + half, top);
-            edge(center + half, top, center - half, top);
-            edge(center - half, top, center - half, base);
+            // One call maps the span onto the screen under whichever projection
+            // is active - a rectangle when orthogonal, a ring sector under
+            // Polar, rounded corners following the (possibly curved) edges.
+            const std::vector<Point2Dd> outline =
+                BuildBarOutline(*frame.projection, span.u0, v0, span.u1, v1,
+                                8, barCornerRadius);
+            if (outline.size() < 3) continue;
 
-            const bool hovered = (static_cast<int>(i) == hoveredBar);
-            Color fill = barColor;
-            if (hovered) {
-                fill.r = static_cast<uint8_t>(std::min(255, fill.r + 40));
-                fill.g = static_cast<uint8_t>(std::min(255, fill.g + 40));
-                fill.b = static_cast<uint8_t>(std::min(255, fill.b + 40));
-            }
-            ctx->SetFillPaint(fill);
-            ctx->FillLinePath(quad);
-            ctx->SetStrokePaint(Color(40, 40, 40, hovered ? 255 : 120));
-            ctx->SetStrokeWidth(hovered ? 2.0f : 1.0f);
-            ctx->DrawLinePath(quad, true);
+            const int64_t id = RegionId(span.seriesIndex, span.categoryIndex);
+            const bool hovered = (HoveredRegionId() == id);
+            const Color base = kSeriesColor[span.seriesIndex % 3];
+
+            PaintBar(ctx, outline, hovered ? Lighten(base, 45) : base);
+            ctx->SetStrokePaint(seriesPaint == SeriesPaint::Outline
+                                    ? base : Color(40, 40, 40, hovered ? 255 : 120));
+            ctx->SetStrokeWidth((hovered || seriesPaint == SeriesPaint::Outline)
+                                    ? 2.0f : 1.0f);
+            ctx->DrawLinePath(outline, true);
+
+            // The engine owns hover from here: hit-testing, the Hover-only
+            // repaint and the tooltip through the standard tooltip manager.
+            AddHitRegion(outline, id, TooltipFor(span, datum));
         }
     }
 
-    // Measure pass: room for the value labels that sit past the bar ends -
-    // above them (vertical) or to their right (horizontal).
+    // Measure pass: room for the value labels that sit past the bar ends.
     void MeasureContent(IRenderContext* ctx, ChartLayoutRequest& request) override {
-        if (barValues.empty()) return;
+        if (valueLabelMode == ValueLabelMode::Off) return;
         ctx->SetFontSize(axisFontSize);
+        const ChartAxis datum = DatumFormatter();
         double widest = 0.0;
-        ChartAxis probe;                       // same formatting as the value axis
-        probe.unitPrefix = "$";
-        probe.compactNumbers = true;
-        for (double v : barValues) {
+        for (double v : PlottedValues()) {
             widest = std::max(widest, static_cast<double>(
-                ctx->GetTextLineWidth(probe.FormatValue(v))));
+                    ctx->GetTextLineWidth(datum.FormatValue(v))));
         }
         if (GetProjectionKind() == ChartProjectionKind::Horizontal) {
             request.Reserve(ChartAxisEdge::Right, widest + 12.0);
-        } else {
-            request.Reserve(ChartAxisEdge::Top,
-                            ctx->GetTextLineHeight("Ag") + 8.0);
+        } else if (GetProjectionKind() == ChartProjectionKind::Vertical) {
+            request.Reserve(ChartAxisEdge::Top, ctx->GetTextLineHeight("Ag") + 8.0);
         }
     }
 
-    // Value labels ride the engine's solved label plan: allowSuppress means a
-    // crowded chart drops labels instead of overprinting them.
+    // Value labels ride the engine's solved label plan.
     void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override {
-        if (Frame().axes->Count() < 2) return;
+        if (valueLabelMode == ValueLabelMode::Off ||
+            !Frame().axes || Frame().axes->Count() < 2 || !Frame().projection) return;
         const ChartAxis& value = Frame().axes->At(0);
         const ChartAxis& category = Frame().axes->At(1);
+        const ChartAxis datum = DatumFormatter();
         ctx->SetFontSize(axisFontSize);
-        const auto maxIt = std::max_element(barValues.begin(), barValues.end());
-        for (size_t i = 0; i < barValues.size(); ++i) {
+
+        const std::vector<ChartBarSpan> spans = Spans(value, category);
+        // The largest bar's label is the one that must survive any declutter.
+        size_t champion = 0;
+        double best = -std::numeric_limits<double>::max();
+        for (size_t i = 0; i < spans.size(); ++i) {
+            if (std::abs(spans[i].plotted) > best) {
+                best = std::abs(spans[i].plotted);
+                champion = i;
+            }
+        }
+
+        // Polar: the category axis is stood down, so the slot names ride the
+        // label plan as annotations around the rim instead.
+        if (GetProjectionKind() == ChartProjectionKind::Polar) {
+            for (size_t c = 0; c < categoryNames.size(); ++c) {
+                ChartLabelRequest r;
+                r.text = categoryNames[c];
+                r.klass = ChartLabelClass::Annotation;
+                r.anchor = Frame().projection->ToScreen(ChartNormalizedPoint(
+                        category.Normalize(static_cast<double>(c)), 1.0));
+                const Size2Di size = ctx->GetTextLineDimensions(r.text);
+                r.textSize = Size2Dd(size.width, size.height);
+                r.priority = 8;
+                broker.Add(r);
+            }
+        }
+
+        for (size_t i = 0; i < spans.size(); ++i) {
+            const ChartBarSpan& span = spans[i];
+            double v0 = span.v0, v1 = span.v1;
+            ClampToPlot(v0, v1);
+
             ChartLabelRequest r;
-            r.text = value.FormatValue(barValues[i]);
+            r.text = datum.FormatValue(span.plotted);
             r.klass = ChartLabelClass::ValueLabel;
-            r.anchor = Frame().projection->ToScreen(ChartNormalizedPoint(
-                category.Normalize(static_cast<double>(i)),
-                value.Normalize(barValues[i])));
+            // Grouped bars label their tip; a stack segment labels its middle,
+            // where the segment actually is.
+            const double at = (arrangement == ChartBarArrangement::Grouped)
+                                  ? v1 : (v0 + v1) * 0.5;
+            r.anchor = Frame().projection->ToScreen(
+                    ChartNormalizedPoint((span.u0 + span.u1) * 0.5, at));
             const Size2Di size = ctx->GetTextLineDimensions(r.text);
             r.textSize = Size2Dd(size.width, size.height);
-            r.preferredSide = (GetProjectionKind() == ChartProjectionKind::Horizontal)
-                                  ? LabelSide::Right : LabelSide::Top;
-            r.allowSuppress = true;
-            // The tallest bar's label survives any declutter.
-            if (maxIt != barValues.end() &&
-                i == static_cast<size_t>(std::distance(barValues.begin(), maxIt))) {
-                r.priority = 10;
-            }
+            r.preferredSide = PreferredLabelSide();
+            r.allowSuppress = (valueLabelMode == ValueLabelMode::Declutter);
+            if (i == champion) r.priority = 10;
             broker.Add(r);
         }
     }
 
-    bool OnEvent(const UCEvent& event) override {
-        if (event.type == UCEventType::MouseMove) {
-            const ChartNormalizedPoint p = Frame().projection
-                ? Frame().projection->ToNormalized(
-                      Point2Dd(event.pointer.x, event.pointer.y))
-                : ChartNormalizedPoint(-1, -1);
-            int hit = -1;
-            if (Frame().axes->Count() >= 2 && p.v >= -0.02) {
-                const ChartAxis& value = Frame().axes->At(0);
-                const ChartAxis& category = Frame().axes->At(1);
-                for (size_t i = 0; i < barValues.size(); ++i) {
-                    const double center = category.Normalize(static_cast<double>(i));
-                    const double half = 0.35 / static_cast<double>(barValues.size());
-                    if (p.u >= center - half && p.u <= center + half &&
-                        p.v <= value.Normalize(barValues[i]) + 0.01) {
-                        hit = static_cast<int>(i);
-                        break;
-                    }
-                }
-            }
-            if (hit != hoveredBar) {
-                hoveredBar = hit;               // ChartDirty::Hover territory:
-                RequestRedraw();                // no layout, no label re-solve
-            }
-        } else if (event.type == UCEventType::MouseLeave && hoveredBar != -1) {
-            hoveredBar = -1;
-            RequestRedraw();
+private:
+    // ---- option state ------------------------------------------------------
+    std::vector<std::string> categoryNames;
+    std::vector<std::string> seriesNames;
+    std::vector<std::vector<double>> seriesValues;
+
+    ChartScale valueScale = ChartScale::Linear;
+    ChartBarArrangement arrangement = ChartBarArrangement::Grouped;
+    NumberFormat numberFormat = NumberFormat::CompactDollars;
+    GridSource gridSource = GridSource::ValueAxis;
+    LimiterMode limiterMode = LimiterMode::AverageAndTarget;
+    ValueLabelMode valueLabelMode = ValueLabelMode::Declutter;
+    SeriesPaint seriesPaint = SeriesPaint::Solid;
+    bool showLegendPanel = true;
+    double barCornerRadius = 0.0;
+    double slotFill = 0.7;
+    double categoryPadding = 0.5;
+    bool invertValueAxis = false;
+    bool axesAtFarSide = false;
+    std::string datasetName;
+    TitleMode titleMode = TitleMode::Direct;
+    uint64_t shuffleState = 0x2545F4914F6CDD1DULL;
+
+    // Restyling re-describes the axes, re-solves the layout and rebuilds the
+    // label plan - and nothing else. (Hover and animation never do.)
+    void Restyle() { MarkEngineDirty(ChartDirty::Style); }
+
+    void ApplyTitle() {
+        switch (titleMode) {
+            case TitleMode::Direct:
+                SetChartTitle(datasetName);
+                break;
+            case TitleMode::ViaProperty:
+                // The named-property surface a registry, template or module
+                // host configures the chart through, across module boundaries.
+                SetProperty("title", datasetName + " (set via SetProperty)");
+                break;
+            case TitleMode::NoTitle:
+                SetChartTitle("");
+                break;
         }
-        return UltraCanvasChartElementBase::OnEvent(event);
     }
 
-private:
-    std::vector<std::string> categoryNames;
-    std::vector<double> barValues;
-    Color barColor = Color(68, 119, 170, 255);
-    int hoveredBar = -1;
+    ChartBarLayoutOptions BarOptions() const {
+        ChartBarLayoutOptions options;
+        options.arrangement = arrangement;
+        options.slotFill = slotFill;
+        options.groupGap = 0.1;
+        return options;
+    }
+
+    std::vector<ChartBarSpan> Spans(const ChartAxis& value, const ChartAxis& category) const {
+        return BuildBarSpans(value, category, categoryNames.size(),
+                             seriesValues, BarOptions());
+    }
+
+    // Data values are formatted through an axis of their own, because the value
+    // axis does not always speak in data units: a Percentile axis positions -
+    // and labels - by rank. Tick labels come from the value axis, datum labels
+    // and tooltips from this one, so both read correctly under every scale.
+    ChartAxis DatumFormatter() const {
+        ChartAxis axis;
+        ApplyNumberFormat(axis);
+        axis.Observe(PlottedValues());
+        axis.Finalize();                     // settles the auto-decimal choice
+        return axis;
+    }
+
+    void ApplyGridAxis() {
+        switch (gridSource) {
+            case GridSource::ValueAxis:    SetGridAxis(0); break;
+            case GridSource::CategoryAxis: SetGridAxis(1); break;
+            case GridSource::NoGrid:       SetGridAxis(static_cast<size_t>(-1)); break;
+        }
+    }
+
+    void ApplyNumberFormat(ChartAxis& axis) const {
+        switch (numberFormat) {
+            case NumberFormat::CompactDollars:
+                axis.unitPrefix = "$";
+                axis.compactNumbers = true;      // 1'250'000 -> "$1.3M"
+                break;
+            case NumberFormat::Plain:
+                axis.decimals = 0;
+                break;
+            case NumberFormat::TwoDecimals:
+                axis.decimals = 2;
+                break;
+            case NumberFormat::PercentSuffix:
+                axis.unitSuffix = "%";
+                axis.decimals = 0;
+                break;
+            case NumberFormat::CustomFormatter:
+                // A ValueFormatter wins over every built-in formatting rule.
+                axis.formatter = [](double v) {
+                    return "€" + FormatCompactNumber(v, 1);
+                };
+                break;
+        }
+    }
+
+    LabelSide PreferredLabelSide() const {
+        if (arrangement != ChartBarArrangement::Grouped) return LabelSide::Inside;
+        return (GetProjectionKind() == ChartProjectionKind::Horizontal)
+                   ? LabelSide::Right : LabelSide::Top;
+    }
+
+    // Every value the current arrangement actually plots: the raw values when
+    // grouped, the running stack edges when stacked, the percent shares when
+    // 100% stacked. Used for the limiters, the measure pass and the log range,
+    // so all three agree with what is on screen.
+    std::vector<double> PlottedValues() const {
+        std::vector<double> plotted;
+        const size_t categories = categoryNames.size();
+        if (arrangement == ChartBarArrangement::Grouped) {
+            for (const auto& series : seriesValues) {
+                for (double v : series) {
+                    if (std::isfinite(v)) plotted.push_back(v);
+                }
+            }
+            return plotted;
+        }
+        const bool percent = (arrangement == ChartBarArrangement::PercentStacked);
+        for (size_t c = 0; c < categories; ++c) {
+            double positive = 0.0, negative = 0.0;
+            for (const auto& series : seriesValues) {
+                if (c >= series.size() || !std::isfinite(series[c])) continue;
+                if (series[c] >= 0.0) positive += series[c]; else negative += series[c];
+            }
+            const double absTotal = positive - negative;
+            const double scale = (percent && absTotal > 0.0) ? 100.0 / absTotal : 1.0;
+            double up = 0.0, down = 0.0;
+            for (const auto& series : seriesValues) {
+                if (c >= series.size() || !std::isfinite(series[c])) continue;
+                double& running = (series[c] >= 0.0) ? up : down;
+                running += series[c] * scale;
+                plotted.push_back(running);
+            }
+        }
+        return plotted;
+    }
+
+    void LogDecadeRange(double& lo, double& hi) const {
+        double minPositive = std::numeric_limits<double>::max();
+        double maxPositive = 0.0;
+        for (double v : PlottedValues()) {
+            if (v <= 0.0) continue;              // a log axis has no room for <= 0
+            minPositive = std::min(minPositive, v);
+            maxPositive = std::max(maxPositive, v);
+        }
+        if (maxPositive <= 0.0) { lo = 1.0; hi = 10.0; return; }
+        lo = std::pow(10.0, std::floor(std::log10(minPositive)));
+        hi = std::pow(10.0, std::ceil(std::log10(maxPositive)));
+        if (!(hi > lo)) hi = lo * 10.0;
+    }
+
+    // On a log axis the base edge of the first bar normalises far below the
+    // plot (Normalize(0) is the log floor), so bars are grown from the axis
+    // end instead. Every other scale has a real zero and needs no clamping.
+    void ClampToPlot(double& v0, double& v1) const {
+        if (valueScale != ChartScale::Log) return;
+        v0 = std::clamp(v0, 0.0, 1.0);
+        v1 = std::clamp(v1, 0.0, 1.0);
+    }
+
+    static Rect2Dd OutlineBounds(const std::vector<Point2Dd>& outline) {
+        double minX = outline[0].x, maxX = outline[0].x;
+        double minY = outline[0].y, maxY = outline[0].y;
+        for (const Point2Dd& p : outline) {
+            minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+            minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+        }
+        return Rect2Dd(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    static void ClipToOutline(IRenderContext* ctx, const std::vector<Point2Dd>& outline) {
+        ctx->ClearPath();
+        ctx->MoveTo(outline[0].x, outline[0].y);
+        for (size_t i = 1; i < outline.size(); ++i) ctx->LineTo(outline[i].x, outline[i].y);
+        ctx->ClosePath();
+        ctx->ClipPath();
+    }
+
+    // The projected outline is an arbitrary polygon (a ring sector under Polar),
+    // so every paint style works off the path rather than off a rectangle.
+    void PaintBar(IRenderContext* ctx, const std::vector<Point2Dd>& outline,
+                  const Color& color) const {
+        const Rect2Dd box = OutlineBounds(outline);
+        switch (seriesPaint) {
+            case SeriesPaint::Solid:
+                ctx->SetFillPaint(color);
+                ctx->FillLinePath(outline);
+                break;
+            case SeriesPaint::Gradient: {
+                auto pattern = ctx->CreateLinearGradientPattern(
+                        box.x, box.Bottom(), box.x, box.y,
+                        {GradientStop(0.0, Lighten(color, 80)), GradientStop(1.0, color)});
+                if (pattern) ctx->SetFillPaint(pattern); else ctx->SetFillPaint(color);
+                ctx->FillLinePath(outline);
+                break;
+            }
+            case SeriesPaint::Outline: {
+                Color ghost = color;
+                ghost.a = 45;
+                ctx->SetFillPaint(ghost);
+                ctx->FillLinePath(outline);
+                break;                       // the caller strokes the border
+            }
+            case SeriesPaint::Hatched: {
+                ctx->SetFillPaint(Lighten(color, 95));
+                ctx->FillLinePath(outline);
+                ctx->PushState();
+                ClipToOutline(ctx, outline);
+                ctx->SetStrokePaint(color);
+                ctx->SetStrokeWidth(2.0f);
+                const double run = std::max(4.0, box.height);
+                for (double x = box.x - run; x < box.x + box.width; x += 7.0) {
+                    ctx->DrawLine(Point2Dd(x, box.Bottom()), Point2Dd(x + run, box.y));
+                }
+                ctx->PopState();
+                break;
+            }
+        }
+    }
+
+    static int64_t RegionId(size_t series, size_t category) {
+        return static_cast<int64_t>(series) * 1000 + static_cast<int64_t>(category);
+    }
+
+    std::string TooltipFor(const ChartBarSpan& span, const ChartAxis& datum) const {
+        std::ostringstream out;
+        if (span.seriesIndex < seriesNames.size()) out << seriesNames[span.seriesIndex];
+        if (span.categoryIndex < categoryNames.size()) {
+            out << " · " << categoryNames[span.categoryIndex];
+        }
+        out << ": " << datum.FormatValue(span.plotted);
+        return out.str();
+    }
+
+    void RebuildLimiters() {
+        ClearLimiters();
+        if (limiterMode == LimiterMode::NoLimiter) return;
+
+        const std::vector<double> plotted = PlottedValues();
+        if (plotted.empty()) return;
+        double sum = 0.0, maximum = -std::numeric_limits<double>::max();
+        for (double v : plotted) { sum += v; maximum = std::max(maximum, v); }
+        const double average = sum / static_cast<double>(plotted.size());
+
+        auto add = [this](double v, ChartLimiterKind kind, const Color& color,
+                          const std::string& caption) {
+            ChartLimiter limiter;
+            limiter.kind = kind;
+            limiter.axisIndex = 0;              // the value axis
+            limiter.value = v;
+            limiter.color = color;
+            limiter.caption = caption;
+            limiter.captionColor = color;
+            AddLimiter(limiter);
+        };
+
+        switch (limiterMode) {
+            case LimiterMode::NoLimiter:
+                break;
+            case LimiterMode::Average:
+                add(average, ChartLimiterKind::Average, Color(90, 90, 90, 255), "average");
+                break;
+            case LimiterMode::AverageAndTarget:
+                add(average, ChartLimiterKind::Average, Color(90, 90, 90, 255), "average");
+                add(maximum * 0.9, ChartLimiterKind::Target,
+                    Color(200, 60, 60, 255), "target");
+                break;
+            case LimiterMode::Thresholds:
+                add(maximum * 0.25, ChartLimiterKind::Threshold,
+                    Color(120, 160, 90, 255), "low");
+                add(maximum * 0.50, ChartLimiterKind::Threshold,
+                    Color(210, 160, 60, 255), "watch");
+                add(maximum * 0.75, ChartLimiterKind::Threshold,
+                    Color(200, 60, 60, 255), "critical");
+                break;
+        }
+    }
+
+    void RebuildLegend() {
+        if (!showLegendPanel) {
+            SetShowLegend(false);
+            return;
+        }
+        ChartLegendSwatch swatch = ChartLegendSwatch::Solid;
+        switch (seriesPaint) {
+            case SeriesPaint::Solid:    swatch = ChartLegendSwatch::Solid; break;
+            case SeriesPaint::Gradient: swatch = ChartLegendSwatch::Gradient; break;
+            case SeriesPaint::Outline:  swatch = ChartLegendSwatch::Outline; break;
+            case SeriesPaint::Hatched:  swatch = ChartLegendSwatch::Hatched; break;
+        }
+
+        std::vector<ChartLegendEntry> entries;
+        for (size_t i = 0; i < seriesNames.size(); ++i) {
+            ChartLegendEntry entry;
+            entry.label = seriesNames[i];
+            entry.color = kSeriesColor[i % 3];
+            entry.swatch = swatch;
+            entries.push_back(entry);
+        }
+        SetLegendEntries(entries);
+        SetShowLegend(true);
+    }
 };
 
-std::shared_ptr<EngineDemoBarChart> MakeRevenueChart(const std::string& id,
-                                                     int x, int y, int w, int h) {
-    auto chart = std::make_shared<EngineDemoBarChart>(id, x, y, w, h);
-    chart->SetData({"Q1", "Q2", "Q3", "Q4", "Q5e"},
-                   {380000, 545000, 470000, 690000, 615000},
-                   Color(68, 119, 170, 255));
-    return chart;
+// =============================================================================
+// OPTION-PANEL WIDGETRY (same radio rows as the Album example)
+// =============================================================================
+
+// A plain flex layout wrapper that must never scroll itself.
+std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
+    auto c = std::make_shared<UltraCanvasContainer>(id);
+    ContainerStyle st;
+    st.autoShowScrollbars           = false;
+    st.forceShowVerticalScrollbar   = false;
+    st.forceShowHorizontalScrollbar = false;
+    c->SetContainerStyle(st);
+    return c;
 }
 
-void AddCommonDecorations(std::shared_ptr<EngineDemoBarChart>& chart) {
-    // Limiters (phase 1, slot 400): the average computed from the data, and a
-    // target whose caption is solved into the label plan so it cannot collide
-    // with the value labels.
-    ChartLimiter average;
-    average.kind = ChartLimiterKind::Average;
-    average.axisIndex = 0;
-    average.value = 540000.0;
-    average.color = Color(90, 90, 90, 255);
-    average.caption = "average";
-    average.captionColor = Color(90, 90, 90, 255);
-    chart->AddLimiter(average);
+// A horizontal control line: shrink:0, stretched on the cross axis.
+std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
+    auto row = MakeLayoutBox(id);
+    row->layout.SetFlexRow().SetFlexGap(6)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                   .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    return row;
+}
 
-    ChartLimiter target;
-    target.kind = ChartLimiterKind::Target;
-    target.axisIndex = 0;
-    target.value = 650000.0;
-    target.color = Color(200, 60, 60, 255);
-    target.caption = "target $650K";
-    chart->AddLimiter(target);
+// The active choice gets a gold border + warm fill, so the page always shows
+// which engine option is currently applied.
+inline void StyleOptionButton(UltraCanvasButton* b, bool selected) {
+    const Color baseBg(255, 255, 255, 255);
+    const Color selBg(246, 214, 158, 255);     // warm highlight
+    const Color baseBorder(0, 0, 0, 77);
+    const Color selBorder(201, 143, 46, 255);  // #C98F2E gold
+    const Color text(40, 40, 40, 255);
+    b->SetColors(selected ? selBg : baseBg, selBg);
+    b->SetTextColors(text);
+    b->SetBorder(selected ? 2.0f : 1.0f, selected ? selBorder : baseBorder);
+}
 
-    chart->SetShowLegend(true);
-    chart->SetLegendEntries({{"Revenue", Color(68, 119, 170, 255)},
-                             {"Target", Color(200, 60, 60, 255)}});
+// Append a bold label followed by a radio row of fixed-size buttons into `row`.
+// onPick(i) fires for button i; clicking a button highlights it and clears its
+// siblings. `selectedIndex` marks the initially-active button (-1 = none).
+template <typename Fn>
+std::vector<std::shared_ptr<UltraCanvasButton>> AppendLabeledButtons(
+                          const std::shared_ptr<UltraCanvasContainer>& row,
+                          const std::string& idPrefix, const char* labelText,
+                          int labelW, int btnW, int btnH,
+                          const std::vector<const char*>& labels, Fn onPick,
+                          int selectedIndex = -1) {
+    auto lbl = std::make_shared<UltraCanvasLabel>(idPrefix + "lbl", 0, 0, labelW, btnH);
+    lbl->SetText(labelText);
+    lbl->SetFontSize(12);
+    lbl->SetFontWeight(FontWeight::Bold);
+    lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+    lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->AddChild(lbl);
+
+    auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
+    std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
+    for (size_t i = 0; i < labels.size(); ++i) {
+        auto b = std::make_shared<UltraCanvasButton>(
+                idPrefix + std::to_string(i), 0, 0, btnW, btnH, labels[i]);
+        b->SetFontSize(11);
+        b->SetCornerRadius(4.0f);
+        StyleOptionButton(b.get(), static_cast<int>(i) == selectedIndex);
+        const int idx = static_cast<int>(i);
+        auto* raw = b.get();
+        b->SetOnClick([idx, onPick, group, raw]() {
+            for (auto* gb : *group) StyleOptionButton(gb, gb == raw);
+            onPick(idx);
+        });
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->AddChild(b);
+        group->push_back(raw);
+        buttons.push_back(b);
+    }
+    return buttons;
+}
+
+// A momentary (non-radio) button: fires and springs back, for the actions that
+// have no persistent state (Shuffle, Replay animation).
+template <typename Fn>
+std::shared_ptr<UltraCanvasButton> AppendActionButton(
+                          const std::shared_ptr<UltraCanvasContainer>& row,
+                          const std::string& id, const char* text,
+                          int btnW, int btnH, Fn onClick) {
+    auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, btnW, btnH, text);
+    b->SetFontSize(11);
+    b->SetCornerRadius(4.0f);
+    StyleOptionButton(b.get(), false);
+    b->SetOnClick(onClick);
+    b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->AddChild(b);
+    return b;
 }
 
 } // namespace
 
+// =============================================================================
+// THE PAGE
+// =============================================================================
+
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateChartEngineExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("EngineContainer", 0, 0, 1200, 810);
+    const std::vector<EngineDataset> datasets = MakeDatasets();
 
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("EngineTitle", 20, 10, 1160, 35);
-    titleLabel->SetText("Chart Engine - One Chart Definition, Every Engine Service");
-    titleLabel->SetFontSize(18);
-    titleLabel->SetFontWeight(FontWeight::Bold);
-    titleLabel->SetAlignment(TextAlignment::Center);
-    titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-    container->AddChild(titleLabel);
+    auto root = MakeLayoutBox("ChartEngineExamples");
+    root->layout.SetFlexColumn().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    root->SetPadding(10, 12, 10, 12);
 
-    auto descLabel = std::make_shared<UltraCanvasLabel>("EngineDesc", 20, 52, 1160, 46);
-    descLabel->SetText(
-        "All three charts below are ONE bar-chart class of ~90 lines implementing only the engine's "
-        "content contract: DescribeAxes, RenderChartContent and a label collector. The engine renders "
-        "in three phases - everything under the bars (background, tick-derived grid, limiters, axes), "
-        "the clipped chart itself, and everything over it (solved labels, legend, hover overlay). "
-        "Hover a bar to see the dirty model repaint without re-running layout or the label solver.");
-    descLabel->SetFontSize(11);
-    descLabel->SetWrap(TextWrap::WrapWord);
-    container->AddChild(descLabel);
+    // ===== Header (pinned) =====
+    auto header = MakeLayoutBox("EngineHeader");
+    header->layout.SetFlexColumn().SetFlexGap(4)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    header->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    // ===== 1: Vertical projection - the full option set =====
-    auto verticalLabel = std::make_shared<UltraCanvasLabel>("EngineVLabel", 20, 106, 560, 22);
-    verticalLabel->SetText("Vertical projection: compact $ axis, explicit category ticks, grid from ticks, limiters, legend, solved value labels");
-    verticalLabel->SetFontSize(12);
-    verticalLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(verticalLabel);
+    auto title = std::make_shared<UltraCanvasLabel>("EngineTitle", 0, 0, 0, 28);
+    title->SetText("Chart Engine — one chart definition, every engine service, "
+                   "switchable live");
+    title->SetFontSize(16);
+    title->SetFontWeight(FontWeight::Bold);
+    title->SetTextColor(Color(50, 50, 150, 255));
+    title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    header->AddChild(title);
 
-    auto vertical = MakeRevenueChart("engineVertical", 20, 132, 560, 320);
-    AddCommonDecorations(vertical);
-    vertical->SetChartTitle("Quarterly revenue");
-    container->AddChild(vertical);
+    // Two single-line labels rather than one wrapped block: the header is
+    // pinned at a fixed height, so a re-wrap must never hide the second line.
+    const char* subtitleLines[] = {
+        "The chart below is ONE bar-chart class implementing only the engine's content contract: "
+        "DescribeAxes, RenderChartContent and a label collector.",
+        "Every option row switches an engine service, not a chart-type feature. Hover a bar for "
+        "the engine's hit-region tooltip."
+    };
+    for (int i = 0; i < 2; ++i) {
+        auto line = std::make_shared<UltraCanvasLabel>(
+                "EngineSubtitle" + std::to_string(i), 0, 0, 0, 16);
+        line->SetText(subtitleLines[i]);
+        line->SetFontSize(11);
+        line->SetTextColor(Color(110, 110, 110, 255));
+        line->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        header->AddChild(line);
+    }
+    root->AddChild(header);
 
-    // ===== 2: Horizontal projection - the SAME class, transposed =====
-    auto horizontalLabel = std::make_shared<UltraCanvasLabel>("EngineHLabel", 600, 106, 580, 22);
-    horizontalLabel->SetText("Horizontal projection: the same class - the engine transposes it");
-    horizontalLabel->SetFontSize(12);
-    horizontalLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(horizontalLabel);
+    // ===== The chart (grows to fill) =====
+    auto chart = std::make_shared<EngineFeatureChart>("engineChart", 0, 0, 0, 0);
+    chart->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    chart->SetDataset(datasets[0]);          // also titles the chart
+    chart->SetValueLabelMode(EngineFeatureChart::ValueLabelMode::Declutter);
+    auto* chartPtr = chart.get();
+    root->AddChild(chart);
 
-    auto horizontal = MakeRevenueChart("engineHorizontal", 600, 132, 580, 320);
-    horizontal->SetProjectionKind(ChartProjectionKind::Horizontal);
-    AddCommonDecorations(horizontal);
-    // Configured through the named-property surface, as a by-name creator
-    // (template, script, module host) would do it:
-    horizontal->SetProperty("title", std::string("Same chart, horizontal"));
-    container->AddChild(horizontal);
+    // ===== Status (pinned) =====
+    auto status = std::make_shared<UltraCanvasLabel>("EngineStatus", 0, 0, 0, 22);
+    status->SetText("Vertical projection · linear axis · grouped bars · grid from the "
+                    "value ticks · average + target limiters");
+    status->SetFontSize(11);
+    status->SetTextColor(Color(120, 120, 120, 255));
+    status->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    root->AddChild(status);
+    auto* statusPtr = status.get();
 
-    // ===== 3: Polar projection - the SAME class as ring sectors =====
-    auto polarLabel = std::make_shared<UltraCanvasLabel>("EnginePLabel", 20, 468, 560, 22);
-    polarLabel->SetText("Polar projection: still the same class - bars become ring sectors");
-    polarLabel->SetFontSize(12);
-    polarLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(polarLabel);
+    auto say = [statusPtr](const std::string& text) { statusPtr->SetText(text); };
 
-    auto polar = MakeRevenueChart("enginePolar", 20, 494, 560, 300);
-    polar->SetProjectionKind(ChartProjectionKind::Polar);
-    polar->SetChartTitle("Same chart, polar");
-    container->AddChild(polar);
+    // ===== Controls (pinned) =====
+    auto controls = MakeLayoutBox("EngineControls");
+    controls->layout.SetFlexColumn().SetFlexGap(4)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    controls->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    // ===== Engine option checklist =====
-    auto checklist = std::make_shared<UltraCanvasLabel>("EngineChecklist", 600, 468, 580, 330);
-    checklist->SetText(
-        "Engine services shown on this page:\n\n"
-        "- Three-phase render: under (background, grid, limiters, axes) / content (clipped) / over (labels, legend, overlay)\n"
-        "- Measure-solve layout: margins come from measured titles, tick labels and the legend - no hardcoded margins\n"
-        "- Axis model: linear value axis with compact $ formatting; explicit tickValues for the category axis\n"
-        "- Grid derived from the value axis ticks - grid and labels can never disagree\n"
-        "- Limiters: average and target lines; captions are solved into the label plan\n"
-        "- Label plan: value labels placed by the collision solver, allowSuppress declutters, the tallest bar's label has priority\n"
-        "- Legend: measured, reserved in layout, an obstacle for solved labels\n"
-        "- Projections: Vertical / Horizontal / Polar from one content implementation\n"
-        "- Dirty model: hovering repaints only; data changes rebuild axes, layout and the label plan\n"
-        "- IConfigurableElement: the horizontal chart's title was set via SetProperty(\"title\", ...)\n"
-        "- Plot-area clipping: bars cannot paint over axes or legend");
-    checklist->SetFontSize(11);
-    checklist->SetWrap(TextWrap::WrapWord);
-    checklist->SetBackgroundColor(Color(248, 248, 252, 255));
-    container->AddChild(checklist);
+    const int kLabelW = 82;
+    const int kBtnH = 24;
 
-    return container;
+    // ----- Projection / arrangement / corners -----
+    auto row1 = MakeRow("engine_row_projection");
+    const ChartProjectionKind projections[] = {
+        ChartProjectionKind::Vertical, ChartProjectionKind::Horizontal,
+        ChartProjectionKind::Polar
+    };
+    AppendLabeledButtons(row1, "engine_proj_", "Projection", kLabelW, 96, kBtnH,
+                  {"Vertical", "Horizontal", "Polar"},
+                  [chartPtr, say, projections](int i) {
+                      chartPtr->SetProjectionKind(projections[i]);
+                      const char* what[] = {
+                          "Vertical projection — domain right, value up",
+                          "Horizontal projection — the same content transposed by the engine",
+                          "Polar projection — the same bars as ring sectors, no chart-side change"};
+                      say(what[i]);
+                  }, 0);
+    row1->AddSpacer(20);
+    const ChartBarArrangement arrangements[] = {
+        ChartBarArrangement::Grouped, ChartBarArrangement::Stacked,
+        ChartBarArrangement::PercentStacked
+    };
+    AppendLabeledButtons(row1, "engine_arr_", "Bars", 40, 88, kBtnH,
+                  {"Grouped", "Stacked", "100%"},
+                  [chartPtr, say, arrangements](int i) {
+                      chartPtr->SetArrangement(arrangements[i]);
+                      const char* what[] = {
+                          "Grouped bars — ChartBarArrangement::Grouped (negatives grow downward)",
+                          "Stacked bars — positives accumulate up, negatives down: a diverging stack",
+                          "100% stacked — every category shares out its absolute total"};
+                      say(what[i]);
+                  }, 0);
+    row1->AddSpacer(20);
+    AppendLabeledButtons(row1, "engine_corner_", "Corners", 62, 78, kBtnH,
+                  {"Square", "Rounded"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetBarCornerRadius(i == 0 ? 0.0 : 6.0);
+                      say(i == 0 ? "Square bar outlines"
+                                 : "Rounded bar outlines — BuildBarOutline rounds in screen "
+                                   "space, so ring sectors round too");
+                  }, 0);
+    controls->AddChild(row1);
+
+    // ----- Axis scale / inversion / side -----
+    auto row2 = MakeRow("engine_row_scale");
+    const ChartScale scales[] = {
+        ChartScale::Linear, ChartScale::Log, ChartScale::SymLog, ChartScale::Percentile
+    };
+    AppendLabeledButtons(row2, "engine_scale_", "Value axis", kLabelW, 86, kBtnH,
+                  {"Linear", "Log", "SymLog", "Percentile"},
+                  [chartPtr, say, scales](int i) {
+                      chartPtr->SetValueScale(scales[i]);
+                      const char* what[] = {
+                          "Linear scale — the auto range is rounded outward to nice numbers",
+                          "Logarithmic scale — one tick per decade; the range is pinned to whole "
+                          "decades and the bars grow from the axis floor (try the Wide range data)",
+                          "Symmetric log — linear near zero, logarithmic beyond, so negative values "
+                          "survive (try the Signed data)",
+                          "Percentile scale — position by rank, which uniformises a skewed column; "
+                          "ChartAxis also carries Z-score and robust z-score"};
+                      say(what[i]);
+                  }, 0);
+    row2->AddSpacer(20);
+    AppendLabeledButtons(row2, "engine_invert_", "Direction", 76, 74, kBtnH,
+                  {"Normal", "Inverted"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetInvertValueAxis(i == 1);
+                      say(i == 1 ? "Value axis inverted — ChartAxis::inverted flips which end is high"
+                                 : "Value axis in its natural direction");
+                  }, 0);
+    row2->AddSpacer(20);
+    AppendLabeledButtons(row2, "engine_side_", "Axis side", 70, 58, kBtnH,
+                  {"Near", "Far"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetAxesAtFarSide(i == 1);
+                      say(i == 1 ? "Axes moved to the far edges (Right / Top) — the measured layout "
+                                   "moves the margins with them"
+                                 : "Axes on the near edges (Left / Bottom)");
+                  }, 0);
+    controls->AddChild(row2);
+
+    // ----- Data / number formatting -----
+    auto row3 = MakeRow("engine_row_data");
+    AppendLabeledButtons(row3, "engine_data_", "Data", 46, 94, kBtnH,
+                  {"Revenue", "Wide range", "Signed"},
+                  [chartPtr, say, datasets](int i) {
+                      chartPtr->SetDataset(datasets[i]);
+                      say("Data: " + datasets[i].name + " — " + datasets[i].caption);
+                  }, 0);
+    AppendActionButton(row3, "engine_shuffle", "Shuffle", 68, kBtnH,
+                  [chartPtr, say]() {
+                      chartPtr->ShuffleValues();
+                      say("Values re-jittered — ChartDirty::Data rebuilt the axes, the layout and "
+                          "the label plan, and restarted the entrance animation");
+                  });
+    row3->AddSpacer(20);
+    AppendLabeledButtons(row3, "engine_fmt_", "Numbers", 74, 90, kBtnH,
+                  {"Compact $", "Plain", "2 decimals", "Suffix %", "Custom fn"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::NumberFormat formats[] = {
+                          EngineFeatureChart::NumberFormat::CompactDollars,
+                          EngineFeatureChart::NumberFormat::Plain,
+                          EngineFeatureChart::NumberFormat::TwoDecimals,
+                          EngineFeatureChart::NumberFormat::PercentSuffix,
+                          EngineFeatureChart::NumberFormat::CustomFormatter};
+                      chartPtr->SetNumberFormat(formats[i]);
+                      const char* what[] = {
+                          "unitPrefix \"$\" + compactNumbers — 1'250'000 reads \"$1.3M\"",
+                          "decimals = 0 — plain integers",
+                          "decimals = 2",
+                          "unitSuffix \"%\" — pairs with the 100% stacked arrangement",
+                          "A custom ValueFormatter, which wins over every built-in rule"};
+                      say(what[i]);
+                  }, 0);
+    controls->AddChild(row3);
+
+    // ----- Grid / ticks / slot fill -----
+    auto row4 = MakeRow("engine_row_grid");
+    AppendLabeledButtons(row4, "engine_grid_", "Grid", kLabelW, 88, kBtnH,
+                  {"Value ticks", "Category", "Off"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::GridSource sources[] = {
+                          EngineFeatureChart::GridSource::ValueAxis,
+                          EngineFeatureChart::GridSource::CategoryAxis,
+                          EngineFeatureChart::GridSource::NoGrid};
+                      chartPtr->SetGridSource(sources[i]);
+                      const char* what[] = {
+                          "Gridlines derived from the value axis ticks — grid and labels can never disagree",
+                          "Gridlines derived from the category slots",
+                          "No gridlines — SetGridAxis(SIZE_MAX)"};
+                      say(what[i]);
+                  }, 0);
+    row4->AddSpacer(20);
+    AppendLabeledButtons(row4, "engine_ticks_", "Ticks", 42, 44, kBtnH,
+                  {"4", "6", "10"},
+                  [chartPtr, say](int i) {
+                      const int counts[] = {4, 6, 10};
+                      chartPtr->SetTargetTickCount(counts[i]);
+                      std::ostringstream o;
+                      o << "Target tick count " << counts[i]
+                        << " — the 1-D declutter keeps the ends and zero longest";
+                      say(o.str());
+                  }, 1);
+    row4->AddSpacer(20);
+    AppendLabeledButtons(row4, "engine_fill_", "Slot fill", 58, 68, kBtnH,
+                  {"Narrow", "Default", "Wide"},
+                  [chartPtr, say](int i) {
+                      const double fills[] = {0.4, 0.7, 0.95};
+                      chartPtr->SetSlotFill(fills[i]);
+                      std::ostringstream o;
+                      o << "ChartBarLayoutOptions::slotFill = " << fills[i]
+                        << " — the fraction of a category slot the bars occupy";
+                      say(o.str());
+                  }, 1);
+    controls->AddChild(row4);
+
+    // ----- Limiters / slot padding / value labels -----
+    auto row5 = MakeRow("engine_row_limiters");
+    AppendLabeledButtons(row5, "engine_lim_", "Limiters", 68, 92, kBtnH,
+                  {"None", "Average", "Avg+target", "Thresholds"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::LimiterMode modes[] = {
+                          EngineFeatureChart::LimiterMode::NoLimiter,
+                          EngineFeatureChart::LimiterMode::Average,
+                          EngineFeatureChart::LimiterMode::AverageAndTarget,
+                          EngineFeatureChart::LimiterMode::Thresholds};
+                      chartPtr->SetLimiterMode(modes[i]);
+                      const char* what[] = {
+                          "No limiter lines",
+                          "An average line computed from the plotted values (phase 1, slot 400)",
+                          "Average + target — both captions are solved into the label plan, so they "
+                          "cannot overprint the value labels",
+                          "Three threshold lines — low / watch / critical"};
+                      say(what[i]);
+                  }, 2);
+    row5->AddSpacer(20);
+    AppendLabeledButtons(row5, "engine_pad_", "Slot pad", 64, 48, kBtnH,
+                  {"0", "0.5"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetCategoryPadding(i == 0 ? 0.0 : 0.5);
+                      say(i == 0 ? "categoryPadding 0 — the range spans exactly 0..n-1, so the "
+                                   "outer bars are clipped in half"
+                                 : "categoryPadding 0.5 — every slot gets the same width and the "
+                                   "outer bars keep their full footprint");
+                  }, 1);
+    row5->AddSpacer(20);
+    AppendLabeledButtons(row5, "engine_vlabels_", "Labels", 52, 82, kBtnH,
+                  {"All", "Declutter", "Off"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::ValueLabelMode modes[] = {
+                          EngineFeatureChart::ValueLabelMode::All,
+                          EngineFeatureChart::ValueLabelMode::Declutter,
+                          EngineFeatureChart::ValueLabelMode::Off};
+                      chartPtr->SetValueLabelMode(modes[i]);
+                      const char* what[] = {
+                          "Every value label placed (LabelDeclutterPolicy::PlaceAll) — a crowded "
+                          "chart overprints",
+                          "allowSuppress + SuppressColliding — crowded labels are dropped instead, "
+                          "and the largest bar's label has priority",
+                          "No value labels collected"};
+                      say(what[i]);
+                  }, 1);
+    controls->AddChild(row5);
+
+    // ----- Series paint / legend / tooltips -----
+    auto row6 = MakeRow("engine_row_legend");
+    AppendLabeledButtons(row6, "engine_paint_", "Bar paint", 78, 80, kBtnH,
+                  {"Solid", "Gradient", "Outline", "Hatched"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::SeriesPaint paints[] = {
+                          EngineFeatureChart::SeriesPaint::Solid,
+                          EngineFeatureChart::SeriesPaint::Gradient,
+                          EngineFeatureChart::SeriesPaint::Outline,
+                          EngineFeatureChart::SeriesPaint::Hatched};
+                      chartPtr->SetSeriesPaint(paints[i]);
+                      say("Series paint changed — the legend swatch follows it "
+                          "(ChartLegendSwatch), so a non-solid series is never represented by a "
+                          "colour square that matches nothing");
+                  }, 0);
+    row6->AddSpacer(20);
+    AppendLabeledButtons(row6, "engine_legend_", "Legend", 60, 48, kBtnH,
+                  {"On", "Off"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetShowLegendPanel(i == 0);
+                      say(i == 0 ? "Legend on — measured, reserved in the layout, and an obstacle "
+                                   "the solved labels steer around"
+                                 : "Legend off — its reserved margin returns to the plot area");
+                  }, 0);
+    row6->AddSpacer(20);
+    AppendLabeledButtons(row6, "engine_tips_", "Tooltips", 66, 48, kBtnH,
+                  {"On", "Off"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetEnableTooltips(i == 0);
+                      say(i == 0 ? "Hit-region tooltips on — the engine hit-tests the polygons the "
+                                   "content registered and shows them through the tooltip manager"
+                                 : "Tooltips off — hovering still repaints via ChartDirty::Hover only");
+                  }, 0);
+    controls->AddChild(row6);
+
+    // ----- Animation / title / background -----
+    auto row7 = MakeRow("engine_row_title");
+    AppendLabeledButtons(row7, "engine_anim_", "Animation", kLabelW, 70, kBtnH,
+                  {"On data", "Off"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetAnimateOnDataChange(i == 0, 0.8f);
+                      say(i == 0 ? "The engine animation driver restarts on every ChartDirty::Data"
+                                 : "Animation off — data changes land finished");
+                  }, 0);
+    AppendActionButton(row7, "engine_replay", "Replay", 66, kBtnH,
+                  [chartPtr, say]() {
+                      chartPtr->StartEngineAnimation(0.8f);
+                      say("StartEngineAnimation — frame.animationProgress runs 0..1 (ease-out cubic) "
+                          "off a 60fps engine timer, with no chart-side timer of its own");
+                  });
+    row7->AddSpacer(20);
+    AppendLabeledButtons(row7, "engine_title_", "Title", 38, 112, kBtnH,
+                  {"SetChartTitle", "SetProperty", "None"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::TitleMode modes[] = {
+                          EngineFeatureChart::TitleMode::Direct,
+                          EngineFeatureChart::TitleMode::ViaProperty,
+                          EngineFeatureChart::TitleMode::NoTitle};
+                      chartPtr->SetTitleMode(modes[i]);
+                      const char* what[] = {
+                          "Title set directly — it owns an exclusive band above every other top "
+                          "reservation, so axis labels can never overprint it",
+                          "The same title set with SetProperty(\"title\", ...) — the "
+                          "IConfigurableElement surface a registry, template or module host uses "
+                          "across a module boundary",
+                          "No title — the reserved band returns to the plot area"};
+                      say(what[i]);
+                  }, 0);
+    row7->AddSpacer(20);
+    AppendLabeledButtons(row7, "engine_bg_", "Chart bg", 66, 48, kBtnH,
+                  {"On", "Off"},
+                  [chartPtr, say](int i) {
+                      chartPtr->SetShowChartBackground(i == 0);
+                      say(i == 0 ? "Engine background layer on — element fill plus the plot-area fill"
+                                 : "Background layer off (slot 100 skipped)");
+                  }, 0);
+    controls->AddChild(row7);
+
+    root->AddChild(controls);
+    return root;
 }
 
 } // namespace UltraCanvas
