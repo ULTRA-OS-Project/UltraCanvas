@@ -1,8 +1,14 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.6.0
-// Last Modified: 2026-07-19
+// Version: 1.6.1
+// Last Modified: 2026-08-10
+// V1.6.1: A hover preview no longer keeps playing next to the full video —
+//   activating a tile (click, double-click, action icon or context-menu action)
+//   stops the running preview before the app callback fires, and previews only
+//   run while the album's window is the application's focused window, so a
+//   player window opened over the still-hovered tile is never accompanied by
+//   the inline preview.
 // V1.6.0: Hover animation preview (AlbumConfig::animationHoverPreview) —
 //   resting the cursor on a tile whose bitmap is an animated image (GIF,
 //   animated WebP) plays the animation in place of its static first frame,
@@ -1231,6 +1237,10 @@ namespace UltraCanvas {
 
     void UltraCanvasAlbum::TriggerAction(int actionIndex, size_t itemIndex) {
         if (actionIndex < 0 || actionIndex >= static_cast<int>(actions.size())) return;
+        // The action typically opens the item elsewhere (e.g. the video in its
+        // own player window) while the cursor stays on the tile — end the
+        // inline preview before handing over so both never play at once.
+        StopHoverPreview();
         if (actions[actionIndex].onTrigger) actions[actionIndex].onTrigger(itemIndex);
     }
 
@@ -1280,8 +1290,26 @@ namespace UltraCanvas {
     }
 
     // ===== HOVER PREVIEWS (video + animated image) =====
+    bool UltraCanvasAlbum::IsWindowFocused() const {
+        UltraCanvasWindowBase* win = GetWindow();
+        if (!win) return false;
+        auto* app = UltraCanvasApplication::GetInstance();
+        return app && app->GetFocusedWindow() == win;
+    }
+
     void UltraCanvasAlbum::UpdateHoverPreview() {
         if (!config.videoHoverPreview && !config.animationHoverPreview) return;
+
+        // Previews only run while our window is the focused window. When a
+        // tile opens the full video in its own window the cursor usually
+        // still rests on the tile, and our window never gets a MouseLeave —
+        // without this guard the inline preview would re-arm on the next
+        // mouse move over the (now background) album and play alongside the
+        // real player.
+        if (!IsWindowFocused()) {
+            StopHoverPreview();
+            return;
+        }
 
         // What the hovered tile is eligible for: Video tiles get the video
         // preview; any other tile whose bitmap is animated (GIF / animated
@@ -1313,8 +1341,11 @@ namespace UltraCanvas {
             if (videoTarget >= 0) {
                 if (!hoverPreview) {
                     hoverPreview = std::make_unique<UltraCanvasVideoHoverPreview>();
+                    // The focus check stops a playing preview once another
+                    // window (e.g. a full video player opened from this tile)
+                    // takes the focus — no further mouse move is needed.
                     hoverPreview->onFrame = [this]() {
-                        if (IsVisible()) RequestRedraw();
+                        if (IsVisible() && IsWindowFocused()) RequestRedraw();
                         else StopHoverPreview();
                     };
                     hoverPreview->onStopped = [this]() { RequestRedraw(); };
@@ -1375,8 +1406,10 @@ namespace UltraCanvas {
 
         if (!animPreview) {
             animPreview = std::make_unique<UCImageAnimationController>();
+            // Same focus check as the video preview's onFrame: stop once
+            // another window takes the focus.
             animPreview->onFrameChanged = [this]() {
-                if (IsVisible()) RequestRedraw();
+                if (IsVisible() && IsWindowFocused()) RequestRedraw();
                 else StopHoverPreview();
             };
             animPreview->onEnded = [this]() { FinishAnimationPreview(); };
@@ -1617,6 +1650,11 @@ namespace UltraCanvas {
                         if (config.allowSelection && config.mode != AlbumMode::Display) {
                             ToggleSelection(static_cast<size_t>(dragItem));
                         }
+                        // A click usually opens the item in a viewer / player
+                        // window while the cursor stays on the tile: end the
+                        // inline preview before the callback so it never plays
+                        // alongside the opened video.
+                        StopHoverPreview();
                         if (onItemClicked) onItemClicked(static_cast<size_t>(dragItem));
                     }
                 }
@@ -1628,6 +1666,7 @@ namespace UltraCanvas {
                 Point2Di local(event.pointer.x, event.pointer.y);
                 int item = TileAt(ToContentPoint(local));
                 if (item >= 0 && onItemActivated) {
+                    StopHoverPreview();   // same reason as onItemClicked
                     onItemActivated(static_cast<size_t>(item));
                     return true;
                 }

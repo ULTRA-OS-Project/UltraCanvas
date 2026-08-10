@@ -1,3 +1,16 @@
+#### 2026-08-10 *0.3.38*
+- **UltraCanvasAlbum** *(1.6.1)*: a hover video preview no longer plays
+  alongside the full video opened from its tile. Clicking a video tile (or its
+  Play action) opens the player in its own window while the cursor still rests
+  on the tile, so the album never received a MouseLeave and the muted inline
+  preview kept decoding behind the player — two videos at once. Activating a
+  tile (click, double-click, action icon, context-menu action) now stops the
+  running preview before the app callback fires, and hover previews (video and
+  GIF/WebP animation alike) only run while the album's window is the
+  application's focused window — a preview that is mid-playback when another
+  window takes the focus stops on its next frame tick, and a mouse move over
+  the now-background album no longer re-arms one.
+
 #### 2026-08-09 *0.3.37*
 - **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
   target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
