@@ -8357,9 +8357,14 @@ axes render **above** the content, so a dense chart cannot bury its own axis
 rules and value labels under its data marks.
 
 Live demo: **Charts → Chart Engine** in the demo application
-(`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one ~90-line bar-chart
-class rendered under the Vertical, Horizontal and Polar projections. The first
-production client is the parallel coordinate chart
+(`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one bar-chart class
+implementing nothing but the content contract, with an option panel that
+switches every engine service live: the three projections, the axis scales
+(including `Log` and `SymLog`), number formatting, the grid source, tick
+density, bar arrangement and slot geometry, limiters, the label plan's
+declutter, legend swatches, hit-region tooltips, the animation driver, the
+dirty model and the named-property surface. The first production client is the
+parallel coordinate chart
 ([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md)).
 
 - Driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
@@ -8370,8 +8375,8 @@ production client is the parallel coordinate chart
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.1.0
-**Last Modified:** 2026-08-07
+**Version:** 1.2.0
+**Last Modified:** 2026-08-10
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -8421,13 +8426,41 @@ than clamping. Tick labels are decluttered by the 1-D pass
 (`PriorityGreedy`: range ends and zero survive longest) — never by the 2-D
 solver.
 
+**Logarithmic axes** are first-class: `scale = ChartScale::Log` (base from
+`logBase`, default 10) positions by decade and `GenerateTicks` emits one tick
+per decade, thinned toward the requested count, so labels read 1, 10, 100, 1K…
+Non-positive samples are clamped to a floor (`1e-12`) rather than producing
+NaN, which has two consequences worth planning for:
+
+- **Set the range explicitly.** A log axis has no meaningful zero, so an
+  auto range fed a zero (which `ObserveBarSeries` supplies, because bars grow
+  from it) stretches down to the floor. Pin it to whole decades instead —
+  `axis.SetRange(pow(10, floor(log10(minPositive))), pow(10, ceil(log10(max))))`.
+- **Grow marks from the axis floor.** `Normalize(0)` lands far below the plot,
+  so clamp the base edge of a bar or area to `[0,1]` under a log scale.
+
+`ChartScale::SymLog` is the variant for signed data: linear within
+`symLogThreshold` of zero, logarithmic beyond, so negatives keep their sign
+instead of being clamped away. The demo's **Value axis** row switches
+Linear / Log / SymLog / Percentile over datasets chosen to suit each.
+
 ## Projections
 
 `SetProjectionKind(...)`: `Vertical` (domain right, value up), `Horizontal`
-(the same content transposed), `Polar` (domain around the circle, value
-outward; `Space3D` reserved). Content that draws its shapes as subdivided
-projected edges renders correctly under all of them — the demo's bars become
-ring sectors under Polar with no chart-side change.
+(the same content transposed — note the domain runs **downward**, so the first
+category is the top row), `Polar` (domain around the circle, value outward;
+`Space3D` reserved). Content that draws its shapes as subdivided projected
+edges renders correctly under all of them — the demo's bars become ring
+sectors under Polar with no chart-side change. Edge-axis furniture follows the
+projection too: the engine derives which end of an edge carries the low value
+from the projection rather than assuming.
+
+Polar has no edges to hang furniture on, so an **edge** axis would be drawn as
+a straight rule along the rectangular plot bounds beside a round chart. Give
+the value axis `inPlot = true` there instead — in-plot axes are mapped through
+the projection, so it comes out as a radial rule with its ticks along it — and
+stand the category axis down, naming its slots with annotation labels around
+the rim (what the demo's Polar mode does).
 
 ## Phase-1 services
 
@@ -8510,6 +8543,13 @@ tooltips are enabled (`SetEnableTooltips`).
 `SetAnimateOnDataChange(true, seconds)` restarts it on every
 `ChartDirty::Data`. Content scales its geometry by the progress (bars grow
 from the zero line); charts that ignore it simply render finished frames.
+
+The frames come from a ~60fps periodic application timer the engine owns and
+stops when the animation lands. This matters if you write a driver of your
+own: `RequestRedraw()` from inside a paint cannot produce the next frame,
+because the event loop blocks until a native event or a timer wakes it — an
+animation left to redraw itself freezes at whatever progress its last paint
+happened to see, and only unfreezes when something unrelated repaints.
 
 ## Image paint patterns
 

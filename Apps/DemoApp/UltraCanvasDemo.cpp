@@ -966,7 +966,7 @@ namespace UltraCanvas {
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 
-        chartBuilder.AddItem("chartengine", "Chart Engine", "The shared chart engine: three-phase rendering, axes, limiters, legend and label plan on one minimal bar chart",
+        chartBuilder.AddItem("chartengine", "Chart Engine", "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateChartEngineExamples(); },
                              "DemoApp/UltraCanvasChartEngineExamples.cpp",
