@@ -48,6 +48,11 @@ option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
+# libvips is ON by default (desktop builds keep the hard requirement), but can
+# be opted out for platforms where its dependency graph is impractical
+# (Android, WASM). Without it, raster image loading/saving and PixelFX compile
+# to their HAS_LIBVIPS-guarded fallbacks; the QOI codec keeps working.
+option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -99,6 +104,17 @@ if(WIN32)
 elseif(APPLE)
     set(ULTRACANVAS_PLATFORM "MacOS")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MacOS")
+elseif(ANDROID)
+    # Must be tested before UNIX: the Android NDK toolchain satisfies UNIX (and
+    # bionic defines __linux__), so an Android build would otherwise silently
+    # select the X11/Linux backend and fail on <X11/Xlib.h>.
+    set(ULTRACANVAS_PLATFORM "Android")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/Android")
+    message(FATAL_ERROR
+        "Android is recognized as a target, but the OS/Android backend is not "
+        "implemented yet. See Docs/UltraCanvas/AndroidPortInvestigation.md for "
+        "the port plan (backend files, dependency sysroot, phases). This error "
+        "will be lifted when the OS/Android backend lands.")
 elseif(UNIX)
     set(ULTRACANVAS_PLATFORM "Linux")
     set(ULTRACANVAS_PLATFORM_DIR "OS/Linux")
@@ -142,8 +158,22 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-# libvips - Image processing
-pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+# libvips - Image processing. Still REQUIRED when enabled, so a missing dev
+# package stays a loud configure error rather than a silently crippled build;
+# pass -DULTRACANVAS_ENABLE_VIPS=OFF to build without it.
+if(ULTRACANVAS_ENABLE_VIPS)
+    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+endif()
+# Freeze the core-library decision now: plugin subdirectories (XAR, CDR, OCR,
+# Vectorizer) run their own pkg_check_modules(LIBVIPS ...) later, and those
+# cached results leak back into this scope after add_subdirectory. Every
+# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) must use
+# this variable so a -DULTRACANVAS_ENABLE_VIPS=OFF core stays vips-free.
+if(ULTRACANVAS_ENABLE_VIPS AND LIBVIPS_FOUND)
+    set(ULTRACANVAS_HAS_VIPS TRUE)
+else()
+    set(ULTRACANVAS_HAS_VIPS FALSE)
+endif()
 
 # librsvg - parse-once SVG documents (optional). With it, SVG files are parsed
 # a single time into a retained document that every rasterization (zoom level,
@@ -615,7 +645,7 @@ list(APPEND ULTRACANVAS_CORE_SOURCES
      ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp)
 
 # libvips-dependent sources
-if(LIBVIPS_FOUND)
+if(ULTRACANVAS_HAS_VIPS)
     list(APPEND ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
@@ -683,7 +713,7 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         # (in-memory thumbnail caches); separate from the file-format codec.
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/QoiPixmapCodec.cpp
 )
-if(LIBVIPS_FOUND)
+if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader for QOI — consumes the codec symbols above.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
@@ -932,7 +962,7 @@ if(NOT APPLE AND FONTCONFIG_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
-if(LIBVIPS_FOUND)
+if(ULTRACANVAS_HAS_VIPS)
     foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
     endforeach()
@@ -1101,7 +1131,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
-        $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
+        $<$<BOOL:${ULTRACANVAS_HAS_VIPS}>:HAS_LIBVIPS=1>
         $<$<BOOL:${LIBRSVG_FOUND}>:HAS_LIBRSVG=1>
         $<$<BOOL:${ZBAR_FOUND}>:ULTRACANVAS_QRCODE_HAS_DECODER=1>
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
@@ -1920,7 +1950,9 @@ endif()
 # ===== EXPORT VARIABLES TO PARENT =====
 set(ULTRACANVAS_LIBRARY ${ULTRACANVAS_LIB_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
-set(LIBVIPS_FOUND ${LIBVIPS_FOUND} PARENT_SCOPE)
+# Export the frozen core decision, not the (possibly plugin-polluted)
+# LIBVIPS_FOUND — the parent uses this to gate vips-dependent demo sources.
+set(LIBVIPS_FOUND ${ULTRACANVAS_HAS_VIPS} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -1968,8 +2000,10 @@ message(STATUS "  FreeType: ${FREETYPE_VERSION_STRING}")
 if(HARFBUZZ_FOUND)
     message(STATUS "  HarfBuzz: ${HARFBUZZ_VERSION}")
 endif()
-if(LIBVIPS_FOUND)
-    message(STATUS "  libvips: ${LIBVIPS_VERSION}")
+if(ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  libvips: ${LIBVIPS_vips_VERSION}")
+else()
+    message(STATUS "  libvips: DISABLED (raster image formats limited to built-in codecs)")
 endif()
 if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")
