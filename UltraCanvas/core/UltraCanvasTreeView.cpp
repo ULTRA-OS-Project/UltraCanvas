@@ -984,6 +984,12 @@ namespace UltraCanvas {
     bool UltraCanvasTreeView::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.pointer)) return false;
 
+        // The right button belongs to the context menu (fired on MouseUp) —
+        // it must not move the selection to the node under the cursor.
+        if (event.button == UCMouseButton::Right) {
+            return onNodeRightClicked != nullptr;
+        }
+
 //        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
 
         // Check if clicking on scrollbar
@@ -1069,11 +1075,12 @@ namespace UltraCanvas {
 //            return true;
 //        }
 
-        // Handle right-click context menu
-        if (event.pointer.x > 0) { // Assuming right-click has positive x
+        // Right-click context menu on the node under the cursor. Only the
+        // right button fires it — this used to trigger on every release.
+        if (event.button == UCMouseButton::Right) {
             TreeNode *rightClickedNode = GetNodeAtY(event.pointer.y);
             if (rightClickedNode && onNodeRightClicked) {
-                onNodeRightClicked(rightClickedNode);
+                onNodeRightClicked(rightClickedNode, event);
                 return true;
             }
         }
