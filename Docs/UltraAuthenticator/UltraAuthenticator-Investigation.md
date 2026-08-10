@@ -55,22 +55,23 @@ A minimal authenticator implements:
 ### 2.2 Missing — the real gaps
 
 **(a) No crypto API surface.** TOTP is `HMAC-SHA-1/256/512` plus dynamic
-truncation. OpenSSL is already a vendored dependency (for UltraNet/libcurl),
-but the house rule — *"never expose a third-party type in a public header;
-never call vendored libraries directly from app code"* (AGENTS.md) — means
-there is currently **no sanctioned way for an app to compute an HMAC**.
-The symptom already exists in the tree: `Apps/AnchorPoint/net/Sha256.h` is a
-hand-rolled SHA-256 whose own header says *"When UltraNet/UltraVault bring a
-vetted crypto surface, this can be replaced by that."* An authenticator must
-not repeat that pattern with hand-rolled HMAC.
+truncation. The house rule — *"never expose a third-party type in a public
+header; never call vendored libraries directly from app code"* (AGENTS.md) —
+combined with the fact that no wrapped crypto surface exists means there is
+currently **no sanctioned way for an app to compute an HMAC**. The symptom
+already exists in the tree: `Apps/AnchorPoint/net/Sha256.h` is a hand-rolled
+SHA-256 whose own header says *"When UltraNet/UltraVault bring a vetted
+crypto surface, this can be replaced by that."* An authenticator must not
+repeat that pattern with hand-rolled HMAC.
 
-→ **Prerequisite work item: a small `UltraCrypto` wrapper module** (peer of
-`UltraCanvasJSON` in `DataFormats/` or a sibling module) exposing at minimum:
-`HmacSha1/HmacSha256/HmacSha512`, `RandomBytes` (CSPRNG), `ConstantTimeEquals`,
-`SecureZero`, and an AEAD primitive (`Aes256GcmEncrypt/Decrypt`) plus a
-password KDF (Argon2id preferred; PBKDF2-HMAC-SHA256 as the OpenSSL-only
-fallback) for the storage layer in §3.1. All backed by OpenSSL behind an
-UltraCanvas-owned API, per the wrapped-engines convention.
+→ **Prerequisite work item: the `UltraCrypt` module** — a sibling of UltraNet
+and UltraDatabase, now specified in
+[`Docs/Modules/UltraCrypt/README.md`](../Modules/UltraCrypt/README.md) and
+registered in `Masterfile_modules.md` §7. This app needs from it:
+`UltraCrypt_Hmac` (SHA-1/256/512), `UltraCrypt_RandomBytes`,
+`UltraCrypt_ConstantTimeEquals`, `UltraCryptSecureBuffer`,
+`UltraCrypt_AeadSeal`/`Open` and `UltraCrypt_DeriveKeyFromPassword` for the
+storage layer in §3.1, plus `UltraCrypt_Base32Decode` for seed entry.
 
 This gap is **framework-wide, not specific to this app** — see §2.3.
 
@@ -125,7 +126,7 @@ links Schannel (`secur32`/`crypt32`) and macOS links `Security.framework`
 Linux"* — and pins `min_version: "1.1.1"`, which predates OpenSSL's Argon2
 support (3.2+). Choosing a crypto backend is therefore a real dependency
 decision, not a free one; the options and a recommendation are in
-[UltraCanvasCrypto](../UltraCanvas/UltraCanvasCrypto.md) §3.
+[UltraCrypt](../Modules/UltraCrypt/README.md) §3.
 
 #### Cautionary tale: what the missing API already produced
 
@@ -326,7 +327,7 @@ Apps/UltraAuthenticator/
   AccountListView.*            — container of per-account tiles (elements only)
   AddAccountFlow.*             — camera scan / image file / manual entry + confirm dialog
   otp/
-    Totp.*  Hotp.*             — RFC 6238 / RFC 4226 (uses UltraCrypto HMAC)
+    Totp.*  Hotp.*             — RFC 6238 / RFC 4226 (uses UltraCrypt HMAC)
     Base32.*                   — RFC 4648 decode/encode, strict
     OtpAuthUri.*               — otpauth:// parse + validate (§3.3)
   store/
@@ -334,7 +335,7 @@ Apps/UltraAuthenticator/
     EncryptedFileStore.*       — AES-256-GCM + Argon2id envelope (§3.1)
     SecureBuffer.h             — zeroizing secret container (§3.2)
 
-UltraCanvas/{include,core}/DataFormats/UltraCrypto.h/.cpp   (new, shared)
+UltraCanvas/{include,core}/UltraCrypt/UltraCryptCore.h/.cpp   (new module)
   — HMAC-SHA1/256/512, RandomBytes, ConstantTimeEquals, SecureZero,
     Aes256GcmSeal/Open, DeriveKeyArgon2id — OpenSSL behind the API.
 
@@ -349,7 +350,7 @@ Camera scan pipeline: `UltraCanvasVideoRecorder::Open()` (preview only,
 
 ### Suggested build order
 
-1. `UltraCrypto` wrapper (unblocks everything; also retires AnchorPoint's
+1. `UltraCrypt` (unblocks everything; also retires AnchorPoint's
    ad-hoc SHA-256 eventually).
 2. OTP engine + Base32 + URI parser, with RFC test vectors in `Tests/`.
 3. `EncryptedFileStore` + `SecureBuffer`.
@@ -381,7 +382,7 @@ encrypts nothing.
 The recommendation is therefore to treat crypto as a **core service in its own
 right**, scheduled ahead of the authenticator rather than as part of it, with
 the authenticator as its first proving consumer. That design is now specified
-in [UltraCanvasCrypto](../UltraCanvas/UltraCanvasCrypto.md), which also
+in [UltraCrypt](../Modules/UltraCrypt/README.md), which also
 settles the backend question the correction above raises. Likewise
 `ISecretStore` should be defined so UltraVault can slot in behind it later.
 The hardest *unfixable-in-app*
