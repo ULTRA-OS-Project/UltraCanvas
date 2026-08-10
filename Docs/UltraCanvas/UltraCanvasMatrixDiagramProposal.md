@@ -9,6 +9,24 @@ its 2×2 *positioning* presets (BCG, Eisenhower, Risk, Ansoff, Priority), (b)
 chart", and (c) `UltraCanvasSWOTDiagram`'s `SWOTDesign::Matrix` geometry preset.
 None of the three is a matrix diagram in the sense investigated here.
 
+**Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
+architectural room-adjacency matrices, and adjacency data is already modelled by
+`UltraCanvasAdjacencyDiagram`. They are therefore **out of scope for this
+element** and have moved to
+[`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md),
+which proposes a matrix *view* on that element. Revisions 1–2 had this wrong in
+a way worth recording: they spotted the data overlap (§4.2) and concluded the
+matrix element should own a standalone `Roof` shape plus a
+`BuildAdjacencyMatrix()` bridge to convert the data across. That would have put
+"these rooms must be adjacent" in two components and left callers syncing a
+converted copy against the original. One dataset, two renderers — in the
+component that owns the dataset. Consequences here: the `BuildAdjacencyMatrix`
+bridge is gone, the standalone `Roof` shape is gone, and triangular geometry
+survives only as the QFD roof inside `House` (D6, Phase 3). §3.6's
+staircase-versus-rotated finding still stands — it simply belongs to the
+adjacency proposal now, where it drives that element's phasing instead of this
+one's.
+
 **Revision 2 (2026-08-10)** — three further reference images were checked
 against revision 1. The core model survived unchanged, but four things in it
 were wrong or too narrow and have been corrected in place; §3.6 records what
@@ -21,8 +39,9 @@ X-shape hub is often **captioned**, not dead.
 **Last Modified:** 2026-08-10
 **Related:** `UltraCanvasHeatmapChart` (implemented — the closest *geometric*
 sibling: a labelled grid of cells, but scalar-valued),
-`UltraCanvasAdjacencyDiagram` (implemented — holds *exactly* the data of
-reference images 1 and 2 in node-link form; see §4.2),
+`UltraCanvasAdjacencyDiagram` (implemented — owns the data of reference images
+1, 2 and 7, which are consequently **not** this element's problem; see §4.2 and
+[`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md)),
 `UltraCanvasSWOTDiagram` and `UltraCanvasFishboneDiagram` (implemented — the
 closest *architectural* siblings, and the template this proposal follows),
 `Docs/UltraCanvas/SWOTDiagramDesignVariants.md` (the same kind of survey done
@@ -46,14 +65,12 @@ are placed around them*:
 
 | Image | Sets | Panels | Classical name |
 |---|---|---|---|
-| 1 (rooms, red/blue dots) | 1 (against itself) | 1, rotated 45° | Roof / triangular |
-| 2 (rooms + Y/N attribute columns) | 1 + attribute columns | 1 rotated + a side table | Roof + attributes |
 | 3 (X-shaped, four groups) | 4 | 4, pinwheeled round a hub | X-shaped |
 | 4 (T-shaped, employees) | 3 | 2, sharing a row axis | T-shaped |
 | 5 (Entry/Lobby/… bubbles) | 2 | 1, axis-aligned | L-shaped |
 | 6 (improvement tools × departments) | 2 | 1, axis-aligned + totals gutters | L-shaped |
-| 7 (MUST/SHOULD/MAYBE room matrix) | 1 (against itself) | 1, **axis-aligned staircase** | Roof / triangular |
 | 8 (X-shaped, suppliers/storage/customers/lines) | 4 | 4, round a **captioned** hub | X-shaped |
+| ~~1, 2, 7 (room adjacency)~~ | ~~1~~ | ~~1, triangular~~ | *ceded — see revision 3* |
 
 That taxonomy is not invented for this document — it is the standard one from
 the *Seven Management and Planning Tools* (Mizuno / JUSE), where the matrix
@@ -105,7 +122,7 @@ in the repository:
 | **Y** | 3 | A×B, B×C, C×A — three L panels folded into a hexagon | — |
 | **X** | 4 | A×B, B×C, C×D, D×A — four L panels pinwheeled | Image 3 |
 | **C** | 3 | A×B×C simultaneously, as a cube | — (rarely drawn; see §9 Q3) |
-| **Roof** | 1 (A against itself) | the upper triangle of A×A | Images 1, 2 (rotated 45°) and 7 (axis-aligned staircase); the roof of a House of Quality |
+| **Roof** | 1 (A against itself) | the upper triangle of A×A | Images 1, 2, 7 — all room adjacency, and so **not this element's** (§4.2); survives here only as the House of Quality correlation roof |
 
 **House of Quality** is the composite worth naming as a target: an L panel
 (customer needs × technical requirements) with a roof triangle on top
@@ -119,31 +136,21 @@ each shape.
 
 ## 3. What the first five reference images demand
 
-### Image 1 — hand-drawn room adjacency, 45° triangle
+### Images 1 and 2 — room adjacency triangles *(ceded — revision 3)*
 
-Eleven rooms down the left (MASTER BEDROOM … ENTRY); the grid is rotated 45° so
-each row's cells run diagonally up-right and the whole thing forms a triangle
-whose hypotenuse is the label column. Two mark levels: a **red dot** ("spaces
-which must be next to each other") and a **blue dot** ("spaces which are
-preferred to be next to each other"); no mark means no requirement. A legend
-box sits in the free space to the right of the triangle.
+Both are architectural space-planning adjacency matrices: a set of spaces
+crossed against itself, marks encoding required adjacency strength. Image 2 adds
+a gutter of Y/N attribute columns and square footages. That is
+`UltraCanvasAdjacencyDiagram`'s data, so the analysis of these two images now
+lives in
+[`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md)
+§2 rather than here. See §4.2 for why.
 
-*Demands:* `Roof` shape; a symmetric single-set panel; row labels on the
-hypotenuse, horizontal (**not** rotated with the grid — the labels stay level
-while the cells rotate, which is the one geometric subtlety of the whole
-element); a legend placed in the triangle's free corner.
-
-### Image 2 — roof matrix with an attribute table
-
-The same triangle, but with a block of narrow **attribute columns** to the left
-of the labels: Y/N flags per room and a square-footage figure. Marks are dots in
-four colours plus letter codes, with a legend listing `MOST / SHOULD / RAISE`
-(coloured dots) and `Y = YES / N = NO / S = SEMI` (letters).
-
-*Demands:* everything from image 1, plus **row attribute columns** (arbitrary
-per-row text/flag columns rendered as a table gutter beside the labels), and a
-scale whose marks can be a **glyph, a letter, or a coloured dot** — the mark
-renderer must accept text, not only shapes.
+One observation from image 2 is *not* adjacency-specific and stays in scope: its
+marks are a mixture of coloured dots and **letter codes** (`Y = YES`, `N = NO`,
+`S = SEMI`) sharing one legend. So the mark renderer must accept **text**, not
+only shapes — which is where `MatrixMarkShape::Text` and the `ChartLegend`
+`Glyph` swatch of §8 come from.
 
 ### Image 3 — X-shaped, four groups
 
@@ -195,8 +202,10 @@ preset:
 - Grid rules drawn under the marks; marks never fill the cell (contrast with
   the heatmap, where the fill *is* the datum).
 
-And two things that appear in only some images and therefore belong behind
-flags: row attribute columns (image 2), and a form-style header band (image 4).
+And one thing that appears in only some images and therefore belongs behind a
+flag: the form-style header band of images 4 and 8. (Revision 1 listed row
+attribute columns here too, on the strength of image 2 — but image 2 is ceded,
+so that feature lost its driver in this element; see C4.)
 
 ## 3.6 Second image set — what it changed
 
@@ -239,7 +248,7 @@ every score would have evaluated to **zero**. Defaulting importance to `1.0`
 makes the unweighted case fall out of the same formula, and QFD stays a matter
 of setting real importances. This was a straightforward bug in the sketch.
 
-### Image 7 — MUST / SHOULD / MAYBE room matrix
+### Image 7 — MUST / SHOULD / MAYBE room matrix *(ceded — revision 3)*
 
 Twenty-odd spaces (ENTRY, LOBBY, RECEPTION … STORAGE) crossed against
 themselves, three levels (red MUST, blue SHOULD, green MAYBE), legend top-left,
@@ -248,24 +257,19 @@ column labels rotated ~90° along the top. Structurally identical to images 1 an
 It is drawn as an ordinary axis-aligned grid whose populated region is a
 right-triangle staircase.
 
-This is the correction that matters most, because revision 1 asserted in §2, D2,
-L4 and §7.1 that the triangular form *is* the rotated one, and built the
-element's hardest geometry problem on that assertion. It conflated two
-renderings of one data structure:
+That finding stands, and it was the most consequential in revision 2: the
+triangular matrix has two renderings, and the cheap one (staircase, no new
+geometry, scales past 20 items) is the one real programs use. But revision 3
+moved this image, and the finding with it, to
+[`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md)
+§2.2 — it is adjacency data, and the finding now drives *that* element's
+phasing. Recorded here only because it is why this document no longer has a
+standalone `Roof` shape at all.
 
-| | Rotated45 | Staircase |
-|---|---|---|
-| Cell grid | rotated −45°, labels kept level | plain axis-aligned grid |
-| Populated region | diamond/roof triangle | upper-right staircase |
-| Seen in | images 1, 2; the QFD roof | image 7 |
-| Scales to | ~12 items before it sprawls | 20+ items comfortably |
-| Implementation | §7.1 — the transform *and* the inverse for hit testing | none — it is `HeatmapTriangularMask::Upper` geometry with glyph marks |
-
-So `Roof` needs a companion `MatrixTriangularStyle { Staircase, Rotated45 }`,
-defaulting to `Staircase`. That is not just a completeness fix — it changes the
-phasing. Staircase needs **no new geometry at all**, so it should land in Phase 1
-and Rotated45 should move to Phase 2, which takes the single riskiest item in
-the plan off the critical path. Revision 1 had this exactly backwards.
+The residue for this element: when the correlation roof arrives with `House`
+(D6, Phase 3), it is the **rotated** form — a QFD roof is drawn at 45° by
+convention and is small (5–15 technical requirements), so the scaling argument
+that favours the staircase does not apply there.
 
 ### Image 8 — X-shaped, suppliers / storage / customers / lines
 
@@ -323,44 +327,48 @@ places where the heatmap's design points the other way:
 | Cell datum | `double`, dense `std::vector<double>` sized `cols*rows` | ordinal level ID, sparse — most cells empty |
 | Encoding | value → colormap → cell **fill** | level → **glyph + colour**, drawn *on* an unfilled cell |
 | Legend | continuous colour bar | discrete symbol key with names |
-| Panels | exactly one | one (L, Roof), two (T), three (Y), four (X) |
+| Panels | exactly one | one (L), two (T), three (Y), four (X), five (House) |
 | Geometry | axis-aligned only | 45°-rotated panels with level labels |
 | Derived values | none | weighted column/row roll-ups and rankings |
 
 A subclass would inherit a dense buffer it does not want, a colour bar it must
 suppress, an `Image` render mode that cannot draw glyphs, and a
 single-plot-area layout that cannot express T/Y/X. `HeatmapTriangularMask`
-masks *cells* inside a square grid; the roof shape needs the *panel* rotated and
-the labels not rotated with it. The right relationship is sibling, not child.
+masks *cells* inside a square grid. The right relationship is sibling, not
+child.
 
 **Keep the boundary explicit in both docs:** continuous cell value → use
 `UltraCanvasHeatmapChartElement`; named relationship levels, several item sets,
 or weighted roll-ups → use `UltraCanvasMatrixDiagram`.
 
-### 4.2 The overlap that is an opportunity: `UltraCanvasAdjacencyDiagram`
+### 4.2 The overlap that is *not* ours: `UltraCanvasAdjacencyDiagram`
 
-Reference images 1 and 2 are architectural space-planning adjacency matrices.
-`UltraCanvasAdjacencyDiagram` already models that domain — `AdjacencyRoom`
-(id, label, area, function type) plus `AdjacencyLink` (source, target, type ∈
-{`Direct`, `Secondary`, `ServiceOnly`}) — and renders it as the *bubble* form.
-The matrix in image 1 and the bubble diagram are two views of one dataset, and
-architects routinely draw both.
+Reference images 1, 2 and 7 are architectural space-planning adjacency
+matrices. `UltraCanvasAdjacencyDiagram` already models that domain —
+`AdjacencyRoom` (id, label, area, function type) plus `AdjacencyLink` (source,
+target, type ∈ {`Direct`, `Secondary`, `ServiceOnly`}) — and renders it as the
+*bubble* form. The matrix and the bubble diagram are two views of one dataset.
 
-So the proposal is not only "add a matrix element" but **"add the second view of
-a dataset the framework already holds"**: a free function
+Revisions 1 and 2 of this document treated that as an opportunity for *this*
+element: a `Roof` shape here, plus a `BuildAdjacencyMatrix()` free function to
+convert `AdjacencyRoom`/`AdjacencyLink` into a `MatrixModel`. That was the wrong
+call. A conversion function does not make two components into a pair — it makes
+a copy, and a copy has to be regenerated every time the program changes, with
+nothing in the type system to say when it went stale. Worse, it would give the
+framework two answers to "where do I say these rooms must be adjacent?", which
+is exactly the kind of duplication `AGENTS.md` exists to prevent.
 
-```cpp
-// Plugins/Diagrams/UltraCanvasMatrixModel.h
-MatrixModel BuildAdjacencyMatrix(const std::vector<AdjacencyRoom>& rooms,
-                                 const std::vector<AdjacencyLink>& links);
-```
+**These three images are therefore out of scope here.** They are the subject of
+[`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md),
+which adds an `AdjacencyView::Matrix` render path to the element that already
+owns the data. No bridge function, no shared model, and no dependency in either
+direction between that element and this one.
 
-that produces a `Roof`-shaped model (`Staircase` style — reference image 7 is
-exactly this picture, at 20 spaces, and the rotated form does not scale that
-far) with a three-level scale mapped from `AdjacencyLinkType`. Cheap to write,
-and it turns two components into a pair.
-(Keep it in the model header, which already depends on nothing UI-side; do not
-make either element depend on the other.)
+What this element gives up as a result: the standalone `Roof` shape, and with it
+the whole of the rotated-triangle geometry from Phase 1. Triangular geometry
+returns only in Phase 3, as the correlation roof of `House` (D6) — which is a
+requirement×requirement correlation, not adjacency data, and so is genuinely
+this element's.
 
 ### 4.3 The other neighbours, and why none of them is this
 
@@ -398,8 +406,10 @@ make either element depend on the other.)
    `CMakeLists.txt` (~line 205).
 6. `Docs/UltraCanvas/UltraCanvasMatrixDiagram.md` (guide) and
    `UltraCanvasMatrixDiagramExamples.md`; cross-reference from
-   `UltraCanvasHeatmapChart.md`, `UltraCanvasAdjacencyDiagramExamples.md` and
-   `UltraCanvasQuadrantChartExamples.md`.
+   `UltraCanvasHeatmapChart.md` and `UltraCanvasQuadrantChartExamples.md`. The
+   guide must also point room-adjacency callers at
+   `UltraCanvasAdjacencyDiagram` rather than at a shape here — that boundary
+   only holds if both docs state it.
 7. `Tests/MatrixModelTest.cpp` (+ its entry in `Tests/CMakeLists.txt`) — roll-up
    arithmetic and the CSV codecs, following `Tests/FishboneModelTest.cpp`.
 8. `python3 scripts/generate_llms_txt.py`, and
@@ -431,14 +441,12 @@ enum class MatrixShape {
     T,      // B x A, A x C  — A is the shared spine (3 sets, 2 panels)
     Y,      // A x B, B x C, C x A                  (3 sets, 3 panels)
     X,      // A x B, B x C, C x D, D x A           (4 sets, 4 panels)
-    Roof,   // A x A, upper triangle                (1 set,  1 panel)
-    House   // L + Roof + importance + targets      (QFD composite)
+    House   // L + correlation roof + importance + targets  (QFD composite)
 };
-
-// How a symmetric half matrix is drawn. Staircase is an ordinary axis-aligned
-// grid with a triangular populated region (image 7) and needs no new geometry;
-// Rotated45 is the classic diamond/roof (images 1, 2, and the QFD roof).
-enum class MatrixTriangularStyle { Staircase, Rotated45 };
+// No standalone Roof shape: every triangular reference image turned out to be
+// adjacency data, which UltraCanvasAdjacencyDiagram owns (§4.2). The only
+// symmetric half matrix left is the QFD correlation roof, which is internal to
+// House and arrives with it in Phase 3.
 
 // What sits in the middle of an X-shaped diagram: nothing (image 3) or the
 // four set captions with arrows out to their bands (image 8).
@@ -462,7 +470,6 @@ struct MatrixScale {
 
     static MatrixScale QFD();             // ● 9 / ○ 3 / △ 1
     static MatrixScale Strength531();     // strong 5 / medium 3 / weak 1 (image 6)
-    static MatrixScale Adjacency();       // must / should / maybe (images 1, 7)
     static MatrixScale HighMediumLow();   // filled / filled / ring (image 8)
     static MatrixScale Presence();        // single level: a dot or nothing
 };
@@ -498,8 +505,8 @@ struct MatrixCell {
 struct MatrixPanel {
     std::string rowSetId, colSetId;
     MatrixScale scale;                    // per-panel: image 4 needs two
-    bool        symmetric = false;        // Roof: rowSet == colSet, upper only
-    MatrixTriangularStyle triangularStyle = MatrixTriangularStyle::Staircase;
+    bool        symmetric = false;        // rowSet == colSet, upper triangle
+                                          // only (the House correlation roof)
 };
 
 struct MatrixModel {
@@ -524,8 +531,9 @@ struct MatrixModel {
 };
 
 // ---- Interop ---------------------------------------------------------------
-MatrixModel BuildAdjacencyMatrix(const std::vector<AdjacencyRoom>&,
-                                 const std::vector<AdjacencyLink>&);
+// No BuildAdjacencyMatrix(): revision 3 removed it. This header must not know
+// about AdjacencyRoom/AdjacencyLink -- adjacency data stays in the element that
+// owns it and is drawn by that element's own matrix view (§4.2).
 std::string ExportMatrixCsv(const MatrixModel&, int panel = 0);
 bool        ImportMatrixCsv(const std::string& csv, MatrixModel& out);
 
@@ -536,7 +544,7 @@ Three deliberate choices, each with a reason:
 
 - **Sparse cells.** Real matrices are 5–20 % populated. A dense buffer would
   make `SetCell` O(1) but force callers to size the grid before naming the
-  items, and it makes the `Roof` half-grid awkward. Keep a `std::map`-backed
+  items, and it makes the `House` roof's half-grid awkward. Keep a `std::map`-backed
   index inside the element for O(log n) lookup during render.
 - **Scale on the panel, not the model.** Image 4 settles this: the two wings of
   the T use different scales.
@@ -553,26 +561,32 @@ Codes follow the fishbone/contour proposals so phasing can reference them.
 
 ### Shapes (D)
 - **D1** `L` — one axis-aligned panel. *(Phase 1)*
-- **D2** `Roof`, `Staircase` style — symmetric half panel on an axis-aligned
-  grid (image 7). No new geometry. *(Phase 1)*
-- **D2b** `Roof`, `Rotated45` style — the classic 45° diamond/roof (images 1, 2).
-  Owns the §7.1 problem. *(Phase 2)*
+- **D2** ~~`Roof`~~ — **withdrawn in revision 3.** Every triangular reference
+  image is adjacency data; see §4.2. The QFD correlation roof survives inside
+  D6 and arrives with it.
 - **D3** `T` — two panels sharing the row axis. *(Phase 1)*
 - **D4** `X` — four panels pinwheeled around a hub, `Blank` or `Captions`
   (`MatrixHubMode`). *(Phase 2)*
 - **D5** `Y` — three panels at 120°, hexagonal envelope. *(Phase 2)*
-- **D6** `House` — QFD composite: L + roof + importance + target strip. *(Phase 3)*
+- **D6** `House` — QFD composite: L + the correlation roof + importance +
+  target strip. Brings the rotated-triangle geometry of §7.1 with it, and is
+  the only thing that needs it. *(Phase 3)*
 - **D7** `C` — 3-set cube. *(Deferred — see §9 Q3)*
 
 ### Data & content (C)
 - **C1** Item sets with per-item labels, accents and notes.
 - **C2** Sparse cell marks with an optional per-cell note.
 - **C3** Row importance weights.
-- **C4** Attribute gutter columns (image 2).
-- **C5** Scale presets: QFD (9/3/1), Strength531 (5/3/1), Adjacency,
-  HighMediumLow, Presence — with caller-settable weights throughout (§3.6a).
-- **C6** Three worked samples for the demo (QFD phone, room adjacency,
-  employees × projects × skills).
+- **C4** Attribute gutter columns — **demoted in revision 3.** Image 2 was its
+  only driver and is now ceded, and the adjacency proposal picks the feature up
+  as its own §2.4. Keep the slot, build it when a matrix-element caller asks.
+  *(Deferred)*
+- **C5** Scale presets: QFD (9/3/1), Strength531 (5/3/1), HighMediumLow,
+  Presence — with caller-settable weights throughout (§3.6a).
+- **C6** Three worked samples for the demo: improvement tools × departments
+  with totals (image 6), employees × projects × skills (image 4), and
+  suppliers/storage/customers/lines (image 8). No room-adjacency sample — that
+  one belongs to the adjacency diagram's demo (§4.2).
 - **C7** `Validate()` — dangling item ids, set count wrong for the shape,
   duplicate cells, level id not in the panel's scale.
 
@@ -584,7 +598,8 @@ Codes follow the fishbone/contour proposals so phasing can reference them.
   Wrapping is the better default for short labels and must not be an
   afterthought — image 6 uses it in preference to rotation.
 - **L3** Label ellipsis and wrapping with a measured gutter width.
-- **L4** The `Rotated45` roof geometry: cells rotated, labels level (§7.1).
+- **L4** The correlation-roof geometry: cells rotated 45°, labels level (§7.1).
+  *(Phase 3, with D6 — nothing before `House` needs it.)*
 - **L5** Legend placement in the shape's free corner, using `ChartLegend`.
 - **L6** Optional form-style header band (image 4).
 - **L7** Roll-up **gutters**: a numeric total cell per column along the bottom
@@ -638,12 +653,12 @@ Codes follow the fishbone/contour proposals so phasing can reference them.
 
 Three, in descending order of risk.
 
-**7.1 The rotated roof geometry (D2b/L4).** *Revision 2 note: this is no longer
-on the Phase 1 critical path. Image 7 showed the triangular matrix is just as
-often drawn axis-aligned as a staircase (§3.6), which needs none of what
-follows — it is a populated-region test inside the ordinary grid layout. Ship
-`Staircase` first; the rotated form below is then an additive Phase 2 style
-rather than a prerequisite for having a roof shape at all.*
+**7.1 The correlation-roof geometry (D6/L4).** *Revision 3 note: this is no
+longer on the critical path at all. Revision 1 made it a Phase 1 prerequisite;
+revision 2 demoted it to Phase 2 after image 7 showed the staircase alternative;
+revision 3 removed the standalone roof shape entirely (§4.2), so the only thing
+that still needs the rotation is the QFD correlation roof, which arrives with
+`House` in Phase 3. Phases 1 and 2 are entirely axis-aligned.*
 
 The cells rotate 45°; the labels must not.
 The clean formulation is to keep a unit-cell lattice in *matrix space* — cell
@@ -688,7 +703,6 @@ mutation, as `UltraCanvasSWOTDiagram::SWOTLayout` does.
 | Colour ramps for S6 | `Plugins/Charts/UltraCanvasColormap.h` |
 | Architecture, naming, layout cache, `…Ref` hit handle, dark theme flag | `UltraCanvasSWOTDiagram`, `UltraCanvasFishboneDiagram` |
 | Model/element split for testability | `UltraCanvasFishboneModel`, `UltraCanvasSequenceModel` |
-| Source data for the adjacency sample | `UltraCanvasAdjacencyDiagram`'s `AdjacencyRoom` / `AdjacencyLink` (§4.2) |
 
 One gap worth flagging early: `LegendSwatch` has no glyph/text option, so
 **either** extend that enum (preferred — chord, packet and node legends would
@@ -734,27 +748,40 @@ assessment, target strip) are layout, not new data — the model already carries
 importance on the item and scores are derived. A preset builder that fills a
 `House` model with the standard captions is a nice extra on top.
 
+**Q7 — Should this element ever grow a general symmetric (one-set) shape?**
+*Recommendation: not on present evidence, and not without a reference case that
+is genuinely not adjacency.* All three triangular images were room adjacency,
+which `UltraCanvasAdjacencyDiagram` owns (§4.2). A generic symmetric shape here
+would be a solution looking for a problem, and its first user would probably be
+someone who should have used the adjacency element. If a real non-adjacency case
+turns up — team-to-team contact frequency, module coupling — revisit it then;
+`House`'s correlation roof will by that point have supplied most of the
+machinery.
+
 ---
 
 ## 10. Suggested phasing
 
 **Phase 1 — the tool.** `UltraCanvasMatrixModel` (C1–C3, C5, C7) and
-`UltraCanvasMatrixDiagram` with D1 `L`, D2 `Roof`/`Staircase`, D3 `T`; L1–L3,
-L5, **L7 totals gutters**; S1–S5; T1–T4; I1–I3; the `ChartLegend` `Glyph`
-swatch; `BuildAdjacencyMatrix`; demo with the samples of C6; guide and examples
-docs; `Tests/MatrixModelTest.cpp` covering the roll-ups. This reproduces
-reference images 4, 5, 6 and 7 — and contains **no rotated geometry at all**,
-which is the point of the revision-2 reordering.
+`UltraCanvasMatrixDiagram` with D1 `L` and D3 `T`; L1–L3, L5, **L7 totals
+gutters**; S1–S5; T1–T4; I1–I3; the `ChartLegend` `Glyph` swatch; demo with the
+samples of C6; guide and examples docs; `Tests/MatrixModelTest.cpp` covering the
+roll-ups. This reproduces reference images 4, 5 and 6, and contains **no rotated
+geometry at all**.
 
-**Phase 2 — the remaining shapes and the rotation.** D2b `Rotated45` with §7.1
-and L4; D4 `X` (both hub modes, S8), D5 `Y` and the §7.2 solver; C4 attribute
-gutter and L6 header band. Finishes images 1, 2, 3 and 8. Plus S6, S7, I4.
+**Phase 2 — the remaining shapes.** D4 `X` (both hub modes, S8), D5 `Y` and the
+§7.2 solver; L6 header band. Finishes images 3 and 8.
+Plus S6, S7, I4.
 
-**Phase 3 — the analysis.** D6 `House`, L8 roll-up bar strip with rankings,
-X1/X2 CSV interchange.
+**Phase 3 — the analysis.** D6 `House` — which is where the rotated correlation
+roof (§7.1, L4) finally arrives — L8 roll-up bar strip with rankings, X1/X2 CSV
+interchange.
 
 **Phase 4 — polish.** I5 viewport, I6 keyboard navigation, X3 JSON, Q5
 editing.
 
 Phase 1 is the deliverable that makes the element worth shipping; each later
-phase is independently useful and none of them changes the Phase 1 API.
+phase is independently useful and none of them changes the Phase 1 API. Note
+that revision 3 pushed all rotated geometry out to Phase 3: Phases 1 and 2 are
+now entirely axis-aligned, and the single hardest problem in the original plan
+does not block anything until `House`.
