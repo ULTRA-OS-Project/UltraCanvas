@@ -46595,85 +46595,161 @@ we never call OpenSSL directly … OpenSSL is only an explicit dependency on
 Linux"* — and `UltraCanvas/CMakeLists.txt:1407` confirms it: `OpenSSL::SSL` /
 `OpenSSL::Crypto` are linked under `ULTRACANVAS_PLATFORM STREQUAL "Linux"`
 only. Windows links `secur32`/`crypt32` (Schannel); macOS links
-`Security.framework` (SecureTransport). The manifest pins OpenSSL at
-`min_version: "1.1.1"` — which predates OpenSSL's Argon2 support (3.2+).
+`Security.framework` (SecureTransport).
 
-So there is no free ride. Three viable options:
+So there is no free ride, and the choice is a real trade rather than an
+obvious win. §3.1 lists what has to be covered; §3.2 and §3.3 compare the
+candidates against it.
 
-### Option A — Per-platform native backends
+### 3.1 What the backend must supply
 
-Mirror the existing `ultranet_tls_platform::` pattern
-(`core/UltraNet/UltraNetTlsImpl.h` + one implementation per OS): OpenSSL on
-Linux, CNG / BCrypt on Windows, CommonCrypto / CryptoKit on macOS.
+Derived from the consumer table in §1 — nothing here is speculative:
 
-*For:* zero new dependencies; consistent with the "OS-native wherever the OS
-ships it" philosophy; smallest binaries.
+| # | Primitive | Required by |
+|---|---|---|
+| 1 | SHA-256 | AnchorPoint, UCD `SVLT` creation hash, UCD section checksums |
+| 2 | SHA-512 | TOTP SHA-512 variant |
+| 3 | SHA-1 (HMAC use only) | TOTP issuer compatibility — the default TOTP algorithm |
+| 4 | HMAC-SHA-1 / -256 / -512 | UltraAuthenticator (RFC 4226/6238) |
+| 5 | AES-256-GCM | UCD v2 encryption type 1 |
+| 6 | ChaCha20-Poly1305 | UCD v2 encryption type 2 |
+| 7 | Argon2id | UCD v2 recommended KDF, UltraVault, authenticator store |
+| 8 | PBKDF2-HMAC-SHA256 | UCD v2 fallback KDF |
+| 9 | HKDF-SHA256 | UCD v2 §4.4 SuperVault subkey derivation |
+| 10 | BLAKE3-256 | UCD v2 `SVLT` hash algorithm `1` (**optional** — `0` = SHA-256 is the default) |
+| 11 | CSPRNG | Salts, nonces, file UUIDs |
+| 12 | Constant-time compare | Every MAC/tag check |
+| 13 | Secure memory (zeroize, page-lock) | Authenticator seeds, vault master keys |
 
-*Against:* **the algorithm matrix does not line up.** Argon2id is absent from
-CNG, from CommonCrypto, and from OpenSSL 1.1.1; ChaCha20-Poly1305 is absent
-from CommonCrypto. Worse, this is a *correctness* hazard rather than merely an
-effort one: UCD v2 files must open on every platform, so three independent
-implementations of the same envelope become three chances for a
-cross-platform-incompatible file. Three separate crypto code paths also means
-three times the review burden on the code least tolerant of subtle bugs.
+### 3.2 Algorithm coverage
 
-### Option B — One vendored portable library (recommended)
+Assessed against the versions **actually packaged on the current Ubuntu LTS**
+(24.04), since that is what a build will link by default:
+OpenSSL 3.0.13, libsodium 1.0.18, mbedTLS 2.28.8.
 
-Vendor **libsodium** (ISC licence) under `UltraCanvas/third_party/` and wrap
-it exactly as yyjson is wrapped for UltraCanvasJSON.
+| # | Primitive | OpenSSL 3.0 | libsodium 1.0.18 | mbedTLS 2.28 |
+|---|---|---|---|---|
+| 1 | SHA-256 | ✅ | ✅ | ✅ |
+| 2 | SHA-512 | ✅ | ✅ | ✅ |
+| 3 | SHA-1 | ✅ | ❌ deliberately omitted | ✅ |
+| 4 | HMAC-SHA-1/256/512 | ✅ | ⚠️ SHA-256/512 only | ✅ |
+| 5 | AES-256-GCM | ✅ **portable software impl** | ⚠️ **AES-NI hardware only** | ✅ **portable software impl** |
+| 6 | ChaCha20-Poly1305 | ✅ | ✅ (+ XChaCha20) | ✅ |
+| 7 | Argon2id | ❌ **needs OpenSSL 3.2+** | ✅ native | ❌ |
+| 8 | PBKDF2-HMAC-SHA256 | ✅ | ❌ (offers scrypt instead) | ✅ |
+| 9 | HKDF-SHA256 | ✅ | ⚠️ dedicated API is 1.0.19+ | ✅ |
+| 10 | BLAKE3-256 | ❌ | ❌ | ❌ |
+| 11 | CSPRNG | ✅ `RAND_bytes` | ✅ `randombytes_buf` | ✅ CTR-DRBG |
+| 12 | Constant-time compare | ✅ `CRYPTO_memcmp` | ✅ `sodium_memcmp` | ✅ |
+| 13 | Secure memory | ⚠️ `OPENSSL_cleanse`; secure heap is opt-in and awkward | ✅ **best in class** — `sodium_malloc` (guard pages), `sodium_mlock`, `sodium_memzero` | ❌ none |
 
-*For:* one implementation, bit-identical on every platform — the property that
-matters most for a file format. Covers nearly the whole requirement set
-directly: AES-256-GCM (hardware-accelerated), ChaCha20-Poly1305 and
-XChaCha20-Poly1305, Argon2id, HMAC-SHA-256/512, SHA-256/512, BLAKE2b, HKDF, a
-CSPRNG that draws from the OS entropy source, `sodium_memcmp` for
-constant-time comparison, and — valuable for §5.1 — `sodium_malloc`,
-`sodium_mlock` and `sodium_memzero` for guarded, non-swappable, zeroizing
-memory. Small, widely audited, packaged on every distro, API-stable for a
-decade.
+### 3.3 Practical and operational comparison
 
-*Against:* a new third-party dependency (requires updating
-`Docs/Dependencies.md`, `master_dependencies.yaml` and
-`THIRD_PARTY_LICENSES.md`). Two bounded gaps: libsodium deliberately omits
-**SHA-1**, which TOTP needs for issuer compatibility, and has no **BLAKE3**
-(it offers BLAKE2b). Both are addressable — see §3.1.
+| Dimension | OpenSSL | libsodium | mbedTLS |
+|---|---|---|---|
+| Licence | Apache-2.0 | ISC | Apache-2.0 |
+| Approx. added size (static) | ~4–5 MB | **~300 KB** | ~1 MB |
+| Present on Linux today | ✅ already linked for UltraNet | ❌ new | ❌ new |
+| Present on Windows today | ❌ **none** — Schannel is used | ❌ new | ❌ new |
+| Present on macOS today | ❌ **none** — SecureTransport is used | ❌ new | ❌ new |
+| Effect on documented TLS policy | ⚠️ contradicts "OS-native on Win/macOS" | ✅ none — different concern | ✅ none |
+| Cross-platform byte-identical results | ✅ | ✅ | ✅ |
+| API surface to wrap | Very large, many legacy traps | Small, misuse-resistant by design | Moderate |
+| Hardware assumptions | none | **requires AES-NI for AES-GCM** | none |
+| Distro packaging | universal | universal | universal |
 
-### Option C — OpenSSL 3.2+ everywhere
+### 3.4 Reading the tables — what actually separates them
 
-*For:* one implementation; already a known quantity on Linux; covers
-everything except BLAKE3.
+The tables look close because each candidate covers most of the list. The
+decision turns on **two specific cells**, not on the totals.
 
-*Against:* directly contradicts the documented Windows/macOS policy, adds a
-large runtime to ship and sign on two platforms that currently need none, and
-raises the Linux floor from 1.1.1 to 3.2 (newer than several supported LTS
-distros ship).
+**First: nobody gives you Argon2id from a system library.** Ubuntu 24.04 LTS
+ships OpenSSL **3.0.13**, and OpenSSL only gained an Argon2 KDF in **3.2**.
+Debian 12 is likewise on 3.0. So "just use OpenSSL" does *not* deliver the KDF
+that UCD v2 names as its recommendation — it would still need a vendored
+Argon2 (the reference implementation is packaged as `libargon2-dev`, ~2k
+lines, CC0/Apache-2.0), or a bump to a vendored OpenSSL 3.2+, which is a very
+large thing to vendor. libsodium is the only candidate with Argon2id built in,
+because libsodium is where the reference implementation is best maintained.
 
-### Recommendation
+**Second: libsodium's AES-256-GCM is hardware-gated.** libsodium ships no
+software fallback for AES-GCM — `crypto_aead_aes256gcm_is_available()` returns
+false on any CPU without AES-NI (or the ARMv8 crypto extensions). OpenSSL and
+mbedTLS both include portable constant-time software implementations.
 
-**Option B.** The decisive argument is not convenience but compatibility: for
-transport security, OS-native backends are right, because the OS owns the
-trust store and the cipher policy. For *data at rest* the requirement is
-inverted — a document encrypted on Linux must decrypt byte-for-byte on Windows
-and macOS, which argues for exactly one implementation everywhere. UltraNet's
-TLS policy is untouched by this choice; the two concerns stay cleanly
-separated.
+That second point lands squarely on ULTRA OS's stated hardware target —
+*"affordable hardware, from ARM and RISC-V to x86."* ARMv8 crypto extensions
+are **optional**, and a number of popular SBCs omit them; RISC-V's scalar
+crypto extension is newer still and rare in shipping silicon. On such a
+machine, a UCD file written elsewhere with encryption type 1 (AES-256-GCM)
+would simply **not open** — which destroys the "one format, opens everywhere"
+property that motivated picking a single portable library in the first place.
+*(The exact SBC list should be confirmed on the actual target hardware before
+this is treated as settled; the general point — that the extension is optional
+and frequently absent — is not in doubt.)*
 
-### 3.1 Handling the two gaps
+**Everything else on the list is cheap to repair, and these two are not
+symmetric in cost:**
 
-- **SHA-1** is needed only for `HMAC-SHA-1` in TOTP (where HMAC does not
-  inherit SHA-1's collision weakness, and issuer compatibility requires it).
-  It must *not* be offered as a general-purpose digest. Proposal: vendor a
-  ~150-line SHA-1 compression function used solely by the HMAC path, and mark
-  `UltraCryptHashAlgorithm::SHA1` as legacy in the header, rejected by
-  `UltraCrypt_Hash` unless `UltraCryptHashOptions::allowLegacy` is set.
-- **BLAKE3-256** is `hash algorithm = 1` in UCD v2's `SVLT` record, and
-  optional — `0` = SHA-256 is the default. Proposal: ship SHA-256 only in
-  Stage 1, have writers emit algorithm `0`, and treat BLAKE3 as a later
-  addition (vendoring the reference implementation, CC0/Apache-2.0) if a real
-  need appears. `UltraCrypt_IsHashAvailable` lets readers degrade honestly in
-  the meantime.
+| Gap | Repair | Risk |
+|---|---|---|
+| OpenSSL: no Argon2id | link/vendor the reference `libargon2` | Low — well-trodden, RFC 9106 vectors |
+| OpenSSL: weak secure memory | implement `UltraCryptSecureBuffer` over `mlock`/`VirtualLock` + explicit wipe (~80 lines) | Low |
+| libsodium: no SHA-1 | vendor a SHA-1 compression function (~150 lines), HMAC path only | Low — FIPS 180-4 vectors |
+| libsodium: no PBKDF2 | implement over its HMAC (~40 lines) | Low — RFC 6070 vectors |
+| libsodium: no SHA-384 | **drop it** — no consumer needs it (it was speculative in §5.2) | None |
+| libsodium: HKDF in 1.0.18 | implement over HMAC-SHA256 (~30 lines) | Low — RFC 5869 vectors |
+| **libsodium: no software AES-GCM** | **write or vendor a constant-time AES-GCM** | **High — precisely the thing that must never be hand-rolled; vendoring one means shipping a second crypto library** |
+| any: no BLAKE3 | defer; UCD writers emit `SVLT` algorithm `0` (SHA-256) | None |
 
----
+PBKDF2, HKDF and SHA-1 are all safe to implement given a correct HMAC — they
+are constructions *over* a primitive, with official test vectors, not new
+primitives. AES-GCM is not in that category.
+
+### 3.5 Recommendation
+
+**libsodium, coupled with a spec decision: UltraCanvas writers emit
+ChaCha20-Poly1305 (UCD encryption type 2) by default, not AES-256-GCM.**
+
+This turns the one expensive gap into a non-issue rather than working around
+it. ChaCha20-Poly1305 exists precisely for hardware without AES acceleration:
+it is constant-time in portable software by construction and faster than
+software AES on exactly the ARM and RISC-V machines in question. Where AES-NI
+*is* present, libsodium provides hardware AES-GCM and files written by other
+tools open normally. The result is that every file UltraCanvas produces opens
+on every supported platform, which is the property that matters.
+
+The supporting reasons: smallest footprint by an order of magnitude (~300 KB
+against ~4–5 MB), no disturbance to the Windows/macOS TLS policy, the only
+native Argon2id, and by far the best secure-memory support — which the
+authenticator and UltraVault genuinely need and which OpenSSL and mbedTLS do
+not really offer. The API is small and deliberately misuse-resistant, so the
+wrapper stays thin.
+
+**If instead "AES-256-GCM must be readable on every CPU" is treated as
+non-negotiable**, the answer is **mbedTLS plus a vendored Argon2**, not
+OpenSSL: it covers the whole list portably at roughly a quarter of OpenSSL's
+size, and it leaves the Windows/macOS TLS policy alone. `UltraCryptSecureBuffer`
+would then be implemented directly against `mlock`/`VirtualLock`.
+
+**OpenSSL-everywhere ranks third.** It is the largest, it is the only option
+that contradicts the documented Windows/macOS platform policy, and — because
+no current LTS ships 3.2 — it *still* requires a vendored Argon2. It solves
+less than it costs. On Linux alone it would be free; the difficulty is
+entirely on the other two platforms.
+
+### 3.6 Consequences of the recommendation
+
+If libsodium is ratified, three things follow and should be decided together:
+
+1. **UCD v2 default cipher** becomes ChaCha20-Poly1305 (type 2). Type 1
+   (AES-256-GCM) stays in the spec for reading foreign files, with
+   `UltraCrypt_IsAeadAvailable` reporting honestly when the CPU cannot do it.
+2. **Three small vendored/derived pieces** join the module: SHA-1 (HMAC path
+   only), PBKDF2-HMAC-SHA256, and HKDF-SHA256 — all built on libsodium's HMAC,
+   all covered by official test vectors in §7.
+3. **`UltraCryptHashAlgorithm::SHA384` is dropped** from §5.2; no consumer
+   needs it.
 
 ## 4. Placement, naming and build target
 
@@ -46803,8 +46879,7 @@ bool UltraCrypt_ConstantTimeEquals(const void* a, const void* b, size_t size);
 enum class UltraCryptHashAlgorithm : uint8_t {
     SHA1,        // LEGACY: HMAC-SHA-1 (TOTP) only; see allowLegacy below
     SHA256,
-    SHA384,
-    SHA512,
+    SHA512,      // SHA-384 deliberately absent: no consumer needs it (§3.6)
     BLAKE2b256,
     BLAKE3_256   // UCD v2 SVLT alg 1; may report NotSupported (see §3.1)
 };
@@ -47110,17 +47185,24 @@ storage layer and the UCD v2 format.
 
 ## 9. Open questions
 
-1. **Backend: A, B or C (§3)?** Everything else follows from this. The
-   recommendation is B (vendored libsodium).
-2. Do the companion encodings (§5.7) belong in UltraCrypt or in
+1. **Backend: libsodium, mbedTLS or OpenSSL (§3)?** Everything else follows
+   from this. The recommendation is libsodium (§3.5).
+2. **If libsodium: is the UCD v2 default-cipher change acceptable** — writers
+   emit ChaCha20-Poly1305 (type 2), with AES-256-GCM (type 1) readable only
+   where the CPU provides AES-NI (§3.5–3.6)?
+3. Which ARM/RISC-V boards are actual ULTRA OS targets? Whether their CPUs
+   implement the ARMv8 crypto extensions decides how much §3.4's AES-GCM
+   point really costs, and it should be checked on real hardware rather than
+   assumed.
+4. Do the companion encodings (§5.7) belong in UltraCrypt or in
    `DataFormats/` alongside UltraCanvasJSON?
-3. Should `UltraCryptHashAlgorithm::SHA1` be exposed at all outside the HMAC
+5. Should `UltraCryptHashAlgorithm::SHA1` be exposed at all outside the HMAC
    path, even behind `allowLegacy`?
-4. Is BLAKE3-256 (UCD v2 `SVLT` algorithm `1`) needed in the first release, or
+6. Is BLAKE3-256 (UCD v2 `SVLT` algorithm `1`) needed in the first release, or
    may writers emit algorithm `0` (SHA-256) until a consumer asks?
-5. Confirm the disposition of `UltraCanvasDocument`'s dormant encryption code
+7. Confirm the disposition of `UltraCanvasDocument`'s dormant encryption code
    (§1.1): rewrite against UltraCrypt, or delete the entry points?
-6. Confirm the global-namespace + `UltraCrypt_` prefix convention (§4), chosen
+8. Confirm the global-namespace + `UltraCrypt_` prefix convention (§4), chosen
    to match UltraNet and UltraDatabase. UltraAI and the UltraVault design use
    a named namespace instead, so the framework currently has both patterns.
 
