@@ -2,10 +2,14 @@
 // Dedicated demo page for UltraCanvasLevelMeter, the three-zone VU meter /
 // scrolling waveform strip used by the audio recorder element. Shows both render
 // modes side by side in several colour themes, driven live by a selectable
-// source: real playback levels of the bundled sample track, two synthetic
-// generators, or manual peak/RMS sliders — plus a dBFS readout and Reset().
-// Version: 1.0.0
-// Last Modified: 2026-07-24
+// source: real playback levels of the bundled sample track (the default), two
+// synthetic generators, or manual peak/RMS sliders — plus a dBFS readout and
+// Reset().
+// Version: 1.1.0
+// Last Modified: 2026-08-09
+// V1.1.0: "Sample track playback" is now the pre-selected source, and the
+//   embedded player carries the Pixabay artist credit for the bundled track
+//   (clicking it opens the artist page in the system browser).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -50,7 +54,7 @@ namespace UltraCanvas {
         std::vector<float> mono;      // decoded sample track (mono, [-1, 1])
         double rate = 0.0;
 
-        int source = 1;               // 0 playback, 1 beat, 2 breathing, 3 manual
+        int source = 0;               // 0 playback (default), 1 beat, 2 breathing, 3 manual
         float manualPeak = 0.7f;
         float manualRms = 0.45f;
 
@@ -58,6 +62,15 @@ namespace UltraCanvas {
         float lastPeak = 0.0f;        // smoothed values, also used for decay
         float lastRms = 0.0f;
     };
+
+// Attribution for the bundled sample track (Pixabay Content License):
+// Music by Dmitrii Kolesnikov from Pixabay — the artist page opens in the
+// system browser when the credit under the player is clicked.
+    const char* kSampleTrackCreditText = "Music by Dmitrii Kolesnikov — Pixabay.com";
+    const char* kSampleTrackCreditUrl =
+            "https://pixabay.com/users/the_mountain-3616498/"
+            "?utm_source=link-attribution&utm_medium=referral"
+            "&utm_campaign=music&utm_content=489998";
 
     std::string ToDb(float v) {
         if (v <= 0.001f) return "-inf";
@@ -372,8 +385,8 @@ namespace UltraCanvas {
 
             // Embedded audio player with the bundled sample track pre-loaded.
             auto playerLabel = makeCaption("LvlPlayerLbl",
-                    "Sample track for the playback source (levels are computed from the "
-                    "decoded PCM at the playhead):");
+                    "Sample track for the pre-selected playback source — press Play to drive "
+                    "the meters (levels are computed from the decoded PCM at the playhead):");
             fixedHeight(playerLabel, 16);
             addFlex(srcCard, playerLabel, 0);
 
@@ -381,6 +394,22 @@ namespace UltraCanvas {
             fixedHeight(player, 56);
             addFlex(srcCard, player, 0);
             st->player = player;
+
+            // Artist credit for the bundled track, directly under the player.
+            // The row keeps the clickable area hugging the link text instead of
+            // stretching it across the whole card.
+            auto creditRow = std::make_shared<UltraCanvasContainer>("LvlCreditRow", 0, 0, 0, 16);
+            creditRow->layout.SetFlexRow().SetFlexGap(0)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            fixedHeight(creditRow, 16);
+            auto credit = makeCaption("LvlCredit", kSampleTrackCreditText);
+            credit->SetTextColor(Color(37, 99, 235, 255));           // link blue
+            credit->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            // Hand cursor comes with onClick; OpenURL hands the artist page to
+            // the system browser.
+            credit->onClick = [] { OpenURL(kSampleTrackCreditUrl); };
+            creditRow->AddChild(credit);
+            addFlex(srcCard, creditRow, 0);
 
             auto status = makeCaption("LvlStatus", "");
             fixedHeight(status, 16);

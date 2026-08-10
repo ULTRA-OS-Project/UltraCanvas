@@ -1,4 +1,4 @@
-#### 2026-08-09 *0.3.41*
+#### 2026-08-09 *0.3.42*
 - **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
   **LinkedIn connector** — OAuth2 code flow for the user's own
   confidential-client app (secret in the form body, no PKCE; redirect
@@ -15,7 +15,7 @@
   (`attach://` multipart, caption on the first). Wizard forms for both
   new networks. 10 new engine tests (47 total).
 
-#### 2026-08-09 *0.3.40*
+#### 2026-08-09 *0.3.41*
 - **UltraSocial** *(Phase 2)*: the "automatically" part plus the Tier-2
   networks. **Scheduling outbox** — "Post later…" opens a date + time
   dialog and queues one outbox row per selected account (UltraDatabase,
@@ -37,7 +37,7 @@
   attachments for such networks with a warning. 11 new engine tests
   (37 total).
 
-#### 2026-08-09 *0.3.39*
+#### 2026-08-09 *0.3.40*
 - **UltraSocial** *(Phase 1 UI)*: the GUI application (target `UltraSocial`)
   on top of the engine — compose window with per-account target checkboxes
   and live character counters (per network's limit, switching to the caption
@@ -50,7 +50,7 @@
   timer queue, so the window stays live during the OAuth browser consent
   and slow uploads.
 
-#### 2026-08-09 *0.3.38*
+#### 2026-08-09 *0.3.39*
 - **UltraSocial** *(new, Phase 1 engine)*: the cross-posting app's headless
   engine (`Apps/UltraSocial/engine/`, target `UltraSocialEngine`) —
   compose-once → adapt-per-network composer (code-point counting,
@@ -67,7 +67,7 @@
   scripted loopback HTTP fakes (`ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS`).
   Design: `Docs/UltraSocial/Concept.md`.
 
-#### 2026-08-09 *0.3.37*
+#### 2026-08-09 *0.3.38*
 - **UltraNet**: new OAuth 2.0 helper (`UltraNet/UltraNetOAuth2.h`) — the
   authorization-code flow with PKCE (RFC 6749 + 7636) for native apps:
   `UltraNet_OAuth2GeneratePkce` / `UltraNet_OAuth2ChallengeFromVerifier`
@@ -86,6 +86,45 @@
   `UltraNet_TcpAccept` takes an optional timeout, and the new
   `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
   they let a port-0 listener discover its ephemeral port.
+
+#### 2026-08-09 *0.3.37*
+- **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
+  target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
+  the whole public UltraNet surface and reports each entry as **WORKING**
+  (the probe drove the real code path and the result matched the contract),
+  **IMPLEMENTED** (present and reached, but unverifiable in this
+  environment), **NOT IMPLEMENTED** (documented stub / no-op / absent
+  backend) or **BROKEN** (ran and contradicted the API). 108 entries across
+  Core, URL, HTTP, Session, SSE, WebSocket, DNS, Socket, TLS, FTP, MIME and
+  Plugins; `--format=text|markdown|json`, `--area=`, `--output=`,
+  `--network`, `--strict`, and a `--serve` diagnostic that just holds the
+  probe origin open. Registered with CTest; exits non-zero only on BROKEN
+  (or, with `--strict`, on anything short of WORKING).
+- **UltraNet**: the status tool verifies offline by bringing its own peers —
+  an in-process HTTP/1.1 + RFC 6455 WebSocket origin written on UltraNet's
+  own TCP API (keep-alive, chunked bodies, `Expect: 100-continue`,
+  redirects, cookies, Basic-auth challenges, `text/event-stream`, a slow
+  route for cancellation, and a masked-frame echo endpoint with its own
+  SHA-1 for `Sec-WebSocket-Accept`), loopback TCP/UDP peers, and an
+  `openssl s_server` TLS peer whose throwaway certificate makes
+  `UltraNet_TlsSetCABundle` / `UltraNet_TlsAddTrustedCert` checkable in both
+  directions. No Python, no external service and no internet access
+  required.
+- Docs: `Docs/Modules/UltraNet/ApiStatus.md` documents the statuses, the
+  options, how each area is verified and how to add a probe; both UltraNet
+  READMEs point at it from their Status sections.
+- **UltraNet**: the macOS TLS backend now honours custom trust anchors —
+  found by the status tool's first CI run, whose trust-store probes came back
+  BROKEN on macOS. `OS/MacOS/UltraNetTlsImpl.mm` stored the global CA bundle
+  and `UltraNet_TlsAddTrustedCert` PEMs but `VerifyPeer` evaluated the peer
+  against the system keychain only, so `UltraNet_TlsSetCABundle` /
+  `UltraNet_TlsAddTrustedCert` (and the per-wrap
+  `UltraNetTlsOptions::caBundlePath`, equally unread) were silently ignored.
+  Wrap now parses the resolved PEMs into `SecCertificateRef` anchors and
+  `VerifyPeer` applies them via `SecTrustSetAnchorCertificates`; a CA bundle
+  replaces the system roots (matching the OpenSSL backend's
+  `SSL_CTX_load_verify_locations` semantics) while added PEMs alone extend
+  them (`SecTrustSetAnchorCertificatesOnly(false)`).
 
 #### 2026-08-09 *0.3.36*
 - **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole

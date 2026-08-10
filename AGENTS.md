@@ -143,6 +143,12 @@ The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
+`-DULTRACANVAS_BUILD_NET_TESTS=ON` adds two UltraNet binaries: `UltraNetTests`
+(pass/fail suite) and `UltraNetApiStatus`, which probes every public
+`UltraNet_*` entry point and prints WORKING / IMPLEMENTED / NOT IMPLEMENTED /
+BROKEN per function — run it before assuming a networking API is usable in a
+given build. See `Docs/Modules/UltraNet/ApiStatus.md`.
+
 ## Versioning
 
 The **first line of a changelog is the single source of truth** for a version:
