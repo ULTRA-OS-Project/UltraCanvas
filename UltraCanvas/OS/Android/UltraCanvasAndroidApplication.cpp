@@ -179,6 +179,16 @@ namespace UltraCanvas {
             case APP_CMD_LOST_FOCUS:
                 PushWindowEvent(UCEventType::WindowBlur);
                 break;
+            // PAUSE/STOP/START/RESUME need no extra work: TERM_WINDOW /
+            // INIT_WINDOW carry the surface lifecycle (the window auto-hides
+            // while the surface is gone, so no rendering happens in the
+            // background), and GAINED/LOST_FOCUS carry activation. DESTROY is
+            // observed as destroyRequested in CollectAndProcessNativeEvents,
+            // which exits Run().
+            case APP_CMD_PAUSE:
+            case APP_CMD_STOP:
+            case APP_CMD_START:
+            case APP_CMD_RESUME:
             default:
                 break;
         }

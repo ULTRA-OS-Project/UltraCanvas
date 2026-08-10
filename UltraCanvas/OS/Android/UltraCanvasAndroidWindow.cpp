@@ -202,6 +202,11 @@ namespace UltraCanvas {
             AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
             RequestWindowComposition();
         }
+
+        if (autoHiddenBySurfaceLoss) {
+            autoHiddenBySurfaceLoss = false;
+            Show();   // full-window dirty + composition + focus re-notify
+        }
     }
 
     void UltraCanvasAndroidWindow::HandleNativeSurfaceDestroyed() {
@@ -210,6 +215,15 @@ namespace UltraCanvas {
         // survives, so the next INIT_WINDOW only recomposites.
         DestroyNativeCairoSurface();
         nativeWindow = nullptr;
+
+        // Backgrounded: mark the window hidden so UpdateAndRender stops doing
+        // per-frame work (and never composites to the missing surface). Only
+        // windows hidden HERE are re-shown on INIT_WINDOW - an app that called
+        // Hide() itself keeps its state.
+        if (_windowVisible) {
+            autoHiddenBySurfaceLoss = true;
+            Hide();
+        }
     }
 
     void UltraCanvasAndroidWindow::HandleNativeSurfaceResized() {

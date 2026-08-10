@@ -67,6 +67,11 @@ namespace UltraCanvas {
         void HandleNativeSurfaceResized();
 
     private:
+        // Set when TERM_WINDOW hides the window (backgrounding), so the next
+        // INIT_WINDOW knows to Show() it again. Stays false when the app hid
+        // the window itself.
+        bool autoHiddenBySurfaceLoss = false;
+
         bool CreateNativeCairoSurface();
         void DestroyNativeCairoSurface();
         // Copy the image surface into the ANativeWindow buffer, converting

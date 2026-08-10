@@ -145,7 +145,7 @@ namespace UltraCanvas {
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
-        NativeSurfacePtr nativeSurface;
+        NativeSurfacePtr nativeSurface = nullptr;
 
         // ===== HIDPI / DPI-AWARE SCALING =====
         // Logical→physical multiplier for the display this window is on.
