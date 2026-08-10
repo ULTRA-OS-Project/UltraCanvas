@@ -39,12 +39,26 @@ if ! hostflags="$(pkg-config --cflags $pkgs)"; then
     exit 2
 fi
 
-# OpenSSL headers for the reused UltraNet TLS source. Host /usr/include must
-# NOT go on the search path (it would shadow bionic's libc headers), so link
-# just the openssl/ directory into a private include root.
+# Parent-style includes (<cairo/cairo.h>, <fontconfig/fontconfig.h>,
+# <tinyxml2.h>, <openssl/*.h>) resolve through /usr/include on a host
+# compile, but the NDK compiler must never see /usr/include (host glibc
+# headers would shadow bionic's) - so link exactly the needed entries into a
+# private include root.
 shim="$(mktemp -d)"
 trap 'rm -rf "$shim"' EXIT
-[ -d /usr/include/openssl ] && ln -s /usr/include/openssl "$shim/openssl"
+for entry in /usr/include/cairo /usr/include/fontconfig /usr/include/tinyxml2.h; do
+    [ -e "$entry" ] && ln -sfn "$entry" "$shim/$(basename "$entry")"
+done
+# OpenSSL is split across /usr/include/openssl and the multiarch dir
+# (opensslconf.h/configuration.h live in the latter on Debian/Ubuntu).
+if [ -d /usr/include/openssl ]; then
+    mkdir "$shim/openssl"
+    ln -sfn /usr/include/openssl/* "$shim/openssl/"
+    multiarch="$(gcc -print-multiarch 2>/dev/null || echo x86_64-linux-gnu)"
+    if [ -d "/usr/include/$multiarch/openssl" ]; then
+        ln -sfn "/usr/include/$multiarch/openssl"/* "$shim/openssl/"
+    fi
+fi
 
 flags=(-std=c++20 -fsyntax-only $target
     -I "$repo/UltraCanvas/include"
@@ -53,6 +67,7 @@ flags=(-std=c++20 -fsyntax-only $target
     -I "$repo/UltraCanvas/Plugins"
     -I "$repo/UltraCanvas/third_party"
     -isystem "$ndk/sources/android/native_app_glue"
+    -isystem "$shim"
     $hostflags)
 
 status=0
@@ -76,8 +91,7 @@ done
 # #ifdef __linux__ guards are satisfied by bionic) - keep them compiling
 # under __ANDROID__ too.
 check "$repo/UltraCanvas/OS/Linux/UltraNetSupport.cpp"
-if [ -e "$shim/openssl" ]; then
-    flags+=(-isystem "$shim")
+if [ -e "$shim/openssl/ssl.h" ]; then
     check "$repo/UltraCanvas/OS/Linux/UltraNetTlsImpl.cpp"
 else
     echo "  (skipping UltraNetTlsImpl.cpp - no host OpenSSL headers)"
