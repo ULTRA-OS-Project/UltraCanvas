@@ -115,10 +115,17 @@ wrapped-engines rule, or stalled at design stage.
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
 | **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | Blocked |
 
-UltraNet already links `OpenSSL::SSL` / `OpenSSL::Crypto`
-(`UltraCanvas/CMakeLists.txt:1407`), so the dependency is present and paid
-for on every platform — it simply is not exposed to callers as anything
-other than TLS.
+**Correction (2026-08-10):** an earlier revision of this document stated that
+OpenSSL is "already linked on every platform, so the dependency is paid for".
+**That is wrong.** `UltraCanvas/CMakeLists.txt:1407` links `OpenSSL::SSL` /
+`OpenSSL::Crypto` only under `ULTRACANVAS_PLATFORM STREQUAL "Linux"`; Windows
+links Schannel (`secur32`/`crypt32`) and macOS links `Security.framework`
+(SecureTransport). `master_dependencies.yaml` states the policy explicitly —
+*"we never call OpenSSL directly … OpenSSL is only an explicit dependency on
+Linux"* — and pins `min_version: "1.1.1"`, which predates OpenSSL's Argon2
+support (3.2+). Choosing a crypto backend is therefore a real dependency
+decision, not a free one; the options and a recommendation are in
+[UltraCanvasCrypto](../UltraCanvas/UltraCanvasCrypto.md) §3.
 
 #### Cautionary tale: what the missing API already produced
 
@@ -369,13 +376,13 @@ UltraVault's fallback backend needs the same primitives; UltraDatabase's
 at-rest encryption needs them; AnchorPoint is running on a hand-rolled
 placeholder that says so in its own header; and the one component that did
 try to ship encryption without a shared API produced code that silently
-encrypts nothing. OpenSSL is already linked on every platform for UltraNet,
-so `UltraCrypto` is a wrapper over a dependency that is already paid for —
-not a new dependency.
+encrypts nothing.
 
-The recommendation is therefore to treat `UltraCrypto` as a **core module in
-its own right**, scheduled ahead of the authenticator rather than as part of
-it, with the authenticator as its first proving consumer. Likewise
+The recommendation is therefore to treat crypto as a **core service in its own
+right**, scheduled ahead of the authenticator rather than as part of it, with
+the authenticator as its first proving consumer. That design is now specified
+in [UltraCanvasCrypto](../UltraCanvas/UltraCanvasCrypto.md), which also
+settles the backend question the correction above raises. Likewise
 `ISecretStore` should be defined so UltraVault can slot in behind it later.
 The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
