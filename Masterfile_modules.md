@@ -227,10 +227,15 @@ other UltraCanvas-based code that hashes, signs or encrypts stored data.
 Hand-rolled crypto and direct calls into a vendored crypto library are
 defects, not shortcuts.
 
+**One cipher, one KDF.** Everything UltraCanvas writes is encrypted with
+**XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
+offered, because the formats are ours and a second choice would only be a
+second code path in every reader. AES-256-GCM is present solely for reading
+foreign data and is hardware-gated. Algorithm agility lives in format
+version numbers, not in per-file algorithm identifiers.
+
 **Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraCrypt/README.md`. The backing
-library is **not yet chosen** — see §3 of that document, which recommends a
-vendored portable library so data at rest is bit-identical across
-platforms. Suggested rollout is secure memory + random + SHA-2 + HMAC with
-full test vectors (Stage 1), AEAD + Argon2id/PBKDF2 + HKDF (Stage 2),
-consumer migration (Stage 3).
+surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
+is **libsodium** (§3.5 of that document). Suggested rollout is secure
+memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
+Argon2id + HKDF (Stage 2), consumer migration (Stage 3).

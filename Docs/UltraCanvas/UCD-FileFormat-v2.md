@@ -101,7 +101,7 @@ Detection rules:
 | 13 | 1 | Version minor | `0` |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). |
-| 16 | 1 | Encryption type | `0` = none, `1` = AES-256-GCM, `2` = ChaCha20-Poly1305, `3` = SuperVault remote authorization (see 4.4) |
+| 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
 | 17 | 1 | Flags | See 2.4 |
 | 18 | 2 | Reserved | Must be `0x0000`; readers must ignore |
 | 20 | 4 | Thumbnail length | uint32, bytes of raw thumbnail data; `0` if no thumbnail |
@@ -117,7 +117,7 @@ and whether a password will be required for the body.
 |---|---|---|
 | 0 | `THUMBNAIL` | A thumbnail is present. Must agree with thumbnail length > 0. |
 | 1 | `THUMB_FORMAT` | `0` = HEIC, `1` = PNG (fallback for writers without a HEIC encoder). |
-| 2 | `ENCRYPTED` | The document body is password-protected. Mirrors *encryption type ≠ 0* so filers can test one bit without reading offset 16. |
+| 2 | `ENCRYPTED` | The document body is password-protected. Mirrors *key source ≠ 0* so filers can test one bit without reading offset 16. |
 | 3 | `PRIVATE` | Confidential document: writers must **omit** the thumbnail and must not expose metadata outside the encrypted body. When set, bit 0 must be `0` and thumbnail length must be `0`. |
 | 4–7 | reserved | Writers set `0`; readers ignore. |
 
@@ -192,8 +192,8 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: KDF salt, iteration count, permission bits (print/copy/edit/form-fill) | Never encrypted (it is the input to decryption). |
-| `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when encryption type = `3`. |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
 Rules:
@@ -215,14 +215,29 @@ Per section, in this order:
 
 1. Serialize the payload (binary by default; XML/JSON in debug mode).
 2. Compress (unless compression = none for this section).
-3. Encrypt (only if header encryption type ≠ 0 and the section's *encrypted*
-   flag is set), using the key derived via the `SECU` parameters
-   (recommended KDF: Argon2id, fallback PBKDF2-HMAC-SHA256).
+3. Encrypt (only if the header key source ≠ 0 and the section's *encrypted*
+   flag is set) with **XChaCha20-Poly1305**, using the key obtained per the
+   header's key source: derived from the password with **Argon2id** via the
+   `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
+   carries its own random 192-bit nonce; the section header is passed as
+   associated data, so editing it invalidates the tag.
+
+**One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
+algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
+reader need implement only that pair. XChaCha20-Poly1305 is chosen over
+AES-256-GCM because it is constant-time in portable software on hardware
+without AES acceleration (the ARM and RISC-V machines ULTRA OS targets), and
+because its 192-bit nonce makes randomly generated per-section nonces safe
+without any counter or collision bookkeeping — with a 96-bit nonce, random
+generation has a birthday bound that a long-lived key would eventually meet.
+Agility lives in the *key source* field and in the version number, not in a
+cipher list: if the pair ever needs to change, that is a format version bump,
+which is cleaner than every reader carrying four code paths forever.
 
 Compression **per section** (rather than one blob over the whole body, as in
 v1) is what makes the thumbnail-at-front and random page access possible.
 
-### 4.4 SuperVault remote-authorization encryption (encryption type `3`)
+### 4.4 SuperVault remote-authorization encryption (key source `2`)
 
 SuperVault protects a file so that it can only be opened after the **original
 owner confirms the request in real time** (or via a pre-granted policy)
@@ -280,8 +295,8 @@ time both the app and the service recompute/compare it, which detects:
    authenticated encrypted channel.
 6. The app derives the actual section cipher key:
    `key = HKDF-SHA256(keyMaterial, salt = KDF salt, info = "UCD-SVLT-v1" ‖ fileUUID)`
-   and decrypts the encrypted sections (AES-256-GCM). Key material is held in
-   memory only and discarded when the document closes.
+   and decrypts the encrypted sections (XChaCha20-Poly1305). Key material is
+   held in memory only and discarded when the document closes.
 
 #### Design notes
 

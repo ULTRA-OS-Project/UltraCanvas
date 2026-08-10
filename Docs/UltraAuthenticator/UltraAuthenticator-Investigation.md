@@ -70,8 +70,9 @@ and UltraDatabase, now specified in
 registered in `Masterfile_modules.md` §7. This app needs from it:
 `UltraCrypt_Hmac` (SHA-1/256/512), `UltraCrypt_RandomBytes`,
 `UltraCrypt_ConstantTimeEquals`, `UltraCryptSecureBuffer`,
-`UltraCrypt_AeadSeal`/`Open` and `UltraCrypt_DeriveKeyFromPassword` for the
-storage layer in §3.1, plus `UltraCrypt_Base32Decode` for seed entry.
+`UltraCrypt_AeadSeal`/`Open` (XChaCha20-Poly1305) and
+`UltraCrypt_DeriveKeyFromPassword` (Argon2id) for the storage layer in §3.1,
+plus `UltraCrypt_Base32Decode` for seed entry.
 
 This gap is **framework-wide, not specific to this app** — see §2.3.
 
@@ -109,7 +110,7 @@ wrapped-engines rule, or stalled at design stage.
 
 | Consumer | Needs | Current state |
 |---|---|---|
-| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | AES-256-GCM, ChaCha20-Poly1305, Argon2id / PBKDF2-HMAC-SHA256, HKDF, SHA-256, BLAKE3-256 | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
+| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
 | **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and the implementation is broken (see below) |
 | **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header explicitly says it is a placeholder "when UltraNet/UltraVault bring a vetted crypto surface" |
 | **UltraVault** (design) | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Design doc only; module does not exist |
@@ -187,10 +188,11 @@ world-readable SQLite file or JSON config.
 
 - Never store seeds in plaintext — not in SQLite, not in JSON, not even
   temporarily. Until UltraVault ships, use an **app-level encrypted store**:
-  a single file containing an AES-256-GCM blob, key derived from a user
-  master password via Argon2id (memory-hard; PBKDF2-HMAC-SHA256 ≥ 600k
-  iterations only as fallback), random salt + nonce per write, version field
-  for future migration. (This is the Aegis/andOTP model, both well audited.)
+  a single file containing an XChaCha20-Poly1305 blob, key derived from a
+  user master password via Argon2id, with a random salt and a random 192-bit
+  nonce per write and a version field for future migration. Cipher and KDF are
+  framework-wide decisions ([UltraCrypt](../Modules/UltraCrypt/README.md)
+  §3.5) — the authenticator does not pick its own. (This is the Aegis/andOTP model, both well audited.)
 - File permissions `0600`, stored under the per-user data dir.
 - When UltraVault lands, keep the same vault file but move the *master key*
   into UltraVault/OS keyring (`libsecret` on Linux hosts, Keychain on macOS,
@@ -270,7 +272,7 @@ Scanning is parsing attacker-controlled data through a C library:
   outlive the app in `~/Pictures`, sync folders, thumbnails caches. Either
   don't offer file export of provisioning QRs at all, or watermark the flow
   with explicit warnings and point exports at the encrypted format instead.
-- Encrypted export file: same AEAD + Argon2id envelope as the store, with
+- Encrypted export file: same XChaCha20-Poly1305 + Argon2id envelope as the store, with
   its own passphrase (not the app master password), so a backup found later
   doesn't fall to the device password.
 
@@ -332,7 +334,7 @@ Apps/UltraAuthenticator/
     OtpAuthUri.*               — otpauth:// parse + validate (§3.3)
   store/
     ISecretStore.h             — interface (swap point for UltraVault later)
-    EncryptedFileStore.*       — AES-256-GCM + Argon2id envelope (§3.1)
+    EncryptedFileStore.*       — XChaCha20-Poly1305 + Argon2id envelope (§3.1)
     SecureBuffer.h             — zeroizing secret container (§3.2)
 
 UltraCanvas/{include,core}/UltraCrypt/UltraCryptCore.h/.cpp   (new module)
@@ -371,8 +373,8 @@ storage**.
 
 Neither is really an authenticator problem — both are **framework
 prerequisites that ULTRA OS needs regardless of whether this app is ever
-built** (§2.3). The UCD v2 file format already specifies AES-256-GCM,
-ChaCha20-Poly1305 and Argon2id and cannot be implemented without them;
+built** (§2.3). The UCD v2 file format specifies XChaCha20-Poly1305 and
+Argon2id and cannot be implemented without them;
 UltraVault's fallback backend needs the same primitives; UltraDatabase's
 at-rest encryption needs them; AnchorPoint is running on a hand-rolled
 placeholder that says so in its own header; and the one component that did

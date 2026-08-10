@@ -36,7 +36,7 @@ hand-rolled one, reached around the rules, or stalled at design stage:
 
 | Consumer | Requires | State today |
 |---|---|---|
-| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | AES-256-GCM, ChaCha20-Poly1305, Argon2id, PBKDF2-HMAC-SHA256, HKDF-SHA256, SHA-256, BLAKE3-256, CSPRNG (file UUID, salts) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
+| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
 | **UltraCanvasDocument** (UCD v1 encryption) | AES-256, PBKDF2, password verification | `#include <openssl/aes.h>` directly inside a plugin — house-rule violation — and functionally broken (§1.1) |
 | **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header states it is a placeholder awaiting "a vetted crypto surface" |
 | **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
@@ -109,9 +109,14 @@ Linux"* — and `UltraCanvas/CMakeLists.txt:1407` confirms it: `OpenSSL::SSL` /
 only. Windows links `secur32`/`crypt32` (Schannel); macOS links
 `Security.framework` (SecureTransport).
 
-So there is no free ride, and the choice is a real trade rather than an
-obvious win. §3.1 lists what has to be covered; §3.2 and §3.3 compare the
-candidates against it.
+So there is no free ride. §3.1 lists what has to be covered; §3.2 and §3.3
+compare the candidates against it; §3.4 explains what actually separates them.
+
+> **Ruling (2026-08-10):** UCD v2 is our own format, so it does not need to
+> offer a menu of algorithms — it should use the single best one. That
+> decision has been taken (§3.5) and it removes two of the three things that
+> made this a close call. The analysis in §3.1–3.4 is kept as the record of
+> *why*.
 
 ### 3.1 What the backend must supply
 
@@ -218,50 +223,78 @@ PBKDF2, HKDF and SHA-1 are all safe to implement given a correct HMAC — they
 are constructions *over* a primitive, with official test vectors, not new
 primitives. AES-GCM is not in that category.
 
-### 3.5 Recommendation
+### 3.5 Decision
 
-**libsodium, coupled with a spec decision: UltraCanvas writers emit
-ChaCha20-Poly1305 (UCD encryption type 2) by default, not AES-256-GCM.**
+**Cipher: XChaCha20-Poly1305, alone. KDF: Argon2id, alone. Backend: libsodium.**
 
-This turns the one expensive gap into a non-issue rather than working around
-it. ChaCha20-Poly1305 exists precisely for hardware without AES acceleration:
-it is constant-time in portable software by construction and faster than
-software AES on exactly the ARM and RISC-V machines in question. Where AES-NI
-*is* present, libsodium provides hardware AES-GCM and files written by other
-tools open normally. The result is that every file UltraCanvas produces opens
-on every supported platform, which is the property that matters.
+UCD v2 previously listed AES-256-GCM, ChaCha20-Poly1305 and a SuperVault mode
+as three "encryption types", with Argon2id and PBKDF2 as two KDFs. Since the
+format is ours and unshipped, that menu buys nothing and costs every reader a
+code path. It is replaced by one cipher and one KDF; the header field at offset
+16 now selects the **key source** (none / password / SuperVault) rather than an
+algorithm, and algorithm agility lives in the format version number.
 
-The supporting reasons: smallest footprint by an order of magnitude (~300 KB
-against ~4–5 MB), no disturbance to the Windows/macOS TLS policy, the only
-native Argon2id, and by far the best secure-memory support — which the
-authenticator and UltraVault genuinely need and which OpenSSL and mbedTLS do
-not really offer. The API is small and deliberately misuse-resistant, so the
-wrapper stays thin.
+**Why XChaCha20-Poly1305 is the best single choice:**
 
-**If instead "AES-256-GCM must be readable on every CPU" is treated as
-non-negotiable**, the answer is **mbedTLS plus a vendored Argon2**, not
-OpenSSL: it covers the whole list portably at roughly a quarter of OpenSSL's
-size, and it leaves the Windows/macOS TLS policy alone. `UltraCryptSecureBuffer`
-would then be implemented directly against `mlock`/`VirtualLock`.
+- **It is constant-time in portable software.** No hardware dependency, so it
+  behaves identically on x86, on ARM without the optional crypto extensions,
+  and on RISC-V — the full range ULTRA OS targets. AES in software is either
+  slow or timing-vulnerable; that is the whole reason the ChaCha family exists.
+- **Its 192-bit nonce makes random nonces safe outright.** UCD gives every
+  encrypted section a fresh random nonce. At 96 bits (what AES-GCM and IETF
+  ChaCha20-Poly1305 use) random generation carries a birthday bound that a
+  long-lived key would eventually meet, which is exactly the kind of subtle
+  accounting that goes wrong years later. At 192 bits the concern disappears,
+  and with it the need for any counter or collision bookkeeping in the writer.
+- **It is fast without acceleration** — typically faster than software AES on
+  the low-cost boards in question.
+- Nonce-reuse catastrophe is the top practical failure mode of both GCM and
+  Poly1305 constructions; the widest nonce available is the cheapest possible
+  insurance against it.
 
-**OpenSSL-everywhere ranks third.** It is the largest, it is the only option
-that contradicts the documented Windows/macOS platform policy, and — because
-no current LTS ships 3.2 — it *still* requires a vendored Argon2. It solves
-less than it costs. On Linux alone it would be free; the difficulty is
-entirely on the other two platforms.
+AES-256-GCM is retained in the *module* (hardware-gated, for reading foreign
+data), but nothing UltraCanvas writes will use it.
 
-### 3.6 Consequences of the recommendation
+**Why the ruling settles the backend question.** The two objections to
+libsodium in §3.4 were its lack of software AES-GCM and its lack of PBKDF2.
+With one cipher and one KDF, neither is required any more:
 
-If libsodium is ratified, three things follow and should be decided together:
+| Earlier gap | Status after the ruling |
+|---|---|
+| No software AES-GCM (rows 5) | **Moot** — UltraCanvas never writes AES-GCM |
+| No PBKDF2 (row 8) | **Moot** — Argon2id is the only KDF |
+| No SHA-384 | Dropped — no consumer needs it |
+| No SHA-1 | Still needed for TOTP; ~150 lines, HMAC path only, FIPS 180-4 vectors |
+| HKDF only in 1.0.19+ | ~30 lines over HMAC-SHA-256, RFC 5869 vectors |
 
-1. **UCD v2 default cipher** becomes ChaCha20-Poly1305 (type 2). Type 1
-   (AES-256-GCM) stays in the spec for reading foreign files, with
-   `UltraCrypt_IsAeadAvailable` reporting honestly when the CPU cannot do it.
-2. **Three small vendored/derived pieces** join the module: SHA-1 (HMAC path
-   only), PBKDF2-HMAC-SHA256, and HKDF-SHA256 — all built on libsodium's HMAC,
-   all covered by official test vectors in §7.
-3. **`UltraCryptHashAlgorithm::SHA384` is dropped** from §5.2; no consumer
-   needs it.
+What remains is two small, well-vectored constructions over a correct HMAC.
+Against that, libsodium supplies the only native Argon2id, XChaCha20-Poly1305
+as a first-class primitive, the best secure-memory support of any candidate
+(`sodium_malloc` guard pages, `sodium_mlock`, `sodium_memzero` — which the
+authenticator and UltraVault genuinely need), a ~300 KB footprint against
+OpenSSL's ~4–5 MB, and no disturbance to the Windows/macOS TLS policy.
+
+mbedTLS and OpenSSL were the right answers only under the assumption that
+portable AES-GCM was mandatory. It is not, so libsodium wins on every
+remaining axis.
+
+### 3.6 Consequent changes
+
+Recorded here because they follow from §3.5 rather than being open questions:
+
+1. **UCD v2 spec updated** — offset 16 becomes *key source* (`0` none, `1`
+   password/Argon2id, `2` SuperVault); §4.3 fixes the cipher at
+   XChaCha20-Poly1305 with the section header as associated data; §4.4's
+   SuperVault path uses the same cipher; `SECU` now stores Argon2id cost
+   parameters rather than a bare iteration count.
+2. **`UltraCryptKdfAlgorithm` collapses to `Argon2id`** (§5.5). PBKDF2 is gone
+   from the surface; nothing needs it.
+3. **`UltraCryptAeadAlgorithm` keeps two entries** (§5.4):
+   `XChaCha20Poly1305` (default, everything we write) and `Aes256Gcm`
+   (hardware-gated, for reading foreign data only).
+4. **`UltraCryptHashAlgorithm::SHA384` dropped** (§5.2); no consumer needs it.
+5. Cost parameters are always stored with the ciphertext, never assumed, so
+   raising the recommended Argon2id costs later cannot orphan existing files.
 
 ## 4. Placement, naming and build target
 
@@ -473,13 +506,20 @@ surface** — that omission is deliberate and is what prevents the next
 
 ```cpp
 enum class UltraCryptAeadAlgorithm : uint8_t {
-    Aes256Gcm,           // UCD v2 encryption type 1
-    ChaCha20Poly1305,    // UCD v2 encryption type 2
-    XChaCha20Poly1305    // 192-bit nonce: safe for random nonces at volume
+    // The default, and the only cipher UltraCanvas ever writes. 192-bit
+    // nonce, so randomly generated nonces are safe without bookkeeping;
+    // constant-time in portable software on hardware without AES support.
+    XChaCha20Poly1305,
+
+    // Interop only — for reading data produced elsewhere. Hardware-gated:
+    // UltraCrypt_IsAeadAvailable returns false without AES-NI / ARMv8 crypto.
+    // Never select this for new output.
+    Aes256Gcm
 };
 
 struct UltraCryptAeadParams {
-    UltraCryptAeadAlgorithm algorithm = UltraCryptAeadAlgorithm::Aes256Gcm;
+    UltraCryptAeadAlgorithm algorithm =
+        UltraCryptAeadAlgorithm::XChaCha20Poly1305;
 
     // Seal: if empty, a fresh random nonce is generated and written back here
     // — the caller must store it. Supplying a nonce is allowed but then
@@ -492,8 +532,8 @@ struct UltraCryptAeadParams {
     std::vector<uint8_t> associatedData;
 };
 
-size_t UltraCrypt_GetKeySize(UltraCryptAeadAlgorithm algorithm);    // 32 all
-size_t UltraCrypt_GetNonceSize(UltraCryptAeadAlgorithm algorithm);  // 12/12/24
+size_t UltraCrypt_GetKeySize(UltraCryptAeadAlgorithm algorithm);    // 32 both
+size_t UltraCrypt_GetNonceSize(UltraCryptAeadAlgorithm algorithm);  // 24 / 12
 size_t UltraCrypt_GetTagSize(UltraCryptAeadAlgorithm algorithm);    // 16
 bool   UltraCrypt_IsAeadAvailable(UltraCryptAeadAlgorithm algorithm);
 
@@ -518,14 +558,17 @@ failure mode of both GCM and Poly1305 — something a caller has to opt *into*
 rather than something they forget to avoid.
 
 *Serves:* UCD v2 §4.3 section pipeline, UltraVault file backend,
-UltraAuthenticator's store, UltraDatabase at-rest encryption.
+UltraAuthenticator's store, UltraDatabase at-rest encryption — all of which
+use `XChaCha20Poly1305` and none of which need to choose.
 
 ### 5.5 Key derivation
 
 ```cpp
+// One KDF. Argon2id is memory-hard, is the current standard (RFC 9106) and is
+// what every UltraCanvas format and store uses. No alternative is offered:
+// a second KDF would be a second code path in every reader for no benefit.
 enum class UltraCryptKdfAlgorithm : uint8_t {
-    Argon2id,           // memory-hard; the default and the UCD v2 recommendation
-    Pbkdf2HmacSha256    // fallback for interoperability with existing files
+    Argon2id
 };
 
 struct UltraCryptKdfParams {
@@ -535,19 +578,18 @@ struct UltraCryptKdfParams {
     // and writes them back — the caller stores them (UCD keeps them in SECU).
     std::vector<uint8_t> salt;
 
-    uint32_t iterations   = 0;   // Argon2 passes / PBKDF2 iterations
-    uint32_t memoryKiB    = 0;   // Argon2 only
-    uint32_t parallelism  = 0;   // Argon2 only
+    uint32_t iterations   = 0;   // Argon2id passes
+    uint32_t memoryKiB    = 0;   // Argon2id memory cost
+    uint32_t parallelism  = 0;   // Argon2id lanes
     size_t   outputLength = 32;
 };
 
-// Current-guidance cost parameters; these are revisited as hardware moves, so
-// stored files must always record the parameters they were written with
-// rather than assuming today's defaults.
-//   Argon2id         -> 3 passes, 64 MiB, parallelism 1
-//   Pbkdf2HmacSha256 -> 600 000 iterations
+// Current-guidance cost parameters: 3 passes, 64 MiB, parallelism 1. These are
+// revisited as hardware moves, so stored data must always record the
+// parameters it was written with rather than assuming today's defaults —
+// otherwise raising the defaults orphans every existing file.
 UltraCryptKdfParams UltraCrypt_RecommendedKdfParams(
-        UltraCryptKdfAlgorithm algorithm);
+        UltraCryptKdfAlgorithm algorithm = UltraCryptKdfAlgorithm::Argon2id);
 
 UltraCryptResult UltraCrypt_DeriveKeyFromPassword(
         const UltraCryptSecureBuffer& password,
@@ -619,8 +661,7 @@ UltraCryptSecureBuffer key;
 if (!UltraCrypt_DeriveKeyFromPassword(password, kdf, key)) return false;
 // kdf.salt / iterations / memoryKiB now hold what must be written to SECU.
 
-UltraCryptAeadParams aead;
-aead.algorithm      = UltraCryptAeadAlgorithm::Aes256Gcm;
+UltraCryptAeadParams aead;                  // defaults to XChaCha20Poly1305
 aead.associatedData = sectionHeaderBytes;   // header tampering breaks the tag
 std::vector<uint8_t> ciphertext;
 if (!UltraCrypt_AeadSeal(key, aead, payload.data(), payload.size(), ciphertext))
@@ -665,10 +706,11 @@ Cryptographic code is the least tolerant of "looks right", so the test suite
 is part of the deliverable, not a follow-up:
 
 - **Published test vectors, all mandatory:** FIPS 180-4 (SHA-2), RFC 2202 /
-  4231 (HMAC-SHA-1 / SHA-2), RFC 6070 (PBKDF2), RFC 5869 (HKDF), RFC 9106
-  (Argon2id), NIST CAVP GCM, RFC 8439 (ChaCha20-Poly1305), RFC 4648
-  (Base32/64), plus RFC 4226 App. D and RFC 6238 App. B once the OTP engine
-  lands.
+  4231 (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 9106 (Argon2id), RFC 8439
+  (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
+  draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
+  interop-only AES path, RFC 4648 (Base32/64), and RFC 4226 App. D / RFC 6238
+  App. B once the OTP engine lands.
 - **Negative tests:** every AEAD open must be exercised with a flipped
   ciphertext bit, a flipped AAD bit, a wrong nonce and a truncated tag, each
   asserting `AuthenticationFailed` **and** an empty output.
@@ -686,7 +728,7 @@ is part of the deliverable, not a follow-up:
 | Stage | Contents |
 |---|---|
 | **1** | Backend decision ratified; `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-2 hashing, HMAC (incl. SHA-1 for TOTP), full test vectors |
-| **2** | AEAD (AES-256-GCM, ChaCha20-Poly1305), Argon2id + PBKDF2, HKDF, Base32/64 — completes what UCD v2, UltraVault and the authenticator need |
+| **2** | AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF, Base32/64 — completes what UCD v2, UltraVault and the authenticator need |
 | **3** | Consumer migration: rewrite or remove `UltraCanvasDocument`'s encryption; retire `AnchorPoint/net/Sha256.h`; UCD v2 writer/reader; UltraVault file backend |
 | **4** | Optional additions as needed: BLAKE3-256, XChaCha20-Poly1305 at volume, public-key surface |
 
@@ -697,26 +739,30 @@ storage layer and the UCD v2 format.
 
 ## 9. Open questions
 
-1. **Backend: libsodium, mbedTLS or OpenSSL (§3)?** Everything else follows
-   from this. The recommendation is libsodium (§3.5).
-2. **If libsodium: is the UCD v2 default-cipher change acceptable** — writers
-   emit ChaCha20-Poly1305 (type 2), with AES-256-GCM (type 1) readable only
-   where the CPU provides AES-NI (§3.5–3.6)?
-3. Which ARM/RISC-V boards are actual ULTRA OS targets? Whether their CPUs
-   implement the ARMv8 crypto extensions decides how much §3.4's AES-GCM
-   point really costs, and it should be checked on real hardware rather than
-   assumed.
-4. Do the companion encodings (§5.7) belong in UltraCrypt or in
+**Resolved:**
+
+- ~~Backend choice~~ — **libsodium** (§3.5), settled by the single-cipher ruling.
+- ~~UCD default cipher~~ — **XChaCha20-Poly1305 only**, with Argon2id as the
+  only KDF (§3.5–3.6). The spec has been updated accordingly.
+
+**Still open:**
+
+1. Do the companion encodings (§5.7) belong in UltraCrypt or in
    `DataFormats/` alongside UltraCanvasJSON?
-5. Should `UltraCryptHashAlgorithm::SHA1` be exposed at all outside the HMAC
+2. Should `UltraCryptHashAlgorithm::SHA1` be exposed at all outside the HMAC
    path, even behind `allowLegacy`?
-6. Is BLAKE3-256 (UCD v2 `SVLT` algorithm `1`) needed in the first release, or
-   may writers emit algorithm `0` (SHA-256) until a consumer asks?
-7. Confirm the disposition of `UltraCanvasDocument`'s dormant encryption code
+3. Is BLAKE3-256 worth keeping as UCD v2 `SVLT` hash algorithm `1`, or should
+   that field also collapse to SHA-256 only, consistent with the
+   one-algorithm principle applied to the cipher and KDF?
+4. Confirm the disposition of `UltraCanvasDocument`'s dormant encryption code
    (§1.1): rewrite against UltraCrypt, or delete the entry points?
-8. Confirm the global-namespace + `UltraCrypt_` prefix convention (§4), chosen
+5. Confirm the global-namespace + `UltraCrypt_` prefix convention (§4), chosen
    to match UltraNet and UltraDatabase. UltraAI and the UltraVault design use
    a named namespace instead, so the framework currently has both patterns.
+6. Is vendoring libsodium under `UltraCanvas/third_party/` preferred to
+   linking the distro package? Vendoring pins the version and guarantees
+   1.0.19+ (so HKDF comes from the library rather than our own construction);
+   linking keeps builds smaller and inherits distro security updates.
 
 ---
 
