@@ -46624,7 +46624,7 @@ compare the candidates against it; §3.4 explains what actually separates them.
 > offer a menu of algorithms — it should use the single best one. That
 > decision has been taken (§3.5) and it removes two of the three things that
 > made this a close call. The analysis in §3.1–3.4 is kept as the record of
-> *why*.
+> *why*; §3.7 records why the OS-native route was rejected.
 
 ### 3.1 What the backend must supply
 
@@ -46803,6 +46803,104 @@ Recorded here because they follow from §3.5 rather than being open questions:
 4. **`UltraCryptHashAlgorithm::SHA384` dropped** (§5.2); no consumer needs it.
 5. Cost parameters are always stored with the ciphertext, never assumed, so
    raising the recommended Argon2id costs later cannot orphan existing files.
+
+### 3.7 libsodium versus the native Windows and macOS crypto APIs
+
+Option A (§3) proposed using each OS's own crypto stack rather than a
+portable library, mirroring how UltraNet handles TLS. It was rejected in
+prose; this subsection records the comparison properly, because the ruling in
+§3.5 makes the answer much sharper than it was.
+
+The native stacks are:
+
+- **Windows — CNG** (Cryptography Next Generation, `bcrypt.dll`), the modern
+  replacement for CryptoAPI. Handle-based C API.
+- **macOS — CommonCrypto** (in libSystem, C API) and **CryptoKit**
+  (macOS 10.15+, **Swift only**). Randomness comes from Security.framework.
+
+#### Algorithm coverage against the settled requirement set
+
+| Requirement (post-§3.5) | libsodium | Windows CNG | macOS native |
+|---|---|---|---|
+| **XChaCha20-Poly1305** (the cipher) | ✅ first-class | ❌ **absent** | ❌ **absent** (neither CommonCrypto nor CryptoKit) |
+| **Argon2id** (the KDF) | ✅ native | ❌ **absent** (PBKDF2 only) | ❌ **absent** (PBKDF2 only) |
+| AES-256-GCM (interop reads) | ⚠️ AES-NI only | ✅ | ⚠️ CommonCrypto's GCM is a narrow, late-added surface; CryptoKit has it but is Swift-only |
+| ChaCha20-Poly1305 (IETF, 96-bit nonce) | ✅ | ⚠️ recent Windows only — version-gated | ⚠️ CryptoKit only (Swift), absent from CommonCrypto |
+| SHA-256 / SHA-512 | ✅ | ✅ | ✅ |
+| SHA-1 (HMAC path, TOTP) | ❌ ~150 lines to add | ✅ | ✅ |
+| HMAC-SHA-1/256/512 | ⚠️ SHA-256/512 only | ✅ | ✅ |
+| HKDF-SHA256 | ⚠️ dedicated API in 1.0.19+ | ✅ (Windows 10 1903+) | ❌ CommonCrypto; ✅ CryptoKit (Swift) |
+| PBKDF2 | ❌ (not needed post-ruling) | ✅ | ✅ |
+| CSPRNG | ✅ `randombytes_buf` | ✅ `BCryptGenRandom` | ✅ `SecRandomCopyBytes` / `arc4random_buf` |
+| Constant-time compare | ✅ `sodium_memcmp` | ❌ no API (trivial to write) | ⚠️ `timingsafe_bcmp` from BSD libc |
+| Zeroize | ✅ `sodium_memzero` | ✅ `SecureZeroMemory` | ✅ `memset_s` |
+| Page-lock / guarded allocation | ✅ `sodium_mlock`, `sodium_malloc` (guard pages) | ⚠️ `VirtualLock` only, no guarded allocator | ⚠️ `mlock` only, no guarded allocator |
+
+*Version-gated cells should be confirmed against the minimum Windows and
+macOS versions ULTRA OS intends to support; the two ❌ rows at the top do not
+depend on version and are the decisive ones.*
+
+#### Structural and operational comparison
+
+| Dimension | libsodium | Native (CNG + CommonCrypto/CryptoKit) |
+|---|---|---|
+| Number of crypto implementations to maintain | **1** | **3** (Linux still needs one — the OS stacks cover only Windows and macOS) |
+| Cross-platform byte-identical output | ✅ by construction | ⚠️ must be established by test, per algorithm |
+| Language fit for a C++20 framework | ✅ plain C | ⚠️ CNG is verbose C; **CryptoKit is Swift-only** and needs a bridging layer on macOS |
+| Added binary size | ~300 KB | **0** |
+| New third-party dependency | yes | **none** |
+| Security updates | our vendoring/packaging responsibility | ✅ shipped by the OS vendor |
+| FIPS-validated modules available | ❌ | ✅ (CNG) — may matter for some procurement |
+| Hardware acceleration | ✅ built in | ✅ handled by OS |
+| Code signing / notarization impact | one more binary to sign | ✅ nothing extra |
+| Supply-chain exposure | one vendored library | ✅ none added |
+| API misuse resistance | ✅ designed for it | ⚠️ general-purpose, easy to misconfigure |
+| Test burden | one implementation against published vectors | three implementations, plus mandatory cross-platform fixture tests |
+
+#### What the tables say
+
+**The two algorithms just standardised on are precisely the two that no OS
+crypto stack provides.** XChaCha20-Poly1305 is a CFRG draft that OS vendors
+have not adopted, and Argon2id (RFC 9106) has not reached CNG or CommonCrypto
+either — both platforms still offer PBKDF2 as their password KDF. That is not
+a version-gating problem that will age out soon; it is a difference in what
+these APIs are for.
+
+So a native-backend build cannot implement §3.5 at all. It leaves two choices,
+and both are worse than simply vendoring libsodium:
+
+1. **Revert the cipher and KDF** to AES-256-GCM plus PBKDF2 — the lowest
+   common denominator of OS crypto APIs — giving up portable constant-time
+   encryption on unaccelerated ARM/RISC-V hardware, giving up the 192-bit
+   nonce that removes nonce-reuse accounting, and giving up memory-hard
+   password hashing. The format would be designed around API availability
+   rather than around what is best, which is the opposite of the principle
+   behind the ruling.
+2. **Vendor XChaCha20-Poly1305 and Argon2id anyway** and use the OS only for
+   SHA-2, HMAC and randomness. But those are the easy, uncontroversial parts;
+   the vendored pieces would be the hard ones. The result is a third-party
+   crypto dependency *plus* three platform backends — strictly more work and
+   more risk than one library, for no benefit.
+
+The honest case *for* native remains real and is worth stating: zero added
+binary size, no supply-chain exposure, OS-vendor security updates, nothing
+extra to sign or notarize, and FIPS-validated modules on Windows if
+procurement ever demands them. If a FIPS requirement appears, this decision
+should be revisited — but it would be a decision to change the algorithms
+too, not merely the backend.
+
+One further practical obstacle on macOS: the modern API (CryptoKit) is
+**Swift-only**, so a C++20 framework would have to carry a Swift bridging
+layer to reach it, while the C API that is directly callable (CommonCrypto) is
+the older and considerably weaker one — no ChaCha, no HKDF, and a GCM surface
+that arrived late and narrow. UltraNet tolerates this for TLS because
+SecureTransport is a complete TLS implementation behind a C API; there is no
+equivalent for the primitives UltraCrypt needs.
+
+**Conclusion: native backends are the right call for TLS and the wrong one
+here.** TLS wants the OS because the OS owns the trust store and cipher
+policy; data-at-rest wants one implementation because the requirement is that
+a file written anywhere opens everywhere. §3.5 stands.
 
 ## 4. Placement, naming and build target
 
