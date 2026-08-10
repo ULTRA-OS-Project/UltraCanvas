@@ -1,3 +1,42 @@
+#### 2026-08-09 *0.3.37*
+- **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
+  target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
+  the whole public UltraNet surface and reports each entry as **WORKING**
+  (the probe drove the real code path and the result matched the contract),
+  **IMPLEMENTED** (present and reached, but unverifiable in this
+  environment), **NOT IMPLEMENTED** (documented stub / no-op / absent
+  backend) or **BROKEN** (ran and contradicted the API). 108 entries across
+  Core, URL, HTTP, Session, SSE, WebSocket, DNS, Socket, TLS, FTP, MIME and
+  Plugins; `--format=text|markdown|json`, `--area=`, `--output=`,
+  `--network`, `--strict`, and a `--serve` diagnostic that just holds the
+  probe origin open. Registered with CTest; exits non-zero only on BROKEN
+  (or, with `--strict`, on anything short of WORKING).
+- **UltraNet**: the status tool verifies offline by bringing its own peers —
+  an in-process HTTP/1.1 + RFC 6455 WebSocket origin written on UltraNet's
+  own TCP API (keep-alive, chunked bodies, `Expect: 100-continue`,
+  redirects, cookies, Basic-auth challenges, `text/event-stream`, a slow
+  route for cancellation, and a masked-frame echo endpoint with its own
+  SHA-1 for `Sec-WebSocket-Accept`), loopback TCP/UDP peers, and an
+  `openssl s_server` TLS peer whose throwaway certificate makes
+  `UltraNet_TlsSetCABundle` / `UltraNet_TlsAddTrustedCert` checkable in both
+  directions. No Python, no external service and no internet access
+  required.
+- Docs: `Docs/Modules/UltraNet/ApiStatus.md` documents the statuses, the
+  options, how each area is verified and how to add a probe; both UltraNet
+  READMEs point at it from their Status sections.
+- **UltraNet**: the macOS TLS backend now honours custom trust anchors —
+  found by the status tool's first CI run, whose trust-store probes came back
+  BROKEN on macOS. `OS/MacOS/UltraNetTlsImpl.mm` stored the global CA bundle
+  and `UltraNet_TlsAddTrustedCert` PEMs but `VerifyPeer` evaluated the peer
+  against the system keychain only, so `UltraNet_TlsSetCABundle` /
+  `UltraNet_TlsAddTrustedCert` (and the per-wrap
+  `UltraNetTlsOptions::caBundlePath`, equally unread) were silently ignored.
+  Wrap now parses the resolved PEMs into `SecCertificateRef` anchors and
+  `VerifyPeer` applies them via `SecTrustSetAnchorCertificates`; a CA bundle
+  replaces the system roots (matching the OpenSSL backend's
+  `SSL_CTX_load_verify_locations` semantics) while added PEMs alone extend
+  them (`SecTrustSetAnchorCertificatesOnly(false)`).
+
 #### 2026-08-09 *0.3.36*
 - **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
   name and stays editable. The suggested archive name was `stem()` of the

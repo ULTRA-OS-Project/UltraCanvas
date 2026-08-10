@@ -1,7 +1,37 @@
 # Tests/UltraNet/CMakeLists.txt
-# Builds the UltraNetTests binary. Enabled by ULTRACANVAS_BUILD_NET_TESTS.
+# Builds the UltraNetTests binary (pass/fail unit + loopback tests) and the
+# UltraNetApiStatus binary (per-function API status report).
+# Enabled by ULTRACANVAS_BUILD_NET_TESTS.
 
 cmake_minimum_required(VERSION 3.16)
+
+# UltraNetMime routes base64/Trim through UltraCanvas core (UltraCanvasUtils),
+# whose definitions live in libultracanvas — which in turn PUBLIC-links UltraNet.
+# That makes the two static archives mutually dependent, so a consumer must link
+# both and the linker must resolve the UltraNet -> UltraCanvas back-references
+# regardless of scan order. GNU ld (Linux + Windows/MinGW CI) is single-pass, so
+# wrap the pair in a rescanned link group; Apple ld64 / MSVC link.exe rescan
+# archives natively AND reject CMake's LINK_GROUP RESCAN feature at generate time,
+# so those get plain order. Linker family is checked first for exactly that
+# reason. Guarded on the UltraCanvas target because the net tests can be built
+# standalone. Mirrors the version-guarded WHOLE_ARCHIVE idiom in
+# UltraCanvas/CMakeLists.txt.
+function(ultranet_link_module target)
+    if(TARGET UltraCanvas)
+        if(APPLE OR MSVC)
+            target_link_libraries(${target} PRIVATE UltraNet UltraCanvas)
+        elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+            target_link_libraries(${target} PRIVATE
+                "$<LINK_GROUP:RESCAN,UltraNet,UltraCanvas>")
+        else()
+            # GNU ld on CMake < 3.24 (no LINK_GROUP genex): emit the flags directly.
+            target_link_libraries(${target} PRIVATE
+                -Wl,--start-group UltraNet UltraCanvas -Wl,--end-group)
+        endif()
+    else()
+        target_link_libraries(${target} PRIVATE UltraNet)
+    endif()
+endfunction()
 
 set(ULTRANET_TEST_SOURCES
     test_main.cpp
@@ -27,31 +57,7 @@ add_executable(UltraNetTests ${ULTRANET_TEST_SOURCES})
 
 target_compile_features(UltraNetTests PRIVATE cxx_std_20)
 
-# UltraNetMime routes base64/Trim through UltraCanvas core (UltraCanvasUtils),
-# whose definitions live in libultracanvas — which in turn PUBLIC-links UltraNet.
-# That makes the two static archives mutually dependent, so the test must link
-# both and the linker must resolve the UltraNet -> UltraCanvas back-references
-# regardless of scan order. GNU ld (Linux + Windows/MinGW CI) is single-pass, so
-# wrap the pair in a rescanned link group; Apple ld64 / MSVC link.exe rescan
-# archives natively AND reject CMake's LINK_GROUP RESCAN feature at generate time,
-# so those get plain order. Linker family is checked first for exactly that
-# reason. Guarded on the UltraCanvas target because the net tests can be built
-# standalone. Mirrors the version-guarded WHOLE_ARCHIVE idiom in
-# UltraCanvas/CMakeLists.txt.
-if(TARGET UltraCanvas)
-    if(APPLE OR MSVC)
-        target_link_libraries(UltraNetTests PRIVATE UltraNet UltraCanvas)
-    elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
-        target_link_libraries(UltraNetTests PRIVATE
-            "$<LINK_GROUP:RESCAN,UltraNet,UltraCanvas>")
-    else()
-        # GNU ld on CMake < 3.24 (no LINK_GROUP genex): emit the flags directly.
-        target_link_libraries(UltraNetTests PRIVATE
-            -Wl,--start-group UltraNet UltraCanvas -Wl,--end-group)
-    endif()
-else()
-    target_link_libraries(UltraNetTests PRIVATE UltraNet)
-endif()
+ultranet_link_module(UltraNetTests)
 target_include_directories(UltraNetTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -158,5 +164,51 @@ if(TARGET UltraNetRtpPlugin)
         ULTRANET_RTP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetRtpPlugin>")
 endif()
 
+# =============================================================================
+# UltraNetApiStatus — per-function API status report.
+#
+# Complements UltraNetTests: where the test binary answers "does the code still
+# behave?", this one answers "what is the state of every entry in the public
+# surface on this machine?" — WORKING / IMPLEMENTED / NOT IMPLEMENTED / BROKEN.
+# It brings its own HTTP + WebSocket origin (built on UltraNet's TCP API), so
+# it needs neither Python nor internet access.
+# =============================================================================
+set(ULTRANET_APISTATUS_SOURCES
+    ApiStatus/ApiStatusMain.cpp
+    ApiStatus/ApiStatusReport.cpp
+    ApiStatus/ProbeServer.cpp
+    ApiStatus/ProbeCore.cpp
+    ApiStatus/ProbeUrl.cpp
+    ApiStatus/ProbeHttp.cpp
+    ApiStatus/ProbeSession.cpp
+    ApiStatus/ProbeSse.cpp
+    ApiStatus/ProbeWebSocket.cpp
+    ApiStatus/ProbeDns.cpp
+    ApiStatus/ProbeSocket.cpp
+    ApiStatus/ProbeTls.cpp
+    ApiStatus/ProbeFtp.cpp
+    ApiStatus/ProbeMime.cpp
+    ApiStatus/ProbePlugins.cpp
+)
+
+add_executable(UltraNetApiStatus ${ULTRANET_APISTATUS_SOURCES})
+target_compile_features(UltraNetApiStatus PRIVATE cxx_std_20)
+ultranet_link_module(UltraNetApiStatus)
+target_include_directories(UltraNetApiStatus PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/ApiStatus)
+
+# The plug-in probe dlopen()s DSOs whose v1 fallback resolves
+# UltraNet_RegisterPlugin from the host's symbol table — same requirement as
+# UltraNetTests above.
+set_target_properties(UltraNetApiStatus PROPERTIES ENABLE_EXPORTS ON)
+
+# Where this build dropped its plug-in DSOs, so UltraNet_RefreshPlugins can be
+# probed against real plug-ins regardless of the working directory.
+target_compile_definitions(UltraNetApiStatus PRIVATE
+    ULTRANET_PROBE_PLUGIN_DIR_DEFINE="${CMAKE_BINARY_DIR}/Plugins/UltraNet")
+
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)
+# Fails only on BROKEN entries — IMPLEMENTED / NOT IMPLEMENTED are legitimate
+# states for this environment, not test failures.
+add_test(NAME UltraNetApiStatus COMMAND UltraNetApiStatus)
