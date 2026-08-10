@@ -4,6 +4,17 @@
 **Status:** Investigation — no iOS code exists yet; this document records the
 current state, the gaps, and the recommended path.
 
+**Decisions taken (2026-08-10):**
+
+1. **App Store distribution is required.** Everything the Store mandates is
+   therefore a hard requirement, not an option: no `dlopen` (static plugin
+   registration), code signing + review, privacy manifests, and static
+   linking of all dependencies.
+2. **CoreGraphics/CoreText is the end-target rendering backend.** The port
+   must converge on the most optimised native solution; a cross-compiled
+   Cairo/Pango stack is at most a temporary de-risking bridge, never the
+   shipping configuration.
+
 ---
 
 ## Verdict
@@ -17,9 +28,11 @@ event model already reserves touch event types. There are two viable routes:
 
 1. **Short term (works now, with caveats):** run apps in mobile Safari via the
    existing WebAssembly backend, which already registers touch callbacks.
-2. **Long term (recommended):** a native `OS/iOS/` UIKit backend, estimated as
-   a medium-large effort with the majority of the work in the dependency stack
-   (Cairo/Pango) and touch-first widget behaviour, not in the platform glue.
+2. **Long term (committed):** a native `OS/iOS/` UIKit backend rendering
+   through a new CoreGraphics/CoreText `IRenderContext`, with all plugins
+   statically linked for App Store distribution. The majority of the work is
+   in the render/text backend and touch-first widget behaviour, not in the
+   platform glue.
 
 ---
 
@@ -111,8 +124,8 @@ not been started.
 2. **The render context is swappable.** `IRenderContext`
    (`include/UltraCanvasRenderContext.h`, ~160 pure-virtual methods) is fully
    abstract, and `UltraCanvasWASMRenderContext` implements it on the HTML
-   Canvas 2D API with **no Cairo at all** — direct precedent for a
-   CoreGraphics/CoreText backend if cross-compiling Cairo is rejected.
+   Canvas 2D API with **no Cairo at all** — direct precedent for the
+   CoreGraphics/CoreText backend that is now the committed end target.
 3. **Touch types already exist** in `UCEventType`, so a native backend can
    emit real touch events without core API changes.
 4. **Retina/DPI model matches.** The macOS window already separates logical
@@ -149,25 +162,48 @@ Benefits WASM, ULTRA OS touchscreens and the future iOS backend equally:
 - Hover-free operation audit: tooltips, hover-revealed controls, hit-target
   sizes.
 
-### Phase 2 — Native `OS/iOS/` backend (~6-10 weeks MVP)
+### Phase 2 — CoreGraphics/CoreText render backend (~6-10 weeks)
+
+The committed end target. A new `libspecific/CoreGraphics/` implementation of
+`IRenderContext` (~160 pure-virtual methods; the WASM Canvas 2D backend is
+the precedent that this is feasible without Cairo). This is the single
+largest work item, and it is **platform work that can start on macOS today**
+— CoreGraphics/CoreText are identical on macOS, so the backend can be
+developed and pixel-compared against the Cairo backend on desktop long before
+any iOS device is involved. It also unlocks a leaner macOS build (dropping
+the Cairo/Pango/GLib/fontconfig payload) as a side benefit.
+
+Sub-items, replacing what the Cairo stack provides today:
+
+| Cairo-stack component | CoreGraphics replacement |
+|---|---|
+| `RenderContextCairo` (paths, fills, strokes, gradients, clipping, transforms) | `CGContext` drawing — closest to a 1:1 mapping |
+| `UCTextLayout` (Pango text shaping/layout) | CoreText (`CTFramesetter`/`CTLine`); must reproduce the existing metrics contract so widget layout stays identical |
+| `ImageCairo` + libvips loaders | ImageIO (`CGImageSource`) for PNG/JPEG/GIF/WebP/HEIC; keep the QOI codec (plain C, portable) |
+| `SvgDocumentCairo` (librsvg) | No system SVG renderer on Apple platforms — either render SVG through the framework's own vector path API on `CGContext`, or vendor a small portable SVG rasterizer |
+| fontconfig font enumeration | CoreText font descriptors (`CTFontManager`) |
+
+Definition of done: the DemoApp renders pixel-equivalent (within
+anti-aliasing tolerance) on macOS with `ULTRACANVAS_RENDER_BACKEND=CoreGraphics`
+vs. the Cairo build, and the text-layout regression tests pass.
+
+An interim cross-compiled Cairo build remains available as a *de-risking
+bridge only* (e.g. to unblock Phase 3 device testing while Phase 2 is in
+flight); it must not ship, per the decision above.
+
+### Phase 3 — Native `OS/iOS/` backend (~4-6 weeks on top of Phase 2)
 
 | Work item | Approach |
 |---|---|
-| CMake | `elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")` before the `APPLE` branch; iOS toolchain file; static-only build |
+| CMake | `elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")` before the `APPLE` branch; iOS toolchain file; static-only build (App Store requirement) |
 | App lifecycle | `UIApplicationDelegate`/`UIScene` → `UltraCanvasiOSApplication`; map foreground/background to existing window focus/visibility events |
-| Window | Single fullscreen `UIWindow` + custom `UIView` backed by `CALayer`; safe-area insets exposed to the layout engine |
-| Rendering (option A, faster) | Cross-compile Cairo/Pango/freetype static for iOS; keep `cairo-quartz` drawing into the view's CGContext, as macOS does today |
-| Rendering (option B, cleaner) | New `IRenderContext` on CoreGraphics/CoreText, following the WASM precedent; drops the Cairo/Pango/GLib payload but is the single largest work item and duplicates text layout (`libspecific/Cairo/UCTextLayout`) |
+| Window | Single fullscreen `UIWindow` + custom `UIView` backed by `CALayer`; the CoreGraphics render context draws into the view's `CGContext`; safe-area insets exposed to the layout engine |
 | Input | `touchesBegan/Moved/Ended` → `Touch*` UCEvents; `UIKeyCommand` for hardware keyboards; virtual keyboard + IME via a hidden `UITextInput` view driving the existing text-entry pipeline |
 | Clipboard | `UIPasteboard` |
 | Dialogs | `UIDocumentPickerViewController` for open/save; `UIAlertController` for message dialogs |
-| GL surface | Disable `ULTRACANVAS_ENABLE_GL` for the MVP; Metal or ANGLE later |
-| Plugins | Static registration table replacing `dlopen` on iOS |
-| Packaging | Xcode generator or `xcodebuild` signing step; the repo's macOS notarization scripts (`package_and_notarize-macos.sh`) are the precedent |
-
-Recommendation: start with **option A** (Cairo cross-compile) to reach a
-running MVP quickly, and treat a CoreGraphics `IRenderContext` as a follow-up
-that also unlocks a leaner macOS build.
+| GL surface | Disable `ULTRACANVAS_ENABLE_GL` for the MVP; Metal (or ANGLE) later |
+| Plugins | Static registration table replacing `dlopen` — mandatory for the App Store, no fallback |
+| Packaging & review | `xcodebuild` signing + `.ipa` export; App Store privacy manifest (`PrivacyInfo.xcprivacy`, required since iOS 17 for apps using file-timestamp/user-defaults APIs); export-compliance declaration for TLS (standard exemption); the repo's macOS notarization scripts (`package_and_notarize-macos.sh`) are the workflow precedent |
 
 ### Explicitly out of scope for the MVP
 
@@ -177,13 +213,25 @@ SSH, LDAP — audit individually).
 
 ---
 
-## 4. Decision points
+## 4. Decisions and open questions
 
-1. **Rendering backend:** cross-compiled Cairo/Pango (fast to MVP, heavy
-   binary) vs. native CoreGraphics/CoreText `IRenderContext` (lean, large
-   effort). Affects binary size, text shaping fidelity, and maintenance.
-2. **Distribution:** App Store (forces static plugins, signing, review) vs.
-   in-house/TestFlight only.
-3. **Whether Phase 0/1 (WASM + core touch) is worth shipping regardless** —
-   it is low-cost, de-risks the native port, and improves ULTRA OS
-   touchscreen support on its own.
+**Resolved:**
+
+1. **Distribution: App Store.** Static plugin registration replaces `dlopen`
+   on iOS with no fallback; signing, review, privacy manifest and export
+   compliance are in scope from the first TestFlight build.
+2. **Rendering: CoreGraphics/CoreText is the end target.** The shipping iOS
+   build carries no Cairo/Pango/GLib payload. A cross-compiled Cairo build
+   may be used mid-project to unblock device testing, but is explicitly
+   non-shipping.
+
+**Still open:**
+
+1. **Minimum iOS version** — recommend iOS 15+ (covers >96% of devices,
+   allows `UIScene` lifecycle without legacy paths).
+2. **Whether Phase 0/1 (WASM + core touch) ships as its own deliverable** —
+   recommended: it is low-cost, de-risks the native port, and improves
+   ULTRA OS touchscreen support on its own.
+3. **Which UltraNet plug-ins ship on iOS** — each C-dependency plug-in
+   (MQTT, AMQP, CoAP, SNMP, SSH, LDAP) needs an individual port/licensing
+   audit; the libcurl-native core (HTTP/S, WebSocket, FTP) is unaffected.
