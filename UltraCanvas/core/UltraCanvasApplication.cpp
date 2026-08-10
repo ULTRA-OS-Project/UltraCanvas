@@ -93,6 +93,62 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== FILE-DESCRIPTOR WATCHES =====
+    // These let a host integration (e.g. Ladybird's IPC to its WebContent process)
+    // have its sockets serviced by the toolkit's own event loop. The platform loop
+    // (Linux: CollectAndProcessNativeEvents) folds the watched fds into its select()
+    // set and calls FireFdWatch() for each fd that became ready.
+
+    FdWatchId UltraCanvasApplicationBase::AddFdWatch(int fd, FdWatchType type, std::function<void()> callback) {
+        std::lock_guard<std::mutex> lk(fdWatchesMutex_);
+        FdWatchId id = nextFdWatchId_++;
+        fdWatches_.push_back(FdWatch { id, fd, type, std::move(callback) });
+        // Wake the loop so the new fd is added to the wait set on the next iteration
+        // rather than only after the current (possibly indefinite) select() returns.
+        WakeUpEventLoop();
+        return id;
+    }
+
+    void UltraCanvasApplicationBase::RemoveFdWatch(FdWatchId id) {
+        std::lock_guard<std::mutex> lk(fdWatchesMutex_);
+        std::erase_if(fdWatches_, [id](const FdWatch& w) { return w.id == id; });
+    }
+
+    std::vector<UltraCanvasApplicationBase::FdWatchKey>
+    UltraCanvasApplicationBase::SnapshotFdWatchKeys() const {
+        std::lock_guard<std::mutex> lk(fdWatchesMutex_);
+        std::vector<FdWatchKey> keys;
+        keys.reserve(fdWatches_.size());
+        for (const auto& w : fdWatches_)
+            keys.push_back(FdWatchKey { w.id, w.fd, w.type });
+        return keys;
+    }
+
+    void UltraCanvasApplicationBase::FireFdWatch(FdWatchId id) {
+        // Copy the callback out under the lock, then invoke it unlocked so it can
+        // safely re-enter AddFdWatch/RemoveFdWatch (e.g. an IPC handler that closes
+        // a connection removes its own watch).
+        std::function<void()> callback;
+        {
+            std::lock_guard<std::mutex> lk(fdWatchesMutex_);
+            for (const auto& w : fdWatches_) {
+                if (w.id == id) {
+                    callback = w.callback;
+                    break;
+                }
+            }
+        }
+        if (!callback)
+            return;
+        try {
+            callback();
+        } catch (const std::exception& e) {
+            std::cerr << "UltraCanvas FdWatch callback threw: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "UltraCanvas FdWatch callback threw non-std exception" << std::endl;
+        }
+    }
+
     const char* const kEmbeddedAllFonts[] = {
         "Ubuntu-R.ttf", "Ubuntu-B.ttf",
         "Ubuntu-RI.ttf", "Ubuntu-BI.ttf",
@@ -447,6 +503,43 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasApplicationBase::RunOnce() {
+        // Service native events (X11 + wakeup + registered fd watches), then drain
+        // the UI event queue, fire timers, run PostToUIThread tasks, and render.
+        // Factored out of Run() so a host embedding UltraCanvas under its own event
+        // loop (e.g. Ladybird's Core::EventLoop bridge) can drive one iteration.
+        CollectAndProcessNativeEvents();
+        ProcessEvents();
+        ProcessTimers();
+        ProcessPostedTasks();
+
+        std::erase_if(windows, [](const auto& w) {
+            return (w->GetState() == WindowState::Closed && w->GetConfig().deleteOnClose);
+        });
+
+        for (auto it = windows.begin(); it != windows.end(); it++) {
+            auto window = it->get();
+            if (window->IsVisible()) {
+                window->UpdateAndRender();
+            }
+        }
+
+        // Clean up stale modal windows (expired weak_ptrs)
+        activeModalWindows.erase(
+            std::remove_if(activeModalWindows.begin(), activeModalWindows.end(),
+                [](const std::weak_ptr<UltraCanvasWindowBase>& w) {
+                    return w.expired();
+                }),
+            activeModalWindows.end());
+
+        if (auto clipbrd = GetClipboard())
+            clipbrd->Update();
+        if (eventLoopCallback)
+            eventLoopCallback();
+
+        RunInEventLoop();
+    }
+
     void UltraCanvasApplicationBase::Run() {
         debugOutput << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
         if (!initialized) {
@@ -459,62 +552,11 @@ namespace UltraCanvas {
         // Start the event processing thread
         RunBeforeMainLoop();
 
-        auto clipbrd = GetClipboard();
-
         debugOutput << "UltraCanvas: Starting main loop..." << std::endl;
         try {
             while (running && !windows.empty()) {
-                CollectAndProcessNativeEvents();
-
-                // Process all pending events
-                ProcessEvents();
-
-                // Fire expired timers
-                ProcessTimers();
-
-                // Run anything PostToUIThread enqueued from a background
-                // thread (async HTTP callbacks, std::thread, plug-ins).
-                ProcessPostedTasks();
-
-                std::erase_if(windows, [](const auto &w) {
-                    return (w->GetState() == WindowState::Closed && w->GetConfig().deleteOnClose);
-                });
-                // Check for visible windows, delete/cleanup windows
-
-                for (auto it = windows.begin(); it != windows.end(); it++) {
-                    auto window = it->get();
-//                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
-                    if (window->IsVisible()) {
-                        window->UpdateAndRender();
-                    }
-
-                }
-
-                if (windows.empty()) {
-                    debugOutput << "UltraCanvas: No windows, exiting..." << std::endl;
-                    break;
-                }
-                
-                // Clean up stale modal windows (expired weak_ptrs)
-                activeModalWindows.erase(
-                    std::remove_if(activeModalWindows.begin(), activeModalWindows.end(),
-                        [](const std::weak_ptr<UltraCanvasWindowBase>& w) {
-                            return w.expired();
-                        }),
-                    activeModalWindows.end()
-                );
-
-                // Update and render all windows
-                if (clipbrd) {
-                    clipbrd->Update();
-                }
-                if (eventLoopCallback) {
-                    eventLoopCallback();
-                }
-
-                RunInEventLoop();
+                RunOnce();
             }
-
         } catch (const std::exception& e) {
             debugOutput << "UltraCanvas: Exception in main loop: " << e.what() << std::endl;
         }

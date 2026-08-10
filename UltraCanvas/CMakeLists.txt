@@ -672,6 +672,22 @@ if(_ultracanvas_ultranet_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_ultranet_platform_srcs})
 endif()
 
+# The platform-dir glob above also matches the GL context managers
+# (GLContextManager{EGL,GLX,WGL,CGL}_*). Those are compiled ONLY when
+# ULTRACANVAS_ENABLE_GL is on (they are re-added explicitly, guarded, in the GL
+# section below), and their headers #error out unless ULTRACANVAS_ENABLE_GL is
+# defined. When GL is off the glob still pulled them in, breaking the build — so
+# drop them here, mirroring the UltraNet removal above.
+if(NOT ULTRACANVAS_ENABLE_GL)
+    file(GLOB _ultracanvas_gl_platform_srcs
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManager*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManager*.mm
+    )
+    if(_ultracanvas_gl_platform_srcs)
+        list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_gl_platform_srcs})
+    endif()
+endif()
+
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp

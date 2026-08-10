@@ -226,15 +226,24 @@ namespace UltraCanvas {
         // 2. Compute wait timeout from timer system
         auto timeout = GetTimeUntilNextTimer();
 
-        // 3. Build select() fd_set with X11 fd and wakeup fd
-        fd_set readfds;
+        // 3. Build select() fd_set with X11 fd, wakeup fd, and any external fd
+        //    watches (AddFdWatch) — e.g. a host integration's IPC sockets.
+        fd_set readfds, writefds;
         FD_ZERO(&readfds);
+        FD_ZERO(&writefds);
         int x11Fd = ConnectionNumber(display);
         FD_SET(x11Fd, &readfds);
         int maxFd = x11Fd;
         if (wakeupFd >= 0) {
             FD_SET(wakeupFd, &readfds);
             if (wakeupFd > maxFd) maxFd = wakeupFd;
+        }
+
+        auto fdWatchKeys = SnapshotFdWatchKeys();
+        for (const auto& key : fdWatchKeys) {
+            if (key.fd < 0) continue;
+            FD_SET(key.fd, key.type == FdWatchType::Write ? &writefds : &readfds);
+            if (key.fd > maxFd) maxFd = key.fd;
         }
 
         // 4. Set up timeout (nullptr = infinite wait)
@@ -247,8 +256,8 @@ namespace UltraCanvas {
             tvPtr = &tv;
         }
 
-        // 5. Wait for OS events, wakeup signal, or timer expiry
-        int result = select(maxFd + 1, &readfds, nullptr, nullptr, tvPtr);
+        // 5. Wait for OS events, wakeup signal, watched fds, or timer expiry
+        int result = select(maxFd + 1, &readfds, &writefds, nullptr, tvPtr);
 
         if (result < 0 && errno != EINTR) {
             debugOutput << "CollectAndProcessNativeEvents: select() error" << std::endl;
@@ -258,6 +267,18 @@ namespace UltraCanvas {
         if (result > 0 && wakeupFd >= 0 && FD_ISSET(wakeupFd, &readfds)) {
             uint64_t val;
             (void)read(wakeupFd, &val, sizeof(val));
+        }
+
+        // 6b. Fire any external fd watches that became ready. Done before draining
+        //     X11 so IPC replies are processed promptly. FireFdWatch() invokes the
+        //     callback unlocked, so a handler may add/remove watches re-entrantly.
+        if (result > 0) {
+            for (const auto& key : fdWatchKeys) {
+                if (key.fd < 0) continue;
+                fd_set* set = key.type == FdWatchType::Write ? &writefds : &readfds;
+                if (FD_ISSET(key.fd, set))
+                    FireFdWatch(key.id);
+            }
         }
 
         // 7. Drain any new X11 events that arrived during wait
