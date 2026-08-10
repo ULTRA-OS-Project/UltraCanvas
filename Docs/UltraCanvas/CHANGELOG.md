@@ -1,3 +1,24 @@
+#### 2026-08-10 *0.3.38*
+- **UltraFiler**: Favorites (pinning). A new heart button next to the History
+  clock shows the Favorites view — the same Files / Folders / Apps tabbed
+  layout, but listing deliberately pinned paths (`UltraFilerFavorites`,
+  persisted as `favorites.txt` next to the settings) instead of recently used
+  ones. The new menu bar **Pin** menu pins the visible view's selection (or
+  the shown folder when nothing is selected): **Pin ▸ Favorites** into the
+  tab the entry's kind belongs to, **Pin ▸ Treeview** — enabled only while
+  the selection is a folder — into the folder tree's new **Pinned** section,
+  whose entries navigate like bookmarks. The folder tree gained a context
+  menu: **Copy / Delete / Paste** act on the folder under the cursor (Paste
+  only when a folder is under the cursor and the clipboard holds files,
+  Delete with confirmation and never on the top-level roots), **Unpin**
+  (pinned entries only) removes the bookmark without touching the folder.
+  *Settings ▸ Clear Favorites* empties the pins; Esc leaves the Favorites
+  view like it leaves the History view.
+- **UltraCanvasTreeView**: `onNodeRightClicked` now fires only for the right
+  mouse button (it used to fire on every mouse-up over a node) and passes the
+  `UCEvent` along so handlers can place a context menu at the pointer; a
+  right press no longer moves the selection to the node under the cursor.
+
 #### 2026-08-09 *0.3.37*
 - **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
   target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
