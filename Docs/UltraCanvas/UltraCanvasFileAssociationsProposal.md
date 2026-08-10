@@ -224,25 +224,84 @@ Open with >   Writer            ← default app, listed first
 - **Settings:** optional later — "remember last chooser pick per extension"
   stored in `UltraFilerSettings`, surfaced at the top of the OS section.
 
-## 7. Performance and caching
+## 7. Performance: lazy background prewarm — menu opens are cache reads
 
-The submenu is built synchronously while opening a context menu, so:
+The submenu is built synchronously while opening a context menu, so the
+design goal is: **by the time the user can right-click a file, its
+associations are already in memory.** All expensive work happens on a
+service-owned background thread; the menu build is a mutex-protected
+hash-map read.
 
-- **Candidate cache** keyed by extension (Windows/macOS) or MIME type
-  (Linux), invalidated by the source timestamps (`mimeapps.list`,
-  `mimeinfo.cache` mtimes on Linux) or a short TTL (~60 s) elsewhere.
-  First lookup per extension does the real work; subsequent menu opens are
-  hash-map hits.
+### 7.1 Prewarm API
+
+```cpp
+namespace FileAssociations {
+
+    // Parse the global association databases on a background thread.
+    // Linux: full MIME→apps index (globs2, mimeapps.list, mimeinfo.cache,
+    // .desktop files). Windows/macOS: COM/framework init + load the on-disk
+    // icon cache index. Cheap to call repeatedly; only the first call works.
+    void PrewarmAsync();
+
+    // Resolve candidates (and their icons) for these extensions on the
+    // background thread, most-recently-queued first.
+    void PrewarmExtensionsAsync(const std::vector<std::string>& extensions);
+
+} // namespace FileAssociations
+```
+
+The worker thread is spawned lazily by the first `Prewarm*` call and shut
+down from `UltraCanvasApplication` exit, like the Filer's thumbnail decode
+threads. Apps that never touch file associations pay nothing — no work runs
+at framework init unless something asks for it.
+
+### 7.2 Who triggers the prewarm
+
+- **Widget construction:** the first `UltraCanvasFilerWidget` calls
+  `PrewarmAsync()` — the global databases are parsed while the first folder
+  is still scanning. Embedders need no code for this.
+- **Folder scan:** after each `ScanFolder()` the widget hands the folder's
+  *distinct extensions* to `PrewarmExtensionsAsync()`. This matters on
+  Windows/macOS, where candidates can only be resolved per extension
+  (`SHAssocEnumHandlers` / `URLsForApplicationsToOpenURL:` have no "dump
+  everything" form): a folder of 2000 files typically holds a dozen distinct
+  extensions, so the per-extension lookups and icon extractions are done
+  long before a human can move to the right-click. On Linux the global index
+  from `PrewarmAsync()` already answers every extension; this step only
+  pre-resolves icon theme lookups.
+- **Apps that want an even warmer start** (UltraFiler) may call
+  `PrewarmAsync()` directly during startup, before the first window shows.
+
+### 7.3 Menu build path
+
+`GetApplicationsForFiles()` first tries the cache (O(1) per extension). On
+a hit — the normal case — the menu build does **zero I/O** on the UI
+thread. On a cold miss (right-click faster than the warmer, or an
+extension that entered the folder after the scan) it falls back to the
+synchronous lookup; that is bounded by one extension, not the folder, and
+costs tens of milliseconds worst-case. It never blocks on the whole
+prewarm — a menu opened 50 ms after startup is served synchronously for
+its one extension while the warmer continues in the background.
+
+### 7.4 Invalidation
+
+- **Linux:** source mtimes (`mimeapps.list`, each `mimeinfo.cache`,
+  `.desktop` directories) checked lazily on lookup, at most once per few
+  seconds; a change re-queues the global parse on the worker.
+- **Windows/macOS:** short TTL (~60 s) per extension entry; re-resolution
+  happens on the worker, the stale entry keeps serving until replaced (an
+  out-of-date "Open with" list for a minute is harmless).
 - **Icon cache** on disk (`<config>/UltraCanvas/openwith-icons/`) for the
   HICON/NSImage extractions; `.desktop` icons resolve to existing theme
-  files and need no extraction.
+  files and need no extraction. Keyed by icon source + index, so it
+  survives restarts and the per-extension TTL.
 - Menu construction never launches processes and never touches the network.
 
 ## 8. Phasing
 
 | Phase | Deliverable |
 |---|---|
-| **P1** | Service API + **Linux** backend; shared detached-launch helper unified with UltraFilerPrompt; widget menu integration (OS section + chooser + opt-out); UltraFiler double-click default-open. |
+| **P1** | Service API + **Linux** backend; background prewarm worker (§7) with widget-driven `PrewarmAsync` / per-folder `PrewarmExtensionsAsync`; shared detached-launch helper unified with UltraFilerPrompt; widget menu integration (OS section + chooser + opt-out); UltraFiler double-click default-open. |
 | **P2** | **Windows** backend (SHAssocEnumHandlers + SHOpenWithDialog + icon extraction). |
 | **P3** | **macOS** backend (NSWorkspace + `.app` picker fallback). |
 | **P4** | Extras: remember chooser picks per extension, History Apps recording from launches, "Set as default" (xdg-mime / `OAIF_REGISTER_EXT` / `LSSetDefaultRoleHandlerForContentType`). |
@@ -260,6 +319,10 @@ service API once P1 ships.
 2. **Intersection vs. union for multi-selection:** intersection matches
    Explorer/Finder behaviour and is proposed; union with per-app partial
    launches is more powerful but surprising.
-3. **Async icon fill-in:** if Windows icon extraction proves slow on cold
-   cache, populate menu items without icons and let the cache warm up in a
-   worker thread — the menu API would need a per-item icon refresh hook.
+3. **Async icon fill-in:** largely covered by the folder-driven prewarm
+   (§7.2) — icons are extracted on the worker before the menu is opened.
+   Remaining corner case: a cold-miss menu (right-click within ~50 ms of
+   entering a folder with a never-seen extension) would block a few tens of
+   milliseconds on icon extraction; if that shows up in practice, serve the
+   cold miss without icons rather than adding a per-item icon refresh hook
+   to the menu API.
