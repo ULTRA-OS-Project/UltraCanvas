@@ -12,6 +12,7 @@
 
 ## Components and subsystems
 
+- [Android Port Investigation](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/AndroidPortInvestigation.md): Goal: Bring UltraCanvas to Google Android with the same OS-level support the framework has on Linux (windowing, rendering, input, clipboard, dialogs, networking, fonts, audio/video, GL).
 - [Bitmap Handling in GUI Programs](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/BitmapHandlingArchitecture.md): How modern GUI frameworks load, store, and draw raster images — and why.
 - [Circle Diagram Infographics — Investigation](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/CircleDiagramInfographicVariants.md): satellite designs (`SatelliteWheel`, `BandedWheel`), the full palette set, the hub, backbone and satellite fans, with the API documented in `UltraCanvasCircleDiagram.md` and a DemoApp scene at…
 - [UltraCanvas](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraCanvas/README.md): A Modern Cross-Platform C++20 UI & Rendering Framework
