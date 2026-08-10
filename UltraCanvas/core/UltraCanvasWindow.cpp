@@ -719,8 +719,16 @@ namespace UltraCanvas {
         _created = false;
 
         ContainerStyle containerStyle;
+        // enableWindowScrolling governs window scrolling as a whole. When off, the
+        // window neither forces nor auto-shows scrollbars: its content is expected to
+        // fill it (e.g. an app that lays out its own chrome). Previously only the
+        // forced flags were tied to this, leaving autoShowScrollbars at its default of
+        // true — so a non-scrolling window still popped a scrollbar the moment content
+        // overflowed by a pixel, and once one bar stole track width the fixed-size
+        // content overflowed the other axis and both bars stuck.
         containerStyle.forceShowVerticalScrollbar = config_.enableWindowScrolling;
         containerStyle.forceShowHorizontalScrollbar = config_.enableWindowScrolling;
+        containerStyle.autoShowScrollbars = config_.enableWindowScrolling;
         SetContainerStyle(containerStyle);
         SetBackgroundColor(config_.backgroundColor);
 
