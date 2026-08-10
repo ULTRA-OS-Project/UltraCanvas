@@ -5,6 +5,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasImage.h"
 
+#include <cstring>
 #include <iostream>
 
 namespace UltraCanvas {
