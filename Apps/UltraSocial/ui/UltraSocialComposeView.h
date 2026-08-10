@@ -42,11 +42,21 @@ public:
     // Replace the history strip with the given display lines.
     void SetHistoryLines(const std::vector<std::string>& lines);
 
+    // Replace the scheduled strip: one closable chip per queued post.
+    // Closing a chip fires onCancelScheduled with the entry's id.
+    struct ScheduledItem {
+        int64_t id = 0;
+        std::string label;
+    };
+    void SetScheduled(const std::vector<ScheduledItem>& items);
+
     void ClearAfterPost();
 
     std::function<void()> onAddMedia;     // open the file picker
     std::function<void()> onAddAccount;   // open the wizard
     std::function<void()> onPost;
+    std::function<void()> onPostLater;    // open the schedule dialog
+    std::function<void(int64_t)> onCancelScheduled;
 
 private:
     void RebuildMediaChips();
@@ -64,6 +74,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> warnings_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> mediaRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> targets_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> scheduled_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> history_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> postButton_;
     std::vector<TargetRow> targetRows_;

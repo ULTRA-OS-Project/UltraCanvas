@@ -4,6 +4,7 @@
 #include "UltraSocialWebUtil.h"
 
 #include <UltraNet/UltraNetOAuth2.h>   // UltraNet_OAuth2GenerateState (boundary)
+#include <UltraNet/UltraNetUrl.h>      // UltraNet_UrlEncode (form bodies)
 
 #include <algorithm>
 #include <cctype>
@@ -16,11 +17,12 @@ namespace UltraSocial {
 
 namespace {
 
-// Pulls the server-reported error out of a parsed error body. The Phase-1
+// Pulls the server-reported error out of a parsed error body. The
 // networks disagree on the shape:
 //   Mastodon   {"error": "..."}                       (error_description too)
 //   Bluesky    {"error": "Name", "message": "..."}
 //   Telegram   {"ok": false, "description": "..."}
+//   X          {"title": "Unauthorized", "detail": "...", "status": 401}
 std::string ServerErrorMessage(const JSONValue& doc) {
     std::string message;
     if (doc.Contains("error")) {
@@ -32,6 +34,11 @@ std::string ServerErrorMessage(const JSONValue& doc) {
         }
     } else if (doc.Contains("description")) {
         message = doc["description"].GetString("");
+    } else if (doc.Contains("title")) {
+        message = doc["title"].GetString("");
+        if (doc.Contains("detail")) {
+            message += ": " + doc["detail"].GetString("");
+        }
     }
     return message;
 }
@@ -87,6 +94,44 @@ UltraNetResult JsonRequest(UltraNetHttpMethod method,
         std::string serialized = UltraCanvas::JSON::Serialize(body);
         request.headers.Set("content-type", "application/json");
         request.body.assign(serialized.begin(), serialized.end());
+    }
+
+    UltraNetResponse response;
+    auto transport = UltraNet_HttpRequest(request, response);
+    return FinishJsonExchange(transport, response, outDoc, outHttpStatus);
+}
+
+UltraNetResult FormPost(const std::string& url,
+                        const std::vector<std::pair<std::string, std::string>>&
+                            fields,
+                        const std::string& bearer,
+                        const std::string& basicUser,
+                        const std::string& basicPassword,
+                        JSONValue& outDoc,
+                        int* outHttpStatus) {
+    outDoc = JSONValue();
+
+    std::string body;
+    for (const auto& [key, value] : fields) {
+        if (!body.empty()) body += '&';
+        body += UltraNet_UrlEncode(key);
+        body += '=';
+        body += UltraNet_UrlEncode(value);
+    }
+
+    UltraNetHttpRequest request;
+    request.url    = url;
+    request.method = UltraNetHttpMethod::Post;
+    request.body.assign(body.begin(), body.end());
+    request.headers.Set("accept", "application/json");
+    request.headers.Set("content-type", "application/x-www-form-urlencoded");
+    if (!bearer.empty()) {
+        request.headers.Set("authorization", "Bearer " + bearer);
+    } else if (!basicUser.empty()) {
+        request.options.authType = UltraNetAuthType::Basic;
+        request.options.credentials.type     = UltraNetAuthType::Basic;
+        request.options.credentials.username = basicUser;
+        request.options.credentials.password = basicPassword;
     }
 
     UltraNetResponse response;

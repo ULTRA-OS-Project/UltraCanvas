@@ -84,8 +84,12 @@ AdaptedPost AdaptDraft(const PostDraft& draft,
             " characters");
     }
 
-    if (caps.maxImages > 0 &&
-        static_cast<int>(post.media.size()) > caps.maxImages) {
+    if (caps.maxImages == 0 && !post.media.empty()) {
+        post.media.clear();
+        outWarnings.push_back(
+            ToString(network) + ": media is not supported and will be skipped");
+    } else if (caps.maxImages > 0 &&
+               static_cast<int>(post.media.size()) > caps.maxImages) {
         post.media.resize(static_cast<std::size_t>(caps.maxImages));
         outWarnings.push_back(
             ToString(network) + ": only the first " +
@@ -122,8 +126,10 @@ std::vector<std::string> ValidateAdaptedPost(const AdaptedPost& post,
         problems.push_back("text exceeds the " + std::to_string(limit) +
                            "-character limit");
     }
-    if (caps.maxImages > 0 &&
-        static_cast<int>(post.media.size()) > caps.maxImages) {
+    if (caps.maxImages == 0 && !post.media.empty()) {
+        problems.push_back("media is not supported on this network");
+    } else if (caps.maxImages > 0 &&
+               static_cast<int>(post.media.size()) > caps.maxImages) {
         problems.push_back("more than " + std::to_string(caps.maxImages) +
                            " media attachments");
     }

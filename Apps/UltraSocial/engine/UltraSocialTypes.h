@@ -12,12 +12,14 @@
 
 namespace UltraSocial {
 
-// Phase-1 networks (Docs/UltraSocial/Concept.md §1 Tier 1). The enum grows
-// with later tiers; persisted as the ToString slug, never as the int value.
+// Supported networks (Docs/UltraSocial/Concept.md §1 — Tier 1 in phase 1,
+// Tier 2 in phase 2). Persisted as the ToString slug, never the int value.
 enum class SocialNetwork {
     Mastodon = 0,   // and API-compatible Fediverse servers
     Bluesky,
-    Telegram
+    Telegram,
+    Reddit,
+    X
 };
 
 std::string   ToString(SocialNetwork network);
@@ -68,7 +70,7 @@ struct AdaptedPost {
 struct SocialCapabilities {
     int     maxTextChars = 0;       // 0 = unlimited (counted in code points)
     int     maxMediaCaptionChars = 0; // 0 = same as maxTextChars
-    int     maxImages = 0;
+    int     maxImages = 0;          // 0 = media not supported on this network
     int64_t maxImageBytes = 0;      // 0 = unlimited
     int     maxAltTextChars = 0;    // 0 = alt text unsupported
     bool    supportsVisibility = false;

@@ -55,14 +55,47 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     postButton_->onClick = [this]() { if (onPost) onPost(); };
     root_->AddChild(postButton_);
 
-    root_->AddChild(CreateLabel("cvHistoryLabel", 12, 430, 200, 22, "History"));
-    history_ = CreateContainer("cvHistory", 12, 454, 950, 150);
+    auto postLaterBtn = CreateButton("cvPostLater", 160, 380, 140, 34,
+                                     "Post later…");
+    postLaterBtn->onClick = [this]() { if (onPostLater) onPostLater(); };
+    root_->AddChild(postLaterBtn);
+
+    root_->AddChild(CreateLabel("cvScheduledLabel", 12, 424, 200, 22,
+                                "Scheduled"));
+    scheduled_ = CreateContainer("cvScheduled", 12, 448, 950, 30);
+    scheduled_->layout.SetFlexRow()
+                      .SetFlexGap(6)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    root_->AddChild(scheduled_);
+
+    root_->AddChild(CreateLabel("cvHistoryLabel", 12, 486, 200, 22, "History"));
+    history_ = CreateContainer("cvHistory", 12, 510, 950, 130);
     history_->layout.SetFlexColumn()
                     .SetFlexGap(4)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     root_->AddChild(history_);
 
     return root_;
+}
+
+void ComposeView::SetScheduled(const std::vector<ScheduledItem>& items) {
+    if (!scheduled_) return;
+    scheduled_->ClearChildren();
+    if (items.empty()) {
+        scheduled_->AddChild(CreateLabel("cvNoScheduled", 0, 0, 400, 20,
+                                         "Nothing queued."));
+        return;
+    }
+    int index = 0;
+    for (const auto& item : items) {
+        auto chip = CreateChip("cvSched" + std::to_string(index++),
+                               0, 0, item.label, /*closable=*/true);
+        const int64_t id = item.id;
+        chip->onClose = [this, id]() {
+            if (onCancelScheduled) onCancelScheduled(id);
+        };
+        scheduled_->AddChild(chip);
+    }
 }
 
 void ComposeView::SetAccounts(const std::vector<Account>& accounts) {

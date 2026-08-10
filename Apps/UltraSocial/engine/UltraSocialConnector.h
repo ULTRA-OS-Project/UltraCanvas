@@ -26,10 +26,16 @@ namespace UltraSocial {
 //   Bluesky   server (PDS, default https://bsky.social), identifier (handle
 //             or email), secret (app password).
 //   Telegram  secret (bot token), identifier (@channelname or chat id).
+//   Reddit    clientId (from the user's "installed app" registration with
+//             redirect http://127.0.0.1:17995/callback); identifier
+//             optionally a subreddit (empty = the user's profile).
+//   X         clientId (OAuth2 public client with redirect
+//             http://127.0.0.1:17996/callback).
 struct AuthInput {
     std::string server;
     std::string identifier;
     std::string secret;
+    std::string clientId;   // OAuth networks without dynamic registration
     // Shows the OAuth consent URL (e.g. UltraCanvas::OpenURL). Only used by
     // OAuth networks and only when no token was pasted.
     std::function<void(const std::string& url)> onOpenUrl;

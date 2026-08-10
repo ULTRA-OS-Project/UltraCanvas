@@ -6,7 +6,9 @@
 
 #include "connectors/UltraSocialBlueskyConnector.h"
 #include "connectors/UltraSocialMastodonConnector.h"
+#include "connectors/UltraSocialRedditConnector.h"
 #include "connectors/UltraSocialTelegramConnector.h"
+#include "connectors/UltraSocialXConnector.h"
 
 namespace UltraSocial {
 
@@ -18,6 +20,10 @@ std::shared_ptr<ISocialConnector> CreateConnector(SocialNetwork network) {
             return std::make_shared<BlueskyConnector>();
         case SocialNetwork::Telegram:
             return std::make_shared<TelegramConnector>();
+        case SocialNetwork::Reddit:
+            return std::make_shared<RedditConnector>();
+        case SocialNetwork::X:
+            return std::make_shared<XConnector>();
     }
     return nullptr;
 }

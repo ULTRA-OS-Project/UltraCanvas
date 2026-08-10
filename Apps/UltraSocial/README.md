@@ -34,8 +34,28 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 > main-thread timer queue, so the window stays live while the browser
 > consent or a slow network round-trip is in flight.
 >
-> Still to come (see the concept's phasing): the scheduling outbox
-> (phase 2) and the Tier-2 connectors (Reddit, X).
+> **Phase 2** adds the *automatically* part and the Tier-2 networks:
+>
+> - **Scheduling outbox** — "Post later…" (date + time dialog) queues one
+>   outbox row per selected account on UltraDatabase; a scheduler timer
+>   flushes due entries through the same publish path as "Post now"
+>   (`UltraSocialPublisher`), with bounded retries on linear backoff
+>   (5 attempts, +5 min × attempt) before a failed history row. Queued
+>   posts show as closable chips in the Scheduled strip (with a retry
+>   counter); posts due while the app was closed go out at next launch.
+> - **Reddit connector** — OAuth2 "installed app" code flow (the user's
+>   own client id, redirect `http://127.0.0.1:17995/callback`; Basic
+>   `clientid:` token exchange — Reddit has no PKCE), self posts via
+>   `/api/submit` (first draft line becomes the title), hourly-token
+>   refresh on 401. Media posts are a later extension.
+> - **X connector** — OAuth2 code + PKCE public client (the user's own
+>   client id, redirect `http://127.0.0.1:17996/callback`) through
+>   `UltraNet_OAuth2AuthorizeInteractive`; text tweets via `POST /2/tweets`;
+>   rotating refresh tokens persisted back to the vault. Media is a later
+>   extension; mind the free tier's monthly write cap.
+>
+> Still to come: Tier-3 connectors (LinkedIn, Meta) and media support for
+> Reddit / X / Telegram albums.
 
 ## Layout
 
@@ -47,12 +67,16 @@ Apps/UltraSocial/
     UltraSocialConnector.h/.cpp        ISocialConnector + AuthInput + factory
     UltraSocialComposer.{h,cpp}        adapt-per-network + validation
     UltraSocialCredentialVault.{h,cpp} per-account secrets out of the config
-    UltraSocialStore.{h,cpp}           accounts + post history on UltraDatabase
-    UltraSocialWebUtil.{h,cpp}         JSON requests, multipart bodies, media IO
+    UltraSocialStore.{h,cpp}           accounts + outbox + history on UltraDatabase
+    UltraSocialPublisher.{h,cpp}       the one publish path (now + scheduled),
+                                       outbox flush with retry/backoff
+    UltraSocialWebUtil.{h,cpp}         JSON/form requests, multipart bodies, media IO
     connectors/
       UltraSocialMastodonConnector.{h,cpp}
       UltraSocialBlueskyConnector.{h,cpp}
       UltraSocialTelegramConnector.{h,cpp}
+      UltraSocialRedditConnector.{h,cpp}
+      UltraSocialXConnector.{h,cpp}
   ui/
     UltraSocialApp.{h,cpp}             app manager: store + vault + windows,
                                        worker-thread sign-in/publish

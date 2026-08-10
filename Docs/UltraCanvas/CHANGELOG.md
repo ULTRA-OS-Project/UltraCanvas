@@ -1,3 +1,25 @@
+#### 2026-08-09 *0.3.40*
+- **UltraSocial** *(Phase 2)*: the "automatically" part plus the Tier-2
+  networks. **Scheduling outbox** — "Post later…" opens a date + time
+  dialog and queues one outbox row per selected account (UltraDatabase,
+  raw draft stored so adaptation happens at send time); a scheduler timer
+  flushes due entries through the same `UltraSocialPublisher` path as
+  "Post now", with bounded retries on linear backoff (5 attempts,
+  +5 min × attempt) before a failed history row; queued posts show as
+  closable chips (with retry count) and go out at next launch when they
+  came due while the app was closed. **Reddit connector** — OAuth2
+  "installed app" code flow built from the UltraNetOAuth2 blocks (Reddit
+  has no PKCE; token exchange authenticates HTTP Basic `clientid:` with
+  an empty password), self posts via `/api/submit` with the draft's first
+  line as the title, hourly-token refresh on 401. **X connector** — OAuth2
+  code + PKCE public client via `UltraNet_OAuth2AuthorizeInteractive`,
+  text tweets via `POST /2/tweets`, rotating refresh tokens persisted
+  back to the vault. Both are bring-your-own-client-id (fixed loopback
+  redirect ports 17995/17996); wizard forms added. Capabilities now
+  express "media not supported" (`maxImages == 0`) — the composer drops
+  attachments for such networks with a warning. 11 new engine tests
+  (37 total).
+
 #### 2026-08-09 *0.3.39*
 - **UltraSocial** *(Phase 1 UI)*: the GUI application (target `UltraSocial`)
   on top of the engine — compose window with per-account target checkboxes

@@ -5,13 +5,19 @@
 
 #include "UltraSocialComposer.h"
 #include "UltraSocialConnector.h"
+#include "UltraSocialPublisher.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasDatePicker.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"           // OpenURL
 
+#include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <thread>
@@ -45,6 +51,11 @@ std::shared_ptr<UltraCanvasWindow> UltraSocialApp::CreateMainWindow() {
     composeView_.onAddAccount = [this]() { HandleAddAccount(); };
     composeView_.onAddMedia   = [this]() { HandleAddMedia(); };
     composeView_.onPost       = [this]() { HandlePost(); };
+    composeView_.onPostLater  = [this]() { HandlePostLater(); };
+    composeView_.onCancelScheduled = [this](int64_t id) {
+        store_.RemoveOutbox(id);
+        RefreshScheduled();
+    };
 
     Refresh();
 
@@ -53,7 +64,12 @@ std::shared_ptr<UltraCanvasWindow> UltraSocialApp::CreateMainWindow() {
     if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
         app->StartTimer(100, /*periodic=*/true,
                         [this](TimerId) { DrainUiQueue(); });
+        // The scheduler: fire due outbox entries. 15 s granularity is
+        // plenty for minute-precision scheduling.
+        app->StartTimer(15000, /*periodic=*/true,
+                        [this](TimerId) { FlushOutbox(); });
     }
+    FlushOutbox();   // anything that came due while the app was closed
     return window_;
 }
 
@@ -61,6 +77,38 @@ void UltraSocialApp::Refresh() {
     store_.ListAccounts(accounts_);
     composeView_.SetAccounts(accounts_);
     RefreshHistory();
+    RefreshScheduled();
+}
+
+void UltraSocialApp::RefreshScheduled() {
+    std::vector<OutboxEntry> entries;
+    store_.ListOutbox(entries);
+
+    std::vector<ComposeView::ScheduledItem> items;
+    for (const auto& entry : entries) {
+        std::string handle = entry.accountId;
+        for (const auto& account : accounts_) {
+            if (account.accountId == entry.accountId) {
+                handle = account.handle;
+                break;
+            }
+        }
+        std::tm when{};
+        std::time_t at = static_cast<std::time_t>(entry.scheduledAt);
+#if defined(_WIN32) || defined(_WIN64)
+        localtime_s(&when, &at);
+#else
+        localtime_r(&at, &when);
+#endif
+        char stamp[24];
+        std::strftime(stamp, sizeof stamp, "%d.%m. %H:%M", &when);
+        std::string label = handle + " · " + stamp;
+        if (entry.attempts > 0) {
+            label += " · retry " + std::to_string(entry.attempts);
+        }
+        items.push_back({entry.id, label});
+    }
+    composeView_.SetScheduled(items);
 }
 
 void UltraSocialApp::RefreshHistory() {
@@ -189,54 +237,17 @@ void UltraSocialApp::HandlePost() {
     composeView_.SetBusy(true);
 
     // One network failing must not block the others: each target publishes
-    // independently and gets its own history row.
+    // independently (through the same PublishOne path the outbox uses) and
+    // gets its own history row.
     std::thread([this, draft, targets]() {
         std::string report;
         bool allOk = true;
 
         for (const auto& account : targets) {
-            auto connector = CreateConnector(account.network);
-            HistoryEntry entry;
-            entry.accountId  = account.accountId;
-            entry.network    = account.network;
-            entry.mediaCount = static_cast<int>(draft.media.size());
+            HistoryEntry entry = PublishOne(store_, vault_, account, draft);
+            if (!entry.succeeded) allOk = false;
 
-            std::vector<std::string> warnings;
-            AdaptedPost post = AdaptDraft(draft, account.network,
-                                          connector->Capabilities(), warnings);
-            entry.text = post.text;
-
-            auto problems = connector->ValidateDraft(post);
-            std::string credentials;
-            UltraNetResult result;
-            if (!problems.empty()) {
-                result = UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                               problems.front());
-            } else if (!vault_.Retrieve(account.accountId, credentials)) {
-                result = UltraNetResult::Error(
-                    UltraNetResultCode::AuthenticationFailed,
-                    "no stored credentials — remove and re-add the account");
-            } else {
-                PostResult posted;
-                result = connector->PublishPost(account, credentials, post,
-                                                posted);
-                if (result) {
-                    entry.succeeded = true;
-                    entry.postId    = posted.postId;
-                    entry.url       = posted.url;
-                    // Connectors may rotate tokens during publish.
-                    vault_.Store(account.accountId, credentials);
-                }
-            }
-            if (!result) {
-                entry.error = result.message;
-                allOk = false;
-            }
-
-            RunOnUiThread([this, entry]() mutable {
-                store_.AddHistory(entry);
-                RefreshHistory();
-            });
+            RunOnUiThread([this]() { RefreshHistory(); });
 
             if (!report.empty()) report += '\n';
             report += (entry.succeeded ? "✓ " : "✗ ") + account.handle +
@@ -256,6 +267,141 @@ void UltraSocialApp::HandlePost() {
                 UltraCanvasDialogManager::ShowError(report,
                                                     "Posting finished with errors",
                                                     nullptr, window_.get());
+            }
+        });
+    }).detach();
+}
+
+void UltraSocialApp::HandlePostLater() {
+    const PostDraft draft = composeView_.CollectDraft();
+    const std::vector<std::string> targetIds = composeView_.SelectedAccountIds();
+    if (draft.text.empty() && draft.media.empty()) {
+        UltraCanvasDialogManager::ShowInformation("Write something first.",
+                                                  "Nothing to schedule", nullptr,
+                                                  window_.get());
+        return;
+    }
+    if (targetIds.empty()) {
+        UltraCanvasDialogManager::ShowInformation("Select at least one account.",
+                                                  "Nothing to schedule", nullptr,
+                                                  window_.get());
+        return;
+    }
+
+    // Date + time picker dialog.
+    DialogConfig config;
+    config.title      = "Post later";
+    config.width      = 400;
+    config.height     = 220;
+    config.dialogType = DialogType::Custom;
+    config.buttons    = DialogButtons::NoButtons;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    auto* dlg = dialog.get();
+
+    dialog->layout.SetFlexColumn()
+                  .SetFlexGap(12)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    dialog->SetPadding(16);
+
+    std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+
+    auto row = CreateContainer("plRow", 0, 0, 0, 32);
+    row->layout.SetFlexRow()
+               .SetFlexGap(8)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto date = CreateDatePicker("plDate", 0, 0, 180, 28);
+    date->SetSelectedDate(UCDate(local.tm_year + 1900, local.tm_mon + 1,
+                                 local.tm_mday));
+    row->AddChild(date);
+    auto time = CreateTextInput("plTime", 0, 0, 90, 28);
+    char hhmm[8];
+    std::snprintf(hhmm, sizeof hhmm, "%02d:%02d",
+                  (local.tm_hour + 1) % 24, 0);   // suggest the next full hour
+    time->SetText(hhmm);
+    row->AddChild(time);
+    dialog->AddChild(row);
+    row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto hintLabel = CreateLabel("plHint", 0, 0, 360, 40,
+        "The post goes out when UltraSocial is running at (or after) "
+        "this local time.");
+    hintLabel->SetWrap(TextWrap::WrapWord);
+    dialog->AddChild(hintLabel);
+
+    auto buttonRow = CreateContainer("plButtons", 0, 0, 0, 36);
+    buttonRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    buttonRow->AddStretchSpacer(1);
+    auto scheduleBtn = CreateButton("plSchedule", 0, 0, 110, 28, "Schedule");
+    scheduleBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(scheduleBtn);
+    auto cancelBtn = CreateButton("plCancel", 0, 0, 80, 28, "Cancel");
+    cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
+    buttonRow->AddChild(cancelBtn);
+    dialog->AddChild(buttonRow);
+
+    UltraCanvasDialogManager::ShowDialog(
+        dialog,
+        [this, date, time, draft, targetIds](DialogResult result) {
+            if (result != DialogResult::OK) return;
+            UCDate day = date->GetSelectedDate();
+            int hour = 0, minute = 0;
+            std::sscanf(time->GetText().c_str(), "%d:%d", &hour, &minute);
+
+            std::tm when{};
+            when.tm_year  = day.year - 1900;
+            when.tm_mon   = day.month - 1;
+            when.tm_mday  = day.day;
+            when.tm_hour  = hour;
+            when.tm_min   = minute;
+            when.tm_isdst = -1;
+            std::time_t at = std::mktime(&when);
+            if (at == -1) {
+                UltraCanvasDialogManager::ShowError(
+                    "That date/time could not be understood.", "Post later",
+                    nullptr, window_.get());
+                return;
+            }
+            ScheduleDraft(draft, targetIds, static_cast<int64_t>(at));
+        },
+        window_.get());
+}
+
+void UltraSocialApp::ScheduleDraft(const PostDraft& draft,
+                                   const std::vector<std::string>& targetIds,
+                                   int64_t when) {
+    for (const auto& id : targetIds) {
+        for (const auto& account : accounts_) {
+            if (account.accountId != id) continue;
+            OutboxEntry entry;
+            entry.accountId   = account.accountId;
+            entry.network     = account.network;
+            entry.draft       = draft;
+            entry.scheduledAt = when;
+            store_.EnqueuePost(entry);
+        }
+    }
+    composeView_.ClearAfterPost();
+    RefreshScheduled();
+}
+
+void UltraSocialApp::FlushOutbox() {
+    if (posting_ || flushing_.exchange(true)) return;
+    std::thread([this]() {
+        FlushStats stats = FlushDueOutbox(store_, vault_,
+                                          static_cast<int64_t>(std::time(nullptr)));
+        RunOnUiThread([this, stats]() {
+            flushing_ = false;
+            if (stats.published || stats.rescheduled || stats.abandoned) {
+                RefreshHistory();
+                RefreshScheduled();
             }
         });
     }).detach();

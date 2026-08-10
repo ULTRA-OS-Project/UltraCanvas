@@ -31,28 +31,51 @@ struct NetworkForm {
     const char* identifierPlaceholder;
     const char* secretLabel;
     const char* secretPlaceholder;
+    const char* clientIdLabel;
+    const char* clientIdPlaceholder;
 };
 
-constexpr std::array<NetworkForm, 3> kForms{{
+constexpr std::array<NetworkForm, 5> kForms{{
     { SocialNetwork::Mastodon, "Mastodon / Fediverse",
       "Enter your instance — UltraSocial registers itself there and signs "
       "you in through your browser; no keys needed. Advanced: paste an "
       "access token instead to skip the browser.",
       "Instance", "mastodon.social",
       "(not used)", "",
-      "Access token", "optional — empty opens the browser" },
+      "Access token", "optional — empty opens the browser",
+      "(not used)", "" },
     { SocialNetwork::Bluesky, "Bluesky",
       "Create an app password under Settings → App Passwords on "
       "Bluesky, then sign in with it here — never your main password.",
       "Server (PDS)", "bsky.social (default)",
       "Handle / e-mail", "erika.bsky.social",
-      "App password", "xxxx-xxxx-xxxx-xxxx" },
+      "App password", "xxxx-xxxx-xxxx-xxxx",
+      "(not used)", "" },
     { SocialNetwork::Telegram, "Telegram channel",
       "Create a bot with @BotFather, add it to your channel as an "
       "administrator, and paste its token here.",
       "Server", "(default)",
       "Channel", "@mychannel",
-      "Bot token", "123456:ABC-DEF…" },
+      "Bot token", "123456:ABC-DEF…",
+      "(not used)", "" },
+    { SocialNetwork::Reddit, "Reddit",
+      "Register an 'installed app' at reddit.com/prefs/apps with redirect "
+      "http://127.0.0.1:17995/callback, paste its client id, then sign in "
+      "through your browser. Text posts go to the subreddit below (empty = "
+      "your profile).",
+      "Server", "(default)",
+      "Subreddit", "optional, e.g. r/test",
+      "(not used)", "",
+      "Client ID", "from reddit.com/prefs/apps" },
+    { SocialNetwork::X, "X (Twitter)",
+      "Register an app in the X developer portal (OAuth 2.0 public client, "
+      "redirect http://127.0.0.1:17996/callback), paste its client id, then "
+      "sign in through your browser. Text posts only; mind the free tier's "
+      "monthly write cap.",
+      "Server", "(default)",
+      "(not used)", "",
+      "(not used)", "",
+      "Client ID", "from the X developer portal" },
 }};
 
 } // namespace
@@ -62,7 +85,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     DialogConfig config;
     config.title      = "Add social account";
     config.width      = 500;
-    config.height     = 390;
+    config.height     = 430;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -134,7 +157,11 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto secret = CreatePasswordInput("swSecret", 0, 0, 260, 28);
     Row secretRow = addRow("swSecret", kForms[0].secretLabel, secret);
 
-    auto applyForm = [hint, serverRow, identifierRow, secretRow](int index) {
+    auto clientId = CreateTextInput("swClientId", 0, 0, 260, 28);
+    Row clientIdRow = addRow("swClientId", kForms[0].clientIdLabel, clientId);
+
+    auto applyForm = [hint, serverRow, identifierRow, secretRow,
+                      clientIdRow](int index) {
         const auto& form = kForms[static_cast<std::size_t>(index)];
         hint->SetText(form.hint);
         serverRow.label->SetText(form.serverLabel);
@@ -143,6 +170,8 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
         identifierRow.input->SetPlaceholder(form.identifierPlaceholder);
         secretRow.label->SetText(form.secretLabel);
         secretRow.input->SetPlaceholder(form.secretPlaceholder);
+        clientIdRow.label->SetText(form.clientIdLabel);
+        clientIdRow.input->SetPlaceholder(form.clientIdPlaceholder);
     };
     applyForm(0);
     network->SetSelectedIndex(0, /*runNotifications=*/false);
@@ -172,7 +201,8 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
 
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [network, server, identifier, secret, onSubmit](DialogResult result) {
+        [network, server, identifier, secret, clientId,
+         onSubmit](DialogResult result) {
             if (result != DialogResult::OK || !onSubmit) return;
             int index = network->GetSelectedIndex();
             if (index < 0 || index >= static_cast<int>(kForms.size())) index = 0;
@@ -181,6 +211,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
             input.server     = server->GetText();
             input.identifier = identifier->GetText();
             input.secret     = secret->GetText();
+            input.clientId   = clientId->GetText();
             onSubmit(input);
         },
         parent);

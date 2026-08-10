@@ -25,9 +25,12 @@ set(ULTRASOCIAL_ENGINE_SOURCES
     engine/UltraSocialStore.cpp
     engine/UltraSocialWebUtil.cpp
     engine/UltraSocialConnector.cpp
+    engine/UltraSocialPublisher.cpp
     engine/connectors/UltraSocialMastodonConnector.cpp
     engine/connectors/UltraSocialBlueskyConnector.cpp
     engine/connectors/UltraSocialTelegramConnector.cpp
+    engine/connectors/UltraSocialRedditConnector.cpp
+    engine/connectors/UltraSocialXConnector.cpp
 )
 
 add_library(UltraSocialEngine STATIC ${ULTRASOCIAL_ENGINE_SOURCES})

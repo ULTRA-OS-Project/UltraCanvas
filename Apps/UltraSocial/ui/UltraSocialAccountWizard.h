@@ -21,6 +21,7 @@ struct WizardInput {
     std::string server;
     std::string identifier;
     std::string secret;
+    std::string clientId;
 };
 
 class AccountWizard {

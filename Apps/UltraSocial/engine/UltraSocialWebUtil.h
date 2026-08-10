@@ -33,6 +33,18 @@ UltraNetResult JsonRequest(UltraNetHttpMethod method,
                            const std::vector<std::pair<std::string, std::string>>&
                                extraHeaders = {});
 
+// POST an application/x-www-form-urlencoded body. Auth: `bearer` when
+// non-empty; else HTTP Basic when basicUser is non-empty (Reddit's token
+// endpoint wants Basic with an empty password for installed apps).
+UltraNetResult FormPost(const std::string& url,
+                        const std::vector<std::pair<std::string, std::string>>&
+                            fields,
+                        const std::string& bearer,
+                        const std::string& basicUser,
+                        const std::string& basicPassword,
+                        UltraCanvas::JSONValue& outDoc,
+                        int* outHttpStatus = nullptr);
+
 // POST with a raw body (uploads). Content type is required.
 UltraNetResult RawPost(const std::string& url,
                        const std::vector<uint8_t>& body,

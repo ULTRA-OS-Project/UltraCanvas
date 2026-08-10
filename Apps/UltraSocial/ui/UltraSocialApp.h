@@ -17,6 +17,8 @@
 
 #include "UltraCanvasWindow.h"
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -41,7 +43,17 @@ private:
     void HandleWizardSubmit(const WizardInput& input);
     void HandleAddMedia();
     void HandlePost();
+    // "Post later…": pick a date + time, then queue one outbox entry per
+    // selected account.
+    void HandlePostLater();
+    void ScheduleDraft(const PostDraft& draft,
+                       const std::vector<std::string>& targetIds,
+                       int64_t when);
+    // Publish every due outbox entry on a worker thread (skips when a
+    // flush or an interactive post is already running).
+    void FlushOutbox();
     void RefreshHistory();
+    void RefreshScheduled();
 
     // Queue `action` for the main thread (drained by the UI timer).
     void RunOnUiThread(std::function<void()> action);
@@ -59,6 +71,7 @@ private:
     std::mutex uiQueueMutex_;
     std::vector<std::function<void()>> uiQueue_;
     bool posting_ = false;
+    std::atomic<bool> flushing_{false};
 };
 
 } // namespace UltraSocial

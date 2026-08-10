@@ -4,13 +4,58 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialStore.h"
 
+#include "DataFormats/UltraCanvasJSON.h"
+
 #include <UltraDatabase/UltraDatabase.h>
 
 #include <ctime>
 
+using UltraCanvas::JSONValue;
+
 namespace UltraSocial {
 
 namespace {
+
+// Media attachments round-trip through a JSON column.
+std::string MediaToJson(const std::vector<MediaAttachment>& media) {
+    JSONValue list = JSONValue::MakeArray();
+    for (const auto& m : media) {
+        list.Append(JSONValue::MakeObject()
+                        .Set("path", m.filePath)
+                        .Set("mime", m.mimeType)
+                        .Set("alt", m.altText));
+    }
+    return UltraCanvas::JSON::Serialize(list);
+}
+
+std::vector<MediaAttachment> MediaFromJson(const std::string& json) {
+    std::vector<MediaAttachment> media;
+    JSONValue list = UltraCanvas::JSON::Parse(json);
+    for (std::size_t i = 0; i < list.GetSize(); ++i) {
+        const JSONValue& m = list[i];
+        media.push_back({m["path"].GetString(), m["mime"].GetString(),
+                         m["alt"].GetString()});
+    }
+    return media;
+}
+
+OutboxEntry RowToOutbox(const UltraDbRow& row) {
+    OutboxEntry e;
+    e.id               = row["id"].AsInt64();
+    e.accountId        = row["account_id"].AsString();
+    e.network          = SocialNetworkFromString(row["network"].AsString());
+    e.draft.text       = row["text"].AsString();
+    e.draft.media      = MediaFromJson(row["media_json"].AsString());
+    e.draft.visibility = row["visibility"].AsString();
+    e.scheduledAt      = row["scheduled_at"].AsInt64();
+    e.attempts         = static_cast<int>(row["attempts"].AsInt64());
+    e.lastError        = row["last_error"].AsString();
+    return e;
+}
+
+const char* kOutboxColumns =
+    "id, account_id, network, text, media_json, visibility, scheduled_at, "
+    "attempts, last_error";
 
 HistoryEntry RowToHistory(const UltraDbRow& row) {
     HistoryEntry e;
@@ -64,6 +109,18 @@ UltraDbResult Store::Open(const std::string& connectionName,
           "  error TEXT,"
           "  created_at INTEGER DEFAULT 0);"
           "CREATE INDEX idx_history_account ON history(account_id, id DESC);" },
+        { 2, "outbox (scheduled posts)",
+          "CREATE TABLE outbox("
+          "  id INTEGER PRIMARY KEY,"
+          "  account_id TEXT NOT NULL,"
+          "  network TEXT NOT NULL,"
+          "  text TEXT,"
+          "  media_json TEXT,"
+          "  visibility TEXT,"
+          "  scheduled_at INTEGER DEFAULT 0,"
+          "  attempts INTEGER DEFAULT 0,"
+          "  last_error TEXT);"
+          "CREATE INDEX idx_outbox_due ON outbox(scheduled_at);" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -105,6 +162,59 @@ UltraDbResult Store::ListAccounts(std::vector<Account>& out) const {
 UltraDbResult Store::RemoveAccount(const std::string& accountId) {
     return UltraDb_Exec(connection_,
         "DELETE FROM accounts WHERE account_id = ?", { accountId });
+}
+
+// ---- Outbox ----------------------------------------------------------------
+
+UltraDbResult Store::EnqueuePost(OutboxEntry& entry) {
+    if (entry.accountId.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "account id must not be empty");
+    UltraDbResult ins = UltraDb_Exec(connection_,
+        "INSERT INTO outbox(account_id, network, text, media_json, "
+        "visibility, scheduled_at, attempts, last_error) "
+        "VALUES(?, ?, ?, ?, ?, ?, 0, '')",
+        { entry.accountId, ToString(entry.network), entry.draft.text,
+          MediaToJson(entry.draft.media), entry.draft.visibility,
+          entry.scheduledAt });
+    if (ins) entry.id = ins.lastInsertId;
+    return ins;
+}
+
+UltraDbResult Store::ListOutbox(std::vector<OutboxEntry>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        std::string("SELECT ") + kOutboxColumns +
+        " FROM outbox ORDER BY scheduled_at, id", rs);
+    if (!q) return q;
+    for (const auto& row : rs) out.push_back(RowToOutbox(row));
+    return q;
+}
+
+UltraDbResult Store::DueOutbox(int64_t now, std::vector<OutboxEntry>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        std::string("SELECT ") + kOutboxColumns +
+        " FROM outbox WHERE scheduled_at <= ? ORDER BY scheduled_at, id",
+        { now }, rs);
+    if (!q) return q;
+    for (const auto& row : rs) out.push_back(RowToOutbox(row));
+    return q;
+}
+
+UltraDbResult Store::RemoveOutbox(int64_t id) {
+    return UltraDb_Exec(connection_, "DELETE FROM outbox WHERE id = ?", { id });
+}
+
+UltraDbResult Store::RescheduleOutbox(int64_t id, int64_t newScheduledAt,
+                                      int attempts,
+                                      const std::string& lastError) {
+    return UltraDb_Exec(connection_,
+        "UPDATE outbox SET scheduled_at = ?, attempts = ?, last_error = ? "
+        "WHERE id = ?",
+        { newScheduledAt, attempts, lastError, id });
 }
 
 // ---- History ---------------------------------------------------------------

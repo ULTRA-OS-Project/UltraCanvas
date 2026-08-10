@@ -7,11 +7,14 @@
 > *0.3.37*, the **Phase-1 headless engine** in *0.3.38*
 > (`Apps/UltraSocial/engine/`: types, `ISocialConnector`, the composer,
 > credential vault, account/history store, and the Mastodon / Bluesky /
-> Telegram connectors — all covered by `Tests/UltraSocial`), and the
+> Telegram connectors — all covered by `Tests/UltraSocial`), the
 > **Phase-1 UI** in *0.3.39* (compose window with live per-network
-> counters + warnings, media chips, account wizard, history strip).
-> The scheduling outbox (§5 phase 2) and the Tier-2 connectors are still
-> open.
+> counters + warnings, media chips, account wizard, history strip), and
+> **Phase 2** in *0.3.40*: the scheduling outbox ("Post later…" queue on
+> UltraDatabase, retry with backoff, scheduled-posts strip) and the
+> Tier-2 **Reddit** and **X** connectors (text posts; both
+> bring-your-own-client-id, §1). Phase 3 (LinkedIn / Meta, media for the
+> Tier-2 networks) is open.
 
 This document answers the question *"can we build an ULTRA OS app that posts
 automatically to different social networks?"* — network by network, and against

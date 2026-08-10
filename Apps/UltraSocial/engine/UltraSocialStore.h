@@ -15,6 +15,18 @@
 
 namespace UltraSocial {
 
+// One queued (scheduled) post for one account. The raw draft is stored —
+// adaptation happens at publish time, so capability changes apply late.
+struct OutboxEntry {
+    int64_t       id = 0;             // assigned by the store
+    std::string   accountId;
+    SocialNetwork network = SocialNetwork::Mastodon;
+    PostDraft     draft;
+    int64_t       scheduledAt = 0;    // epoch seconds; <= now means due
+    int           attempts = 0;
+    std::string   lastError;
+};
+
 // One row of the post history: a single publish attempt to one account.
 struct HistoryEntry {
     int64_t       id = 0;             // assigned by the store
@@ -43,6 +55,24 @@ public:
     UltraDbResult UpsertAccount(const Account& account);
     UltraDbResult ListAccounts(std::vector<Account>& out) const;
     UltraDbResult RemoveAccount(const std::string& accountId);
+
+    // ---- Outbox (scheduled posts) ------------------------------------------
+    // Inserts the entry and fills entry.id.
+    UltraDbResult EnqueuePost(OutboxEntry& entry);
+
+    // All queued entries, soonest first.
+    UltraDbResult ListOutbox(std::vector<OutboxEntry>& out) const;
+
+    // Entries whose scheduledAt is <= now, soonest first.
+    UltraDbResult DueOutbox(int64_t now, std::vector<OutboxEntry>& out) const;
+
+    // Cancel / complete an entry.
+    UltraDbResult RemoveOutbox(int64_t id);
+
+    // Failed attempt: bump the attempt count, push scheduledAt out, record
+    // the error (shown in the scheduled list).
+    UltraDbResult RescheduleOutbox(int64_t id, int64_t newScheduledAt,
+                                   int attempts, const std::string& lastError);
 
     // ---- History -----------------------------------------------------------
     // Inserts the entry and fills entry.id.
