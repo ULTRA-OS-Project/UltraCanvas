@@ -1,3 +1,16 @@
+#### 2026-08-10 *0.3.39*
+- **UltraCanvasFilerWidget**: flexible tile widths in the thumbnail grid
+  views. The column count still comes from the selected tile edge, but the
+  leftover strip on the right — too narrow for one more column — is now
+  distributed across the row's cells (Explorer-style), so the grid always
+  fills the widget's width: resizing the window stretches the cells smoothly
+  until the next column fits instead of growing an empty gap. Only the cell
+  widens — captions get the extra room, so long names wrap later — while the
+  image box keeps the square Small / Medium / Big / Maximized edge, centered,
+  so thumbnails keep their size during a resize and the async decode cache is
+  not churned. Controlled by `SetFlexibleTileWidths(bool)` (default on;
+  off restores the fixed-width grid).
+
 #### 2026-08-10 *0.3.38*
 - **UltraFiler**: Favorites (pinning). A new heart button next to the History
   clock shows the Favorites view — the same Files / Folders / Apps tabbed
