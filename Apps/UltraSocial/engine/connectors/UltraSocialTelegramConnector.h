@@ -1,9 +1,9 @@
 // Apps/UltraSocial/engine/connectors/UltraSocialTelegramConnector.h
 // Telegram channels through the Bot API: the user pastes a bot token (from
 // @BotFather) and names a channel the bot administers. Text goes out via
-// sendMessage, a single photo with caption via sendPhoto (multipart).
-// Phase 1 caps media at one image; sendMediaGroup albums are a later
-// extension.
+// sendMessage, a single photo with caption via sendPhoto (multipart), and
+// 2–10 photos as a sendMediaGroup album (attach:// multipart, caption on
+// the first photo).
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

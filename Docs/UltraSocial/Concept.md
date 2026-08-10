@@ -13,8 +13,12 @@
 > **Phase 2** in *0.3.40*: the scheduling outbox ("Post later…" queue on
 > UltraDatabase, retry with backoff, scheduled-posts strip) and the
 > Tier-2 **Reddit** and **X** connectors (text posts; both
-> bring-your-own-client-id, §1). Phase 3 (LinkedIn / Meta, media for the
-> Tier-2 networks) is open.
+> bring-your-own-client-id, §1). **Phase 3** in *0.3.41*: **LinkedIn**
+> (own confidential-client app, versioned `/rest/posts`) and **Facebook
+> Pages** (pasted Page token, feed + photo posts) connectors, X image
+> uploads, and Telegram albums. Still open: Instagram (public-URL-only
+> media fetch, §1), Reddit media, LinkedIn images, optional UltraAI
+> draft adaptation.
 
 This document answers the question *"can we build an ULTRA OS app that posts
 automatically to different social networks?"* — network by network, and against

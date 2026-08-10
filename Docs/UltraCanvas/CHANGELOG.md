@@ -1,3 +1,20 @@
+#### 2026-08-09 *0.3.41*
+- **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
+  **LinkedIn connector** — OAuth2 code flow for the user's own
+  confidential-client app (secret in the form body, no PKCE; redirect
+  port 17997), member id via OpenID `userinfo`, text posts through the
+  versioned `POST /rest/posts` (post URN read from the `x-restli-id`
+  response header), token refresh when the app has it granted.
+  **Facebook Pages connector** — pasted Page id + long-lived Page access
+  token (personal profiles have no posting API); text to `/{page}/feed`,
+  one photo + caption to `/{page}/photos` as multipart (no public URL
+  needed); Meta's `{"error":{...}}` shape added to the shared error
+  surface. **X media** — images upload via the v2 media endpoint and
+  attach as `media_ids` (4 × ≤5 MB), inside the same refresh-retry as
+  text. **Telegram albums** — 2–10 photos via `sendMediaGroup`
+  (`attach://` multipart, caption on the first). Wizard forms for both
+  new networks. 10 new engine tests (47 total).
+
 #### 2026-08-09 *0.3.40*
 - **UltraSocial** *(Phase 2)*: the "automatically" part plus the Tier-2
   networks. **Scheduling outbox** — "Post later…" opens a date + time

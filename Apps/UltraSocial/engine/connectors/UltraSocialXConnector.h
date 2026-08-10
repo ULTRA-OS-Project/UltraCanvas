@@ -4,9 +4,9 @@
 // http://127.0.0.1:17996/callback and supplies its client id) through
 // UltraNet_OAuth2AuthorizeInteractive; refresh tokens rotate on every
 // refresh and the rewritten credential blob flows back to the vault.
-// Publishing posts text tweets via POST /2/tweets; media (the chunked
-// upload endpoint) is a later extension. Mind the free tier's monthly
-// write cap (Docs/UltraSocial/Concept.md §1). Phase 2.
+// Publishing uploads images through the v2 media endpoint and posts via
+// POST /2/tweets with their media ids. Mind the free tier's monthly
+// write cap (Docs/UltraSocial/Concept.md §1). Phase 2 (+ media, Phase 3).
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

@@ -31,7 +31,8 @@ UltraNetResult JsonRequest(UltraNetHttpMethod method,
                            UltraCanvas::JSONValue& outDoc,
                            int* outHttpStatus = nullptr,
                            const std::vector<std::pair<std::string, std::string>>&
-                               extraHeaders = {});
+                               extraHeaders = {},
+                           UltraNetHttpHeaders* outResponseHeaders = nullptr);
 
 // POST an application/x-www-form-urlencoded body. Auth: `bearer` when
 // non-empty; else HTTP Basic when basicUser is non-empty (Reddit's token

@@ -20,7 +20,7 @@ SocialCapabilities TelegramCaps() {
     SocialCapabilities caps;
     caps.maxTextChars         = 4096;
     caps.maxMediaCaptionChars = 1024;
-    caps.maxImages            = 1;     // Phase 1: single photo + caption
+    caps.maxImages            = 10;    // sendMediaGroup album limit
     return caps;
 }
 
@@ -133,7 +133,7 @@ UltraNetResult TelegramConnector::PublishPost(const Account& account,
                                 std::string(), doc);
         auto ok = UnwrapResult(send, doc, message);
         if (!ok) return ok;
-    } else {
+    } else if (post.media.size() == 1) {
         const auto& media = post.media.front();
         std::vector<uint8_t> bytes;
         auto load = LoadFileBytes(media.filePath, bytes);
@@ -153,6 +153,44 @@ UltraNetResult TelegramConnector::PublishPost(const Account& account,
                                   fields, {photo}, std::string(), doc);
         auto ok = UnwrapResult(send, doc, message);
         if (!ok) return ok;
+    } else {
+        // Album: sendMediaGroup with each photo attached as multipart and
+        // referenced via attach://<name>; the caption rides on the first.
+        JSONValue mediaList = JSONValue::MakeArray();
+        std::vector<MultipartFile> files;
+        for (std::size_t i = 0; i < post.media.size(); ++i) {
+            const auto& media = post.media[i];
+            std::vector<uint8_t> bytes;
+            auto load = LoadFileBytes(media.filePath, bytes);
+            if (!load) return load;
+
+            const std::string attachName = "photo" + std::to_string(i);
+            MultipartFile photo;
+            photo.name        = attachName;
+            photo.fileName    = std::filesystem::path(media.filePath)
+                                    .filename().string();
+            photo.contentType = media.mimeType.empty()
+                                    ? GuessMimeType(media.filePath)
+                                    : media.mimeType;
+            photo.bytes       = std::move(bytes);
+            files.push_back(std::move(photo));
+
+            JSONValue item = JSONValue::MakeObject();
+            item.Set("type", "photo");
+            item.Set("media", "attach://" + attachName);
+            if (i == 0 && !post.text.empty()) item.Set("caption", post.text);
+            mediaList.Append(item);
+        }
+
+        std::vector<MultipartField> fields = {
+            {"chat_id", chatId},
+            {"media", UltraCanvas::JSON::Serialize(mediaList)}};
+        auto send = MultipartPost(MethodUrl(server, botToken, "sendMediaGroup"),
+                                  fields, files, std::string(), doc);
+        JSONValue messages;
+        auto ok = UnwrapResult(send, doc, messages);
+        if (!ok) return ok;
+        message = messages[0];   // the album's first message anchors the link
     }
 
     const int64_t messageId = message["message_id"].GetInteger(0);

@@ -10,6 +10,7 @@ set(ULTRASOCIAL_TEST_SOURCES
     test_store_vault.cpp
     test_connectors.cpp
     test_tier2_connectors.cpp
+    test_tier3_connectors.cpp
     test_outbox.cpp
 )
 

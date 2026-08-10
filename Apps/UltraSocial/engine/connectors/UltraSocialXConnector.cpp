@@ -8,6 +8,8 @@
 
 #include <UltraNet/UltraNetOAuth2.h>
 
+#include <filesystem>
+
 using UltraCanvas::JSONValue;
 
 namespace UltraSocial {
@@ -22,8 +24,9 @@ constexpr const char* kApiBase  = "https://api.x.com";
 
 SocialCapabilities XCaps() {
     SocialCapabilities caps;
-    caps.maxTextChars = 280;
-    caps.maxImages    = 0;   // media upload is a later extension
+    caps.maxTextChars  = 280;
+    caps.maxImages     = 4;
+    caps.maxImageBytes = 5 * 1024 * 1024;   // tweet_image upload limit
     return caps;
 }
 
@@ -33,6 +36,49 @@ UltraNetOAuth2Config TokenConfig(const std::string& apiBase,
     config.tokenEndpoint = JoinUrl(apiBase, "/2/oauth2/token");
     config.clientId      = clientId;
     return config;
+}
+
+// One full publish attempt with a given access token: image uploads via the
+// v2 media endpoint, then the tweet referencing their media ids.
+UltraNetResult TryPublish(const std::string& apiBase,
+                          const std::string& accessToken,
+                          const AdaptedPost& post,
+                          JSONValue& outCreated,
+                          int* outStatus) {
+    JSONValue mediaIds = JSONValue::MakeArray();
+    for (const auto& media : post.media) {
+        std::vector<uint8_t> bytes;
+        auto load = LoadFileBytes(media.filePath, bytes);
+        if (!load) return load;
+
+        MultipartFile file;
+        file.name        = "media";
+        file.fileName    = std::filesystem::path(media.filePath).filename().string();
+        file.contentType = media.mimeType.empty() ? GuessMimeType(media.filePath)
+                                                  : media.mimeType;
+        file.bytes       = std::move(bytes);
+
+        JSONValue uploaded;
+        auto upload = MultipartPost(JoinUrl(apiBase, "/2/media/upload"),
+                                    {{"media_category", "tweet_image"}},
+                                    {file}, accessToken, uploaded, outStatus);
+        if (!upload) return upload;
+        // v2 wraps the id in "data"; tolerate the v1.1-style field too.
+        std::string mediaId = uploaded["data"]["id"].GetString(
+                                  uploaded["media_id_string"].GetString());
+        if (mediaId.empty()) {
+            return UltraNetResult::Error(UltraNetResultCode::HttpError,
+                                         "media upload returned no id");
+        }
+        mediaIds.Append(mediaId);
+    }
+
+    JSONValue body = JSONValue::MakeObject().Set("text", post.text);
+    if (mediaIds.GetSize() > 0) {
+        body.Set("media", JSONValue::MakeObject().Set("media_ids", mediaIds));
+    }
+    return JsonRequest(UltraNetHttpMethod::Post, JoinUrl(apiBase, "/2/tweets"),
+                       body, accessToken, outCreated, outStatus);
 }
 
 } // namespace
@@ -117,12 +163,9 @@ UltraNetResult XConnector::PublishPost(const Account& account,
                                      "account has no stored session");
     }
 
-    const JSONValue body = JSONValue::MakeObject().Set("text", post.text);
     JSONValue created;
     int status = 0;
-    auto tweet = JsonRequest(UltraNetHttpMethod::Post,
-                             JoinUrl(apiBase, "/2/tweets"),
-                             body, accessToken, created, &status);
+    auto tweet = TryPublish(apiBase, accessToken, post, created, &status);
 
     if (!tweet && status == 401 && !refreshToken.empty() && !clientId.empty()) {
         // X rotates the refresh token on every refresh — persist both.
@@ -136,9 +179,7 @@ UltraNetResult XConnector::PublishPost(const Account& account,
         credentials.Set("refresh_token", refreshToken);
         credentialJson = UltraCanvas::JSON::Serialize(credentials);
 
-        tweet = JsonRequest(UltraNetHttpMethod::Post,
-                            JoinUrl(apiBase, "/2/tweets"),
-                            body, accessToken, created, &status);
+        tweet = TryPublish(apiBase, accessToken, post, created, &status);
     }
     if (!tweet) return tweet;
 

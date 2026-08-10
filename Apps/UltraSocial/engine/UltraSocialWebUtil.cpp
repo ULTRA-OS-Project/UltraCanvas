@@ -23,9 +23,15 @@ namespace {
 //   Bluesky    {"error": "Name", "message": "..."}
 //   Telegram   {"ok": false, "description": "..."}
 //   X          {"title": "Unauthorized", "detail": "...", "status": 401}
+//   Meta       {"error": {"message": "...", "type": "...", "code": 190}}
 std::string ServerErrorMessage(const JSONValue& doc) {
     std::string message;
-    if (doc.Contains("error")) {
+    if (doc.Contains("error") && doc["error"].IsObject()) {
+        message = doc["error"]["message"].GetString("");
+        if (!doc["error"]["type"].GetString().empty()) {
+            message = doc["error"]["type"].GetString() + ": " + message;
+        }
+    } else if (doc.Contains("error")) {
         message = doc["error"].GetString("");
         if (doc.Contains("message")) {
             message += ": " + doc["message"].GetString("");
@@ -77,7 +83,8 @@ UltraNetResult JsonRequest(UltraNetHttpMethod method,
                            JSONValue& outDoc,
                            int* outHttpStatus,
                            const std::vector<std::pair<std::string, std::string>>&
-                               extraHeaders) {
+                               extraHeaders,
+                           UltraNetHttpHeaders* outResponseHeaders) {
     outDoc = JSONValue();
 
     UltraNetHttpRequest request;
@@ -98,6 +105,7 @@ UltraNetResult JsonRequest(UltraNetHttpMethod method,
 
     UltraNetResponse response;
     auto transport = UltraNet_HttpRequest(request, response);
+    if (outResponseHeaders) *outResponseHeaders = response.headers;
     return FinishJsonExchange(transport, response, outDoc, outHttpStatus);
 }
 

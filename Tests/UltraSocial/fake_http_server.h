@@ -40,6 +40,8 @@ struct ScriptedResponse {
     int status = 200;
     std::string body;
     std::string contentType = "application/json";
+    // Extra response headers, e.g. {{"x-restli-id", "urn:li:share:1"}}.
+    std::vector<std::pair<std::string, std::string>> headers;
 };
 
 class FakeHttpServer {
@@ -125,8 +127,11 @@ private:
             std::string wire = "HTTP/1.1 " + std::to_string(response.status) +
                 " " + statusText + "\r\n"
                 "Content-Type: " + response.contentType + "\r\n"
-                "Content-Length: " + std::to_string(response.body.size()) + "\r\n"
-                "Connection: close\r\n\r\n" + response.body;
+                "Content-Length: " + std::to_string(response.body.size()) + "\r\n";
+            for (const auto& [name, value] : response.headers) {
+                wire += name + ": " + value + "\r\n";
+            }
+            wire += "Connection: close\r\n\r\n" + response.body;
             int sent = 0;
             UltraNet_TcpSend(conn, std::vector<uint8_t>(wire.begin(), wire.end()),
                              sent);

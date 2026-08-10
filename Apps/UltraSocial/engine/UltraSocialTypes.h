@@ -19,7 +19,9 @@ enum class SocialNetwork {
     Bluesky,
     Telegram,
     Reddit,
-    X
+    X,
+    LinkedIn,
+    Facebook        // Facebook Pages (personal profiles have no posting API)
 };
 
 std::string   ToString(SocialNetwork network);

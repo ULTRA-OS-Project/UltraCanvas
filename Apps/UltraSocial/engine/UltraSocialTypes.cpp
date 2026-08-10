@@ -14,6 +14,8 @@ std::string ToString(SocialNetwork network) {
         case SocialNetwork::Telegram: return "telegram";
         case SocialNetwork::Reddit:   return "reddit";
         case SocialNetwork::X:        return "x";
+        case SocialNetwork::LinkedIn: return "linkedin";
+        case SocialNetwork::Facebook: return "facebook";
     }
     return "mastodon";
 }
@@ -23,6 +25,8 @@ SocialNetwork SocialNetworkFromString(const std::string& s) {
     if (s == "telegram") return SocialNetwork::Telegram;
     if (s == "reddit")   return SocialNetwork::Reddit;
     if (s == "x")        return SocialNetwork::X;
+    if (s == "linkedin") return SocialNetwork::LinkedIn;
+    if (s == "facebook") return SocialNetwork::Facebook;
     return SocialNetwork::Mastodon;
 }
 

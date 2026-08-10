@@ -54,8 +54,30 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 >   rotating refresh tokens persisted back to the vault. Media is a later
 >   extension; mind the free tier's monthly write cap.
 >
-> Still to come: Tier-3 connectors (LinkedIn, Meta) and media support for
-> Reddit / X / Telegram albums.
+> **Phase 3** adds the Tier-3 networks and media for Tier 2:
+>
+> - **LinkedIn connector** — the user's own confidential-client app
+>   ("Sign In with LinkedIn" + "Share on LinkedIn" products, redirect
+>   `http://127.0.0.1:17997/callback`); OAuth2 code flow with the secret
+>   in the form body (no PKCE), member id via OpenID `userinfo`, text
+>   posts via versioned `POST /rest/posts` (the post URN arrives in the
+>   `x-restli-id` response header), token refresh when granted.
+> - **Facebook Pages connector** — pasted Page id + long-lived Page
+>   access token (personal profiles have no posting API; public
+>   distribution of a Meta app needs their review — hence Tier 3). Text
+>   to `/{page}/feed`, one photo + caption to `/{page}/photos` as a
+>   multipart upload (no public URL needed). Meta's error-object shape is
+>   surfaced.
+> - **X media** — images upload through the v2 media endpoint and attach
+>   as `media_ids` on the tweet (4 images, ≤5 MB each), inside the same
+>   refresh-retry as text tweets.
+> - **Telegram albums** — 2–10 photos via `sendMediaGroup` (`attach://`
+>   multipart, caption on the first photo).
+>
+> Still open: Instagram (its content API only fetches media from public
+> URLs — unsuitable for a desktop app until an upload host exists),
+> Reddit media (lease-based S3 flow), LinkedIn images
+> (`initializeUpload`), and optional UltraAI draft adaptation.
 
 ## Layout
 
@@ -77,6 +99,8 @@ Apps/UltraSocial/
       UltraSocialTelegramConnector.{h,cpp}
       UltraSocialRedditConnector.{h,cpp}
       UltraSocialXConnector.{h,cpp}
+      UltraSocialLinkedInConnector.{h,cpp}
+      UltraSocialFacebookConnector.{h,cpp}
   ui/
     UltraSocialApp.{h,cpp}             app manager: store + vault + windows,
                                        worker-thread sign-in/publish

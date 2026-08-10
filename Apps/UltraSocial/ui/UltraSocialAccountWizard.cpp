@@ -35,7 +35,7 @@ struct NetworkForm {
     const char* clientIdPlaceholder;
 };
 
-constexpr std::array<NetworkForm, 5> kForms{{
+constexpr std::array<NetworkForm, 7> kForms{{
     { SocialNetwork::Mastodon, "Mastodon / Fediverse",
       "Enter your instance — UltraSocial registers itself there and signs "
       "you in through your browser; no keys needed. Advanced: paste an "
@@ -70,12 +70,29 @@ constexpr std::array<NetworkForm, 5> kForms{{
     { SocialNetwork::X, "X (Twitter)",
       "Register an app in the X developer portal (OAuth 2.0 public client, "
       "redirect http://127.0.0.1:17996/callback), paste its client id, then "
-      "sign in through your browser. Text posts only; mind the free tier's "
-      "monthly write cap.",
+      "sign in through your browser. Mind the free tier's monthly write cap.",
       "Server", "(default)",
       "(not used)", "",
       "(not used)", "",
       "Client ID", "from the X developer portal" },
+    { SocialNetwork::LinkedIn, "LinkedIn",
+      "Register an app at linkedin.com/developers with the 'Sign In with "
+      "LinkedIn' and 'Share on LinkedIn' products and redirect "
+      "http://127.0.0.1:17997/callback, paste its client id and secret, "
+      "then sign in through your browser.",
+      "Server", "(default)",
+      "(not used)", "",
+      "Client secret", "from your LinkedIn app",
+      "Client ID", "from your LinkedIn app" },
+    { SocialNetwork::Facebook, "Facebook Page",
+      "Posting goes to a Page you manage (personal profiles have no "
+      "posting API). Create a Meta app, grant it pages_manage_posts for "
+      "your Page, and paste the Page id and a long-lived Page access "
+      "token.",
+      "Server", "(default)",
+      "Page ID", "e.g. 103245...",
+      "Page access token", "EAAB…",
+      "(not used)", "" },
 }};
 
 } // namespace
