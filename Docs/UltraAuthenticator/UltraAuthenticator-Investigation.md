@@ -72,6 +72,8 @@ password KDF (Argon2id preferred; PBKDF2-HMAC-SHA256 as the OpenSSL-only
 fallback) for the storage layer in §3.1. All backed by OpenSSL behind an
 UltraCanvas-owned API, per the wrapped-engines convention.
 
+This gap is **framework-wide, not specific to this app** — see §2.3.
+
 **(b) No secret storage.** `UltraVault` — the designated credential store for
 ULTRA OS — is an *architecture recommendation only*
 (`UltraAI/Docs/UltraVault.md`: "UltraVault module does not yet exist").
@@ -95,6 +97,65 @@ official vectors).
 **(e) No screen-capture / screenshot protection.** UltraCanvas windows have
 no equivalent of Android's `FLAG_SECURE`; on X11 none is even possible
 (§3.6).
+
+### 2.3 The crypto gap is framework-wide
+
+The authenticator is not the first consumer to need cryptography — it is the
+sixth. The framework already has multiple components that require crypto
+primitives, and because there is no sanctioned API, each has independently
+either hand-rolled one, called OpenSSL directly in violation of the
+wrapped-engines rule, or stalled at design stage.
+
+| Consumer | Needs | Current state |
+|---|---|---|
+| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | AES-256-GCM, ChaCha20-Poly1305, Argon2id / PBKDF2-HMAC-SHA256, HKDF, SHA-256, BLAKE3-256 | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
+| **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and the implementation is broken (see below) |
+| **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header explicitly says it is a placeholder "when UltraNet/UltraVault bring a vetted crypto surface" |
+| **UltraVault** (design) | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Design doc only; module does not exist |
+| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
+| **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | Blocked |
+
+UltraNet already links `OpenSSL::SSL` / `OpenSSL::Crypto`
+(`UltraCanvas/CMakeLists.txt:1407`), so the dependency is present and paid
+for on every platform — it simply is not exposed to callers as anything
+other than TLS.
+
+#### Cautionary tale: what the missing API already produced
+
+`UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the clearest
+argument for a shared API. It implements document password protection like
+this:
+
+- `EncryptData` / `DecryptData` are guarded by `#ifdef ULTRACANVAS_USE_OPENSSL`.
+  **That macro is never defined anywhere in the build system** — no
+  `CMakeLists.txt` or `.cmake` file sets it. So the compiled branch is the
+  `#else` fallback: `output = input; return true;` — the data is passed
+  through in the clear while the function reports success.
+- The consequence in the live code paths: `Save()` with a non-empty password
+  sets `encryption = UCEncryptionType::AES256`, calls `EncryptData`, gets
+  back plaintext, and writes a file whose header claims AES-256
+  (`UltraCanvasDocument.cpp:184-193`). `Load()` then requires a password,
+  calls `DecryptData`, and succeeds with **any** password at all
+  (`:112-124`).
+- Even with the macro defined, the OpenSSL path is worse, not better: in
+  `EncryptData` the line that appends the ciphertext is commented out, so the
+  output contains only the IV and the document body is destroyed; in
+  `DecryptData` the output vector is never assigned. Both still `return true`.
+- Supporting routines are unsound independently: `GeneratePasswordHash` is a
+  single unsalted-KDF round of SHA-256 (a fast hash, not a password KDF) with
+  a `std::hash<std::string>` fallback; `GenerateSalt` uses `std::mt19937`
+  rather than a CSPRNG; the PBKDF2 call uses 10 000 iterations (well below
+  current guidance) and derives the salt from the first 8 bytes of the IV
+  instead of an independent random salt.
+
+**Severity note, stated precisely:** `UltraCanvasDocument.cpp` is *not
+currently in the CMake source list*, so this is dormant code rather than a
+shipping vulnerability, and it should not be reported as an active CVE-class
+bug. Its value here is diagnostic: it is precisely the failure mode that a
+missing shared crypto API produces — plausible-looking security code, written
+once by a non-specialist, that silently does nothing. Before this file is
+ever added to the build it must be rewritten against a real API, or its
+encryption entry points removed so no caller can believe in them.
 
 ---
 
@@ -298,10 +359,25 @@ Camera scan pipeline: `UltraCanvasVideoRecorder::Open()` (preview only,
 **Feasible.** The UI layer, QR generation/decoding, and camera preview are
 already in the tree, and the missing OTP logic is small and testable. The two
 genuine gaps are **(1) no app-usable crypto API** and **(2) no secure secret
-storage** — both are framework-level gaps that other planned software
-(UltraDatabase credentials, UltraNet auth, UltraAI keys, AnchorPoint) also
-needs, so building `UltraCrypto` now and an `ISecretStore` that UltraVault
-can slot into later pays beyond this app. The hardest *unfixable-in-app*
+storage**.
+
+Neither is really an authenticator problem — both are **framework
+prerequisites that ULTRA OS needs regardless of whether this app is ever
+built** (§2.3). The UCD v2 file format already specifies AES-256-GCM,
+ChaCha20-Poly1305 and Argon2id and cannot be implemented without them;
+UltraVault's fallback backend needs the same primitives; UltraDatabase's
+at-rest encryption needs them; AnchorPoint is running on a hand-rolled
+placeholder that says so in its own header; and the one component that did
+try to ship encryption without a shared API produced code that silently
+encrypts nothing. OpenSSL is already linked on every platform for UltraNet,
+so `UltraCrypto` is a wrapper over a dependency that is already paid for —
+not a new dependency.
+
+The recommendation is therefore to treat `UltraCrypto` as a **core module in
+its own right**, scheduled ahead of the authenticator rather than as part of
+it, with the authenticator as its first proving consumer. Likewise
+`ISecretStore` should be defined so UltraVault can slot in behind it later.
+The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
