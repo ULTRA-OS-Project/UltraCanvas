@@ -11,11 +11,13 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <vector>
 #include <string>
 #include <functional>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 namespace UltraCanvas {
 
@@ -26,6 +28,31 @@ namespace UltraCanvas {
         Direct,         ///< Solid line — rooms must be directly adjacent / share a wall
         Secondary,      ///< Dashed line — rooms should be nearby / indirect access
         ServiceOnly     ///< Dotted line — service/back-of-house connection only
+    };
+
+    /// How strongly an adjacency is wanted.
+    ///
+    /// This is a different axis from AdjacencyLinkType, which says what KIND of
+    /// connection it is (a shared wall, an indirect route, a service run). A
+    /// service link can itself be mandatory or merely preferred, so the two
+    /// overlap on Must/Direct and Should/Secondary but do not coincide.
+    /// Priority is what a matrix view plots; the bubble view ignores it.
+    enum class AdjacencyPriority {
+        Must,       ///< Red — these spaces must be adjacent
+        Should,     ///< Blue — these spaces should be adjacent / preferred
+        Maybe       ///< Green — desirable if the plan allows
+    };
+
+    /// Which view the element draws
+    enum class AdjacencyView {
+        Bubble,     ///< Area-proportional room circles joined by typed links
+        Matrix      ///< The same data as a half matrix of spaces against themselves
+    };
+
+    /// How the half matrix is drawn
+    enum class AdjacencyMatrixStyle {
+        Staircase,  ///< Axis-aligned grid, upper-right triangle populated
+        Rotated45   ///< Classic 45° diamond — not implemented yet, draws Staircase
     };
 
     /// Which functional category a room belongs to
@@ -51,6 +78,11 @@ namespace UltraCanvas {
         float               y               = 0.0f;                ///< Centre Y in diagram local coordinates
         std::string         floorId;                               ///< Optional floor/level identifier
         std::string         note;                                  ///< Optional small annotation below label
+
+        /// Free-form per-room values, parallel to the diagram's attribute
+        /// column headers. Rendered as a table gutter beside the matrix row
+        /// labels; ignored by the bubble view.
+        std::vector<std::string> attributes;
     };
 
     /// A directed or undirected adjacency requirement between two rooms
@@ -58,6 +90,13 @@ namespace UltraCanvas {
         std::string         sourceId;                               ///< Source room ID
         std::string         targetId;                               ///< Target room ID
         AdjacencyLinkType   type        = AdjacencyLinkType::Direct;
+
+        /// How badly this adjacency is wanted — an axis of its own, additive to
+        /// `type`. Defaults to Must so existing callers keep their meaning: a
+        /// matrix view of data that never expressed a priority shows every link
+        /// at full strength, which is the honest reading.
+        AdjacencyPriority   priority    = AdjacencyPriority::Must;
+
         bool                directed    = false;                    ///< Show arrowhead at target
         float               weight      = 1.0f;                    ///< Line thickness multiplier
         std::string         label;                                 ///< Optional link label
@@ -129,6 +168,28 @@ namespace UltraCanvas {
         float   tooltipFontSize         = 11.0f;
         Color   tooltipBackground       = Color( 50,  50,  50, 230);
         Color   tooltipText             = Color(255, 255, 255, 255);
+
+        // ===== MATRIX VIEW =====
+        float   matrixMinCellSize       = 15.0f;   ///< Cells shrink to fit down to this
+        float   matrixMaxCellSize       = 42.0f;
+        float   matrixGridLineWidth     = 1.0f;
+        Color   matrixGridLineColor     = Color(205, 211, 219, 255);
+        Color   matrixCellBackground    = Color(255, 255, 255, 255);
+        Color   matrixBlockedCell       = Color(243, 245, 248, 255); ///< The unused lower triangle
+        float   matrixMarkSize          = 0.46f;   ///< Fraction of the cell's short side
+        float   matrixRowLabelFontSize  = 11.0f;
+        float   matrixColLabelFontSize  = 10.0f;
+        float   matrixMaxRowLabelWidth  = 210.0f;
+        float   matrixMaxHeaderHeight   = 170.0f;
+        float   matrixAttributeColWidth = 42.0f;   ///< Per attribute gutter column
+        Color   matrixLabelColor        = Color( 45,  50,  58, 255);
+        Color   matrixHoverBand         = Color( 70, 130, 200,  40);
+        Color   matrixSelectedCell      = Color( 70, 130, 200,  70);
+
+        // Priority mark colors, shared by the matrix marks and the legend.
+        Color   colorMust               = Color(214,  45,  45, 255);
+        Color   colorShould             = Color( 40,  85, 190, 255);
+        Color   colorMaybe              = Color( 45, 160,  85, 255);
     };
 
 // ===== MAIN CLASS =====
@@ -201,6 +262,23 @@ namespace UltraCanvas {
                      AdjacencyLinkType type = AdjacencyLinkType::Direct,
                      bool directed = false);
 
+        /// Convenience — add link by IDs and priority. Use this when the
+        /// programme is expressed as must/should/maybe rather than as a kind
+        /// of connection; `type` follows from the priority for the bubble view.
+        int  AddLink(const std::string& sourceId,
+                     const std::string& targetId,
+                     AdjacencyPriority priority);
+
+        /// Set the priority of every link between two rooms (both directions).
+        /// Returns false when no such link exists.
+        bool SetLinkPriority(const std::string& sourceId,
+                             const std::string& targetId,
+                             AdjacencyPriority priority);
+
+        /// Priority of the link between two rooms, or nullptr when unlinked.
+        const AdjacencyLink* FindLink(const std::string& sourceId,
+                                      const std::string& targetId) const;
+
         /// Remove all links between two rooms (both directions)
         void RemoveLink(const std::string& sourceId, const std::string& targetId);
 
@@ -245,9 +323,53 @@ namespace UltraCanvas {
         /// No-op if there are no rooms.
         void CenterContent();
 
+        // ===== VIEW =====
+
+        /// Switch between the bubble diagram and the matrix. Both draw the same
+        /// rooms and links; neither converts or copies the data.
+        void SetView(AdjacencyView v);
+        AdjacencyView GetView() const           { return view; }
+
+        /// Staircase (default) or the classic rotated diamond. Rotated45 is not
+        /// implemented yet and currently draws Staircase.
+        void SetMatrixStyle(AdjacencyMatrixStyle s);
+        AdjacencyMatrixStyle GetMatrixStyle() const { return matrixStyle; }
+
+        /// Explicit row/column order for the matrix, by room id. Ids not in the
+        /// list are appended in insertion order; unknown ids are ignored. Pass
+        /// an empty vector to return to insertion order, which is the default —
+        /// the bubble view's x/y positions give no ordering, and the order a
+        /// caller typed their rooms in is usually the meaningful one.
+        void SetMatrixOrder(const std::vector<std::string>& roomIds);
+
+        /// Draw the self-intersection cells (a room against itself). Off by
+        /// default: a room is trivially adjacent to itself and the diagonal is
+        /// noise.
+        void SetShowMatrixDiagonal(bool on);
+        bool GetShowMatrixDiagonal() const      { return showMatrixDiagonal; }
+
+        /// Headers for the attribute gutter drawn left of the matrix row
+        /// labels. Values come from AdjacencyRoom::attributes, positionally.
+        void SetAttributeColumns(const std::vector<std::string>& headers);
+        const std::vector<std::string>& GetAttributeColumns() const { return attributeColumns; }
+
+        // ===== LEGEND =====
+
+        /// Show a key. In the matrix view it explains the priority marks; in
+        /// the bubble view it explains the room function-type colours, which
+        /// were previously unlabelled.
+        void SetShowLegend(bool on);
+        bool GetShowLegend() const              { return showLegend; }
+
+        void SetLegendPosition(ChartLegendPosition position);
+
+        /// Human-readable name of a priority ("Must be adjacent", ...). Useful
+        /// for status bars and tooltips built by the caller.
+        static const char* PriorityLabel(AdjacencyPriority priority);
+
         // ===== STYLE =====
 
-        void SetStyle(const AdjacencyDiagramStyle& s)  { style = s; RequestRedraw(); }
+        void SetStyle(const AdjacencyDiagramStyle& s)  { style = s; RebuildLegend(); RequestRedraw(); }
         const AdjacencyDiagramStyle& GetStyle() const   { return style; }
 
         // ===== SELECTION =====
@@ -267,6 +389,13 @@ namespace UltraCanvas {
         /// Fired when an adjacency link is clicked
         std::function<void(int, const AdjacencyLink&)> onLinkClick;
 
+        /// Fired when a matrix cell is clicked, populated or not. The bubble
+        /// view has no equivalent — there is nothing to click where two rooms
+        /// are unlinked.
+        std::function<void(const std::string& rowRoomId,
+                           const std::string& colRoomId,
+                           const AdjacencyLink* link)> onMatrixCellClick;
+
         // ===== RENDER & EVENTS =====
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -277,6 +406,36 @@ namespace UltraCanvas {
         std::vector<AdjacencyRoom>  rooms;
         std::vector<AdjacencyLink>  links;
         std::vector<AdjacencyZone>  zones;
+
+        // ===== VIEW STATE =====
+        AdjacencyView           view            = AdjacencyView::Bubble;
+        AdjacencyMatrixStyle    matrixStyle     = AdjacencyMatrixStyle::Staircase;
+        bool                    showMatrixDiagonal = false;
+        std::vector<std::string> matrixOrder;           // room ids, may be empty
+        std::vector<std::string> attributeColumns;
+        bool                    showLegend      = false;
+        std::unique_ptr<ChartLegend> legend;
+
+        // Matrix layout cache, element-local coordinates
+        struct MatrixLayout {
+            bool    valid       = false;
+            Rect2Dd content;                 // after the legend takes its bite
+            Rect2Dd legendArea;              // before it does
+            Rect2Dd grid;
+            Rect2Dd rowLabels;
+            Rect2Dd colLabels;
+            Rect2Dd attributes;              // gutter left of the row labels
+            double  cellSize    = 0.0;
+            int     count       = 0;         // rows == columns
+            bool    rotateHeaders = true;
+            std::vector<int> order;          // room indices, matrix order
+        };
+        MatrixLayout matrixLayout;
+
+        int  hoveredMatrixRow   = -1;
+        int  hoveredMatrixCol   = -1;
+        int  selectedMatrixRow  = -1;
+        int  selectedMatrixCol  = -1;
 
         // ===== STATE =====
         AdjacencyDiagramStyle   style;
@@ -340,6 +499,35 @@ namespace UltraCanvas {
         // Hit testing
         int     HitTestRoom(float localX, float localY) const;
         int     HitTestLink(float localX, float localY) const;
+
+        // ===== MATRIX VIEW (UltraCanvasAdjacencyMatrix.cpp) =====
+        void    InvalidateMatrixLayout()        { matrixLayout.valid = false; }
+        void    UpdateMatrixLayout(IRenderContext* ctx);
+        void    RenderMatrix(IRenderContext* ctx);
+        void    DrawMatrixGrid(IRenderContext* ctx) const;
+        void    DrawMatrixLabels(IRenderContext* ctx) const;
+        void    DrawMatrixAttributes(IRenderContext* ctx) const;
+        void    DrawMatrixMarks(IRenderContext* ctx) const;
+        void    DrawMatrixHighlight(IRenderContext* ctx) const;
+
+        // Room indices in matrix order, honouring SetMatrixOrder.
+        std::vector<int> BuildMatrixOrder() const;
+
+        // Cell under a point; returns false when outside the populated region.
+        bool    HitTestMatrixCell(float localX, float localY,
+                                  int& outRow, int& outCol) const;
+
+        // Whether (row, col) is inside the drawn upper triangle.
+        bool    IsMatrixCellVisible(int row, int col) const;
+
+        // Strongest priority linking two rooms, or nullptr when unlinked.
+        const AdjacencyLink* MatrixLinkAt(int row, int col) const;
+
+        Color   PriorityColor(AdjacencyPriority priority) const;
+
+        void    RebuildLegend();
+        std::string EllipsizeToWidth(IRenderContext* ctx, const std::string& text,
+                                     double maxWidth) const;
     };
 
 // ===== FACTORY FUNCTION =====

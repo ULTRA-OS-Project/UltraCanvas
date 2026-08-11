@@ -34,6 +34,8 @@ namespace UltraCanvas {
         if (LookupRoom(room.id) >= 0) return LookupRoom(room.id);
         int idx = static_cast<int>(rooms.size());
         rooms.push_back(room);
+        InvalidateMatrixLayout();
+        RebuildLegend();
         RequestRedraw();
         return idx;
     }
@@ -58,6 +60,8 @@ namespace UltraCanvas {
         if (idx < 0) return false;
 
         rooms.erase(rooms.begin() + idx);
+        InvalidateMatrixLayout();
+        RebuildLegend();
 
         links.erase(
                 std::remove_if(links.begin(), links.end(),
@@ -132,6 +136,53 @@ namespace UltraCanvas {
         return AddLink(l);
     }
 
+    int UltraCanvasAdjacencyDiagram::AddLink(
+            const std::string& sourceId,
+            const std::string& targetId,
+            AdjacencyPriority priority)
+    {
+        AdjacencyLink l;
+        l.sourceId = sourceId;
+        l.targetId = targetId;
+        l.priority = priority;
+        // Give the bubble view a sensible line style for the priority, so a
+        // programme expressed as must/should/maybe still reads correctly there.
+        l.type = (priority == AdjacencyPriority::Must)   ? AdjacencyLinkType::Direct
+               : (priority == AdjacencyPriority::Should) ? AdjacencyLinkType::Secondary
+                                                         : AdjacencyLinkType::ServiceOnly;
+        return AddLink(l);
+    }
+
+    bool UltraCanvasAdjacencyDiagram::SetLinkPriority(
+            const std::string& sourceId,
+            const std::string& targetId,
+            AdjacencyPriority priority)
+    {
+        bool found = false;
+        for (AdjacencyLink& l : links) {
+            if ((l.sourceId == sourceId && l.targetId == targetId) ||
+                (l.sourceId == targetId && l.targetId == sourceId)) {
+                l.priority = priority;
+                found = true;
+            }
+        }
+        if (found) RequestRedraw();
+        return found;
+    }
+
+    const AdjacencyLink* UltraCanvasAdjacencyDiagram::FindLink(
+            const std::string& sourceId,
+            const std::string& targetId) const
+    {
+        for (const AdjacencyLink& l : links) {
+            if ((l.sourceId == sourceId && l.targetId == targetId) ||
+                (l.sourceId == targetId && l.targetId == sourceId)) {
+                return &l;
+            }
+        }
+        return nullptr;
+    }
+
     void UltraCanvasAdjacencyDiagram::RemoveLink(
             const std::string& sourceId,
             const std::string& targetId)
@@ -185,6 +236,11 @@ namespace UltraCanvas {
         showingTooltip = false;
         tooltipText.clear();
         panOffsetX = panOffsetY = 0.0f;
+        hoveredMatrixRow = hoveredMatrixCol = -1;
+        selectedMatrixRow = selectedMatrixCol = -1;
+        matrixOrder.clear();
+        InvalidateMatrixLayout();
+        RebuildLegend();
         RequestRedraw();
     }
 
@@ -686,10 +742,22 @@ namespace UltraCanvas {
     void UltraCanvasAdjacencyDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyrects) {
         if (rooms.empty() && zones.empty()) return;
 
+        if (view == AdjacencyView::Matrix) {
+            RenderMatrix(ctx);
+            DrawTooltip(ctx);
+            return;
+        }
+
         DrawZones(ctx);     // zones first (background)
         DrawLinks(ctx);     // links above zones
         DrawRooms(ctx);     // rooms above links
         DrawLabels(ctx);    // labels on top of rooms
+
+        if (legend && legend->IsVisible()) {
+            Rect2Df local = GetLocalBounds();
+            legend->Render(ctx, Rect2Dd(local.x, local.y, local.width, local.height));
+        }
+
         DrawTooltip(ctx);
     }
 
@@ -751,6 +819,83 @@ namespace UltraCanvas {
     bool UltraCanvasAdjacencyDiagram::OnEvent(const UCEvent& event) {
         float localX = static_cast<float>(event.pointer.x);
         float localY = static_cast<float>(event.pointer.y);
+
+        // The matrix view has its own hit testing and no panning; handle it
+        // first and fall through to the bubble view's handling only when the
+        // bubble view is the one on screen.
+        if (view == AdjacencyView::Matrix) {
+            switch (event.type) {
+                case UCEventType::MouseMove: {
+                    int row = -1, col = -1;
+                    const bool inGrid = HitTestMatrixCell(localX, localY, row, col);
+                    if (!inGrid) { row = -1; col = -1; }
+
+                    const bool changed = (row != hoveredMatrixRow || col != hoveredMatrixCol);
+                    hoveredMatrixRow = row;
+                    hoveredMatrixCol = col;
+
+                    showingTooltip = false;
+                    tooltipText.clear();
+
+                    if (style.showTooltip && inGrid && IsMatrixCellVisible(row, col)) {
+                        const AdjacencyRoom& rowRoom =
+                                rooms[static_cast<size_t>(matrixLayout.order[static_cast<size_t>(row)])];
+                        const AdjacencyRoom& colRoom =
+                                rooms[static_cast<size_t>(matrixLayout.order[static_cast<size_t>(col)])];
+                        const AdjacencyLink* link = MatrixLinkAt(row, col);
+
+                        std::ostringstream ss;
+                        ss << rowRoom.label << " — " << colRoom.label << "\n"
+                           << (link ? PriorityLabel(link->priority) : "no requirement");
+                        tooltipText    = ss.str();
+                        tooltipX       = localX;
+                        tooltipY       = localY;
+                        showingTooltip = true;
+                    }
+
+                    if (changed) RequestRedraw();
+                    return inGrid;
+                }
+
+                case UCEventType::MouseDown: {
+                    if (event.button != UCMouseButton::Left) break;
+
+                    int row = -1, col = -1;
+                    if (!HitTestMatrixCell(localX, localY, row, col)) break;
+                    if (!IsMatrixCellVisible(row, col)) break;
+
+                    if (row == selectedMatrixRow && col == selectedMatrixCol) {
+                        selectedMatrixRow = selectedMatrixCol = -1;
+                    } else {
+                        selectedMatrixRow = row;
+                        selectedMatrixCol = col;
+                    }
+
+                    if (onMatrixCellClick) {
+                        const AdjacencyRoom& rowRoom =
+                                rooms[static_cast<size_t>(matrixLayout.order[static_cast<size_t>(row)])];
+                        const AdjacencyRoom& colRoom =
+                                rooms[static_cast<size_t>(matrixLayout.order[static_cast<size_t>(col)])];
+                        onMatrixCellClick(rowRoom.id, colRoom.id, MatrixLinkAt(row, col));
+                    }
+                    RequestRedraw();
+                    return true;
+                }
+
+                case UCEventType::MouseLeave:
+                    if (hoveredMatrixRow >= 0 || hoveredMatrixCol >= 0 || showingTooltip) {
+                        hoveredMatrixRow = hoveredMatrixCol = -1;
+                        showingTooltip = false;
+                        tooltipText.clear();
+                        RequestRedraw();
+                    }
+                    return false;
+
+                default:
+                    break;
+            }
+            return false;
+        }
 
         switch (event.type) {
 
