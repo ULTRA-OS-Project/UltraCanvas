@@ -48,8 +48,8 @@
 // selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
 // Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
 // expensive files can be browsed with only the cheap previews switched on.
-// Version: 1.13.0
-// Last Modified: 2026-08-09
+// Version: 1.14.0
+// Last Modified: 2026-08-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -378,6 +378,22 @@ namespace UltraCanvas {
         void SetShrinkThumbnailRows(bool enabled);
         bool GetShrinkThumbnailRows() const { return shrinkThumbnailRows; }
 
+        // "Flexible tile widths": the thumbnail grids derive their column
+        // count from the fixed tile edge, which leaves a strip on the right —
+        // too narrow for one more column — empty. That strip grows as the
+        // window widens, until the next column suddenly snaps in. When this
+        // is enabled (default), the leftover is distributed across the row
+        // instead (Explorer-style): every cell widens equally so the grid
+        // always fills the width, resizing the window stretches the cells
+        // smoothly until another column fits, and the extra room benefits the
+        // captions (long names wrap later). Only the cell grows — the image
+        // box inside it keeps the square Small / Medium / Big / Maximized
+        // edge, centered, so thumbnails keep their size while the window is
+        // dragged and the async decode cache is not churned by resizes. Off
+        // restores the fixed-width grid with the right-hand gap.
+        void SetFlexibleTileWidths(bool enabled);
+        bool GetFlexibleTileWidths() const { return flexibleTileWidths; }
+
         // Snapshot of what the thumbnail cache currently holds — lets an
         // application (or an A/B test) compare the footprint of compressed
         // vs. raw storage. rawBytes is what the same thumbnails would take
@@ -648,6 +664,7 @@ namespace UltraCanvas {
         std::string openPathItemLabel = "Open Path";
         bool showSelectionInfo = true;
         bool shrinkThumbnailRows = true;
+        bool flexibleTileWidths = true;
         bool columnResizeEnabled = true;
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.

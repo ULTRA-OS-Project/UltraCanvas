@@ -86,6 +86,29 @@
   `UltraNet_TcpAccept` takes an optional timeout, and the new
   `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
   they let a port-0 listener discover its ephemeral port.
+#### 2026-08-10 *0.3.39*
+- **UltraCanvasAlbum** *(1.6.1)*: a hover video preview no longer plays
+  alongside the full video opened from its tile. Clicking a video tile (or its
+  Play action) opens the player in its own window while the cursor still rests
+  on the tile, so the album never received a MouseLeave and the muted inline
+  preview kept decoding behind the player — two videos at once. Activating a
+  tile (click, double-click, action icon, context-menu action) now stops the
+  running preview before the app callback fires, and hover previews (video and
+  GIF/WebP animation alike) only run while the album's window is the
+  application's focused window — a preview that is mid-playback when another
+  window takes the focus stops on its next frame tick, and a mouse move over
+  the now-background album no longer re-arms one.
+- **UltraCanvasFilerWidget**: flexible tile widths in the thumbnail grid
+  views. The column count still comes from the selected tile edge, but the
+  leftover strip on the right — too narrow for one more column — is now
+  distributed across the row's cells (Explorer-style), so the grid always
+  fills the widget's width: resizing the window stretches the cells smoothly
+  until the next column fits instead of growing an empty gap. Only the cell
+  widens — captions get the extra room, so long names wrap later — while the
+  image box keeps the square Small / Medium / Big / Maximized edge, centered,
+  so thumbnails keep their size during a resize and the async decode cache is
+  not churned. Controlled by `SetFlexibleTileWidths(bool)` (default on;
+  off restores the fixed-width grid).
 
 #### 2026-08-10 *0.3.38*
 - **UltraFiler**: Favorites (pinning). A new heart button next to the History
