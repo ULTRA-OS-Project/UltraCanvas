@@ -1,5 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.4.0 - Mouse-down events now carry AppKit's click count, so the
+//   second press of a double-click is delivered as MouseDoubleClick (it was
+//   never produced on macOS, leaving every double-click handler dead)
 // Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
 //   main-loop iteration, so frames rendered without a Cocoa event reach the
 //   screen (previously they waited for the next mouse move)
@@ -399,11 +402,32 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         switch (eventType) {
             case NSEventTypeLeftMouseDown:
             case NSEventTypeRightMouseDown:
-            case NSEventTypeOtherMouseDown:
-                event.type = UCEventType::MouseDown;
+            case NSEventTypeOtherMouseDown: {
+                // AppKit already counts consecutive clicks for us, honouring
+                // the double-click interval from System Settings, so the second
+                // press of a double-click arrives with clickCount == 2.
+                //
+                // Deliver that press as MouseDoubleClick *instead of*
+                // MouseDown, which is exactly what the other two backends do
+                // (Win32's WM_LBUTTONDBLCLK replaces the second WM_LBUTTONDOWN;
+                // the X11 backend retypes the ButtonPress) and what widgets
+                // expect: the first click already selected the item, the second
+                // activates it. Without this macOS never produced the event at
+                // all, so double-click did nothing anywhere in the framework —
+                // opening a folder or file in the Filer, and every other
+                // MouseDoubleClick handler.
+                //
+                // Counting in pairs (2, 4, 6 …) matches those backends too:
+                // they reset after firing, so a triple click's third press is
+                // an ordinary MouseDown and the fourth doubles again.
+                const NSInteger clicks = [nsEvent clickCount];
+                event.type = (clicks >= 2 && (clicks % 2) == 0)
+                                     ? UCEventType::MouseDoubleClick
+                                     : UCEventType::MouseDown;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
                 setMouseFields(nsEvent);
                 break;
+            }
 
             case NSEventTypeLeftMouseUp:
             case NSEventTypeRightMouseUp:

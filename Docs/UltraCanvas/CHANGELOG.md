@@ -1,3 +1,17 @@
+#### 2026-08-11 *0.3.46*
+- **macOS: double-click now works at all.** The Cocoa event conversion only ever
+  produced `MouseDown` / `MouseUp`, so `UCEventType::MouseDoubleClick` was never
+  raised on macOS and every handler waiting for it was dead code — double-clicking
+  a folder or file in the Filer did nothing, and the same held for each of the
+  ~37 double-click handlers across the framework. A mouse-down now consults
+  AppKit's `NSEvent.clickCount` (which already honours the double-click interval
+  from System Settings) and the doubled press is delivered as `MouseDoubleClick`
+  *instead of* `MouseDown`, matching the X11 and Win32 backends — the first click
+  selects, the second activates — with pairs counted (2, 4, 6 …) so a triple
+  click's third press is an ordinary `MouseDown` there too. The unused
+  hand-rolled click-tracking state (`MouseClickInfo`, `IsDoubleClick`,
+  `UpdateLastClick` — declared, never defined or called) is gone with it.
+
 #### 2026-08-11 *0.3.45*
 - **macOS: frames rendered without a Cocoa event now reach the screen.** The
   content view is layer-backed, so `setNeedsDisplay:` only queued a layer

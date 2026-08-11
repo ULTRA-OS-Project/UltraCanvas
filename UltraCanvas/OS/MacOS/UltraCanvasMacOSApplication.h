@@ -1,5 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.h
 // Complete macOS platform implementation for UltraCanvas Framework using Cairo
+// Version: 2.4.0 - Dropped the unused hand-rolled double-click tracking state
+//   (AppKit's NSEvent.clickCount drives MouseDoubleClick instead)
 // Version: 2.3.0 - RunInEventLoop() override (CoreAnimation commit per frame)
 // Last Modified: 2026-08-11
 // Author: UltraCanvas Framework
@@ -52,15 +54,10 @@ namespace UltraCanvas {
 // Forward declarations
     class UltraCanvasMacOSWindow;
 
-    struct MouseClickInfo {
-        void* window = nullptr;  // NSWindow*
-        std::chrono::steady_clock::time_point lastClickTime;
-        int lastClickX = 0;
-        int lastClickY = 0;
-        unsigned int lastButton = 0;
-        int doubleClickTime = 250; // milliseconds
-        int doubleClickDistance = 5; // pixels
-    };
+    // (There is no click-tracking state here on purpose: unlike the X11
+    // backend, which times and measures consecutive presses itself, AppKit
+    // hands us NSEvent.clickCount already computed from the user's
+    // double-click interval — see ConvertNSEventToUCEvent.)
 
 // ===== MACOS APPLICATION CLASS =====
     class UltraCanvasMacOSApplication : public UltraCanvasApplicationBase {
@@ -101,9 +98,6 @@ namespace UltraCanvas {
         void* mainMenu;  // NSMenu*
         void* applicationMenu;  // NSMenu*
 
-        // ===== MOUSE TRACKING =====
-        MouseClickInfo mouseClickInfo;
-
         // ===== THREAD SAFETY =====
         std::mutex cocoaMutex;
         std::thread::id mainThreadId;
@@ -142,10 +136,6 @@ namespace UltraCanvas {
 //        void SetVSync(bool enabled) { vsyncEnabled = enabled; }
 //        bool GetVSync() const { return vsyncEnabled; }
 //        double GetDeltaTime() const { return deltaTime; }
-
-        // Mouse tracking for double-click detection
-        bool IsDoubleClick(NSWindow* window, int x, int y, unsigned int button);
-        void UpdateLastClick(NSWindow* window, int x, int y, unsigned int button);
 
         // Thread safety
         bool IsMainThread() const;
