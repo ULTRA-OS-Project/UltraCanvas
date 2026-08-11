@@ -184,6 +184,35 @@ bool EndpointFromSockaddr(const sockaddr* sa, socklen_t /*sal*/,
     return false;
 }
 
+// Fills a sockaddr for bind(): opt.bindAddress as a literal IPv4/IPv6
+// address, or the any-address when empty. Returns false on a literal that
+// doesn't parse in the socket's address family.
+bool BuildBindAddress(const UltraNetSocketOptions& opt, int port,
+                      sockaddr_storage& ss, socklen_t& sl) {
+    if (opt.useIpv6) {
+        auto* a = reinterpret_cast<sockaddr_in6*>(&ss);
+        a->sin6_family = AF_INET6;
+        a->sin6_addr   = in6addr_any;
+        a->sin6_port   = htons(static_cast<uint16_t>(port));
+        sl = sizeof(sockaddr_in6);
+        if (!opt.bindAddress.empty() &&
+            inet_pton(AF_INET6, opt.bindAddress.c_str(), &a->sin6_addr) != 1) {
+            return false;
+        }
+    } else {
+        auto* a = reinterpret_cast<sockaddr_in*>(&ss);
+        a->sin_family      = AF_INET;
+        a->sin_addr.s_addr = INADDR_ANY;
+        a->sin_port        = htons(static_cast<uint16_t>(port));
+        sl = sizeof(sockaddr_in);
+        if (!opt.bindAddress.empty() &&
+            inet_pton(AF_INET, opt.bindAddress.c_str(), &a->sin_addr) != 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Resolves host:port to a single sockaddr suitable for connect/sendto.
 UltraNetResult Resolve(const std::string& host, int port, bool preferIpv6,
                        sockaddr_storage& outStorage, socklen_t& outLen,
@@ -254,18 +283,9 @@ UltraNetHandle UltraNet_TcpListen(int port,
 
     sockaddr_storage ss{};
     socklen_t sl = 0;
-    if (opt.useIpv6) {
-        auto* a = reinterpret_cast<sockaddr_in6*>(&ss);
-        a->sin6_family = AF_INET6;
-        a->sin6_addr   = in6addr_any;
-        a->sin6_port   = htons(static_cast<uint16_t>(port));
-        sl = sizeof(sockaddr_in6);
-    } else {
-        auto* a = reinterpret_cast<sockaddr_in*>(&ss);
-        a->sin_family      = AF_INET;
-        a->sin_addr.s_addr = INADDR_ANY;
-        a->sin_port        = htons(static_cast<uint16_t>(port));
-        sl = sizeof(sockaddr_in);
+    if (!BuildBindAddress(opt, port, ss, sl)) {
+        CloseFd(fd);
+        return UltraNetInvalidHandle;
     }
     if (::bind(fd, reinterpret_cast<sockaddr*>(&ss), sl) != 0 ||
         ::listen(fd, 64) != 0) {
@@ -280,9 +300,24 @@ UltraNetHandle UltraNet_TcpListen(int port,
 }
 
 UltraNetHandle UltraNet_TcpAccept(UltraNetHandle listener,
-                                  UltraNetEndpoint& outRemote) {
+                                  UltraNetEndpoint& outRemote,
+                                  int timeoutMs) {
     auto e = Find(listener);
     if (!e || e->kind != Kind::TcpListener) return UltraNetInvalidHandle;
+
+    if (timeoutMs > 0) {
+        // select() on the listener fd: SO_RCVTIMEO does not apply to
+        // accept() on Winsock, so this is the one portable way to bound it.
+        fd_set rd;
+        FD_ZERO(&rd);
+        FD_SET(e->fd, &rd);
+        timeval tv{};
+        tv.tv_sec  = timeoutMs / 1000;
+        tv.tv_usec = (timeoutMs % 1000) * 1000;
+        int ready = ::select(static_cast<int>(e->fd) + 1, &rd, nullptr,
+                             nullptr, &tv);
+        if (ready <= 0) return UltraNetInvalidHandle;
+    }
 
     sockaddr_storage ss{};
     socklen_t sl = sizeof ss;
@@ -387,21 +422,12 @@ UltraNetHandle UltraNet_UdpOpen(int localPort,
     ApplyOptions(fd, opt);
     ApplyTimeout(fd, opt.sendTimeoutMs, opt.recvTimeoutMs);
 
-    if (localPort > 0) {
+    if (localPort > 0 || !opt.bindAddress.empty()) {
         sockaddr_storage ss{};
         socklen_t sl = 0;
-        if (opt.useIpv6) {
-            auto* a = reinterpret_cast<sockaddr_in6*>(&ss);
-            a->sin6_family = AF_INET6;
-            a->sin6_addr   = in6addr_any;
-            a->sin6_port   = htons(static_cast<uint16_t>(localPort));
-            sl = sizeof(sockaddr_in6);
-        } else {
-            auto* a = reinterpret_cast<sockaddr_in*>(&ss);
-            a->sin_family      = AF_INET;
-            a->sin_addr.s_addr = INADDR_ANY;
-            a->sin_port        = htons(static_cast<uint16_t>(localPort));
-            sl = sizeof(sockaddr_in);
+        if (!BuildBindAddress(opt, localPort, ss, sl)) {
+            CloseFd(fd);
+            return UltraNetInvalidHandle;
         }
         if (::bind(fd, reinterpret_cast<sockaddr*>(&ss), sl) != 0) {
             CloseFd(fd);
@@ -497,6 +523,23 @@ UltraNetResult UltraNet_SocketClose(UltraNetHandle handle) {
     }
     CloseFd(e->fd);
     Unregister(handle);
+    return UltraNetResult::Ok();
+}
+
+UltraNetResult UltraNet_SocketLocalEndpoint(UltraNetHandle handle,
+                                            UltraNetEndpoint& outLocal) {
+    auto e = Find(handle);
+    if (!e) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                     "no such socket");
+    }
+    sockaddr_storage ss{};
+    socklen_t sl = sizeof ss;
+    if (::getsockname(e->fd, reinterpret_cast<sockaddr*>(&ss), &sl) != 0 ||
+        !EndpointFromSockaddr(reinterpret_cast<sockaddr*>(&ss), sl, outLocal)) {
+        return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                                     SocketErrorString(LastSocketError()));
+    }
     return UltraNetResult::Ok();
 }
 

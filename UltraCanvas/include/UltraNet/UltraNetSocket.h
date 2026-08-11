@@ -22,6 +22,10 @@ struct UltraNetSocketOptions {
     int sendBufferSize = 0;             // 0 = OS default
     int recvBufferSize = 0;
     bool useIpv6 = false;
+    // Literal address to bind listeners / UDP sockets to. Empty = any
+    // interface. Use "127.0.0.1" (or "::1" with useIpv6) to accept only
+    // loopback connections — e.g. an OAuth2 redirect listener.
+    std::string bindAddress;
 
     static UltraNetSocketOptions Default() { return {}; }
 };
@@ -46,9 +50,12 @@ UltraNetHandle UltraNet_TcpListen(
     int port,
     const UltraNetSocketOptions& options = UltraNetSocketOptions::Default());
 
+// timeoutMs 0 = block until a client connects; > 0 = return
+// UltraNetInvalidHandle if nobody connected within the window.
 UltraNetHandle UltraNet_TcpAccept(
     UltraNetHandle listener,
-    UltraNetEndpoint& outRemote);
+    UltraNetEndpoint& outRemote,
+    int timeoutMs = 0);
 
 UltraNetResult UltraNet_TcpSend(
     UltraNetHandle handle,
@@ -84,6 +91,12 @@ UltraNetResult UltraNet_UdpReceive(
 // Common
 // ============================================================================
 UltraNetResult UltraNet_SocketClose(UltraNetHandle handle);
+
+// Address + port the socket is actually bound to (getsockname). Lets a
+// listener opened with port 0 discover its ephemeral port.
+UltraNetResult UltraNet_SocketLocalEndpoint(
+    UltraNetHandle handle,
+    UltraNetEndpoint& outLocal);
 
 UltraNetResult UltraNet_SocketSetTimeout(
     UltraNetHandle handle,

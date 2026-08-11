@@ -1,3 +1,91 @@
+#### 2026-08-09 *0.3.43*
+- **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
+  **LinkedIn connector** — OAuth2 code flow for the user's own
+  confidential-client app (secret in the form body, no PKCE; redirect
+  port 17997), member id via OpenID `userinfo`, text posts through the
+  versioned `POST /rest/posts` (post URN read from the `x-restli-id`
+  response header), token refresh when the app has it granted.
+  **Facebook Pages connector** — pasted Page id + long-lived Page access
+  token (personal profiles have no posting API); text to `/{page}/feed`,
+  one photo + caption to `/{page}/photos` as multipart (no public URL
+  needed); Meta's `{"error":{...}}` shape added to the shared error
+  surface. **X media** — images upload via the v2 media endpoint and
+  attach as `media_ids` (4 × ≤5 MB), inside the same refresh-retry as
+  text. **Telegram albums** — 2–10 photos via `sendMediaGroup`
+  (`attach://` multipart, caption on the first). Wizard forms for both
+  new networks. 10 new engine tests (47 total).
+
+#### 2026-08-09 *0.3.42*
+- **UltraSocial** *(Phase 2)*: the "automatically" part plus the Tier-2
+  networks. **Scheduling outbox** — "Post later…" opens a date + time
+  dialog and queues one outbox row per selected account (UltraDatabase,
+  raw draft stored so adaptation happens at send time); a scheduler timer
+  flushes due entries through the same `UltraSocialPublisher` path as
+  "Post now", with bounded retries on linear backoff (5 attempts,
+  +5 min × attempt) before a failed history row; queued posts show as
+  closable chips (with retry count) and go out at next launch when they
+  came due while the app was closed. **Reddit connector** — OAuth2
+  "installed app" code flow built from the UltraNetOAuth2 blocks (Reddit
+  has no PKCE; token exchange authenticates HTTP Basic `clientid:` with
+  an empty password), self posts via `/api/submit` with the draft's first
+  line as the title, hourly-token refresh on 401. **X connector** — OAuth2
+  code + PKCE public client via `UltraNet_OAuth2AuthorizeInteractive`,
+  text tweets via `POST /2/tweets`, rotating refresh tokens persisted
+  back to the vault. Both are bring-your-own-client-id (fixed loopback
+  redirect ports 17995/17996); wizard forms added. Capabilities now
+  express "media not supported" (`maxImages == 0`) — the composer drops
+  attachments for such networks with a warning. 11 new engine tests
+  (37 total).
+
+#### 2026-08-09 *0.3.41*
+- **UltraSocial** *(Phase 1 UI)*: the GUI application (target `UltraSocial`)
+  on top of the engine — compose window with per-account target checkboxes
+  and live character counters (per network's limit, switching to the caption
+  limit when media is attached; amber badge + "will be shortened" warning
+  when over), media chips through the file picker, add-account wizard
+  (network picker with per-network fields and hints; Mastodon's browser
+  OAuth or pasted token, Bluesky app password, Telegram bot token), post
+  reporting per target, and the recent-history strip. Sign-in and publishing
+  run on worker threads; results marshal to the UI through a main-thread
+  timer queue, so the window stays live during the OAuth browser consent
+  and slow uploads.
+
+#### 2026-08-09 *0.3.40*
+- **UltraSocial** *(new, Phase 1 engine)*: the cross-posting app's headless
+  engine (`Apps/UltraSocial/engine/`, target `UltraSocialEngine`) —
+  compose-once → adapt-per-network composer (code-point counting,
+  word-boundary truncation with ellipsis, media trimming, caption limits),
+  per-account credential vault (UltraMail's file-backend pattern), account +
+  post-history store on UltraDatabase, and three connectors behind
+  `ISocialConnector`: **Mastodon** (dynamic OAuth client registration +
+  UltraNetOAuth2 interactive flow or pasted token; multipart media upload
+  with 202-processing poll; statuses with `Idempotency-Key`), **Bluesky**
+  (app-password session, `uploadBlob` + `app.bsky.feed.post` records,
+  transparent `ExpiredToken` refresh that hands the rewritten credential
+  blob back for the vault), **Telegram** (Bot API; `sendMessage` /
+  `sendPhoto` with caption; `t.me` permalinks). 26 engine tests against
+  scripted loopback HTTP fakes (`ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS`).
+  Design: `Docs/UltraSocial/Concept.md`.
+
+#### 2026-08-09 *0.3.39*
+- **UltraNet**: new OAuth 2.0 helper (`UltraNet/UltraNetOAuth2.h`) — the
+  authorization-code flow with PKCE (RFC 6749 + 7636) for native apps:
+  `UltraNet_OAuth2GeneratePkce` / `UltraNet_OAuth2ChallengeFromVerifier`
+  (S256, verified against the RFC 7636 test vector),
+  `UltraNet_OAuth2BuildAuthUrl`, a loopback redirect listener
+  (`UltraNet_OAuth2WaitForCallback`, RFC 8252 style — binds 127.0.0.1/::1
+  only, answers stray requests with 404 and keeps waiting),
+  `UltraNet_OAuth2ExchangeCode` / `UltraNet_OAuth2Refresh` (client secret via
+  HTTP Basic or form body; server `error`/`error_description` surfaced in the
+  result), `UltraNet_OAuth2ParseTokenResponse`, and the one-call blocking
+  orchestrator `UltraNet_OAuth2AuthorizeInteractive`, which also resolves a
+  port-0 redirect URI to the ephemeral port actually bound. SHA-256 is
+  self-contained in the module, so no TLS-library crypto dependency.
+- **UltraNet** sockets: `UltraNetSocketOptions.bindAddress` restricts
+  listeners / UDP binds to one interface (e.g. loopback),
+  `UltraNet_TcpAccept` takes an optional timeout, and the new
+  `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
+  they let a port-0 listener discover its ephemeral port.
 #### 2026-08-10 *0.3.39*
 - **UltraCanvasAlbum** *(1.6.1)*: a hover video preview no longer plays
   alongside the full video opened from its tile. Clicking a video tile (or its

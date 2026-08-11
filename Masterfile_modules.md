@@ -89,7 +89,12 @@ future.
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
   `UltraNet_FtpDelete`, `UltraNet_FtpRename`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
+  `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
+  `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
+  `UltraNet_OAuth2Refresh`, `UltraNet_OAuth2ParseTokenResponse`,
+  `UltraNet_OAuth2AuthorizeInteractive`
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`

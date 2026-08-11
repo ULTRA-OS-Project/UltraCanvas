@@ -43,6 +43,7 @@ set(ULTRANET_TEST_SOURCES
     test_dns_format.cpp
     test_ftp_parser.cpp
     test_loopback.cpp
+    test_oauth2.cpp
     test_smtp_plugin.cpp
     test_imap_plugin.cpp
     test_imap_mailbox.cpp
