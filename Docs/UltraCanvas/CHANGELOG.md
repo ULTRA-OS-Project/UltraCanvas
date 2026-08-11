@@ -29,6 +29,73 @@
   the segment's right edge, so the whole arrow head opens the menu. It
   never takes more than the trailing half of an item, so the label keeps a
   clickable area of its own.
+#### 2026-08-11 *0.3.47*
+- **macOS: a classic USB mouse wheel is responsive again.** `UCEvent::wheelDelta`
+  is an integer notch count — the X11 backend emits ±1 per button-4/5 press, the
+  Win32 one divides `WM_MOUSEWHEEL` by `WHEEL_DELTA` and guards the result
+  against rounding to zero — but the macOS backend assigned
+  `NSEvent.scrollingDeltaY` straight into it. macOS applies scroll acceleration
+  to a classic wheel and reports it in *lines*, so a single slow notch arrives
+  as a fraction (~0.1) and truncated to 0, while a trackpad or Magic Mouse
+  reports *points*, tens per gesture, and always survived the truncation. Worse
+  than losing the notch: a zero delta is not "no scroll" to widgets, most of
+  which read `wheelDelta > 0 ? up : down`, so it landed in the down branch — in
+  the 3D scatter / contour charts the wheel zoomed *out* whichever way it was
+  turned. Wheel events now round to a notch, never report a real notch as zero,
+  and are not delivered at all when there is no vertical movement (which also
+  stops AppKit's zero-delta gesture / momentum phase events, and horizontal
+  swipes, from registering as scrolls down). Trackpad scroll distances are
+  unchanged.
+
+#### 2026-08-11 *0.3.46*
+- **macOS: double-click now works at all.** The Cocoa event conversion only ever
+  produced `MouseDown` / `MouseUp`, so `UCEventType::MouseDoubleClick` was never
+  raised on macOS and every handler waiting for it was dead code — double-clicking
+  a folder or file in the Filer did nothing, and the same held for each of the
+  ~37 double-click handlers across the framework. A mouse-down now consults
+  AppKit's `NSEvent.clickCount` (which already honours the double-click interval
+  from System Settings) and the doubled press is delivered as `MouseDoubleClick`
+  *instead of* `MouseDown`, matching the X11 and Win32 backends — the first click
+  selects, the second activates — with pairs counted (2, 4, 6 …) so a triple
+  click's third press is an ordinary `MouseDown` there too. The unused
+  hand-rolled click-tracking state (`MouseClickInfo`, `IsDoubleClick`,
+  `UpdateLastClick` — declared, never defined or called) is gone with it.
+
+#### 2026-08-11 *0.3.45*
+- **macOS: frames rendered without a Cocoa event now reach the screen.** The
+  content view is layer-backed, so `setNeedsDisplay:` only queued a layer
+  display: `drawRect:` (the blit of the Cairo surface) and the CoreAnimation
+  commit that puts it on screen both happened at the end of *AppKit's* event
+  cycle, which this framework does not run — its loop blocks in
+  `CFRunLoopRunInMode(..., returnAfterSourceHandled: true)` and returns as soon
+  as the cross-thread wake-up source is handled, before the run-loop observers
+  AppKit relies on fire. Any repaint not provoked by an input event therefore
+  stayed invisible until the next mouse move: opening a folder in one of the
+  Filer's thumbnail views showed no thumbnails at all until the cursor was
+  moved, and the same applied to every other `PostToUIThread` result (video
+  poster frames, network completions) and to timer-driven repaints.
+  `InvalidateWindowNative()` now draws the view immediately and
+  `UltraCanvasMacOSApplication::RunInEventLoop()` flushes the CoreAnimation
+  transaction once per main-loop iteration, outside any AppKit display
+  callback. Linux and Windows were unaffected — their surfaces present on
+  flush.
+
+#### 2026-08-11 *0.3.44*
+- **UltraCanvasAlbum** *(1.7.0)*: video tiles now make their own covers.
+  A `Video` item whose `thumbnailPath` is empty — or points at an image that
+  does not decode — has one representative frame extracted from its clip on a
+  background worker (`AlbumConfig::videoPosterFrames`, on by default, with
+  `videoPosterMaxSize` / `videoPosterTimeSec`), cached in memory by media path
+  and repainted in place, reflowing the aspect-driven layouts around the real
+  frame. Nothing is written to disk, which is what fixes macOS: the previous
+  approach cached poster files next to the clips, impossible inside a
+  code-signed `.app` bundle (and equally in an AppImage or any read-only
+  install), so every video tile in the demo's album fell back to the
+  play-triangle placeholder. An explicit cover that decodes still wins, work is
+  queued only by tiles that actually draw, and with no video backend (or an
+  undecodable clip) the slot fails once and the placeholder stays. The DemoApp
+  album example (2.18.0) dropped its `SaveVideoThumbnail` pre-pass, which also
+  removes a synchronous decode per clip from building the page.
 
 #### 2026-08-09 *0.3.43*
 - **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
