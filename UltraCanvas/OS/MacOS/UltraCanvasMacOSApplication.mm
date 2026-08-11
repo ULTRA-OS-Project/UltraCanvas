@@ -1,5 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.5.0 - Scroll wheel deltas are normalised to the framework's notch
+//   count and zero-delta wheel events are dropped, so a classic USB wheel is no
+//   longer swallowed by macOS scroll acceleration
 // Version: 2.4.0 - Mouse-down events now carry AppKit's click count, so the
 //   second press of a double-click is delivered as MouseDoubleClick (it was
 //   never produced on macOS, leaving every double-click handler dead)
@@ -15,6 +18,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <CoreText/CoreText.h>
 
+#include <cmath>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -445,11 +449,46 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
                 setMouseFields(nsEvent);
                 break;
 
-            case NSEventTypeScrollWheel:
+            case NSEventTypeScrollWheel: {
+                // UCEvent::wheelDelta is an integer NOTCH count, not a pixel
+                // amount: the X11 backend emits ±1 per button-4/5 press and the
+                // Win32 one divides WM_MOUSEWHEEL's delta by WHEEL_DELTA. macOS
+                // reports two different units here, so both are mapped onto that
+                // scale — and, just as importantly, a wheel event is never
+                // delivered with a delta of 0. Zero is not "no scroll" to the
+                // widgets: most read `wheelDelta > 0 ? up : down`, so a zero
+                // lands in the down branch (in the 3D charts, a zoom out).
+                const CGFloat dy = [nsEvent scrollingDeltaY];
+                int notches;
+                if ([nsEvent hasPreciseScrollingDeltas]) {
+                    // Trackpad / Magic Mouse: points, tens of them per gesture
+                    // spread over many events. Keep that scale as it was, and
+                    // simply drop the events that carry less than a whole unit
+                    // — including the zero-delta ones AppKit sends to mark
+                    // gesture and momentum phase changes.
+                    notches = static_cast<int>(dy);
+                    if (notches == 0) break;   // NoneEvent: nothing is pushed
+                } else {
+                    // Classic mouse wheel: lines. macOS applies scroll
+                    // acceleration here, so a single slow notch arrives as a
+                    // fraction (~0.1) which truncated to 0 — the notch was
+                    // dropped, and worse, delivered as a zero-delta event that
+                    // read as a scroll down. That is why a USB wheel felt
+                    // unresponsive (and zoomed out whichever way it was turned)
+                    // while a trackpad, with its far larger deltas, worked.
+                    // Round, and never let a real notch vanish — the Win32
+                    // backend guards its division the same way.
+                    notches = static_cast<int>(std::lround(dy));
+                    if (notches == 0) {
+                        if (dy == 0.0) break;
+                        notches = (dy > 0) ? 1 : -1;
+                    }
+                }
                 event.type = UCEventType::MouseWheel;
-                event.wheelDelta = [nsEvent scrollingDeltaY];
+                event.wheelDelta = notches;
                 setMouseFields(nsEvent);
                 break;
+            }
 
             case NSEventTypeKeyDown: {
                 event.type = UCEventType::KeyDown;

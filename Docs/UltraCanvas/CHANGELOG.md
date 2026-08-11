@@ -1,3 +1,21 @@
+#### 2026-08-11 *0.3.47*
+- **macOS: a classic USB mouse wheel is responsive again.** `UCEvent::wheelDelta`
+  is an integer notch count — the X11 backend emits ±1 per button-4/5 press, the
+  Win32 one divides `WM_MOUSEWHEEL` by `WHEEL_DELTA` and guards the result
+  against rounding to zero — but the macOS backend assigned
+  `NSEvent.scrollingDeltaY` straight into it. macOS applies scroll acceleration
+  to a classic wheel and reports it in *lines*, so a single slow notch arrives
+  as a fraction (~0.1) and truncated to 0, while a trackpad or Magic Mouse
+  reports *points*, tens per gesture, and always survived the truncation. Worse
+  than losing the notch: a zero delta is not "no scroll" to widgets, most of
+  which read `wheelDelta > 0 ? up : down`, so it landed in the down branch — in
+  the 3D scatter / contour charts the wheel zoomed *out* whichever way it was
+  turned. Wheel events now round to a notch, never report a real notch as zero,
+  and are not delivered at all when there is no vertical movement (which also
+  stops AppKit's zero-delta gesture / momentum phase events, and horizontal
+  swipes, from registering as scrolls down). Trackpad scroll distances are
+  unchanged.
+
 #### 2026-08-11 *0.3.46*
 - **macOS: double-click now works at all.** The Cocoa event conversion only ever
   produced `MouseDown` / `MouseUp`, so `UCEventType::MouseDoubleClick` was never
