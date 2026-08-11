@@ -1,3 +1,20 @@
+#### 2026-08-11 *0.3.44*
+- **UltraCanvasAlbum** *(1.7.0)*: video tiles now make their own covers.
+  A `Video` item whose `thumbnailPath` is empty — or points at an image that
+  does not decode — has one representative frame extracted from its clip on a
+  background worker (`AlbumConfig::videoPosterFrames`, on by default, with
+  `videoPosterMaxSize` / `videoPosterTimeSec`), cached in memory by media path
+  and repainted in place, reflowing the aspect-driven layouts around the real
+  frame. Nothing is written to disk, which is what fixes macOS: the previous
+  approach cached poster files next to the clips, impossible inside a
+  code-signed `.app` bundle (and equally in an AppImage or any read-only
+  install), so every video tile in the demo's album fell back to the
+  play-triangle placeholder. An explicit cover that decodes still wins, work is
+  queued only by tiles that actually draw, and with no video backend (or an
+  undecodable clip) the slot fails once and the placeholder stays. The DemoApp
+  album example (2.18.0) dropped its `SaveVideoThumbnail` pre-pass, which also
+  removes a synchronous decode per clip from building the page.
+
 #### 2026-08-09 *0.3.43*
 - **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
   **LinkedIn connector** — OAuth2 code flow for the user's own

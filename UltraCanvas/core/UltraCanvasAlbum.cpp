@@ -1,8 +1,15 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.6.1
-// Last Modified: 2026-08-10
+// Version: 1.7.0
+// Last Modified: 2026-08-11
+// V1.7.0: Video tiles extract their own poster frame (AlbumConfig::
+//   videoPosterFrames) — a Video item with no thumbnailPath gets one frame of
+//   the clip decoded on a background worker and cached in memory, so the tile
+//   shows a real cover instead of the play-triangle placeholder. Previously the
+//   app had to pre-generate poster files next to the clips, which cannot work
+//   when the media is read-only (a code-signed macOS .app bundle, an AppImage,
+//   any read-only install) — the case that left every macOS video tile blank.
 // V1.6.1: A hover preview no longer keeps playing next to the full video —
 //   activating a tile (click, double-click, action icon or context-menu action)
 //   stops the running preview before the app callback fires, and previews only
@@ -49,6 +56,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasVideoHoverPreview.h"
+#include "UltraCanvasVideoThumbnail.h"
 #include "UltraCanvasImageAnimation.h"
 #include <algorithm>
 #include <cmath>
@@ -82,6 +90,11 @@ namespace UltraCanvas {
         // the members go away. (The preview engines cancel their own timers
         // in their destructors.)
         CancelAnimationPreviewTimers();
+        // A poster repaint already queued on the UI thread must not run against
+        // a destroyed album, and the worker touches our members, so it is joined
+        // before anything goes away.
+        posterAlive->store(false);
+        StopPosterWorker();
     }
 
     // ===== CONFIGURATION =====
@@ -153,6 +166,7 @@ namespace UltraCanvas {
         items = newItems;
         ClearSelection();
         StopHoverPreview();
+        DropVideoPosters();
         InvalidateAlbumLayout();
         RequestRedraw();
     }
@@ -162,6 +176,7 @@ namespace UltraCanvas {
         selection.clear();
         hoveredItem = -1;
         StopHoverPreview();
+        DropVideoPosters();
         scrollOffsetX = scrollOffsetY = 0;
         InvalidateAlbumLayout();
         RequestRedraw();
@@ -295,6 +310,13 @@ namespace UltraCanvas {
         if (img && img->GetHeight() > 0 && img->GetWidth() > 0) {
             return static_cast<double>(img->GetWidth()) / img->GetHeight();
         }
+        // A Video tile covered by an extracted poster frame is shaped by that
+        // frame (lookup only — the layout pass never starts a decode; the
+        // visible tiles queue their own, and a landed poster reflows us).
+        int pw = 0, ph = 0;
+        if (PeekVideoPosterSize(item, pw, ph)) {
+            return static_cast<double>(pw) / ph;
+        }
         // Sensible defaults per media type when nothing decodes.
         if (item.mediaType == AlbumMediaType::Music) return 1.0;   // square cover
         if (config.targetImageHeight > 0) {
@@ -306,7 +328,153 @@ namespace UltraCanvas {
     std::string UltraCanvasAlbum::ThumbPathFor(const AlbumItem& item) const {
         if (!item.thumbnailPath.empty()) return item.thumbnailPath;
         if (item.mediaType == AlbumMediaType::Photo) return item.mediaPath;
-        return std::string();  // video/music with no thumbnail -> placeholder
+        // Video: a poster frame is extracted from the clip itself (see
+        // AcquireVideoPoster). Music: cover art must be supplied.
+        return std::string();  // no still image -> poster frame / placeholder
+    }
+
+    // ===== VIDEO POSTER FRAMES =====
+    // A Video tile with no usable still cover shows a frame of its own clip.
+    // Both entry points are only reached once ThumbPathFor's image failed to
+    // decode, so an explicit thumbnailPath still wins whenever it works — and a
+    // cover that is missing or unreadable falls through to extraction rather
+    // than to the placeholder. The decode is far too slow for the UI thread (a
+    // cold file can take seconds), so the draw path only queues the request and
+    // paints the placeholder until the worker reports back.
+
+    bool UltraCanvasAlbum::PeekVideoPosterSize(const AlbumItem& item,
+                                               int& outWidth, int& outHeight) const {
+        outWidth = outHeight = 0;
+        if (!config.videoPosterFrames) return false;
+        if (item.mediaType != AlbumMediaType::Video) return false;
+        if (item.mediaPath.empty()) return false;
+
+        std::lock_guard<std::mutex> lk(posterMutex);
+        auto it = posterSlots.find(item.mediaPath);
+        if (it == posterSlots.end() || it->second.state != PosterState::Ready) return false;
+        outWidth  = it->second.width;
+        outHeight = it->second.height;
+        return outWidth > 0 && outHeight > 0;
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasAlbum::AcquireVideoPoster(const AlbumItem& item,
+                                                                   int& outWidth,
+                                                                   int& outHeight) const {
+        outWidth = outHeight = 0;
+        if (!config.videoPosterFrames) return nullptr;
+        if (item.mediaType != AlbumMediaType::Video) return nullptr;
+        if (item.mediaPath.empty()) return nullptr;   // no clip to extract from
+
+        // Snapshot the config here, on the UI thread: the worker must never read
+        // `config`, which SetConfig can replace under it.
+        PosterRequest req;
+        req.path    = item.mediaPath;
+        req.maxSize = std::max(16, config.videoPosterMaxSize);
+        req.timeSec = config.videoPosterTimeSec;
+
+        std::lock_guard<std::mutex> lk(posterMutex);
+        auto it = posterSlots.find(req.path);
+        if (it != posterSlots.end()) {
+            // Pending (queued / being decoded) or Failed (undecodable clip, or no
+            // video backend at all): the caller draws the placeholder. A Failed
+            // slot is never retried, so a broken file cannot spin the worker.
+            if (it->second.state != PosterState::Ready) return nullptr;
+            outWidth  = it->second.width;
+            outHeight = it->second.height;
+            return it->second.pixmap;
+        }
+
+        posterSlots[req.path].state = PosterState::Pending;
+        posterQueue.push_back(std::move(req));
+        StartPosterWorkerLocked();
+        posterCond.notify_one();
+        return nullptr;
+    }
+
+    void UltraCanvasAlbum::StartPosterWorkerLocked() const {
+        // One worker, started on the first tile that actually needs a poster —
+        // an album of photos never creates a thread.
+        if (posterShutdown || posterWorker.joinable()) return;
+        posterWorker = std::thread([this]() { PosterWorkerMain(); });
+    }
+
+    void UltraCanvasAlbum::StopPosterWorker() {
+        {
+            std::lock_guard<std::mutex> lk(posterMutex);
+            posterShutdown = true;
+        }
+        posterCond.notify_all();
+        if (posterWorker.joinable()) posterWorker.join();
+    }
+
+    void UltraCanvasAlbum::PosterWorkerMain() const {
+        for (;;) {
+            PosterRequest req;
+            {
+                std::unique_lock<std::mutex> lk(posterMutex);
+                posterCond.wait(lk, [this]() {
+                    return posterShutdown || !posterQueue.empty();
+                });
+                if (posterShutdown) return;
+                req = std::move(posterQueue.front());
+                posterQueue.pop_front();
+            }
+
+            // The expensive part, outside the lock. Returns null with the null
+            // video backend (ULTRACANVAS_ENABLE_VIDEO=OFF) or an undecodable
+            // source — recorded as Failed so it is asked for only once.
+            VideoThumbnailRequest vreq;
+            vreq.maxWidth    = req.maxSize;
+            vreq.maxHeight   = req.maxSize;
+            vreq.timeSeconds = req.timeSec;
+            std::shared_ptr<UCPixmap> pm = CaptureVideoThumbnailPixmap(req.path, vreq);
+            const bool ready = pm && pm->IsValid() &&
+                               pm->GetWidth() > 0 && pm->GetHeight() > 0;
+
+            {
+                std::lock_guard<std::mutex> lk(posterMutex);
+                if (posterShutdown) return;
+                PosterSlot& slot = posterSlots[req.path];
+                slot.state = ready ? PosterState::Ready : PosterState::Failed;
+                if (ready) {
+                    slot.pixmap = pm;
+                    slot.width  = pm->GetWidth();
+                    slot.height = pm->GetHeight();
+                }
+            }
+            if (ready) PostPosterRedraw();
+        }
+    }
+
+    void UltraCanvasAlbum::DropVideoPosters() {
+        // Called when the item list is replaced wholesale, so cached frames for
+        // clips that are gone do not hold memory for the album's lifetime. A
+        // decode already in flight simply re-adds its own entry — harmless, and
+        // cheaper than making the worker interruptible.
+        std::lock_guard<std::mutex> lk(posterMutex);
+        posterQueue.clear();
+        posterSlots.clear();
+    }
+
+    void UltraCanvasAlbum::PostPosterRedraw() const {
+        // Coalesced: one queued UI task picks up however many posters landed
+        // before it ran.
+        if (posterRedrawPosted.exchange(true)) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) {
+            posterRedrawPosted.store(false);
+            return;
+        }
+        auto alive = posterAlive;
+        auto* self = const_cast<UltraCanvasAlbum*>(this);
+        app->PostToUIThread([self, alive]() {
+            if (!alive->load()) return;   // album destroyed meanwhile
+            self->posterRedrawPosted.store(false);
+            // A poster gives the tile a real aspect ratio, so the aspect-driven
+            // layouts (Justified / Masonry) must reflow around it.
+            self->InvalidateAlbumLayout();
+            self->RequestRedraw();
+        });
     }
 
     void UltraCanvasAlbum::RecomputeLayout() {
@@ -785,6 +953,14 @@ namespace UltraCanvas {
         std::string path = ThumbPathFor(item);
         std::shared_ptr<UCImage> img = path.empty() ? nullptr : UCImage::Get(path);
         if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) {
+            // No still cover: a Video tile falls back to a frame of its own clip
+            // (queued here, decoded on a worker, cached). Drawn through the
+            // preview path so it lands exactly like a thumbnail would.
+            int pw = 0, ph = 0;
+            if (auto poster = AcquireVideoPoster(item, pw, ph)) {
+                DrawPreviewPixmap(ctx, item, rect, zoomExtra, *poster, pw, ph);
+                return;
+            }
             DrawPlaceholder(ctx, item, rect);
             return;
         }
