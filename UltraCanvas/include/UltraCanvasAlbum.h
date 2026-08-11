@@ -2,8 +2,11 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.6.0
-// Last Modified: 2026-07-19
+// Version: 1.6.1
+// Last Modified: 2026-08-10
+// V1.6.1: Hover previews stop when a tile is activated (click / double-click /
+//   action) and only run while the album's window is the focused window, so
+//   they never play alongside a full player opened in another window.
 // V1.6.0: Hover animation preview (AlbumConfig::animationHoverPreview) —
 //   resting the cursor on a tile whose bitmap is an animated image (GIF,
 //   animated WebP) plays the animation in place of its static first frame,
@@ -510,6 +513,9 @@ namespace UltraCanvas {
         // hovered tile (video preview for Video tiles, animation preview for
         // animated bitmaps), end the one whose tile the cursor left.
         void UpdateHoverPreview();
+        // Previews only run while our window is the application's focused
+        // window (see UpdateHoverPreview for why).
+        bool IsWindowFocused() const;
         void StopHoverPreview();               // both kinds (leave / teardown)
         void StopVideoHoverPreview();
         void StopAnimationHoverPreview();

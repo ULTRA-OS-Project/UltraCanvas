@@ -2751,7 +2751,13 @@ cfg.hoverPreviewFps            = 24;     // frame-poll / repaint cadence
 Playback starts only after the dwell delay, so a cursor merely crossing the
 grid never opens a decoder; until the first frame arrives the poster stays, and
 when the preview ends (duration elapsed, clip over, or the cursor leaves) the
-poster returns. One decode session exists at a time. The preview frame is
+poster returns. One decode session exists at a time. Activating a tile — click,
+double-click, an action icon or a context-menu action — also ends the preview
+before the app callback runs, and previews only play while the album's window
+is the application's focused window: when a click opens the full video in its
+own window the cursor typically still rests on the tile, and both rules
+together guarantee the inline preview never plays alongside the real player.
+The preview frame is
 fitted exactly like the thumbnail (`imageDisplay`, focus point, hover zoom) so
 nothing jumps when it starts or ends. Requires a real video backend
 (`ULTRACANVAS_ENABLE_VIDEO`); with the null backend the static thumbnail simply
