@@ -1,7 +1,10 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.2.1 - GetNativeHandle() returns void* handle via __bridge cast
-// Last Modified: 2026-07-20
+// Version: 2.3.0 - InvalidateWindowNative() draws the layer-backed view now
+//   instead of only marking it dirty, so a frame rendered without any Cocoa
+//   event (async thumbnail / poster results, timers) is not left waiting for
+//   AppKit's own event cycle
+// Last Modified: 2026-08-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -664,7 +667,21 @@ namespace UltraCanvas {
         if (!_created || !contentView) return;
 
         @autoreleasepool {
-            [(NSView*)contentView setNeedsDisplay:YES];
+            [contentView setNeedsDisplay:YES];
+            // The view is layer-backed, so marking it dirty only *queues* a
+            // layer display — drawRect: (the blit of our Cairo surface) runs
+            // when AppKit next services the view, and the result reaches the
+            // screen when the CoreAnimation transaction commits. AppKit does
+            // both at the end of ITS event cycle, but this app drives its own
+            // loop (CFRunLoopRunInMode returns as soon as the wake-up source is
+            // handled, so the run-loop observers AppKit relies on need not
+            // fire). A frame produced without any Cocoa event — a thumbnail or
+            // video poster finishing on a worker thread, a timer — would then
+            // stay invisible until the next mouse move generated events.
+            //
+            // Draw it now; UltraCanvasMacOSApplication::RunInEventLoop() flushes
+            // the transaction once per loop iteration to put it on screen.
+            [contentView displayIfNeeded];
         }
     }
 

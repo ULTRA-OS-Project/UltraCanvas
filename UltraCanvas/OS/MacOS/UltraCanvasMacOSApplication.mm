@@ -1,7 +1,9 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.2.2 - NativeWindowHandle is now void*; bridge-cast NSWindow* at FindWindow call sites
-// Last Modified: 2026-07-20
+// Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
+//   main-loop iteration, so frames rendered without a Cocoa event reach the
+//   screen (previously they waited for the next mouse move)
+// Last Modified: 2026-08-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -261,6 +263,28 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
                 [nsApplication sendEvent:event];
             }
             [nsApplication updateWindows];
+        }
+    }
+
+    // Runs at the tail of every main-loop iteration, after all windows have
+    // rendered and invalidated themselves.
+    //
+    // Our content views are layer-backed: what they drew lands on screen only
+    // when the implicit CoreAnimation transaction commits. AppKit commits it at
+    // the end of its own event cycle, which this app does not run — the loop
+    // blocks in CFRunLoopRunInMode(..., returnAfterSourceHandled: true), so a
+    // wake-up from a worker thread returns before the run-loop observers that
+    // would flush CA ever fire. Without this flush, any frame that was not
+    // provoked by a Cocoa event stays invisible until the next one arrives:
+    // exactly why folder thumbnails and video poster frames appeared only once
+    // the mouse was moved.
+    //
+    // Flushing when nothing is pending is cheap, and this runs at the tail of
+    // the loop iteration — outside any AppKit display or layout callback, which
+    // is the one context where flushing would be wrong.
+    void UltraCanvasMacOSApplication::RunInEventLoop() {
+        @autoreleasepool {
+            [CATransaction flush];
         }
     }
 

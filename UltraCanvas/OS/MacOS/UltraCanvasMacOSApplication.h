@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.h
 // Complete macOS platform implementation for UltraCanvas Framework using Cairo
-// Version: 2.2.0
-// Last Modified: 2026-05-10
+// Version: 2.3.0 - RunInEventLoop() override (CoreAnimation commit per frame)
+// Last Modified: 2026-08-11
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -160,6 +160,9 @@ namespace UltraCanvas {
         void ReleaseMouseNative() override;
 
         void CollectAndProcessNativeEvents() override;
+        // Commits the frame produced by this loop iteration to the screen (the
+        // implicit CoreAnimation transaction behind our layer-backed views).
+        void RunInEventLoop() override;
         void WakeUpEventLoop() override;
         void InitializeWakeUp() override;
         void ShutdownWakeUp() override;

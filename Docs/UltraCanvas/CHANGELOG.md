@@ -1,3 +1,22 @@
+#### 2026-08-11 *0.3.45*
+- **macOS: frames rendered without a Cocoa event now reach the screen.** The
+  content view is layer-backed, so `setNeedsDisplay:` only queued a layer
+  display: `drawRect:` (the blit of the Cairo surface) and the CoreAnimation
+  commit that puts it on screen both happened at the end of *AppKit's* event
+  cycle, which this framework does not run — its loop blocks in
+  `CFRunLoopRunInMode(..., returnAfterSourceHandled: true)` and returns as soon
+  as the cross-thread wake-up source is handled, before the run-loop observers
+  AppKit relies on fire. Any repaint not provoked by an input event therefore
+  stayed invisible until the next mouse move: opening a folder in one of the
+  Filer's thumbnail views showed no thumbnails at all until the cursor was
+  moved, and the same applied to every other `PostToUIThread` result (video
+  poster frames, network completions) and to timer-driven repaints.
+  `InvalidateWindowNative()` now draws the view immediately and
+  `UltraCanvasMacOSApplication::RunInEventLoop()` flushes the CoreAnimation
+  transaction once per main-loop iteration, outside any AppKit display
+  callback. Linux and Windows were unaffected — their surfaces present on
+  flush.
+
 #### 2026-08-11 *0.3.44*
 - **UltraCanvasAlbum** *(1.7.0)*: video tiles now make their own covers.
   A `Video` item whose `thumbnailPath` is empty — or points at an image that
