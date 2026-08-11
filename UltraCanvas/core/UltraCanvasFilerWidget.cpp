@@ -4225,6 +4225,16 @@ namespace UltraCanvas {
         int scrollbarGutter = 10;
         int availW = area.width - scrollbarGutter;
         int cols = std::max(1, (availW + gap) / (tileW + gap));
+        // Flexible tile widths (Explorer-style): the leftover strip on the
+        // right — too narrow for one more column — is folded into the tiles,
+        // so the row always fills the width and resizing stretches the cells
+        // smoothly until the next column fits. Only the cell widens (the
+        // caption gets the room); the image box keeps the square edge (see
+        // below), so decode sizes — and the async thumbnail cache keyed on
+        // them — are unaffected. The division remainder (< cols px) stays on
+        // the right so all columns are equally wide.
+        if (flexibleTileWidths)
+            tileW = std::max(tileW, (availW - (cols - 1) * gap) / cols);
         size_t n = entries.size();
 
         // Wrapping needs text metrics. Outside a render pass the widget may not
@@ -4272,7 +4282,11 @@ namespace UltraCanvas {
                 ItemLayout it;
                 it.entryIndex = i;
                 it.rect = Rect2Di(area.x + col * (tileW + gap), y, tileW, tileH);
-                it.imageRect = Rect2Di(it.rect.x, it.rect.y, tileW, rowImageH);
+                // The image box stays the square edge, centered in the (possibly
+                // stretched) cell, so a resize never changes what the decode
+                // workers are asked for.
+                it.imageRect = Rect2Di(it.rect.x + (tileW - edge) / 2,
+                                       it.rect.y, edge, rowImageH);
                 it.captionLines = rowNameLines;
                 items.push_back(it);
             }
@@ -5232,6 +5246,15 @@ namespace UltraCanvas {
         // Existing slots hold the other representation; drop them and let
         // the visible tiles re-decode into the new one.
         DropThumbnailCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFlexibleTileWidths(bool enabled) {
+        if (flexibleTileWidths == enabled) return;
+        flexibleTileWidths = enabled;
+        // Only the thumbnail grid layout depends on this, and the image boxes
+        // keep their size either way — relayout, no decode is redone.
+        InvalidateFilerLayout();
         RequestRedraw();
     }
 
