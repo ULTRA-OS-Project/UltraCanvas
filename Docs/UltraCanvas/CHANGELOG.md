@@ -1,3 +1,35 @@
+#### 2026-08-11 *0.3.44*
+- **Breadcrumb**: four fixes to the per-item dropdowns, all visible in the
+  Filer's and the Media Viewer's path strip. **An empty list gets no
+  control** — a folder with no sub-folders now shows no dropdown chevron
+  and reserves no click area instead of opening a menu that only says
+  "(no sub-folders)". Lazily filled dropdowns answer the question through
+  the new `BreadcrumbItem::dropdownAvailableProvider`, a cheap "is there a
+  first entry?" probe cached per item
+  (`UltraCanvasBreadcrumb::RefreshDropdownAvailability()` clears it);
+  `hasDropdown` with nothing behind it no longer draws a chevron either.
+  **Hover no longer hides the label**: the current item keeps its emphasis
+  text colour through hover and press, and its feedback background is
+  derived from `currentItemBackgroundColor` (tinted towards the other end
+  of the luminance scale) instead of the generic hover colour, which turned
+  the Filer's blue current segment pale while its label stayed white. New
+  `currentItemHoverBackgroundColor` / `currentItemPressedBackgroundColor`
+  override the derived colours, and `minTextContrastRatio` (2.2 by default,
+  0 disables) redraws a label black or white when it cannot be read against
+  its own opaque background. The `Steps` preset's hover/press label colours
+  and the `Parallelogram` preset's current-item label were unreadable on
+  their own backgrounds and were fixed at the source. **Dropdown entries
+  sort alphabetically** (case-insensitive, by the displayed name — sorting
+  full paths put every capitalised folder ahead of every lower-case one),
+  opt-in per item via `BreadcrumbItem::sortDropdownItems`. **The dropdown
+  click area is a full-height zone**, at least
+  `BreadcrumbStyle::dropdownHitAreaMinWidth` (24px) wide, covering the
+  chevron, the gap in front of it and the item's trailing padding — and, in
+  the `Arrow` / `Parallelogram` styles, extending over the tip drawn past
+  the segment's right edge, so the whole arrow head opens the menu. It
+  never takes more than the trailing half of an item, so the label keeps a
+  clickable area of its own.
+
 #### 2026-08-09 *0.3.43*
 - **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
   **LinkedIn connector** — OAuth2 code flow for the user's own

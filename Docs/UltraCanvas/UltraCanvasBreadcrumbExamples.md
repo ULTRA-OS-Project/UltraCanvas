@@ -56,6 +56,8 @@ struct BreadcrumbItem {
     bool hasDropdown  = false;
     std::vector<MenuItemData> dropdownItems;
     std::function<std::vector<MenuItemData>()> dropdownItemsProvider; // Lazy
+    std::function<bool()> dropdownAvailableProvider;  // "is there anything in it?" probe
+    bool sortDropdownItems = false;                   // sort entries by label (case-insensitive)
     std::function<void()> onClick;
     void* userData    = nullptr;
 
@@ -131,11 +133,17 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
 
 Every node drops down its own sub-folders: `Computer` lists the drives, the
 drive node the folders of that drive, and each folder node the folders inside
-it — so the path can be extended one level straight from the strip. A folder
-without sub-folders shows a disabled `(no sub-folders)` entry. Every list —
-including the drive list of the `Computer` node — is filled lazily when that
-menu opens, so building the strip never touches the filesystem: rebuilding it on
-each navigation (the pattern below) costs nothing.
+it — so the path can be extended one level straight from the strip. Entries are
+sorted alphabetically, case-insensitively. **A folder without sub-folders shows
+no dropdown chevron at all**, so the strip never offers a menu that would come
+up empty.
+
+Every list — including the drive list of the `Computer` node — is filled lazily
+when that menu opens; while the strip is laid out, each segment only asks
+whether it holds a *first* sub-folder (that is what decides the chevron), and
+the answer is cached per item, so rebuilding the strip on each navigation (the
+pattern below) stays cheap. Call `RefreshDropdownAvailability()` after the
+folders under a visible path have changed to have the chevrons re-evaluated.
 
 ```cpp
 // Keep a filer and its path strip in sync.
@@ -163,9 +171,35 @@ bool IsDropdownOpen() const;
 // is the overflow menu.
 int  GetOpenDropdownItemIndex() const;
 void CloseDropdown();
+// Does this item currently show a dropdown control at all?
+bool ItemShowsDropdown(const BreadcrumbItem& item) const;
+// Forget every cached dropdownAvailableProvider answer and re-lay out.
+void RefreshDropdownAvailability();
 ```
 
-The pointer says which parts open a menu: a dropdown chevron — and the whole
+**An item whose list is empty shows no chevron.** `hasDropdown` alone is not
+enough: an item needs entries behind it, either in `dropdownItems` or from
+`dropdownItemsProvider`. A lazily filled list is asked about through the
+optional `dropdownAvailableProvider` — a cheap "is there a first entry?" probe
+that must not build the whole list; it is consulted once per item and cached
+(`RefreshDropdownAvailability()` clears the cache). Without a probe a lazy
+provider is assumed to have entries; if it then comes back empty, the menu is
+not opened and the chevron disappears.
+
+Set `sortDropdownItems` on an item to have its entries sorted by label
+(case-insensitive) before the menu opens — for lists gathered from elsewhere,
+such as the folders of a directory. A hand-written menu keeps its own order.
+
+**What opens the dropdown** is a full-height zone at the trailing end of the
+item, not the 6px chevron glyph: the chevron, the gap in front of it and the
+item's trailing padding, widened to at least
+`BreadcrumbStyle::dropdownHitAreaMinWidth` (24px by default) and — in the
+`Arrow` / `Parallelogram` item styles — extended over the tip drawn past the
+segment's right edge, so the whole arrow head is clickable. The zone never
+takes more than the trailing half of an item, so the label always keeps a
+clickable area of its own.
+
+The pointer says which parts open a menu: the dropdown zone — and the whole
 overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
 (`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
 the rest of the strip shows the item cursor. Both are style fields:
@@ -199,6 +233,28 @@ void SetOverflowMode(BreadcrumbOverflowMode mode);
 void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetMaxItemTextWidth(int maxWidth);
+```
+
+### Hover, Press and Readability
+
+The current item keeps its emphasis text colour through hover and press: those
+states move its *background* instead. The generic `itemHoverBackgroundColor` /
+`itemPressedBackgroundColor` are cut for the muted resting background, and
+handing them the current item — which usually carries a saturated fill and a
+white label — is what used to leave that label unreadable. By default the
+feedback is derived from `currentItemBackgroundColor` itself, tinted towards
+the other end of the luminance scale (a dark fill lightens, a light one
+darkens); set the colours explicitly to override:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.currentItemHoverBackgroundColor   = Color(30, 140, 230, 255);  // 0 alpha = derive
+s.currentItemPressedBackgroundColor = Color(0,  100, 190, 255);
+// Readability guard: a label that cannot be made out against its own opaque
+// background is redrawn black or white. The value is a WCAG contrast ratio
+// (1..21); 0 switches the guard off.
+s.minTextContrastRatio = 2.2f;                                   // default
+bc->SetStyle(s);
 ```
 
 ## Enumerations
@@ -237,10 +293,12 @@ enum class BreadcrumbOverflowMode {
 
 ```cpp
 enum class BreadcrumbItemStyle {
-    Plain,       // Text only, background on hover
-    Pill,        // Rounded background
-    Underline,   // Underline on hover
-    Tab          // Tab-like with bottom border
+    Plain,         // Text only, background on hover
+    Pill,          // Rounded background
+    Underline,     // Underline on hover
+    Tab,           // Tab-like with bottom border
+    Arrow,         // Interlocking right-pointing arrow segments ("steps")
+    Parallelogram  // Interlocking slanted segments
 };
 ```
 
@@ -252,6 +310,9 @@ BreadcrumbStyle::Compact();
 BreadcrumbStyle::Pills();
 BreadcrumbStyle::FileExplorer();
 BreadcrumbStyle::WebDocs();
+BreadcrumbStyle::Arrow();          // interlocking arrow segments
+BreadcrumbStyle::Parallelogram();  // interlocking slanted segments
+BreadcrumbStyle::Steps();          // Arrow segments + round numbered indicators
 ```
 
 ## Events and Callbacks
@@ -260,7 +321,7 @@ BreadcrumbStyle::WebDocs();
 // Fired when a non-current item is clicked. `index` is the item's position.
 std::function<void(int index, const BreadcrumbItem& item)> onItemClicked;
 
-// Fired when the dropdown chevron of an item is clicked.
+// Fired when an item's dropdown zone is clicked.
 std::function<void(int index, const BreadcrumbItem& item)> onItemDropdown;
 
 // Fired when the overflow ("...") menu is opened.
