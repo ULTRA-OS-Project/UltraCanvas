@@ -21,7 +21,6 @@
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
 #include <sstream>
 
 #ifndef M_PI
@@ -277,11 +276,14 @@ namespace UltraCanvas {
 
         // The grid has first claim on the height: the header may take only what
         // is left once every row has its minimum.
+        // std::clamp is undefined when lo > hi, and these bounds come from
+        // caller-settable style fields; go through min/max so an odd style is
+        // harmless rather than UB.
         const double gridFloor = matrixLayout.count * style.matrixMinCellSize;
-        const double headerBand = std::clamp(area.height - gridFloor,
-                                             20.0,
-                                             std::min<double>(style.matrixMaxHeaderHeight,
-                                                              longestLabel + 12.0));
+        const double headerCap = std::min<double>(style.matrixMaxHeaderHeight,
+                                                  longestLabel + 12.0);
+        const double headerBand = std::max(20.0,
+                std::min(area.height - gridFloor, std::max(20.0, headerCap)));
 
         const double gridLeft = area.x + attributeWidth + rowLabelWidth;
         const double availW = area.x + area.width - gridLeft;
@@ -290,8 +292,9 @@ namespace UltraCanvas {
         // Cells are square: the matrix crosses one set with itself, so a
         // non-square cell would make the same relation read differently by axis.
         double cell = std::min(availW, availH) / std::max(1, matrixLayout.count);
-        cell = std::clamp(cell, static_cast<double>(style.matrixMinCellSize),
-                          static_cast<double>(style.matrixMaxCellSize));
+        const double cellLo = static_cast<double>(style.matrixMinCellSize);
+        const double cellHi = std::max(cellLo, static_cast<double>(style.matrixMaxCellSize));
+        cell = std::max(cellLo, std::min(cell, cellHi));
         matrixLayout.cellSize = cell;
 
         const double gridSize = cell * matrixLayout.count;

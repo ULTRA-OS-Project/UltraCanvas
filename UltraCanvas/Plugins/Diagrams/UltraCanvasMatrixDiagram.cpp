@@ -8,6 +8,7 @@
 #include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>   // SIZE_MAX, uint8_t - transitive on libstdc++, not on MSVC
 #include <cstdio>
 #include <sstream>
 
@@ -279,10 +280,17 @@ namespace UltraCanvas {
         layout.panels.clear();
     }
 
+    // std::clamp is undefined when lo > hi, and every bound below comes from a
+    // caller-settable style field. Clamping through min/max instead keeps an
+    // inverted or nonsensical style harmless: the lower bound simply wins.
+    static double ClampSafe(double value, double lo, double hi) {
+        return std::max(lo, std::min(value, std::max(lo, hi)));
+    }
+
     double UltraCanvasMatrixDiagram::FitCellSize(double available, int count) const {
         if (count <= 0) return style.minCellSize;
         const double raw = available / static_cast<double>(count);
-        return std::clamp(raw, style.minCellSize, style.maxCellSize);
+        return ClampSafe(raw, style.minCellSize, style.maxCellSize);
     }
 
     double UltraCanvasMatrixDiagram::MeasureHeaderBand(IRenderContext* ctx, int panelIndex,
@@ -325,7 +333,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        return std::clamp(needed, lineHeight + 8.0, style.maxHeaderBandHeight);
+        return ClampSafe(needed, lineHeight + 8.0, style.maxHeaderBandHeight);
     }
 
     MatrixHeaderFit UltraCanvasMatrixDiagram::ResolveHeaderFit(IRenderContext* ctx,
@@ -419,8 +427,8 @@ namespace UltraCanvas {
         const double gridFloor = pl.rows * style.minCellSize
                                  + (colTotals ? style.totalsGutterSize : 0.0)
                                  + axisTitleSpace;
-        const double bandAllowance = std::clamp(area.height - gridFloor,
-                                                28.0, style.maxHeaderBandHeight);
+        const double bandAllowance = ClampSafe(area.height - gridFloor,
+                                               28.0, style.maxHeaderBandHeight);
         pl.fit = ResolveHeaderFit(ctx, 0, pl.cellWidth, bandAllowance);
         pl.headerLines = (pl.fit == MatrixHeaderFit::Wrapped) ? 3 : 1;
 
@@ -480,8 +488,8 @@ namespace UltraCanvas {
         // Same single-pass order as the L: width, then fit, then band height,
         // with the grid holding first claim on the vertical space.
         const double gridFloor = left.rows * style.minCellSize + axisTitleSpace;
-        const double bandAllowance = std::clamp(area.height - gridFloor,
-                                                28.0, style.maxHeaderBandHeight);
+        const double bandAllowance = ClampSafe(area.height - gridFloor,
+                                               28.0, style.maxHeaderBandHeight);
         left.fit = ResolveHeaderFit(ctx, 0, cellWidth, bandAllowance);
         right.fit = ResolveHeaderFit(ctx, 1, cellWidth, bandAllowance);
 
