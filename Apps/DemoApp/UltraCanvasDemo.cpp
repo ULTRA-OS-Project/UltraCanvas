@@ -1548,6 +1548,17 @@ namespace UltraCanvas {
                 .AddVariant("fishbonediagram", "Vertical")
                 .AddVariant("fishbonediagram", "Compact");
 
+        infoBuilder.AddItem("matrixdiagram", "Matrix Diagram",
+                            "Relationships between two or three ordered lists, marked from a "
+                            "named scale and rolled up into weighted row and column totals",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateMatrixDiagramExamples(); },
+                            "DemoApp/UltraCanvasMatrixDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasMatrixDiagram.md")
+                .AddVariant("matrixdiagram", "L-Shaped")
+                .AddVariant("matrixdiagram", "T-Shaped")
+                .AddVariant("matrixdiagram", "Weighted (QFD)");
+
         infoBuilder.AddItem("timelinediagram", "Timeline Diagram",
                             "Narrative timeline infographic with nine design presets",
                             ImplementationStatus::FullyImplemented,

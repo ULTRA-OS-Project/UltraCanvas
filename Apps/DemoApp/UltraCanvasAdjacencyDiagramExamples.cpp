@@ -18,19 +18,13 @@ namespace UltraCanvas {
 // TAB 1 — Library branch  (image 1 — DCPL adjacency diagram)
 // Public / staff / support functional zones across one floor
 // ─────────────────────────────────────────────────────────────────────────────
-    static std::shared_ptr<UltraCanvasContainer> MakeLibraryTab(
-            std::shared_ptr<UltraCanvasLabel> statusLabel)
+    // The library programme, built once and used by both views below. This is
+    // the whole point of the matrix being a view rather than a separate
+    // element: the bubble tab and the matrix tab call this same function, so
+    // neither can drift from the other.
+    static void PopulateLibraryProgramme(
+            const std::shared_ptr<UltraCanvasAdjacencyDiagram>& diagram)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjLibTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjLibDesc", 10, 8, 900, 22);
-        desc->SetText("Library branch adjacency: circles sized by floor area. Solid = direct adjacency, dashed = secondary access.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
-                "LibDiagram", 10, 34, 990, 654);
-
         // Rooms — position in diagram local coordinates; CenterContent() below
         // shifts the bounding box of all rooms to the widget center.
         diagram->AddRoom("lobby",    "Lobby / Entry",      80,   0,    0,  RoomFunctionType::Circulation);
@@ -76,6 +70,28 @@ namespace UltraCanvas {
         zone.fillColor   = Color(230, 235, 255,  35);
         zone.padding     = 30.0f;
         diagram->AddZone(zone);
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 1 — Library branch, bubble view
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeLibraryTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>("AdjLibTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("AdjLibDesc", 10, 8, 900, 22);
+        desc->SetText("Library branch adjacency: circles sized by floor area. Solid = direct adjacency, dashed = secondary access.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
+                "LibDiagram", 10, 34, 990, 654);
+        PopulateLibraryProgramme(diagram);
+
+        // The five function-type colours were previously unexplained on screen.
+        diagram->SetShowLegend(true);
+        diagram->SetLegendPosition(ChartLegendPosition::InsetTopRight);
 
         diagram->onRoomClick = [statusLabel](int, const AdjacencyRoom& r) {
             std::ostringstream ss;
@@ -84,6 +100,79 @@ namespace UltraCanvas {
         };
 
         diagram->CenterContent();
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 2 — The same library programme as a half matrix
+// Same rooms, same links, no conversion: only SetView() differs.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeLibraryMatrixTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>("AdjMatrixTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("AdjMatrixDesc", 10, 8, 980, 22);
+        desc->SetText("The same library programme as an adjacency matrix — identical rooms and links, "
+                      "only the view differs. Each space is crossed against every other; the upper "
+                      "triangle carries the requirement.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
+                "LibMatrix", 10, 34, 990, 654);
+        PopulateLibraryProgramme(diagram);
+
+        // The bubble programme above was written in terms of link KIND
+        // (direct / secondary / service). Priority is the other axis, and it is
+        // what the matrix plots, so state it explicitly here.
+        diagram->SetLinkPriority("lobby",    "circ",      AdjacencyPriority::Must);
+        diagram->SetLinkPriority("lobby",    "children",  AdjacencyPriority::Must);
+        diagram->SetLinkPriority("circ",     "staff",     AdjacencyPriority::Must);
+        diagram->SetLinkPriority("staff",    "fiction",   AdjacencyPriority::Should);
+        diagram->SetLinkPriority("staff",    "lounge",    AdjacencyPriority::Should);
+        diagram->SetLinkPriority("fiction",  "nonfic",    AdjacencyPriority::Must);
+        diagram->SetLinkPriority("nonfic",   "youngadl",  AdjacencyPriority::Should);
+        diagram->SetLinkPriority("lobby",    "meeting",   AdjacencyPriority::Should);
+        diagram->SetLinkPriority("lobby",    "print",     AdjacencyPriority::Maybe);
+        diagram->SetLinkPriority("lobby",    "toilets",   AdjacencyPriority::Should);
+        diagram->SetLinkPriority("children", "childprog", AdjacencyPriority::Must);
+        diagram->SetLinkPriority("meeting",  "storage",   AdjacencyPriority::Maybe);
+        diagram->SetLinkPriority("staff",    "storage",   AdjacencyPriority::Should);
+
+        // Public spaces first, back-of-house last — the ordering a programme is
+        // usually written in, and the one that makes clusters visible.
+        diagram->SetMatrixOrder({"lobby", "circ", "children", "childprog", "meeting",
+                                 "fiction", "nonfic", "youngadl", "print", "toilets",
+                                 "staff", "lounge", "storage"});
+
+        diagram->SetAttributeColumns({"m²", "Public"});
+        for (int i = 0; i < diagram->GetRoomCount(); ++i) {
+            const AdjacencyRoom* room = diagram->GetRoom(i);
+            if (!room) continue;
+            AdjacencyRoom updated = *room;
+            std::ostringstream area;
+            area << static_cast<int>(updated.areaSqM);
+            updated.attributes = {area.str(),
+                                  updated.functionType == RoomFunctionType::Public ? "Y" : "N"};
+            diagram->UpdateRoom(updated.id, updated);
+        }
+
+        diagram->SetView(AdjacencyView::Matrix);
+        diagram->SetShowLegend(true);
+        diagram->SetLegendPosition(ChartLegendPosition::BottomCenter);
+
+        diagram->onMatrixCellClick = [statusLabel](const std::string& rowId,
+                                                   const std::string& colId,
+                                                   const AdjacencyLink* link) {
+            std::ostringstream ss;
+            ss << rowId << " — " << colId << "   "
+               << (link ? UltraCanvasAdjacencyDiagram::PriorityLabel(link->priority)
+                        : "no requirement");
+            statusLabel->SetText(ss.str());
+        };
+
         tab->AddChild(diagram);
         return tab;
     }
@@ -312,6 +401,7 @@ namespace UltraCanvas {
         tabs->SetTabStyle(TabStyle::Modern);
 
         tabs->AddTab("Library branch",    MakeLibraryTab(statusLabel));
+        tabs->AddTab("Matrix view",       MakeLibraryMatrixTab(statusLabel));
         tabs->AddTab("Multi-floor villa", MakeResidenceTab(statusLabel));
         tabs->AddTab("Design studio",     MakeOfficeTab(statusLabel));
 

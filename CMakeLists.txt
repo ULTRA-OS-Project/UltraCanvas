@@ -211,6 +211,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineChartExamples.cpp
