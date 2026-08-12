@@ -5,7 +5,12 @@
 #ifndef ULTRACANVASDEMOAPP_ULTRACANVASNATIVEHANDLE_H
 #define ULTRACANVASDEMOAPP_ULTRACANVASNATIVEHANDLE_H
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(__EMSCRIPTEN__)
+    // Browser/WASM backend: a small integer id assigned per canvas-backed
+    // window (the DOM canvas element's id is derived from it). Checked before
+    // the unix branch because Emscripten also defines __unix__.
+    namespace UltraCanvas { using NativeWindowHandle = unsigned long; }
+#elif defined(_WIN32) || defined(_WIN64)
     struct HWND__;   // matches windows.h's DECLARE_HANDLE(HWND)
     namespace UltraCanvas { using NativeWindowHandle = HWND__*; }      // == HWND
 #elif defined(__linux__) || defined(__unix__)

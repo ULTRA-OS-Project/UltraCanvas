@@ -326,7 +326,9 @@ namespace UltraCanvas {
 
         std::weak_ptr<UltraCanvasWindowBase> targetWindow;    // Weak ref to the target UltraCanvasWindow
         // Platform-specific window handle (X11 Window, HWND, etc.)
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(__EMSCRIPTEN__)
+        NativeWindowHandle nativeWindowHandle = 0;
+#elif defined(_WIN32) || defined(_WIN64)
         NativeWindowHandle nativeWindowHandle = nullptr;
 #elif defined(__linux__) || defined(__unix__)
         NativeWindowHandle nativeWindowHandle = 0;
