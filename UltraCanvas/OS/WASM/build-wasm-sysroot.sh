@@ -242,6 +242,9 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   [ -d $DEPS/pango-src/pango1.0-1.52.1+ds ] || apt_source $DEPS/pango-src pango1.0
   cd $DEPS/pango-src/pango1.0-1.52.1+ds
   rm -rf _build
+  # Only the libraries are wanted: pango's test/util binaries link against
+  # gio symbols that kleisauke's wasm glib branch removes.
+  sed -i "/^subdir('utils')/d;/^subdir('examples')/d;/^subdir('tests')/d;/^subdir('tools')/d" meson.build
   meson setup _build $MESON_ARGS \
     -Dintrospection=disabled -Dgtk_doc=false -Dinstall-tests=false \
     -Dcairo=enabled -Dfontconfig=enabled -Dfreetype=enabled -Dxft=disabled \
