@@ -1,91 +1,106 @@
 // OS/WASM/UltraCanvasWASMWindow.h
-// WebAssembly platform window implementation
-// Version: 1.0.0
-// Last Modified: 2025-01-27
+// WebAssembly (Emscripten) platform window implementation
+// Version: 2.0.0
+// Last Modified: 2026-08-12
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "../../include/UltraCanvasWindow.h"
-#include "UltraCanvasWASMRenderContext.h"
+#ifndef ULTRACANVAS_WASM_WINDOW_H
+#define ULTRACANVAS_WASM_WINDOW_H
+
+// ===== CORE INCLUDES =====
+// Like the other platform window headers, this file is included from
+// include/UltraCanvasWindow.h after UltraCanvasWindowBase is defined.
+#include "../../include/UltraCanvasRenderContext.h"
+
+// ===== EMSCRIPTEN / CAIRO INCLUDES =====
+#include <emscripten.h>
 #include <emscripten/html5.h>
+#include <cairo/cairo.h>
+
 #include <string>
-#include <memory>
+#include <vector>
+#include <cstdint>
 
 namespace UltraCanvas {
 
-class UltraCanvasWASMWindow : public UltraCanvasWindowBase {
-private:
-    // Canvas state
-    std::string canvasId;
-    bool canvasCreated;
-    
-    // Render context
-    std::unique_ptr<UltraCanvasWASMRenderContext> wasmRenderContext;
-    
-    // Event callbacks
-    static EM_BOOL OnMouseEvent(int eventType, const EmscriptenMouseEvent* event, void* userData);
-    static EM_BOOL OnWheelEvent(int eventType, const EmscriptenWheelEvent* event, void* userData);
-    static EM_BOOL OnKeyEvent(int eventType, const EmscriptenKeyboardEvent* event, void* userData);
-    static EM_BOOL OnTouchEvent(int eventType, const EmscriptenTouchEvent* event, void* userData);
-    static EM_BOOL OnFocusEvent(int eventType, const EmscriptenFocusEvent* event, void* userData);
-    
-    // Event conversion helpers
-    UCEvent ConvertMouseEvent(int eventType, const EmscriptenMouseEvent* event);
-    UCEvent ConvertKeyEvent(int eventType, const EmscriptenKeyboardEvent* event);
-    UCEvent ConvertWheelEvent(const EmscriptenWheelEvent* event);
-    UCEvent ConvertTouchEvent(int eventType, const EmscriptenTouchEvent* event);
-    
-    // Key conversion
-    UCKeys ConvertEmscriptenKey(const char* key, const char* code);
-    UCMouseButton ConvertMouseButton(unsigned short button);
-    
-    // Canvas operations
-    bool CreateCanvas();
-    void DestroyCanvas();
-    void UpdateCanvasSize();
-    
-    // Mouse tracking
-    bool mouseInside;
-    int lastMouseX;
-    int lastMouseY;
-    
-public:
-    UltraCanvasWASMWindow();
-    virtual ~UltraCanvasWASMWindow();
-    
-    // ===== WINDOW LIFECYCLE =====
-    bool CreateNative(const WindowConfig& config) override;
-    void DestroyNative() override;
-    
-    // ===== WINDOW OPERATIONS =====
-    void Show() override;
-    void Hide() override;
-    void Minimize() override;
-    void Maximize() override;
-    void Restore() override;
-    void Close() override;
-    
-    // ===== WINDOW PROPERTIES =====
-    void SetTitle(const std::string& title) override;
-    void SetPosition(int x, int y) override;
-    void SetSize(int width, int height) override;
-    void GetPosition(int& x, int& y) const override;
-    void GetSize(int& width, int& height) const override;
-    
-    // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    void RequestRedraw() override;
+    class UltraCanvasWASMApplication;
 
-    // ===== CANVAS ACCESS =====
-    const std::string& GetCanvasId() const { return canvasId; }
-    void SetCanvasId(const std::string& id);
-    
-    // ===== RESIZE HANDLING =====
-    void HandleResize();
-    
-    // ===== FOCUS =====
-    void SetFocus() override;
-    bool HasFocus() const override;
-};
+// ===== WASM WINDOW CLASS =====
+// Each window is an absolutely-positioned HTML <canvas> element. The window
+// renders into an offscreen cairo image surface (nativeSurface, like the
+// Windows backend); InvalidateWindowNative() presents it by converting the
+// surface pixels to RGBA and putImageData()ing them onto the canvas.
+    class UltraCanvasWASMWindow : public UltraCanvasWindowBase {
+    protected:
+        bool CreateNative() override;
+        void DestroyNative() override;
+        void DoResizeNative() override;
+        // devicePixelRatio: the canvas backing store is scaled by it while all
+        // CSS/event coordinates stay logical.
+        float QueryNativeDeviceScale() const override;
+        // Rebuild the offscreen cairo image surface at physical px + device
+        // scale, and keep the canvas element's geometry in sync.
+        bool RecreateNativeSurface() override;
+
+    public:
+        UltraCanvasWASMWindow();
+        ~UltraCanvasWASMWindow() override;
+
+        // ===== INHERITED FROM BASE WINDOW =====
+        void Show() override;
+        void Hide() override;
+        void RaiseAndFocus() override;
+        void SetWindowTitle(const std::string& title) override;
+        void SetWindowIcon(const std::string& iconPath) override;
+        void SetWindowSize(int width, int height) override;
+        void SetWindowPosition(int x, int y) override;
+        void SetResizable(bool resizable) override;
+        void Minimize() override;
+        void Maximize() override;
+        void Restore() override;
+        void SetFullscreen(bool fullscreen) override;
+        void InvalidateWindowNative() override;
+        NativeWindowHandle GetNativeHandle() const override;
+        void GetScreenSize(int& width, int& height) const override;
+        // Window geometry lives in CSS pixels (= logical units), like macOS —
+        // not in physical device pixels as on X11/Windows.
+        void GetNativeWindowSize(int& w, int& h) const override;
+
+        // ===== WASM-SPECIFIC METHODS =====
+        const std::string& GetCanvasId() const { return canvasId; }
+
+    private:
+        std::string canvasId;
+        std::string canvasSelector;   // "#" + canvasId, kept alive for emscripten callbacks
+        unsigned long windowId = 0;
+        static unsigned long lastWindowId;
+
+        bool canvasCreated = false;
+
+        // Wheel notch accumulators (trackpads deliver many sub-notch deltas)
+        double wheelAccumX = 0.0;
+        double wheelAccumY = 0.0;
+
+        // BGRX -> RGBA staging buffer reused across presents
+        std::vector<uint8_t> presentBuffer;
+
+        void CreateCanvasElement();
+        void DestroyCanvasElement();
+        void UpdateCanvasElementGeometry();
+        void RegisterEventCallbacks();
+        void UnregisterEventCallbacks();
+        void PresentToCanvas();
+
+        UCEvent MakeInputEvent(UCEventType type);
+        void PushToApplication(const UCEvent& event);
+
+        static EM_BOOL OnMouseCallback(int eventType, const EmscriptenMouseEvent* mouseEvent, void* userData);
+        static EM_BOOL OnWheelCallback(int eventType, const EmscriptenWheelEvent* wheelEvent, void* userData);
+        static EM_BOOL OnTouchCallback(int eventType, const EmscriptenTouchEvent* touchEvent, void* userData);
+        static EM_BOOL OnFocusCallback(int eventType, const EmscriptenFocusEvent* focusEvent, void* userData);
+    };
 
 } // namespace UltraCanvas
+
+#endif // ULTRACANVAS_WASM_WINDOW_H

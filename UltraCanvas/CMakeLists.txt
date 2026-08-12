@@ -99,11 +99,34 @@ if(WIN32)
 elseif(APPLE)
     set(ULTRACANVAS_PLATFORM "MacOS")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MacOS")
+elseif(EMSCRIPTEN)
+    # Checked before UNIX: the Emscripten toolchain sets UNIX=1 too.
+    set(ULTRACANVAS_PLATFORM "WASM")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/WASM")
 elseif(UNIX)
     set(ULTRACANVAS_PLATFORM "Linux")
     set(ULTRACANVAS_PLATFORM_DIR "OS/Linux")
 else()
     message(FATAL_ERROR "Unsupported platform")
+endif()
+
+# WebAssembly builds run inside the browser sandbox: no OpenGL context
+# managers, no native audio/video frameworks, no sockets for UltraNet, and no
+# runtime-loaded plug-in modules. The remaining REQUIRED pkg-config
+# dependencies (cairo, pango, fontconfig, freetype, harfbuzz, glib, tinyxml2,
+# vips) must come from a wasm sysroot on PKG_CONFIG_PATH under emcmake —
+# see OS/WASM/README.md.
+if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
+    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
+    set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library" FORCE)
+    set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CorelDRAW CDR plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)" FORCE)
+    set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" FORCE)
+    set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)" FORCE)
 endif()
 
 
@@ -1035,6 +1058,17 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             )
         endif()
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${FONTCONFIG_LIBRARIES}
+    )
+    # PUBLIC so app executables linked against the static core inherit the
+    # Emscripten runtime settings the backend depends on.
+    target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -sALLOW_MEMORY_GROWTH=1
+            -sSTACK_SIZE=5MB
+            -sNO_EXIT_RUNTIME=1
+    )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             gdi32
