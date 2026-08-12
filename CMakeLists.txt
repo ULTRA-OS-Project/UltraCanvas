@@ -649,10 +649,12 @@ if (BUILD_ULTRAFILER_APP)
         )
     endif()
 
-    # Embed manifest with UTF-8 active code page (Windows only) - a file
-    # manager browses arbitrary paths, so narrow Win32/CRT calls must read
-    # them as UTF-8 instead of the legacy code page.
-    ultracanvas_embed_windows_manifest(UltraFiler)
+    # No ultracanvas_embed_windows_manifest(UltraFiler) here: UltraFiler.rc
+    # above already embeds Apps/UltraFiler/UltraFiler.manifest, which is a
+    # superset of the generated one (UTF-8 code page + long paths, plus DPI
+    # awareness, common controls v6 and segment heap). A second RT_MANIFEST
+    # id=1 resource is a hard error with lld (CLANGARM64), even though GNU ld
+    # let the duplicate through silently.
 
     message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
