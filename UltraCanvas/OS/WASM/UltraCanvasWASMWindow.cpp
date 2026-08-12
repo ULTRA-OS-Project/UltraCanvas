@@ -203,7 +203,10 @@ namespace UltraCanvas {
             if (!canvas) return;
             var ctx = canvas.getContext('2d');
             if (!ctx) return;
-            var pixels = new Uint8ClampedArray(HEAPU8.buffer, $1, $2 * $3 * 4);
+            // With -pthread the heap is a SharedArrayBuffer, and ImageData
+            // rejects views on shared buffers — copy into a fresh array.
+            var pixels = new Uint8ClampedArray($2 * $3 * 4);
+            pixels.set(new Uint8Array(HEAPU8.buffer, $1, $2 * $3 * 4));
             ctx.putImageData(new ImageData(pixels, $2, $3), 0, 0);
         }, canvasId.c_str(), reinterpret_cast<uintptr_t>(presentBuffer.data()), w, h);
     }

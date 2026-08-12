@@ -19,6 +19,8 @@ set -euo pipefail
 
 command -v emcc >/dev/null || { echo "emcc not on PATH — source emsdk_env.sh first" >&2; exit 1; }
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
 export SYSROOT=${1:-$PWD/wasm-sysroot}
 WORK=${2:-$PWD/wasm-sysroot-build}
 DEPS=$WORK/deps
@@ -245,6 +247,10 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   # Only the libraries are wanted: pango's test/util binaries link against
   # gio symbols that kleisauke's wasm glib branch removes.
   sed -i "/^subdir('utils')/d;/^subdir('examples')/d;/^subdir('tests')/d;/^subdir('tools')/d" meson.build
+  # Fix function-pointer casts that trap on wasm's strict indirect-call
+  # signature checking: one-arg callbacks cast to GInterfaceInitFunc/GFunc.
+  grep -q 'iface_data G_GNUC_UNUSED' pango/fonts.c || \
+    patch -p1 < "$SCRIPT_DIR/patches/pango-1.52-wasm-function-pointers.patch"
   meson setup _build $MESON_ARGS \
     -Dintrospection=disabled -Dgtk_doc=false -Dinstall-tests=false \
     -Dcairo=enabled -Dfontconfig=enabled -Dfreetype=enabled -Dxft=disabled \
