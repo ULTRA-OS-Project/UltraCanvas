@@ -1065,9 +1065,21 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${FONTCONFIG_LIBRARIES}
     )
+    # Core widgets (Album, Filer) spawn std::thread and libvips runs thread
+    # pools, so the whole program must be built with -pthread; exception
+    # handling must use the wasm EH instructions the sysroot libraries were
+    # compiled with (-fwasm-exceptions), not Emscripten's default
+    # abort-on-throw. PUBLIC so app executables inherit both.
+    target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -pthread
+            -fwasm-exceptions
+    )
     # PUBLIC so app executables linked against the static core inherit the
     # Emscripten runtime settings the backend depends on.
     target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -pthread
+            -fwasm-exceptions
+            -sPTHREAD_POOL_SIZE=8
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
