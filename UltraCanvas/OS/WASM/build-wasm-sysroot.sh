@@ -143,6 +143,9 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
     -Dsysprof=disabled -Dnls=disabled -Dglib_debug=disabled -Dtests=false \
     -Dglib_assert=false -Dglib_checks=false
   meson install -C _build --tag devel
+  # pango's build needs glib's host-side code generators, which --tag devel
+  # does not install (they are arch-independent python scripts).
+  install -m755 _build/gobject/glib-mkenums _build/gobject/glib-genmarshal "$SYSROOT/bin/"
 )
 
 # --- libpng ----------------------------------------------------------------------
@@ -240,7 +243,7 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   cd $DEPS/pango-src/pango1.0-1.52.1+ds
   rm -rf _build
   meson setup _build $MESON_ARGS \
-    -Dintrospection=disabled -Dbuild-testsuite=false -Dbuild-examples=false \
+    -Dintrospection=disabled -Dgtk_doc=false -Dinstall-tests=false \
     -Dcairo=enabled -Dfontconfig=enabled -Dfreetype=enabled -Dxft=disabled \
     -Dlibthai=disabled -Dsysprof=disabled
   meson install -C _build
