@@ -188,8 +188,10 @@ else()
 endif()
 
 # FreeType - Font Rendering
-# On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
-if(WIN32 AND PKG_CONFIG_FOUND)
+# On Windows with vcpkg, use pkg-config since FindFreetype may not locate
+# vcpkg's install; under Emscripten the wasm sysroot is only exposed through
+# pkg-config (FindFreetype cannot search outside the toolchain root).
+if((WIN32 OR EMSCRIPTEN) AND PKG_CONFIG_FOUND)
     pkg_check_modules(FREETYPE REQUIRED freetype2)
 else()
     find_package(Freetype REQUIRED)
