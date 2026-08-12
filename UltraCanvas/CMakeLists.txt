@@ -142,6 +142,15 @@ if(NOT TARGET fmt::fmt)
                 GIT_REPOSITORY https://github.com/fmtlib/fmt
                 GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
         FetchContent_MakeAvailable(fmt)
+        if(EMSCRIPTEN)
+            # fmt's format.h uses malloc/free but only gets <cstdlib>
+            # transitively; Emscripten's musl/libc++ headers don't leak it,
+            # so force the include. PUBLIC: anything including fmt/format.h
+            # hits the same hole. CXX-only — C sources cannot include it.
+            target_compile_options(fmt PUBLIC
+                    $<$<COMPILE_LANGUAGE:CXX>:-include>
+                    $<$<COMPILE_LANGUAGE:CXX>:cstdlib>)
+        endif()
     endif()
 endif()
 
@@ -188,8 +197,10 @@ else()
 endif()
 
 # FreeType - Font Rendering
-# On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
-if(WIN32 AND PKG_CONFIG_FOUND)
+# On Windows with vcpkg, use pkg-config since FindFreetype may not locate
+# vcpkg's install; under Emscripten the wasm sysroot is only exposed through
+# pkg-config (FindFreetype cannot search outside the toolchain root).
+if((WIN32 OR EMSCRIPTEN) AND PKG_CONFIG_FOUND)
     pkg_check_modules(FREETYPE REQUIRED freetype2)
 else()
     find_package(Freetype REQUIRED)
@@ -1065,9 +1076,21 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${FONTCONFIG_LIBRARIES}
     )
+    # Core widgets (Album, Filer) spawn std::thread and libvips runs thread
+    # pools, so the whole program must be built with -pthread; exception
+    # handling must use the wasm EH instructions the sysroot libraries were
+    # compiled with (-fwasm-exceptions), not Emscripten's default
+    # abort-on-throw. PUBLIC so app executables inherit both.
+    target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -pthread
+            -fwasm-exceptions
+    )
     # PUBLIC so app executables linked against the static core inherit the
     # Emscripten runtime settings the backend depends on.
     target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -pthread
+            -fwasm-exceptions
+            -sPTHREAD_POOL_SIZE=8
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1

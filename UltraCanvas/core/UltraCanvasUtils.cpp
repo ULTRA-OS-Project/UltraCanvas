@@ -15,6 +15,8 @@
 #include <sys/stat.h>  // UF_HIDDEN
 #else
 #include <sys/stat.h>
+#include <unistd.h>   // readlink; glibc leaks it transitively, musl does not
+#include <climits>    // PATH_MAX
 #endif
 
 #include "UltraCanvasUtils.h"
