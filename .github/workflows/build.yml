@@ -29,37 +29,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NOTE: macos-13 is the last GitHub-hosted Intel (x86_64) macOS runner.
-        # When GitHub deprecates it, options are: drop Intel builds, use
-        # self-hosted runners, or cross-compile universal binaries.
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # NOTE: GitHub retired macos-13 (the last x86_64 image of the
+        # macos-NN series) in December 2025. `macos-15-intel` is its
+        # designated replacement label for Intel builds, supported until
+        # macOS 15 leaves Apple support (~2027). When that goes too, the
+        # options are: drop Intel builds, use self-hosted runners, or
+        # cross-compile universal binaries.
+        os: [macos-latest, macos-15-intel, ubuntu-latest, windows-latest]
         build_type: [Release]
         include:
           - os: macos-latest
             arch_label: arm64
-            install_deps: |
-              # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
-              # Homebrew's tap-trust check prints a multi-line "not trusted"
-              # warning on *every* brew invocation while it is present. We install
-              # nothing from it, so drop the tap — that is Homebrew's own first
-              # suggestion, and it is preferable to `brew trust aws/tap` (grants
-              # blanket trust to a tap we never use) or
-              # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
-              # for taps we *do* use). Tolerate the tap being absent so a future
-              # runner image that drops it cannot fail this step.
-              brew untap aws/tap 2>/dev/null || true
-              brew install cmake pkg-config
-              brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install libcdr librevenge
-              brew install zbar
-              brew install mupdf
-              brew install c-ares
-              brew install leptonica tesseract
-              # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-              brew install flac libvorbis opus opusfile libopusenc lame
-              # libcurl: use Apple's system libcurl (SecureTransport-family
-              # backend) — already present on every macOS install, so we add
-              # no extra dependency for UltraNet on this platform.
+          - os: macos-15-intel
+            arch_label: x86_64
           - os: ubuntu-latest
             arch_label: x86_64
             install_deps: |
@@ -151,9 +133,38 @@ jobs:
             mingw-w64-x86_64-lame
             zip
             
-      # ===== macOS / Linux: system package manager =====
-      - name: Install dependencies (macOS/Linux)
-        if: runner.os != 'Windows'
+      # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
+      # lives at /opt/homebrew on Apple Silicon and /usr/local on Intel, but
+      # the formula list is identical) =====
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
+          # Homebrew's tap-trust check prints a multi-line "not trusted"
+          # warning on *every* brew invocation while it is present. We install
+          # nothing from it, so drop the tap — that is Homebrew's own first
+          # suggestion, and it is preferable to `brew trust aws/tap` (grants
+          # blanket trust to a tap we never use) or
+          # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
+          # for taps we *do* use). Tolerate the tap being absent so a future
+          # runner image that drops it cannot fail this step.
+          brew untap aws/tap 2>/dev/null || true
+          brew install cmake pkg-config
+          brew install cairo pango harfbuzz vips glib freetype tinyxml2
+          brew install libcdr librevenge
+          brew install zbar
+          brew install mupdf
+          brew install c-ares
+          brew install leptonica tesseract
+          # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
+          brew install flac libvorbis opus opusfile libopusenc lame
+          # libcurl: use Apple's system libcurl (SecureTransport-family
+          # backend) — already present on every macOS install, so we add
+          # no extra dependency for UltraNet on this platform.
+
+      # ===== Linux: system package manager =====
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
         run: ${{ matrix.install_deps }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
