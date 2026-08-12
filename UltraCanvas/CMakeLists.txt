@@ -137,10 +137,17 @@ if(NOT TARGET fmt::fmt)
     find_package(fmt CONFIG QUIET)
     if(NOT fmt_FOUND)
         include(FetchContent)
+        if(EMSCRIPTEN)
+            # 11.1.4 fails against Emscripten 6's musl headers (malloc/free
+            # undeclared in format.h); fixed upstream in 11.2.
+            set(_uc_fmt_tag 40626af88bd7df9a5fb80be7b25ac85b122d6c21) # 11.2.0
+        else()
+            set(_uc_fmt_tag 123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+        endif()
         FetchContent_Declare(
                 fmt
                 GIT_REPOSITORY https://github.com/fmtlib/fmt
-                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+                GIT_TAG        ${_uc_fmt_tag})
         FetchContent_MakeAvailable(fmt)
     endif()
 endif()
