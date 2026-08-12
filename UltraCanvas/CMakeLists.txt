@@ -146,8 +146,10 @@ if(NOT TARGET fmt::fmt)
             # fmt's format.h uses malloc/free but only gets <cstdlib>
             # transitively; Emscripten's musl/libc++ headers don't leak it,
             # so force the include. PUBLIC: anything including fmt/format.h
-            # hits the same hole.
-            target_compile_options(fmt PUBLIC "SHELL:-include cstdlib")
+            # hits the same hole. CXX-only — C sources cannot include it.
+            target_compile_options(fmt PUBLIC
+                    $<$<COMPILE_LANGUAGE:CXX>:-include>
+                    $<$<COMPILE_LANGUAGE:CXX>:cstdlib>)
         endif()
     endif()
 endif()
