@@ -34,6 +34,33 @@ namespace UltraCanvas {
     std::string GetExecutableDir();
     std::string NormalizePath(const std::string& in);
 
+    // Is the file/folder hidden by the conventions of the platform it lives
+    // on? A leading dot hides on every platform; Windows additionally hides
+    // entries carrying the HIDDEN file attribute (the NTUSER.DAT hives and
+    // the "Anwendungsdaten"-style compatibility junctions of a profile
+    // folder), macOS entries carrying the UF_HIDDEN flag (~/Library).
+    // Costs one file-attribute lookup on Windows/macOS when the name alone
+    // does not already decide it; `path` must be the full path of the entry.
+    bool IsHiddenFileSystemEntry(const std::filesystem::path& path);
+
+    // The user's well-known folders, resolved through the platform:
+    // SHGetKnownFolderPath on Windows (follows folder redirection, e.g. a
+    // Documents folder moved into OneDrive), the fixed home subfolders on
+    // macOS, the xdg-user-dirs configuration on Linux (localized names,
+    // entries pointing at $HOME itself are disabled per the spec). Only
+    // folders that exist are returned, in the canonical Desktop, Documents,
+    // Downloads, Music, Pictures, Videos, Public, Templates order; paths are
+    // encoded like std::filesystem::path::string() on the platform.
+    enum class UserFolderKind {
+        Desktop, Documents, Downloads, Music, Pictures, Videos, Public, Templates
+    };
+    struct UserFolderInfo {
+        UserFolderKind kind;
+        std::string path;    // absolute path of an existing directory
+        std::string label;   // display name (the on-disk folder name)
+    };
+    std::vector<UserFolderInfo> GetWellKnownUserFolders();
+
     // UltraCanvas strings are UTF-8 everywhere. On Windows the narrow CRT /
     // ANSI Win32 APIs interpret narrow strings in the legacy system code page,
     // so characters outside it (Thai, CJK, ...) get mangled to '?'. These

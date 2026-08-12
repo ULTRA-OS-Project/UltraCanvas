@@ -85,6 +85,9 @@
 #include <limits>
 #include <map>
 #include <sys/stat.h>
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
+#endif
 
 // X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
 // which collide with the VirtualFS::VirtualFSResult enumerators used below.
@@ -1782,7 +1785,10 @@ namespace UltraCanvas {
         e.path = path;
         e.isSymlink = fs::is_symlink(st);
         e.isDirectory = fs::is_directory(path, ec) && !ec;
-        e.isHidden = !e.name.empty() && e.name[0] == '.';
+        // Dot names plus the platform's own notion of hidden (the attribute
+        // bit on Windows, UF_HIDDEN on macOS) - so NTUSER.DAT and the
+        // profile-folder compatibility junctions filter like dot files do.
+        e.isHidden = IsHiddenFileSystemEntry(fs::path(path));
         if (!e.isDirectory) {
             std::error_code sec;
             e.size = fs::file_size(path, sec);
@@ -1812,25 +1818,67 @@ namespace UltraCanvas {
             e.path = it->path().string();
             e.isSymlink = it->is_symlink(ec);   // d_type, no extra syscall
             e.isHidden = !e.name.empty() && e.name[0] == '.';
+
+            // A dot name is hidden on every platform - skip it before paying
+            // for the metadata call. Entries hidden by attribute (Windows) or
+            // file flag (macOS) are only recognisable from that call and are
+            // skipped below.
             if (e.isHidden && !includeHidden) continue;
 
-            // One stat per entry: type, size, times and the write bit all
-            // come from the same call. Asking the directory_entry for
-            // file_size() and then ::stat()ing again for the times cost a
-            // second metadata lookup per file, which on a big or network
-            // folder doubled the scan time.
+            // One metadata call per entry: type, size, times, the write bit
+            // and (Windows / macOS) the hidden state all come from the same
+            // call. A second lookup per file doubled the scan time on a big
+            // or network folder, so nothing here may add one.
+#if defined(_WIN32) || defined(_WIN64)
+            // ::stat cannot see the attribute bits, so the one call is
+            // GetFileAttributesExW - which is also what makes NTUSER.DAT and
+            // the hidden "Anwendungsdaten"-style profile junctions filter
+            // here the way Explorer filters them.
+            WIN32_FILE_ATTRIBUTE_DATA fad{};
+            if (GetFileAttributesExW(it->path().c_str(), GetFileExInfoStandard,
+                                     &fad)) {
+                e.isHidden = e.isHidden ||
+                        (fad.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0;
+                if (e.isHidden && !includeHidden) continue;
+                e.isDirectory =
+                        (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+                if (!e.isDirectory)
+                    e.size = (uint64_t(fad.nFileSizeHigh) << 32) |
+                             fad.nFileSizeLow;
+                auto toTimeT = [](const FILETIME& ft) {
+                    ULARGE_INTEGER u;
+                    u.LowPart = ft.dwLowDateTime;
+                    u.HighPart = ft.dwHighDateTime;
+                    // FILETIME epoch (1601) to Unix epoch, 100ns to seconds.
+                    return time_t((u.QuadPart - 116444736000000000ULL) /
+                                  10000000ULL);
+                };
+                e.modifiedTime = toTimeT(fad.ftLastWriteTime);
+                e.createdTime = toTimeT(fad.ftCreationTime);
+                e.isReadOnly =
+                        (fad.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
+            }
+#else
             struct stat st{};
             if (::stat(e.path.c_str(), &st) == 0) {
+#ifdef UF_HIDDEN
+                // macOS / BSD: the Finder-hidden flag (chflags hidden) - what
+                // keeps ~/Library out of sight there.
+                e.isHidden = e.isHidden || (st.st_flags & UF_HIDDEN) != 0;
+                if (e.isHidden && !includeHidden) continue;
+#endif
                 e.isDirectory = (st.st_mode & S_IFMT) == S_IFDIR;
                 if (!e.isDirectory)
                     e.size = static_cast<uint64_t>(st.st_size);
                 e.modifiedTime = st.st_mtime;
                 e.createdTime = st.st_ctime;
                 e.isReadOnly = (st.st_mode & S_IWUSR) == 0;
-            } else {
-                // Broken symlink or a name stat() cannot resolve (e.g. a
-                // non-ACP name on Windows): keep the iterator's cached
-                // view so the entry still lists with its type and size.
+            }
+#endif
+            else {
+                // Broken symlink or a name the metadata call cannot resolve
+                // (e.g. a non-ACP name on Windows): keep the iterator's
+                // cached view so the entry still lists with its type and size.
                 e.isDirectory = it->is_directory(ec);
                 if (!e.isDirectory) {
                     std::error_code sec;

@@ -1,4 +1,34 @@
-#### 2026-08-11 *0.3.44*
+#### 2026-08-12 *0.3.49*
+- **FilerWidget / UltraFiler: hidden files are now the platform's notion, not
+  just dot names.** "Hidden" was tested as `name[0] == '.'` everywhere, a test
+  that never fires on Windows — so a profile folder listed the `NTUSER.DAT`
+  registry hives, `AppData` and the localized hidden compatibility junctions
+  (`Anwendungsdaten`, `Lokale Einstellungen`, `Startmenü`, …) that Explorer
+  never shows, and on macOS `~/Library` was visible. The widget's scans now
+  read the Windows `FILE_ATTRIBUTE_HIDDEN` attribute and the macOS `UF_HIDDEN`
+  file flag inside the one metadata call each entry already paid for (on
+  Windows via `GetFileAttributesExW`, which returns attributes, size and times
+  together — replacing `::stat`, which cannot see attribute bits), so scan
+  cost is unchanged. The UltraFiler's folder tree and recursive search use the
+  same test through the new `UltraCanvas::IsHiddenFileSystemEntry(path)`
+  (`UltraCanvasUtils.h`).
+- **UltraFiler: the Home tree section is curated like the Explorer / Finder
+  sidebars.** Expanding Home now leads with the user's well-known folders —
+  Desktop, Documents, Downloads, Music, Pictures, Videos (plus Public /
+  Templates where the OS defines them) — each with its own icon, resolved
+  through the new `UltraCanvas::GetWellKnownUserFolders()`:
+  `SHGetKnownFolderPath` on Windows (follows folder redirection, e.g. a
+  Documents folder moved into OneDrive), the fixed home subfolders on macOS,
+  and `xdg-user-dirs` on Linux (localized folder names; entries pointing at
+  `$HOME` are disabled per the spec). The remaining visible home folders
+  follow alphabetically, with a well-known folder that physically sits in the
+  home folder not listed twice; the Home node itself now wears the home icon.
+- **Changelog: resolved the duplicate *0.3.44* version number** left by the
+  Breadcrumb merge — its entry (the newer of the two) is now *0.3.48*, so the
+  first-line version the build derives moves forward again instead of
+  regressing below the *0.3.47* beneath it.
+
+#### 2026-08-11 *0.3.48*
 - **Breadcrumb**: four fixes to the per-item dropdowns, all visible in the
   Filer's and the Media Viewer's path strip. **An empty list gets no
   control** — a folder with no sub-folders now shows no dropdown chevron
