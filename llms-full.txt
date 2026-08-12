@@ -15471,6 +15471,37 @@ Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
 
+## Hidden entries
+
+`SetShowHiddenFiles(bool)` (default `false`) decides whether hidden entries are
+listed; `GetShowHiddenFiles()` reads it back. What counts as hidden is the
+**platform's own notion**, not just the Unix dot convention:
+
+- **every platform** — names starting with `.`;
+- **Windows** — entries carrying the `FILE_ATTRIBUTE_HIDDEN` attribute. This is
+  what keeps a profile folder looking like Explorer's: the `NTUSER.DAT`
+  registry hives, `AppData` and the localized pre-Vista compatibility junctions
+  (`Anwendungsdaten`, `Lokale Einstellungen`, …) are all hidden by attribute,
+  not by name;
+- **macOS** — entries carrying the `UF_HIDDEN` file flag (`chflags hidden`),
+  e.g. `~/Library`.
+
+The attribute is read inside the single metadata call each scanned entry
+already pays for (`GetFileAttributesExW` on Windows, `stat` elsewhere), so the
+scan cost is unchanged. Hidden entries show an `H` in the Details view's
+attributes column when displayed.
+
+Hosts that filter paths themselves can use the same test through
+`UltraCanvas::IsHiddenFileSystemEntry(path)` (`UltraCanvasUtils.h`) — the
+UltraFiler's folder tree and recursive search do. The companion
+`UltraCanvas::GetWellKnownUserFolders()` returns the user's Desktop /
+Documents / Downloads / Music / Pictures / Videos (plus Public / Templates
+where the OS defines them) resolved through the platform —
+`SHGetKnownFolderPath` on Windows (follows folder redirection, e.g. into
+OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
+(localized names; entries pointing at `$HOME` are disabled per the spec) — for
+building an Explorer/Finder-style curated "Home" section.
+
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /

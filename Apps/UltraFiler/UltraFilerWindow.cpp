@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <system_error>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -84,19 +85,46 @@ namespace {
         return home ? std::string(home) : std::string();
     }
 
-    bool IsHiddenName(const std::string& name) {
-        return !name.empty() && name.front() == '.';
+    // Tree icon for each of the well-known home folders
+    // (GetWellKnownUserFolders), Explorer / Finder sidebar style.
+    const char* UserFolderIconFile(UserFolderKind kind) {
+        switch (kind) {
+            case UserFolderKind::Desktop:   return "computer.png";
+            case UserFolderKind::Documents: return "document.svg";
+            case UserFolderKind::Downloads: return "download.png";
+            case UserFolderKind::Music:     return "audio.png";
+            case UserFolderKind::Pictures:  return "image.svg";
+            case UserFolderKind::Videos:    return "video.png";
+            default:                        return "folder-brown.svg";
+        }
+    }
+
+    // Identity key that makes two spellings of the same folder compare equal
+    // (used to keep a curated home folder from listing twice): normalised,
+    // no trailing separator, case-folded on Windows.
+    std::string FolderIdentityKey(const std::string& path) {
+        std::string key = fs::path(path).lexically_normal().string();
+        while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
+            key.pop_back();
+#ifdef _WIN32
+        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+#endif
+        return key;
     }
 
     // Does `path` contain at least one visible subfolder? (Cheap check that
     // decides whether a tree node gets an expand button.)
+    // "Hidden" is the platform's own notion (IsHiddenFileSystemEntry): dot
+    // names everywhere, plus the hidden attribute on Windows - which is what
+    // keeps AppData and the "Anwendungsdaten"-style compatibility junctions
+    // of a profile folder out of the tree - and UF_HIDDEN on macOS.
     bool HasSubdirectories(const std::string& path) {
         std::error_code ec;
         fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
         if (ec) return false;
         for (const fs::directory_entry& e : it) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenName(e.path().filename().string()))
+            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
                 return true;
         }
         return false;
@@ -110,7 +138,7 @@ namespace {
         if (ec) return dirs;
         for (const fs::directory_entry& e : it) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenName(e.path().filename().string()))
+            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
                 dirs.push_back(e.path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
@@ -625,7 +653,7 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
             root, fs::directory_options::skip_permission_denied, ec), end;
     for (; !ec && it != end && results.size() < kMaxResults; it.increment(ec)) {
         const std::string name = it->path().filename().string();
-        if (IsHiddenName(name)) {
+        if (IsHiddenFileSystemEntry(it->path())) {
             // Consistent with the folder tree: hidden folders are not entered.
             std::error_code dec;
             if (it->is_directory(dec) && !dec) it.disable_recursion_pending();
@@ -856,7 +884,7 @@ void UltraFilerWindow::BuildFolderTree() {
 
     const std::string home = UserHomeDir();
     if (!home.empty()) {
-        AddTreeFolderNode("ufl-computer", home, "Home", "folder-open.svg");
+        AddTreeFolderNode("ufl-computer", home, "Home", "home-icon.png");
     }
 
 #ifdef _WIN32
@@ -922,11 +950,27 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
+    // The home folder leads with its well-known folders - Desktop, Documents,
+    // Downloads, ... resolved through the platform (SHGetKnownFolderPath /
+    // xdg-user-dirs), so a redirected Documents folder is found too - each
+    // with its own icon, like the Explorer and Finder sidebars. The remaining
+    // visible folders follow alphabetically; a well-known folder that
+    // physically sits in the home folder is not listed a second time.
+    std::unordered_set<std::string> curated;
+    if (path == UserHomeDir()) {
+        for (const UserFolderInfo& f : GetWellKnownUserFolders()) {
+            AddTreeFolderNode(path, f.path, f.label, UserFolderIconFile(f.kind));
+            curated.insert(FolderIdentityKey(f.path));
+        }
+    }
     // Add the real children before removing the placeholder: a node whose
     // last child is removed is demoted to a leaf, which drops its expanded
     // state and made the first expansion of a folder appear to do nothing.
-    for (const fs::path& dir : ListSubdirectories(path))
+    for (const fs::path& dir : ListSubdirectories(path)) {
+        if (!curated.empty() && curated.count(FolderIdentityKey(dir.string())))
+            continue;
         AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder-brown.svg");
+    }
     folderTree->RemoveNode(PlaceholderId(path));
 }
 
