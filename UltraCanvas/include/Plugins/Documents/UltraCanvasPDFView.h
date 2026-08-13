@@ -1,8 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.6.0
-// Last Modified: 2026-07-15
+// Version: 1.7.0
+// Last Modified: 2026-08-13
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_VIEW_H
@@ -41,6 +41,8 @@ struct PDFViewStyle {
     Color scrollbarThumb   = Color(140, 140, 140, 255);
     Color toolbarText      = Color(220, 220, 220, 255);
 
+    // Requested strip width; the view caps the effective width at 1/4 of its
+    // own width so the page area always stays at least 3x the strip.
     int   thumbStripWidth   = 160;
     int   thumbHeight       = 180;
     int   thumbSpacing      = 8;
@@ -129,6 +131,8 @@ public:
     bool        ExportTextToFile(const std::string& path, bool selectionOnly);
 
     // ----- Layout toggles -----
+    // Even when enabled, the strip only appears for documents with more than
+    // one page — a single-page document needs no page inventory.
     void SetShowThumbnailStrip(bool show);
     bool GetShowThumbnailStrip() const { return showThumbs_; }
 
@@ -195,9 +199,18 @@ private:
     // ----- internal -----
     Rect2Di PageContentArea() const;
     Rect2Di ThumbStripArea()  const;
+    // Strip is only shown when enabled AND the document has > 1 page.
+    bool    ThumbStripVisible() const;
+    // 0 when the strip is hidden; otherwise style width capped at 1/4 of the
+    // view width (keeps the page area >= 3x the strip).
+    int     EffectiveThumbStripWidth() const;
+    // Vertical distance from one thumbnail slot top to the next (includes the
+    // caption row only in Caption numbering style).
+    int     ThumbSlotAdvance() const;
     Rect2Df ComputePageDrawRect(int pageW, int pageH,
                                 const Rect2Di& contentArea) const;
-    void   InvalidateCaches();
+    void   InvalidateCaches();      // page pixmaps only (zoom/viewport changes)
+    void   InvalidateAllCaches();   // pages + thumbnails (document changed)
     void   FireDocumentChanged();
     void   FirePageChanged();
     void   FireZoomChanged();
@@ -221,8 +234,14 @@ private:
     // Build + open the right-click context menu. imageIndex >= 0 adds an
     // "Extract Image" item; text actions are added based on the selection.
     void   ShowContextMenu(int imageIndex, const Point2Di& windowPos);
+    // Max scroll offsets (page overflow past the viewport, symmetric around
+    // the centered position). False without a document/page info.
+    bool   ComputeScrollLimits(int& maxX, int& maxY) const;
+    // Wheel scrolling: clamps to the page, and continues into the next /
+    // previous page when already at the bottom / top edge.
     void   ScrollBy(int deltaX, int deltaY);
     void   ScrollThumbsBy(int delta);
+    void   EnsureThumbVisible(int page);   // scroll strip so `page` is on-screen
     void   Repaint();
 
 private:

@@ -1,3 +1,26 @@
+#### 2026-08-13 *0.3.50*
+- **PDFView / UltraFiler preview: five fixes to the PDF page view and its
+  thumbnail strip ("page inventory").** **Stale thumbnails** — opening another
+  PDF kept showing the previous file's thumbnails, because the thumbnail cache
+  deliberately survives zoom changes and the document switch reused that same
+  invalidation. `SetDocument` and every page-mutating operation
+  (delete/move/insert/merge/replace-text/redact) now drop the thumbnail cache
+  too (`InvalidateAllCaches()`), while zoom/resize keep it as before.
+  **Single-page documents show no strip** — a one-page PDF needs no page
+  inventory, so the strip only appears for documents with more than one page.
+  **Wheel-scrolling reads through the document** — scrolling is now clamped to
+  the page, and wheeling past the bottom edge continues at the top of the next
+  page (and up past the top edge, at the bottom of the previous page); before,
+  the view scrolled one page into empty space and never advanced. The strip
+  auto-scrolls so the current page's thumbnail stays visible, and its own
+  scrolling is clamped to its content. **Page area at least 3× the strip** —
+  the strip's effective width is capped at 1/4 of the view, so a narrow
+  preview pane can no longer end up mostly inventory with a tiny page.
+  **"Over the page" numbering in the viewer** — the MediaViewer (UltraFiler's
+  preview pane) now uses `ThumbnailNumberStyle::Overlay`, the large translucent
+  number over the thumbnail page, instead of the caption beneath; slot heights
+  no longer reserve the caption row in that style.
+
 #### 2026-08-12 *0.3.49*
 - **FilerWidget / UltraFiler: hidden files are now the platform's notion, not
   just dot names.** "Hidden" was tested as `name[0] == '.'` everywhere, a test

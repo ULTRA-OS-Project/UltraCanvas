@@ -24,7 +24,10 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 
 - **Page rendering** at any DPI/zoom with antialiasing, drop shadow, and a
   white underlay; rendered pages and thumbnails are cached per DPI.
-- **Thumbnail strip** with click-to-jump and independent scrolling (toggleable).
+- **Thumbnail strip** with click-to-jump and independent scrolling
+  (toggleable). It only appears for documents with more than one page, its
+  width is capped at 1/4 of the view so the page area always stays at least
+  3× the strip, and it auto-scrolls to keep the current page's thumb visible.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
@@ -32,6 +35,8 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+  Wheel-scrolling past the bottom (or top) edge of the page continues into the
+  next (or previous) page, so a document reads straight through with the wheel.
 - **Image extraction**: right-click an image on the page to save it via a
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
@@ -199,6 +204,7 @@ view->ExportTextToFile("/tmp/page.txt", /*selectionOnly=*/true);
 ### Layout & style
 
 ```cpp
+// Even when enabled, the strip only shows for documents with > 1 page.
 void SetShowThumbnailStrip(bool show);
 bool GetShowThumbnailStrip() const;
 
@@ -215,12 +221,15 @@ const PDFViewStyle& GetStyle() const;
 default); `Overlay` draws a large translucent page number centred over the page.
 The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
 (a fraction of the thumbnail height, default `0.30`) and
-`thumbOverlayNumberColor`.
+`thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
+UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
 metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
 `pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
+`thumbStripWidth` is a request: the effective strip width is capped at 1/4 of
+the view width so the page area keeps at least a 3:1 ratio over the strip.
 
 ### Editing passthroughs
 
@@ -258,7 +267,7 @@ immediately.
 
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it) |
+| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
 | Ctrl + wheel | Zoom in / out |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
@@ -468,7 +477,9 @@ The same edits are reachable from the widget via `ReplaceTextAt`,
 - **Pixel format.** `RenderPage`/`RenderThumbnail` return premultiplied RGBA
   (Cairo-compatible) or 8-bit gray, per `PDFColorMode`.
 - **Caching.** The view caches rendered pages keyed by DPI and thumbnails by
-  page; zoom and resize invalidate the page cache automatically.
+  page; zoom and resize invalidate the page cache automatically (thumbnails
+  survive those), while loading another document or editing pages
+  (delete/move/insert/merge/replace/redact) drops both caches.
 - **Threading.** Treat a single `IPDFDocument` as not thread-safe; render/edit
   from the UI thread (or serialize access).
 - **Drawing custom overlays.** If you subclass or draw on top of the view,
