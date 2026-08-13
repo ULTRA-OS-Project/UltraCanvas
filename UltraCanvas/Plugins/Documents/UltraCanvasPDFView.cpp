@@ -24,6 +24,13 @@ namespace {
 // File extension + dialog filter description for an image MIME type. The engine
 // preserves the original format when it can, so the save dialog should offer the
 // matching extension; anything unrecognized defaults to PNG (the fallback).
+// Scroll sentinels: far beyond any real limit. The per-frame clamp in
+// DrawPageWithOverlays resolves them to the page's exact top/bottom scroll
+// position once the page's effective zoom (and with it the real limit) is
+// known — page sizes can differ, so the limit is only exact at render time.
+constexpr int kScrollPageTop    = std::numeric_limits<int>::min() / 4;
+constexpr int kScrollPageBottom = std::numeric_limits<int>::max() / 4;
+
 struct ImageFormat { const char* ext; const char* desc; };
 ImageFormat FormatForMime(const std::string& mime) {
     if (mime == "image/jpeg")                return {"jpg",  "JPEG image"};
@@ -53,7 +60,8 @@ UltraCanvasPDFView::~UltraCanvasPDFView() = default;
 void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
     doc_ = std::move(doc);
     currentPage_ = 1;
-    scrollX_ = scrollY_ = thumbScroll_ = 0;
+    scrollX_ = thumbScroll_ = 0;
+    scrollY_ = kScrollPageTop;   // open at the top of the first page
     zoomMode_ = ZoomMode::FitPage;
     userZoom_ = 1.0f;
     effectiveZoom_ = 1.0f;
@@ -100,7 +108,8 @@ void UltraCanvasPDFView::GoToPage(int page) {
     page = std::clamp(page, 1, total);
     if (page == currentPage_) return;
     currentPage_ = page;
-    scrollX_ = scrollY_ = 0;
+    scrollX_ = 0;
+    scrollY_ = kScrollPageTop;   // a page opens at its top, not centered
     // The selection and cached text belong to the previous page.
     selecting_ = false;
     hasSelection_ = false;
@@ -974,23 +983,22 @@ void UltraCanvasPDFView::ScrollBy(int dx, int dy) {
     int maxX = 0, maxY = 0;
     ComputeScrollLimits(maxX, maxY);
 
-    // Wheeling past the edge of the page continues into the neighbouring page,
-    // so a multi-page document can be read straight through with the wheel.
+    // Only once the view already rests at the page edge does a further wheel
+    // step continue into the neighbouring page, so a multi-page document can
+    // be read straight through with the wheel.
     if (dy > 0 && scrollY_ >= maxY && currentPage_ < GetPageCount()) {
-        GoToPage(currentPage_ + 1);
-        ComputeScrollLimits(maxX, maxY);
-        scrollY_ = -maxY;   // start at the top of the next page
-        Repaint();
+        GoToPage(currentPage_ + 1);        // opens at the top of the next page
         return;
     }
     if (dy < 0 && scrollY_ <= -maxY && currentPage_ > 1) {
         GoToPage(currentPage_ - 1);
-        ComputeScrollLimits(maxX, maxY);
-        scrollY_ = maxY;    // arrive at the bottom of the previous page
-        Repaint();
+        scrollY_ = kScrollPageBottom;      // arrive at the previous page's bottom
         return;
     }
 
+    // Within the page the scroll is hard-limited: it stops once the page edge
+    // sits style_.pageMargin inside the viewport — on the last/first page that
+    // is the end of the line.
     scrollX_ = std::clamp(scrollX_ + dx, -maxX, maxX);
     scrollY_ = std::clamp(scrollY_ + dy, -maxY, maxY);
     Repaint();

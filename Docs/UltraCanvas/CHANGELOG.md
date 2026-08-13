@@ -8,10 +8,13 @@
   too (`InvalidateAllCaches()`), while zoom/resize keep it as before.
   **Single-page documents show no strip** — a one-page PDF needs no page
   inventory, so the strip only appears for documents with more than one page.
-  **Wheel-scrolling reads through the document** — scrolling is now clamped to
-  the page, and wheeling past the bottom edge continues at the top of the next
-  page (and up past the top edge, at the bottom of the previous page); before,
-  the view scrolled one page into empty space and never advanced. The strip
+  **Wheel-scrolling reads through the document, with hard limits** — before,
+  the view scrolled the one page endlessly into empty space and never
+  advanced. Scrolling now stops once the page edge sits a page-margin inside
+  the viewport; from that resting point the next wheel step continues at the
+  top of the next page (and up past the top edge, at the bottom of the
+  previous page), while on the last/first page the margin is the end of the
+  line. Pages open at their top instead of vertically centered, the strip
   auto-scrolls so the current page's thumbnail stays visible, and its own
   scrolling is clamped to its content. **Page area at least 3× the strip** —
   the strip's effective width is capped at 1/4 of the view, so a narrow

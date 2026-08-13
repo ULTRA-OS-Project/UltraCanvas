@@ -35,8 +35,11 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
-  Wheel-scrolling past the bottom (or top) edge of the page continues into the
-  next (or previous) page, so a document reads straight through with the wheel.
+  Scrolling is hard-limited: it stops once the page edge sits `pageMargin`
+  inside the viewport. From that resting point a further wheel step continues
+  into the next (or previous) page — on the last (or first) page it simply
+  stops — so a document reads straight through with the wheel. Pages open at
+  their top, not vertically centered.
 - **Image extraction**: right-click an image on the page to save it via a
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
