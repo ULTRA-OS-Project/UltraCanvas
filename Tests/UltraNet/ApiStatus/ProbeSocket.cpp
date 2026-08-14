@@ -24,6 +24,11 @@ constexpr const char* kArea = "Socket";
 constexpr int kProbePortStart = 18820;
 constexpr int kProbePortEnd   = 18879;
 
+// Every listener and bound UDP socket in this file stays on loopback. Binding
+// the any-address would trip the Windows firewall prompt and behaviour-based
+// AV heuristics (AVG/Avast IDP.Generic) for no benefit — all peers are local.
+constexpr const char* kLoopback = "127.0.0.1";
+
 std::vector<uint8_t> Bytes(const std::string& s) {
     return std::vector<uint8_t>(s.begin(), s.end());
 }
@@ -40,6 +45,7 @@ public:
     bool Start() {
         UltraNetSocketOptions opt;
         opt.reuseAddress = true;
+        opt.bindAddress  = kLoopback;
         for (int port = kProbePortStart; port <= kProbePortEnd; ++port) {
             UltraNetHandle h = UltraNet_TcpListen(port, opt);
             if (h != UltraNetInvalidHandle) {
@@ -257,6 +263,7 @@ ULTRANET_PROBE(kArea, UltraNet_UdpOpen) {
 
     UltraNetSocketOptions opt;
     opt.reuseAddress = true;
+    opt.bindAddress  = kLoopback;
     const UltraNetHandle bound = UltraNet_UdpOpen(kProbePortStart + 50, opt);
     PROBE_EXPECT(bound != UltraNetInvalidHandle);
 
@@ -277,6 +284,7 @@ ULTRANET_PROBE(kArea, UltraNet_UdpSend) {
     const int port = kProbePortStart + 51;
     UltraNetSocketOptions opt;
     opt.reuseAddress = true;
+    opt.bindAddress  = kLoopback;
     const UltraNetHandle receiver = UltraNet_UdpOpen(port, opt);
     PROBE_EXPECT(receiver != UltraNetInvalidHandle);
     const UltraNetHandle sender = UltraNet_UdpOpen();
@@ -312,6 +320,7 @@ ULTRANET_PROBE(kArea, UltraNet_UdpReceive) {
     const int port = kProbePortStart + 52;
     UltraNetSocketOptions opt;
     opt.reuseAddress = true;
+    opt.bindAddress  = kLoopback;
     const UltraNetHandle receiver = UltraNet_UdpOpen(port, opt);
     PROBE_EXPECT(receiver != UltraNetInvalidHandle);
     const UltraNetHandle sender = UltraNet_UdpOpen();
@@ -371,6 +380,7 @@ ULTRANET_PROBE(kArea, UltraNet_SocketSetTimeout) {
 
     UltraNetSocketOptions opt;
     opt.reuseAddress = true;
+    opt.bindAddress  = kLoopback;
     const UltraNetHandle udp = UltraNet_UdpOpen(kProbePortStart + 53, opt);
     PROBE_EXPECT(udp != UltraNetInvalidHandle);
 
