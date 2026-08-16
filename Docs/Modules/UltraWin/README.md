@@ -155,10 +155,18 @@ launch/supervision path runs against a stub wine script (via the
 `UltraWinConfig::winePath` override), and the one test that exercises a real
 `wineboot` skips itself when no binary is found.
 
+## UltraFiler integration
+
+Double-clicking a `.exe` in UltraFiler launches it through
+`UltraWin_RunApp` in a per-app environment named after the executable
+(created automatically on first launch, off the UI thread). When Wine is
+missing, the status bar says how to install it. Available only in Linux
+builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
+`.exe` behaves as before.
+
 ## Not yet implemented (later stages)
 
 - `UltraWin_InstallComponent` (fonts, VC++ runtimes, DXVK — winetricks
   equivalent), `UltraWin_QueryCompatibility` + automatic tier routing.
-- `.exe` open-with association in UltraFiler.
 - The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
   shared folders, `UltraCanvasRemoteAppView` RAIL element.

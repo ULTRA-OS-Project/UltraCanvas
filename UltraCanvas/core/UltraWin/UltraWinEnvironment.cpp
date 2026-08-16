@@ -111,7 +111,7 @@ UltraWinResult ApplyMappings(const std::string& prefixPath) {
     std::error_code ec;
     fs::create_directories(dosdevices, ec);
     if (ec) {
-        return UltraWinResult::Error(UltraWinResultCode::MappingFailed,
+        return UltraWinResult::Error(UltraWinResultCode::DriveMappingFailed,
                                      "cannot create dosdevices: " +
                                          ec.message());
     }
@@ -129,7 +129,7 @@ UltraWinResult ApplyMappings(const std::string& prefixPath) {
         fs::create_directory_symlink(target, linkPath, lec);
         if (lec) {
             return UltraWinResult::Error(
-                UltraWinResultCode::MappingFailed,
+                UltraWinResultCode::DriveMappingFailed,
                 "mapping " + link + " -> " + target + ": " + lec.message());
         }
         return UltraWinResult::Ok();

@@ -55,7 +55,10 @@ enum class UltraWinResultCode {
     FileNotFound,          // .exe (or wine binary) path does not exist
     LaunchFailed,          // fork/exec failure
     ProcessError,          // app exited with failure before/at startup
-    MappingFailed,         // drive-letter symlink could not be created
+    // Named DriveMappingFailed (not MappingFailed) on purpose: X11's X.h
+    // defines MappingFailed as a macro, and UltraCanvas TUs often see both
+    // headers.
+    DriveMappingFailed,    // drive-letter symlink could not be created
     PermissionDenied,
     Timeout,
     IoError,
