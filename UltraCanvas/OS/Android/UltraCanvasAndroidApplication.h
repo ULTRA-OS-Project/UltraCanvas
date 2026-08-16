@@ -66,6 +66,16 @@ namespace UltraCanvas {
         void SetDoubleClickTime(unsigned int milliseconds) { doubleClickTimeMs = milliseconds; }
         void SetDoubleClickDistance(int pixels) { doubleClickDistance = pixels; }
 
+        // ===== SOFT KEYBOARD =====
+        // Driven automatically by UltraCanvasCaret::onTextEditingChanged (a
+        // widget claiming the caret shows the keyboard, releasing it hides
+        // the keyboard on the next event-loop turn), but also public so apps
+        // can force either state. JNI InputMethodManager underneath - the
+        // NDK's ANativeActivity_showSoftInput is unreliable by long-standing
+        // platform bug.
+        void ShowSoftKeyboard();
+        void HideSoftKeyboard();
+
         // Android has no persistent pointer cursor; both are accepted no-ops.
         bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur) override;
         bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur,
@@ -102,9 +112,19 @@ namespace UltraCanvas {
         void PushWindowEvent(UCEventType type);
 
         UCKeys ConvertAndroidKeyToUCKey(int32_t keyCode);
-        // US-layout printable-ASCII derivation for physical keyboards; real
-        // text entry (soft keyboard / IME) arrives in a later phase.
+        // US-layout printable-ASCII fallback, used only when the JNI
+        // KeyCharacterMap translation is unavailable.
         char DeriveAsciiCharacter(UCKeys key, bool shift);
+
+        // Layout-aware key -> Unicode code point via KeyCharacterMap (JNI).
+        // Returns 0 for non-printing keys, dead keys, and when JNI is down.
+        int32_t GetUnicodeCharacter(int32_t deviceId, int32_t keyCode,
+                                    int32_t metaState);
+
+        // Caret-driven soft keyboard: hides are deferred one event-loop turn
+        // so focus moving between two text widgets doesn't flicker the IME.
+        void OnTextEditingChanged(bool active);
+        bool pendingImeHide = false;
     };
 
 } // namespace UltraCanvas

@@ -13,9 +13,8 @@
 #include <ctime>
 
 #if defined(__ANDROID__)
-// Before __linux__ (bionic defines both). No clipboard backend yet: the JNI
-// ClipboardManager bridge is a later phase; every clipboard call degrades
-// gracefully on a null backend.
+// Before __linux__ (bionic defines both).
+#include "../OS/Android/UltraCanvasAndroidClipboard.h"
 #elif defined(__linux__)
 #include "../OS/Linux/UltraCanvasLinuxClipboard.h"
 #elif _WIN32
@@ -92,10 +91,7 @@ UltraCanvasClipboard::~UltraCanvasClipboard() {
 bool UltraCanvasClipboard::Initialize() {
     // Create platform-specific backend
 #if defined(__ANDROID__)
-    // No backend yet (JNI ClipboardManager comes in a later phase); leaving
-    // backend null keeps GetText/SetText/Update as safe no-ops.
-    debugOutput << "UltraCanvas: Android clipboard backend not implemented yet" << std::endl;
-    return false;
+    backend = std::make_unique<UltraCanvasAndroidClipboard>();
 #elif defined(__linux__)
     backend = std::make_unique<UltraCanvasLinuxClipboard>();
 #elif _WIN32

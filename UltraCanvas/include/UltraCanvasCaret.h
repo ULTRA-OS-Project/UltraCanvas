@@ -77,7 +77,20 @@ namespace UltraCanvas {
         // Drop all references to a window being destroyed.
         void OnWindowClosed(UltraCanvasWindowBase* win);
 
+        // Platform hook, fired on transitions only: true when a widget claims
+        // the caret with no previous owner (text editing started), false when
+        // the last owner releases it (editing stopped). A caret moving
+        // between widgets fires nothing. Used by the Android backend to
+        // drive the soft keyboard; stays null on desktop.
+        std::function<void(bool active)> onTextEditingChanged;
+
     private:
+        void NotifyTextEditingChanged(bool hadOwner) {
+            if (onTextEditingChanged && hadOwner != (owner != nullptr)) {
+                onTextEditingChanged(owner != nullptr);
+            }
+        }
+
         UltraCanvasCaret() = default;
 
         void ShowInternal(UltraCanvasUIElement* newOwner, const Rect2Di& rectInWindow,

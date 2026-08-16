@@ -10,6 +10,8 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidWindow.h"
+#include "UltraCanvasAndroidJni.h"
+#include "UltraCanvasCaret.h"
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
@@ -28,6 +30,105 @@
 #include <limits>
 
 namespace UltraCanvas {
+
+    // ===== JNI CACHES (glue thread only; released in ShutdownNative) =====
+    namespace {
+
+        // InputMethodManager plumbing for the soft keyboard.
+        struct ImeJniCache {
+            bool triedInit = false;
+            jobject imm = nullptr;                  // global ref
+            jmethodID midShowSoftInput = nullptr;   // (Landroid/view/View;I)Z
+            jmethodID midHideSoftInput = nullptr;   // (Landroid/os/IBinder;I)Z
+            jmethodID midGetWindow = nullptr;       // Activity.getWindow()
+            jmethodID midGetDecorView = nullptr;    // Window.getDecorView()
+            jmethodID midGetWindowToken = nullptr;  // View.getWindowToken()
+        };
+        ImeJniCache imeJni;
+
+        bool EnsureImeJni(JNIEnv* env, jobject activity) {
+            if (imeJni.imm) return true;
+            if (imeJni.triedInit) return false;   // failed once; don't re-log
+            imeJni.triedInit = true;
+
+            jclass activityClass = env->GetObjectClass(activity);
+            jmethodID midGetSystemService = env->GetMethodID(
+                    activityClass, "getSystemService",
+                    "(Ljava/lang/String;)Ljava/lang/Object;");
+            imeJni.midGetWindow = env->GetMethodID(activityClass, "getWindow",
+                    "()Landroid/view/Window;");
+            env->DeleteLocalRef(activityClass);
+
+            jstring serviceName = env->NewStringUTF("input_method");   // Context.INPUT_METHOD_SERVICE
+            jobject imm = env->CallObjectMethod(activity, midGetSystemService, serviceName);
+            env->DeleteLocalRef(serviceName);
+            if (AndroidJni::ClearException(env, "getSystemService(input_method)") || !imm) {
+                return false;
+            }
+            imeJni.imm = env->NewGlobalRef(imm);
+            env->DeleteLocalRef(imm);
+
+            jclass immClass = env->GetObjectClass(imeJni.imm);
+            imeJni.midShowSoftInput = env->GetMethodID(immClass, "showSoftInput",
+                    "(Landroid/view/View;I)Z");
+            imeJni.midHideSoftInput = env->GetMethodID(immClass, "hideSoftInputFromWindow",
+                    "(Landroid/os/IBinder;I)Z");
+            env->DeleteLocalRef(immClass);
+
+            jclass windowClass = env->FindClass("android/view/Window");
+            imeJni.midGetDecorView = env->GetMethodID(windowClass, "getDecorView",
+                    "()Landroid/view/View;");
+            env->DeleteLocalRef(windowClass);
+
+            jclass viewClass = env->FindClass("android/view/View");
+            imeJni.midGetWindowToken = env->GetMethodID(viewClass, "getWindowToken",
+                    "()Landroid/os/IBinder;");
+            env->DeleteLocalRef(viewClass);
+
+            if (AndroidJni::ClearException(env, "IME method lookup")) {
+                env->DeleteGlobalRef(imeJni.imm);
+                imeJni.imm = nullptr;
+                return false;
+            }
+            return true;
+        }
+
+        // Not cached across calls: the decor view can be replaced on
+        // configuration changes.
+        jobject GetDecorView(JNIEnv* env, jobject activity) {
+            jobject window = env->CallObjectMethod(activity, imeJni.midGetWindow);
+            if (AndroidJni::ClearException(env, "Activity.getWindow") || !window) {
+                return nullptr;
+            }
+            jobject decor = env->CallObjectMethod(window, imeJni.midGetDecorView);
+            env->DeleteLocalRef(window);
+            if (AndroidJni::ClearException(env, "Window.getDecorView")) return nullptr;
+            return decor;
+        }
+
+        // KeyCharacterMap plumbing for layout-aware key translation.
+        struct KcmJniCache {
+            bool triedInit = false;
+            jclass cls = nullptr;        // global ref android.view.KeyCharacterMap
+            jmethodID midLoad = nullptr; // static (I)Landroid/view/KeyCharacterMap;
+            jmethodID midGet = nullptr;  // (II)I
+            jobject map = nullptr;       // global ref, for deviceId below
+            int32_t deviceId = INT32_MIN;
+        };
+        KcmJniCache kcmJni;
+
+        void ReleaseJniCaches() {
+            JNIEnv* env = AndroidJni::GetEnv();
+            if (env) {
+                if (imeJni.imm) env->DeleteGlobalRef(imeJni.imm);
+                if (kcmJni.map) env->DeleteGlobalRef(kcmJni.map);
+                if (kcmJni.cls) env->DeleteGlobalRef(kcmJni.cls);
+            }
+            imeJni = ImeJniCache{};
+            kcmJni = KcmJniCache{};
+        }
+
+    } // namespace
 
     UltraCanvasAndroidApplication* UltraCanvasAndroidApplication::instance = nullptr;
     android_app* UltraCanvasAndroidApplication::androidApp = nullptr;
@@ -58,10 +159,18 @@ namespace UltraCanvas {
         androidApp->userData = this;
         androidApp->onAppCmd = HandleAppCmdThunk;
         androidApp->onInputEvent = HandleInputEventThunk;
+
+        // A widget claiming/releasing the caret is the framework-wide signal
+        // that text editing started/stopped - drive the soft keyboard off it.
+        UltraCanvasCaret::GetInstance().onTextEditingChanged =
+                [this](bool active) { OnTextEditingChanged(active); };
         return true;
     }
 
     void UltraCanvasAndroidApplication::ShutdownNative() {
+        UltraCanvasCaret::GetInstance().onTextEditingChanged = nullptr;
+        ReleaseJniCaches();
+        AndroidJni::DetachCurrentThread();
         if (androidApp && androidApp->userData == this) {
             androidApp->onAppCmd = nullptr;
             androidApp->onInputEvent = nullptr;
@@ -70,10 +179,60 @@ namespace UltraCanvas {
         if (instance == this) instance = nullptr;
     }
 
+    // ===== SOFT KEYBOARD =====
+
+    void UltraCanvasAndroidApplication::ShowSoftKeyboard() {
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        if (!env || !activity || !EnsureImeJni(env, activity)) return;
+
+        jobject decor = GetDecorView(env, activity);
+        if (!decor) return;
+        env->CallBooleanMethod(imeJni.imm, imeJni.midShowSoftInput, decor, 0);
+        AndroidJni::ClearException(env, "showSoftInput");
+        env->DeleteLocalRef(decor);
+    }
+
+    void UltraCanvasAndroidApplication::HideSoftKeyboard() {
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        if (!env || !activity || !EnsureImeJni(env, activity)) return;
+
+        jobject decor = GetDecorView(env, activity);
+        if (!decor) return;
+        jobject token = env->CallObjectMethod(decor, imeJni.midGetWindowToken);
+        if (!AndroidJni::ClearException(env, "getWindowToken") && token) {
+            env->CallBooleanMethod(imeJni.imm, imeJni.midHideSoftInput, token, 0);
+            AndroidJni::ClearException(env, "hideSoftInputFromWindow");
+            env->DeleteLocalRef(token);
+        }
+        env->DeleteLocalRef(decor);
+    }
+
+    void UltraCanvasAndroidApplication::OnTextEditingChanged(bool active) {
+        if (active) {
+            pendingImeHide = false;
+            ShowSoftKeyboard();
+        } else {
+            // Deferred to the next CollectAndProcessNativeEvents turn: focus
+            // moving from one text widget to another fires false-then-true
+            // within the same event batch, and an immediate hide would
+            // flicker the keyboard.
+            pendingImeHide = true;
+        }
+    }
+
     // ===== EVENT PUMP =====
 
     void UltraCanvasAndroidApplication::CollectAndProcessNativeEvents() {
         if (!androidApp) return;
+
+        // Text editing stopped last turn and nothing re-claimed the caret
+        // since: retire the soft keyboard now.
+        if (pendingImeHide) {
+            pendingImeHide = false;
+            HideSoftKeyboard();
+        }
 
         // Block until an activity command, input event, or the next timer.
         auto timeout = GetTimeUntilNextTimer();
@@ -327,15 +486,86 @@ namespace UltraCanvas {
         event.meta = (metaState & AMETA_META_ON) != 0;
 
         if (event.type == UCEventType::KeyDown && !event.ctrl && !event.alt) {
-            char c = DeriveAsciiCharacter(ucKey, event.shift);
-            if (c) {
-                event.character = c;
-                event.text = std::string(1, c);
+            const int32_t codePoint = GetUnicodeCharacter(
+                    AInputEvent_getDeviceId(keyEvent), keyCode, metaState);
+            if (codePoint >= 32 && codePoint != 127) {
+                // UTF-8 encode into event.text (the field text widgets
+                // prefer); event.character keeps the ASCII subset.
+                char utf8[5] = {};
+                if (codePoint < 0x80) {
+                    utf8[0] = static_cast<char>(codePoint);
+                    event.character = utf8[0];
+                } else if (codePoint < 0x800) {
+                    utf8[0] = static_cast<char>(0xC0 | (codePoint >> 6));
+                    utf8[1] = static_cast<char>(0x80 | (codePoint & 0x3F));
+                } else if (codePoint < 0x10000) {
+                    utf8[0] = static_cast<char>(0xE0 | (codePoint >> 12));
+                    utf8[1] = static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+                    utf8[2] = static_cast<char>(0x80 | (codePoint & 0x3F));
+                } else {
+                    utf8[0] = static_cast<char>(0xF0 | (codePoint >> 18));
+                    utf8[1] = static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F));
+                    utf8[2] = static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+                    utf8[3] = static_cast<char>(0x80 | (codePoint & 0x3F));
+                }
+                event.text = utf8;
+            } else if (codePoint == 0) {
+                // JNI unavailable (or non-printing key): US-layout fallback.
+                char c = DeriveAsciiCharacter(ucKey, event.shift);
+                if (c) {
+                    event.character = c;
+                    event.text = std::string(1, c);
+                }
             }
         }
 
         PushEvent(event);
         return 1;
+    }
+
+    int32_t UltraCanvasAndroidApplication::GetUnicodeCharacter(int32_t deviceId,
+                                                               int32_t keyCode,
+                                                               int32_t metaState) {
+        JNIEnv* env = AndroidJni::GetEnv();
+        if (!env) return 0;
+
+        if (!kcmJni.cls) {
+            if (kcmJni.triedInit) return 0;
+            kcmJni.triedInit = true;
+            jclass local = env->FindClass("android/view/KeyCharacterMap");
+            if (AndroidJni::ClearException(env, "FindClass(KeyCharacterMap)") || !local) {
+                return 0;
+            }
+            kcmJni.cls = static_cast<jclass>(env->NewGlobalRef(local));
+            env->DeleteLocalRef(local);
+            kcmJni.midLoad = env->GetStaticMethodID(kcmJni.cls, "load",
+                    "(I)Landroid/view/KeyCharacterMap;");
+            kcmJni.midGet = env->GetMethodID(kcmJni.cls, "get", "(II)I");
+            if (AndroidJni::ClearException(env, "KeyCharacterMap method lookup")) {
+                env->DeleteGlobalRef(kcmJni.cls);
+                kcmJni.cls = nullptr;
+                return 0;
+            }
+        }
+
+        if (!kcmJni.map || kcmJni.deviceId != deviceId) {
+            jobject map = env->CallStaticObjectMethod(kcmJni.cls, kcmJni.midLoad, deviceId);
+            if (AndroidJni::ClearException(env, "KeyCharacterMap.load") || !map) {
+                return 0;
+            }
+            if (kcmJni.map) env->DeleteGlobalRef(kcmJni.map);
+            kcmJni.map = env->NewGlobalRef(map);
+            env->DeleteLocalRef(map);
+            kcmJni.deviceId = deviceId;
+        }
+
+        const jint unicode = env->CallIntMethod(kcmJni.map, kcmJni.midGet,
+                                                keyCode, metaState);
+        if (AndroidJni::ClearException(env, "KeyCharacterMap.get")) return 0;
+        // COMBINING_ACCENT flag (bit 31): a dead key awaiting composition -
+        // treat as non-printing (no composing-text support yet).
+        if (unicode < 0) return 0;
+        return unicode;
     }
 
     UCKeys UltraCanvasAndroidApplication::ConvertAndroidKeyToUCKey(int32_t keyCode) {

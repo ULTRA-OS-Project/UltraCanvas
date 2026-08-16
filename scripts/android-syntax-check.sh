@@ -71,6 +71,18 @@ flags=(-std=c++20 -fsyntax-only $target
     -isystem "$shim"
     $hostflags)
 
+# The JNI bridges need <jni.h>. Real NDK sysroots ship it; the host-compiler
+# fallback (local smoke runs with a fake NDK) borrows the JDK's copy.
+if ! echo '#include <jni.h>' | "$cxx" "${flags[@]}" -x c++ - 2>/dev/null; then
+    jdk="${JAVA_HOME:-$(ls -d /usr/lib/jvm/java-*-openjdk-* 2>/dev/null | head -1)}"
+    if [ -n "$jdk" ] && [ -e "$jdk/include/jni.h" ]; then
+        flags+=(-isystem "$jdk/include" -isystem "$jdk/include/linux")
+    else
+        echo "android-syntax-check: no <jni.h> (NDK sysroot or JDK)" >&2
+        exit 2
+    fi
+fi
+
 status=0
 check() {
     printf '  %-58s ' "${1#"$repo"/}"
