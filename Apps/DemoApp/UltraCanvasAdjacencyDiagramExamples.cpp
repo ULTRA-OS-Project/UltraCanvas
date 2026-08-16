@@ -178,6 +178,117 @@ namespace UltraCanvas {
     }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB — The classic rotated triangle (AdjacencyMatrixStyle::Rotated45)
+// The traditional architectural form: horizontal labels down the left with an
+// attribute table beside them, and the requirements as 45° diamonds where each
+// pair of rooms' diagonals cross. A waterfront community centre at 19 spaces —
+// the scale the printed reference examples use.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeTriangleTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>("AdjTriTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("AdjTriDesc", 10, 8, 980, 22);
+        desc->SetText("The classic rotated triangle: each pair of spaces meets where their 45° "
+                      "diagonals cross. Same data model as the staircase — only the geometry differs.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
+                "TriMatrix", 10, 34, 990, 654);
+
+        // A waterfront community centre. Attributes are parallel to the
+        // headers set below: Public? / Loud? / floor area.
+        struct Space {
+            const char* id; const char* label; float area;
+            RoomFunctionType type;
+            const char* isPublic; const char* isLoud; const char* sqft;
+        };
+        static const Space spaces[] = {
+            {"lobby",    "Lobby",                    120, RoomFunctionType::Circulation, "Y", "S", "1200"},
+            {"gallery",  "Gallery Space",             90, RoomFunctionType::Public,      "Y", "N", "900"},
+            {"workshop", "Workshops",                 80, RoomFunctionType::Public,      "Y", "Y", "850"},
+            {"lecture",  "Lecture Hall / Classroom", 110, RoomFunctionType::Public,      "Y", "S", "1100"},
+            {"library",  "Library",                  100, RoomFunctionType::Public,      "Y", "N", "1000"},
+            {"gym",      "Gymnasium / Basketball",   200, RoomFunctionType::Public,      "Y", "Y", "2000"},
+            {"offices",  "Offices (Admin, Meeting)",  70, RoomFunctionType::Private,     "N", "N", "700"},
+            {"storage",  "Storage",                   40, RoomFunctionType::Service,     "N", "N", "400"},
+            {"mech",     "Mechanical",                35, RoomFunctionType::Service,     "N", "Y", "350"},
+            {"bath",     "Bathrooms",                 45, RoomFunctionType::Support,     "Y", "N", "450"},
+            {"garden",   "Community Garden",          80, RoomFunctionType::Public,      "Y", "N", "800"},
+            {"elev",     "Elevators / Stairs",        30, RoomFunctionType::Circulation, "Y", "N", "300"},
+            {"pool",     "Pool",                     150, RoomFunctionType::Public,      "Y", "Y", "1500"},
+            {"pier",     "Kayaking Pier",             60, RoomFunctionType::Public,      "Y", "S", "600"},
+            {"green",    "Green / Waterfront Space", 160, RoomFunctionType::Public,      "Y", "S", "1600"},
+            {"field",    "Outdoor Field",            180, RoomFunctionType::Public,      "Y", "Y", "1800"},
+            {"counsel",  "Counseling Rooms",          50, RoomFunctionType::Private,     "N", "N", "500"},
+            {"children", "Children's Rooms",          75, RoomFunctionType::Public,      "Y", "Y", "750"},
+            {"fitness",  "Fitness Rooms",             85, RoomFunctionType::Public,      "Y", "Y", "850"},
+        };
+        for (const Space& s : spaces) {
+            AdjacencyRoom room;
+            room.id = s.id;
+            room.label = s.label;
+            room.areaSqM = s.area;
+            room.functionType = s.type;
+            room.attributes = {s.isPublic, s.isLoud, s.sqft};
+            diagram->AddRoom(room);
+        }
+        diagram->SetAttributeColumns({"Public", "Loud", "Sq Ft"});
+
+        // The programme, straight in priority terms.
+        diagram->AddLink("lobby",    "gallery",  AdjacencyPriority::Must);
+        diagram->AddLink("lobby",    "elev",     AdjacencyPriority::Must);
+        diagram->AddLink("lobby",    "bath",     AdjacencyPriority::Should);
+        diagram->AddLink("lobby",    "offices",  AdjacencyPriority::Should);
+        diagram->AddLink("lobby",    "children", AdjacencyPriority::Maybe);
+        diagram->AddLink("gallery",  "workshop", AdjacencyPriority::Should);
+        diagram->AddLink("workshop", "storage",  AdjacencyPriority::Must);
+        diagram->AddLink("workshop", "lecture",  AdjacencyPriority::Should);
+        diagram->AddLink("lecture",  "library",  AdjacencyPriority::Must);
+        diagram->AddLink("library",  "counsel",  AdjacencyPriority::Should);
+        diagram->AddLink("library",  "children", AdjacencyPriority::Maybe);
+        diagram->AddLink("gym",      "storage",  AdjacencyPriority::Should);
+        diagram->AddLink("gym",      "bath",     AdjacencyPriority::Must);
+        diagram->AddLink("gym",      "fitness",  AdjacencyPriority::Must);
+        diagram->AddLink("gym",      "pool",     AdjacencyPriority::Should);
+        diagram->AddLink("pool",     "bath",     AdjacencyPriority::Must);
+        diagram->AddLink("pool",     "mech",     AdjacencyPriority::Must);
+        diagram->AddLink("pool",     "pier",     AdjacencyPriority::Maybe);
+        diagram->AddLink("pier",     "green",    AdjacencyPriority::Must);
+        diagram->AddLink("green",    "field",    AdjacencyPriority::Should);
+        diagram->AddLink("garden",   "green",    AdjacencyPriority::Must);
+        diagram->AddLink("garden",   "field",    AdjacencyPriority::Maybe);
+        diagram->AddLink("offices",  "counsel",  AdjacencyPriority::Must);
+        diagram->AddLink("offices",  "elev",     AdjacencyPriority::Should);
+        diagram->AddLink("mech",     "storage",  AdjacencyPriority::Should);
+        diagram->AddLink("mech",     "elev",     AdjacencyPriority::Maybe);
+        diagram->AddLink("children", "field",    AdjacencyPriority::Should);
+        diagram->AddLink("children", "bath",     AdjacencyPriority::Must);
+        diagram->AddLink("fitness",  "bath",     AdjacencyPriority::Should);
+        diagram->AddLink("counsel",  "children", AdjacencyPriority::Maybe);
+
+        diagram->SetView(AdjacencyView::Matrix);
+        diagram->SetMatrixStyle(AdjacencyMatrixStyle::Rotated45);
+        diagram->SetShowLegend(true);
+        diagram->SetLegendPosition(ChartLegendPosition::BottomCenter);
+
+        diagram->onMatrixCellClick = [statusLabel](const std::string& rowId,
+                                                   const std::string& colId,
+                                                   const AdjacencyLink* link) {
+            std::ostringstream ss;
+            ss << rowId << " — " << colId << "   "
+               << (link ? UltraCanvasAdjacencyDiagram::PriorityLabel(link->priority)
+                        : "no requirement");
+            statusLabel->SetText(ss.str());
+        };
+
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB 2 — Multi-floor residence  (image 2 — multi-floor villa)
 // Three floors (GF, 1F, 2F) with zone bounding boxes per floor
 // ─────────────────────────────────────────────────────────────────────────────
@@ -402,6 +513,7 @@ namespace UltraCanvas {
 
         tabs->AddTab("Library branch",    MakeLibraryTab(statusLabel));
         tabs->AddTab("Matrix view",       MakeLibraryMatrixTab(statusLabel));
+        tabs->AddTab("Triangle 45°",      MakeTriangleTab(statusLabel));
         tabs->AddTab("Multi-floor villa", MakeResidenceTab(statusLabel));
         tabs->AddTab("Design studio",     MakeOfficeTab(statusLabel));
 
