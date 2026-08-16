@@ -78,6 +78,15 @@ components:
   sound, the default), *5 s clip* (a five-second muted preview in the
   `UltraCanvasAlbum` hover style, then pause) or *Still image* (paused
   first frame).
+- **Open files:** double-click / Enter shows a previewable file in the
+  preview pane and launches every other file with the application the OS
+  registers for it (`UltraCanvasFileAssociations`), like a double-click in
+  Explorer. The context menu's **Open with >** lists all registered
+  applications for the selection (default first, with icons) plus **Other
+  application…**, a file-dialog picker; launches are detached, so closing
+  UltraFiler leaves the opened applications running. The application lists
+  are prewarmed in the background while a folder is shown, so the menu opens
+  without any lookup delay.
 - **Status bar:** entry count of the folder, selection count and summed size.
 - **Extras > Open prompt:** starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file

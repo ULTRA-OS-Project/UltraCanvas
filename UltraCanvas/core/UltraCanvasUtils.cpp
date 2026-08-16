@@ -13,6 +13,14 @@
 #include <mach-o/dyld.h>
 #endif
 
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <cerrno>
+#include <cstring>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #include "UltraCanvasUtils.h"
 #include <sstream>
 #include <filesystem>
@@ -565,6 +573,89 @@ namespace UltraCanvas {
         system(("open \"" + url + "\"").c_str());
 #else
         system(("xdg-open \"" + url + "\"").c_str());
+#endif
+    }
+
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               std::string& outError) {
+        outError.clear();
+        if (argv.empty() || argv[0].empty()) {
+            outError = "No application to launch.";
+            return false;
+        }
+#if defined(_WIN32) || defined(_WIN64)
+        // Standard argv quoting: quote arguments containing spaces / tabs /
+        // quotes, backslash-escape embedded quotes (and the backslashes
+        // directly before them).
+        std::wstring cmdLine;
+        for (const std::string& a : argv) {
+            if (!cmdLine.empty()) cmdLine += L' ';
+            const std::wstring w = Utf8ToWide(a);
+            if (!w.empty() && w.find_first_of(L" \t\"") == std::wstring::npos) {
+                cmdLine += w;
+                continue;
+            }
+            cmdLine += L'"';
+            size_t backslashes = 0;
+            for (wchar_t c : w) {
+                if (c == L'\\') { ++backslashes; continue; }
+                if (c == L'"') cmdLine.append(backslashes * 2 + 1, L'\\');
+                else cmdLine.append(backslashes, L'\\');
+                backslashes = 0;
+                cmdLine += c;
+            }
+            cmdLine.append(backslashes * 2, L'\\');
+            cmdLine += L'"';
+        }
+        const std::wstring dirW = Utf8ToWide(workingDirectory);
+        STARTUPINFOW si = {};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi = {};
+        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+        mutableCmd.push_back(L'\0');
+        if (!CreateProcessW(nullptr, mutableCmd.data(), nullptr, nullptr, FALSE,
+                            CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+                            nullptr, dirW.empty() ? nullptr : dirW.c_str(),
+                            &si, &pi)) {
+            outError = "Could not start \"" + argv[0] + "\".";
+            return false;
+        }
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return true;
+#else
+        const pid_t pid = ::fork();
+        if (pid < 0) {
+            outError = std::string("Could not start \"") + argv[0] + "\": " +
+                       std::strerror(errno);
+            return false;
+        }
+        if (pid == 0) {
+            // Grandchild execs in its own session; the intermediate child
+            // exits immediately so the parent can reap it and the launched
+            // program is never our zombie.
+            if (::fork() == 0) {
+                ::setsid();
+                if (!workingDirectory.empty()) {
+                    if (::chdir(workingDirectory.c_str()) != 0) {
+                        // Keep the inherited directory - starting the program
+                        // in the wrong folder still beats not starting it.
+                    }
+                }
+                std::vector<char*> args;
+                args.reserve(argv.size() + 1);
+                for (const std::string& a : argv)
+                    args.push_back(const_cast<char*>(a.c_str()));
+                args.push_back(nullptr);
+                ::execvp(args[0], args.data());
+                ::_exit(127);
+            }
+            ::_exit(0);
+        }
+        int status = 0;
+        ::waitpid(pid, &status, 0);
+        return true;
 #endif
     }
 

@@ -1,9 +1,24 @@
 # UltraCanvasFileAssociations — "Open with" Cross-OS Proposal
 
-Status: **Proposal — nothing implemented yet.**
+Status: **P1 is implemented** — see
+[`UltraCanvasFileAssociations.md`](UltraCanvasFileAssociations.md) for the
+API documentation. Delivered: the service (`UltraCanvasFileAssociations.h`,
+core worker/cache) with the full Linux/BSD freedesktop backend, the
+background prewarm (§7) wired into `UltraCanvasFilerWidget` (widget
+construction parses the database, folder scans pre-resolve extensions), the
+widget's "Open with >" OS section + "Other application…" picker +
+`SetSystemOpenWithEnabled` opt-out + `SetActivateOpensWithDefaultApp`
+fallback, UltraFiler's default-open on double-click, and the shared
+`LaunchDetachedProcess` helper (UltraFilerPrompt now uses it too). Windows
+and macOS currently ship default-open + picker placeholders; their
+enumeration backends are P2/P3 below. One deviation from §3: the chooser is
+not a service entry point — file dialogs need a parent window, so the widget
+owns the picker UI and the service exposes `OpenWithApplicationPath` +
+`GetApplicationFilter`/`GetApplicationsDirectory` instead. This document is
+kept as the research write-up and the roadmap for the remaining phases.
 
 Author: UltraCanvas Framework
-Last Modified: 2026-08-10
+Last Modified: 2026-08-16
 
 ---
 

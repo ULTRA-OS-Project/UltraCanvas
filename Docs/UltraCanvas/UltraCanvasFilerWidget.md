@@ -162,7 +162,9 @@ Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
 ──────────
-Open with      >  applications registered via AddOpenWithApp()
+Open with      >  the applications the OS registers for the selected files
+                  (default app first), then entries added via
+                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
@@ -180,6 +182,28 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Open with** lists the OS-registered applications through
+  [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
+  icon, the default application first. The lookups are prewarmed on that
+  service's background worker (the first widget triggers the
+  association-database parse, every folder scan pre-resolves the folder's
+  extensions), so opening the menu reads a cache instead of parsing anything.
+  The OS section appears when the whole selection is real files on disk —
+  folders and entries inside archives (virtual paths no external application
+  could read) fall back to the manual entries only. `AddOpenWithApp()`
+  entries keep working unchanged below the OS section, and
+  `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
+  "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
+  preset to the platform's application filter and directory; the pick is
+  launched detached with the selected files. On platforms whose enumeration
+  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
+  section is empty but default-open and the picker already work.
+- `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
+  file with the OS default application **when no `onFileActivated` callback
+  is installed** — activation semantics for simple embedders; hosts with
+  their own activation handling (like UltraFiler's preview) keep full
+  control and call `FileAssociations::OpenWithDefaultApplication` themselves
+  where they want it.
 - **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
   TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
   showing the archive's file-type icon, an editable file name with the chosen
