@@ -84,6 +84,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # Normal jobs finish in ~30 minutes. Without a cap, a hang burns the
+    # default 6-hour job timeout (seen once: MSYS2 ldd deadlocking while
+    # loading an ImageMagick coder DLL during Windows-on-ARM packaging).
+    timeout-minutes: 120
+
     defaults:
       run:
         shell: ${{ startsWith(matrix.os, 'windows') && 'msys2 {0}' || 'bash' }}

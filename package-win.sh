@@ -65,8 +65,14 @@ echo ""
 echo "Collecting DLLs..."
 DLL_COUNT=0
 
+# MSYS2's ldd resolves dependencies by actually loading the module, running
+# DllMain of everything it pulls in. Some DLLs (seen with ImageMagick coder
+# modules on ARM64) deadlock in that init path and hang ldd forever — bound
+# every call so a bad module is skipped instead of wedging the build.
+LDD="timeout -k 5 15 ldd"
+
 for EXE_PATH in $DIST_DIR/*.exe ; do
-  ldd "$EXE_PATH" | grep -i "$MSYS_PREFIX/" | awk '{print $3}' | sort -u | while read -r dll; do
+  $LDD "$EXE_PATH" | grep -i "$MSYS_PREFIX/" | awk '{print $3}' | sort -u | while read -r dll; do
       if [ -f "$dll" ]; then
           cp "$dll" "$DIST_DIR/"
           echo "  $(basename "$dll")"
@@ -129,7 +135,7 @@ fi
 # Also collect DLLs needed by the DLLs themselves (transitive deps)
 # Run ldd on ALL copied DLLs including those in subdirectories (vips modules, IM coders)
 find "$DIST_DIR" -name '*.dll' | while read -r dll; do
-    ldd "$dll" 2>/dev/null | grep -i "$MSYS_PREFIX/" | awk '{print $3}' | sort -u | while read -r dep; do
+    $LDD "$dll" 2>/dev/null | grep -i "$MSYS_PREFIX/" | awk '{print $3}' | sort -u | while read -r dep; do
         dep_name=$(basename "$dep")
         if [ -f "$dep" ] && [ ! -f "$DIST_DIR/$dep_name" ]; then
             cp "$dep" "$DIST_DIR/"
