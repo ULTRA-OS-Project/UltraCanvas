@@ -50,9 +50,11 @@ namespace UltraCanvas {
     enum class LegendSwatch {
         Square,        // filled rectangle (categorical series, packet layers)
         Circle,        // filled disc (scatter, node roles - "* Routers")
+        Ring,          // hollow disc - stays distinct from Circle in greyscale
         Line,          // horizontal stroke (line series)
         DashedLine,    // dashed stroke (thresholds, optional fields)
         Marker,        // small diamond
+        Glyph,         // the entry's own text (letter codes, symbol scales)
         Gradient       // the entry's own mini colour ramp (band legends)
     };
 
@@ -73,6 +75,10 @@ namespace UltraCanvas {
 
         // Optional right-aligned secondary text (value, count, percentage).
         std::string valueText;
+
+        // Drawn in the swatch box when swatch == Glyph. Lets a key mix letter
+        // codes ("Y", "N", "S") with coloured shapes under one legend.
+        std::string glyph;
 
         // Discrete band entries: when set, the label is generated from the
         // interval rather than supplied verbatim. See SetIntervalFormat().

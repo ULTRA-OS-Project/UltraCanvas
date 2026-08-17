@@ -122,6 +122,14 @@ if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraMail)
 endif()
 
+# ===== ULTRASOCIAL =====
+# Cross-posting to social networks. Phase 1 builds the headless engine
+# (connectors + store + composer); UI targets are added in later phases.
+option(BUILD_ULTRASOCIAL "Build the UltraSocial application" ON)
+if(BUILD_ULTRASOCIAL AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraSocial)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -203,6 +211,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineChartExamples.cpp
@@ -474,6 +483,18 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRAWIN TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses the same tiny in-tree framework
+# as the UltraNet suite. Wine itself is NOT required — wine-dependent tests
+# skip themselves when no binary is found.
+option(ULTRACANVAS_BUILD_ULTRAWIN_TESTS "Build the UltraWin test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAWIN_TESTS AND TARGET UltraWin)
+    enable_testing()
+    add_subdirectory(Tests/UltraWin)
+    message(STATUS "")
+    message(STATUS "── UltraWin test suite enabled (target: UltraWinTests) ──")
+endif()
+
 # ===== ULTRADATABASE TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraDatabase is built.
@@ -493,6 +514,17 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     add_subdirectory(Tests/UltraMail)
     message(STATUS "")
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
+endif()
+
+# ===== ULTRASOCIAL ENGINE TESTS =====
+# Headless engine tests (composer, vault, store, connectors against
+# loopback fake servers); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS "Build the UltraSocial engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS AND TARGET UltraSocialEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraSocial)
+    message(STATUS "")
+    message(STATUS "── UltraSocial engine test suite enabled (target: UltraSocialEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====

@@ -452,7 +452,7 @@ namespace UltraCanvas {
                 }
 
                 // Check for icon column
-                if (!item.iconPath.empty()) {
+                if (!item.iconPath.empty() || item.iconImage) {
                     hasAnyIcon = true;
                 }
 
@@ -573,10 +573,12 @@ namespace UltraCanvas {
         //     currentX += style.iconSize + style.iconSpacing;
         // }
 
-        // Render icon
-        if (!item.iconPath.empty()) {
+        // Render icon (from an in-memory image if provided, else the file path)
+        if (item.iconImage || !item.iconPath.empty()) {
             int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
-            if (item.iconPath != "-") {
+            if (item.iconImage) {
+                ctx->DrawImage(*item.iconImage, Rect2Dd(currentX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
+            } else if (item.iconPath != "-") {
                 RenderIcon(item.iconPath, Point2Di(currentX, iconY), ctx);
             }
             currentX += style.iconSize + style.iconSpacing;
@@ -666,7 +668,7 @@ namespace UltraCanvas {
         int width = 0;
         auto ctx = GetRenderContext();
         // Icon space
-        if (!item.iconPath.empty()) {
+        if (!item.iconPath.empty() || item.iconImage) {
             width += style.iconSize + style.iconSpacing;
         }
 

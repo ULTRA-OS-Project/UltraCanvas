@@ -33,7 +33,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -319,6 +319,37 @@ spinning disks.
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
+
+## Hidden entries
+
+`SetShowHiddenFiles(bool)` (default `false`) decides whether hidden entries are
+listed; `GetShowHiddenFiles()` reads it back. What counts as hidden is the
+**platform's own notion**, not just the Unix dot convention:
+
+- **every platform** — names starting with `.`;
+- **Windows** — entries carrying the `FILE_ATTRIBUTE_HIDDEN` attribute. This is
+  what keeps a profile folder looking like Explorer's: the `NTUSER.DAT`
+  registry hives, `AppData` and the localized pre-Vista compatibility junctions
+  (`Anwendungsdaten`, `Lokale Einstellungen`, …) are all hidden by attribute,
+  not by name;
+- **macOS** — entries carrying the `UF_HIDDEN` file flag (`chflags hidden`),
+  e.g. `~/Library`.
+
+The attribute is read inside the single metadata call each scanned entry
+already pays for (`GetFileAttributesExW` on Windows, `stat` elsewhere), so the
+scan cost is unchanged. Hidden entries show an `H` in the Details view's
+attributes column when displayed.
+
+Hosts that filter paths themselves can use the same test through
+`UltraCanvas::IsHiddenFileSystemEntry(path)` (`UltraCanvasUtils.h`) — the
+UltraFiler's folder tree and recursive search do. The companion
+`UltraCanvas::GetWellKnownUserFolders()` returns the user's Desktop /
+Documents / Downloads / Music / Pictures / Videos (plus Public / Templates
+where the OS defines them) resolved through the platform —
+`SHGetKnownFolderPath` on Windows (follows folder redirection, e.g. into
+OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
+(localized names; entries pointing at `$HOME` are disabled per the spec) — for
+building an Explorer/Finder-style curated "Home" section.
 
 ## Selection access
 

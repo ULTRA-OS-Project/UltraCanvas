@@ -448,7 +448,13 @@ namespace UltraCanvas {
     };
 } // namespace UltraCanvas
 
-#if defined(__linux__) || defined(__unix__) || defined(__unix)
+#if defined(__EMSCRIPTEN__)
+// Web/WASM (checked first: Emscripten also defines __unix__)
+#include "../OS/WASM/UltraCanvasWASMWindow.h"
+namespace UltraCanvas {
+    using UltraCanvasWindow = UltraCanvasWASMWindow;
+}
+#elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxWindow.h"
 namespace UltraCanvas {
     using UltraCanvasWindow = UltraCanvasLinuxWindow;
@@ -479,12 +485,6 @@ namespace UltraCanvas {
     #include "../OS/Android/UltraCanvasAndroidWindow.h"
     namespace UltraCanvas {
         using UltraCanvasWindow = UltraCanvasAndroidWindow;
-    }
-#elif defined(__WASM__)
-    // Web/WASM
-    #include "../OS/Web/UltraCanvasWebWindow.h"
-    namespace UltraCanvas {
-        using UltraCanvasWindow = UltraCanvasWebWindow;
     }
 #else
 #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"

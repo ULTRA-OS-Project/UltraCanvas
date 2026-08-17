@@ -64,6 +64,10 @@ endif()
 # Stage 1 ships HTTP/HTTPS + URL utilities on libcurl. Built as a separate
 # library target so apps that don't need networking pay no cost.
 option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
+
+# UltraWin — Windows-application compatibility module (Wine tier). Linux /
+# ULTRA OS only; silently skipped on other platforms.
+option(ULTRACANVAS_ENABLE_ULTRAWIN "Build the UltraWin Windows-app compatibility library" ON)
 option(ULTRACANVAS_PLUGIN_SMTP   "Build the UltraNet SMTP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_IMAP   "Build the UltraNet IMAP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_POP3   "Build the UltraNet POP3 plug-in"   ON)
@@ -99,11 +103,34 @@ if(WIN32)
 elseif(APPLE)
     set(ULTRACANVAS_PLATFORM "MacOS")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MacOS")
+elseif(EMSCRIPTEN)
+    # Checked before UNIX: the Emscripten toolchain sets UNIX=1 too.
+    set(ULTRACANVAS_PLATFORM "WASM")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/WASM")
 elseif(UNIX)
     set(ULTRACANVAS_PLATFORM "Linux")
     set(ULTRACANVAS_PLATFORM_DIR "OS/Linux")
 else()
     message(FATAL_ERROR "Unsupported platform")
+endif()
+
+# WebAssembly builds run inside the browser sandbox: no OpenGL context
+# managers, no native audio/video frameworks, no sockets for UltraNet, and no
+# runtime-loaded plug-in modules. The remaining REQUIRED pkg-config
+# dependencies (cairo, pango, fontconfig, freetype, harfbuzz, glib, tinyxml2,
+# vips) must come from a wasm sysroot on PKG_CONFIG_PATH under emcmake —
+# see OS/WASM/README.md.
+if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
+    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
+    set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library" FORCE)
+    set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CorelDRAW CDR plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)" FORCE)
+    set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" FORCE)
+    set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)" FORCE)
 endif()
 
 
@@ -119,6 +146,15 @@ if(NOT TARGET fmt::fmt)
                 GIT_REPOSITORY https://github.com/fmtlib/fmt
                 GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
         FetchContent_MakeAvailable(fmt)
+        if(EMSCRIPTEN)
+            # fmt's format.h uses malloc/free but only gets <cstdlib>
+            # transitively; Emscripten's musl/libc++ headers don't leak it,
+            # so force the include. PUBLIC: anything including fmt/format.h
+            # hits the same hole. CXX-only — C sources cannot include it.
+            target_compile_options(fmt PUBLIC
+                    $<$<COMPILE_LANGUAGE:CXX>:-include>
+                    $<$<COMPILE_LANGUAGE:CXX>:cstdlib>)
+        endif()
     endif()
 endif()
 
@@ -165,8 +201,10 @@ else()
 endif()
 
 # FreeType - Font Rendering
-# On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
-if(WIN32 AND PKG_CONFIG_FOUND)
+# On Windows with vcpkg, use pkg-config since FindFreetype may not locate
+# vcpkg's install; under Emscripten the wasm sysroot is only exposed through
+# pkg-config (FindFreetype cannot search outside the toolchain root).
+if((WIN32 OR EMSCRIPTEN) AND PKG_CONFIG_FOUND)
     pkg_check_modules(FREETYPE REQUIRED freetype2)
 else()
     find_package(Freetype REQUIRED)
@@ -406,6 +444,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/FFT/kiss_fftr.c
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasArcDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyMatrix.cpp
 
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
@@ -423,6 +462,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMatrixModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasWordCloudDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogram.cpp
@@ -670,6 +711,22 @@ file(GLOB _ultracanvas_ultranet_platform_srcs
 )
 if(_ultracanvas_ultranet_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_ultranet_platform_srcs})
+endif()
+
+# The platform-dir glob above also matches the GL context managers
+# (GLContextManager{EGL,GLX,WGL,CGL}_*). Those are compiled ONLY when
+# ULTRACANVAS_ENABLE_GL is on (they are re-added explicitly, guarded, in the GL
+# section below), and their headers #error out unless ULTRACANVAS_ENABLE_GL is
+# defined. When GL is off the glob still pulled them in, breaking the build — so
+# drop them here, mirroring the UltraNet removal above.
+if(NOT ULTRACANVAS_ENABLE_GL)
+    file(GLOB _ultracanvas_gl_platform_srcs
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManager*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManager*.mm
+    )
+    if(_ultracanvas_gl_platform_srcs)
+        list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_gl_platform_srcs})
+    endif()
 endif()
 
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
@@ -1019,6 +1076,29 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             )
         endif()
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${FONTCONFIG_LIBRARIES}
+    )
+    # Core widgets (Album, Filer) spawn std::thread and libvips runs thread
+    # pools, so the whole program must be built with -pthread; exception
+    # handling must use the wasm EH instructions the sysroot libraries were
+    # compiled with (-fwasm-exceptions), not Emscripten's default
+    # abort-on-throw. PUBLIC so app executables inherit both.
+    target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -pthread
+            -fwasm-exceptions
+    )
+    # PUBLIC so app executables linked against the static core inherit the
+    # Emscripten runtime settings the backend depends on.
+    target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
+            -pthread
+            -fwasm-exceptions
+            -sPTHREAD_POOL_SIZE=8
+            -sALLOW_MEMORY_GROWTH=1
+            -sSTACK_SIZE=5MB
+            -sNO_EXIT_RUNTIME=1
+    )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             gdi32
@@ -1331,6 +1411,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDns.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
@@ -1593,6 +1674,53 @@ if(ULTRACANVAS_ENABLE_NET)
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
+endif()
+
+# ===== BUILD ULTRAWIN LIBRARY (Stage 1: Wine tier) =====
+# UltraWin — Windows-application compatibility module. Stage 1 wraps Wine
+# (spawned as child processes — nothing is linked): environments (prefixes),
+# drive mappings, launch/supervision. Linux / ULTRA OS only; the VM tier
+# (QEMU/KVM + FreeRDP RemoteApp) is Stage 2. See
+# Docs/Modules/UltraWin/README.md.
+if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    find_package(Threads REQUIRED)
+    set(ULTRAWIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
+    )
+    add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
+    set_target_properties(UltraWin PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultrawin")
+    target_compile_features(UltraWin PUBLIC cxx_std_20)
+    target_include_directories(UltraWin
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraWin PUBLIC Threads::Threads)
+
+    # Same single-host export strategy as UltraNet: a shared libultracanvas
+    # re-exports the whole UltraWin API so apps import one copy of the module
+    # (and its process registry) at runtime.
+    if(ULTRACANVAS_BUILD_SHARED)
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraWin>")
+        else()
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:UltraWin> -Wl,--no-whole-archive
+                UltraWin)
+        endif()
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraWin)
+    endif()
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_ULTRAWIN=1)
+    message(STATUS "  [✓] UltraWin - ENABLED (Wine tier; wine binary probed at runtime)")
+elseif(ULTRACANVAS_ENABLE_ULTRAWIN)
+    message(STATUS "  [−] UltraWin - SKIPPED (Linux/ULTRA OS only)")
+else()
+    message(STATUS "  [−] UltraWin - DISABLED")
 endif()
 
 # ===== BUILD ULTRADATABASE LIBRARY (Stage 1: SQLite core on libsqlite3) =====

@@ -202,3 +202,20 @@ media:
       vcpkg: "mp3lame"
       brew: "lame"
       msys2: "mingw-w64-x86_64-lame"
+
+# ===== WINDOWS-APP COMPATIBILITY (UltraWin) =====
+#
+# UltraWin never links its engines: Wine (and, in Stage 2, QEMU) are spawned
+# as child processes, keeping their LGPL/GPL licensing outside the framework
+# binaries. Wine is therefore a *runtime* dependency only — the module builds
+# everywhere on Linux and probes for the binary via UltraWin_GetCapabilities.
+windows_compatibility:
+  core:
+    wine:
+      min_version: "10.0"             # 11.0 recommended (ntsync, complete WoW64)
+      purpose: "Wine tier: runs Windows apps as native windows (runtime, spawned — never linked)"
+      required: false
+      priority: "high"
+      platforms: ["linux"]
+      # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
+      apt: "wine"

@@ -323,7 +323,8 @@ private:
     
     // ===== INTERACTION STATE =====
     bool isDragging;
-    Point2Di dragStartPosition;
+    Point2Di dragStartPosition;   // kept for compatibility / debugging
+    size_t dragAnchorPosition = 0; // character index the drag-selection is anchored to
     
     // ===== PLACEHOLDER =====
     bool showPlaceholderAlways = false;  // Show placeholder even when focused (if text is empty)

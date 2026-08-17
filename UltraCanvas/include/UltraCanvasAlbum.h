@@ -2,8 +2,18 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.6.0
-// Last Modified: 2026-07-19
+// Version: 1.7.0
+// Last Modified: 2026-08-11
+// V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
+//   default) — a Video item with no thumbnailPath now has its cover extracted
+//   from the clip itself on a background thread and cached in memory, so video
+//   tiles show a real frame without the app pre-generating poster files (which
+//   is impossible where the media sits in a read-only, code-signed bundle such
+//   as a macOS .app, and where video tiles therefore only ever showed the
+//   placeholder).
+// V1.6.1: Hover previews stop when a tile is activated (click / double-click /
+//   action) and only run while the album's window is the focused window, so
+//   they never play alongside a full player opened in another window.
 // V1.6.0: Hover animation preview (AlbumConfig::animationHoverPreview) —
 //   resting the cursor on a tile whose bitmap is an animated image (GIF,
 //   animated WebP) plays the animation in place of its static first frame,
@@ -32,9 +42,15 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasTimer.h"
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace UltraCanvas {
@@ -147,6 +163,9 @@ namespace UltraCanvas {
     struct AlbumItem {
         std::string mediaPath;      // photo file, or the video / music file itself
         std::string thumbnailPath;  // explicit cover/poster; falls back to mediaPath
+                                    // (a Video item without one gets a poster frame
+                                    // extracted from mediaPath — see
+                                    // AlbumConfig::videoPosterFrames)
         std::string title;          // primary caption line
         std::string subtitle;       // secondary line (artist, date, duration, ...)
         std::string description;    // longer related text (shown in a full-size view)
@@ -294,6 +313,26 @@ namespace UltraCanvas {
         // preview no extra backend is required — any build that decodes the
         // image format can play it.
         bool  animationHoverPreview      = false;  // opt-in
+
+        // ----- Automatic video poster frames -----
+        // A Video item with no thumbnailPath has its cover extracted from the
+        // clip itself: one representative frame is decoded on a background
+        // thread (never on the UI thread — a cold clip can take seconds) and
+        // cached in memory for the widget's lifetime, then the tile repaints
+        // with the real frame. Until it lands — and when no video backend is
+        // available (ULTRACANVAS_ENABLE_VIDEO=OFF) or the clip cannot be
+        // decoded — the built-in video placeholder is drawn.
+        //
+        // This is what makes video covers work when the media is read-only:
+        // an app cannot cache poster files next to clips that live inside a
+        // code-signed macOS .app bundle, an AppImage or any read-only install.
+        // A thumbnailPath that decodes always wins, so a hand-picked cover is
+        // never overridden; one that is missing or unreadable falls through to
+        // extraction instead of to the placeholder.
+        bool  videoPosterFrames  = true;
+        int   videoPosterMaxSize = 640;    // longest edge of the cached frame, px
+        float videoPosterTimeSec = -1.0f;  // where to grab; <0 = auto (~10% in,
+                                           // capped at 1s, to skip a black intro)
     };
 
     // ===== THE ALBUM ELEMENT =====
@@ -426,6 +465,53 @@ namespace UltraCanvas {
         TimerId animPreviewDelayTimerId = InvalidTimerId;   // dwell one-shot
         TimerId animPreviewStopTimerId  = InvalidTimerId;   // duration one-shot
 
+        // ===== VIDEO POSTER FRAMES (config.videoPosterFrames) =====
+        // Cover frames extracted from Video items that carry no thumbnailPath.
+        // Keyed by media path, so several items sharing a clip share one decode
+        // and a re-layout / repaint never re-decodes. Work is queued by the
+        // draw path (visible tiles only) and done on one lazily-started worker;
+        // the members are mutable because the const draw/layout helpers consult
+        // and fill the cache.
+        enum class PosterState { Pending, Ready, Failed };
+        struct PosterSlot {
+            PosterState state = PosterState::Pending;
+            std::shared_ptr<UCPixmap> pixmap;
+            int width = 0;
+            int height = 0;
+        };
+        struct PosterRequest {
+            std::string path;
+            int   maxSize = 640;    // config snapshot: the worker must not read
+            float timeSec = -1.0f;  // config, which the UI thread may replace
+        };
+        mutable std::unordered_map<std::string, PosterSlot> posterSlots;
+        mutable std::deque<PosterRequest> posterQueue;
+        mutable std::mutex posterMutex;             // guards slots + queue + flags
+        mutable std::condition_variable posterCond;
+        mutable std::thread posterWorker;
+        mutable bool posterShutdown = false;
+        mutable std::atomic<bool> posterRedrawPosted{false};
+        // The destructor flips this so a queued PostToUIThread repaint that
+        // outlives the widget becomes a no-op instead of a dangling call.
+        std::shared_ptr<std::atomic<bool>> posterAlive =
+                std::make_shared<std::atomic<bool>>(true);
+
+        // Ready poster for an item, or null after queueing an extraction / while
+        // one runs / when the clip yielded no frame. Only called for a Video item
+        // whose still cover (thumbnailPath) is absent or failed to decode, so an
+        // explicit cover that works is never replaced.
+        std::shared_ptr<UCPixmap> AcquireVideoPoster(const AlbumItem& item,
+                                                     int& outWidth, int& outHeight) const;
+        // Lookup-only variant for the layout pass: never queues work, so laying
+        // out a large album does not kick off a decode per clip (the visible
+        // tiles queue their own as they draw).
+        bool PeekVideoPosterSize(const AlbumItem& item, int& outWidth, int& outHeight) const;
+        void StartPosterWorkerLocked() const;   // call with posterMutex held
+        void StopPosterWorker();
+        void DropVideoPosters();                // on a wholesale item change
+        void PosterWorkerMain() const;
+        void PostPosterRedraw() const;          // coalesced reflow + repaint
+
         // Which action icon the cursor currently sits on, so a tooltip is shown
         // once on enter rather than re-issued on every mouse move. Mirrors the
         // ActionAt() return convention: -2 = none, -1 = the kebab/menu icon.
@@ -510,6 +596,9 @@ namespace UltraCanvas {
         // hovered tile (video preview for Video tiles, animation preview for
         // animated bitmaps), end the one whose tile the cursor left.
         void UpdateHoverPreview();
+        // Previews only run while our window is the application's focused
+        // window (see UpdateHoverPreview for why).
+        bool IsWindowFocused() const;
         void StopHoverPreview();               // both kinds (leave / teardown)
         void StopVideoHoverPreview();
         void StopAnimationHoverPreview();

@@ -41,7 +41,20 @@ mkdir -p "$DIST_DIR"
 
 # Copy the executables (and any co-located plugin/import DLLs). Executables now
 # output to the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY), not build/bin.
-cp ./build/*.exe "$DIST_DIR/"
+#
+# Test and diagnostic binaries (UltraNetTests, UltraNetApiStatus, *Test(s),
+# ultraai_test_*) must NOT ship: they are unsigned dev tools that open sockets
+# and load plug-in DLLs, which behaviour-based AV heuristics flag — AVG's
+# Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
+# as IDP.Generic. End users have no use for them anyway.
+for exe in ./build/*.exe; do
+    case "$(basename "$exe")" in
+        *Test.exe|*Tests.exe|ultraai_test_*.exe|UltraNetApiStatus.exe)
+            echo "  Skipping test/diagnostic binary: $(basename "$exe")"
+            continue ;;
+    esac
+    cp "$exe" "$DIST_DIR/"
+done
 cp ./build/*.dll "$DIST_DIR/" 2>/dev/null || true
 echo "Copied EXE"
 

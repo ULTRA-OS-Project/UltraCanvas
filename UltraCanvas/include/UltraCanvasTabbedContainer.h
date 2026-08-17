@@ -65,6 +65,9 @@ namespace UltraCanvas {
         std::string title;
         std::string tooltip;
         std::string iconPath;           // Path to tab icon (16x16 recommended)
+        // Optional already-decoded icon image (e.g. a favicon built with UCImage::LoadFromMemory);
+        // drawn in place of iconPath when set, so no temp file is needed.
+        std::shared_ptr<UCImage> iconImage;
         std::string badgeText;
         int badgeWidth = 0;
         int badgeHeight = 0;
@@ -290,6 +293,8 @@ namespace UltraCanvas {
 
         // ===== TAB ICON AND BADGE METHODS =====
         void SetTabIcon(int index, const std::string& iconPath);
+        // Set the tab icon from an already-decoded, in-memory image (pass nullptr to clear).
+        void SetTabIconImage(int index, std::shared_ptr<UCImage> image);
         std::string GetTabIcon(int index) const;
         void SetTabBadge(int index, const std::string & text, bool show = true);
         void SetTabBadgeColor(int index, const Color& color);

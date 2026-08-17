@@ -404,7 +404,7 @@ sibling module of the same generation:
 | Sources | `UltraCanvas/{include,core}/UltraCrypt/` |
 | Public header | `UltraCrypt/UltraCryptCore.h` |
 | Documentation | `Docs/Modules/UltraCrypt/README.md` (this file) |
-| Registry entry | `Masterfile_modules.md` §7 |
+| Registry entry | `Masterfile_modules.md` §8 |
 | Namespace | **None** — matching UltraNet and UltraDatabase, which place their surface in the global namespace behind a module prefix |
 | Functions | `UltraCrypt_<Verb><Noun>` free functions |
 | Types | `UltraCrypt`-prefixed (`UltraCryptResult`, `UltraCryptSecureBuffer`, …) |
@@ -866,7 +866,7 @@ storage layer and the UCD v2 format.
 
 ## See also
 
-- [Masterfile_modules.md](../../../Masterfile_modules.md) §7 — registry entry
+- [Masterfile_modules.md](../../../Masterfile_modules.md) §8 — registry entry
 - [UltraCanvasJSON](../../UltraCanvas/UltraCanvasJSON.md) — the wrapped-engine precedent
 - [UCD File Format v2](../../UltraCanvas/UCD-FileFormat-v2.md) — the largest consumer
 - [UltraAuthenticator investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)

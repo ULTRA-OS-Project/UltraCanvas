@@ -251,7 +251,11 @@ public:
     std::function<void(TreeNode*)> onNodeExpanded;
     std::function<void(TreeNode*)> onNodeCollapsed;
     std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop; // dragged, target
-    std::function<void(TreeNode*)> onNodeRightClicked;
+    // Right mouse button released over a node. The event is passed along so a
+    // handler can open a context menu at the pointer (event.pointerWindow).
+    // A right press never changes the selection — the menu acts on the node
+    // it was opened over, while the selected node stays where it was.
+    std::function<void(TreeNode*, const UCEvent&)> onNodeRightClicked;
     
     // ===== CONSTRUCTOR =====
     UltraCanvasTreeView(const std::string& identifier, 
@@ -543,7 +547,7 @@ public:
         return *this;
     }
     
-    TreeViewBuilder& OnNodeRightClicked(std::function<void(TreeNode*)> callback) {
+    TreeViewBuilder& OnNodeRightClicked(std::function<void(TreeNode*, const UCEvent&)> callback) {
         treeView->onNodeRightClicked = callback;
         return *this;
     }

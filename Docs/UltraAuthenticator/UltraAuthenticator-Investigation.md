@@ -67,7 +67,7 @@ repeat that pattern with hand-rolled HMAC.
 → **Prerequisite work item: the `UltraCrypt` module** — a sibling of UltraNet
 and UltraDatabase, now specified in
 [`Docs/Modules/UltraCrypt/README.md`](../Modules/UltraCrypt/README.md) and
-registered in `Masterfile_modules.md` §7. This app needs from it:
+registered in `Masterfile_modules.md` §8. This app needs from it:
 `UltraCrypt_Hmac` (SHA-1/256/512), `UltraCrypt_RandomBytes`,
 `UltraCrypt_ConstantTimeEquals`, `UltraCryptSecureBuffer`,
 `UltraCrypt_AeadSeal`/`Open` (XChaCha20-Poly1305) and

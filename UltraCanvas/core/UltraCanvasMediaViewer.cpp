@@ -954,6 +954,9 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         pv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         pv->onPageChanged = [this](int, int) { UpdateInfoBar(); };
+        // Page numbers drawn over the thumbnail pages (not captions beneath).
+        pv->SetThumbnailNumberStyle(
+            UltraCanvasPDFView::ThumbnailNumberStyle::Overlay);
         pv->SetVisible(false);
         pdfView = pv;
         AddChild(pdfView);
