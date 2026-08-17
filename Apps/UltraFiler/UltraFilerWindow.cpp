@@ -11,13 +11,16 @@
 // pinned through the menu bar's Pin > Favorites (UltraFilerFavorites).
 // Pin > Treeview (folders only) pins into the folder tree's "Pinned" section,
 // whose bookmark entries navigate on click; the tree's context menu offers
-// Copy / Delete / Paste on folders and Unpin on pinned entries. The Settings
+// Copy / Delete / Paste on folders, a Pin submenu whose "To Treeview" /
+// "To Favorites" flags show and toggle where the folder is pinned, and Unpin
+// on pinned entries. The Extras menu carries the same Pin / Unpin pair as a
+// block below "Open prompt", acting on the current selection. The Settings
 // menu opens the settings window (UltraFilerSettingsDialog) and clears the
 // history / the favorites; persisted settings load at startup and configure
 // the preview's transparent-image backdrop. Esc closes the History or
 // Favorites view, or an open media preview.
-// Version: 1.7.0
-// Last Modified: 2026-08-10
+// Version: 1.8.0
+// Last Modified: 2026-08-17
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -261,6 +264,13 @@ namespace {
                      fs::perms::others_exec)) != fs::perms::none;
     }
 
+    // The favorites list (= Favorites tab) an entry belongs to when pinned.
+    FilerFavoriteKind FavoriteKindOf(const FilerEntry& e) {
+        return e.isDirectory ? FilerFavoriteKind::Folder
+                : IsApplicationEntry(e) ? FilerFavoriteKind::App
+                                        : FilerFavoriteKind::File;
+    }
+
     // Is `path` equal to `folder` or somewhere below it?
     bool IsPathInside(const std::string& path, const std::string& folder) {
         if (folder.empty() || path.size() < folder.size()) return false;
@@ -436,13 +446,11 @@ std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
                         }
                     }),
             })
-            // The submenu is provided by a lambda so the two items' enabled
-            // state can follow the selection at the moment the menu opens.
+            // The submenus are provided by lambdas so the items' enabled and
+            // checked state can follow the selection at the moment the menu
+            // opens.
             .AddSubmenu("Pin", [this]() { return BuildPinMenuItems(); })
-            .AddSubmenu("Extras", {
-                    MenuItemData::Action("Open prompt",
-                            [this]() { OpenSystemPrompt(); }),
-            })
+            .AddSubmenu("Extras", [this]() { return BuildExtrasMenuItems(); })
             .Build();
     menuBar->size.height = CSSLayout::Dimension::Px(24);
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -476,6 +484,55 @@ void UltraFilerWindow::OpenSystemPrompt() {
     std::string error;
     if (!UltraFilerPrompt::Launch(settings.promptApplication, folder, error))
         UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
+}
+
+std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
+    const std::vector<FilerEntry> targets = PinTargets();
+    const bool allFolders = !targets.empty() &&
+            std::all_of(targets.begin(), targets.end(),
+                        [](const FilerEntry& e) { return e.isDirectory; });
+
+    // The flags show where the selection is pinned right now: checked when
+    // every target is pinned there. Pin stays enabled while something is
+    // still unpinned, Unpin while something is pinned - so the pair also
+    // reads as "partly pinned" when a flag is off but Unpin is enabled.
+    bool allInFavorites = !targets.empty(), anyInFavorites = false;
+    for (const FilerEntry& e : targets) {
+        const bool pinned = favorites.IsPinned(FavoriteKindOf(e), e.path);
+        allInFavorites = allInFavorites && pinned;
+        anyInFavorites = anyInFavorites || pinned;
+    }
+    bool allInTree = allFolders, anyInTree = false;
+    for (const FilerEntry& e : targets) {
+        if (!e.isDirectory) continue;
+        const bool pinned = favorites.IsPinned(FilerFavoriteKind::Tree, e.path);
+        allInTree = allInTree && pinned;
+        anyInTree = anyInTree || pinned;
+    }
+
+    // Only a folder can live in the folder tree.
+    MenuItemData pinTree = MenuItemData::Checkbox("To Treeview", allInTree,
+            [this](bool) { PinTargetsToTree(); });
+    pinTree.enabled = allFolders && !allInTree;
+
+    MenuItemData pinFavorites = MenuItemData::Checkbox("To Favorites", allInFavorites,
+            [this](bool) { PinTargetsToFavorites(); });
+    pinFavorites.enabled = !targets.empty() && !allInFavorites;
+
+    MenuItemData unpinTree = MenuItemData::Checkbox("To Treeview", allInTree,
+            [this](bool) { UnpinTargetsFromTree(); });
+    unpinTree.enabled = anyInTree;
+
+    MenuItemData unpinFavorites = MenuItemData::Checkbox("To Favorites", allInFavorites,
+            [this](bool) { UnpinTargetsFromFavorites(); });
+    unpinFavorites.enabled = anyInFavorites;
+
+    return {
+            MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
+            MenuItemData::Separator(),
+            MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
+            MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
+    };
 }
 
 // ===== PIN MENU (menu bar: Pin > Favorites / Treeview) =====
@@ -527,12 +584,8 @@ std::vector<MenuItemData> UltraFilerWindow::BuildPinMenuItems() {
 
 void UltraFilerWindow::PinTargetsToFavorites() {
     bool changed = false;
-    for (const FilerEntry& e : PinTargets()) {
-        const FilerFavoriteKind kind = e.isDirectory ? FilerFavoriteKind::Folder
-                : IsApplicationEntry(e) ? FilerFavoriteKind::App
-                                        : FilerFavoriteKind::File;
-        changed |= favorites.Pin(kind, e.path);
-    }
+    for (const FilerEntry& e : PinTargets())
+        changed |= favorites.Pin(FavoriteKindOf(e), e.path);
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -547,11 +600,26 @@ void UltraFilerWindow::PinTargetsToTree() {
     }
     if (!changed) return;
     RefreshPinnedTreeNodes();
-    // Show the new entry rather than leaving it behind a collapsed header.
-    if (TreeNode* pinned = folderTree ? folderTree->FindNode(kPinnedNodeId) : nullptr) {
-        folderTree->ExpandNode(pinned);
-        folderTree->RequestRedraw();
+    RevealPinnedTreeSection();
+}
+
+void UltraFilerWindow::UnpinTargetsFromFavorites() {
+    bool changed = false;
+    for (const FilerEntry& e : PinTargets())
+        changed |= favorites.Unpin(FavoriteKindOf(e), e.path);
+    if (changed && favoritesShown) {
+        RefreshFavoritesTabs();
+        UpdateStatusBar();
     }
+}
+
+void UltraFilerWindow::UnpinTargetsFromTree() {
+    bool changed = false;
+    for (const FilerEntry& e : PinTargets()) {
+        if (!e.isDirectory) continue;
+        changed |= favorites.Unpin(FilerFavoriteKind::Tree, e.path);
+    }
+    if (changed) RefreshPinnedTreeNodes();
 }
 
 // ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb) =====
@@ -1109,6 +1177,14 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
     folderTree->RequestRedraw();
 }
 
+void UltraFilerWindow::RevealPinnedTreeSection() {
+    // Show the new entry rather than leaving it behind a collapsed header.
+    if (TreeNode* pinned = folderTree ? folderTree->FindNode(kPinnedNodeId) : nullptr) {
+        folderTree->ExpandNode(pinned);
+        folderTree->RequestRedraw();
+    }
+}
+
 void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event) {
     if (!node || !window) return;
     const std::string target = TreeNodeTargetPath(node);
@@ -1144,6 +1220,38 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     pasteItem.enabled = isFolder && !clipboardFiles.empty();
 
+    // Pin: the flags show where this folder is pinned right now; toggling a
+    // flag pins it there / unpins it from there.
+    MenuItemData pinToTree = MenuItemData::Checkbox("To Treeview",
+            isFolder && favorites.IsPinned(FilerFavoriteKind::Tree, target),
+            [this, target](bool checked) {
+        if (checked) {
+            favorites.Pin(FilerFavoriteKind::Tree, target);
+            RefreshPinnedTreeNodes();
+            RevealPinnedTreeSection();
+        } else {
+            favorites.Unpin(FilerFavoriteKind::Tree, target);
+            RefreshPinnedTreeNodes();
+        }
+    });
+    pinToTree.enabled = isFolder;
+
+    MenuItemData pinToFavorites = MenuItemData::Checkbox("To Favorites",
+            isFolder && favorites.IsPinned(FilerFavoriteKind::Folder, target),
+            [this, target](bool checked) {
+        if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
+        else favorites.Unpin(FilerFavoriteKind::Folder, target);
+        if (favoritesShown) {
+            RefreshFavoritesTabs();
+            UpdateStatusBar();
+        }
+    });
+    pinToFavorites.enabled = isFolder;
+
+    MenuItemData pinSubmenu = MenuItemData::Submenu("Pin",
+            {pinToTree, pinToFavorites});
+    pinSubmenu.enabled = isFolder;
+
     MenuItemData unpinItem = MenuItemData::Action("Unpin", [this, target]() {
         favorites.Unpin(FilerFavoriteKind::Tree, target);
         RefreshPinnedTreeNodes();
@@ -1159,6 +1267,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     treeContextMenu->AddItem(deleteItem);
     treeContextMenu->AddItem(pasteItem);
     treeContextMenu->AddItem(MenuItemData::Separator());
+    treeContextMenu->AddItem(pinSubmenu);
     treeContextMenu->AddItem(unpinItem);
     treeContextMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
 }
