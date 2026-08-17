@@ -22,7 +22,8 @@
 // splitters between their columns (see COLUMN SPLITTERS), and names too long
 // for the space they are drawn in show the full name in a hover tooltip.
 // Tile captions (thumbnail grids, treemap) wrap long names over several lines
-// instead of cutting them off after one (see WRAPPED CAPTIONS).
+// instead of cutting them off after one, with the breaks balanced so the
+// lines come out near equal (see WRAPPED CAPTIONS).
 // Besides clicking, entries are selected with a rubber band: dragging from
 // empty space draws a selection rectangle and everything it touches becomes
 // the selection (Ctrl adds the rectangle to the selection held before).
@@ -39,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.13.0
-// Last Modified: 2026-08-09
+// Version: 1.14.0
+// Last Modified: 2026-08-17
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -4880,32 +4881,21 @@ namespace UltraCanvas {
     // the name off after one line it is broken over up to captionMaxLines
     // lines; only what does not fit even then is dropped, from the front of the
     // last line, so the tail — the extension — always remains readable.
+    // A name that fits its lines completely is then re-broken so the lines
+    // come out near equal — "CoderBox" / "compiler.png" rather than the
+    // greedy "CoderBox compiler" / ".png" (see WrapText).
 
-    std::vector<std::string> UltraCanvasFilerWidget::WrapText(
+    std::vector<std::string> UltraCanvasFilerWidget::WrapTextGreedy(
             IRenderContext* ctx, const std::string& text,
-            int maxWidth, int maxLines, bool* outTruncated) const {
-        if (outTruncated) *outTruncated = false;
+            int lineWidth, int maxLines, bool* outTruncated) const {
         std::vector<std::string> lines;
-        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
-        if (maxLines < 1) maxLines = 1;
-
-        if (ctx->GetTextLineDimensions(text).width <= maxWidth) {
-            lines.push_back(text);
-            return lines;                       // the common case: one measure
-        }
-        if (maxLines == 1) {
-            lines.push_back(EllipsizeText(ctx, text, maxWidth));
-            if (outTruncated) *outTruncated = true;
-            return lines;
-        }
-
         std::string rest = text;
         for (int line = 0; line < maxLines && !rest.empty(); ++line) {
             std::vector<size_t> bounds = Utf8Boundaries(rest);
             const bool lastLine = (line == maxLines - 1);
 
             if (lastLine) {
-                if (ctx->GetTextLineDimensions(rest).width <= maxWidth) {
+                if (ctx->GetTextLineDimensions(rest).width <= lineWidth) {
                     lines.push_back(rest);
                     break;
                 }
@@ -4915,7 +4905,7 @@ namespace UltraCanvas {
                 while (lo < hi) {
                     size_t mid = (lo + hi) / 2;
                     std::string cand = "…" + rest.substr(bounds[mid]);
-                    if (ctx->GetTextLineDimensions(cand).width <= maxWidth) hi = mid;
+                    if (ctx->GetTextLineDimensions(cand).width <= lineWidth) hi = mid;
                     else lo = mid + 1;
                 }
                 lines.push_back("…" + rest.substr(bounds[lo]));
@@ -4927,7 +4917,7 @@ namespace UltraCanvas {
             size_t lo = 0, hi = bounds.size() - 1;
             while (lo < hi) {
                 size_t mid = (lo + hi + 1) / 2;
-                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= maxWidth)
+                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= lineWidth)
                     lo = mid;
                 else
                     hi = mid - 1;
@@ -4958,6 +4948,60 @@ namespace UltraCanvas {
         return lines;
     }
 
+    std::vector<std::string> UltraCanvasFilerWidget::WrapText(
+            IRenderContext* ctx, const std::string& text,
+            int maxWidth, int maxLines, bool* outTruncated) const {
+        if (outTruncated) *outTruncated = false;
+        std::vector<std::string> lines;
+        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
+        if (maxLines < 1) maxLines = 1;
+
+        const int totalWidth = ctx->GetTextLineDimensions(text).width;
+        if (totalWidth <= maxWidth) {
+            lines.push_back(text);
+            return lines;                       // the common case: one measure
+        }
+        if (maxLines == 1) {
+            lines.push_back(EllipsizeText(ctx, text, maxWidth));
+            if (outTruncated) *outTruncated = true;
+            return lines;
+        }
+
+        bool truncated = false;
+        lines = WrapTextGreedy(ctx, text, maxWidth, maxLines, &truncated);
+        if (outTruncated) *outTruncated = truncated;
+
+        // ===== BALANCED BREAKS =====
+        // Greedy filling front-loads the lines and leaves a stub on the last
+        // one — "CoderBox compiler" / ".png". When the whole name fits its
+        // lines, it is re-broken at the smallest line width that still needs
+        // no extra line, which evens the lines out ("CoderBox" /
+        // "compiler.png") while the line count — and with it the caption
+        // band height — stays exactly the same.
+        if (!truncated && lines.size() >= 2) {
+            const size_t lineCount = lines.size();
+            // No re-break can make every line narrower than the average.
+            int lo = clampi(totalWidth / static_cast<int>(lineCount), 1, maxWidth);
+            int hi = maxWidth;
+            while (lo < hi) {
+                const int mid = lo + (hi - lo) / 2;
+                bool cut = false;
+                const size_t n =
+                        WrapTextGreedy(ctx, text, mid, maxLines, &cut).size();
+                if (!cut && n <= lineCount) hi = mid;
+                else lo = mid + 1;
+            }
+            if (hi < maxWidth) {
+                bool cut = false;
+                std::vector<std::string> balanced =
+                        WrapTextGreedy(ctx, text, hi, maxLines, &cut);
+                if (!cut && balanced.size() <= lineCount)
+                    lines = std::move(balanced);
+            }
+        }
+        return lines;
+    }
+
     std::vector<std::string> UltraCanvasFilerWidget::WrapEntryName(
             IRenderContext* ctx, size_t entryIndex, const std::string& name,
             int maxWidth, int maxLines) {
@@ -4974,7 +5018,11 @@ namespace UltraCanvas {
                                                 int maxWidth) const {
         int maxLines = std::max(1, style.captionMaxLines);
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
-        int n = static_cast<int>(WrapText(ctx, name, maxWidth, maxLines).size());
+        if (ctx->GetTextLineDimensions(name).width <= maxWidth) return 1;
+        // Balancing (WrapText) never changes the line count, so the cheaper
+        // greedy pass is enough to size the caption band.
+        int n = static_cast<int>(
+                WrapTextGreedy(ctx, name, maxWidth, maxLines, nullptr).size());
         return clampi(n, 1, maxLines);
     }
 

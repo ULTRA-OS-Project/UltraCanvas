@@ -1,3 +1,16 @@
+#### 2026-08-17 *0.3.52*
+- **FilerWidget: balanced line breaks for wrapped tile captions.** A name that
+  needs two or three caption lines was broken greedily — the first line took
+  everything that fit and the rest became a stub, "CoderBox compiler" /
+  ".png". A name that fits its lines completely is now re-broken at the
+  smallest line width that still needs no extra line, so the lines come out
+  near equal: "CoderBox" / "compiler.png", "Diagram" / "Wordcloud.png". The
+  line count — and with it the caption band and tile height — never changes,
+  and names too long even for `captionMaxLines` keep the greedy break with the
+  leading-"…" last line, whose every line is full anyway. Applies to the
+  thumbnail grids and the treemap in the FilerWidget and everything built on
+  it (UltraFiler, file dialogs).
+
 #### 2026-08-17 *0.3.51*
 - **UltraFiler: Pin / Unpin with state flags in the Extras menu and the folder
   tree's context menu.** The Extras menu grows a block below "Open prompt"

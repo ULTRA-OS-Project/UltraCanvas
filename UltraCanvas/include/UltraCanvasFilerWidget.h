@@ -48,8 +48,8 @@
 // selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
 // Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
 // expensive files can be browsed with only the cheap previews switched on.
-// Version: 1.14.0
-// Last Modified: 2026-08-10
+// Version: 1.15.0
+// Last Modified: 2026-08-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1279,10 +1279,21 @@ namespace UltraCanvas {
         // text still does not fit, the head of what is left is dropped and the
         // last line opens with "…", keeping the end of the name (extension)
         // visible. `outTruncated` reports whether anything was dropped.
+        // A text that fits its lines completely is re-broken at the smallest
+        // line width needing no extra line, so the lines come out near equal
+        // ("CoderBox" / "compiler.png" instead of the greedily filled
+        // "CoderBox compiler" / ".png") without changing the line count.
         std::vector<std::string> WrapText(IRenderContext* ctx,
                                           const std::string& text,
                                           int maxWidth, int maxLines,
                                           bool* outTruncated = nullptr) const;
+        // The greedy pass behind WrapText: fills each line up to `lineWidth`
+        // before breaking. Line count only depends on this pass, so the
+        // layout's CaptionLinesFor uses it directly, skipping the balancing.
+        std::vector<std::string> WrapTextGreedy(IRenderContext* ctx,
+                                                const std::string& text,
+                                                int lineWidth, int maxLines,
+                                                bool* outTruncated) const;
         // WrapText for an entry name; records whether it had to be shortened,
         // so the hover tooltip only pops for names that are really cut off.
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,

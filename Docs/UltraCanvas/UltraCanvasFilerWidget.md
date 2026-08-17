@@ -108,6 +108,14 @@ being cut off after one:
   are frequently one long "word".
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
   restores the old single-line caption).
+- A name that fits its lines completely is broken **balanced**, not greedily:
+  the break points are chosen so the lines come out near equal instead of the
+  first line taking everything that fits and leaving a stub behind:
+
+  ```
+  CoderBox              CoderBox compiler
+  compiler.png     not  .png
+  ```
 - What does not fit even then is dropped from the **front of the last line**,
   which then opens with an `…` overflow marker, so the end of the name — its
   extension — always stays readable:
