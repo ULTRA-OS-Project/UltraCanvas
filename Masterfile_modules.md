@@ -205,12 +205,14 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
+  components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
 - `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
 
 **Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`, `UltraWin_InstallComponent`,
+`UltraWin_VmSuspend`, `UltraWin_VmStop`,
 `UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
 for FreeRDP RemoteApp windows.
 
@@ -219,6 +221,7 @@ application to launch Windows executables. Linux / ULTRA OS only.
 
 **Implementation status (this branch):** Stage 1 of the rollout — module
 lifecycle, capability probing, environments (isolated Wine prefixes with
-persisted drive mappings), and application launch/supervision are
-implemented; the VM tier, component installer, and compatibility routing
-are planned for Stages 2-3. See `Docs/Modules/UltraWin/README.md`.
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.

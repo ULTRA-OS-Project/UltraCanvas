@@ -47,6 +47,7 @@ enum class UltraWinResultCode {
     InvalidArgument,
     InvalidHandle,
     WineNotFound,          // no usable wine binary on this host
+    WinetricksNotFound,    // no usable winetricks script on this host
     EnvironmentNotFound,
     EnvironmentExists,
     EnvironmentCreateFailed,
@@ -59,6 +60,7 @@ enum class UltraWinResultCode {
     // defines MappingFailed as a macro, and UltraCanvas TUs often see both
     // headers.
     DriveMappingFailed,    // drive-letter symlink could not be created
+    ComponentInstallFailed, // winetricks reported failure (or timed out)
     PermissionDenied,
     Timeout,
     IoError,
@@ -113,6 +115,8 @@ struct UltraWinCapabilities {
     bool wineAvailable = false;      // usable wine binary found
     std::string winePath;            // absolute path of the binary
     std::string wineVersion;         // e.g. "wine-11.0" (verbatim --version)
+    bool winetricksAvailable = false; // usable winetricks script found
+    std::string winetricksPath;      // absolute path of the script
     bool ntsyncAvailable = false;    // /dev/ntsync present (Linux >= 6.14)
     bool kvmAvailable = false;       // /dev/kvm accessible (VM tier, Stage 2)
     std::string hostArchitecture;    // uname machine, e.g. "x86_64", "aarch64"
@@ -149,6 +153,15 @@ struct UltraWinConfig {
 
     // Seconds allowed for `wineboot --init` when creating an environment.
     int environmentCreateTimeoutSeconds = 180;
+
+    // Absolute path to the winetricks script (component installer). Empty =
+    // search PATH. Winetricks is optional exactly like Wine: probed at
+    // runtime, spawned as a child process, never linked.
+    std::string winetricksPath;
+
+    // Seconds allowed for one UltraWin_InstallComponent call. Components
+    // download from upstream mirrors; large ones (.NET) take a while.
+    int componentInstallTimeoutSeconds = 1800;
 };
 
 // ============================================================================
