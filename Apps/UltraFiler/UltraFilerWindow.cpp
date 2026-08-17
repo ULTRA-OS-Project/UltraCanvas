@@ -30,8 +30,12 @@
 #include "UltraCanvasUtils.h"
 #include "UltraFilerPrompt.h"
 #include "UltraFilerSettingsDialog.h"
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+#include "UltraWin/UltraWin.h"
+#endif
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -1337,6 +1341,14 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordEntryInHistory(entry);
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+        // Windows executables go to the UltraWin emulation layer, not to the
+        // host's file associations.
+        if (entry.extension == "exe") {
+            LaunchWindowsExecutable(entry);
+            return;
+        }
+#endif
         if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
             // Not previewable: launch it with the OS default application
             // (Explorer semantics). Only real files — an entry inside an
@@ -1613,6 +1625,60 @@ void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
                                              : FilerHistoryKind::File,
                    entry.path);
 }
+
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
+    if (!UltraWin_IsInitialized()) UltraWin_Initialize();
+    if (!UltraWin_GetCapabilities().wineTierAvailable) {
+        if (statusLabel)
+            statusLabel->SetText(
+                "Wine is not installed — install it (e.g. 'sudo apt install "
+                "wine') to run Windows applications");
+        return;
+    }
+
+    // Per-app environment named after the executable, so each program keeps
+    // its own isolated prefix (UltraWin creates it on first launch).
+    std::string envName = fs::path(entry.name).stem().string();
+    for (char& c : envName) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' &&
+            c != '_' && c != '-')
+            c = '_';
+    }
+    while (!envName.empty() && envName.front() == '.') envName.erase(0, 1);
+    if (envName.size() > 64) envName.resize(64);
+    if (envName.empty()) envName = "Default";
+
+    const bool firstLaunch = !UltraWin_EnvironmentExists(envName);
+    if (statusLabel)
+        statusLabel->SetText(
+            "Launching " + entry.name +
+            (firstLaunch ? " — first launch prepares its Windows environment, "
+                           "this can take a minute…"
+                         : "…"));
+
+    // Launch off the UI thread: a first launch runs wineboot. The thread
+    // only touches the window through PostToUIThread, guarded by the same
+    // alive flag the subfolder probe worker uses.
+    auto alive = probeAlive;
+    std::thread([this, alive, path = entry.path, name = entry.name,
+                 envName]() {
+        UltraWinRunOptions options;
+        options.environment = envName;
+        UltraWinHandle handle = UltraWinInvalidHandle;
+        auto result = UltraWin_RunApp(path, options, &handle);
+
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, name, result]() {
+            if (!alive->load() || !statusLabel) return;
+            statusLabel->SetText(result ? "Launched " + name
+                                        : "Could not launch " + name + ": " +
+                                              result.message);
+        });
+    }).detach();
+}
+#endif
 
 void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
     // Archive interiors are not real directories - they would only be pruned

@@ -89,6 +89,29 @@ the surface.
   libcurl FTP backend (a closed port must report a connection error, not
   `UnsupportedScheme`). Set `ULTRANET_PROBE_FTP_URL` for real verification.
 
+All of these peers bind `127.0.0.1` explicitly — never the any-address — so
+running the tool neither opens a port to the network nor triggers the Windows
+firewall prompt.
+
+---
+
+## Antivirus false positives on Windows
+
+`UltraNetApiStatus.exe` is a developer/CI tool, and what it does — start
+loopback TCP/UDP listeners, spawn many short-lived connections, load plug-in
+DLLs at runtime, rewrite proxy environment variables — is exactly the
+behaviour pattern generic AV heuristics score against. AVG/Avast's behaviour
+shield ("Verhaltensschutz") has quarantined it as **IDP.Generic**, a generic
+behavioural verdict, not a recognised malware signature.
+
+For that reason the test binaries (`UltraNetTests`, `UltraNetApiStatus`, and
+the other `*Test`/`*Tests` executables) are **excluded from the end-user
+Windows package** by `package-win.sh` — they are built for developers and CI,
+not for distribution. If you hit the detection on your own build machine,
+restore the file from quarantine and add your build directory to the AV
+exclusion list; a `--no-sign` or self-signed build has no signer reputation,
+so heuristic engines treat it as unknown software.
+
 ---
 
 ## Adding a probe
