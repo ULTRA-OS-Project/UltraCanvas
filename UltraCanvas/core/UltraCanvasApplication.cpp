@@ -25,7 +25,7 @@
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
-#include <linux/limits.h>
+#include <climits>   // PATH_MAX (<linux/limits.h> does not exist on musl/Emscripten)
 #elif defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #elif defined(__APPLE__)

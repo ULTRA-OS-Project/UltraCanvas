@@ -27,6 +27,11 @@ UltraCanvasUIElement
 - **Area-proportional rooms**: `radius = sqrt(areaSqM) * areaScale`, clamped to [`minRadius`, `maxRadius`]
 - **Five functional type colors** + Custom override per-room
 - **Three link types**: Direct (solid), Secondary (dashed), ServiceOnly (dotted)
+- **Adjacency priority** (`Must` / `Should` / `Maybe`) as a second, independent
+  axis — see [Two axes: kind and priority](#two-axes-kind-and-priority)
+- **Two views of one dataset**: the bubble diagram and a half **matrix**
+  (`SetView`), with no conversion step between them
+- **Legend** for both views (`SetShowLegend`)
 - **Optional directed arrows** on links
 - **Functional zones**: dashed rounded-rect bounding box around a set of rooms, with translucent fill and a zone label
 - **Pan via drag**, content centering
@@ -206,6 +211,19 @@ void CenterContent();   // Bounding-box centers all rooms in widget
 
 void SetStyle(const AdjacencyDiagramStyle& s);
 const AdjacencyDiagramStyle& GetStyle() const;
+
+// Views — see "The matrix view" below
+void SetView(AdjacencyView v);              // Bubble (default) | Matrix
+AdjacencyView GetView() const;
+void SetMatrixStyle(AdjacencyMatrixStyle s);  // Staircase (default) | Rotated45
+void SetMatrixOrder(const std::vector<std::string>& roomIds);
+void SetShowMatrixDiagonal(bool on);
+void SetAttributeColumns(const std::vector<std::string>& headers);
+
+// Legend — applies to both views
+void SetShowLegend(bool on);
+void SetLegendPosition(ChartLegendPosition position);
+static const char* PriorityLabel(AdjacencyPriority priority);
 
 int  GetSelectedRoomIndex() const;
 int  GetSelectedLinkIndex() const;
@@ -417,3 +435,150 @@ needing to call `UpdateRoom` with a full struct.
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
 - [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+
+
+---
+
+## The matrix view
+
+The bubble diagram and the adjacency matrix are two drawings of **one dataset**.
+Architects produce both from the same programme: the matrix to *decide* the
+adjacencies, the bubble diagram to *arrange* them. Switching between them is a
+single call — there is no conversion, no copy, and therefore nothing that can go
+stale:
+
+```cpp
+diagram->SetView(AdjacencyView::Matrix);
+diagram->SetShowLegend(true);
+```
+
+Everything else — `AddRoom`, `AddLink`, `AddZone`, the style struct — is
+unchanged and shared. Zones are a bubble-view concept and are simply not drawn
+in the matrix.
+
+### Two axes: kind and priority
+
+`AdjacencyLinkType` says what **kind** of connection a link is:
+
+| Value | Meaning |
+|---|---|
+| `Direct` | solid line — the rooms share a wall |
+| `Secondary` | dashed — nearby, indirect access |
+| `ServiceOnly` | dotted — a back-of-house route |
+
+`AdjacencyPriority` says how badly the adjacency is **wanted**:
+
+| Value | Matrix mark |
+|---|---|
+| `Must` | filled red disc |
+| `Should` | filled blue disc |
+| `Maybe` | hollow green ring |
+
+These are different questions, and they only partly coincide: a service link can
+itself be mandatory or merely preferred, so `ServiceOnly` is not a weaker
+`Direct`. That is why priority is a separate field rather than three more values
+on the enum.
+
+`AdjacencyLink::priority` defaults to `Must`, so every existing caller keeps its
+current meaning: the bubble view ignores the field entirely, and a matrix view of
+data that never expressed a priority shows each link at full strength — the
+honest reading of data that never said otherwise.
+
+```cpp
+// Express a programme directly in priority terms; `type` follows for the
+// bubble view.
+diagram->AddLink("lobby", "reception", AdjacencyPriority::Must);
+diagram->AddLink("lobby", "print",     AdjacencyPriority::Maybe);
+
+// Or add priority to links you already have.
+diagram->SetLinkPriority("staff", "storage", AdjacencyPriority::Should);
+
+const AdjacencyLink* link = diagram->FindLink("lobby", "reception");
+```
+
+### Geometry
+
+A room adjacency matrix is symmetric — "kitchen next to dining" is the same
+requirement as "dining next to kitchen" — so only the upper triangle carries
+information. Two geometries draw it:
+
+- **`AdjacencyMatrixStyle::Staircase`** (the default) — an ordinary axis-aligned
+  grid whose populated region is the upper-right staircase, with the unused half
+  shaded out. Denser, and the better choice for very large programmes.
+- **`AdjacencyMatrixStyle::Rotated45`** — the classic architectural triangle:
+  horizontal labels down the left, cells as 45° diamonds where each pair of
+  rooms' diagonals cross, the whole figure pointing right. No column headers
+  exist at all — every space is named once. This is the traditional hand-drawn
+  form (the demo's *Triangle 45°* tab reproduces it at 19 spaces, attribute
+  table included).
+
+Despite appearances, `Rotated45` involves no render transform: with `s`/`t` the
+vertical/horizontal position in cell-pitch units, the diagonal coordinates
+`u = s + t` and `v = s − t` turn every diamond into an axis-aligned unit square,
+so cell `(i, j)` centres at `s = (i+j+1)/2, t = (j−i)/2` and hit testing is just
+`i = floor(s−t), j = floor(s+t)` — `t ≥ 0` already guarantees `j ≥ i`.
+
+Where several links join the same pair, the **strongest** priority is the one
+drawn: the matrix answers "how badly", and the strongest requirement is the one
+that constrains the plan.
+
+`SetShowMatrixDiagonal(true)` draws the self-intersections, which are off by
+default — a room is trivially adjacent to itself.
+
+### Ordering
+
+The bubble view positions rooms at explicit `x`/`y`, which gives a matrix no
+ordering at all, so rows and columns default to **insertion order** — the order
+the caller typed their programme in, which is usually meaningful (public spaces
+first, back-of-house last). Override it per diagram:
+
+```cpp
+diagram->SetMatrixOrder({"lobby", "reception", "gallery",     // public
+                         "offices", "staff",                  // private
+                         "plant", "storage"});                // service
+```
+
+Ids you leave out keep their insertion position at the end; unknown ids are
+ignored. Pass an empty vector to return to insertion order.
+
+### Attribute columns
+
+A gutter of free-form per-room values can sit to the left of the row labels:
+
+```cpp
+diagram->SetAttributeColumns({"m²", "Public"});
+
+AdjacencyRoom room = *diagram->GetRoomById("lobby");
+room.attributes = {"80", "Y"};
+diagram->UpdateRoom(room.id, room);
+```
+
+Values are positional against the headers. The bubble view ignores them.
+
+### Interaction
+
+```cpp
+diagram->onMatrixCellClick = [](const std::string& rowRoomId,
+                                const std::string& colRoomId,
+                                const AdjacencyLink* link) {
+    // `link` is nullptr where the two spaces have no requirement — the bubble
+    // view has no equivalent event, since there is nothing to click there.
+};
+```
+
+Hovering highlights the cell's row and column and shows a tooltip naming both
+spaces and the requirement between them.
+
+### Legend
+
+`SetShowLegend(true)` is worth setting for the **bubble** view too, independently
+of any matrix use: that view colours rooms by `RoomFunctionType` and previously
+said so nowhere on screen. The key lists only the function types actually
+present in the diagram.
+
+## See also
+
+- [`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md) —
+  the research behind the matrix view and the roadmap for the rest
+- [`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) — the general
+  matrix diagram, for relationships between lists that are **not** rooms

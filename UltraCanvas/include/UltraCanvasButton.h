@@ -207,6 +207,9 @@ namespace UltraCanvas {
         char GetMnemonicChar() const;
         bool HasMnemonic() const;
         void SetIcon(const std::string& iconPath);
+        // Set the icon from an already-decoded, in-memory image (e.g. built with
+        // UCImage::LoadFromMemory) instead of loading it from a file path.
+        void SetIcon(std::shared_ptr<UCImage> image);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
         void SetUseIconAsMask(bool useAsMask);
@@ -244,6 +247,9 @@ namespace UltraCanvas {
         std::function<void()> onRelease;    // When button is released
         std::function<void(bool isPressed)> onToggle;      // When button is pressed down
         std::function<void()> onSecondaryClick;  // For secondary section click
+        // Right (secondary) mouse button pressed over the button; args are window-relative
+        // coordinates, suitable for popping up a context menu there.
+        std::function<void(int windowX, int windowY)> onContextMenu;
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
 

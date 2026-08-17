@@ -267,7 +267,14 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::SetTabIcon(int index, const std::string& iconPath) {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->iconPath = iconPath;
-            tabs[index]->hasIcon = !iconPath.empty();
+            tabs[index]->hasIcon = !iconPath.empty() || tabs[index]->iconImage != nullptr;
+            InvalidateTabbar();
+        }
+    }
+    void UltraCanvasTabbedContainer::SetTabIconImage(int index, std::shared_ptr<UCImage> image) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            tabs[index]->iconImage = std::move(image);
+            tabs[index]->hasIcon = tabs[index]->iconImage != nullptr || !tabs[index]->iconPath.empty();
             InvalidateTabbar();
         }
     }
@@ -554,13 +561,17 @@ namespace UltraCanvas {
         if (index < 0 || index >= (int)tabs.size()) return;
 
         TabData* tab = tabs[index].get();
-        if (!tab->hasIcon || tab->iconPath.empty()) return;
+        if (!tab->hasIcon) return;
 
         Rect2Di tabBounds = GetTabBounds(index);
         int iconX = tabBounds.x + tabPadding;
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
-        ctx->DrawImage(tab->iconPath, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
+        // Prefer an in-memory image (e.g. a favicon); fall back to a file path.
+        if (tab->iconImage)
+            ctx->DrawImage(*tab->iconImage, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
+        else if (!tab->iconPath.empty())
+            ctx->DrawImage(tab->iconPath, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBadge(int index, IRenderContext *ctx) {
@@ -1963,7 +1974,7 @@ namespace UltraCanvas {
 
         int xOffset = contentArea.x;
 
-        if (tab->hasIcon && !tab->iconPath.empty()) {
+        if (tab->hasIcon) {
             RenderTabIcon(index, ctx);
             xOffset += iconSize + iconPadding;
             contentArea.width -= (iconSize + iconPadding);

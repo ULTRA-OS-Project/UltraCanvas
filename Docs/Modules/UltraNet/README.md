@@ -56,6 +56,7 @@ is purely a libcurl build option.
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build | `UltraNet/UltraNetMime.h` |
@@ -143,6 +144,28 @@ std::vector<std::string> mx;
 UltraNet_DnsResolve("example.com", mx, UltraNetDnsType::MX);
 ```
 
+```cpp
+#include <UltraNet/UltraNetOAuth2.h>
+
+// OAuth2 sign-in for a desktop app (public client + PKCE). Blocking —
+// run on a worker thread; the browser opens via the callback.
+UltraNetOAuth2Config cfg;
+cfg.authorizationEndpoint = "https://mastodon.social/oauth/authorize";
+cfg.tokenEndpoint         = "https://mastodon.social/oauth/token";
+cfg.clientId              = clientId;
+cfg.scopes                = {"read", "write"};
+cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral port
+
+UltraNetOAuth2Token token;
+auto r = UltraNet_OAuth2AuthorizeInteractive(
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+if (r) {
+    // token.accessToken -> "authorization: Bearer ..." on API calls
+    // token.refreshToken -> store in the credential vault;
+    //   renew later with UltraNet_OAuth2Refresh(cfg, refreshToken, token)
+}
+```
+
 ---
 
 ## Module layout
@@ -158,6 +181,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetOAuth2.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   └── UltraNetPlugins.h

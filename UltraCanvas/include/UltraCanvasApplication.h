@@ -22,6 +22,7 @@
 #include <queue>
 #include <optional>
 #include <mutex>
+#include <condition_variable>
 #include <cstdint>
 
 namespace UltraCanvas {
@@ -344,7 +345,11 @@ namespace UltraCanvas {
     };
 }
 
-#if defined(__linux__) || defined(__unix__) || defined(__unix)
+#if defined(__EMSCRIPTEN__)
+// Web/WASM (checked first: Emscripten also defines __unix__)
+#include "../OS/WASM/UltraCanvasWASMApplication.h"
+namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWASMApplication; }
+#elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplication; }
 #elif defined(_WIN32) || defined(_WIN64)
@@ -366,10 +371,6 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
 #elif defined(__ANDROID__)
     #include "../OS/Android/UltraCanvasAndroidApplication.h"
     namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplication; }
-#elif defined(__WASM__)
-    // Web/WASM
-    #include "../OS/Web/UltraCanvasWebApplication.h"
-    namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWebApplication; }
 #else
     #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif

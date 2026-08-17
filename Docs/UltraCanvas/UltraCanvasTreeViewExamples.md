@@ -379,7 +379,10 @@ std::function<void(TreeNode*)> onNodeDoubleClicked;
 std::function<void(TreeNode*)> onNodeExpanded;
 std::function<void(TreeNode*)> onNodeCollapsed;
 std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop;
-std::function<void(TreeNode*)> onNodeRightClicked;
+// Right mouse button released over a node; the event carries the pointer
+// position (event.pointerWindow) for placing a context menu. A right press
+// never changes the selection.
+std::function<void(TreeNode*, const UCEvent&)> onNodeRightClicked;
 ```
 
 ## Usage Examples
@@ -474,10 +477,10 @@ treeView->onNodeExpanded = [](TreeNode* node) {
     }
 };
 
-// Handle right-click
-treeView->onNodeRightClicked = [](TreeNode* node) {
-    // Show context menu
-    ShowContextMenu(node);
+// Handle right-click (open a context menu at the pointer)
+treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
+    // Show context menu, e.g. menu->OpenMenu(event.pointerWindow, ...)
+    ShowContextMenu(node, event);
 };
 ```
 

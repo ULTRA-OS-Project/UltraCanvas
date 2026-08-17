@@ -433,6 +433,28 @@ namespace UltraCanvas {
                 }
                 break;
             }
+            case LegendSwatch::Ring: {
+                // Stroked rather than filled, so an ordinal scale keeps a step
+                // that survives greyscale printing and colour-blind readers.
+                const double r = std::min(rect.width, rect.height) / 2.0 - 1.0;
+                if (r <= 0.0) break;
+                const Point2Dd c(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+                ctx->SetStrokePaint(fill);
+                ctx->SetStrokeWidth(2.0);
+                ctx->DrawCircle(c, r);
+                break;
+            }
+            case LegendSwatch::Glyph: {
+                if (entry.glyph.empty()) break;
+                ctx->SetFontSize(std::max(8.0, std::min(rect.width, rect.height)));
+                ctx->SetTextPaint(fill);
+                Size2Di s = ctx->GetTextLineDimensions(entry.glyph);
+                ctx->DrawText(entry.glyph,
+                              Point2Dd(rect.x + (rect.width - s.width) / 2.0,
+                                       rect.y + (rect.height - s.height) / 2.0));
+                ctx->SetFontSize(style.fontSize);
+                break;
+            }
             case LegendSwatch::Line:
             case LegendSwatch::DashedLine: {
                 const double cy = rect.y + rect.height / 2.0;

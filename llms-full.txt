@@ -277,7 +277,12 @@ future.
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
   `UltraNet_FtpDelete`, `UltraNet_FtpRename`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
+  `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
+  `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
+  `UltraNet_OAuth2Refresh`, `UltraNet_OAuth2ParseTokenResponse`,
+  `UltraNet_OAuth2AuthorizeInteractive`
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -2216,6 +2221,11 @@ UltraCanvasUIElement
 - **Area-proportional rooms**: `radius = sqrt(areaSqM) * areaScale`, clamped to [`minRadius`, `maxRadius`]
 - **Five functional type colors** + Custom override per-room
 - **Three link types**: Direct (solid), Secondary (dashed), ServiceOnly (dotted)
+- **Adjacency priority** (`Must` / `Should` / `Maybe`) as a second, independent
+  axis — see [Two axes: kind and priority](#two-axes-kind-and-priority)
+- **Two views of one dataset**: the bubble diagram and a half **matrix**
+  (`SetView`), with no conversion step between them
+- **Legend** for both views (`SetShowLegend`)
 - **Optional directed arrows** on links
 - **Functional zones**: dashed rounded-rect bounding box around a set of rooms, with translucent fill and a zone label
 - **Pan via drag**, content centering
@@ -2395,6 +2405,19 @@ void CenterContent();   // Bounding-box centers all rooms in widget
 
 void SetStyle(const AdjacencyDiagramStyle& s);
 const AdjacencyDiagramStyle& GetStyle() const;
+
+// Views — see "The matrix view" below
+void SetView(AdjacencyView v);              // Bubble (default) | Matrix
+AdjacencyView GetView() const;
+void SetMatrixStyle(AdjacencyMatrixStyle s);  // Staircase (default) | Rotated45
+void SetMatrixOrder(const std::vector<std::string>& roomIds);
+void SetShowMatrixDiagonal(bool on);
+void SetAttributeColumns(const std::vector<std::string>& headers);
+
+// Legend — applies to both views
+void SetShowLegend(bool on);
+void SetLegendPosition(ChartLegendPosition position);
+static const char* PriorityLabel(AdjacencyPriority priority);
 
 int  GetSelectedRoomIndex() const;
 int  GetSelectedLinkIndex() const;
@@ -2607,6 +2630,153 @@ needing to call `UpdateRoom` with a full struct.
 - [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
 
+
+---
+
+## The matrix view
+
+The bubble diagram and the adjacency matrix are two drawings of **one dataset**.
+Architects produce both from the same programme: the matrix to *decide* the
+adjacencies, the bubble diagram to *arrange* them. Switching between them is a
+single call — there is no conversion, no copy, and therefore nothing that can go
+stale:
+
+```cpp
+diagram->SetView(AdjacencyView::Matrix);
+diagram->SetShowLegend(true);
+```
+
+Everything else — `AddRoom`, `AddLink`, `AddZone`, the style struct — is
+unchanged and shared. Zones are a bubble-view concept and are simply not drawn
+in the matrix.
+
+### Two axes: kind and priority
+
+`AdjacencyLinkType` says what **kind** of connection a link is:
+
+| Value | Meaning |
+|---|---|
+| `Direct` | solid line — the rooms share a wall |
+| `Secondary` | dashed — nearby, indirect access |
+| `ServiceOnly` | dotted — a back-of-house route |
+
+`AdjacencyPriority` says how badly the adjacency is **wanted**:
+
+| Value | Matrix mark |
+|---|---|
+| `Must` | filled red disc |
+| `Should` | filled blue disc |
+| `Maybe` | hollow green ring |
+
+These are different questions, and they only partly coincide: a service link can
+itself be mandatory or merely preferred, so `ServiceOnly` is not a weaker
+`Direct`. That is why priority is a separate field rather than three more values
+on the enum.
+
+`AdjacencyLink::priority` defaults to `Must`, so every existing caller keeps its
+current meaning: the bubble view ignores the field entirely, and a matrix view of
+data that never expressed a priority shows each link at full strength — the
+honest reading of data that never said otherwise.
+
+```cpp
+// Express a programme directly in priority terms; `type` follows for the
+// bubble view.
+diagram->AddLink("lobby", "reception", AdjacencyPriority::Must);
+diagram->AddLink("lobby", "print",     AdjacencyPriority::Maybe);
+
+// Or add priority to links you already have.
+diagram->SetLinkPriority("staff", "storage", AdjacencyPriority::Should);
+
+const AdjacencyLink* link = diagram->FindLink("lobby", "reception");
+```
+
+### Geometry
+
+A room adjacency matrix is symmetric — "kitchen next to dining" is the same
+requirement as "dining next to kitchen" — so only the upper triangle carries
+information. Two geometries draw it:
+
+- **`AdjacencyMatrixStyle::Staircase`** (the default) — an ordinary axis-aligned
+  grid whose populated region is the upper-right staircase, with the unused half
+  shaded out. Denser, and the better choice for very large programmes.
+- **`AdjacencyMatrixStyle::Rotated45`** — the classic architectural triangle:
+  horizontal labels down the left, cells as 45° diamonds where each pair of
+  rooms' diagonals cross, the whole figure pointing right. No column headers
+  exist at all — every space is named once. This is the traditional hand-drawn
+  form (the demo's *Triangle 45°* tab reproduces it at 19 spaces, attribute
+  table included).
+
+Despite appearances, `Rotated45` involves no render transform: with `s`/`t` the
+vertical/horizontal position in cell-pitch units, the diagonal coordinates
+`u = s + t` and `v = s − t` turn every diamond into an axis-aligned unit square,
+so cell `(i, j)` centres at `s = (i+j+1)/2, t = (j−i)/2` and hit testing is just
+`i = floor(s−t), j = floor(s+t)` — `t ≥ 0` already guarantees `j ≥ i`.
+
+Where several links join the same pair, the **strongest** priority is the one
+drawn: the matrix answers "how badly", and the strongest requirement is the one
+that constrains the plan.
+
+`SetShowMatrixDiagonal(true)` draws the self-intersections, which are off by
+default — a room is trivially adjacent to itself.
+
+### Ordering
+
+The bubble view positions rooms at explicit `x`/`y`, which gives a matrix no
+ordering at all, so rows and columns default to **insertion order** — the order
+the caller typed their programme in, which is usually meaningful (public spaces
+first, back-of-house last). Override it per diagram:
+
+```cpp
+diagram->SetMatrixOrder({"lobby", "reception", "gallery",     // public
+                         "offices", "staff",                  // private
+                         "plant", "storage"});                // service
+```
+
+Ids you leave out keep their insertion position at the end; unknown ids are
+ignored. Pass an empty vector to return to insertion order.
+
+### Attribute columns
+
+A gutter of free-form per-room values can sit to the left of the row labels:
+
+```cpp
+diagram->SetAttributeColumns({"m²", "Public"});
+
+AdjacencyRoom room = *diagram->GetRoomById("lobby");
+room.attributes = {"80", "Y"};
+diagram->UpdateRoom(room.id, room);
+```
+
+Values are positional against the headers. The bubble view ignores them.
+
+### Interaction
+
+```cpp
+diagram->onMatrixCellClick = [](const std::string& rowRoomId,
+                                const std::string& colRoomId,
+                                const AdjacencyLink* link) {
+    // `link` is nullptr where the two spaces have no requirement — the bubble
+    // view has no equivalent event, since there is nothing to click there.
+};
+```
+
+Hovering highlights the cell's row and column and shows a tooltip naming both
+spaces and the requirement between them.
+
+### Legend
+
+`SetShowLegend(true)` is worth setting for the **bubble** view too, independently
+of any matrix use: that view colours rooms by `RoomFunctionType` and previously
+said so nowhere on screen. The key lists only the function types actually
+present in the diagram.
+
+## See also
+
+- [`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md) —
+  the research behind the matrix view and the roadmap for the rest
+- [`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) — the general
+  matrix diagram, for relationships between lists that are **not** rooms
+
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAlbumExamples.md
 ==============================================================================
@@ -2626,7 +2796,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.0.0
+**Version:** 1.7.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -2636,6 +2806,7 @@ cheap and the whole look can be swapped by a single enum.
 
 - **Six layout designs** — Uniform Grid, Justified, Masonry, Mosaic, Filmstrip, Cards
 - **Mixed media** — photo / video / music items with type badges and cover/poster thumbnails
+- **Automatic video poster frames** — a Video item with no cover has one extracted from the clip itself in the background and cached in memory (`videoPosterFrames`), so nothing has to be written next to read-only media
 - **Three viewer modes** — `Display` (visitor), `UserEdit` (owner), `Admin`
 - **Sizing by items-per-row OR by target image size**
 - **Image fit per item** — `Crop` (with focus point), `Zoom`, `Stretch`, `Fit`
@@ -2702,8 +2873,53 @@ album->AddItem({ "media/images/landscape.jpg", "", "Mountain Dawn",
 ```
 
 Video and music items draw `thumbnailPath` (cover art / poster frame) plus a
-type badge. If no thumbnail decodes, a neutral placeholder with a play / note
-glyph is drawn instead.
+type badge. A **Video** item whose `thumbnailPath` is empty (or does not decode)
+falls back to a poster frame extracted from its own clip — see
+[Automatic video poster frames](#automatic-video-poster-frames). If neither
+yields an image, a neutral placeholder with a play / note glyph is drawn.
+
+### Automatic video poster frames
+
+A Video tile does not need a pre-generated cover: with `videoPosterFrames` (on
+by default) the album decodes one representative frame of `mediaPath` itself and
+uses it as the tile image.
+
+```cpp
+AlbumConfig cfg;
+cfg.videoPosterFrames  = true;    // default
+cfg.videoPosterMaxSize = 640;     // longest edge of the cached frame, px
+cfg.videoPosterTimeSec = -1.0f;   // <0 = auto (~10% in, capped at 1s)
+album->SetConfig(cfg);
+
+AlbumItem clip;
+clip.title     = "Competition";
+clip.mediaType = AlbumMediaType::Video;
+clip.mediaPath = "media/videos/Video A more competition.mp4";
+album->AddItem(clip);   // no thumbnailPath needed — the cover comes from the clip
+```
+
+How it behaves:
+
+- **Never on the UI thread.** A cold clip can take seconds to open and seek, so
+  the extraction runs on one lazily-started worker thread. The tile shows the
+  placeholder until the frame lands, then repaints (and the aspect-driven
+  layouts — Justified / Masonry — reflow around its real aspect ratio).
+- **Only what is on screen.** Requests are queued by tiles as they draw, so
+  laying out a large album does not start a decode per clip.
+- **Cached in memory** for the widget's lifetime, keyed by media path, and
+  dropped when the item list is replaced (`SetItems` / `ClearItems`). Nothing is
+  written to disk — which is the point: an app cannot cache poster files next to
+  clips inside a code-signed macOS `.app` bundle, an AppImage or any read-only
+  install, so on those platforms pre-generating covers simply fails.
+- **An explicit cover still wins.** `thumbnailPath` is used whenever it decodes;
+  extraction is the fallback, not an override.
+- **Needs a video backend** (`ULTRACANVAS_ENABLE_VIDEO`). With the null backend,
+  or a clip that yields no frame, the slot is marked failed once (never retried)
+  and the placeholder stays.
+
+`UltraCanvasVideoThumbnail` (`include/UltraCanvasVideoThumbnail.h`) is the engine
+behind this and can be called directly when an app *does* want to keep poster
+files on disk — see its own docs.
 
 ### Configuration
 
@@ -2735,6 +2951,9 @@ cfg.imageCornerRadius = -1.0f;     // image corners: <0 follow tile · 0 square 
 cfg.linkColor     = Color(26, 115, 232, 255);  // subtitle-link colour (items with a `link`)
 cfg.linkUnderline = true;
 cfg.dropShadow    = true;
+cfg.videoPosterFrames  = true;     // Video tiles without a cover extract one (default)
+cfg.videoPosterMaxSize = 640;      // longest edge of the cached poster frame, px
+cfg.videoPosterTimeSec = -1.0f;    // where to grab it; <0 = auto (~10% in, max 1s)
 album->SetConfig(cfg);
 ```
 
@@ -2769,7 +2988,13 @@ cfg.hoverPreviewFps            = 24;     // frame-poll / repaint cadence
 Playback starts only after the dwell delay, so a cursor merely crossing the
 grid never opens a decoder; until the first frame arrives the poster stays, and
 when the preview ends (duration elapsed, clip over, or the cursor leaves) the
-poster returns. One decode session exists at a time. The preview frame is
+poster returns. One decode session exists at a time. Activating a tile — click,
+double-click, an action icon or a context-menu action — also ends the preview
+before the app callback runs, and previews only play while the album's window
+is the application's focused window: when a click opens the full video in its
+own window the cursor typically still rests on the tile, and both rules
+together guarantee the inline preview never plays alongside the real player.
+The preview frame is
 fitted exactly like the thumbnail (`imageDisplay`, focus point, hover zoom) so
 nothing jumps when it starts or ends. Requires a real video backend
 (`ULTRACANVAS_ENABLE_VIDEO`); with the null backend the static thumbnail simply
@@ -2876,14 +3101,8 @@ yt.mediaPath    = "media/videos/Lola Lexy - No kings.mp4";
 yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
 yt.linkIconPath = "media/icons/youtube.svg";
 
-// Give the video tile a real cover by extracting a poster frame once
-// (see UltraCanvasVideoThumbnail). The encoder is picked from the extension
-// — ".qoi" writes QOI, otherwise PNG.
-VideoThumbnailRequest req;
-req.maxWidth = 640; req.maxHeight = 480;
-if (SaveVideoThumbnail(yt.mediaPath, "media/videos/Lola Lexy - No kings.qoi", req))
-    yt.thumbnailPath = "media/videos/Lola Lexy - No kings.qoi";
-
+// No thumbnailPath: the album extracts the tile's cover from the clip itself
+// (see "Automatic video poster frames" above).
 album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){
@@ -6772,6 +6991,8 @@ struct BreadcrumbItem {
     bool hasDropdown  = false;
     std::vector<MenuItemData> dropdownItems;
     std::function<std::vector<MenuItemData>()> dropdownItemsProvider; // Lazy
+    std::function<bool()> dropdownAvailableProvider;  // "is there anything in it?" probe
+    bool sortDropdownItems = false;                   // sort entries by label (case-insensitive)
     std::function<void()> onClick;
     void* userData    = nullptr;
 
@@ -6847,11 +7068,17 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
 
 Every node drops down its own sub-folders: `Computer` lists the drives, the
 drive node the folders of that drive, and each folder node the folders inside
-it — so the path can be extended one level straight from the strip. A folder
-without sub-folders shows a disabled `(no sub-folders)` entry. Every list —
-including the drive list of the `Computer` node — is filled lazily when that
-menu opens, so building the strip never touches the filesystem: rebuilding it on
-each navigation (the pattern below) costs nothing.
+it — so the path can be extended one level straight from the strip. Entries are
+sorted alphabetically, case-insensitively. **A folder without sub-folders shows
+no dropdown chevron at all**, so the strip never offers a menu that would come
+up empty.
+
+Every list — including the drive list of the `Computer` node — is filled lazily
+when that menu opens; while the strip is laid out, each segment only asks
+whether it holds a *first* sub-folder (that is what decides the chevron), and
+the answer is cached per item, so rebuilding the strip on each navigation (the
+pattern below) stays cheap. Call `RefreshDropdownAvailability()` after the
+folders under a visible path have changed to have the chevrons re-evaluated.
 
 ```cpp
 // Keep a filer and its path strip in sync.
@@ -6879,9 +7106,35 @@ bool IsDropdownOpen() const;
 // is the overflow menu.
 int  GetOpenDropdownItemIndex() const;
 void CloseDropdown();
+// Does this item currently show a dropdown control at all?
+bool ItemShowsDropdown(const BreadcrumbItem& item) const;
+// Forget every cached dropdownAvailableProvider answer and re-lay out.
+void RefreshDropdownAvailability();
 ```
 
-The pointer says which parts open a menu: a dropdown chevron — and the whole
+**An item whose list is empty shows no chevron.** `hasDropdown` alone is not
+enough: an item needs entries behind it, either in `dropdownItems` or from
+`dropdownItemsProvider`. A lazily filled list is asked about through the
+optional `dropdownAvailableProvider` — a cheap "is there a first entry?" probe
+that must not build the whole list; it is consulted once per item and cached
+(`RefreshDropdownAvailability()` clears the cache). Without a probe a lazy
+provider is assumed to have entries; if it then comes back empty, the menu is
+not opened and the chevron disappears.
+
+Set `sortDropdownItems` on an item to have its entries sorted by label
+(case-insensitive) before the menu opens — for lists gathered from elsewhere,
+such as the folders of a directory. A hand-written menu keeps its own order.
+
+**What opens the dropdown** is a full-height zone at the trailing end of the
+item, not the 6px chevron glyph: the chevron, the gap in front of it and the
+item's trailing padding, widened to at least
+`BreadcrumbStyle::dropdownHitAreaMinWidth` (24px by default) and — in the
+`Arrow` / `Parallelogram` item styles — extended over the tip drawn past the
+segment's right edge, so the whole arrow head is clickable. The zone never
+takes more than the trailing half of an item, so the label always keeps a
+clickable area of its own.
+
+The pointer says which parts open a menu: the dropdown zone — and the whole
 overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
 (`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
 the rest of the strip shows the item cursor. Both are style fields:
@@ -6915,6 +7168,28 @@ void SetOverflowMode(BreadcrumbOverflowMode mode);
 void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetMaxItemTextWidth(int maxWidth);
+```
+
+### Hover, Press and Readability
+
+The current item keeps its emphasis text colour through hover and press: those
+states move its *background* instead. The generic `itemHoverBackgroundColor` /
+`itemPressedBackgroundColor` are cut for the muted resting background, and
+handing them the current item — which usually carries a saturated fill and a
+white label — is what used to leave that label unreadable. By default the
+feedback is derived from `currentItemBackgroundColor` itself, tinted towards
+the other end of the luminance scale (a dark fill lightens, a light one
+darkens); set the colours explicitly to override:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.currentItemHoverBackgroundColor   = Color(30, 140, 230, 255);  // 0 alpha = derive
+s.currentItemPressedBackgroundColor = Color(0,  100, 190, 255);
+// Readability guard: a label that cannot be made out against its own opaque
+// background is redrawn black or white. The value is a WCAG contrast ratio
+// (1..21); 0 switches the guard off.
+s.minTextContrastRatio = 2.2f;                                   // default
+bc->SetStyle(s);
 ```
 
 ## Enumerations
@@ -6953,10 +7228,12 @@ enum class BreadcrumbOverflowMode {
 
 ```cpp
 enum class BreadcrumbItemStyle {
-    Plain,       // Text only, background on hover
-    Pill,        // Rounded background
-    Underline,   // Underline on hover
-    Tab          // Tab-like with bottom border
+    Plain,         // Text only, background on hover
+    Pill,          // Rounded background
+    Underline,     // Underline on hover
+    Tab,           // Tab-like with bottom border
+    Arrow,         // Interlocking right-pointing arrow segments ("steps")
+    Parallelogram  // Interlocking slanted segments
 };
 ```
 
@@ -6968,6 +7245,9 @@ BreadcrumbStyle::Compact();
 BreadcrumbStyle::Pills();
 BreadcrumbStyle::FileExplorer();
 BreadcrumbStyle::WebDocs();
+BreadcrumbStyle::Arrow();          // interlocking arrow segments
+BreadcrumbStyle::Parallelogram();  // interlocking slanted segments
+BreadcrumbStyle::Steps();          // Arrow segments + round numbered indicators
 ```
 
 ## Events and Callbacks
@@ -6976,7 +7256,7 @@ BreadcrumbStyle::WebDocs();
 // Fired when a non-current item is clicked. `index` is the item's position.
 std::function<void(int index, const BreadcrumbItem& item)> onItemClicked;
 
-// Fired when the dropdown chevron of an item is clicked.
+// Fired when an item's dropdown zone is clicked.
 std::function<void(int index, const BreadcrumbItem& item)> onItemDropdown;
 
 // Fired when the overflow ("...") menu is opened.
@@ -15041,7 +15321,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -15351,6 +15631,37 @@ spinning disks.
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
+
+## Hidden entries
+
+`SetShowHiddenFiles(bool)` (default `false`) decides whether hidden entries are
+listed; `GetShowHiddenFiles()` reads it back. What counts as hidden is the
+**platform's own notion**, not just the Unix dot convention:
+
+- **every platform** — names starting with `.`;
+- **Windows** — entries carrying the `FILE_ATTRIBUTE_HIDDEN` attribute. This is
+  what keeps a profile folder looking like Explorer's: the `NTUSER.DAT`
+  registry hives, `AppData` and the localized pre-Vista compatibility junctions
+  (`Anwendungsdaten`, `Lokale Einstellungen`, …) are all hidden by attribute,
+  not by name;
+- **macOS** — entries carrying the `UF_HIDDEN` file flag (`chflags hidden`),
+  e.g. `~/Library`.
+
+The attribute is read inside the single metadata call each scanned entry
+already pays for (`GetFileAttributesExW` on Windows, `stat` elsewhere), so the
+scan cost is unchanged. Hidden entries show an `H` in the Details view's
+attributes column when displayed.
+
+Hosts that filter paths themselves can use the same test through
+`UltraCanvas::IsHiddenFileSystemEntry(path)` (`UltraCanvasUtils.h`) — the
+UltraFiler's folder tree and recursive search do. The companion
+`UltraCanvas::GetWellKnownUserFolders()` returns the user's Desktop /
+Documents / Downloads / Music / Pictures / Videos (plus Public / Templates
+where the OS defines them) resolved through the platform —
+`SHGetKnownFolderPath` on Windows (follows folder redirection, e.g. into
+OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
+(localized names; entries pointing at `$HOME` are disabled per the spec) — for
+building an Explorer/Finder-style curated "Home" section.
 
 ## Selection access
 
@@ -23885,6 +24196,267 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
+==============================================================================
+
+# UltraCanvasMatrixDiagram
+
+A matrix diagram — one of the Seven Management and Planning Tools — makes the
+relationships between two or three ordered lists visible and countable. Rows and
+columns are things; each intersection carries a symbol from a small named scale,
+and the weights behind those symbols roll up into per-row and per-column totals.
+
+**Status:** Phase 1 — the `L` and `T` shapes. `Y`, `X` and the QFD `House`
+composite are planned; see
+[`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
+
+## Which element do I want?
+
+| You have | Use |
+|---|---|
+| Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
+| Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
+| Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
+| Named relationship levels between two or three ordered lists, with totals | **this element** |
+
+The distinction that matters is the cell datum. A heatmap cell holds a *number*
+and encodes it as a fill; a matrix diagram cell holds a *named level* and draws
+it as a glyph on an unfilled cell. Levels also carry weights, which is what lets
+the diagram compute totals — something a heatmap has no concept of.
+
+## Header
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"   // the element
+#include "Plugins/Diagrams/UltraCanvasMatrixModel.h"     // the data model alone
+```
+
+`UltraCanvasMatrixModel.h` is UI-free: it includes nothing from the widget or
+render stack, so model code (and its arithmetic) can be built and tested without
+a window. `Tests/MatrixModelTest.cpp` does exactly that.
+
+## Class hierarchy
+
+```
+UltraCanvasUIElement
+  └── UltraCanvasChartElementBase
+        └── UltraCanvasMatrixDiagram
+```
+
+---
+
+## The three primitives
+
+**Item sets** are the ordered lists. **Panels** cross one set with another.
+**Cell marks** are the symbols at the intersections, taken from the panel's
+**relationship scale**.
+
+```cpp
+MatrixModel model;
+model.title = "Application of improvement tools";
+model.shape = MatrixShape::L;
+
+model.AddSet("departments", "Departments", {"HR", "Finance", "Purchasing"});
+model.AddSet("tools", "Improvement tools", {"SPC", "KPIs", "Kaizen"});
+model.AddPanel("departments", "tools", MatrixScale::Strength531());
+
+model.SetCell(0, "HR",      "KPIs",   "medium");
+model.SetCell(0, "Finance", "SPC",    "strong");
+model.SetCell(0, "Finance", "Kaizen", "weak");
+
+auto diagram = CreateMatrixDiagramElement("matrix", 10, 10, 700, 420, model);
+diagram->SetTotals(MatrixTotals::Both);
+```
+
+`AddSet` uses each label as its own item id, which is what you want for a
+one-off diagram. Build `MatrixItemSet` directly when you need distinct ids or
+per-row importance weights.
+
+Cells are stored **sparsely** — set the marks you have; the rest stay empty.
+
+## Shapes
+
+| Shape | Sets | Panels | Meaning |
+|---|---|---|---|
+| `MatrixShape::L` | 2 | 1 | A × B — the basic form |
+| `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
+| `MatrixShape::Y` | 3 | 3 | *planned* |
+| `MatrixShape::X` | 4 | 4 | *planned* |
+| `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
+
+Unimplemented shapes fall back to the `L` layout of panel 0 rather than drawing
+nothing, so data set against them is still visible.
+
+A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
+the right, and the shared row labels are drawn once between them:
+
+```cpp
+model.shape = MatrixShape::T;
+model.AddSet("employees", "Employees", {"Harvey", "Sami", "Emir"});
+model.AddSet("projects",  "Projects",  {"Paper usage", "Energy saving"});
+model.AddSet("skills",    "Skills",    {"SPC", "5S", "FMEA"});
+
+// The two wings ask different questions, so they carry different scales.
+model.AddPanel("employees", "projects", MatrixScale::Presence());
+model.AddPanel("employees", "skills",   MatrixScale::HighMediumLow());
+```
+
+That is why the scale lives on the **panel** and not on the model.
+
+## Relationship scales
+
+A scale is an ordered list of levels, strongest first. Each level carries an id,
+a label, a mark shape, a colour and a **weight**.
+
+```cpp
+MatrixScale scale;
+scale.title = "Relationship";
+scale.levels.emplace_back("must",   "Must",   Color(214, 45, 45, 255), 5.0);
+scale.levels.emplace_back("should", "Should", Color(35, 70, 180, 255), 3.0,
+                          MatrixMarkShape::Ring);
+```
+
+Built-in presets:
+
+| Preset | Levels and weights |
+|---|---|
+| `MatrixScale::QFD()` | strong 9 (disc), moderate 3 (ring), weak 1 (triangle) |
+| `MatrixScale::Strength531()` | strong 5, medium 3, weak 1 — all discs |
+| `MatrixScale::HighMediumLow()` | high 3, medium 2, low 1 (hollow) |
+| `MatrixScale::Presence()` | a single level, weight 1 |
+
+**Weights are data, not convention.** QFD's 9/3/1 is the best-known scale but
+5/3/1 is at least as common, and the totals differ: the same eight marks total
+18 on 5/3/1 and 22 on 9/3/1.
+
+Mark shapes are `Disc`, `Ring`, `Triangle`, `Square`, `Diamond`, `Cross` and
+`Text`. Prefer a scale with at least one `Ring`: a scale distinguished only by
+hue disappears in greyscale and for colour-blind readers. `Text` draws
+`MatrixLevel::glyph` instead of a shape, which is how a scale mixes coloured
+dots with letter codes under one legend.
+
+## Roll-ups
+
+The point of the weights is that they sum.
+
+```cpp
+double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
+double total = model.RowScore(0, row);
+std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
+```
+
+`MatrixItem::importance` defaults to `1.0`, so an unweighted matrix gets a plain
+sum of cell weights out of the same formula. Set real importances for QFD:
+
+```cpp
+MatrixItemSet needs("needs", "Customer needs");
+needs.items.emplace_back("light",   "Light to carry",         5.0);
+needs.items.emplace_back("comfort", "Comfortable over 10 km", 4.0);
+model.sets.push_back(needs);
+```
+
+Show the totals with `SetTotals`:
+
+```cpp
+diagram->SetTotals(MatrixTotals::Both);      // NoTotals | Rows | Columns | Both
+```
+
+Row totals appear in a gutter to the right of the grid, column totals in a
+gutter underneath — the presentation the printed form uses. Because they are
+computed from the marks they are consistent by construction, which a hand-built
+version is not.
+
+## Presentation
+
+```cpp
+diagram->SetDarkTheme(true);
+diagram->SetHeaderFit(MatrixHeaderFit::Auto);
+diagram->SetShowAxisTitles(true);
+diagram->SetShowLegend(true);
+diagram->SetLegendPosition(ChartLegendPosition::BottomCenter);
+diagram->SetShowCellValues(false);           // draw each cell's weight as text
+```
+
+`MatrixHeaderFit::Auto` measures the column labels once and picks the cheapest
+form that fits — `Horizontal`, then `Wrapped`, then `Rotated45`, then
+`Rotated90`. It never iterates: the cell width settles first, the fit follows
+from the width, and the band height follows from the fit. The grid has first
+claim on the vertical space, so a very long header is ellipsised rather than
+squeezing the rows out.
+
+Style is a plain struct of fields; read it, change what you need, set it back:
+
+```cpp
+MatrixDiagramStyle style = diagram->GetStyle();
+style.alternateRowBands = true;
+style.fillLabelBands = false;      // the solid label band behind row labels
+style.markSize = 0.5;              // fraction of the cell's short side
+diagram->SetStyle(style);
+```
+
+`SetDarkTheme(true)` applies the dark palette to the whole style; call it before
+your own overrides, since it replaces the struct.
+
+## Interaction
+
+```cpp
+diagram->onCellClick = [](const MatrixRef& ref) { /* ref.panel/row/col */ };
+diagram->onRowClick    = [](int panel, int index, const MatrixItem& item) { };
+diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
+```
+
+`MatrixRef` identifies a cell (`IsCell()`), or a whole row or column when the
+click landed in a label band. `onCellClick` fires for empty cells too — check
+`GetModel().LevelAt(...)` to tell them apart.
+
+Hovering highlights the cell's row and column and shows a tooltip. Clicking a
+legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
+
+## Interchange
+
+```cpp
+std::string csv = ExportMatrixCsv(model, 0);
+bool ok = ImportMatrixCsv(csv, model, 0);
+```
+
+The CSV is a header row of column labels then one row per row item, with level
+ids in the cells and empty fields for empty cells. Import fills in marks; it
+does not invent items, so the sets and the scale must already exist. It parses
+the whole file before touching the model, so a malformed file leaves your data
+alone.
+
+## Samples
+
+`MatrixSamples::ImprovementTools()`, `MatrixSamples::EmployeeAllocation()` and
+`MatrixSamples::QualityFunctionDeployment()` build the three models the demo
+shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
+
+## Validation
+
+```cpp
+MatrixValidation result = model.Validate();
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+```
+
+Checks the set count against the shape, panel set references, cell indices,
+level ids and duplicate cells. `warnings` collects things that are drawable but
+suspicious, such as an empty item set.
+
+The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
+items and level ids, so `Validate()` mainly matters when you have assembled a
+`MatrixModel` by hand.
+
+## See also
+
+- [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md) —
+  the research behind the design, and the roadmap for the remaining shapes
+- [`UltraCanvasHeatmapChart.md`](UltraCanvasHeatmapChart.md) — the numeric-cell sibling
+- [`UltraCanvasAdjacencyDiagramExamples.md`](UltraCanvasAdjacencyDiagramExamples.md) —
+  room adjacency, including its own matrix view
+- [`UltraCanvasQuadrantChartExamples.md`](UltraCanvasQuadrantChartExamples.md) —
+  the other component that calls itself a "matrix"
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewer.md
 ==============================================================================
 
@@ -26552,7 +27124,10 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 
 - **Page rendering** at any DPI/zoom with antialiasing, drop shadow, and a
   white underlay; rendered pages and thumbnails are cached per DPI.
-- **Thumbnail strip** with click-to-jump and independent scrolling (toggleable).
+- **Thumbnail strip** with click-to-jump and independent scrolling
+  (toggleable). It only appears for documents with more than one page, its
+  width is capped at 1/4 of the view so the page area always stays at least
+  3× the strip, and it auto-scrolls to keep the current page's thumb visible.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
@@ -26560,6 +27135,11 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+  Scrolling is hard-limited: it stops once the page edge sits `pageMargin`
+  inside the viewport. From that resting point a further wheel step continues
+  into the next (or previous) page — on the last (or first) page it simply
+  stops — so a document reads straight through with the wheel. Pages open at
+  their top, not vertically centered.
 - **Image extraction**: right-click an image on the page to save it via a
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
@@ -26727,6 +27307,7 @@ view->ExportTextToFile("/tmp/page.txt", /*selectionOnly=*/true);
 ### Layout & style
 
 ```cpp
+// Even when enabled, the strip only shows for documents with > 1 page.
 void SetShowThumbnailStrip(bool show);
 bool GetShowThumbnailStrip() const;
 
@@ -26743,12 +27324,15 @@ const PDFViewStyle& GetStyle() const;
 default); `Overlay` draws a large translucent page number centred over the page.
 The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
 (a fraction of the thumbnail height, default `0.30`) and
-`thumbOverlayNumberColor`.
+`thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
+UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
 metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
 `pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
+`thumbStripWidth` is a request: the effective strip width is capped at 1/4 of
+the view width so the page area keeps at least a 3:1 ratio over the strip.
 
 ### Editing passthroughs
 
@@ -26786,7 +27370,7 @@ immediately.
 
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it) |
+| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
 | Ctrl + wheel | Zoom in / out |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
@@ -26996,7 +27580,9 @@ The same edits are reachable from the widget via `ReplaceTextAt`,
 - **Pixel format.** `RenderPage`/`RenderThumbnail` return premultiplied RGBA
   (Cairo-compatible) or 8-bit gray, per `PDFColorMode`.
 - **Caching.** The view caches rendered pages keyed by DPI and thumbnails by
-  page; zoom and resize invalidate the page cache automatically.
+  page; zoom and resize invalidate the page cache automatically (thumbnails
+  survive those), while loading another document or editing pages
+  (delete/move/insert/merge/replace/redact) drops both caches.
 - **Threading.** Treat a single `IPDFDocument` as not thread-safe; render/edit
   from the UI thread (or serialize access).
 - **Drawing custom overlays.** If you subclass or draw on top of the view,
@@ -41944,7 +42530,10 @@ std::function<void(TreeNode*)> onNodeDoubleClicked;
 std::function<void(TreeNode*)> onNodeExpanded;
 std::function<void(TreeNode*)> onNodeCollapsed;
 std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop;
-std::function<void(TreeNode*)> onNodeRightClicked;
+// Right mouse button released over a node; the event carries the pointer
+// position (event.pointerWindow) for placing a context menu. A right press
+// never changes the selection.
+std::function<void(TreeNode*, const UCEvent&)> onNodeRightClicked;
 ```
 
 ## Usage Examples
@@ -42039,10 +42628,10 @@ treeView->onNodeExpanded = [](TreeNode* node) {
     }
 };
 
-// Handle right-click
-treeView->onNodeRightClicked = [](TreeNode* node) {
-    // Show context menu
-    ShowContextMenu(node);
+// Handle right-click (open a context menu at the pointer)
+treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
+    // Show context menu, e.g. menu->OpenMenu(event.pointerWindow, ...)
+    ShowContextMenu(node, event);
 };
 ```
 
@@ -47372,6 +47961,7 @@ is purely a libcurl build option.
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build | `UltraNet/UltraNetMime.h` |
@@ -47459,6 +48049,28 @@ std::vector<std::string> mx;
 UltraNet_DnsResolve("example.com", mx, UltraNetDnsType::MX);
 ```
 
+```cpp
+#include <UltraNet/UltraNetOAuth2.h>
+
+// OAuth2 sign-in for a desktop app (public client + PKCE). Blocking —
+// run on a worker thread; the browser opens via the callback.
+UltraNetOAuth2Config cfg;
+cfg.authorizationEndpoint = "https://mastodon.social/oauth/authorize";
+cfg.tokenEndpoint         = "https://mastodon.social/oauth/token";
+cfg.clientId              = clientId;
+cfg.scopes                = {"read", "write"};
+cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral port
+
+UltraNetOAuth2Token token;
+auto r = UltraNet_OAuth2AuthorizeInteractive(
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+if (r) {
+    // token.accessToken -> "authorization: Bearer ..." on API calls
+    // token.refreshToken -> store in the credential vault;
+    //   renew later with UltraNet_OAuth2Refresh(cfg, refreshToken, token)
+}
+```
+
 ---
 
 ## Module layout
@@ -47474,6 +48086,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetOAuth2.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   └── UltraNetPlugins.h

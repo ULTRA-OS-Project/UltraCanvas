@@ -11,6 +11,7 @@ components:
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
 | Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::ShowFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
+| Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
 
 ## Features
@@ -47,6 +48,23 @@ components:
   any browsing action (navigation, search, a file command) returns to the
   folder view. The lists survive restarts — they are stored next to the
   settings as `history.txt` — and *Settings ▸ Clear History* empties them.
+- **Favorites (pinning):** the heart button next to the clock shows the
+  Favorites view — the same **Files** / **Folders** / **Apps** layout as the
+  History view, but listing what was pinned deliberately instead of what was
+  used recently. The menu bar's **Pin** menu does the pinning: **Pin ▸
+  Favorites** pins the selection of the visible view (or, with nothing
+  selected, the folder currently shown) into the tab its kind belongs to;
+  **Pin ▸ Treeview** — enabled only while the selection is a folder — pins
+  the folder into the folder tree's **Pinned** section, where it navigates
+  like a bookmark on click. Entries keep the order they were pinned in and
+  drop out when their path disappears from disk. Right-clicking the folder
+  tree opens its context menu: **Copy** / **Delete** (with confirmation) /
+  **Paste** act on the folder under the cursor — Paste only when a folder is
+  under the cursor and the clipboard holds files, Delete never on the
+  top-level roots — and **Unpin** (pinned entries only) removes the bookmark
+  without touching the folder. The pins survive restarts — they are stored
+  next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
+  empties them (History and Favorites are separate stores).
 - **Command bar:** New folder / New file (inline rename starts
   automatically), Cut / Copy / Paste (system clipboard interop), Rename,
   Delete (with confirmation), sort field + direction, view type selection,

@@ -67,6 +67,9 @@ namespace UltraCanvas {
         std::string label;
         std::string shortcut;
         std::string iconPath;
+        // Optional already-decoded icon image (e.g. built with UCImage::LoadFromMemory).
+        // When set it is drawn in the icon column instead of loading iconPath from a file.
+        std::shared_ptr<UCImage> iconImage;
 
         // Stable, serializable identifier for this action (e.g. "file.open").
         // Empty by default so existing code is unaffected. When set, it lets the
