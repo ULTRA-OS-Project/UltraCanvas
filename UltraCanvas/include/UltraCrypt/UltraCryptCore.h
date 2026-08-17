@@ -133,8 +133,18 @@ bool UltraCrypt_ConstantTimeEquals(const void* a, size_t aSize,
 // Hashing
 // ============================================================================
 enum class UltraCryptHashAlgorithm : uint8_t {
+    // LEGACY. Provided for HMAC-SHA-1 only, which TOTP requires for issuer
+    // compatibility and where SHA-1's collision weakness does not apply. As a
+    // plain digest it is collision-broken: UltraCrypt_Hash refuses it unless
+    // UltraCryptHashOptions::allowLegacy is set, and nothing in UltraCanvas
+    // should set that.
+    SHA1,
     SHA256,
     SHA512
+};
+
+struct UltraCryptHashOptions {
+    bool allowLegacy = false;    // required to use SHA1 as a plain digest
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -142,7 +152,9 @@ bool   UltraCrypt_IsHashAvailable(UltraCryptHashAlgorithm algorithm);
 
 UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                                  const void* data, size_t size,
-                                 std::vector<uint8_t>& outDigest);
+                                 std::vector<uint8_t>& outDigest,
+                                 const UltraCryptHashOptions& options =
+                                     UltraCryptHashOptions());
 
 UltraCryptResult UltraCrypt_HashFile(UltraCryptHashAlgorithm algorithm,
                                      const std::string& filePath,
@@ -177,6 +189,8 @@ private:
 // HMAC
 // ============================================================================
 // Accepts keys of any length (the standard HMAC key schedule is applied).
+// SHA1 is permitted here without allowLegacy: HMAC-SHA-1 remains sound and
+// TOTP interoperability requires it.
 UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
                                  const UltraCryptSecureBuffer& key,
                                  const void* data, size_t size,
@@ -272,6 +286,20 @@ UltraCryptResult UltraCrypt_DeriveKeyFromPassword(
         UltraCryptKdfParams& params,
         UltraCryptSecureBuffer& outKey);
 
+// HKDF (RFC 5869) — derives subkeys from existing high-entropy key material.
+// NOT for passwords: it is deliberately fast, with no memory hardness. Use
+// UltraCrypt_DeriveKeyFromPassword for anything a human typed.
+//
+// `salt` and `info` may be empty. SHA1 is rejected here — HKDF has no
+// compatibility constraint forcing it.
+UltraCryptResult UltraCrypt_DeriveKeyHkdf(
+        UltraCryptHashAlgorithm algorithm,
+        const UltraCryptSecureBuffer& inputKeyMaterial,
+        const std::vector<uint8_t>& salt,
+        const std::vector<uint8_t>& info,
+        size_t outputLength,
+        UltraCryptSecureBuffer& outKey);
+
 // ============================================================================
 // Random generation
 // ============================================================================
@@ -287,5 +315,23 @@ UltraCryptResult UltraCrypt_RandomUInt32(uint32_t bound, uint32_t& out);
 
 // RFC 4122 version 4, lowercase hyphenated.
 UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out);
+
+// ============================================================================
+// Base16 / Base32 / Base64 (RFC 4648)
+// ============================================================================
+// These are encodings, not cryptography, and may move to DataFormats/ later.
+// They live here for now because no other home exists and secrets pass through
+// them — Base32 in particular carries TOTP seeds, which is why the decoder
+// yields a secure buffer rather than a plain vector.
+std::string      UltraCrypt_Base64Encode(const void* data, size_t size);
+UltraCryptResult UltraCrypt_Base64Decode(const std::string& text,
+                                         std::vector<uint8_t>& out);
+
+std::string      UltraCrypt_Base32Encode(const void* data, size_t size,
+                                         bool pad = true);
+// Strict RFC 4648: rejects characters outside the alphabet. Case-insensitive,
+// and ASCII spaces are ignored so a seed can be typed in readable groups.
+UltraCryptResult UltraCrypt_Base32Decode(const std::string& text,
+                                         UltraCryptSecureBuffer& out);
 
 #endif // ULTRACRYPTCORE_H

@@ -239,11 +239,152 @@ UltraCryptSecureBuffer UltraCryptSecureBuffer::AdoptString(std::string& text) {
     return buffer;
 }
 
+
+// ============================================================================
+// SHA-1 — vendored, HMAC path only
+// ============================================================================
+// libsodium deliberately omits SHA-1, but TOTP (RFC 6238) defaults to
+// HMAC-SHA-1 and issuer compatibility requires it. HMAC does not inherit
+// SHA-1's collision weakness, so HMAC-SHA-1 remains sound; SHA-1 as a plain
+// digest is not, which is why UltraCrypt_Hash gates it behind allowLegacy.
+//
+// FIPS 180-4 §6.1. Verified against the standard vectors in
+// Tests/UltraCryptTests.cpp.
+namespace {
+
+struct Sha1State {
+    uint32_t h[5];
+    uint64_t bitCount;
+    uint8_t  buffer[64];
+    size_t   bufferLen;
+};
+
+void Sha1Init(Sha1State& s) {
+    s.h[0] = 0x67452301u; s.h[1] = 0xEFCDAB89u; s.h[2] = 0x98BADCFEu;
+    s.h[3] = 0x10325476u; s.h[4] = 0xC3D2E1F0u;
+    s.bitCount = 0;
+    s.bufferLen = 0;
+}
+
+inline uint32_t Rotl32(uint32_t v, int bits) {
+    return (v << bits) | (v >> (32 - bits));
+}
+
+void Sha1Compress(Sha1State& s, const uint8_t* block) {
+    uint32_t w[80];
+    for (int i = 0; i < 16; ++i) {
+        w[i] = (static_cast<uint32_t>(block[i * 4]) << 24) |
+               (static_cast<uint32_t>(block[i * 4 + 1]) << 16) |
+               (static_cast<uint32_t>(block[i * 4 + 2]) << 8) |
+                static_cast<uint32_t>(block[i * 4 + 3]);
+    }
+    for (int i = 16; i < 80; ++i) {
+        w[i] = Rotl32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+
+    uint32_t a = s.h[0], b = s.h[1], c = s.h[2], d = s.h[3], e = s.h[4];
+    for (int i = 0; i < 80; ++i) {
+        uint32_t f, k;
+        if (i < 20)      { f = (b & c) | ((~b) & d);          k = 0x5A827999u; }
+        else if (i < 40) { f = b ^ c ^ d;                     k = 0x6ED9EBA1u; }
+        else if (i < 60) { f = (b & c) | (b & d) | (c & d);   k = 0x8F1BBCDCu; }
+        else             { f = b ^ c ^ d;                     k = 0xCA62C1D6u; }
+        const uint32_t temp = Rotl32(a, 5) + f + e + k + w[i];
+        e = d; d = c; c = Rotl32(b, 30); b = a; a = temp;
+    }
+    s.h[0] += a; s.h[1] += b; s.h[2] += c; s.h[3] += d; s.h[4] += e;
+    UltraCrypt_SecureZero(w, sizeof(w));
+}
+
+void Sha1Update(Sha1State& s, const uint8_t* data, size_t size) {
+    s.bitCount += static_cast<uint64_t>(size) * 8;
+    while (size > 0) {
+        size_t take = 64 - s.bufferLen;
+        if (take > size) take = size;
+        std::memcpy(s.buffer + s.bufferLen, data, take);
+        s.bufferLen += take;
+        data += take;
+        size -= take;
+        if (s.bufferLen == 64) {
+            Sha1Compress(s, s.buffer);
+            s.bufferLen = 0;
+        }
+    }
+}
+
+void Sha1Final(Sha1State& s, uint8_t out[20]) {
+    const uint64_t bits = s.bitCount;
+    const uint8_t pad = 0x80;
+    Sha1Update(s, &pad, 1);
+    const uint8_t zero = 0x00;
+    while (s.bufferLen != 56) Sha1Update(s, &zero, 1);
+    // Sha1Update advanced bitCount for the padding; the length field must carry
+    // the original message length.
+    uint8_t lengthBE[8];
+    for (int i = 0; i < 8; ++i) {
+        lengthBE[7 - i] = static_cast<uint8_t>((bits >> (i * 8)) & 0xFF);
+    }
+    Sha1Update(s, lengthBE, 8);
+    for (int i = 0; i < 5; ++i) {
+        out[i * 4]     = static_cast<uint8_t>(s.h[i] >> 24);
+        out[i * 4 + 1] = static_cast<uint8_t>(s.h[i] >> 16);
+        out[i * 4 + 2] = static_cast<uint8_t>(s.h[i] >> 8);
+        out[i * 4 + 3] = static_cast<uint8_t>(s.h[i]);
+    }
+}
+
+void Sha1OneShot(const uint8_t* data, size_t size, uint8_t out[20]) {
+    Sha1State s;
+    Sha1Init(s);
+    Sha1Update(s, data, size);
+    Sha1Final(s, out);
+    UltraCrypt_SecureZero(&s, sizeof(s));
+}
+
+// HMAC-SHA-1 (RFC 2104) over the SHA-1 above. Block size 64.
+void HmacSha1(const uint8_t* key, size_t keySize,
+              const uint8_t* data, size_t size, uint8_t out[20]) {
+    uint8_t normalisedKey[64];
+    std::memset(normalisedKey, 0, sizeof(normalisedKey));
+    if (keySize > 64) {
+        Sha1OneShot(key, keySize, normalisedKey);      // hash over-long keys
+    } else if (keySize > 0) {
+        std::memcpy(normalisedKey, key, keySize);      // zero-pad short ones
+    }
+
+    uint8_t inner[64], outer[64];
+    for (int i = 0; i < 64; ++i) {
+        inner[i] = static_cast<uint8_t>(normalisedKey[i] ^ 0x36);
+        outer[i] = static_cast<uint8_t>(normalisedKey[i] ^ 0x5C);
+    }
+
+    Sha1State s;
+    Sha1Init(s);
+    Sha1Update(s, inner, 64);
+    Sha1Update(s, data, size);
+    uint8_t innerDigest[20];
+    Sha1Final(s, innerDigest);
+
+    Sha1Init(s);
+    Sha1Update(s, outer, 64);
+    Sha1Update(s, innerDigest, 20);
+    Sha1Final(s, out);
+
+    UltraCrypt_SecureZero(normalisedKey, sizeof(normalisedKey));
+    UltraCrypt_SecureZero(inner, sizeof(inner));
+    UltraCrypt_SecureZero(outer, sizeof(outer));
+    UltraCrypt_SecureZero(innerDigest, sizeof(innerDigest));
+    UltraCrypt_SecureZero(&s, sizeof(s));
+}
+
+} // namespace
+
 // ============================================================================
 // Hashing
 // ============================================================================
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm) {
     switch (algorithm) {
+        case UltraCryptHashAlgorithm::SHA1:   return 20;
         case UltraCryptHashAlgorithm::SHA256: return 32;
         case UltraCryptHashAlgorithm::SHA512: return 64;
     }
@@ -251,18 +392,34 @@ size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm) {
 }
 
 bool UltraCrypt_IsHashAvailable(UltraCryptHashAlgorithm algorithm) {
-    (void)algorithm;
+    // SHA-1 is ours, so it is available even without a backend; everything else
+    // comes from libsodium.
+    if (algorithm == UltraCryptHashAlgorithm::SHA1) return true;
     return EnsureReady();
 }
 
 UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                                  const void* data, size_t size,
-                                 std::vector<uint8_t>& outDigest) {
-    if (!EnsureReady()) return NoBackend();
+                                 std::vector<uint8_t>& outDigest,
+                                 const UltraCryptHashOptions& options) {
     if (size > 0 && !data) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "null data with non-zero size");
     }
+    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+        if (!options.allowLegacy) {
+            return UltraCryptResult::Error(
+                UltraCryptResultCode::NotSupported,
+                "SHA-1 is collision-broken and is provided for HMAC-SHA-1 only; "
+                "set UltraCryptHashOptions::allowLegacy to use it as a digest");
+        }
+        outDigest.assign(20, 0);
+        const uint8_t empty = 0;
+        Sha1OneShot(data ? static_cast<const uint8_t*>(data) : &empty, size,
+                    outDigest.data());
+        return UltraCryptResult::Ok();
+    }
+    if (!EnsureReady()) return NoBackend();
 #ifdef ULTRACRYPT_HAVE_SODIUM
     outDigest.assign(UltraCrypt_GetDigestSize(algorithm), 0);
     const auto* in = static_cast<const unsigned char*>(data);
@@ -270,6 +427,8 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
     if (!in) in = &empty;
     int rc = -1;
     switch (algorithm) {
+        case UltraCryptHashAlgorithm::SHA1:
+            break;   // handled above, before the backend is consulted
         case UltraCryptHashAlgorithm::SHA256:
             rc = crypto_hash_sha256(outDigest.data(), in, size);
             break;
@@ -348,6 +507,7 @@ bool UltraCrypt_FromHex(const std::string& hex, std::vector<uint8_t>& outBytes) 
 namespace {
 struct HasherState {
     UltraCryptHashAlgorithm algorithm;
+    Sha1State sha1;
     crypto_hash_sha256_state sha256;
     crypto_hash_sha512_state sha512;
 };
@@ -382,6 +542,7 @@ void UltraCryptHasher::Reset() {
     auto* s = static_cast<HasherState*>(state_);
     if (!s) return;
     switch (algorithm_) {
+        case UltraCryptHashAlgorithm::SHA1:   Sha1Init(s->sha1); break;
         case UltraCryptHashAlgorithm::SHA256: crypto_hash_sha256_init(&s->sha256); break;
         case UltraCryptHashAlgorithm::SHA512: crypto_hash_sha512_init(&s->sha512); break;
     }
@@ -394,6 +555,7 @@ void UltraCryptHasher::Update(const void* data, size_t size) {
     if (!s || size == 0 || !data) return;
     const auto* in = static_cast<const unsigned char*>(data);
     switch (algorithm_) {
+        case UltraCryptHashAlgorithm::SHA1:   Sha1Update(s->sha1, in, size); break;
         case UltraCryptHashAlgorithm::SHA256: crypto_hash_sha256_update(&s->sha256, in, size); break;
         case UltraCryptHashAlgorithm::SHA512: crypto_hash_sha512_update(&s->sha512, in, size); break;
     }
@@ -409,6 +571,7 @@ std::vector<uint8_t> UltraCryptHasher::Final() {
     if (!s) return digest;
     digest.assign(GetDigestSize(), 0);
     switch (algorithm_) {
+        case UltraCryptHashAlgorithm::SHA1:   Sha1Final(s->sha1, digest.data()); break;
         case UltraCryptHashAlgorithm::SHA256: crypto_hash_sha256_final(&s->sha256, digest.data()); break;
         case UltraCryptHashAlgorithm::SHA512: crypto_hash_sha512_final(&s->sha512, digest.data()); break;
     }
@@ -427,11 +590,20 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
                                  const UltraCryptSecureBuffer& key,
                                  const void* data, size_t size,
                                  std::vector<uint8_t>& outMac) {
-    if (!EnsureReady()) return NoBackend();
     if (size > 0 && !data) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "null data with non-zero size");
     }
+    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+        // Permitted without allowLegacy: HMAC-SHA-1 is sound and TOTP needs it.
+        outMac.assign(20, 0);
+        const uint8_t empty = 0;
+        HmacSha1(key.Data(), key.GetSize(),
+                 data ? static_cast<const uint8_t*>(data) : &empty, size,
+                 outMac.data());
+        return UltraCryptResult::Ok();
+    }
+    if (!EnsureReady()) return NoBackend();
 #ifdef ULTRACRYPT_HAVE_SODIUM
     // The *_init variants accept an arbitrary key length and apply the standard
     // HMAC key schedule (hash keys longer than the block size, zero-pad
@@ -441,6 +613,8 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
     if (!in) in = &empty;
 
     switch (algorithm) {
+        case UltraCryptHashAlgorithm::SHA1:
+            break;   // handled above, before the backend is consulted
         case UltraCryptHashAlgorithm::SHA256: {
             crypto_auth_hmacsha256_state state;
             if (crypto_auth_hmacsha256_init(&state, key.Data(), key.GetSize()) != 0) {
@@ -803,5 +977,213 @@ UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out) {
     const std::string hex = UltraCrypt_ToHex(bytes);
     out = hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" +
           hex.substr(12, 4) + "-" + hex.substr(16, 4) + "-" + hex.substr(20, 12);
+    return UltraCryptResult::Ok();
+}
+
+// ============================================================================
+// HKDF (RFC 5869)
+// ============================================================================
+// Built on the HMAC above rather than libsodium's crypto_kdf_hkdf_*, which
+// only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. The
+// construction is extract-then-expand and is covered by the RFC 5869 vectors
+// in the test suite.
+UltraCryptResult UltraCrypt_DeriveKeyHkdf(
+        UltraCryptHashAlgorithm algorithm,
+        const UltraCryptSecureBuffer& inputKeyMaterial,
+        const std::vector<uint8_t>& salt,
+        const std::vector<uint8_t>& info,
+        size_t outputLength,
+        UltraCryptSecureBuffer& outKey) {
+    outKey.Clear();
+    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+        return UltraCryptResult::Error(
+            UltraCryptResultCode::NotSupported,
+            "HKDF-SHA-1 is not offered: nothing requires it for compatibility");
+    }
+    if (!EnsureReady()) return NoBackend();
+    if (outputLength == 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "output length must be non-zero");
+    }
+
+    const size_t hashLen = UltraCrypt_GetDigestSize(algorithm);
+    if (outputLength > 255 * hashLen) {
+        return UltraCryptResult::Error(
+            UltraCryptResultCode::InvalidArgument,
+            "HKDF cannot produce more than 255 * HashLen bytes");
+    }
+
+    // Extract: PRK = HMAC(salt, IKM). An absent salt is HashLen zero bytes.
+    const std::vector<uint8_t> effectiveSalt =
+        salt.empty() ? std::vector<uint8_t>(hashLen, 0) : salt;
+    UltraCryptSecureBuffer saltKey(effectiveSalt.data(), effectiveSalt.size());
+    std::vector<uint8_t> prkBytes;
+    auto extract = UltraCrypt_Hmac(algorithm, saltKey,
+                                   inputKeyMaterial.Data(),
+                                   inputKeyMaterial.GetSize(), prkBytes);
+    if (!extract) return extract;
+    UltraCryptSecureBuffer prk(prkBytes.data(), prkBytes.size());
+    UltraCrypt_SecureZero(prkBytes.data(), prkBytes.size());
+
+    // Expand: T(i) = HMAC(PRK, T(i-1) || info || i)
+    UltraCryptSecureBuffer okm(outputLength);
+    if (okm.GetSize() != outputLength) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "could not allocate output buffer");
+    }
+    std::vector<uint8_t> previous;
+    std::vector<uint8_t> block;
+    size_t produced = 0;
+    for (uint8_t counter = 1; produced < outputLength; ++counter) {
+        std::vector<uint8_t> input;
+        input.reserve(previous.size() + info.size() + 1);
+        input.insert(input.end(), previous.begin(), previous.end());
+        input.insert(input.end(), info.begin(), info.end());
+        input.push_back(counter);
+
+        auto expand = UltraCrypt_Hmac(algorithm, prk, input.data(), input.size(), block);
+        if (!expand) return expand;
+
+        const size_t take = (outputLength - produced) < block.size()
+                                ? (outputLength - produced) : block.size();
+        std::memcpy(okm.Data() + produced, block.data(), take);
+        produced += take;
+        previous = block;
+    }
+    UltraCrypt_SecureZero(block.data(), block.size());
+    UltraCrypt_SecureZero(previous.data(), previous.size());
+
+    outKey = std::move(okm);
+    return UltraCryptResult::Ok();
+}
+
+// ============================================================================
+// Base16 / Base32 / Base64 (RFC 4648)
+// ============================================================================
+namespace {
+
+const char kBase64Alphabet[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const char kBase32Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+int Base64Value(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+int Base32Value(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a';      // case-insensitive
+    if (c >= '2' && c <= '7') return c - '2' + 26;
+    return -1;
+}
+
+} // namespace
+
+std::string UltraCrypt_Base64Encode(const void* data, size_t size) {
+    std::string out;
+    if (!data || size == 0) return out;
+    const auto* in = static_cast<const uint8_t*>(data);
+    out.reserve(((size + 2) / 3) * 4);
+    for (size_t i = 0; i < size; i += 3) {
+        const uint32_t b0 = in[i];
+        const uint32_t b1 = (i + 1 < size) ? in[i + 1] : 0;
+        const uint32_t b2 = (i + 2 < size) ? in[i + 2] : 0;
+        const uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push_back(kBase64Alphabet[(triple >> 18) & 0x3F]);
+        out.push_back(kBase64Alphabet[(triple >> 12) & 0x3F]);
+        out.push_back((i + 1 < size) ? kBase64Alphabet[(triple >> 6) & 0x3F] : '=');
+        out.push_back((i + 2 < size) ? kBase64Alphabet[triple & 0x3F] : '=');
+    }
+    return out;
+}
+
+UltraCryptResult UltraCrypt_Base64Decode(const std::string& text,
+                                         std::vector<uint8_t>& out) {
+    out.clear();
+    uint32_t accumulator = 0;
+    int bits = 0;
+    size_t padding = 0;
+    for (char c : text) {
+        if (c == '=') { ++padding; continue; }
+        if (padding > 0) {
+            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                           "base64 data after padding");
+        }
+        const int value = Base64Value(c);
+        if (value < 0) {
+            out.clear();
+            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                           "invalid base64 character");
+        }
+        accumulator = (accumulator << 6) | static_cast<uint32_t>(value);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((accumulator >> bits) & 0xFF));
+        }
+    }
+    return UltraCryptResult::Ok();
+}
+
+std::string UltraCrypt_Base32Encode(const void* data, size_t size, bool pad) {
+    std::string out;
+    if (!data || size == 0) return out;
+    const auto* in = static_cast<const uint8_t*>(data);
+    uint32_t accumulator = 0;
+    int bits = 0;
+    for (size_t i = 0; i < size; ++i) {
+        accumulator = (accumulator << 8) | in[i];
+        bits += 8;
+        while (bits >= 5) {
+            bits -= 5;
+            out.push_back(kBase32Alphabet[(accumulator >> bits) & 0x1F]);
+        }
+    }
+    if (bits > 0) {
+        out.push_back(kBase32Alphabet[(accumulator << (5 - bits)) & 0x1F]);
+    }
+    if (pad) {
+        while (out.size() % 8 != 0) out.push_back('=');
+    }
+    return out;
+}
+
+UltraCryptResult UltraCrypt_Base32Decode(const std::string& text,
+                                         UltraCryptSecureBuffer& out) {
+    out.Clear();
+    std::vector<uint8_t> decoded;
+    uint32_t accumulator = 0;
+    int bits = 0;
+    bool sawPadding = false;
+
+    for (char c : text) {
+        if (c == ' ' || c == '\t') continue;      // seeds are often typed in groups
+        if (c == '=') { sawPadding = true; continue; }
+        if (sawPadding) {
+            UltraCrypt_SecureZero(decoded.data(), decoded.size());
+            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                           "base32 data after padding");
+        }
+        const int value = Base32Value(c);
+        if (value < 0) {
+            UltraCrypt_SecureZero(decoded.data(), decoded.size());
+            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                           "invalid base32 character");
+        }
+        accumulator = (accumulator << 5) | static_cast<uint32_t>(value);
+        bits += 5;
+        if (bits >= 8) {
+            bits -= 8;
+            decoded.push_back(static_cast<uint8_t>((accumulator >> bits) & 0xFF));
+        }
+    }
+
+    out = UltraCryptSecureBuffer(decoded.data(), decoded.size());
+    UltraCrypt_SecureZero(decoded.data(), decoded.size());
     return UltraCryptResult::Ok();
 }

@@ -367,6 +367,181 @@ static void TestSecureBuffer() {
     Check(!UltraCrypt_FromHex("abc", roundTrip), "odd-length hex is rejected");
 }
 
+
+// ===== SHA-1 and HMAC-SHA-1 (FIPS 180-4 / RFC 2202) =====
+static void TestSha1() {
+    std::printf("SHA-1 and HMAC-SHA-1 (legacy, TOTP path)\n");
+    std::vector<uint8_t> digest;
+
+    // Plain SHA-1 must be refused unless legacy use is opted into.
+    auto refused = UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA1, "abc", 3, digest);
+    Check(!refused && refused.code == UltraCryptResultCode::NotSupported,
+          "plain SHA-1 is refused without allowLegacy");
+
+    UltraCryptHashOptions legacy;
+    legacy.allowLegacy = true;
+    Check(static_cast<bool>(UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA1,
+                                            "abc", 3, digest, legacy)),
+          "plain SHA-1 succeeds with allowLegacy");
+    CheckHex(digest, "a9993e364706816aba3e25717850c26c9cd0d89d", "SHA-1(\"abc\")");
+
+    Check(static_cast<bool>(UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA1,
+                                            nullptr, 0, digest, legacy)),
+          "SHA-1 of the empty input succeeds");
+    CheckHex(digest, "da39a3ee5e6b4b0d3255bfef95601890afd80709", "SHA-1(\"\")");
+
+    // A multi-block message exercises the padding and length-encoding paths.
+    const std::string long56 =
+        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    Check(static_cast<bool>(UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA1,
+                                            long56.data(), long56.size(),
+                                            digest, legacy)),
+          "SHA-1 of a 56-byte message succeeds");
+    CheckHex(digest, "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
+             "SHA-1 of the 56-byte FIPS vector");
+
+    std::string million(1000000, 'a');
+    UltraCryptHasher hasher(UltraCryptHashAlgorithm::SHA1);
+    hasher.Update(million.data(), million.size());
+    CheckHex(hasher.Final(), "34aa973cd4c4daa4f61eeb2bdbad27316534016f",
+             "streaming SHA-1 of one million 'a'");
+
+    // HMAC-SHA-1 needs no opt-in: RFC 2202 case 1.
+    UltraCryptSecureBuffer key =
+        BufferFromHex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    std::vector<uint8_t> mac;
+    Check(static_cast<bool>(UltraCrypt_Hmac(UltraCryptHashAlgorithm::SHA1,
+                                            key, "Hi There", 8, mac)),
+          "HMAC-SHA-1 succeeds without allowLegacy");
+    CheckHex(mac, "b617318655057264e28bc0b6fb378c8ef146be00",
+             "RFC 2202 case 1, HMAC-SHA-1");
+
+    std::string jefe = "Jefe";
+    UltraCryptSecureBuffer shortKey(jefe.data(), jefe.size());
+    const char* q = "what do ya want for nothing?";
+    UltraCrypt_Hmac(UltraCryptHashAlgorithm::SHA1, shortKey, q, std::strlen(q), mac);
+    CheckHex(mac, "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79",
+             "RFC 2202 case 2, HMAC-SHA-1");
+
+    UltraCryptSecureBuffer longKey(80);
+    std::memset(longKey.Data(), 0xaa, longKey.GetSize());
+    const char* t5 = "Test Using Larger Than Block-Size Key - Hash Key First";
+    UltraCrypt_Hmac(UltraCryptHashAlgorithm::SHA1, longKey, t5, std::strlen(t5), mac);
+    CheckHex(mac, "aa4ae5e15272d00e95705637ce8a3b55ed402112",
+             "RFC 2202 case 6, HMAC-SHA-1 (over-long key)");
+}
+
+// ===== HKDF (RFC 5869) =====
+static void TestHkdf() {
+    std::printf("HKDF (RFC 5869 vectors)\n");
+    // Test Case 1: SHA-256, 22-byte IKM, 13-byte salt, 10-byte info, L = 42.
+    UltraCryptSecureBuffer ikm =
+        BufferFromHex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    std::vector<uint8_t> salt, info;
+    UltraCrypt_FromHex("000102030405060708090a0b0c", salt);
+    UltraCrypt_FromHex("f0f1f2f3f4f5f6f7f8f9", info);
+
+    UltraCryptSecureBuffer okm;
+    Check(static_cast<bool>(UltraCrypt_DeriveKeyHkdf(
+              UltraCryptHashAlgorithm::SHA256, ikm, salt, info, 42, okm)),
+          "HKDF succeeds");
+    std::vector<uint8_t> okmBytes(okm.Data(), okm.Data() + okm.GetSize());
+    CheckHex(okmBytes,
+             "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
+             "34007208d5b887185865",
+             "RFC 5869 Test Case 1 (SHA-256)");
+
+    // Test Case 3: empty salt and empty info.
+    UltraCryptSecureBuffer okm3;
+    Check(static_cast<bool>(UltraCrypt_DeriveKeyHkdf(
+              UltraCryptHashAlgorithm::SHA256, ikm, {}, {}, 42, okm3)),
+          "HKDF with empty salt and info succeeds");
+    std::vector<uint8_t> okm3Bytes(okm3.Data(), okm3.Data() + okm3.GetSize());
+    CheckHex(okm3Bytes,
+             "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d"
+             "9d201395faa4b61a96c8",
+             "RFC 5869 Test Case 3 (empty salt/info)");
+
+    // Length limits and rejections.
+    UltraCryptSecureBuffer tooLong;
+    auto over = UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256,
+                                         ikm, salt, info, 255 * 32 + 1, tooLong);
+    Check(!over && over.code == UltraCryptResultCode::InvalidArgument,
+          "HKDF refuses more than 255 * HashLen bytes");
+
+    UltraCryptSecureBuffer sha1Okm;
+    auto sha1Refused = UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA1,
+                                                ikm, salt, info, 32, sha1Okm);
+    Check(!sha1Refused && sha1Refused.code == UltraCryptResultCode::NotSupported,
+          "HKDF-SHA-1 is refused");
+
+    // Different info must give different output from the same IKM.
+    UltraCryptSecureBuffer a, b;
+    std::vector<uint8_t> infoA{'a'}, infoB{'b'};
+    UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, ikm, salt, infoA, 32, a);
+    UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, ikm, salt, infoB, 32, b);
+    Check(!UltraCrypt_ConstantTimeEquals(a.Data(), a.GetSize(), b.Data(), b.GetSize()),
+          "different info yields different key material");
+}
+
+// ===== Base32 / Base64 (RFC 4648) =====
+static void TestEncodings() {
+    std::printf("Base32 / Base64 (RFC 4648 vectors)\n");
+    const char* inputs[]  = {"", "f", "fo", "foo", "foob", "fooba", "foobar"};
+    const char* base64[]  = {"", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"};
+    const char* base32[]  = {"", "MY======", "MZXQ====", "MZXW6===",
+                             "MZXW6YQ=", "MZXW6YTB", "MZXW6YTBOI======"};
+
+    for (int i = 0; i < 7; ++i) {
+        const std::string in = inputs[i];
+        ++g_checks;
+        const std::string got64 = UltraCrypt_Base64Encode(in.data(), in.size());
+        if (got64 != base64[i]) {
+            ++g_failures;
+            std::printf("  FAIL: base64(\"%s\") expected %s got %s\n",
+                        in.c_str(), base64[i], got64.c_str());
+        }
+        ++g_checks;
+        const std::string got32 = UltraCrypt_Base32Encode(in.data(), in.size());
+        if (got32 != base32[i]) {
+            ++g_failures;
+            std::printf("  FAIL: base32(\"%s\") expected %s got %s\n",
+                        in.c_str(), base32[i], got32.c_str());
+        }
+
+        std::vector<uint8_t> back64;
+        UltraCrypt_Base64Decode(base64[i], back64);
+        Check(std::string(back64.begin(), back64.end()) == in,
+              "base64 round-trips \"" + in + "\"");
+
+        UltraCryptSecureBuffer back32;
+        UltraCrypt_Base32Decode(base32[i], back32);
+        // Guard the compare: memcmp with a null pointer is undefined even for
+        // a zero length, and an empty decode legitimately yields no buffer.
+        Check(back32.GetSize() == in.size() &&
+                  (in.empty() ||
+                   std::memcmp(back32.Data(), in.data(), in.size()) == 0),
+              "base32 round-trips \"" + in + "\"");
+    }
+
+    // Seeds are commonly shown lower-case, in space-separated groups, unpadded.
+    UltraCryptSecureBuffer seed;
+    Check(static_cast<bool>(UltraCrypt_Base32Decode("mzxw 6ytb oi", seed)),
+          "base32 accepts lower case, spaces and no padding");
+    Check(seed.GetSize() == 6 && std::memcmp(seed.Data(), "foobar", 6) == 0,
+          "a loosely typed seed decodes correctly");
+
+    UltraCryptSecureBuffer bad;
+    auto r = UltraCrypt_Base32Decode("MZXW6YTB1", bad);
+    Check(!r && r.code == UltraCryptResultCode::InvalidArgument,
+          "base32 rejects a character outside the alphabet");
+    Check(bad.IsEmpty(), "a rejected base32 decode yields nothing");
+
+    std::vector<uint8_t> bad64;
+    Check(!UltraCrypt_Base64Decode("Zm9v!", bad64),
+          "base64 rejects a character outside the alphabet");
+}
+
 int main() {
     std::printf("UltraCrypt tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -377,7 +552,10 @@ int main() {
     }
 
     TestHashing();
+    TestSha1();
     TestHmac();
+    TestHkdf();
+    TestEncodings();
     TestAead();
     TestKdf();
     TestSecureBuffer();

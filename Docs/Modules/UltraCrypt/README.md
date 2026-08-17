@@ -1,6 +1,6 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
-**Status:** Stage 1 implemented and under test; Stages 2–4 outstanding (§8).
+**Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
 **Version:** 0.1.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-08-10
@@ -23,17 +23,28 @@ This document specifies **what UltraCrypt must provide and why** (§1–2), the
 **Implemented so far** — `UltraCanvas/{include,core}/UltraCrypt/`, backed by
 libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`,
-`UltraCrypt_ConstantTimeEquals`, the random family, SHA-256/512 (one-shot,
-streaming and file), HMAC-SHA-256/512, AEAD
-(XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path), and
-Argon2id key derivation. First consumer: the UCD document encryption envelope
+`UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
+SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
+(XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
+Argon2id key derivation, HKDF-SHA-256/512, and the RFC 4648 Base32/Base64
+companions. First consumer: the UCD document encryption envelope
 (`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
 `Tests/UCDCryptoEnvelopeTests.cpp`), which replaced the broken encryption
 described in §1.1.
 
-**Not yet implemented:** SHA-1 for TOTP HMAC (§3.1 row 3), HKDF (§5.5), and the
-Base32/Base64 companions (§5.7). Each is a small construction over primitives
-that now exist; none is needed by a current consumer.
+Everything UltraAuthenticator's OTP engine needs — `UltraCrypt_Hmac` with
+SHA-1/256/512, and `UltraCrypt_Base32Decode` yielding a secure buffer — is
+therefore in place.
+
+**Notes on two of these.** SHA-1 is vendored (~150 lines in
+`UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
+unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
+built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
+which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
+
+**Not yet implemented:** BLAKE3-256 (§3.1 row 10, optional) and the public-key
+surface (§2, no consumer).
 
 ---
 
@@ -180,13 +191,13 @@ OpenSSL 3.0.13, libsodium 1.0.18, mbedTLS 2.28.8.
 |---|---|---|---|---|
 | 1 | SHA-256 | ✅ | ✅ | ✅ |
 | 2 | SHA-512 | ✅ | ✅ | ✅ |
-| 3 | SHA-1 | ✅ | ❌ deliberately omitted | ✅ |
+| 3 | SHA-1 | ✅ | ❌ deliberately omitted — **vendored, ~150 lines** | ✅ |
 | 4 | HMAC-SHA-1/256/512 | ✅ | ⚠️ SHA-256/512 only | ✅ |
 | 5 | AES-256-GCM | ✅ **portable software impl** | ⚠️ **AES-NI hardware only** | ✅ **portable software impl** |
 | 6 | ChaCha20-Poly1305 | ✅ | ✅ (+ XChaCha20) | ✅ |
 | 7 | Argon2id | ❌ **needs OpenSSL 3.2+** | ✅ native | ❌ |
 | 8 | PBKDF2-HMAC-SHA256 | ✅ | ❌ (offers scrypt instead) | ✅ |
-| 9 | HKDF-SHA256 | ✅ | ⚠️ dedicated API is 1.0.19+ | ✅ |
+| 9 | HKDF-SHA256 | ✅ | ⚠️ dedicated API is 1.0.19+ — **built on HMAC** | ✅ |
 | 10 | BLAKE3-256 | ❌ | ❌ | ❌ |
 | 11 | CSPRNG | ✅ `RAND_bytes` | ✅ `randombytes_buf` | ✅ CTR-DRBG |
 | 12 | Constant-time compare | ✅ `CRYPTO_memcmp` | ✅ `sodium_memcmp` | ✅ |
@@ -835,12 +846,20 @@ const uint32_t binary = ((mac[offset]     & 0x7F) << 24)
 Cryptographic code is the least tolerant of "looks right", so the test suite
 is part of the deliverable, not a follow-up:
 
-- **Published test vectors, all mandatory:** FIPS 180-4 (SHA-2), RFC 2202 /
-  4231 (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 9106 (Argon2id), RFC 8439
+- **Published test vectors, all mandatory** (implemented in
+  `Tests/UltraCryptTests.cpp`): FIPS 180-4 (SHA-1 and SHA-2), RFC 2202 / 4231
+  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8439
   (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
   draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
-  interop-only AES path, RFC 4648 (Base32/64), and RFC 4226 App. D / RFC 6238
-  App. B once the OTP engine lands.
+  interop-only AES path, and RFC 4226 App. D / RFC 6238 App. B once the OTP
+  engine lands.
+
+  **One gap, stated plainly:** RFC 9106's Argon2id vectors use parallelism 4,
+  which libsodium's `crypto_pwhash` does not expose (it fixes lanes at 1), so
+  they cannot be run against this API. Argon2id is instead covered by
+  determinism, salt sensitivity, password sensitivity and cost-parameter
+  sensitivity tests, and `parallelism != 1` is rejected rather than silently
+  ignored so a stored parameter set never misdescribes how a key was derived.
 - **Negative tests:** every AEAD open must be exercised with a flipped
   ciphertext bit, a flipped AAD bit, a wrong nonce and a truncated tag, each
   asserting `AuthenticationFailed` **and** an empty output.
@@ -857,8 +876,8 @@ is part of the deliverable, not a follow-up:
 
 | Stage | Contents |
 |---|---|
-| **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-2 hashing, HMAC-SHA-2, published test vectors. SHA-1 for TOTP still outstanding |
-| **2** | ◐ **Partly done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path) and Argon2id are implemented; HKDF and Base32/64 outstanding |
+| **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
+| **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF and Base32/64 |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1). Still to do: retire `AnchorPoint/net/Sha256.h`, UCD v2 writer/reader, UltraVault file backend |
 | **4** | Optional additions as needed: BLAKE3-256, XChaCha20-Poly1305 at volume, public-key surface |
 
