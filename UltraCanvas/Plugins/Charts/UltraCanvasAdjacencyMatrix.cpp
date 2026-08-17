@@ -10,13 +10,25 @@
 // them. Nothing here converts or copies - both views read the same `rooms` and
 // `links` vectors, so neither can go stale against the other.
 //
-// The geometry is deliberately the cheap one. A room adjacency matrix is
-// symmetric, so only the upper triangle carries information, and it is drawn
-// as an ordinary axis-aligned grid whose populated region is a staircase
-// rather than as a rotated 45-degree diamond. That needs no transform, no
-// inverse transform for hit testing, and it scales past twenty spaces where
-// the rotated form sprawls. See
-// Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md section 2.2.
+// Two triangular geometries are supported (AdjacencyMatrixStyle):
+//
+//   Staircase - an ordinary axis-aligned grid whose populated region is the
+//   upper-right staircase. The default: no rotation anywhere, and it scales
+//   past twenty spaces.
+//
+//   Rotated45 - the classic architectural form: horizontal labels down the
+//   left, cells as 45-degree diamonds forming a triangle that points right,
+//   the pair (i, j) sitting where the two rooms' diagonals cross. Despite
+//   appearances this needs no render transform either. With s and t the
+//   vertical/horizontal position in cell-pitch units, the diagonal coordinates
+//   u = s + t and v = s - t turn every diamond into the axis-aligned unit
+//   square u in [j, j+1], v in [i, i+1] - so cell (i, j) has its centre at
+//   s = (i + j + 1) / 2, t = (j - i) / 2, and hit testing is just
+//   i = floor(s - t), j = floor(s + t). t >= 0 guarantees j >= i, which is
+//   why only the upper triangle can ever be hit.
+//
+// See Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md section 2.2
+// for when to prefer which.
 
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
 #include <algorithm>
@@ -28,6 +40,36 @@
 #endif
 
 namespace UltraCanvas {
+
+namespace {
+
+    // Centre of diamond cell (i, j) in the Rotated45 layout. `grid` is the
+    // triangle's bounding box: x is the label/triangle boundary (t = 0), y is
+    // the top of the first label row (s = 0), and `pitch` is the row spacing.
+    inline Point2Dd RotatedCellCentre(const Rect2Dd& grid, double pitch, int i, int j) {
+        return Point2Dd(grid.x + (j - i) * pitch * 0.5,
+                        grid.y + (i + j + 1) * pitch * 0.5);
+    }
+
+    // The four corners of that diamond, in draw order.
+    inline std::vector<Point2Dd> RotatedCellCorners(const Rect2Dd& grid, double pitch,
+                                                    int i, int j) {
+        const Point2Dd c = RotatedCellCentre(grid, pitch, i, j);
+        const double h = pitch * 0.5;
+        return {Point2Dd(c.x - h, c.y), Point2Dd(c.x, c.y - h),
+                Point2Dd(c.x + h, c.y), Point2Dd(c.x, c.y + h)};
+    }
+
+    // A diagonal cell (i, i) is centred exactly on the t = 0 boundary; only
+    // its right half exists, as a triangle pointing into the grid.
+    inline std::vector<Point2Dd> RotatedDiagonalCorners(const Rect2Dd& grid, double pitch,
+                                                        int i) {
+        return {Point2Dd(grid.x, grid.y + i * pitch),
+                Point2Dd(grid.x + pitch * 0.5, grid.y + (i + 0.5) * pitch),
+                Point2Dd(grid.x, grid.y + (i + 1) * pitch)};
+    }
+
+} // namespace
 
 // =============================================================================
 // PRIORITY HELPERS
@@ -265,6 +307,52 @@ namespace UltraCanvas {
                 ? 0.0
                 : attributeColumns.size() * style.matrixAttributeColWidth;
 
+        if (matrixStyle == AdjacencyMatrixStyle::Rotated45) {
+            // The triangle needs no column header band at all - its labels are
+            // only ever on the left. The band above the grid exists solely to
+            // give the attribute-gutter headers somewhere to stand.
+            double headerBand = 6.0;
+            if (!attributeColumns.empty()) {
+                ctx->SetFontSize(style.matrixColLabelFontSize);
+                double longestHeader = 0.0;
+                for (const std::string& header : attributeColumns) {
+                    longestHeader = std::max(longestHeader, static_cast<double>(
+                            ctx->GetTextLineWidth(header)));
+                }
+                headerBand = std::min<double>(style.matrixMaxHeaderHeight,
+                                              longestHeader + 12.0);
+            }
+
+            const double gridLeft = area.x + attributeWidth + rowLabelWidth;
+            const double availW = area.x + area.width - gridLeft;
+            const double availH = area.height - headerBand;
+
+            // One row of labels per space, so the triangle is `count` rows tall
+            // but only `count / 2` diamonds wide - the right tip is the pair of
+            // the first and last rooms.
+            double pitch = std::min(availH / std::max(1, matrixLayout.count),
+                                    availW / (std::max(1, matrixLayout.count) * 0.5));
+            const double lo = static_cast<double>(style.matrixMinCellSize);
+            const double hi = std::max(lo, static_cast<double>(style.matrixMaxCellSize));
+            pitch = std::max(lo, std::min(pitch, hi));
+            matrixLayout.cellSize = pitch;
+
+            matrixLayout.grid = Rect2Dd(gridLeft, area.y + headerBand,
+                                        matrixLayout.count * 0.5 * pitch,
+                                        matrixLayout.count * pitch);
+            matrixLayout.rowLabels = Rect2Dd(gridLeft - rowLabelWidth, matrixLayout.grid.y,
+                                             rowLabelWidth, matrixLayout.grid.height);
+            matrixLayout.colLabels = Rect2Dd(gridLeft, area.y,
+                                             matrixLayout.grid.width, headerBand);
+            matrixLayout.attributes = attributeColumns.empty()
+                    ? Rect2Dd(0, 0, 0, 0)
+                    : Rect2Dd(matrixLayout.rowLabels.x - attributeWidth, matrixLayout.grid.y,
+                              attributeWidth, matrixLayout.grid.height);
+            matrixLayout.rotateHeaders = true;
+            matrixLayout.valid = true;
+            return;
+        }
+
         // Column headers are always rotated here: a room name never fits a cell
         // barely wider than a dot, and every printed example rotates them.
         ctx->SetFontSize(style.matrixColLabelFontSize);
@@ -335,6 +423,38 @@ namespace UltraCanvas {
     void UltraCanvasAdjacencyDiagram::DrawMatrixGrid(IRenderContext* ctx) const {
         const MatrixLayout& ml = matrixLayout;
 
+        if (matrixStyle == AdjacencyMatrixStyle::Rotated45) {
+            // The label/attribute block reads as a table: rule between rows,
+            // and a boundary line where the triangle begins.
+            const double tableLeft = attributeColumns.empty() ? ml.rowLabels.x
+                                                              : ml.attributes.x;
+            ctx->SetStrokePaint(style.matrixGridLineColor);
+            ctx->SetStrokeWidth(style.matrixGridLineWidth);
+            for (int k = 0; k <= ml.count; ++k) {
+                const double y = ml.grid.y + k * ml.cellSize;
+                ctx->DrawLine(Point2Dd(tableLeft, y), Point2Dd(ml.grid.x, y));
+            }
+            ctx->DrawLine(Point2Dd(ml.grid.x, ml.grid.y),
+                          Point2Dd(ml.grid.x, ml.grid.y + ml.grid.height));
+
+            // Each pair's diamond, filled then stroked; shared edges form the
+            // 45-degree lattice of the printed diagrams by themselves.
+            for (int row = 0; row < ml.count; ++row) {
+                for (int col = row; col < ml.count; ++col) {
+                    if (!IsMatrixCellVisible(row, col)) continue;
+                    std::vector<Point2Dd> corners = (row == col)
+                            ? RotatedDiagonalCorners(ml.grid, ml.cellSize, row)
+                            : RotatedCellCorners(ml.grid, ml.cellSize, row, col);
+                    ctx->SetFillPaint(style.matrixCellBackground);
+                    ctx->FillLinePath(corners);
+                    ctx->SetStrokePaint(style.matrixGridLineColor);
+                    ctx->SetStrokeWidth(style.matrixGridLineWidth);
+                    ctx->DrawLinePath(corners, true);
+                }
+            }
+            return;
+        }
+
         ctx->SetFillPaint(style.matrixCellBackground);
         ctx->FillRectangle(ml.grid);
 
@@ -360,6 +480,38 @@ namespace UltraCanvas {
 
     void UltraCanvasAdjacencyDiagram::DrawMatrixHighlight(IRenderContext* ctx) const {
         const MatrixLayout& ml = matrixLayout;
+
+        if (matrixStyle == AdjacencyMatrixStyle::Rotated45) {
+            // A row/column cross-hair has no meaning on the diamond lattice;
+            // instead light the hovered diamond and both of the label rows it
+            // relates, which is how a reader traces a pair on the printed form.
+            const double tableLeft = attributeColumns.empty() ? ml.rowLabels.x
+                                                              : ml.attributes.x;
+            const double tableWidth = ml.grid.x - tableLeft;
+            if (IsMatrixCellVisible(hoveredMatrixRow, hoveredMatrixCol)) {
+                ctx->SetFillPaint(style.matrixHoverBand);
+                ctx->FillLinePath(hoveredMatrixRow == hoveredMatrixCol
+                        ? RotatedDiagonalCorners(ml.grid, ml.cellSize, hoveredMatrixRow)
+                        : RotatedCellCorners(ml.grid, ml.cellSize,
+                                             hoveredMatrixRow, hoveredMatrixCol));
+                ctx->FillRectangle(Rect2Dd(tableLeft,
+                                           ml.grid.y + hoveredMatrixRow * ml.cellSize,
+                                           tableWidth, ml.cellSize));
+                if (hoveredMatrixCol != hoveredMatrixRow) {
+                    ctx->FillRectangle(Rect2Dd(tableLeft,
+                                               ml.grid.y + hoveredMatrixCol * ml.cellSize,
+                                               tableWidth, ml.cellSize));
+                }
+            }
+            if (IsMatrixCellVisible(selectedMatrixRow, selectedMatrixCol)) {
+                ctx->SetFillPaint(style.matrixSelectedCell);
+                ctx->FillLinePath(selectedMatrixRow == selectedMatrixCol
+                        ? RotatedDiagonalCorners(ml.grid, ml.cellSize, selectedMatrixRow)
+                        : RotatedCellCorners(ml.grid, ml.cellSize,
+                                             selectedMatrixRow, selectedMatrixCol));
+            }
+            return;
+        }
 
         if (hoveredMatrixRow >= 0 || hoveredMatrixCol >= 0) {
             ctx->SetFillPaint(style.matrixHoverBand);
@@ -394,17 +546,31 @@ namespace UltraCanvas {
                 const AdjacencyLink* link = MatrixLinkAt(row, col);
                 if (!link) continue;
 
-                const Point2Dd centre(ml.grid.x + (col + 0.5) * ml.cellSize,
+                Point2Dd centre;
+                double r = radius;
+                if (matrixStyle == AdjacencyMatrixStyle::Rotated45) {
+                    if (row == col) {
+                        // Only the right half of a diagonal cell exists; tuck a
+                        // smaller mark into the half-diamond.
+                        centre = Point2Dd(ml.grid.x + ml.cellSize * 0.18,
+                                          ml.grid.y + (row + 0.5) * ml.cellSize);
+                        r = radius * 0.6;
+                    } else {
+                        centre = RotatedCellCentre(ml.grid, ml.cellSize, row, col);
+                    }
+                } else {
+                    centre = Point2Dd(ml.grid.x + (col + 0.5) * ml.cellSize,
                                       ml.grid.y + (row + 0.5) * ml.cellSize);
+                }
                 const Color color = PriorityColor(link->priority);
 
                 if (link->priority == AdjacencyPriority::Maybe) {
                     ctx->SetStrokePaint(color);
                     ctx->SetStrokeWidth(2.0);
-                    ctx->DrawCircle(centre, radius);
+                    ctx->DrawCircle(centre, r);
                 } else {
                     ctx->SetFillPaint(color);
-                    ctx->FillCircle(centre, radius);
+                    ctx->FillCircle(centre, r);
                 }
             }
         }
@@ -424,6 +590,10 @@ namespace UltraCanvas {
                           Point2Dd(ml.rowLabels.x + ml.rowLabels.width - 8.0 - size.width,
                                    ml.grid.y + row * ml.cellSize + (ml.cellSize - size.height) / 2.0));
         }
+
+        // The triangle has no column axis - every space is named once, on the
+        // left - so there is nothing more to draw.
+        if (matrixStyle == AdjacencyMatrixStyle::Rotated45) return;
 
         // Column labels, rotated up from the grid's top edge.
         ctx->SetFontSize(style.matrixColLabelFontSize);
@@ -501,6 +671,24 @@ namespace UltraCanvas {
 
         const double x = static_cast<double>(localX);
         const double y = static_cast<double>(localY);
+
+        if (matrixStyle == AdjacencyMatrixStyle::Rotated45) {
+            // In diagonal coordinates every diamond is an axis-aligned unit
+            // square, so the "inverse rotation" is two additions (see the file
+            // comment). t >= 0 already guarantees col >= row.
+            const double s = (y - ml.grid.y) / ml.cellSize;
+            const double t = (x - ml.grid.x) / ml.cellSize;
+            if (t < 0.0) return false;
+
+            const int i = static_cast<int>(std::floor(s - t));
+            const int j = static_cast<int>(std::floor(s + t));
+            if (i < 0 || j >= ml.count) return false;
+
+            outRow = i;
+            outCol = j;
+            return true;
+        }
+
         if (x < ml.grid.x || x >= ml.grid.x + ml.grid.width) return false;
         if (y < ml.grid.y || y >= ml.grid.y + ml.grid.height) return false;
 

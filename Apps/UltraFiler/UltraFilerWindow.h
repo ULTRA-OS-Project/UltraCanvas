@@ -149,6 +149,13 @@ private:
     void RefreshHistoryTabs();
     // Remembers an entry the user just opened, in the list its kind belongs to.
     void RecordEntryInHistory(const FilerEntry& entry);
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+    // Double-clicked Windows executable: runs it through UltraWin (Wine
+    // tier) in a per-app environment, off the UI thread — first launches
+    // create the environment, which takes a while. Status-bar feedback only;
+    // when Wine is missing the status bar says how to get it.
+    void LaunchWindowsExecutable(const FilerEntry& entry);
+#endif
     // Remembers a folder the user did something in (opened a file there,
     // created / pasted / renamed / deleted something, ...). Browsing a folder
     // is not enough - the Folders tab lists folders that were worked in.

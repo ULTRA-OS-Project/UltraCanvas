@@ -500,11 +500,23 @@ const AdjacencyLink* link = diagram->FindLink("lobby", "reception");
 
 A room adjacency matrix is symmetric — "kitchen next to dining" is the same
 requirement as "dining next to kitchen" — so only the upper triangle carries
-information and the lower half is shaded out. `AdjacencyMatrixStyle::Staircase`
-(the default) draws that as an ordinary axis-aligned grid with a staircase
-populated region: no rotation, and it stays legible past twenty spaces where the
-classic 45° diamond sprawls. `Rotated45` is planned and currently falls back to
-`Staircase`.
+information. Two geometries draw it:
+
+- **`AdjacencyMatrixStyle::Staircase`** (the default) — an ordinary axis-aligned
+  grid whose populated region is the upper-right staircase, with the unused half
+  shaded out. Denser, and the better choice for very large programmes.
+- **`AdjacencyMatrixStyle::Rotated45`** — the classic architectural triangle:
+  horizontal labels down the left, cells as 45° diamonds where each pair of
+  rooms' diagonals cross, the whole figure pointing right. No column headers
+  exist at all — every space is named once. This is the traditional hand-drawn
+  form (the demo's *Triangle 45°* tab reproduces it at 19 spaces, attribute
+  table included).
+
+Despite appearances, `Rotated45` involves no render transform: with `s`/`t` the
+vertical/horizontal position in cell-pitch units, the diagonal coordinates
+`u = s + t` and `v = s − t` turn every diamond into an axis-aligned unit square,
+so cell `(i, j)` centres at `s = (i+j+1)/2, t = (j−i)/2` and hit testing is just
+`i = floor(s−t), j = floor(s+t)` — `t ≥ 0` already guarantees `j ≥ i`.
 
 Where several links join the same pair, the **strongest** priority is the one
 drawn: the matrix answers "how badly", and the strongest requirement is the one

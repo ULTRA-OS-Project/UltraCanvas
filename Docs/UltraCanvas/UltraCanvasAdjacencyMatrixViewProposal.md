@@ -1,12 +1,24 @@
 # UltraCanvasAdjacencyDiagram — Matrix View: Research & Feature Proposal
 
-**Status:** **Not implemented.** `UltraCanvasAdjacencyDiagram` exists and renders
-the *bubble* form (area-proportional room circles, typed links, dashed zone
-regions). It has no matrix form. This document proposes adding one to that
-element rather than to the proposed `UltraCanvasMatrixDiagram`.
+**Status:** **Phase 1 and the §2.2 `Rotated45` style are implemented** — see
+[`UltraCanvasAdjacencyDiagramExamples.md`](UltraCanvasAdjacencyDiagramExamples.md)
+for the guide. Delivered: `AdjacencyView { Bubble, Matrix }`, the
+`AdjacencyPriority` field of §2.1 (Must/Should/Maybe; `Avoid` still awaits the
+maintainer's decision of Q3), both triangular geometries of §2.2
+(`Staircase` and the classic `Rotated45` diamond triangle — the demo's
+*Matrix view* and *Triangle 45°* tabs show one of each), the legend of §2.3 for
+both views, and the attribute columns of §2.4. One finding from implementation
+worth recording: the rotated form needs **no render transform after all** — in
+diagonal coordinates `u = s+t, v = s−t` every diamond is an axis-aligned unit
+square, so hit testing is two additions and a floor, and the §2.2 table's
+"transform *and* its inverse" cost never materialised. The scaling argument for
+Staircase as the default still stands. Still open: `Avoid` (Q3) and the
+pan/zoom question (Q4).
+
+This document remains the research write-up behind the design.
 
 **Author:** UltraCanvas Framework
-**Last Modified:** 2026-08-10
+**Last Modified:** 2026-08-12
 **Related:** `UltraCanvasAdjacencyDiagram` (implemented — the element this
 extends; see [`UltraCanvasAdjacencyDiagramExamples.md`](UltraCanvasAdjacencyDiagramExamples.md)),
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md)

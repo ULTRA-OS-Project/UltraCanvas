@@ -52,7 +52,10 @@ namespace UltraCanvas {
     /// How the half matrix is drawn
     enum class AdjacencyMatrixStyle {
         Staircase,  ///< Axis-aligned grid, upper-right triangle populated
-        Rotated45   ///< Classic 45° diamond — not implemented yet, draws Staircase
+        Rotated45   ///< Classic architectural triangle: horizontal labels on
+                    ///< the left, cells as 45° diamonds where the diagonals of
+                    ///< each pair of rooms cross. The traditional hand-drawn
+                    ///< look; Staircase stays denser for very large programmes.
     };
 
     /// Which functional category a room belongs to
@@ -330,8 +333,7 @@ namespace UltraCanvas {
         void SetView(AdjacencyView v);
         AdjacencyView GetView() const           { return view; }
 
-        /// Staircase (default) or the classic rotated diamond. Rotated45 is not
-        /// implemented yet and currently draws Staircase.
+        /// Staircase (default) or the classic rotated diamond triangle.
         void SetMatrixStyle(AdjacencyMatrixStyle s);
         AdjacencyMatrixStyle GetMatrixStyle() const { return matrixStyle; }
 
