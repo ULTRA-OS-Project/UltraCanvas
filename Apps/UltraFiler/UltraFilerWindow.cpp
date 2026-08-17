@@ -26,13 +26,18 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
+#include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
+#include "UltraFilerShare.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <system_error>
 #include <unordered_set>
 
@@ -398,6 +403,101 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
 void UltraFilerWindow::Show() {
     if (window) window->Show();
+}
+
+// ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
+
+void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
+    // Plain text goes through the OS print dialog; other file kinds have no
+    // renderer yet and are skipped with a note.
+    constexpr uint64_t kMaxPrintBytes = 4ull * 1024 * 1024;
+    constexpr size_t   kMaxPrintJobs  = 5;   // one dialog per file
+
+    std::vector<FilerEntry> printable;
+    size_t skipped = 0;
+    for (const FilerEntry& e : targets) {
+        if (e.isDirectory) continue;
+        if (e.category == FilerFileCategory::Text) printable.push_back(e);
+        else ++skipped;
+    }
+    if (printable.empty()) {
+        if (statusLabel)
+            statusLabel->SetText("Print: no text files selected - only text "
+                                 "files can be printed yet.");
+        return;
+    }
+
+    size_t printed = 0;
+    for (size_t i = 0; i < printable.size() && i < kMaxPrintJobs; ++i) {
+        const FilerEntry& e = printable[i];
+        if (e.size > kMaxPrintBytes) {
+            if (statusLabel)
+                statusLabel->SetText("Print: \"" + e.name + "\" is too large ("
+                                     + FormatFileSize(e.size) + ").");
+            continue;
+        }
+        std::ifstream in(fs::path(e.path), std::ios::binary);
+        if (!in) {
+            if (statusLabel)
+                statusLabel->SetText("Print: cannot read \"" + e.name + "\".");
+            continue;
+        }
+        std::ostringstream buffer;
+        buffer << in.rdbuf();
+        // A cancelled dialog cancels the remaining queue too.
+        if (!UltraCanvasNativeDialogs::ShowPrintDialog(e.name, buffer.str(),
+                                                       window.get()))
+            break;
+        ++printed;
+    }
+
+    if (printed > 0 && statusLabel) {
+        std::string text = printed == 1
+                ? "Sent \"" + printable.front().name + "\" to the printer."
+                : "Sent " + std::to_string(printed) + " files to the printer.";
+        if (printable.size() > kMaxPrintJobs)
+            text += " First " + std::to_string(kMaxPrintJobs) + " of "
+                  + std::to_string(printable.size()) + " only.";
+        if (skipped > 0)
+            text += " " + std::to_string(skipped) + " non-text item(s) skipped.";
+        statusLabel->SetText(text);
+    }
+}
+
+void UltraFilerWindow::HandleShare(const std::vector<FilerEntry>& targets) {
+    std::vector<std::string> paths;
+    for (const FilerEntry& e : targets)
+        if (!e.isDirectory) paths.push_back(e.path);
+    if (paths.empty()) {
+        if (statusLabel)
+            statusLabel->SetText("Share: select files - folders cannot be "
+                                 "sent as e-mail attachments.");
+        return;
+    }
+    std::string error;
+    if (!UltraFilerShare::ShareByEmail(paths, error))
+        UltraCanvasAlert::Error(error, "Share", nullptr, window.get());
+    else if (statusLabel)
+        statusLabel->SetText("Share: handed " + std::to_string(paths.size())
+                             + (paths.size() == 1 ? " file" : " files")
+                             + " to the e-mail composer.");
+}
+
+void UltraFilerWindow::HandleAttributes(const std::vector<FilerEntry>& targets) {
+    if (targets.empty()) return;
+    UltraFilerPropertiesDialogs::ShowAttributes(window.get(), targets);
+}
+
+void UltraFilerWindow::HandleAccess(const std::vector<FilerEntry>& targets) {
+    if (targets.empty()) return;
+    UltraFilerPropertiesDialogs::ShowAccess(window.get(), targets,
+            [this]() { RefreshVisibleListing(); });
+}
+
+void UltraFilerWindow::RefreshVisibleListing() {
+    if (historyShown) RefreshHistoryTabs();
+    else if (favoritesShown) RefreshFavoritesTabs();
+    else if (filer) filer->Refresh();
 }
 
 // ===== SETTINGS =====
@@ -1273,6 +1373,10 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // The context menu's Settings item opens the same settings window as the
     // navigation row's gear button.
     tab->filer->onSettings = [this]() { OpenSettingsDialog(); };
+    tab->filer->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+    tab->filer->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+    tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+    tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -1444,6 +1548,10 @@ void UltraFilerWindow::BuildHistoryView() {
             if (statusLabel) statusLabel->SetText("Error: " + message);
         };
         histFiler->onSettings = [this]() { OpenSettingsDialog(); };
+        histFiler->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+        histFiler->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+        histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+        histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -1596,6 +1704,10 @@ void UltraFilerWindow::BuildFavoritesView() {
             if (statusLabel) statusLabel->SetText("Error: " + message);
         };
         favFiler->onSettings = [this]() { OpenSettingsDialog(); };
+        favFiler->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+        favFiler->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+        favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+        favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;

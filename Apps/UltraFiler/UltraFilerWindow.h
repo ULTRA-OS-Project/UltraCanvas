@@ -218,6 +218,21 @@ private:
     // entry, so the pane shows that file instead of folding away.
     void ApplyPreviewSelectionPolicy();
 
+    // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
+    // Prints the text files among `targets` through the OS print dialog.
+    void HandlePrint(const std::vector<FilerEntry>& targets);
+    // Hands the files among `targets` to the platform's e-mail composer as
+    // attachments (UltraFilerShare).
+    void HandleShare(const std::vector<FilerEntry>& targets);
+    // Opens the Attributes window for `targets` (UltraFilerPropertiesDialogs).
+    void HandleAttributes(const std::vector<FilerEntry>& targets);
+    // Opens the Access (permissions) window for `targets`; applying refreshes
+    // the visible listing so the attribute column follows.
+    void HandleAccess(const std::vector<FilerEntry>& targets);
+    // Re-reads whatever listing is on screen: the History / Favorites lists
+    // while one of those views is shown, else the active tab's folder.
+    void RefreshVisibleListing();
+
     // ===== SETTINGS =====
     // Pushes the persisted settings into the widgets they configure (the
     // preview's transparent-image backdrop). Called at startup and by the
