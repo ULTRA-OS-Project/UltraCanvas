@@ -1009,6 +1009,7 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
+| libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
@@ -47197,8 +47198,8 @@ FILE: Docs/Modules/UltraCrypt/README.md
 
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
-**Status:** Design proposal for review. Not yet implemented.
-**Version:** 0.1.0 (draft)
+**Status:** Stage 1 implemented and under test; Stages 2–4 outstanding (§8).
+**Version:** 0.1.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-08-10
 
@@ -47214,10 +47215,23 @@ blocking operation, and a backing library that is completely wrapped so it
 can be replaced without affecting callers.
 
 This document specifies **what UltraCrypt must provide and why** (§1–2), the
-**backend decision that must be settled before implementation** (§3), and the
-**proposed public surface** (§5). It stops short of implementation so the
-backend choice can be ratified first — that choice affects dependency policy
-on all three host platforms.
+**backend decision** and how it was reached (§3), and the **public surface**
+(§5).
+
+**Implemented so far** — `UltraCanvas/{include,core}/UltraCrypt/`, backed by
+libsodium, covered by `Tests/UltraCryptTests.cpp`:
+`UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`,
+`UltraCrypt_ConstantTimeEquals`, the random family, SHA-256/512 (one-shot,
+streaming and file), HMAC-SHA-256/512, AEAD
+(XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path), and
+Argon2id key derivation. First consumer: the UCD document encryption envelope
+(`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
+`Tests/UCDCryptoEnvelopeTests.cpp`), which replaced the broken encryption
+described in §1.1.
+
+**Not yet implemented:** SHA-1 for TOTP HMAC (§3.1 row 3), HKDF (§5.5), and the
+Base32/Base64 companions (§5.7). Each is a small construction over primitives
+that now exist; none is needed by a current consumer.
 
 ---
 
@@ -47234,7 +47248,7 @@ hand-rolled one, reached around the rules, or stalled at design stage:
 | Consumer | Requires | State today |
 |---|---|---|
 | **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
-| **UltraCanvasDocument** (UCD v1 encryption) | AES-256, PBKDF2, password verification | `#include <openssl/aes.h>` directly inside a plugin — house-rule violation — and functionally broken (§1.1) |
+| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Fixed** — now uses UltraCrypt through `UCDCryptoEnvelope`; see §1.1 for what it was |
 | **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header states it is a placeholder awaiting "a vetted crypto surface" |
 | **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
@@ -47264,12 +47278,31 @@ are independently unsound: a single SHA-256 round used as a password hash with
 a `std::hash<std::string>` fallback, `std::mt19937` for salt generation, and
 PBKDF2 at 10 000 iterations with the salt taken from the IV.
 
-**This file is not in the CMake source list, so it is dormant code and not a
-shipping vulnerability** — it must not be reported as one. Its relevance here
-is diagnostic: it is exactly what a missing shared API produces. Plausible,
-well-intentioned security code that silently does nothing. Before it is ever
-added to the build it must be rewritten against UltraCrypt, or its encryption
-entry points removed so no caller can believe in them.
+**That file was not in the CMake source list, so this was dormant code and
+never a shipping vulnerability** — it must not be reported as one. Its
+relevance is diagnostic: it is exactly what a missing shared API produces.
+Plausible, well-intentioned security code that silently does nothing.
+
+**Resolved.** The cryptography now lives in
+`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, which depends only
+on UltraCrypt and is therefore compiled and unit-tested on its own
+(`Tests/UCDCryptoEnvelopeTests.cpp`) rather than reviewed by eye.
+`UltraCanvasDocument::EncryptData` / `DecryptData` are now thin adapters over
+it, `SetPassword` / `VerifyPassword` use Argon2id with a constant-time
+comparison instead of a bare SHA-256 with a `std::hash` fallback, and
+`GeneratePasswordHash` / `GenerateSalt` are gone. Every regression test in that
+suite fails against the old implementation.
+
+Two caveats stated plainly:
+
+1. `UltraCanvasDocument.cpp` **still does not compile**, for reasons unrelated
+   to cryptography — it references undeclared types (`UCComponentData`,
+   `UltraCanvasWindow`) and defines `GetCurrentDateTime` twice. It therefore
+   remains out of the build, and the crypto changes inside it are verified by
+   inspection, while the logic they delegate to is verified by tests.
+2. Because the old code never produced ciphertext, **no readable encrypted
+   `.ucd` file can exist**, so the new envelope carries no backward-compatibility
+   burden and none is implemented.
 
 ---
 
@@ -48022,9 +48055,9 @@ is part of the deliverable, not a follow-up:
 
 | Stage | Contents |
 |---|---|
-| **1** | Backend decision ratified; `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-2 hashing, HMAC (incl. SHA-1 for TOTP), full test vectors |
-| **2** | AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF, Base32/64 — completes what UCD v2, UltraVault and the authenticator need |
-| **3** | Consumer migration: rewrite or remove `UltraCanvasDocument`'s encryption; retire `AnchorPoint/net/Sha256.h`; UCD v2 writer/reader; UltraVault file backend |
+| **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-2 hashing, HMAC-SHA-2, published test vectors. SHA-1 for TOTP still outstanding |
+| **2** | ◐ **Partly done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path) and Argon2id are implemented; HKDF and Base32/64 outstanding |
+| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1). Still to do: retire `AnchorPoint/net/Sha256.h`, UCD v2 writer/reader, UltraVault file backend |
 | **4** | Optional additions as needed: BLAKE3-256, XChaCha20-Poly1305 at volume, public-key surface |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its

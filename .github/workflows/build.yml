@@ -54,6 +54,7 @@ jobs:
               brew install zbar
               brew install mupdf
               brew install c-ares
+              brew install libsodium
               brew install leptonica tesseract
               # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
               brew install flac libvorbis opus opusfile libopusenc lame
@@ -84,6 +85,8 @@ jobs:
               sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libopusenc-dev libmp3lame-dev
               sudo apt-get install -y libcurl4-openssl-dev
               sudo apt-get install -y libc-ares-dev
+              # libsodium: cryptographic backend for UltraCrypt
+              sudo apt-get install -y libsodium-dev
           - os: windows-latest
             arch_label: x86_64
 
@@ -136,6 +139,7 @@ jobs:
             mingw-w64-x86_64-imagemagick
             mingw-w64-x86_64-libheif
             mingw-w64-x86_64-zbar
+            mingw-w64-x86_64-libsodium
             mingw-w64-x86_64-mupdf
             mingw-w64-x86_64-libmupdf
             mingw-w64-x86_64-curl-winssl
