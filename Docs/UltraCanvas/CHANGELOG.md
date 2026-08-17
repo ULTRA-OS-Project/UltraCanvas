@@ -1,3 +1,13 @@
+#### 2026-08-17 *0.3.51*
+- **FilerWidget / UltraFiler: empty displays say so.** A folder with no
+  content used to show only a small "(empty folder)" line; it now draws a
+  vertically centered notice — an attention icon (a vector-drawn warning
+  triangle, no icon assets involved) with **"Folder is empty!"** beneath it.
+  An empty file-list display shows **"No entries"** the same way, which is
+  what the UltraFiler's History and Favorites tabs show before anything was
+  recorded or pinned (and a search without matches). A widget that never had
+  a folder set keeps the plain "(no folder)" text.
+
 #### 2026-08-13 *0.3.50*
 - **PDFView / UltraFiler preview: five fixes to the PDF page view and its
   thumbnail strip ("page inventory").** **Stale thumbnails** — opening another

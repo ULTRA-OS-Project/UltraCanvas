@@ -4647,13 +4647,19 @@ namespace UltraCanvas {
         }
 
         if (entries.empty()) {
-            ctx->SetTextPaint(style.secondaryTextColor);
-            FontStyle fsty;
-            fsty.fontFamily = style.fontFamily;
-            fsty.fontSize = style.fontSize;
-            ctx->SetFontStyle(fsty);
-            ctx->DrawTextInRect(currentPath.empty() ? "(no folder)" : "(empty folder)",
-                                Rect2Dd(bounds));
+            if (currentPath.empty() && !fileListMode) {
+                // No folder was ever set - a programmatic state, not an
+                // attention-worthy one.
+                ctx->SetTextPaint(style.secondaryTextColor);
+                FontStyle fsty;
+                fsty.fontFamily = style.fontFamily;
+                fsty.fontSize = style.fontSize;
+                ctx->SetFontStyle(fsty);
+                ctx->DrawTextInRect("(no folder)", Rect2Dd(bounds));
+            } else {
+                DrawEmptyState(ctx, bounds,
+                               fileListMode ? "No entries" : "Folder is empty!");
+            }
             DrawSelectionInfoBar(ctx, bounds);
             ctx->PopState();
             return;
@@ -4793,6 +4799,57 @@ namespace UltraCanvas {
         fsty.fontSize = style.fontSize + 2;
         ctx->SetFontStyle(fsty);
         ctx->DrawTextInRect(message, Rect2Dd(bounds));
+    }
+
+    void UltraCanvasFilerWidget::DrawEmptyState(IRenderContext* ctx,
+                                                const Rect2Di& bounds,
+                                                const std::string& message) {
+        // "Nothing to show" notice: an attention icon above the message,
+        // vertically centered in the area above the info bar. The icon is a
+        // vector-drawn warning triangle, like the icon-menu glyphs, so no
+        // icon assets are required.
+        Rect2Di area(bounds.x, bounds.y, bounds.width,
+                     bounds.height - InfoBarHeight());
+        ctx->SetTextPaint(style.secondaryTextColor);
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.fontSize;
+        ctx->SetFontStyle(fsty);
+
+        const int iconEdge = 44;
+        const int gap = 10;
+        Size2Di ts = ctx->GetTextLineDimensions(message);
+        const int blockHeight = iconEdge + gap + ts.height;
+        if (area.height < blockHeight + 8) {
+            // Too flat for the stacked layout - the centered text alone.
+            ctx->DrawTextInRect(message, Rect2Dd(area));
+            return;
+        }
+
+        const double cx = area.x + area.width / 2.0;
+        const int top = area.y + (area.height - blockHeight) / 2;
+
+        // Triangle sitting on the icon box's bottom edge, apex centered.
+        const double w = iconEdge;
+        const double h = iconEdge * 0.9;
+        const double baseY = top + (iconEdge + h) / 2.0;
+        ctx->PushState();
+        ctx->SetStrokePaint(style.secondaryTextColor);
+        ctx->SetStrokeWidth(2.2f);
+        ctx->SetLineCap(LineCap::Round);
+        ctx->DrawLinePath({Point2Dd(cx, baseY - h),
+                           Point2Dd(cx + w / 2.0, baseY),
+                           Point2Dd(cx - w / 2.0, baseY)}, true);
+        // Exclamation mark: bar + dot, kept clear of the apex and the base.
+        ctx->SetStrokeWidth(2.6f);
+        ctx->DrawLine(Point2Dd(cx, baseY - h * 0.60),
+                      Point2Dd(cx, baseY - h * 0.32));
+        ctx->SetFillPaint(style.secondaryTextColor);
+        ctx->FillCircle(Point2Dd(cx, baseY - h * 0.16), 2.0);
+        ctx->PopState();
+
+        ctx->DrawText(message,
+                      Point2Dd(cx - ts.width / 2.0, top + iconEdge + gap));
     }
 
     namespace {
