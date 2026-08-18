@@ -221,9 +221,10 @@ application to launch Windows executables. Linux / ULTRA OS only.
 
 **Implementation status (this branch):** Stage 1 of the rollout — module
 lifecycle, capability probing, environments (isolated Wine prefixes with
-persisted drive mappings), and application launch/supervision are
-implemented; the VM tier, component installer, and compatibility routing
-are planned for Stages 2-3. See `Docs/Modules/UltraWin/README.md`.
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
 
 ### **8. UltraCrypt**
 

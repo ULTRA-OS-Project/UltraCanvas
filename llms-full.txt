@@ -463,6 +463,10 @@ surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
 is **libsodium** (§3.5 of that document). Suggested rollout is secure
 memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
 Argon2id + HKDF (Stage 2), consumer migration (Stage 3).
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
