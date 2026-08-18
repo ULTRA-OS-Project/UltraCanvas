@@ -32,7 +32,7 @@ jobs:
         # NOTE: macos-13 is the last GitHub-hosted Intel (x86_64) macOS runner.
         # When GitHub deprecates it, options are: drop Intel builds, use
         # self-hosted runners, or cross-compile universal binaries.
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-22.04, windows-latest]
         build_type: [Release]
         include:
           - os: macos-latest
@@ -60,7 +60,7 @@ jobs:
               # libcurl: use Apple's system libcurl (SecureTransport-family
               # backend) — already present on every macOS install, so we add
               # no extra dependency for UltraNet on this platform.
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             arch_label: x86_64
             install_deps: |
               sudo apt-get update
