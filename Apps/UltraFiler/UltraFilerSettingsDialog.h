@@ -20,9 +20,13 @@ class UltraFilerSettingsDialog {
 public:
     // Opens the settings window (or raises it when already open). `settings`
     // must outlive the dialog; `onChanged` is called after every change so the
-    // host can re-apply the settings to its widgets.
+    // host can re-apply the settings to its widgets. `onClearHistory` /
+    // `onClearFavorites` back the History & Favorites page's clear buttons;
+    // leaving one empty disables its button.
     static void Show(UltraCanvasWindowBase* parent, UltraFilerSettings* settings,
-                     std::function<void()> onChanged);
+                     std::function<void()> onChanged,
+                     std::function<void()> onClearHistory = {},
+                     std::function<void()> onClearFavorites = {});
 };
 
 } // namespace UltraCanvas

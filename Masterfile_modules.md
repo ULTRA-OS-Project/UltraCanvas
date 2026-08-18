@@ -205,12 +205,14 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
+  components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
 - `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
 
 **Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`, `UltraWin_InstallComponent`,
+`UltraWin_VmSuspend`, `UltraWin_VmStop`,
 `UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
 for FreeRDP RemoteApp windows.
 
@@ -290,3 +292,7 @@ surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
 is **libsodium** (§3.5 of that document). Suggested rollout is secure
 memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
 Argon2id + HKDF (Stage 2), consumer migration (Stage 3).
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.

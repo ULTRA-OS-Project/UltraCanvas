@@ -249,3 +249,12 @@ windows_compatibility:
       platforms: ["linux"]
       # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
       apt: "wine"
+
+    winetricks:
+      min_version: "20240105"
+      purpose: "Component installer for Wine environments: VC++ runtimes, fonts, .NET, DXVK (runtime, spawned — never linked)"
+      required: false
+      priority: "medium"
+      platforms: ["linux"]
+      # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
+      apt: "winetricks"

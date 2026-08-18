@@ -32,7 +32,7 @@ jobs:
         # NOTE: macos-13 is the last GitHub-hosted Intel (x86_64) macOS runner.
         # When GitHub deprecates it, options are: drop Intel builds, use
         # self-hosted runners, or cross-compile universal binaries.
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-22.04, windows-latest]
         build_type: [Release]
         include:
           - os: macos-latest
@@ -61,7 +61,7 @@ jobs:
               # libcurl: use Apple's system libcurl (SecureTransport-family
               # backend) — already present on every macOS install, so we add
               # no extra dependency for UltraNet on this platform.
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             arch_label: x86_64
             install_deps: |
               sudo apt-get update
@@ -80,6 +80,11 @@ jobs:
               # USE_SYSTEM_LIBS and ships no libmupdf-third, so jbig2dec/mujs/gumbo
               # must be linked from system -dev packages (find_library needs the .so).
               sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev
+              # libunwind-dev: on the ubuntu-22.04 runner libgstreamer1.0-dev
+              # depends on it, but apt won't auto-pull it (the pre-installed LLVM
+              # toolchain ships a conflicting libunwind), failing with "held broken
+              # packages". Installing it explicitly lets apt resolve the set.
+              sudo apt-get install -y libunwind-dev
               sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
               # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
               sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libopusenc-dev libmp3lame-dev
