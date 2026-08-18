@@ -96,7 +96,12 @@ jobs:
               
               curl -fsSL "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz" | tar xz
               ( cd "libopusenc-${OPUSENC_VER}" && ./configure --prefix=/usr && make -j"$(nproc)" && sudo make install )
-              sudo apt-get install -y libcurl4-openssl-dev
+              # libcurl4-openssl-dev provides the SYSTEM libcurl used for the
+              # WebSocket-capability probe. On ubuntu-22.04 that libcurl is 7.81,
+              # which predates WebSockets (curl_ws_* arrived in 7.86), so UltraNet
+              # falls back to building the vendored third_party/curl (8.21). That
+              # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
+              sudo apt-get install -y libcurl4-openssl-dev libpsl-dev
               sudo apt-get install -y libc-ares-dev
           - os: windows-latest
             arch_label: x86_64
@@ -236,20 +241,31 @@ jobs:
           fi
           echo "OpenGL backend verified on ${{ runner.os }}"
 
-      # CI runners all ship a WebSocket-capable, correctly-versioned system
-      # libcurl, so UltraNet must link it — never the third_party/curl fallback
-      # (which stamps distro-specific symbol versions like CURL_OPENSSL_4 that
-      # are only correct on the developer's machine). Fail loudly if a change
-      # ever pushes CI onto the vendored curl path.
-      - name: Verify CI uses SYSTEM libcurl (not vendored)
+      # libcurl selection is asserted per platform so a silent regression is caught:
+      #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
+      #    7.81, which predates WebSocket support (curl_ws_* arrived in 7.86), so
+      #    UltraNet MUST fall back to the vendored third_party/curl (8.21, WS-capable,
+      #    stamped with the distro's CURL_OPENSSL_4 version node). The bundle ships
+      #    that libcurl alongside libvips/libhdf5 built on the same runner, so the
+      #    CURL_OPENSSL_4 node is self-consistent within the package.
+      #  - macOS / Windows: the platform's system libcurl already supports WebSockets.
+      - name: Verify libcurl selection
         shell: bash
         run: |
           set -eu
-          if grep -q "UltraNet libcurl: VENDORED" configure.log; then
-            echo "::error::CI selected the vendored third_party/curl build. The system libcurl should provide WebSocket support on CI; do not ship the CURL_OPENSSL_4 version-script fix here."
-            exit 1
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            if ! grep -q "UltraNet libcurl: VENDORED" configure.log; then
+              echo "::error::Expected the vendored third_party/curl build on the ubuntu-22.04 runner (its system libcurl 7.81 predates WebSockets), but configure selected system libcurl."
+              exit 1
+            fi
+            echo "Confirmed: Linux links the vendored WS-capable libcurl (CURL_OPENSSL_4 version node)."
+          else
+            if grep -q "UltraNet libcurl: VENDORED" configure.log; then
+              echo "::error::CI selected the vendored third_party/curl build on ${{ runner.os }}; the platform system libcurl should provide WebSocket support here."
+              exit 1
+            fi
+            echo "Confirmed: ${{ runner.os }} links the system libcurl."
           fi
-          echo "Confirmed: CI links system libcurl; vendored curl / version-script fix NOT applied."
 
       # The Vectorizer plugin (raster→SVG via VTracer) needs a Rust toolchain. Its
       # parent gate only prints a status line when cargo is missing/incompatible and
