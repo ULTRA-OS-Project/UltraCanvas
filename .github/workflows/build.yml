@@ -93,7 +93,8 @@ jobs:
               # ships a prebuilt ./configure, so no autotools are needed. Install to
               # /usr so pkg-config + package-linux.sh find/bundle it like a distro lib.
               OPUSENC_VER=0.2.1
-              curl -fsSL "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz" | tar xz
+              
+              curl -fsSL "https://github.com/xiph/libopusenc/archive/refs/tags/v${OPUSENC_VER}.tar.gz" | tar xz
               ( cd "libopusenc-${OPUSENC_VER}" && ./configure --prefix=/usr && make -j"$(nproc)" && sudo make install )
               sudo apt-get install -y libcurl4-openssl-dev
               sudo apt-get install -y libc-ares-dev
