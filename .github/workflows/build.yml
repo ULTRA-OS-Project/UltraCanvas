@@ -102,7 +102,15 @@ jobs:
               # falls back to building the vendored third_party/curl (8.21). That
               # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
               sudo apt-get install -y libcurl4-openssl-dev libpsl-dev
-              sudo apt-get install -y libc-ares-dev
+              # c-ares: UltraNet's async DNS uses the event-thread API
+              # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
+              # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
+              # source. The dist tarball ships a prebuilt ./configure; install into
+              # the multiarch libdir so pkg-config + package-linux.sh find/bundle it
+              # like a distro lib.
+              CARES_VER=1.34.5
+              curl -fsSL "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz" | tar xz
+              ( cd "c-ares-${CARES_VER}" && ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu && make -j"$(nproc)" && sudo make install )
           - os: windows-latest
             arch_label: x86_64
 
