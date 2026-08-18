@@ -55,11 +55,14 @@ static bool PrefixInitialized(const std::string& prefixPath) {
     return fs::exists(prefixPath + "/system.reg");
 }
 
-int RunWineCommand(const std::string& winePath,
+int RunWineCommand(const std::string& binaryPath,
                    const std::vector<std::string>& args,
                    const std::string& prefixPath,
                    bool suppressPrompts,
-                   int timeoutSeconds) {
+                   int timeoutSeconds,
+                   const std::vector<std::pair<std::string, std::string>>&
+                       extraEnv,
+                   const std::string& outputFile) {
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
@@ -68,17 +71,23 @@ int RunWineCommand(const std::string& winePath,
             // No mono/gecko download dialogs during unattended prefix work.
             setenv("WINEDLLOVERRIDES", "mscoree,mshtml=", 1);
         }
+        for (const auto& [key, value] : extraEnv)
+            setenv(key.c_str(), value.c_str(), 1);
         int devnull = open("/dev/null", O_RDWR);
-        if (devnull >= 0) {
-            dup2(devnull, STDIN_FILENO);
-            dup2(devnull, STDOUT_FILENO);
-            dup2(devnull, STDERR_FILENO);
+        if (devnull >= 0) dup2(devnull, STDIN_FILENO);
+        int out = outputFile.empty()
+                      ? devnull
+                      : open(outputFile.c_str(),
+                             O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (out >= 0) {
+            dup2(out, STDOUT_FILENO);
+            dup2(out, STDERR_FILENO);
         }
         std::vector<char*> argv;
-        argv.push_back(const_cast<char*>(winePath.c_str()));
+        argv.push_back(const_cast<char*>(binaryPath.c_str()));
         for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
         argv.push_back(nullptr);
-        execv(winePath.c_str(), argv.data());
+        execv(binaryPath.c_str(), argv.data());
         _exit(127);
     }
 

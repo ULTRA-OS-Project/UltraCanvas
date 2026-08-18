@@ -11,6 +11,7 @@
 
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
 namespace ultrawin_internal {
 
@@ -67,6 +68,19 @@ std::string PrefixPath(const std::string& name);  // takes g_mutex
 // Locate the wine binary per config/PATH. Returns empty string when none.
 std::string FindWineBinary();                 // takes g_mutex (config read)
 
+// Locate the winetricks script per config/PATH. Empty string when none.
+std::string FindWinetricksBinary();           // takes g_mutex (config read)
+
+// The wine ELF loader behind a possibly-scripted wine entry point.
+// Distro `wine` commands are often shell wrappers (Ubuntu: /usr/bin/wine ->
+// alternatives -> script calling /usr/lib/wine/wine64); winetricks' arch
+// detection needs the real ELF. Returns winePath itself when it already is
+// one, the resolved loader when a wrapper is recognised, else winePath.
+std::string ResolveWineElfBinary(const std::string& winePath);
+
+// Winetricks verb charset: [a-z0-9][a-z0-9._+=-]*, max 64. (Pure.)
+bool IsValidComponentName(const std::string& name);
+
 // Best-effort `wine --version` (cached after first success).
 std::string ProbeWineVersion(const std::string& winePath);
 
@@ -74,12 +88,17 @@ std::string ProbeWineVersion(const std::string& winePath);
 // manifest + config (home mapping, root-drive policy). Prefix must exist.
 UltraWinResult ApplyMappings(const std::string& prefixPath);  // takes g_mutex
 
-// Run a command to completion with WINEPREFIX set. Returns the exit code,
-// or -1 on spawn failure / timeout (timeoutSeconds 0 = no limit).
-int RunWineCommand(const std::string& winePath,
+// Run a command to completion with WINEPREFIX set (plus any extraEnv
+// variables). stdout+stderr go to outputFile when given (truncated first),
+// else to /dev/null. Returns the exit code, or -1 on spawn failure /
+// timeout (timeoutSeconds 0 = no limit).
+int RunWineCommand(const std::string& binaryPath,
                    const std::vector<std::string>& args,
                    const std::string& prefixPath,
                    bool suppressPrompts,
-                   int timeoutSeconds);
+                   int timeoutSeconds,
+                   const std::vector<std::pair<std::string, std::string>>&
+                       extraEnv = {},
+                   const std::string& outputFile = {});
 
 }  // namespace ultrawin_internal

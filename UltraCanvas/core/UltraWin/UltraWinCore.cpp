@@ -254,6 +254,9 @@ UltraWinCapabilities UltraWin_GetCapabilities() {
         caps.wineVersion = ProbeWineVersion(caps.winePath);
     caps.wineTierAvailable = caps.wineAvailable;
 
+    caps.winetricksPath = FindWinetricksBinary();
+    caps.winetricksAvailable = !caps.winetricksPath.empty();
+
     caps.ntsyncAvailable = access("/dev/ntsync", F_OK) == 0;
     caps.kvmAvailable = access("/dev/kvm", R_OK | W_OK) == 0;
     caps.vmTierAvailable = false;  // Stage 2
