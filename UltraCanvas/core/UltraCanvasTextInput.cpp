@@ -29,7 +29,9 @@ namespace UltraCanvas {
             , readOnly(false)
             , passwordMode(false)
             , maxLength(-1)
-            , lastValidationResult(ValidationResult::Valid())
+            // NoValidation until rules exist and run - a fresh input must not
+            // start out showing the "valid" checkmark.
+            , lastValidationResult(ValidationResult())
             , showValidationState(true)
             , validateOnChange(true)
             , validateOnBlur(true)
@@ -129,6 +131,15 @@ namespace UltraCanvas {
     }
 
     ValidationResult UltraCanvasTextInput::Validate() {
+        // No rules configured: there is nothing to judge, so the state stays
+        // NoValidation and no feedback (green border / checkmark) is drawn.
+        // Reporting Valid here put an "OK" checkmark on every plain input.
+        if (validationRules.empty()) {
+            lastValidationResult = ValidationResult();
+            if (onValidationChanged) onValidationChanged(lastValidationResult);
+            return lastValidationResult;
+        }
+
         ValidationResult result = ValidationResult::Valid();
 
         // Check all rules in priority order
@@ -402,9 +413,10 @@ namespace UltraCanvas {
         Rect2Di bounds = GetLocalBounds();
 
         int rightOffset = style.paddingRight;
+        // Space for the validation icon only while validation feedback is
+        // actually shown (the old condition was also true for NoValidation).
         if (showValidationState &&
-            (lastValidationResult.state == ValidationState::Valid ||
-             lastValidationResult.state != ValidationState::Invalid)) {
+            lastValidationResult.state != ValidationState::NoValidation) {
             rightOffset += 20;
         }
 
@@ -419,7 +431,10 @@ namespace UltraCanvas {
         Rect2Di bounds = GetLocalBounds();
         int rightReduction = style.paddingRight;
 
-        if (showValidationState && (lastValidationResult.state == ValidationState::Valid || lastValidationResult.state != ValidationState::Invalid)) {
+        // Space for the validation icon only while validation feedback is
+        // actually shown (the old condition was also true for NoValidation).
+        if (showValidationState &&
+            lastValidationResult.state != ValidationState::NoValidation) {
             rightReduction += 20;
         }
 

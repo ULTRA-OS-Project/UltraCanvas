@@ -617,6 +617,8 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerWindow.cpp
             Apps/UltraFiler/UltraFilerSettingsDialog.cpp
             Apps/UltraFiler/UltraFilerPrompt.cpp
+            Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
+            Apps/UltraFiler/UltraFilerShare.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).

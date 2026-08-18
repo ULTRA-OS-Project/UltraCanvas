@@ -1688,6 +1688,7 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
     set(ULTRAWIN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinComponents.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
     )
     add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})

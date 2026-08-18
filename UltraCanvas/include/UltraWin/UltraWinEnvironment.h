@@ -50,3 +50,24 @@ UltraWinResult UltraWin_UnmapFolder(const std::string& environment,
                                     char driveLetter);
 std::vector<UltraWinFolderMapping> UltraWin_ListMappings(
     const std::string& environment);
+
+// ============================================================================
+// Components — runtime dependencies a Windows application may need inside
+// its environment: VC++ runtimes ("vcrun2019"), core fonts ("corefonts"),
+// .NET ("dotnet48"), Direct3D-to-Vulkan ("dxvk"), … Names are winetricks
+// verbs; the installer is a spawned winetricks (probed like Wine —
+// UltraWinCapabilities::winetricksAvailable).
+// ============================================================================
+
+// Install a component into an environment (created on first use, like
+// UltraWin_RunApp). BLOCKING and potentially slow — components download
+// from upstream mirrors (componentInstallTimeoutSeconds bounds one call);
+// run it off the UI thread. Installing an already-installed component
+// succeeds without re-downloading.
+UltraWinResult UltraWin_InstallComponent(const std::string& environment,
+                                         const std::string& component);
+
+// Components recorded as installed in the environment (winetricks log),
+// in installation order. Empty when none or the environment is unknown.
+std::vector<std::string> UltraWin_ListComponents(
+    const std::string& environment);

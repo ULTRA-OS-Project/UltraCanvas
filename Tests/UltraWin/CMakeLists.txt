@@ -11,6 +11,7 @@ set(ULTRAWIN_TEST_SOURCES
     test_manifest.cpp
     test_lifecycle.cpp
     test_supervision.cpp
+    test_components.cpp
 )
 
 add_executable(UltraWinTests ${ULTRAWIN_TEST_SOURCES})

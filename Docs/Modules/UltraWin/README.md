@@ -126,6 +126,32 @@ UltraWin_ReleaseApp(app);
 - `UltraWinRunOptions::forceTier` accepts `Auto` (== Wine in Stage 1) and
   `Wine`; `Vm` returns `NotSupported` until Stage 2.
 
+## Components — VC++ runtimes, fonts, .NET, DXVK
+
+Many Windows applications fail on a bare prefix because they expect runtime
+dependencies to be present. `UltraWin_InstallComponent(env, name)` installs
+them per environment; names are **winetricks verbs** (`vcrun2019`,
+`corefonts`, `dotnet48`, `dxvk`, …), and the installer is a spawned
+**winetricks** — probed at runtime exactly like Wine
+(`UltraWinCapabilities::winetricksAvailable`, `UltraWinConfig::winetricksPath`
+override), never linked.
+
+```cpp
+UltraWin_InstallComponent("Photofiltre", "vcrun2019");   // blocking; run off
+UltraWin_InstallComponent("Photofiltre", "corefonts");   // the UI thread
+for (auto& c : UltraWin_ListComponents("Photofiltre")) { /* installed */ }
+```
+
+- The environment is created on first use (like `UltraWin_RunApp`);
+  re-installing an installed component succeeds without re-downloading.
+- Installs are **blocking and can be slow** (upstream downloads;
+  `UltraWinConfig::componentInstallTimeoutSeconds`, default 30 min).
+- Failures return `ComponentInstallFailed` with a pointer to the full
+  winetricks output, captured in `<prefix>/ultrawin-install.log`.
+- UltraWin passes the *resolved ELF wine loader* to winetricks (`WINE=`):
+  distro `wine` commands are often script wrappers (Ubuntu alternatives),
+  which winetricks' arch detection rejects.
+
 ## Capability probing
 
 `UltraWin_GetCapabilities()` is cheap and safe to call at UI-build time:
@@ -133,6 +159,7 @@ UltraWin_ReleaseApp(app);
 | Field | Meaning |
 |---|---|
 | `wineAvailable` / `winePath` / `wineVersion` | usable binary (config override or PATH: `wine`, `wine64`) |
+| `winetricksAvailable` / `winetricksPath` | component installer present (config override or PATH) |
 | `ntsyncAvailable` | `/dev/ntsync` present (Linux ≥ 6.14 — Wine 11 fast sync) |
 | `kvmAvailable` | `/dev/kvm` accessible (Stage 2 readiness) |
 | `hostArchitecture` | `x86_64`, `aarch64`, … (on aarch64, PATH finding a Hangover wine build is the supported setup) |
@@ -166,7 +193,6 @@ builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
 
 ## Not yet implemented (later stages)
 
-- `UltraWin_InstallComponent` (fonts, VC++ runtimes, DXVK — winetricks
-  equivalent), `UltraWin_QueryCompatibility` + automatic tier routing.
+- `UltraWin_QueryCompatibility` + automatic tier routing.
 - The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
   shared folders, `UltraCanvasRemoteAppView` RAIL element.

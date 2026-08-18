@@ -393,12 +393,14 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
+  components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
 - `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
 
 **Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`, `UltraWin_InstallComponent`,
+`UltraWin_VmSuspend`, `UltraWin_VmStop`,
 `UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
 for FreeRDP RemoteApp windows.
 
@@ -407,9 +409,10 @@ application to launch Windows executables. Linux / ULTRA OS only.
 
 **Implementation status (this branch):** Stage 1 of the rollout — module
 lifecycle, capability probing, environments (isolated Wine prefixes with
-persisted drive mappings), and application launch/supervision are
-implemented; the VM tier, component installer, and compatibility routing
-are planned for Stages 2-3. See `Docs/Modules/UltraWin/README.md`.
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -983,6 +986,7 @@ their *License* is likewise marked **—** (OS component).
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
 | Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
 | X11 (libX11) | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libX11](https://gitlab.freedesktop.org/xorg/lib/libX11) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Xcursor | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libXcursor](https://gitlab.freedesktop.org/xorg/lib/libXcursor) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -1107,6 +1111,7 @@ their *License* is likewise marked **—** (OS component).
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
+| Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully
@@ -48405,6 +48410,32 @@ UltraWin_ReleaseApp(app);
 - `UltraWinRunOptions::forceTier` accepts `Auto` (== Wine in Stage 1) and
   `Wine`; `Vm` returns `NotSupported` until Stage 2.
 
+## Components — VC++ runtimes, fonts, .NET, DXVK
+
+Many Windows applications fail on a bare prefix because they expect runtime
+dependencies to be present. `UltraWin_InstallComponent(env, name)` installs
+them per environment; names are **winetricks verbs** (`vcrun2019`,
+`corefonts`, `dotnet48`, `dxvk`, …), and the installer is a spawned
+**winetricks** — probed at runtime exactly like Wine
+(`UltraWinCapabilities::winetricksAvailable`, `UltraWinConfig::winetricksPath`
+override), never linked.
+
+```cpp
+UltraWin_InstallComponent("Photofiltre", "vcrun2019");   // blocking; run off
+UltraWin_InstallComponent("Photofiltre", "corefonts");   // the UI thread
+for (auto& c : UltraWin_ListComponents("Photofiltre")) { /* installed */ }
+```
+
+- The environment is created on first use (like `UltraWin_RunApp`);
+  re-installing an installed component succeeds without re-downloading.
+- Installs are **blocking and can be slow** (upstream downloads;
+  `UltraWinConfig::componentInstallTimeoutSeconds`, default 30 min).
+- Failures return `ComponentInstallFailed` with a pointer to the full
+  winetricks output, captured in `<prefix>/ultrawin-install.log`.
+- UltraWin passes the *resolved ELF wine loader* to winetricks (`WINE=`):
+  distro `wine` commands are often script wrappers (Ubuntu alternatives),
+  which winetricks' arch detection rejects.
+
 ## Capability probing
 
 `UltraWin_GetCapabilities()` is cheap and safe to call at UI-build time:
@@ -48412,6 +48443,7 @@ UltraWin_ReleaseApp(app);
 | Field | Meaning |
 |---|---|
 | `wineAvailable` / `winePath` / `wineVersion` | usable binary (config override or PATH: `wine`, `wine64`) |
+| `winetricksAvailable` / `winetricksPath` | component installer present (config override or PATH) |
 | `ntsyncAvailable` | `/dev/ntsync` present (Linux ≥ 6.14 — Wine 11 fast sync) |
 | `kvmAvailable` | `/dev/kvm` accessible (Stage 2 readiness) |
 | `hostArchitecture` | `x86_64`, `aarch64`, … (on aarch64, PATH finding a Hangover wine build is the supported setup) |
@@ -48445,8 +48477,7 @@ builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
 
 ## Not yet implemented (later stages)
 
-- `UltraWin_InstallComponent` (fonts, VC++ runtimes, DXVK — winetricks
-  equivalent), `UltraWin_QueryCompatibility` + automatic tier routing.
+- `UltraWin_QueryCompatibility` + automatic tier routing.
 - The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
   shared folders, `UltraCanvasRemoteAppView` RAIL element.
 
