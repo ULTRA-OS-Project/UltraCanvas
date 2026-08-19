@@ -35,36 +35,13 @@ jobs:
         # macOS 15 leaves Apple support (~2027). When that goes too, the
         # options are: drop Intel builds, use self-hosted runners, or
         # cross-compile universal binaries.
-        os: [macos-latest, macos-15-intel, ubuntu-latest, windows-latest, windows-11-arm]
+        os: [macos-latest, macos-15-intel, ubuntu-22.04, windows-latest, windows-11-arm]
         build_type: [Release]
         include:
           - os: macos-latest
             arch_label: arm64
           - os: macos-15-intel
             arch_label: x86_64
-            install_deps: |
-              # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
-              # Homebrew's tap-trust check prints a multi-line "not trusted"
-              # warning on *every* brew invocation while it is present. We install
-              # nothing from it, so drop the tap — that is Homebrew's own first
-              # suggestion, and it is preferable to `brew trust aws/tap` (grants
-              # blanket trust to a tap we never use) or
-              # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
-              # for taps we *do* use). Tolerate the tap being absent so a future
-              # runner image that drops it cannot fail this step.
-              brew untap aws/tap 2>/dev/null || true
-              brew install cmake pkg-config
-              brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install libcdr librevenge
-              brew install zbar
-              brew install mupdf
-              brew install c-ares
-              brew install leptonica tesseract
-              # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-              brew install flac libvorbis opus opusfile libopusenc lame
-              # libcurl: use Apple's system libcurl (SecureTransport-family
-              # backend) — already present on every macOS install, so we add
-              # no extra dependency for UltraNet on this platform.
           - os: ubuntu-22.04
             arch_label: x86_64
             install_deps: |
