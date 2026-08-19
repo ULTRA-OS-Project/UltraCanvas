@@ -71,7 +71,10 @@ include(FetchContent)
 FetchContent_Declare(
     Corrosion
     GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-    GIT_TAG        v0.5.1
+    # v0.6.0+ is required for Windows-on-ARM: earlier Corrosion does not know
+    # the *-windows-gnullvm ABI (CLANGARM64's rust target) and fails configure
+    # with "Unknown windows environment - Can't determine implib name".
+    GIT_TAG        v0.6.1
 )
 FetchContent_MakeAvailable(Corrosion)
 

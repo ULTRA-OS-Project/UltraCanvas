@@ -29,37 +29,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NOTE: macos-13 is the last GitHub-hosted Intel (x86_64) macOS runner.
-        # When GitHub deprecates it, options are: drop Intel builds, use
-        # self-hosted runners, or cross-compile universal binaries.
-        os: [macos-latest, ubuntu-22.04, windows-latest]
+        # NOTE: GitHub retired macos-13 (the last x86_64 image of the
+        # macos-NN series) in December 2025. `macos-15-intel` is its
+        # designated replacement label for Intel builds, supported until
+        # macOS 15 leaves Apple support (~2027). When that goes too, the
+        # options are: drop Intel builds, use self-hosted runners, or
+        # cross-compile universal binaries.
+        os: [macos-latest, macos-15-intel, ubuntu-22.04, windows-latest, windows-11-arm]
         build_type: [Release]
         include:
           - os: macos-latest
             arch_label: arm64
-            install_deps: |
-              # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
-              # Homebrew's tap-trust check prints a multi-line "not trusted"
-              # warning on *every* brew invocation while it is present. We install
-              # nothing from it, so drop the tap — that is Homebrew's own first
-              # suggestion, and it is preferable to `brew trust aws/tap` (grants
-              # blanket trust to a tap we never use) or
-              # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
-              # for taps we *do* use). Tolerate the tap being absent so a future
-              # runner image that drops it cannot fail this step.
-              brew untap aws/tap 2>/dev/null || true
-              brew install cmake pkg-config
-              brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install libcdr librevenge
-              brew install zbar
-              brew install mupdf
-              brew install c-ares
-              brew install leptonica tesseract
-              # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-              brew install flac libvorbis opus opusfile libopusenc lame
-              # libcurl: use Apple's system libcurl (SecureTransport-family
-              # backend) — already present on every macOS install, so we add
-              # no extra dependency for UltraNet on this platform.
+          - os: macos-15-intel
+            arch_label: x86_64
           - os: ubuntu-22.04
             arch_label: x86_64
             install_deps: |
@@ -130,12 +112,25 @@ jobs:
               ( cd "c-ares-${CARES_VER}" && ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu && make -j"$(nproc)" && sudo make install )
           - os: windows-latest
             arch_label: x86_64
+            msystem: MINGW64
+            msys_prefix: mingw-w64-x86_64
+            msys_toolchain: mingw-w64-x86_64-gcc
+          - os: windows-11-arm
+            arch_label: arm64
+            msystem: CLANGARM64
+            msys_prefix: mingw-w64-clang-aarch64
+            msys_toolchain: mingw-w64-clang-aarch64-clang
 
     runs-on: ${{ matrix.os }}
 
+    # Normal jobs finish in ~30 minutes. Without a cap, a hang burns the
+    # default 6-hour job timeout (seen once: MSYS2 ldd deadlocking while
+    # loading an ImageMagick coder DLL during Windows-on-ARM packaging).
+    timeout-minutes: 120
+
     defaults:
       run:
-        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+        shell: ${{ startsWith(matrix.os, 'windows') && 'msys2 {0}' || 'bash' }}
 
     steps:
       - name: Checkout repository
@@ -158,52 +153,81 @@ jobs:
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-cairo
-            mingw-w64-x86_64-pango
-            mingw-w64-x86_64-harfbuzz
-            mingw-w64-x86_64-glib2
-            mingw-w64-x86_64-freetype
-            mingw-w64-x86_64-tinyxml2
-            mingw-w64-x86_64-libiconv
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-libvips
-            mingw-w64-x86_64-glew
-            mingw-w64-x86_64-fmt
-            mingw-w64-x86_64-imagemagick
-            mingw-w64-x86_64-libheif
-            mingw-w64-x86_64-zbar
-            mingw-w64-x86_64-mupdf
-            mingw-w64-x86_64-libmupdf
-            mingw-w64-x86_64-curl-winssl
-            mingw-w64-x86_64-c-ares
-            mingw-w64-x86_64-leptonica
-            mingw-w64-x86_64-tesseract-ocr
-            mingw-w64-x86_64-flac
-            mingw-w64-x86_64-libvorbis
-            mingw-w64-x86_64-libogg
-            mingw-w64-x86_64-opus
-            mingw-w64-x86_64-opusfile
-            mingw-w64-x86_64-libopusenc
-            mingw-w64-x86_64-lame
+            ${{ matrix.msys_toolchain }}
+            ${{ matrix.msys_prefix }}-cmake
+            ${{ matrix.msys_prefix }}-ninja
+            ${{ matrix.msys_prefix }}-pkgconf
+            ${{ matrix.msys_prefix }}-rust
+            ${{ matrix.msys_prefix }}-cairo
+            ${{ matrix.msys_prefix }}-pango
+            ${{ matrix.msys_prefix }}-harfbuzz
+            ${{ matrix.msys_prefix }}-glib2
+            ${{ matrix.msys_prefix }}-freetype
+            ${{ matrix.msys_prefix }}-tinyxml2
+            ${{ matrix.msys_prefix }}-libiconv
+            ${{ matrix.msys_prefix }}-zlib
+            ${{ matrix.msys_prefix }}-libvips
+            ${{ matrix.msys_prefix }}-glew
+            ${{ matrix.msys_prefix }}-fmt
+            ${{ matrix.msys_prefix }}-imagemagick
+            ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-zbar
+            ${{ matrix.msys_prefix }}-mupdf
+            ${{ matrix.msys_prefix }}-libmupdf
+            ${{ matrix.msys_prefix }}-curl-winssl
+            ${{ matrix.msys_prefix }}-c-ares
+            ${{ matrix.msys_prefix }}-leptonica
+            ${{ matrix.msys_prefix }}-tesseract-ocr
+            ${{ matrix.msys_prefix }}-flac
+            ${{ matrix.msys_prefix }}-libvorbis
+            ${{ matrix.msys_prefix }}-libogg
+            ${{ matrix.msys_prefix }}-opus
+            ${{ matrix.msys_prefix }}-opusfile
+            ${{ matrix.msys_prefix }}-libopusenc
+            ${{ matrix.msys_prefix }}-lame
             zip
-            
-      # ===== macOS / Linux: system package manager =====
-      - name: Install dependencies (macOS/Linux)
-        if: runner.os != 'Windows'
+
+      # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
+      # lives at /opt/homebrew on Apple Silicon and /usr/local on Intel, but
+      # the formula list is identical) =====
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
+          # Homebrew's tap-trust check prints a multi-line "not trusted"
+          # warning on *every* brew invocation while it is present. We install
+          # nothing from it, so drop the tap — that is Homebrew's own first
+          # suggestion, and it is preferable to `brew trust aws/tap` (grants
+          # blanket trust to a tap we never use) or
+          # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
+          # for taps we *do* use). Tolerate the tap being absent so a future
+          # runner image that drops it cannot fail this step.
+          brew untap aws/tap 2>/dev/null || true
+          brew install cmake pkg-config
+          brew install cairo pango harfbuzz vips glib freetype tinyxml2
+          brew install libcdr librevenge
+          brew install zbar
+          brew install mupdf
+          brew install c-ares
+          brew install leptonica tesseract
+          # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
+          brew install flac libvorbis opus opusfile libopusenc lame
+          # libcurl: use Apple's system libcurl (SecureTransport-family
+          # backend) — already present on every macOS install, so we add
+          # no extra dependency for UltraNet on this platform.
+
+      # ===== Linux: system package manager =====
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
         run: ${{ matrix.install_deps }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
-      # Windows installs the native mingw-w64-x86_64-rust package above (gnu ABI,
-      # matching the MinGW compiler; MSYS2's /usr/bin POSIX rust breaks Corrosion
-      # with 'failed to join paths from $LD_LIBRARY_PATH'). On macOS/Linux use the
+      # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
+      # matching the MinGW/CLANGARM64 compiler; MSYS2's /usr/bin POSIX rust breaks
+      # Corrosion with 'failed to join paths from $LD_LIBRARY_PATH'). On macOS/Linux use the
       # runner's preinstalled rustup to pin a current stable, so the version-pinned
       # vtracer / visioncortex crates build with a new-enough compiler.
       - name: Install Rust toolchain (macOS/Linux)
