@@ -17,6 +17,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -307,8 +308,15 @@ namespace UltraCanvas {
 
 // With these two functions:
     std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
-        char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
+        // Synthetic filename from a globally-unique id rather than the data POINTER: the
+        // caller's buffer is often a temporary that is freed and whose address the allocator
+        // then reuses, so two distinct in-memory images could end up with the same ":mem:ptr:size"
+        // fileName — and therefore the same shared pixmap-cache key (MakePixmapCacheKey embeds
+        // fileName). One image would then draw another's (or a stale/blank) cached pixmap. A
+        // monotonic id keeps every in-memory image's cache key distinct.
+        static std::atomic<unsigned long long> s_mem_image_id { 0 };
+        char filename[64];
+        snprintf(filename, sizeof(filename), ":mem:%llu:%zu", s_mem_image_id.fetch_add(1), dataSize);
         auto result = std::make_shared<UCImageRaster>(filename);
 
         if (!data || dataSize == 0) {

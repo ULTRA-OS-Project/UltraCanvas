@@ -48,8 +48,11 @@
 // selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
 // Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
 // expensive files can be browsed with only the cheap previews switched on.
+// The context menu's "Open with >" lists the applications the OS registers
+// for the selected files (UltraCanvasFileAssociations, prewarmed in the
+// background), the host's own entries, and an "Other application…" picker.
 // Version: 1.14.0
-// Last Modified: 2026-08-10
+// Last Modified: 2026-08-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -586,9 +589,23 @@ namespace UltraCanvas {
         void SetNewDocumentTypes(const std::vector<FilerNewDocumentType>& types);
         void CreateNewDocument(const FilerNewDocumentType& type);
 
-        // "Open with >" applications.
+        // "Open with >" applications. The submenu lists the applications the
+        // OS has registered for the selected files (via
+        // UltraCanvasFileAssociations, default application first), then the
+        // entries added here, then "Other application…" (a file-dialog picker).
+        // The OS lookups are prewarmed on a background thread — the first
+        // widget triggers the association-database parse, every folder scan
+        // pre-resolves the folder's extensions — so opening the menu never
+        // parses anything.
         void AddOpenWithApp(const FilerOpenWithApp& app);
         void ClearOpenWithApps();
+        // Off = the pre-1.14 behaviour: only AddOpenWithApp entries.
+        void SetSystemOpenWithEnabled(bool enabled) { systemOpenWith = enabled; }
+        // When enabled, double-click / Enter on a file launches it with the
+        // OS default application — but only while no onFileActivated callback
+        // is installed (a host with its own activation handling, like
+        // UltraFiler's preview, decides there instead).
+        void SetActivateOpensWithDefaultApp(bool enabled) { activateOpensDefault = enabled; }
 
         // ===== CALLBACKS =====
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
@@ -707,6 +724,11 @@ namespace UltraCanvas {
 
         std::vector<FilerNewDocumentType> newDocumentTypes;
         std::vector<FilerOpenWithApp> openWithApps;
+        bool systemOpenWith = true;        // OS-registered apps in "Open with >"
+        bool activateOpensDefault = false; // activation fallback (see setter)
+        // "Open with > Other application…": file-dialog picker, then launches
+        // the selection with the chosen application.
+        void OpenSelectionWithChooser();
 
         // Computed per-entry geometry (content space, before scroll offset).
         struct ItemLayout {
@@ -1229,6 +1251,10 @@ namespace UltraCanvas {
         void DrawTreeMapCell(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         void DrawPlaceholderView(IRenderContext* ctx, const Rect2Di& bounds,
                                  const std::string& message);
+        // "Nothing to show" notice for an empty folder / file list: an
+        // attention icon above the message, vertically centered in the view.
+        void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
+                            const std::string& message);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);

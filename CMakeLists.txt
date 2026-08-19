@@ -483,6 +483,18 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRAWIN TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses the same tiny in-tree framework
+# as the UltraNet suite. Wine itself is NOT required — wine-dependent tests
+# skip themselves when no binary is found.
+option(ULTRACANVAS_BUILD_ULTRAWIN_TESTS "Build the UltraWin test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAWIN_TESTS AND TARGET UltraWin)
+    enable_testing()
+    add_subdirectory(Tests/UltraWin)
+    message(STATUS "")
+    message(STATUS "── UltraWin test suite enabled (target: UltraWinTests) ──")
+endif()
+
 # ===== ULTRADATABASE TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraDatabase is built.
@@ -605,6 +617,8 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerWindow.cpp
             Apps/UltraFiler/UltraFilerSettingsDialog.cpp
             Apps/UltraFiler/UltraFilerPrompt.cpp
+            Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
+            Apps/UltraFiler/UltraFilerShare.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).

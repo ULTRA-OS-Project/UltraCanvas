@@ -76,6 +76,18 @@ namespace UltraCanvas {
 
     void OpenURL(const std::string& url);
 
+    // Starts argv[0] with the given arguments, fully detached from the
+    // calling process: closing this application never takes the launched one
+    // down, and no zombie is left behind (POSIX: double fork + setsid;
+    // Windows: CreateProcess into a new detached process group).
+    // workingDirectory may be empty (the child inherits the current one).
+    // Returns false with a user-presentable outError when nothing could be
+    // started; a child that starts but fails to exec reports success — the
+    // detachment makes the exec result unobservable.
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               std::string& outError);
+
     std::vector<uint8_t> Base64Decode(const std::string& input);
     std::string Base64Encode(const std::vector<uint8_t>& in, bool wrap = true);
 

@@ -361,6 +361,11 @@ bool LoopbackServer::Start() {
 
     UltraNetSocketOptions opt;
     opt.reuseAddress = true;
+    // Loopback only. Without an explicit bindAddress the listener would bind
+    // the any-address, which makes the tool look like it opens a port to the
+    // network — Windows pops a firewall prompt and behaviour-based AV
+    // heuristics (e.g. AVG/Avast IDP.Generic) flag exactly that pattern.
+    opt.bindAddress = "127.0.0.1";
     for (int port = kPortRangeStart; port <= kPortRangeEnd; ++port) {
         UltraNetHandle h = UltraNet_TcpListen(port, opt);
         if (h != UltraNetInvalidHandle) {

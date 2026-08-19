@@ -1,12 +1,13 @@
 // Apps/UltraFiler/UltraFilerSettingsDialog.cpp
 // UltraFiler settings window: settings-page tree on the left, the selected
-// page on the right. Two main pages: Media Viewer > Transparent Images (the
-// backdrop behind transparent images — checkered pattern or a preset colour
-// chosen with the colour picker) and Extras > Open prompt (the command line
-// program the Extras menu starts, picked with the file dialog and stored with
-// "Save app"). Changes apply live and are saved immediately.
-// Version: 1.1.0
-// Last Modified: 2026-08-08
+// page on the right. Pages: Media Viewer > Transparent Images (the backdrop
+// behind transparent images — checkered pattern or a preset colour chosen
+// with the colour picker), Extras > Open prompt (the command line program
+// UltraFiler opens, picked with the file dialog and stored with "Save app")
+// and History & Favorites (clearing the recently-used lists and the pinned
+// entries). Changes apply live and are saved immediately.
+// Version: 1.2.0
+// Last Modified: 2026-08-17
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -42,6 +43,7 @@ namespace {
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
+    constexpr const char* kPageLists = "history-favorites";
 
     // The one open settings window (or the last closed one, until reopened).
     struct DialogState {
@@ -60,8 +62,13 @@ namespace {
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
         std::shared_ptr<UltraCanvasLabel>     promptStatus;  // what will be started
 
+        // History & Favorites
+        std::shared_ptr<UltraCanvasLabel>     listsStatus;   // "History cleared."
+
         UltraFilerSettings*   settings = nullptr;
         std::function<void()> onChanged;
+        std::function<void()> onClearHistory;
+        std::function<void()> onClearFavorites;
     };
 
     std::shared_ptr<DialogState> g_dialog;
@@ -275,7 +282,7 @@ namespace {
 
         page->AddChild(MakeLabel("ufl-set-op-title", "Open prompt", 12.0f));
         page->AddChild(MakeLabel("ufl-set-op-caption",
-                "Application started by Extras > Open prompt. It opens in the "
+                "Command line application UltraFiler opens. It starts in the "
                 "folder of the active tab."));
         page->AddChild(MakeLabel("ufl-set-op-hint",
                 "Leave the field empty to use the command line program of this "
@@ -339,6 +346,58 @@ namespace {
         d->promptStatus->size.height = CSSLayout::Dimension::Px(20);
         page->AddChild(d->promptStatus);
         UpdatePromptStatus(d);
+
+        return page;
+    }
+
+    // ===== HISTORY & FAVORITES =====
+    std::shared_ptr<UltraCanvasContainer> BuildListsPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-lists");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-hf-title", "History & Favorites", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-hf-caption",
+                "The History view lists the recently used files, folders and "
+                "applications; the Favorites view lists the pinned ones."));
+
+        auto buttonRow = std::make_shared<UltraCanvasContainer>("ufl-set-hf-buttons");
+        buttonRow->layout.SetFlexRow().SetFlexGap(8)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        buttonRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        buttonRow->size.width  = CSSLayout::Dimension::Px(430);
+        buttonRow->size.height = CSSLayout::Dimension::Px(34);
+
+        auto clearHistory = MakeButton("ufl-set-hf-clear-history", "Clear History",
+                120, [d]() {
+            if (d->onClearHistory) d->onClearHistory();
+            if (d->listsStatus) {
+                d->listsStatus->SetText("History cleared.");
+                d->listsStatus->RequestRedraw();
+            }
+        });
+        clearHistory->SetDisabled(!d->onClearHistory);
+        buttonRow->AddChild(clearHistory);
+
+        auto clearFavorites = MakeButton("ufl-set-hf-clear-favorites",
+                "Clear Favorites", 120, [d]() {
+            if (d->onClearFavorites) d->onClearFavorites();
+            if (d->listsStatus) {
+                d->listsStatus->SetText(
+                        "Favorites cleared (including the tree's Pinned section).");
+                d->listsStatus->RequestRedraw();
+            }
+        });
+        clearFavorites->SetDisabled(!d->onClearFavorites);
+        buttonRow->AddChild(clearFavorites);
+        page->AddChild(buttonRow);
+
+        d->listsStatus = MakeLabel("ufl-set-hf-status", "");
+        d->listsStatus->SetTextColor(Color(110, 110, 118, 255));
+        d->listsStatus->size.width  = CSSLayout::Dimension::Px(430);
+        d->listsStatus->size.height = CSSLayout::Dimension::Px(20);
+        page->AddChild(d->listsStatus);
 
         return page;
     }
@@ -423,6 +482,11 @@ namespace {
         openPrompt.text = "Open prompt";
         d->tree->AddNode(kPageExtras, openPrompt);
 
+        TreeNodeData lists;
+        lists.nodeId = kPageLists;
+        lists.text = "History & Favorites";
+        d->tree->AddNode("settings", lists);
+
         d->tree->ExpandAll();
         content->AddChild(d->tree);
 
@@ -446,6 +510,12 @@ namespace {
                                   .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageOpenPrompt] = openPromptPage;
         d->pageArea->AddChild(openPromptPage);
+
+        auto listsPage = BuildListsPage(d);
+        listsPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageLists] = listsPage;
+        d->pageArea->AddChild(listsPage);
 
         d->tree->onNodeSelected = [d](TreeNode* node) {
             if (node) ShowPage(d, node->data.nodeId);
@@ -490,7 +560,9 @@ namespace {
 
 void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
                                     UltraFilerSettings* settings,
-                                    std::function<void()> onChanged) {
+                                    std::function<void()> onChanged,
+                                    std::function<void()> onClearHistory,
+                                    std::function<void()> onClearFavorites) {
     // Raise the already open window instead of opening a second one.
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
         g_dialog->window->Show();
@@ -500,6 +572,8 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     auto state = std::make_shared<DialogState>();
     state->settings = settings;
     state->onChanged = std::move(onChanged);
+    state->onClearHistory = std::move(onClearHistory);
+    state->onClearFavorites = std::move(onClearFavorites);
     BuildDialog(state.get(), parent);
     if (state->window) g_dialog = state;   // keeps the widgets alive
 }

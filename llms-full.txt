@@ -205,6 +205,24 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
+  cross-platform "Open with" service: which applications the OS registers
+  for a file, and detached launching. Core worker/cache in
+  `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
+  internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
+  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  Public surface (`namespace FileAssociations` + `FileAssociationApp`):
+  - `GetApplicationsForFiles` — candidates for a selection (intersection),
+    default application first, cache-served once prewarmed.
+  - `OpenWithDefaultApplication` / `OpenWithApplication` /
+    `OpenWithApplicationPath` — detached launches (default handler /
+    enumerated app / user-picked executable).
+  - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
+    for an "Other application…" picker (the picker UI lives with the caller).
+  - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
+    the worker only exists once a caller asks for it.
+  See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
@@ -346,6 +364,55 @@ surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
 rollout is SQLite core + registry + query/transaction/migration API
 (Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
 remaining drivers and at-rest encryption (Stage 3).
+
+### **7. UltraWin**
+
+The UltraWin module runs Windows applications on Linux / ULTRA OS as single
+native windows — never a Windows desktop — with the user's own folders
+visible to the applications under a unified drive letter.
+
+UltraWin elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraWinResult`; application instances are
+  opaque `UltraWinHandle`s
+- No Windows desktop is ever displayed; no full-desktop viewer paths
+- Engines are never linked: Wine (and later QEMU) run as spawned child
+  processes, keeping LGPL/GPL licensing outside the framework binaries
+- Wine's default `Z:` → `/` host-root exposure is off by default; the
+  user's home is mapped as `U:` in every environment
+
+UltraWin uses open-source engines (Wine for the API-translation tier;
+QEMU/KVM + FreeRDP RemoteApp planned for the full-virtualisation tier) and
+encapsulates them so backings can be swapped — see
+`Docs/Research/UltraWinDesignProposal.md`.
+
+**Available Functions (Stage 1, Wine tier):**
+- `UltraWin_Initialize`, `UltraWin_Shutdown`, `UltraWin_IsInitialized`,
+  `UltraWin_GetConfig`, `UltraWin_SetConfig`, `UltraWin_GetCapabilities`,
+  `UltraWin_GetVersion`
+- `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
+  `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
+- `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
+  components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
+- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+  `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
+  `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+
+**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
+`UltraWin_VmSuspend`, `UltraWin_VmStop`,
+`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
+for FreeRDP RemoteApp windows.
+
+UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
+application to launch Windows executables. Linux / ULTRA OS only.
+
+**Implementation status (this branch):** Stage 1 of the rollout — module
+lifecycle, capability probing, environments (isolated Wine prefixes with
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -918,6 +985,8 @@ their *License* is likewise marked **—** (OS component).
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
+| Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
 | X11 (libX11) | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libX11](https://gitlab.freedesktop.org/xorg/lib/libX11) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Xcursor | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libXcursor](https://gitlab.freedesktop.org/xorg/lib/libXcursor) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -1036,6 +1105,20 @@ their *License* is likewise marked **—** (OS component).
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraWin module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
+| Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+
+> UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
+> a `wine` binary at runtime and degrades gracefully
+> (`UltraWin_GetCapabilities`) when none is installed, so Wine is not a build
+> dependency and appears in no package manifest as required. The Stage 2 VM
+> tier will add QEMU/KVM (runtime, child process) and FreeRDP (linked,
+> Apache 2) — tracked when that stage lands.
 
 ### VideoFX module
 
@@ -2676,11 +2759,23 @@ const AdjacencyLink* link = diagram->FindLink("lobby", "reception");
 
 A room adjacency matrix is symmetric — "kitchen next to dining" is the same
 requirement as "dining next to kitchen" — so only the upper triangle carries
-information and the lower half is shaded out. `AdjacencyMatrixStyle::Staircase`
-(the default) draws that as an ordinary axis-aligned grid with a staircase
-populated region: no rotation, and it stays legible past twenty spaces where the
-classic 45° diamond sprawls. `Rotated45` is planned and currently falls back to
-`Staircase`.
+information. Two geometries draw it:
+
+- **`AdjacencyMatrixStyle::Staircase`** (the default) — an ordinary axis-aligned
+  grid whose populated region is the upper-right staircase, with the unused half
+  shaded out. Denser, and the better choice for very large programmes.
+- **`AdjacencyMatrixStyle::Rotated45`** — the classic architectural triangle:
+  horizontal labels down the left, cells as 45° diamonds where each pair of
+  rooms' diagonals cross, the whole figure pointing right. No column headers
+  exist at all — every space is named once. This is the traditional hand-drawn
+  form (the demo's *Triangle 45°* tab reproduces it at 19 spaces, attribute
+  table included).
+
+Despite appearances, `Rotated45` involves no render transform: with `s`/`t` the
+vertical/horizontal position in cell-pitch units, the diagonal coordinates
+`u = s + t` and `v = s − t` turn every diamond into an axis-aligned unit square,
+so cell `(i, j)` centres at `s = (i+j+1)/2, t = (j−i)/2` and hit testing is just
+`i = floor(s−t), j = floor(s+t)` — `t ≥ 0` already guarantees `j ≥ i`.
 
 Where several links join the same pair, the **strongest** priority is the one
 drawn: the matrix answers "how badly", and the strongest requirement is the one
@@ -15146,6 +15241,113 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
    this at load time rather than at crash time.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
+==============================================================================
+
+# UltraCanvasFileAssociations
+
+Cross-platform "Open with" service: asks the operating system which
+applications are registered for a file, and launches files with the default
+or a chosen application — always detached, so closing the caller never takes
+the launched program down. Design rationale and the phase plan live in
+[`UltraCanvasFileAssociationsProposal.md`](UltraCanvasFileAssociationsProposal.md).
+
+Header: `include/UltraCanvasFileAssociations.h` — everything lives in
+`namespace UltraCanvas::FileAssociations` plus the `FileAssociationApp`
+struct. The per-platform backends are internal
+(`UltraCanvasFileAssociationsBackend.h`, implemented under `OS/<Platform>/`).
+
+## Platform coverage
+
+| Platform | Enumeration | Default open | Launch picked app |
+|---|---|---|---|
+| Linux / BSD | ✓ freedesktop (shared-mime-info, mimeapps.list, .desktop, mimeinfo.cache; plain text parsing, no GIO/GTK dependency) | ✓ registered handler, `xdg-open` fallback | ✓ |
+| Windows | pending (P2: `SHAssocEnumHandlers`) | ✓ ShellExecuteEx "open" | ✓ |
+| macOS | pending (P3: NSWorkspace) | ✓ `/usr/bin/open` | ✓ (`open -a` for bundles) |
+| WASM | — (empty) | — (error) | — (error) |
+
+`Terminal=true` desktop entries are skipped on Linux (Explorer and Finder do
+not offer terminal programs either).
+
+## API
+
+```cpp
+struct FileAssociationApp {
+    std::string id;        // stable key: .desktop id / ProgID / bundle path
+    std::string name;      // "LibreOffice Writer"
+    std::string iconPath;  // resolved icon image file, may be empty
+    bool isDefault;        // what a default open would launch
+};
+```
+
+- `GetApplicationsForFiles(paths)` — the applications registered for **all**
+  of the given files (intersection across their types), ordered as the OS
+  prefers them for the first file, its default application first. Cache-served
+  when prewarmed; a cold call resolves synchronously, bounded by the distinct
+  file types in the selection.
+- `OpenWithDefaultApplication(paths, outError)` — Explorer / Finder
+  double-click semantics. A selection spanning several types launches each
+  type's default handler once with its files.
+- `OpenWithApplication(app, paths, outError)` — launch a specific enumerated
+  application.
+- `OpenWithApplicationPath(applicationPath, paths, outError)` — launch an
+  application the user picked in a file dialog (an executable; a `.app`
+  bundle on macOS). The picker UI lives with the caller — set it up with
+  `GetApplicationFilter()` (platform file-type filter) and
+  `GetApplicationsDirectory()` (where applications live).
+- `PrewarmAsync()` — parse the association database on the service's
+  background worker. The worker only exists once a `Prewarm*` function is
+  called: applications that never use file associations pay nothing.
+- `PrewarmExtensionsAsync(extensions)` — pre-resolve candidate lists (and
+  icons) for these lowercase extensions on the worker.
+
+All launches detach via `LaunchDetachedProcess`
+(`UltraCanvasUtils.h`: POSIX double-fork + `setsid`, Windows
+`CreateProcess` into a detached process group).
+
+## Prewarm / caching model
+
+Lookups are cached per extension and served under a mutex, so
+`GetApplicationsForFiles` from the UI thread is an O(1) map read once warm.
+`UltraCanvasFilerWidget` drives the warm-up automatically: constructing the
+first widget calls `PrewarmAsync()`, and every folder scan passes the
+folder's distinct extensions to `PrewarmExtensionsAsync()`. The Linux index
+re-checks its source files' mtimes (`mimeapps.list`, `mimeinfo.cache`,
+`globs2`, the applications directories) and rebuilds — dropping the
+extension cache — when anything changed.
+
+## Example
+
+```cpp
+#include "UltraCanvasFileAssociations.h"
+using namespace UltraCanvas;
+
+std::vector<std::string> files = {"/home/me/report.odt"};
+
+// Menu construction: enumerate, default first.
+for (const FileAssociationApp& app :
+     FileAssociations::GetApplicationsForFiles(files)) {
+    printf("%s%s  (icon: %s)\n", app.name.c_str(),
+           app.isDefault ? "  [default]" : "", app.iconPath.c_str());
+}
+
+// Double-click semantics.
+std::string error;
+if (!FileAssociations::OpenWithDefaultApplication(files, error))
+    fprintf(stderr, "%s\n", error.c_str());
+```
+
+`UltraCanvasFilerWidget` wires all of this into its context menu — see
+[`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md#context-menu) — so
+applications embedding the filer get a working "Open with >" without any
+code.
+
+## Version
+
+- 1.0.0 (2026-08-16): P1 — service + Linux/BSD backend, prewarm worker,
+  Windows/macOS default-open placeholders.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFilerWidget.md
 ==============================================================================
 
@@ -15189,6 +15391,17 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
+
+## Empty display
+
+A display with nothing to show says so instead of staying blank: an attention
+icon (a vector-drawn warning triangle, so no icon assets are required) with the
+message below it, vertically centered in the folder display. A folder without
+content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
+— the UltraFiler's History and Favorites tabs before anything was recorded or
+pinned, a search without matches — shows **"No entries"**. A widget that never
+had a folder set keeps the plain "(no folder)" text. Icon and text use
+`FilerStyle::secondaryTextColor`.
 
 ## Sorting
 
@@ -15313,7 +15526,9 @@ Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
 ──────────
-Open with      >  applications registered via AddOpenWithApp()
+Open with      >  the applications the OS registers for the selected files
+                  (default app first), then entries added via
+                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
@@ -15331,6 +15546,28 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Open with** lists the OS-registered applications through
+  [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
+  icon, the default application first. The lookups are prewarmed on that
+  service's background worker (the first widget triggers the
+  association-database parse, every folder scan pre-resolves the folder's
+  extensions), so opening the menu reads a cache instead of parsing anything.
+  The OS section appears when the whole selection is real files on disk —
+  folders and entries inside archives (virtual paths no external application
+  could read) fall back to the manual entries only. `AddOpenWithApp()`
+  entries keep working unchanged below the OS section, and
+  `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
+  "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
+  preset to the platform's application filter and directory; the pick is
+  launched detached with the selected files. On platforms whose enumeration
+  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
+  section is empty but default-open and the picker already work.
+- `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
+  file with the OS default application **when no `onFileActivated` callback
+  is installed** — activation semantics for simple embedders; hosts with
+  their own activation handling (like UltraFiler's preview) keep full
+  control and call `FileAssociations::OpenWithDefaultApplication` themselves
+  where they want it.
 - **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
   TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
   showing the archive's file-type icon, an editable file name with the chosen
@@ -26963,7 +27200,10 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 
 - **Page rendering** at any DPI/zoom with antialiasing, drop shadow, and a
   white underlay; rendered pages and thumbnails are cached per DPI.
-- **Thumbnail strip** with click-to-jump and independent scrolling (toggleable).
+- **Thumbnail strip** with click-to-jump and independent scrolling
+  (toggleable). It only appears for documents with more than one page, its
+  width is capped at 1/4 of the view so the page area always stays at least
+  3× the strip, and it auto-scrolls to keep the current page's thumb visible.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
@@ -26971,6 +27211,11 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+  Scrolling is hard-limited: it stops once the page edge sits `pageMargin`
+  inside the viewport. From that resting point a further wheel step continues
+  into the next (or previous) page — on the last (or first) page it simply
+  stops — so a document reads straight through with the wheel. Pages open at
+  their top, not vertically centered.
 - **Image extraction**: right-click an image on the page to save it via a
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
@@ -27138,6 +27383,7 @@ view->ExportTextToFile("/tmp/page.txt", /*selectionOnly=*/true);
 ### Layout & style
 
 ```cpp
+// Even when enabled, the strip only shows for documents with > 1 page.
 void SetShowThumbnailStrip(bool show);
 bool GetShowThumbnailStrip() const;
 
@@ -27154,12 +27400,15 @@ const PDFViewStyle& GetStyle() const;
 default); `Overlay` draws a large translucent page number centred over the page.
 The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
 (a fraction of the thumbnail height, default `0.30`) and
-`thumbOverlayNumberColor`.
+`thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
+UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
 metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
 `pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
+`thumbStripWidth` is a request: the effective strip width is capped at 1/4 of
+the view width so the page area keeps at least a 3:1 ratio over the strip.
 
 ### Editing passthroughs
 
@@ -27197,7 +27446,7 @@ immediately.
 
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it) |
+| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
 | Ctrl + wheel | Zoom in / out |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
@@ -27407,7 +27656,9 @@ The same edits are reachable from the widget via `ReplaceTextAt`,
 - **Pixel format.** `RenderPage`/`RenderThumbnail` return premultiplied RGBA
   (Cairo-compatible) or 8-bit gray, per `PDFColorMode`.
 - **Caching.** The view caches rendered pages keyed by DPI and thumbnails by
-  page; zoom and resize invalidate the page cache automatically.
+  page; zoom and resize invalidate the page cache automatically (thumbnails
+  survive those), while loading another document or editing pages
+  (delete/move/insert/merge/replace/redact) drops both caches.
 - **Threading.** Treat a single `IPDFDocument` as not thread-safe; render/edit
   from the UI thread (or serialize access).
 - **Drawing custom overlays.** If you subclass or draw on top of the view,
@@ -47488,6 +47739,29 @@ the surface.
   libcurl FTP backend (a closed port must report a connection error, not
   `UnsupportedScheme`). Set `ULTRANET_PROBE_FTP_URL` for real verification.
 
+All of these peers bind `127.0.0.1` explicitly — never the any-address — so
+running the tool neither opens a port to the network nor triggers the Windows
+firewall prompt.
+
+---
+
+## Antivirus false positives on Windows
+
+`UltraNetApiStatus.exe` is a developer/CI tool, and what it does — start
+loopback TCP/UDP listeners, spawn many short-lived connections, load plug-in
+DLLs at runtime, rewrite proxy environment variables — is exactly the
+behaviour pattern generic AV heuristics score against. AVG/Avast's behaviour
+shield ("Verhaltensschutz") has quarantined it as **IDP.Generic**, a generic
+behavioural verdict, not a recognised malware signature.
+
+For that reason the test binaries (`UltraNetTests`, `UltraNetApiStatus`, and
+the other `*Test`/`*Tests` executables) are **excluded from the end-user
+Windows package** by `package-win.sh` — they are built for developers and CI,
+not for distribution. If you hit the detection on your own build machine,
+restore the file from quarantine and add your build directory to the AV
+exclusion list; a `--no-sign` or self-signed build has no signer reputation,
+so heuristic engines treat it as unknown software.
+
 ---
 
 ## Adding a probe
@@ -48014,6 +48288,209 @@ FILE: Docs/Modules/UltraNet/intro.md
 # UltraNet
 
 The unified, secure networking layer for every platform. One API covers HTTP, HTTPS, WebSocket, FTP, FTPS, SFTP, raw TCP and UDP, TLS, and DNS, complete with reusable sessions, proxy support, certificate validation, and async requests for responsive UIs. Additional protocols such as SMTP, IMAP, MQTT, and SSH load as plug-ins without touching the core. Built on libcurl and OpenSSL for proven performance and security.
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/README.md
+==============================================================================
+
+# UltraWin
+
+**Windows-application compatibility module for ULTRA OS.**
+Sibling of `UltraCanvas` (UI), `UltraNet` (networking) and `UltraAI` (AI).
+
+UltraWin runs Windows applications on Linux / ULTRA OS **as single native
+windows — never a Windows desktop — with the user's own folders visible to
+the app**. It wraps open source engines behind an UltraCanvas-owned API so
+backings can be swapped without touching callers.
+
+> Status: Stage 1 (Wine tier) implemented — environments, drive mappings,
+> launch/supervision. The Stage 2 VM tier (QEMU/KVM + FreeRDP RemoteApp) and
+> Stage 3 polish (compatibility routing, gaming profile, ARM64 via Hangover)
+> are specified in
+> [`Docs/Research/UltraWinDesignProposal.md`](../../Research/UltraWinDesignProposal.md).
+
+Linux / ULTRA OS only: the library is skipped on Windows/macOS builds
+(`ULTRACANVAS_ENABLE_ULTRAWIN`, on by default, guarded by platform).
+
+---
+
+## Why it exists
+
+Running Windows software is exactly the kind of concern an OS owns once:
+engine discovery, per-app isolation, drive mapping, process supervision,
+and (later) VM provisioning and seamless RemoteApp windows. Without a shared
+module every app would shell out to `wine` ad hoc — and inevitably leak
+prefixes, expose the whole host filesystem through Wine's default `Z:` drive,
+or hang on Wine's interactive first-run dialogs.
+
+Two tiers, one API (see the research doc for the full comparison):
+
+| Tier | Engine | Windows license | Coverage |
+|---|---|---|---|
+| 1 — **Wine** (this stage) | Wine ≥ 10, spawned as child processes | not needed | most apps, instant launch |
+| 2 — **VM** (Stage 2) | QEMU/KVM guest + FreeRDP RemoteApp | user-supplied | ~100 % (kernel drivers, anti-cheat) |
+
+Nothing is linked: Wine runs as ordinary child processes, keeping LGPL
+outside the framework binaries and letting UltraWin degrade gracefully when
+Wine is not installed (`UltraWin_GetCapabilities`).
+
+## Headers
+
+| Header | Contents |
+|---|---|
+| `UltraWin/UltraWin.h` | umbrella |
+| `UltraWin/UltraWinCore.h` | `UltraWinResult`, `UltraWinHandle`, capabilities, config, init/shutdown |
+| `UltraWin/UltraWinEnvironment.h` | environments (Wine prefixes) + drive mappings |
+| `UltraWin/UltraWinApp.h` | launching and supervising applications |
+
+Conventions match UltraNet: blocking operations return `UltraWinResult`
+(`operator bool()` for the success path); app instances are opaque
+`UltraWinHandle`s; all names PascalCase with the `UltraWin_` prefix.
+
+## Quick start
+
+```cpp
+#include "UltraWin/UltraWin.h"
+
+UltraWin_Initialize();                      // default config is fine
+
+auto caps = UltraWin_GetCapabilities();
+if (!caps.wineTierAvailable) {
+    // tell the user to install Wine; nothing else to do
+    return;
+}
+
+// Launch — the "Photofiltre" environment (an isolated Wine prefix) is
+// created automatically on first use, with U: -> $HOME mapped and the
+// host root NOT exposed.
+UltraWinRunOptions opt;
+opt.environment = "Photofiltre";
+UltraWinHandle app = UltraWinInvalidHandle;
+auto r = UltraWin_RunApp("/home/user/Apps/PhotoFiltre.exe", opt, &app);
+if (!r) { /* r.code / r.message */ }
+
+// ... the app runs as a native window; supervise as needed:
+UltraWin_GetAppState(app);                  // Running / Exited / ...
+UltraWin_CloseApp(app);                     // graceful (SIGTERM)
+int exitCode = -1;
+UltraWin_WaitApp(app, 5000, &exitCode);
+UltraWin_ReleaseApp(app);
+```
+
+## Environments (Wine prefixes)
+
+- One isolated prefix per application by default (Bottles model), under
+  `$XDG_DATA_HOME/ultrawin/environments/<name>` (override:
+  `UltraWinConfig::environmentsRoot`).
+- Created with `wineboot --init`; Wine's interactive mono/gecko download
+  prompts are suppressed (`UltraWinConfig::suppressWinePrompts`).
+- Names are directory names: `[A-Za-z0-9._-]+`, max 64 chars, no leading dot.
+- `UltraWin_DeleteEnvironment` refuses while apps from it are running
+  (`EnvironmentBusy`).
+
+## Drive mappings — the same folders as the native OS
+
+- The user's home directory is mapped under one unified drive letter
+  (default `U:`, `UltraWinConfig::homeDriveLetter`) in **every** environment
+  — the same letter the Stage 2 VM tier will use, so apps see identical
+  paths whichever tier runs them.
+- Wine's default `Z:` → `/` (the entire host filesystem) is **removed** by
+  default; opt back in with `UltraWinConfig::exposeRootDrive`.
+- Additional folders: `UltraWin_MapFolder(env, 'D', "/data")` /
+  `UltraWin_UnmapFolder` / `UltraWin_ListMappings`. Mappings persist in the
+  environment's manifest (`ultrawin-mappings.conf`) and are re-asserted
+  before every launch, because Wine prefix updates recreate the default
+  dosdevices entries.
+- `C:` (the prefix's virtual Windows drive) and the home letter are
+  reserved.
+
+## Running applications
+
+- `UltraWin_RunApp(exePath, options, &handle)` forks and execs
+  `wine <exe> [args...]` in its own process group, with `WINEPREFIX` set and
+  optional extra environment variables (e.g. a DXVK switch) applied.
+- Windows appear as native windows — Wine's default mode; UltraWin never
+  enables Wine's "virtual desktop".
+- Supervision is polling-based (non-blocking `waitpid`): UltraWin installs
+  **no SIGCHLD handler**, so the host application's signal setup is
+  untouched.
+- `UltraWin_CloseApp` signals the app's process group with SIGTERM
+  (graceful), `UltraWin_KillApp` with SIGKILL; `UltraWin_WaitApp` blocks
+  with a timeout; ended instances stay queryable until
+  `UltraWin_ReleaseApp`.
+- `UltraWinRunOptions::forceTier` accepts `Auto` (== Wine in Stage 1) and
+  `Wine`; `Vm` returns `NotSupported` until Stage 2.
+
+## Components — VC++ runtimes, fonts, .NET, DXVK
+
+Many Windows applications fail on a bare prefix because they expect runtime
+dependencies to be present. `UltraWin_InstallComponent(env, name)` installs
+them per environment; names are **winetricks verbs** (`vcrun2019`,
+`corefonts`, `dotnet48`, `dxvk`, …), and the installer is a spawned
+**winetricks** — probed at runtime exactly like Wine
+(`UltraWinCapabilities::winetricksAvailable`, `UltraWinConfig::winetricksPath`
+override), never linked.
+
+```cpp
+UltraWin_InstallComponent("Photofiltre", "vcrun2019");   // blocking; run off
+UltraWin_InstallComponent("Photofiltre", "corefonts");   // the UI thread
+for (auto& c : UltraWin_ListComponents("Photofiltre")) { /* installed */ }
+```
+
+- The environment is created on first use (like `UltraWin_RunApp`);
+  re-installing an installed component succeeds without re-downloading.
+- Installs are **blocking and can be slow** (upstream downloads;
+  `UltraWinConfig::componentInstallTimeoutSeconds`, default 30 min).
+- Failures return `ComponentInstallFailed` with a pointer to the full
+  winetricks output, captured in `<prefix>/ultrawin-install.log`.
+- UltraWin passes the *resolved ELF wine loader* to winetricks (`WINE=`):
+  distro `wine` commands are often script wrappers (Ubuntu alternatives),
+  which winetricks' arch detection rejects.
+
+## Capability probing
+
+`UltraWin_GetCapabilities()` is cheap and safe to call at UI-build time:
+
+| Field | Meaning |
+|---|---|
+| `wineAvailable` / `winePath` / `wineVersion` | usable binary (config override or PATH: `wine`, `wine64`) |
+| `winetricksAvailable` / `winetricksPath` | component installer present (config override or PATH) |
+| `ntsyncAvailable` | `/dev/ntsync` present (Linux ≥ 6.14 — Wine 11 fast sync) |
+| `kvmAvailable` | `/dev/kvm` accessible (Stage 2 readiness) |
+| `hostArchitecture` | `x86_64`, `aarch64`, … (on aarch64, PATH finding a Hangover wine build is the supported setup) |
+| `wineTierAvailable` / `vmTierAvailable` | tier gates (`vmTierAvailable` is always false in Stage 1) |
+
+## Building and testing
+
+Built by default on Linux (`ULTRACANVAS_ENABLE_ULTRAWIN=ON`) as the static
+`UltraWin` library; linked into `libultracanvas` the same way as UltraNet
+(whole-archive in shared builds, `ULTRACANVAS_HAS_ULTRAWIN=1`).
+
+```bash
+cmake -B build -DULTRACANVAS_BUILD_ULTRAWIN_TESTS=ON
+cmake --build build --target UltraWinTests
+./build/Tests/UltraWin/UltraWinTests
+```
+
+The suite needs **no Wine install**: pure helpers are tested directly, the
+launch/supervision path runs against a stub wine script (via the
+`UltraWinConfig::winePath` override), and the one test that exercises a real
+`wineboot` skips itself when no binary is found.
+
+## UltraFiler integration
+
+Double-clicking a `.exe` in UltraFiler launches it through
+`UltraWin_RunApp` in a per-app environment named after the executable
+(created automatically on first launch, off the UI thread). When Wine is
+missing, the status bar says how to install it. Available only in Linux
+builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
+`.exe` behaves as before.
+
+## Not yet implemented (later stages)
+
+- `UltraWin_QueryCompatibility` + automatic tier routing.
+- The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
+  shared folders, `UltraCanvasRemoteAppView` RAIL element.
 
 ==============================================================================
 FILE: Docs/Modules/Vectorizer/README.md

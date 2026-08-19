@@ -119,6 +119,8 @@ their *License* is likewise marked **—** (OS component).
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
+| Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
 | X11 (libX11) | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libX11](https://gitlab.freedesktop.org/xorg/lib/libX11) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Xcursor | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libXcursor](https://gitlab.freedesktop.org/xorg/lib/libXcursor) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -237,6 +239,20 @@ their *License* is likewise marked **—** (OS component).
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraWin module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
+| Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+
+> UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
+> a `wine` binary at runtime and degrades gracefully
+> (`UltraWin_GetCapabilities`) when none is installed, so Wine is not a build
+> dependency and appears in no package manifest as required. The Stage 2 VM
+> tier will add QEMU/KVM (runtime, child process) and FreeRDP (linked,
+> Apache 2) — tracked when that stage lands.
 
 ### VideoFX module
 

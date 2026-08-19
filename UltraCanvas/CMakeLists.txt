@@ -64,6 +64,10 @@ endif()
 # Stage 1 ships HTTP/HTTPS + URL utilities on libcurl. Built as a separate
 # library target so apps that don't need networking pay no cost.
 option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
+
+# UltraWin — Windows-application compatibility module (Wine tier). Linux /
+# ULTRA OS only; silently skipped on other platforms.
+option(ULTRACANVAS_ENABLE_ULTRAWIN "Build the UltraWin Windows-app compatibility library" ON)
 option(ULTRACANVAS_PLUGIN_SMTP   "Build the UltraNet SMTP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_IMAP   "Build the UltraNet IMAP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_POP3   "Build the UltraNet POP3 plug-in"   ON)
@@ -331,6 +335,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
@@ -1670,6 +1675,54 @@ if(ULTRACANVAS_ENABLE_NET)
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
+endif()
+
+# ===== BUILD ULTRAWIN LIBRARY (Stage 1: Wine tier) =====
+# UltraWin — Windows-application compatibility module. Stage 1 wraps Wine
+# (spawned as child processes — nothing is linked): environments (prefixes),
+# drive mappings, launch/supervision. Linux / ULTRA OS only; the VM tier
+# (QEMU/KVM + FreeRDP RemoteApp) is Stage 2. See
+# Docs/Modules/UltraWin/README.md.
+if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    find_package(Threads REQUIRED)
+    set(ULTRAWIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinComponents.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
+    )
+    add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
+    set_target_properties(UltraWin PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultrawin")
+    target_compile_features(UltraWin PUBLIC cxx_std_20)
+    target_include_directories(UltraWin
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraWin PUBLIC Threads::Threads)
+
+    # Same single-host export strategy as UltraNet: a shared libultracanvas
+    # re-exports the whole UltraWin API so apps import one copy of the module
+    # (and its process registry) at runtime.
+    if(ULTRACANVAS_BUILD_SHARED)
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraWin>")
+        else()
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:UltraWin> -Wl,--no-whole-archive
+                UltraWin)
+        endif()
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraWin)
+    endif()
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_ULTRAWIN=1)
+    message(STATUS "  [✓] UltraWin - ENABLED (Wine tier; wine binary probed at runtime)")
+elseif(ULTRACANVAS_ENABLE_ULTRAWIN)
+    message(STATUS "  [−] UltraWin - SKIPPED (Linux/ULTRA OS only)")
+else()
+    message(STATUS "  [−] UltraWin - DISABLED")
 endif()
 
 # ===== BUILD ULTRADATABASE LIBRARY (Stage 1: SQLite core on libsqlite3) =====

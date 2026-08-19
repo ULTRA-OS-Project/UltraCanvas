@@ -8,6 +8,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
 #include <string>
@@ -28,7 +29,9 @@ namespace UltraCanvas {
             , readOnly(false)
             , passwordMode(false)
             , maxLength(-1)
-            , lastValidationResult(ValidationResult::Valid())
+            // NoValidation until rules exist and run - a fresh input must not
+            // start out showing the "valid" checkmark.
+            , lastValidationResult(ValidationResult())
             , showValidationState(true)
             , validateOnChange(true)
             , validateOnBlur(true)
@@ -128,6 +131,15 @@ namespace UltraCanvas {
     }
 
     ValidationResult UltraCanvasTextInput::Validate() {
+        // No rules configured: there is nothing to judge, so the state stays
+        // NoValidation and no feedback (green border / checkmark) is drawn.
+        // Reporting Valid here put an "OK" checkmark on every plain input.
+        if (validationRules.empty()) {
+            lastValidationResult = ValidationResult();
+            if (onValidationChanged) onValidationChanged(lastValidationResult);
+            return lastValidationResult;
+        }
+
         ValidationResult result = ValidationResult::Valid();
 
         // Check all rules in priority order
@@ -401,9 +413,10 @@ namespace UltraCanvas {
         Rect2Di bounds = GetLocalBounds();
 
         int rightOffset = style.paddingRight;
+        // Space for the validation icon only while validation feedback is
+        // actually shown (the old condition was also true for NoValidation).
         if (showValidationState &&
-            (lastValidationResult.state == ValidationState::Valid ||
-             lastValidationResult.state != ValidationState::Invalid)) {
+            lastValidationResult.state != ValidationState::NoValidation) {
             rightOffset += 20;
         }
 
@@ -418,7 +431,10 @@ namespace UltraCanvas {
         Rect2Di bounds = GetLocalBounds();
         int rightReduction = style.paddingRight;
 
-        if (showValidationState && (lastValidationResult.state == ValidationState::Valid || lastValidationResult.state != ValidationState::Invalid)) {
+        // Space for the validation icon only while validation feedback is
+        // actually shown (the old condition was also true for NoValidation).
+        if (showValidationState &&
+            lastValidationResult.state != ValidationState::NoValidation) {
             rightReduction += 20;
         }
 
@@ -779,10 +795,11 @@ namespace UltraCanvas {
 
             return lineStartPos + std::min(left, lineText.length());
         } else {
-            // Single line logic
-            if (point.y < textArea.y || point.y > textArea.y + textArea.height) {
-                return text.empty() ? 0 : text.length();
-            }
+            // Single line logic: there is only one line, so the caret position
+            // depends solely on X. Ignore Y entirely — a drag above or below the
+            // field must keep resolving by horizontal position (so backward
+            // selections don't jump to end-of-line when the pointer leaves
+            // vertically during a captured drag).
 
             // CRITICAL: account for scroll offset
             float relativeX = point.x - textArea.x + scrollOffset;
@@ -839,14 +856,22 @@ namespace UltraCanvas {
         Point2Di clickPoint(event.pointer.x, event.pointer.y);
         size_t clickPosition = GetTextPositionFromPoint(clickPoint);
 
-        if (event.shift && hasSelection) {
-            // Extend selection
-            SetSelection(selectionStart, clickPosition);
+        if (event.shift) {
+            // Extend selection: anchor at the existing selection start (or caret).
+            dragAnchorPosition = hasSelection ? selectionStart : caretPosition;
+            SetSelection(dragAnchorPosition, clickPosition);
         } else {
-            // Start new selection
+            // Start a new selection anchored at the click.
             SetCaretPosition(clickPosition);
-            isDragging = true;
-            dragStartPosition = clickPoint;
+            dragAnchorPosition = clickPosition;
+        }
+        isDragging = true;
+        dragStartPosition = clickPoint;
+        // Capture the mouse so drag-selection continues even when the pointer
+        // leaves our bounds (MouseMove/MouseUp are routed to the captured element,
+        // auto-released by the framework on the matching button-up).
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            app->CaptureMouse(this);
         }
         return true;
     }
@@ -870,9 +895,10 @@ namespace UltraCanvas {
 
         Point2Di currentPoint(event.pointer.x, event.pointer.y);
         size_t currentPosition = GetTextPositionFromPoint(currentPoint);
-        size_t startPosition = GetTextPositionFromPoint(dragStartPosition);
 
-        SetSelection(startPosition, currentPosition);
+        // Anchor stays fixed as a character index, so the selection is correct even
+        // while the view scrolls horizontally during the drag.
+        SetSelection(dragAnchorPosition, currentPosition);
         return true;
     }
 
