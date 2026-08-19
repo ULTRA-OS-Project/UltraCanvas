@@ -26,6 +26,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerPropertiesDialogs.h"
@@ -1328,12 +1329,25 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
+        // Windows executables go to the UltraWin emulation layer, not to the
+        // host's file associations.
         if (entry.extension == "exe") {
             LaunchWindowsExecutable(entry);
             return;
         }
 #endif
-        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return;
+        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
+            // Not previewable: launch it with the OS default application
+            // (Explorer semantics). Only real files — an entry inside an
+            // archive is a virtual path no external application can read.
+            std::error_code ec;
+            if (!fs::is_regular_file(entry.path, ec) || ec) return;
+            std::string error;
+            if (!FileAssociations::OpenWithDefaultApplication({entry.path}, error)) {
+                if (statusLabel) statusLabel->SetText("Error: " + error);
+            }
+            return;
+        }
         // Double-click / Enter opens the file in the preview, un-hiding it
         // when needed.
         if (!previewEnabled) SetPreviewEnabled(true);

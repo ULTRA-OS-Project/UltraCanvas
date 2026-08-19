@@ -35,6 +35,24 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
+  cross-platform "Open with" service: which applications the OS registers
+  for a file, and detached launching. Core worker/cache in
+  `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
+  internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
+  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  Public surface (`namespace FileAssociations` + `FileAssociationApp`):
+  - `GetApplicationsForFiles` — candidates for a selection (intersection),
+    default application first, cache-served once prewarmed.
+  - `OpenWithDefaultApplication` / `OpenWithApplication` /
+    `OpenWithApplicationPath` — detached launches (default handler /
+    enumerated app / user-picked executable).
+  - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
+    for an "Other application…" picker (the picker UI lives with the caller).
+  - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
+    the worker only exists once a caller asks for it.
+  See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,

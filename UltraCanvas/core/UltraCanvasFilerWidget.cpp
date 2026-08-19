@@ -54,6 +54,8 @@
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
@@ -1692,6 +1694,11 @@ namespace UltraCanvas {
             {"Audio",       "wav", ""},
             {"Video",       "mp4", ""},
         };
+
+        // Parse the OS association database on its background worker while
+        // the first folder is still scanning, so the context menu's
+        // "Open with >" is a cache read by the time it can be opened.
+        FileAssociations::PrewarmAsync();
     }
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
@@ -2088,6 +2095,18 @@ namespace UltraCanvas {
         // The folder is on screen — line up its subfolders for the prefetch
         // worker so entering one of them can skip the cold scan.
         if (!fileListMode && isRealDir) QueueFolderPrefetch();
+
+        // And its distinct file extensions for the "Open with >" prewarm, so
+        // a right-click finds the OS application lists already resolved.
+        if (systemOpenWith) {
+            std::unordered_set<std::string> distinct;
+            for (const FilerEntry& e : entries)
+                if (!e.isDirectory && !e.extension.empty())
+                    distinct.insert(e.extension);
+            if (!distinct.empty())
+                FileAssociations::PrewarmExtensionsAsync(
+                        {distinct.begin(), distinct.end()});
+        }
 
         // The listing itself changed (entries added / removed / renamed) —
         // hosts use this to refresh what they show about the folder.
@@ -4085,6 +4104,42 @@ namespace UltraCanvas {
         for (size_t i = 0; i < entries.size(); ++i) {
             if (entries[i].path == dest) { StartRename(i); break; }
         }
+    }
+
+    void UltraCanvasFilerWidget::OpenSelectionWithChooser() {
+        std::vector<std::string> paths;
+        for (const FilerEntry& e : GetSelectedEntries())
+            if (!e.isDirectory) paths.push_back(e.path);
+        if (paths.empty()) return;
+
+        const FileAssociations::ApplicationFilter filter =
+                FileAssociations::GetApplicationFilter();
+        FileDialogOptions opts;
+        opts.SetTitle("Select the application to open with")
+            .SetInitialDirectory(FileAssociations::GetApplicationsDirectory())
+            // Picking a program is not a document the shell should remember.
+            .SetRegisterAsRecent(false)
+            .SetParentWindow(GetWindow())
+            .AddFilter(filter.description, filter.extensions);
+        // On platforms whose executables carry no extension the application
+        // filter already shows everything - a second all-files entry would
+        // just be the same list under another name.
+        const bool showsEverything =
+                filter.extensions.size() == 1 && filter.extensions.front() == "*";
+        if (!showsEverything) opts.AddFilter("All files", "*");
+
+        // The dialog outlives this call; the widget may not (a tab closed
+        // while it is open), so the result is delivered through a weak ref.
+        std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+        UltraCanvasFileLoader::OpenFileDialog(opts,
+                [weakSelf, paths](DialogResult result, const std::string& appPath) {
+            if (result != DialogResult::OK || appPath.empty()) return;
+            auto self = std::dynamic_pointer_cast<UltraCanvasFilerWidget>(weakSelf.lock());
+            std::string error;
+            if (!FileAssociations::OpenWithApplicationPath(appPath, paths, error)) {
+                if (self) self->ReportError(error);
+            }
+        });
     }
 
     void UltraCanvasFilerWidget::AddOpenWithApp(const FilerOpenWithApp& app) {
@@ -7156,7 +7211,19 @@ namespace UltraCanvas {
             SetPath(e.path);
             return;
         }
-        if (onFileActivated) onFileActivated(e);
+        if (onFileActivated) {
+            onFileActivated(e);
+            return;
+        }
+        if (activateOpensDefault) {
+            // No host callback: Explorer semantics for simple embedders —
+            // but only for a real file (archive interiors are virtual paths).
+            std::error_code ec;
+            if (!fs::is_regular_file(e.path, ec) || ec) return;
+            std::string error;
+            if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
+                ReportError(error);
+        }
     }
 
     void UltraCanvasFilerWidget::OpenContextMenu(const Point2Di& localPoint) {
@@ -7311,14 +7378,52 @@ namespace UltraCanvas {
         }
         menu.AddItem(MenuItemData::Separator());
 
-        // Open with >
+        // Open with > : the applications the OS registers for the selection
+        // (default application first — see UltraCanvasFileAssociations),
+        // then the host's AddOpenWithApp entries, then the file-dialog
+        // picker. The OS section needs launchable paths: files only (no
+        // folders), really on disk (an entry inside an archive is a virtual
+        // path no external application can read).
         {
-            std::vector<MenuItemData> openItems;
-            if (openWithApps.empty()) {
-                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
-                none.enabled = false;
-                openItems.push_back(none);
+            bool launchable = systemOpenWith && hasSel;
+            std::vector<std::string> targetPaths;
+            for (const FilerEntry& t : targets) {
+                if (t.isDirectory) { launchable = false; break; }
+                targetPaths.push_back(t.path);
             }
+            if (launchable) {
+                std::error_code ec;
+                for (const std::string& p : targetPaths) {
+                    if (fs::is_regular_file(p, ec) && !ec) continue;
+                    launchable = false;
+                    break;
+                }
+            }
+
+            std::vector<MenuItemData> openItems;
+            if (launchable) {
+                // Served from the prewarm cache (the folder scan queued this
+                // folder's extensions) — no database parse on the UI thread.
+                for (const FileAssociationApp& app :
+                     FileAssociations::GetApplicationsForFiles(targetPaths)) {
+                    auto cb = [this, app]() {
+                        std::vector<std::string> paths;
+                        for (const FilerEntry& e : GetSelectedEntries())
+                            if (!e.isDirectory) paths.push_back(e.path);
+                        if (paths.empty()) return;
+                        std::string error;
+                        if (!FileAssociations::OpenWithApplication(app, paths, error))
+                            ReportError(error);
+                    };
+                    if (!app.iconPath.empty()) {
+                        openItems.push_back(MenuItemData::Action(app.name, app.iconPath, cb));
+                    } else {
+                        openItems.push_back(MenuItemData::Action(app.name, cb));
+                    }
+                }
+            }
+            if (!openWithApps.empty() && !openItems.empty())
+                openItems.push_back(MenuItemData::Separator());
             for (const FilerOpenWithApp& app : openWithApps) {
                 auto onOpen = app.onOpen;
                 auto cb = [this, onOpen]() {
@@ -7329,6 +7434,18 @@ namespace UltraCanvas {
                 } else {
                     openItems.push_back(MenuItemData::Action(app.label, cb));
                 }
+            }
+            if (launchable) {
+                if (!openItems.empty())
+                    openItems.push_back(MenuItemData::Separator());
+                openItems.push_back(MenuItemData::Action(
+                        "Other application…",
+                        [this]() { OpenSelectionWithChooser(); }));
+            }
+            if (openItems.empty()) {
+                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
+                none.enabled = false;
+                openItems.push_back(none);
             }
             menu.AddItem(MenuItemData::Submenu("Open with", openItems));
         }

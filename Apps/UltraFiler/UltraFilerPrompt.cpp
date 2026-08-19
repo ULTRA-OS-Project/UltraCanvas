@@ -10,6 +10,8 @@
 
 #include "UltraFilerPrompt.h"
 
+#include "UltraCanvasUtils.h"   // Utf8ToWide, LaunchDetachedProcess
+
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -17,15 +19,9 @@
 #include <vector>
 
 #if defined(_WIN32) || defined(_WIN64)
-#include "UltraCanvasUtils.h"   // Utf8ToWide
-
 #include <windows.h>
 #include <shellapi.h>
 #else
-#include <cerrno>
-#include <cstring>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -60,45 +56,6 @@ namespace {
             start = colon + 1;
         }
         return false;
-    }
-
-    // Starts `argv` in `workingDirectory`, fully detached: the intermediate
-    // child is reaped right away and the grandchild that execs gets its own
-    // session, so UltraFiler leaves no zombie behind and the terminal
-    // survives the file manager.
-    bool LaunchDetached(const std::vector<std::string>& argv,
-                        const std::string& workingDirectory,
-                        std::string& outError) {
-        if (argv.empty()) return false;
-
-        const pid_t pid = ::fork();
-        if (pid < 0) {
-            outError = std::string("Could not start the command line program: ") +
-                       std::strerror(errno);
-            return false;
-        }
-        if (pid == 0) {
-            if (::fork() == 0) {
-                ::setsid();
-                if (!workingDirectory.empty()) {
-                    if (::chdir(workingDirectory.c_str()) != 0) {
-                        // Fall back to the inherited directory - a terminal in
-                        // the wrong folder still beats no terminal at all.
-                    }
-                }
-                std::vector<char*> args;
-                args.reserve(argv.size() + 1);
-                for (const std::string& a : argv)
-                    args.push_back(const_cast<char*>(a.c_str()));
-                args.push_back(nullptr);
-                ::execvp(args[0], args.data());
-                ::_exit(127);
-            }
-            ::_exit(0);
-        }
-        int status = 0;
-        ::waitpid(pid, &status, 0);
-        return true;
     }
 
 #endif  // !_WIN32
@@ -196,7 +153,7 @@ bool Launch(const std::string& application, const std::string& workingDirectory,
         }
         argv = {"open", "-a", app};
         if (!dir.empty()) argv.push_back(dir);
-        return LaunchDetached(argv, dir, outError);
+        return LaunchDetachedProcess(argv, dir, outError);
     }
 #endif
     if (!IsExecutable(app)) {
@@ -205,7 +162,7 @@ bool Launch(const std::string& application, const std::string& workingDirectory,
         return false;
     }
     argv = {app};
-    return LaunchDetached(argv, dir, outError);
+    return LaunchDetachedProcess(argv, dir, outError);
 #endif
 }
 
