@@ -1251,6 +1251,10 @@ namespace UltraCanvas {
         void DrawTreeMapCell(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         void DrawPlaceholderView(IRenderContext* ctx, const Rect2Di& bounds,
                                  const std::string& message);
+        // "Nothing to show" notice for an empty folder / file list: an
+        // attention icon above the message, vertically centered in the view.
+        void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
+                            const std::string& message);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);

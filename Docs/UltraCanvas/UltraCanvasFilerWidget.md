@@ -39,6 +39,17 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
 
+## Empty display
+
+A display with nothing to show says so instead of staying blank: an attention
+icon (a vector-drawn warning triangle, so no icon assets are required) with the
+message below it, vertically centered in the folder display. A folder without
+content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
+— the UltraFiler's History and Favorites tabs before anything was recorded or
+pinned, a search without matches — shows **"No entries"**. A widget that never
+had a folder set keeps the plain "(no folder)" text. Icon and text use
+`FilerStyle::secondaryTextColor`.
+
 ## Sorting
 
 ```cpp

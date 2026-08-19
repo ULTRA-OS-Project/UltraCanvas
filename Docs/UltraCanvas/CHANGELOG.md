@@ -1,39 +1,13 @@
-#### 2026-08-16 *0.3.38*
-- **UltraCanvasFileAssociations**: new cross-platform "Open with" service
-  (`UltraCanvasFileAssociations.h`) — enumerates the applications the OS
-  registers for a file (name, icon, default first) and launches files with
-  the default, an enumerated or a user-picked application, always detached.
-  Full freedesktop backend on Linux/BSD (shared-mime-info `globs2` +
-  subclasses, the `mimeapps.list` chain with desktop-prefixed variants and
-  Removed Associations, `mimeinfo.cache`, `.desktop` parsing with Exec
-  field-code expansion, hicolor/pixmaps icon lookup — plain text parsing, no
-  GIO dependency; `Terminal=true` entries are skipped, `xdg-open` is the
-  default-open fallback). Lookups are cached per extension and prewarmed on
-  a lazily spawned background worker (`PrewarmAsync` /
-  `PrewarmExtensionsAsync`); the Linux index watches its source files'
-  mtimes and rebuilds when associations change. Windows/macOS ship
-  default-open and picker launching now, enumeration follows (proposal
-  P2/P3). New shared `LaunchDetachedProcess` in `UltraCanvasUtils` (POSIX
-  double-fork + setsid, Windows detached process group); UltraFiler's
-  prompt launcher now uses it.
-- **UltraCanvasFilerWidget** *1.14.0*: the context menu's "Open with >" now
-  lists the OS-registered applications for the selection (default first,
-  with icons, intersection for multi-selections of different types), then
-  the host's `AddOpenWithApp()` entries, then "Other application…" — a file
-  dialog preset to the platform's application filter whose pick opens the
-  selection. The OS section requires the selection to be real files on disk
-  (folders and archive-interior entries fall back to manual entries);
-  `SetSystemOpenWithEnabled(false)` restores the manual-only menu. The
-  widget drives the prewarm automatically: the first widget parses the
-  association database in the background, every folder scan pre-resolves
-  the folder's distinct extensions, so the menu opens without lookup I/O.
-  New `SetActivateOpensWithDefaultApp(true)`: double-click / Enter launches
-  the file with the OS default application when no `onFileActivated`
-  callback is installed.
-- **UltraFiler**: double-click / Enter on a file that the preview cannot
-  show now launches it with the OS default application (Explorer
-  semantics); previewable media keeps opening in the preview pane. Launch
-  errors land in the status bar.
+#### 2026-08-17 *0.3.51*
+- **FilerWidget / UltraFiler: empty displays say so.** A folder with no
+  content used to show only a small "(empty folder)" line; it now draws a
+  vertically centered notice — an attention icon (a vector-drawn warning
+  triangle, no icon assets involved) with **"Folder is empty!"** beneath it.
+  An empty file-list display shows **"No entries"** the same way, which is
+  what the UltraFiler's History and Favorites tabs show before anything was
+  recorded or pinned (and a search without matches). A widget that never had
+  a folder set keeps the plain "(no folder)" text.
+
 #### 2026-08-13 *0.3.50*
 - **PDFView / UltraFiler preview: five fixes to the PDF page view and its
   thumbnail strip ("page inventory").** **Stale thumbnails** — opening another
