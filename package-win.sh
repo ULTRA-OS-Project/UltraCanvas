@@ -78,15 +78,36 @@ echo ""
 echo "Collecting DLLs..."
 DLL_COUNT=0
 
-# MSYS2's ldd resolves dependencies by actually loading the module, running
-# DllMain of everything it pulls in. Some DLLs (seen with ImageMagick coder
-# modules on ARM64) deadlock in that init path and hang ldd forever — bound
-# every call so a bad module is skipped instead of wedging the build.
-LDD="timeout -k 5 15 ldd"
+# Resolve dependencies from the PE import table STATICALLY with objdump, not
+# MSYS2's ldd. ldd actually loads each module and runs its DllMain; some modules
+# (ImageMagick coder modules, libheif codec plugins) deadlock in that init path
+# on ARM64 and hang ldd forever. Bounding ldd with `timeout` only turned the hang
+# into a ~20s stall per module, and across 130+ coder modules that overran the
+# job timeout (the batch wrapper's "Terminate batch job (Y/N)?" in the log).
+# objdump reads the import directory without loading anything — correct for
+# dlopened plugin modules and immune to the deadlock.
+if command -v objdump >/dev/null 2>&1; then
+    OBJDUMP=objdump
+elif command -v llvm-objdump >/dev/null 2>&1; then
+    OBJDUMP=llvm-objdump          # CLANGARM64 ships llvm tools, not GNU binutils
+else
+    echo "Error: need objdump or llvm-objdump to resolve DLL dependencies" >&2
+    exit 1
+fi
+
+# Print the MinGW-prefix dependency DLLs of a PE file as full paths (direct
+# imports only; the closure loop below iterates until complete).
+pe_deps() {
+    "$OBJDUMP" -p "$1" 2>/dev/null \
+        | sed -n 's/.*DLL Name:[[:space:]]*//p' \
+        | while read -r _name; do
+            [ -f "$MINGW_BIN/$_name" ] && printf '%s\n' "$MINGW_BIN/$_name"
+        done
+}
 
 for EXE_PATH in $DIST_DIR/*.exe ; do
-  $LDD "$EXE_PATH" | grep -i "$MSYS_PREFIX/" | awk '{print $3}' | sort -u | while read -r dll; do
-      if [ -f "$dll" ]; then
+  pe_deps "$EXE_PATH" | sort -u | while read -r dll; do
+      if [ ! -f "$DIST_DIR/$(basename "$dll")" ]; then
           cp "$dll" "$DIST_DIR/"
           echo "  $(basename "$dll")"
           DLL_COUNT=$((DLL_COUNT + 1))
@@ -145,16 +166,22 @@ if [ -d "$IM_ETC_DIR" ]; then
     echo "  Copied ImageMagick config XMLs"
 fi
 
-# Also collect DLLs needed by the DLLs themselves (transitive deps)
-# Run ldd on ALL copied DLLs including those in subdirectories (vips modules, IM coders)
-find "$DIST_DIR" -name '*.dll' | while read -r dll; do
-    $LDD "$dll" 2>/dev/null | grep -i "$MSYS_PREFIX/" | awk '{print $3}' | sort -u | while read -r dep; do
-        dep_name=$(basename "$dep")
-        if [ -f "$dep" ] && [ ! -f "$DIST_DIR/$dep_name" ]; then
+# Also collect DLLs needed by the DLLs/modules themselves (transitive closure),
+# including the vips modules, ImageMagick coders and libheif codec plugins in
+# subdirectories. Repeat full passes until one adds nothing new; objdump keeps
+# each pass fast and hang-free even over the 130+ coder modules.
+while : ; do
+    before=$(find "$DIST_DIR" -name '*.dll' | wc -l)
+    while IFS= read -r dll; do
+        pe_deps "$dll" | while read -r dep; do
+            dep_name=$(basename "$dep")
+            [ -f "$DIST_DIR/$dep_name" ] && continue
             cp "$dep" "$DIST_DIR/"
             echo "  $dep_name (transitive from $(basename "$dll"))"
-        fi
-    done
+        done
+    done < <(find "$DIST_DIR" -name '*.dll')
+    after=$(find "$DIST_DIR" -name '*.dll' | wc -l)
+    [ "$before" = "$after" ] && break
 done
 
 # Copy GLib schema files if they exist (needed by some GTK/GLib apps)
