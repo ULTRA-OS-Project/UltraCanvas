@@ -198,7 +198,13 @@ bar collapsing mid-animation degrades gracefully.
     entries, inside the legend box, for a key richer than any swatch: an
     annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.
     The legend reserves the size in its layout and calls the drawing
-    callback with the reserved (clipped) rectangle.
+    callback with the reserved (clipped) rectangle. **A key must describe
+    marks the chart actually draws**: a limiter-line key belongs with a
+    chart that draws limiters, and a 50%/95% confidence-ellipse key belongs
+    with a scatter/jitter chart that draws group-highlight ellipses — that
+    highlighting style is the engine's reserved `Highlight` layer (slot
+    200, group rectangles / ellipses / hull blobs / value bands), not yet
+    implemented; when it lands, its key pairs with this custom area.
   - `ChartLegendEntry.swatch` picks the swatch: `Square | Circle | Ring |
     Line | DashedLine | Marker | Glyph | Gradient | Outline | Hatched |
     Image` (`imagePath` for `Image`) — line series get a line, scatter gets

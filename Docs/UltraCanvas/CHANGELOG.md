@@ -39,7 +39,8 @@
   one. New `SetCustomArea(size, draw)` reserves a host-drawn panel below
   the entries for keys richer than any swatch (an annotated
   confidence-ellipse diagram, a bubble-size scale); the demo's Inset mode
-  shows one.
+  keys the chart's limiter reference lines — a key describes marks the
+  chart actually draws.
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

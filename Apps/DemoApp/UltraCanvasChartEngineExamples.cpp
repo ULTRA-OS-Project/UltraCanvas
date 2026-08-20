@@ -1099,31 +1099,43 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "nothing, and rides the label plan as an obstacle the "
                           "solved value labels steer around. The panel below the "
                           "entries is SetCustomArea: a host-drawn key richer than "
-                          "any swatch",
+                          "any swatch. A key must describe marks the chart actually "
+                          "draws — here the limiter reference lines; an ellipse key "
+                          "belongs with a scatter's group-highlight ellipses",
                           "Legend off — its reserved margin returns to the plot area"};
                       if (i == 3) {
                           chartPtr->SetShowLegendPanel(false);
                       } else {
                           if (i == 2) {
-                              // An annotated ellipse key, the kind a swatch
-                              // cannot express - drawn by the host into the
-                              // legend's reserved custom panel.
+                              // A key richer than any swatch, drawn by the
+                              // host into the legend's reserved custom panel.
+                              // It keys the limiter reference lines - marks
+                              // this chart actually draws. (A 50%/95%
+                              // confidence-ellipse key pairs with a scatter
+                              // chart's group-highlight ellipses instead.)
                               chartPtr->Legend().SetCustomArea(
-                                  Size2Dd(150.0, 52.0),
+                                  Size2Dd(150.0, 44.0),
                                   [](IRenderContext* ctx, const Rect2Dd& r) {
-                                      const Point2Dd c(r.x + 52.0,
-                                                       r.y + r.height / 2.0 + 4.0);
-                                      ctx->SetStrokePaint(Color(150, 150, 150, 255));
-                                      ctx->SetStrokeWidth(1.0f);
-                                      ctx->DrawEllipse(Rect2Dd(c.x - 36, c.y - 18, 72, 36));
-                                      ctx->DrawEllipse(Rect2Dd(c.x - 17, c.y - 8, 34, 16));
-                                      ctx->SetFillPaint(Color(60, 60, 60, 255));
-                                      ctx->FillCircle(c, 2.5);
+                                      const struct {
+                                          Color color;
+                                          const char* label;
+                                      } rows[] = {
+                                          {Color(90, 90, 90, 255), "average"},
+                                          {Color(200, 60, 60, 255), "target"}};
                                       ctx->SetFontSize(9.0f);
-                                      ctx->SetTextPaint(Color(120, 120, 120, 255));
-                                      ctx->DrawText("95%", Point2Dd(r.x + 2.0, r.y + 1.0));
-                                      ctx->DrawText("50%", Point2Dd(c.x - 10.0, c.y - 26.0));
-                                      ctx->DrawText("mean", Point2Dd(c.x + 40.0, c.y - 5.0));
+                                      double y = r.y + 8.0;
+                                      for (const auto& row : rows) {
+                                          ctx->SetStrokePaint(row.color);
+                                          ctx->SetStrokeWidth(1.5f);
+                                          ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+                                          ctx->DrawLine(Point2Dd(r.x + 2.0, y),
+                                                        Point2Dd(r.x + 40.0, y));
+                                          ctx->SetLineDash(UCDashPattern());
+                                          ctx->SetTextPaint(Color(120, 120, 120, 255));
+                                          ctx->DrawText(row.label,
+                                                        Point2Dd(r.x + 48.0, y - 6.0));
+                                          y += 18.0;
+                                      }
                                   });
                           } else {
                               chartPtr->Legend().ClearCustomArea();
