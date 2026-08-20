@@ -29,38 +29,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NOTE: macos-13 is the last GitHub-hosted Intel (x86_64) macOS runner.
-        # When GitHub deprecates it, options are: drop Intel builds, use
-        # self-hosted runners, or cross-compile universal binaries.
-        os: [macos-latest, ubuntu-22.04, windows-latest]
+        # NOTE: GitHub retired macos-13 (the last x86_64 image of the
+        # macos-NN series) in December 2025. `macos-15-intel` is its
+        # designated replacement label for Intel builds, supported until
+        # macOS 15 leaves Apple support (~2027). When that goes too, the
+        # options are: drop Intel builds, use self-hosted runners, or
+        # cross-compile universal binaries.
+        os: [macos-latest, macos-15-intel, ubuntu-22.04, windows-latest, windows-11-arm]
         build_type: [Release]
         include:
           - os: macos-latest
             arch_label: arm64
-            install_deps: |
-              # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
-              # Homebrew's tap-trust check prints a multi-line "not trusted"
-              # warning on *every* brew invocation while it is present. We install
-              # nothing from it, so drop the tap — that is Homebrew's own first
-              # suggestion, and it is preferable to `brew trust aws/tap` (grants
-              # blanket trust to a tap we never use) or
-              # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
-              # for taps we *do* use). Tolerate the tap being absent so a future
-              # runner image that drops it cannot fail this step.
-              brew untap aws/tap 2>/dev/null || true
-              brew install cmake pkg-config
-              brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install libcdr librevenge
-              brew install zbar
-              brew install mupdf
-              brew install c-ares
-              brew install libsodium
-              brew install leptonica tesseract
-              # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-              brew install flac libvorbis opus opusfile libopusenc lame
-              # libcurl: use Apple's system libcurl (SecureTransport-family
-              # backend) — already present on every macOS install, so we add
-              # no extra dependency for UltraNet on this platform.
+          - os: macos-15-intel
+            arch_label: x86_64
           - os: ubuntu-22.04
             arch_label: x86_64
             install_deps: |
@@ -71,15 +52,32 @@ jobs:
               sudo apt-get install -y libtinyxml2-dev libfmt-dev
               sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
               sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
-              sudo apt-get install -y libzbar-dev libmupdf-dev
+              sudo apt-get install -y libzbar-dev
               # ImageMagick runtime: not a build dep, but package-linux.sh bundles
               # it as libvips' delegate (coder modules + config), so the files must
               # be present on the runner to match the developer package.
               sudo apt-get install -y imagemagick libmagickcore-6.q16-6-extra
-              # MuPDF third-party deps: Ubuntu's libmupdf.a is built with
-              # USE_SYSTEM_LIBS and ships no libmupdf-third, so jbig2dec/mujs/gumbo
-              # must be linked from system -dev packages (find_library needs the .so).
+              # MuPDF: Ubuntu 22.04 ships 1.19, too old for the PDF plugin, which uses
+              # 1.23-era APIs (FZ_IMAGE_PSD, FZ_META_INFO_SUBJECT/KEYWORDS/*DATE,
+              # pdf_page_label, pdf_apply_redaction, the 7-arg fz_search_page_number).
+              # Build 1.23.10 from source to match the version Ubuntu 24.04 packages
+              # (what the code is written against). Bundle MuPDF's own third-party libs
+              # EXCEPT freetype/harfbuzz: those are shared with cairo/pango, so using the
+              # SYSTEM copies avoids two FreeType instances in one process. XCFLAGS=-fPIC
+              # so the static archives link into the shared libUltraCanvas.so. The
+              # companion -dev libs below still satisfy the plugin's find_library() probes.
               sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev
+              MUPDF_VER=1.23.10
+              curl -fsSL "https://mupdf.com/downloads/archive/mupdf-${MUPDF_VER}-source.tar.gz" | tar xz
+              make -C "mupdf-${MUPDF_VER}-source" -j"$(nproc)" \
+                HAVE_X11=no HAVE_GLUT=no USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes \
+                XCFLAGS=-fPIC build=release
+              sudo make -C "mupdf-${MUPDF_VER}-source" \
+                HAVE_X11=no HAVE_GLUT=no USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes \
+                XCFLAGS=-fPIC build=release prefix=/usr install
+              # Some MuPDF install targets omit the static third-party archive; make
+              # sure find_library(mupdf-third) can see it.
+              sudo cp "mupdf-${MUPDF_VER}-source/build/release/libmupdf-third.a" /usr/lib/ 2>/dev/null || true
               # libunwind-dev: on the ubuntu-22.04 runner libgstreamer1.0-dev
               # depends on it, but apt won't auto-pull it (the pre-installed LLVM
               # toolchain ships a conflicting libunwind), failing with "held broken
@@ -87,19 +85,54 @@ jobs:
               sudo apt-get install -y libunwind-dev
               sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
               # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-              sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libopusenc-dev libmp3lame-dev
-              sudo apt-get install -y libcurl4-openssl-dev
-              sudo apt-get install -y libc-ares-dev
+              sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev
+              # libopusenc-dev is not packaged for Ubuntu 22.04 (added in 24.04),
+              # so build the release tarball from source to keep Opus-file encode
+              # support. Depends only on libopus (installed above); the dist tarball
+              # ships a prebuilt ./configure, so no autotools are needed. Install to
+              # /usr so pkg-config + package-linux.sh find/bundle it like a distro lib.
+              OPUSENC_VER=0.3
+              
+              curl -fsSL "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz" | tar xz
+              ( cd "libopusenc-${OPUSENC_VER}" && ./configure --prefix=/usr && make -j"$(nproc)" && sudo make install )
+              # libcurl4-openssl-dev provides the SYSTEM libcurl used for the
+              # WebSocket-capability probe. On ubuntu-22.04 that libcurl is 7.81,
+              # which predates WebSockets (curl_ws_* arrived in 7.86), so UltraNet
+              # falls back to building the vendored third_party/curl (8.21). That
+              # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
+              sudo apt-get install -y libcurl4-openssl-dev libpsl-dev
               # libsodium: cryptographic backend for UltraCrypt
               sudo apt-get install -y libsodium-dev
+              # c-ares: UltraNet's async DNS uses the event-thread API
+              # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
+              # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
+              # source. The dist tarball ships a prebuilt ./configure; install into
+              # the multiarch libdir so pkg-config + package-linux.sh find/bundle it
+              # like a distro lib.
+              CARES_VER=1.34.5
+              curl -fsSL "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz" | tar xz
+              ( cd "c-ares-${CARES_VER}" && ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu && make -j"$(nproc)" && sudo make install )
           - os: windows-latest
             arch_label: x86_64
+            msystem: MINGW64
+            msys_prefix: mingw-w64-x86_64
+            msys_toolchain: mingw-w64-x86_64-gcc
+          - os: windows-11-arm
+            arch_label: arm64
+            msystem: CLANGARM64
+            msys_prefix: mingw-w64-clang-aarch64
+            msys_toolchain: mingw-w64-clang-aarch64-clang
 
     runs-on: ${{ matrix.os }}
 
+    # Normal jobs finish in ~30 minutes. Without a cap, a hang burns the
+    # default 6-hour job timeout (seen once: MSYS2 ldd deadlocking while
+    # loading an ImageMagick coder DLL during Windows-on-ARM packaging).
+    timeout-minutes: 120
+
     defaults:
       run:
-        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+        shell: ${{ startsWith(matrix.os, 'windows') && 'msys2 {0}' || 'bash' }}
 
     steps:
       - name: Checkout repository
@@ -122,53 +155,83 @@ jobs:
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-cairo
-            mingw-w64-x86_64-pango
-            mingw-w64-x86_64-harfbuzz
-            mingw-w64-x86_64-glib2
-            mingw-w64-x86_64-freetype
-            mingw-w64-x86_64-tinyxml2
-            mingw-w64-x86_64-libiconv
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-libvips
-            mingw-w64-x86_64-glew
-            mingw-w64-x86_64-fmt
-            mingw-w64-x86_64-imagemagick
-            mingw-w64-x86_64-libheif
-            mingw-w64-x86_64-zbar
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-mupdf
-            mingw-w64-x86_64-libmupdf
-            mingw-w64-x86_64-curl-winssl
-            mingw-w64-x86_64-c-ares
-            mingw-w64-x86_64-leptonica
-            mingw-w64-x86_64-tesseract-ocr
-            mingw-w64-x86_64-flac
-            mingw-w64-x86_64-libvorbis
-            mingw-w64-x86_64-libogg
-            mingw-w64-x86_64-opus
-            mingw-w64-x86_64-opusfile
-            mingw-w64-x86_64-libopusenc
-            mingw-w64-x86_64-lame
+            ${{ matrix.msys_toolchain }}
+            ${{ matrix.msys_prefix }}-cmake
+            ${{ matrix.msys_prefix }}-ninja
+            ${{ matrix.msys_prefix }}-pkgconf
+            ${{ matrix.msys_prefix }}-rust
+            ${{ matrix.msys_prefix }}-cairo
+            ${{ matrix.msys_prefix }}-pango
+            ${{ matrix.msys_prefix }}-harfbuzz
+            ${{ matrix.msys_prefix }}-glib2
+            ${{ matrix.msys_prefix }}-freetype
+            ${{ matrix.msys_prefix }}-tinyxml2
+            ${{ matrix.msys_prefix }}-libiconv
+            ${{ matrix.msys_prefix }}-zlib
+            ${{ matrix.msys_prefix }}-libvips
+            ${{ matrix.msys_prefix }}-glew
+            ${{ matrix.msys_prefix }}-fmt
+            ${{ matrix.msys_prefix }}-imagemagick
+            ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-zbar
+            ${{ matrix.msys_prefix }}-libsodium
+            ${{ matrix.msys_prefix }}-mupdf
+            ${{ matrix.msys_prefix }}-libmupdf
+            ${{ matrix.msys_prefix }}-curl-winssl
+            ${{ matrix.msys_prefix }}-c-ares
+            ${{ matrix.msys_prefix }}-leptonica
+            ${{ matrix.msys_prefix }}-tesseract-ocr
+            ${{ matrix.msys_prefix }}-flac
+            ${{ matrix.msys_prefix }}-libvorbis
+            ${{ matrix.msys_prefix }}-libogg
+            ${{ matrix.msys_prefix }}-opus
+            ${{ matrix.msys_prefix }}-opusfile
+            ${{ matrix.msys_prefix }}-libopusenc
+            ${{ matrix.msys_prefix }}-lame
             zip
-            
-      # ===== macOS / Linux: system package manager =====
-      - name: Install dependencies (macOS/Linux)
-        if: runner.os != 'Windows'
+
+      # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
+      # lives at /opt/homebrew on Apple Silicon and /usr/local on Intel, but
+      # the formula list is identical) =====
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
+          # Homebrew's tap-trust check prints a multi-line "not trusted"
+          # warning on *every* brew invocation while it is present. We install
+          # nothing from it, so drop the tap — that is Homebrew's own first
+          # suggestion, and it is preferable to `brew trust aws/tap` (grants
+          # blanket trust to a tap we never use) or
+          # HOMEBREW_NO_REQUIRE_TAP_TRUST=1 (deprecated, disables the check
+          # for taps we *do* use). Tolerate the tap being absent so a future
+          # runner image that drops it cannot fail this step.
+          brew untap aws/tap 2>/dev/null || true
+          brew install cmake pkg-config
+          brew install cairo pango harfbuzz vips glib freetype tinyxml2
+          brew install libcdr librevenge
+          brew install zbar
+          brew install mupdf
+          brew install c-ares
+          brew install libsodium
+          brew install leptonica tesseract
+          # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
+          brew install flac libvorbis opus opusfile libopusenc lame
+          # libcurl: use Apple's system libcurl (SecureTransport-family
+          # backend) — already present on every macOS install, so we add
+          # no extra dependency for UltraNet on this platform.
+
+      # ===== Linux: system package manager =====
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
         run: ${{ matrix.install_deps }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
-      # Windows installs the native mingw-w64-x86_64-rust package above (gnu ABI,
-      # matching the MinGW compiler; MSYS2's /usr/bin POSIX rust breaks Corrosion
-      # with 'failed to join paths from $LD_LIBRARY_PATH'). On macOS/Linux use the
+      # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
+      # matching the MinGW/CLANGARM64 compiler; MSYS2's /usr/bin POSIX rust breaks
+      # Corrosion with 'failed to join paths from $LD_LIBRARY_PATH'). On macOS/Linux use the
       # runner's preinstalled rustup to pin a current stable, so the version-pinned
       # vtracer / visioncortex crates build with a new-enough compiler.
       - name: Install Rust toolchain (macOS/Linux)
@@ -231,20 +294,31 @@ jobs:
           fi
           echo "OpenGL backend verified on ${{ runner.os }}"
 
-      # CI runners all ship a WebSocket-capable, correctly-versioned system
-      # libcurl, so UltraNet must link it — never the third_party/curl fallback
-      # (which stamps distro-specific symbol versions like CURL_OPENSSL_4 that
-      # are only correct on the developer's machine). Fail loudly if a change
-      # ever pushes CI onto the vendored curl path.
-      - name: Verify CI uses SYSTEM libcurl (not vendored)
+      # libcurl selection is asserted per platform so a silent regression is caught:
+      #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
+      #    7.81, which predates WebSocket support (curl_ws_* arrived in 7.86), so
+      #    UltraNet MUST fall back to the vendored third_party/curl (8.21, WS-capable,
+      #    stamped with the distro's CURL_OPENSSL_4 version node). The bundle ships
+      #    that libcurl alongside libvips/libhdf5 built on the same runner, so the
+      #    CURL_OPENSSL_4 node is self-consistent within the package.
+      #  - macOS / Windows: the platform's system libcurl already supports WebSockets.
+      - name: Verify libcurl selection
         shell: bash
         run: |
           set -eu
-          if grep -q "UltraNet libcurl: VENDORED" configure.log; then
-            echo "::error::CI selected the vendored third_party/curl build. The system libcurl should provide WebSocket support on CI; do not ship the CURL_OPENSSL_4 version-script fix here."
-            exit 1
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            if ! grep -q "UltraNet libcurl: VENDORED" configure.log; then
+              echo "::error::Expected the vendored third_party/curl build on the ubuntu-22.04 runner (its system libcurl 7.81 predates WebSockets), but configure selected system libcurl."
+              exit 1
+            fi
+            echo "Confirmed: Linux links the vendored WS-capable libcurl (CURL_OPENSSL_4 version node)."
+          else
+            if grep -q "UltraNet libcurl: VENDORED" configure.log; then
+              echo "::error::CI selected the vendored third_party/curl build on ${{ runner.os }}; the platform system libcurl should provide WebSocket support here."
+              exit 1
+            fi
+            echo "Confirmed: ${{ runner.os }} links the system libcurl."
           fi
-          echo "Confirmed: CI links system libcurl; vendored curl / version-script fix NOT applied."
 
       # The Vectorizer plugin (raster→SVG via VTracer) needs a Rust toolchain. Its
       # parent gate only prints a status line when cargo is missing/incompatible and

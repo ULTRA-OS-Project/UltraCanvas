@@ -39,6 +39,17 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
 
+## Empty display
+
+A display with nothing to show says so instead of staying blank: an attention
+icon (a vector-drawn warning triangle, so no icon assets are required) with the
+message below it, vertically centered in the folder display. A folder without
+content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
+— the UltraFiler's History and Favorites tabs before anything was recorded or
+pinned, a search without matches — shows **"No entries"**. A widget that never
+had a folder set keeps the plain "(no folder)" text. Icon and text use
+`FilerStyle::secondaryTextColor`.
+
 ## Sorting
 
 ```cpp
@@ -108,6 +119,14 @@ being cut off after one:
   are frequently one long "word".
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
   restores the old single-line caption).
+- A name that fits its lines completely is broken **balanced**, not greedily:
+  the break points are chosen so the lines come out near equal instead of the
+  first line taking everything that fits and leaving a stub behind:
+
+  ```
+  CoderBox              CoderBox compiler
+  compiler.png     not  .png
+  ```
 - What does not fit even then is dropped from the **front of the last line**,
   which then opens with an `…` overflow marker, so the end of the name — its
   extension — always stays readable:
@@ -162,7 +181,9 @@ Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
 ──────────
-Open with      >  applications registered via AddOpenWithApp()
+Open with      >  the applications the OS registers for the selected files
+                  (default app first), then entries added via
+                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
@@ -180,6 +201,28 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Open with** lists the OS-registered applications through
+  [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
+  icon, the default application first. The lookups are prewarmed on that
+  service's background worker (the first widget triggers the
+  association-database parse, every folder scan pre-resolves the folder's
+  extensions), so opening the menu reads a cache instead of parsing anything.
+  The OS section appears when the whole selection is real files on disk —
+  folders and entries inside archives (virtual paths no external application
+  could read) fall back to the manual entries only. `AddOpenWithApp()`
+  entries keep working unchanged below the OS section, and
+  `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
+  "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
+  preset to the platform's application filter and directory; the pick is
+  launched detached with the selected files. On platforms whose enumeration
+  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
+  section is empty but default-open and the picker already work.
+- `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
+  file with the OS default application **when no `onFileActivated` callback
+  is installed** — activation semantics for simple embedders; hosts with
+  their own activation handling (like UltraFiler's preview) keep full
+  control and call `FileAssociations::OpenWithDefaultApplication` themselves
+  where they want it.
 - **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
   TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
   showing the archive's file-type icon, an editable file name with the chosen
@@ -195,11 +238,18 @@ Notes:
   window holds the focus. The icon can be dragged onto any folder in
   the view to change the destination (the target folder highlights while
   dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
-  unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
-  and are available when the VirtualFS module is built
+  opens the same dialog in extract mode: the icon shows the selected archive's
+  file type with its name (or "N archives") beneath, and the editor holds the
+  destination **folder** name instead — suggested from the archive's name
+  without its suffix, with no fixed extension beside the field. Enter /
+  Extract unpacks into that folder (several selected archives each go into
+  their own subfolder of it, so their contents cannot collide), and the icon
+  drag retargets the destination exactly like compressing. Both go through
+  `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
-  `CompressSelection(extension)` still performs an immediate, dialog-free
-  compress for programmatic use.
+  `CompressSelection(extension)` / `ExtractSelection()` still perform the
+  immediate, dialog-free operations for programmatic use;
+  `OpenExtractDialog()` opens the extract dialog the menu uses.
 - **Display > Preview** switches content previews on and off per file kind —
   see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
@@ -396,7 +446,8 @@ filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
-filer->ExtractSelection();
+filer->ExtractSelection();           // dialog-free: sibling folders
+filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
 

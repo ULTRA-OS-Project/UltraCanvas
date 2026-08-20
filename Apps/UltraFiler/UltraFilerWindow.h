@@ -24,7 +24,10 @@
 // (UltraFilerFavorites) instead of recent ones. The folder tree's "Pinned"
 // section holds the tree pins, whose
 // entries navigate like bookmarks; the tree's context menu offers Copy /
-// Delete / Paste (folders only) and Unpin (pinned entries only).
+// Delete / Paste (folders only), a Pin submenu whose "To Treeview" /
+// "To Favorites" flags show and toggle where the folder is pinned, and Unpin
+// (pinned entries only). The Extras menu carries the same Pin / Unpin pair as
+// a block below "Open prompt", acting on the current selection.
 // Version: 1.8.0
 // Last Modified: 2026-08-17
 // Author: UltraCanvas Framework
@@ -177,16 +180,41 @@ private:
     // ones that no longer exist).
     void RefreshFavoritesTabs();
     UltraCanvasFilerWidget* ActiveFavoritesFiler() const;
+    // The filer the user is looking at: a Favorites / History page while one
+    // of those views is shown, else the active tab's filer.
+    UltraCanvasFilerWidget* VisibleFiler() const;
+    // What the menu bar's Pin menu would pin: the visible filer's selection,
+    // or the shown folder itself while nothing is selected in the browsing
+    // view.
+    std::vector<FilerEntry> PinTargets() const;
+    // The Pin menu's items (Favorites / Treeview), built fresh on every open
+    // so their enabled state follows the current selection.
+    std::vector<MenuItemData> BuildPinMenuItems();
+    // Pin > Favorites: each target goes into the tab its kind belongs to.
+    void PinTargetsToFavorites();
+    // Pin > Treeview: each target folder appears under the tree's Pinned node.
+    void PinTargetsToTree();
+    // Extras > Unpin: the reverse of the two Pin actions above.
+    void UnpinTargetsFromFavorites();
+    void UnpinTargetsFromTree();
+    // The Extras menu's items, built fresh on every open: "Open prompt", then
+    // a Pin / Unpin block whose "To Treeview" / "To Favorites" flags show
+    // whether the current selection is pinned there.
+    std::vector<MenuItemData> BuildExtrasMenuItems();
 
     // ===== FOLDER TREE: PINNED SECTION + CONTEXT MENU =====
     // Rebuilds the children of the tree's "Pinned" node from the pinned
     // folder paths (dropping the ones that no longer exist).
     void RefreshPinnedTreeNodes();
+    // Expands the tree's "Pinned" node, so a fresh pin is seen rather than
+    // left behind a collapsed header.
+    void RevealPinnedTreeSection();
     // The folder a tree node stands for: the node id itself, or the target of
     // a pinned entry; "" for the Computer root, the Pinned header and the
     // lazy "..." placeholders.
     std::string TreeNodeTargetPath(const TreeNode* node) const;
-    // The tree's context menu (Copy / Delete / Paste / Unpin) at the pointer.
+    // The tree's context menu (Copy / Delete / Paste / Pin / Unpin) at the
+    // pointer.
     void ShowTreeContextMenu(TreeNode* node, const UCEvent& event);
     // Paste the clipboard files into `folder` (tree context menu's Paste).
     void PasteIntoFolder(const std::string& folder);

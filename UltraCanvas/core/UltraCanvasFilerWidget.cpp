@@ -22,7 +22,8 @@
 // splitters between their columns (see COLUMN SPLITTERS), and names too long
 // for the space they are drawn in show the full name in a hover tooltip.
 // Tile captions (thumbnail grids, treemap) wrap long names over several lines
-// instead of cutting them off after one (see WRAPPED CAPTIONS).
+// instead of cutting them off after one, with the breaks balanced so the
+// lines come out near equal (see WRAPPED CAPTIONS).
 // Besides clicking, entries are selected with a rubber band: dragging from
 // empty space draws a selection rectangle and everything it touches becomes
 // the selection (Ctrl adds the rectangle to the selection held before).
@@ -39,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.13.0
-// Last Modified: 2026-08-09
+// Version: 1.14.0
+// Last Modified: 2026-08-17
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -54,6 +55,8 @@
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
@@ -1692,6 +1695,11 @@ namespace UltraCanvas {
             {"Audio",       "wav", ""},
             {"Video",       "mp4", ""},
         };
+
+        // Parse the OS association database on its background worker while
+        // the first folder is still scanning, so the context menu's
+        // "Open with >" is a cache read by the time it can be opened.
+        FileAssociations::PrewarmAsync();
     }
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
@@ -2088,6 +2096,18 @@ namespace UltraCanvas {
         // The folder is on screen — line up its subfolders for the prefetch
         // worker so entering one of them can skip the cold scan.
         if (!fileListMode && isRealDir) QueueFolderPrefetch();
+
+        // And its distinct file extensions for the "Open with >" prewarm, so
+        // a right-click finds the OS application lists already resolved.
+        if (systemOpenWith) {
+            std::unordered_set<std::string> distinct;
+            for (const FilerEntry& e : entries)
+                if (!e.isDirectory && !e.extension.empty())
+                    distinct.insert(e.extension);
+            if (!distinct.empty())
+                FileAssociations::PrewarmExtensionsAsync(
+                        {distinct.begin(), distinct.end()});
+        }
 
         // The listing itself changed (entries added / removed / renamed) —
         // hosts use this to refresh what they show about the folder.
@@ -3588,8 +3608,47 @@ namespace UltraCanvas {
                 ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : fs::path(currentPath).filename().string();
         if (base.empty()) base = "archive";
-        compressDlg.nameBuffer = base;
         compressDlg.destDir = currentPath;
+
+        OpenArchiveDialogChrome(base, "Compress");
+    }
+
+    void UltraCanvasFilerWidget::OpenExtractDialog() {
+        std::vector<FilerEntry> archives;
+        for (const FilerEntry& e : GetSelectedEntries())
+            if (e.isArchive) archives.push_back(e);
+        if (archives.empty()) return;
+
+        compressDlg = CompressDialogState();
+        compressDlg.active = true;
+        compressDlg.extractMode = true;
+        for (const FilerEntry& e : archives) compressDlg.sourcePaths.push_back(e.path);
+        compressDlg.destDir = currentPath;
+
+        // The first archive's suffix drives the icon tag; the label under the
+        // icon names what is being unpacked.
+        std::string firstBase = ArchiveBaseNameOf(archives[0].name, false);
+        if (archives[0].name.size() > firstBase.size() + 1) {
+            std::string suffix = archives[0].name.substr(firstBase.size() + 1);
+            std::transform(suffix.begin(), suffix.end(), suffix.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            compressDlg.extension = suffix;
+        }
+        compressDlg.formatLabel = (archives.size() == 1)
+                ? archives[0].name
+                : std::to_string(archives.size()) + " archives";
+
+        // Default destination folder: the archive's own name without its
+        // suffix — what the direct ExtractSelection() would pick.
+        std::string base = (archives.size() == 1) ? firstBase : std::string("Extracted");
+        if (base.empty()) base = "Extracted";
+
+        OpenArchiveDialogChrome(base, "Extract");
+    }
+
+    void UltraCanvasFilerWidget::OpenArchiveDialogChrome(const std::string& defaultName,
+                                                         const std::string& okLabel) {
+        compressDlg.nameBuffer = defaultName;
 
         if (renamingIndex >= 0) CancelRename();
 
@@ -3616,7 +3675,7 @@ namespace UltraCanvas {
         ts.fontStyle.fontSize = style.fontSize;
         compressNameInput->SetStyle(ts);
         compressNameInput->SetShowValidationState(false);
-        compressNameInput->SetText(base);
+        compressNameInput->SetText(defaultName);
         // Whole name selected, so typing replaces the suggestion outright.
         compressNameInput->SelectAll();
         compressNameInput->onTextChanged = [this](const std::string& t) {
@@ -3636,7 +3695,7 @@ namespace UltraCanvas {
 
         DestroyCompressButtons();
         compressOkButton = MakeCompressButton(
-                "filer-compress-ok", "Compress", true,
+                "filer-compress-ok", okLabel, true,
                 [this]() { CommitCompressDialog(); });
         compressCancelButton = MakeCompressButton(
                 "filer-compress-cancel", "Cancel", false,
@@ -3770,12 +3829,47 @@ namespace UltraCanvas {
         size_t last  = baseName.find_last_not_of(' ');
         baseName = (first == std::string::npos)
                  ? std::string() : baseName.substr(first, last - first + 1);
-        if (baseName.empty()) baseName = "archive";
-        std::string ext = d.extension.empty() ? std::string("zip") : d.extension;
+        if (baseName.empty()) baseName = d.extractMode ? "Extracted" : "archive";
 
         std::error_code ec;
         fs::path dir(d.destDir.empty() ? currentPath : d.destDir);
         if (!fs::is_directory(dir, ec)) dir = currentPath;
+
+        if (d.extractMode) {
+            // The name is the destination folder the archives unpack into.
+            fs::path target = dir / baseName;
+            int n = 2;
+            while (fs::exists(target, ec))
+                target = dir / (baseName + " (" + std::to_string(n++) + ")");
+            fs::create_directories(target, ec);
+            if (ec || !fs::is_directory(target, ec)) {
+                ReportError("Extraction failed: cannot create " + target.string());
+                return;
+            }
+            for (const std::string& src : d.sourcePaths) {
+                fs::path dest = target;
+                if (d.sourcePaths.size() > 1) {
+                    // Several archives: each unpacks into its own subfolder so
+                    // their contents cannot collide.
+                    std::string stem =
+                            ArchiveBaseNameOf(fs::path(src).filename().string(), false);
+                    if (stem.empty()) stem = "archive";
+                    dest = target / stem;
+                    int m = 2;
+                    while (fs::exists(dest, ec))
+                        dest = target / (stem + " (" + std::to_string(m++) + ")");
+                    fs::create_directories(dest, ec);
+                }
+                if (!UCVFSBridge::ExtractArchive(src, dest.string()))
+                    ReportError("Extraction failed for " + src);
+            }
+            Refresh();
+            // The target can sit inside a folder the icon was dragged onto.
+            NotifyFolderModified(dir.string());
+            return;
+        }
+
+        std::string ext = d.extension.empty() ? std::string("zip") : d.extension;
 
         // Uniquify while keeping the full (possibly compound) extension intact,
         // so ".tar.gz" stays ".tar.gz" rather than becoming ".tar (2).gz".
@@ -3794,8 +3888,8 @@ namespace UltraCanvas {
         // The archive can be written into a folder the icon was dragged onto.
         NotifyFolderModified(fs::path(dest).parent_path().string());
 #else
-        (void)d;
-        ReportError("Compress requires the VirtualFS module");
+        ReportError(std::string(d.extractMode ? "Extract" : "Compress") +
+                    " requires the VirtualFS module");
 #endif
     }
 
@@ -3886,7 +3980,8 @@ namespace UltraCanvas {
         titleFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(titleFont);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText("Compress", Point2Dd(d.panel.x + 16, d.panel.y + 12));
+        ctx->DrawText(d.extractMode ? "Extract" : "Compress",
+                      Point2Dd(d.panel.x + 16, d.panel.y + 12));
 
         // File-type icon on top. While being dragged a ghost follows the cursor
         // and the panel shows a faint placeholder in its place.
@@ -3897,15 +3992,17 @@ namespace UltraCanvas {
             DrawEntryIcon(ctx, synth, d.iconRect);
         }
 
-        // Format label (already includes the extension) under the icon.
+        // Format label under the icon: the archive format when compressing,
+        // the archive name / count when extracting.
         FontStyle bodyFont;
         bodyFont.fontFamily = style.fontFamily;
         bodyFont.fontSize = style.fontSize;
         ctx->SetFontStyle(bodyFont);
         ctx->SetTextPaint(style.textColor);
-        Size2Di fts = ctx->GetTextLineDimensions(d.formatLabel);
+        std::string fmtFit = EllipsizeText(ctx, d.formatLabel, d.panel.width - 32);
+        Size2Di fts = ctx->GetTextLineDimensions(fmtFit);
         int fmtY = d.iconRect.y + d.iconRect.height + 8;
-        ctx->DrawText(d.formatLabel,
+        ctx->DrawText(fmtFit,
                       Point2Dd(d.panel.x + (d.panel.width - fts.width) / 2.0, fmtY));
 
         // Drag hint (smaller, grey).
@@ -3921,13 +4018,20 @@ namespace UltraCanvas {
                       Point2Dd(d.panel.x + (d.panel.width - hts.width) / 2.0,
                                fmtY + fts.height + 4));
 
-        // Name row: the editor holds the base name, the archive extension is
-        // fixed and shown next to it in grey. The editor is a real text input
-        // child, so it draws (and scrolls) its own content.
+        // Name row: the editor holds the base name; when compressing the
+        // archive extension is fixed and shown next to it in grey (when
+        // extracting the name is a folder, so there is no suffix). The editor
+        // is a real text input child, so it draws (and scrolls) its own
+        // content.
         ctx->SetFontStyle(bodyFont);
-        const std::string extText = "." + d.extension;
-        Size2Di extSz = ctx->GetTextLineDimensions(extText);
-        int editW = std::max(80, d.nameRect.width - extSz.width - 8);
+        const std::string extText = d.extractMode ? std::string()
+                                                  : "." + d.extension;
+        int editW = d.nameRect.width;
+        Size2Di extSz{0, 0};
+        if (!extText.empty()) {
+            extSz = ctx->GetTextLineDimensions(extText);
+            editW = std::max(80, d.nameRect.width - extSz.width - 8);
+        }
         compressDlg.nameEditRect = Rect2Di(d.nameRect.x, d.nameRect.y,
                                            editW, d.nameRect.height);
         PositionCompressNameInput();
@@ -3938,11 +4042,13 @@ namespace UltraCanvas {
             compressNameInput->Render(ctx, Rect2Df(0, 0, b.width, b.height));
             ctx->PopState();
         }
-        ctx->SetFontStyle(bodyFont);
-        ctx->SetTextPaint(style.secondaryTextColor);
-        ctx->DrawText(extText,
-                      Point2Dd(d.nameRect.x + editW + 6,
-                               d.nameRect.y + (d.nameRect.height - extSz.height) / 2.0));
+        if (!extText.empty()) {
+            ctx->SetFontStyle(bodyFont);
+            ctx->SetTextPaint(style.secondaryTextColor);
+            ctx->DrawText(extText,
+                          Point2Dd(d.nameRect.x + editW + 6,
+                                   d.nameRect.y + (d.nameRect.height - extSz.height) / 2.0));
+        }
 
         // Destination path shown separately as smaller text.
         ctx->SetFontStyle(smallFont);
@@ -4085,6 +4191,42 @@ namespace UltraCanvas {
         for (size_t i = 0; i < entries.size(); ++i) {
             if (entries[i].path == dest) { StartRename(i); break; }
         }
+    }
+
+    void UltraCanvasFilerWidget::OpenSelectionWithChooser() {
+        std::vector<std::string> paths;
+        for (const FilerEntry& e : GetSelectedEntries())
+            if (!e.isDirectory) paths.push_back(e.path);
+        if (paths.empty()) return;
+
+        const FileAssociations::ApplicationFilter filter =
+                FileAssociations::GetApplicationFilter();
+        FileDialogOptions opts;
+        opts.SetTitle("Select the application to open with")
+            .SetInitialDirectory(FileAssociations::GetApplicationsDirectory())
+            // Picking a program is not a document the shell should remember.
+            .SetRegisterAsRecent(false)
+            .SetParentWindow(GetWindow())
+            .AddFilter(filter.description, filter.extensions);
+        // On platforms whose executables carry no extension the application
+        // filter already shows everything - a second all-files entry would
+        // just be the same list under another name.
+        const bool showsEverything =
+                filter.extensions.size() == 1 && filter.extensions.front() == "*";
+        if (!showsEverything) opts.AddFilter("All files", "*");
+
+        // The dialog outlives this call; the widget may not (a tab closed
+        // while it is open), so the result is delivered through a weak ref.
+        std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+        UltraCanvasFileLoader::OpenFileDialog(opts,
+                [weakSelf, paths](DialogResult result, const std::string& appPath) {
+            if (result != DialogResult::OK || appPath.empty()) return;
+            auto self = std::dynamic_pointer_cast<UltraCanvasFilerWidget>(weakSelf.lock());
+            std::string error;
+            if (!FileAssociations::OpenWithApplicationPath(appPath, paths, error)) {
+                if (self) self->ReportError(error);
+            }
+        });
     }
 
     void UltraCanvasFilerWidget::AddOpenWithApp(const FilerOpenWithApp& app) {
@@ -4647,13 +4789,19 @@ namespace UltraCanvas {
         }
 
         if (entries.empty()) {
-            ctx->SetTextPaint(style.secondaryTextColor);
-            FontStyle fsty;
-            fsty.fontFamily = style.fontFamily;
-            fsty.fontSize = style.fontSize;
-            ctx->SetFontStyle(fsty);
-            ctx->DrawTextInRect(currentPath.empty() ? "(no folder)" : "(empty folder)",
-                                Rect2Dd(bounds));
+            if (currentPath.empty() && !fileListMode) {
+                // No folder was ever set - a programmatic state, not an
+                // attention-worthy one.
+                ctx->SetTextPaint(style.secondaryTextColor);
+                FontStyle fsty;
+                fsty.fontFamily = style.fontFamily;
+                fsty.fontSize = style.fontSize;
+                ctx->SetFontStyle(fsty);
+                ctx->DrawTextInRect("(no folder)", Rect2Dd(bounds));
+            } else {
+                DrawEmptyState(ctx, bounds,
+                               fileListMode ? "No entries" : "Folder is empty!");
+            }
             DrawSelectionInfoBar(ctx, bounds);
             ctx->PopState();
             return;
@@ -4795,6 +4943,57 @@ namespace UltraCanvas {
         ctx->DrawTextInRect(message, Rect2Dd(bounds));
     }
 
+    void UltraCanvasFilerWidget::DrawEmptyState(IRenderContext* ctx,
+                                                const Rect2Di& bounds,
+                                                const std::string& message) {
+        // "Nothing to show" notice: an attention icon above the message,
+        // vertically centered in the area above the info bar. The icon is a
+        // vector-drawn warning triangle, like the icon-menu glyphs, so no
+        // icon assets are required.
+        Rect2Di area(bounds.x, bounds.y, bounds.width,
+                     bounds.height - InfoBarHeight());
+        ctx->SetTextPaint(style.secondaryTextColor);
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.fontSize;
+        ctx->SetFontStyle(fsty);
+
+        const int iconEdge = 44;
+        const int gap = 10;
+        Size2Di ts = ctx->GetTextLineDimensions(message);
+        const int blockHeight = iconEdge + gap + ts.height;
+        if (area.height < blockHeight + 8) {
+            // Too flat for the stacked layout - the centered text alone.
+            ctx->DrawTextInRect(message, Rect2Dd(area));
+            return;
+        }
+
+        const double cx = area.x + area.width / 2.0;
+        const int top = area.y + (area.height - blockHeight) / 2;
+
+        // Triangle sitting on the icon box's bottom edge, apex centered.
+        const double w = iconEdge;
+        const double h = iconEdge * 0.9;
+        const double baseY = top + (iconEdge + h) / 2.0;
+        ctx->PushState();
+        ctx->SetStrokePaint(style.secondaryTextColor);
+        ctx->SetStrokeWidth(2.2f);
+        ctx->SetLineCap(LineCap::Round);
+        ctx->DrawLinePath({Point2Dd(cx, baseY - h),
+                           Point2Dd(cx + w / 2.0, baseY),
+                           Point2Dd(cx - w / 2.0, baseY)}, true);
+        // Exclamation mark: bar + dot, kept clear of the apex and the base.
+        ctx->SetStrokeWidth(2.6f);
+        ctx->DrawLine(Point2Dd(cx, baseY - h * 0.60),
+                      Point2Dd(cx, baseY - h * 0.32));
+        ctx->SetFillPaint(style.secondaryTextColor);
+        ctx->FillCircle(Point2Dd(cx, baseY - h * 0.16), 2.0);
+        ctx->PopState();
+
+        ctx->DrawText(message,
+                      Point2Dd(cx - ts.width / 2.0, top + iconEdge + gap));
+    }
+
     namespace {
         // Byte offset of every UTF-8 code point start in `s`, plus s.size() as
         // the closing boundary: cutting on one never splits a multibyte
@@ -4880,32 +5079,21 @@ namespace UltraCanvas {
     // the name off after one line it is broken over up to captionMaxLines
     // lines; only what does not fit even then is dropped, from the front of the
     // last line, so the tail — the extension — always remains readable.
+    // A name that fits its lines completely is then re-broken so the lines
+    // come out near equal — "CoderBox" / "compiler.png" rather than the
+    // greedy "CoderBox compiler" / ".png" (see WrapText).
 
-    std::vector<std::string> UltraCanvasFilerWidget::WrapText(
+    std::vector<std::string> UltraCanvasFilerWidget::WrapTextGreedy(
             IRenderContext* ctx, const std::string& text,
-            int maxWidth, int maxLines, bool* outTruncated) const {
-        if (outTruncated) *outTruncated = false;
+            int lineWidth, int maxLines, bool* outTruncated) const {
         std::vector<std::string> lines;
-        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
-        if (maxLines < 1) maxLines = 1;
-
-        if (ctx->GetTextLineDimensions(text).width <= maxWidth) {
-            lines.push_back(text);
-            return lines;                       // the common case: one measure
-        }
-        if (maxLines == 1) {
-            lines.push_back(EllipsizeText(ctx, text, maxWidth));
-            if (outTruncated) *outTruncated = true;
-            return lines;
-        }
-
         std::string rest = text;
         for (int line = 0; line < maxLines && !rest.empty(); ++line) {
             std::vector<size_t> bounds = Utf8Boundaries(rest);
             const bool lastLine = (line == maxLines - 1);
 
             if (lastLine) {
-                if (ctx->GetTextLineDimensions(rest).width <= maxWidth) {
+                if (ctx->GetTextLineDimensions(rest).width <= lineWidth) {
                     lines.push_back(rest);
                     break;
                 }
@@ -4915,7 +5103,7 @@ namespace UltraCanvas {
                 while (lo < hi) {
                     size_t mid = (lo + hi) / 2;
                     std::string cand = "…" + rest.substr(bounds[mid]);
-                    if (ctx->GetTextLineDimensions(cand).width <= maxWidth) hi = mid;
+                    if (ctx->GetTextLineDimensions(cand).width <= lineWidth) hi = mid;
                     else lo = mid + 1;
                 }
                 lines.push_back("…" + rest.substr(bounds[lo]));
@@ -4927,7 +5115,7 @@ namespace UltraCanvas {
             size_t lo = 0, hi = bounds.size() - 1;
             while (lo < hi) {
                 size_t mid = (lo + hi + 1) / 2;
-                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= maxWidth)
+                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= lineWidth)
                     lo = mid;
                 else
                     hi = mid - 1;
@@ -4958,6 +5146,60 @@ namespace UltraCanvas {
         return lines;
     }
 
+    std::vector<std::string> UltraCanvasFilerWidget::WrapText(
+            IRenderContext* ctx, const std::string& text,
+            int maxWidth, int maxLines, bool* outTruncated) const {
+        if (outTruncated) *outTruncated = false;
+        std::vector<std::string> lines;
+        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
+        if (maxLines < 1) maxLines = 1;
+
+        const int totalWidth = ctx->GetTextLineDimensions(text).width;
+        if (totalWidth <= maxWidth) {
+            lines.push_back(text);
+            return lines;                       // the common case: one measure
+        }
+        if (maxLines == 1) {
+            lines.push_back(EllipsizeText(ctx, text, maxWidth));
+            if (outTruncated) *outTruncated = true;
+            return lines;
+        }
+
+        bool truncated = false;
+        lines = WrapTextGreedy(ctx, text, maxWidth, maxLines, &truncated);
+        if (outTruncated) *outTruncated = truncated;
+
+        // ===== BALANCED BREAKS =====
+        // Greedy filling front-loads the lines and leaves a stub on the last
+        // one — "CoderBox compiler" / ".png". When the whole name fits its
+        // lines, it is re-broken at the smallest line width that still needs
+        // no extra line, which evens the lines out ("CoderBox" /
+        // "compiler.png") while the line count — and with it the caption
+        // band height — stays exactly the same.
+        if (!truncated && lines.size() >= 2) {
+            const size_t lineCount = lines.size();
+            // No re-break can make every line narrower than the average.
+            int lo = clampi(totalWidth / static_cast<int>(lineCount), 1, maxWidth);
+            int hi = maxWidth;
+            while (lo < hi) {
+                const int mid = lo + (hi - lo) / 2;
+                bool cut = false;
+                const size_t n =
+                        WrapTextGreedy(ctx, text, mid, maxLines, &cut).size();
+                if (!cut && n <= lineCount) hi = mid;
+                else lo = mid + 1;
+            }
+            if (hi < maxWidth) {
+                bool cut = false;
+                std::vector<std::string> balanced =
+                        WrapTextGreedy(ctx, text, hi, maxLines, &cut);
+                if (!cut && balanced.size() <= lineCount)
+                    lines = std::move(balanced);
+            }
+        }
+        return lines;
+    }
+
     std::vector<std::string> UltraCanvasFilerWidget::WrapEntryName(
             IRenderContext* ctx, size_t entryIndex, const std::string& name,
             int maxWidth, int maxLines) {
@@ -4974,7 +5216,11 @@ namespace UltraCanvas {
                                                 int maxWidth) const {
         int maxLines = std::max(1, style.captionMaxLines);
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
-        int n = static_cast<int>(WrapText(ctx, name, maxWidth, maxLines).size());
+        if (ctx->GetTextLineDimensions(name).width <= maxWidth) return 1;
+        // Balancing (WrapText) never changes the line count, so the cheaper
+        // greedy pass is enough to size the caption band.
+        int n = static_cast<int>(
+                WrapTextGreedy(ctx, name, maxWidth, maxLines, nullptr).size());
         return clampi(n, 1, maxLines);
     }
 
@@ -7099,7 +7345,19 @@ namespace UltraCanvas {
             SetPath(e.path);
             return;
         }
-        if (onFileActivated) onFileActivated(e);
+        if (onFileActivated) {
+            onFileActivated(e);
+            return;
+        }
+        if (activateOpensDefault) {
+            // No host callback: Explorer semantics for simple embedders —
+            // but only for a real file (archive interiors are virtual paths).
+            std::error_code ec;
+            if (!fs::is_regular_file(e.path, ec) || ec) return;
+            std::string error;
+            if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
+                ReportError(error);
+        }
     }
 
     void UltraCanvasFilerWidget::OpenContextMenu(const Point2Di& localPoint) {
@@ -7254,14 +7512,52 @@ namespace UltraCanvas {
         }
         menu.AddItem(MenuItemData::Separator());
 
-        // Open with >
+        // Open with > : the applications the OS registers for the selection
+        // (default application first — see UltraCanvasFileAssociations),
+        // then the host's AddOpenWithApp entries, then the file-dialog
+        // picker. The OS section needs launchable paths: files only (no
+        // folders), really on disk (an entry inside an archive is a virtual
+        // path no external application can read).
         {
-            std::vector<MenuItemData> openItems;
-            if (openWithApps.empty()) {
-                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
-                none.enabled = false;
-                openItems.push_back(none);
+            bool launchable = systemOpenWith && hasSel;
+            std::vector<std::string> targetPaths;
+            for (const FilerEntry& t : targets) {
+                if (t.isDirectory) { launchable = false; break; }
+                targetPaths.push_back(t.path);
             }
+            if (launchable) {
+                std::error_code ec;
+                for (const std::string& p : targetPaths) {
+                    if (fs::is_regular_file(p, ec) && !ec) continue;
+                    launchable = false;
+                    break;
+                }
+            }
+
+            std::vector<MenuItemData> openItems;
+            if (launchable) {
+                // Served from the prewarm cache (the folder scan queued this
+                // folder's extensions) — no database parse on the UI thread.
+                for (const FileAssociationApp& app :
+                     FileAssociations::GetApplicationsForFiles(targetPaths)) {
+                    auto cb = [this, app]() {
+                        std::vector<std::string> paths;
+                        for (const FilerEntry& e : GetSelectedEntries())
+                            if (!e.isDirectory) paths.push_back(e.path);
+                        if (paths.empty()) return;
+                        std::string error;
+                        if (!FileAssociations::OpenWithApplication(app, paths, error))
+                            ReportError(error);
+                    };
+                    if (!app.iconPath.empty()) {
+                        openItems.push_back(MenuItemData::Action(app.name, app.iconPath, cb));
+                    } else {
+                        openItems.push_back(MenuItemData::Action(app.name, cb));
+                    }
+                }
+            }
+            if (!openWithApps.empty() && !openItems.empty())
+                openItems.push_back(MenuItemData::Separator());
             for (const FilerOpenWithApp& app : openWithApps) {
                 auto onOpen = app.onOpen;
                 auto cb = [this, onOpen]() {
@@ -7272,6 +7568,18 @@ namespace UltraCanvas {
                 } else {
                     openItems.push_back(MenuItemData::Action(app.label, cb));
                 }
+            }
+            if (launchable) {
+                if (!openItems.empty())
+                    openItems.push_back(MenuItemData::Separator());
+                openItems.push_back(MenuItemData::Action(
+                        "Other application…",
+                        [this]() { OpenSelectionWithChooser(); }));
+            }
+            if (openItems.empty()) {
+                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
+                none.enabled = false;
+                openItems.push_back(none);
             }
             menu.AddItem(MenuItemData::Submenu("Open with", openItems));
         }
@@ -7304,7 +7612,7 @@ namespace UltraCanvas {
             compressSub.enabled = canCompress;
             menu.AddItem(compressSub);
         }
-        addAction("Extract", anyArchive, [this]() { ExtractSelection(); });
+        addAction("Extract", anyArchive, [this]() { OpenExtractDialog(); });
         menu.AddItem(MenuItemData::Separator());
 
         addAction("Print", static_cast<bool>(onPrint), [this]() {

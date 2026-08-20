@@ -19,7 +19,7 @@ fi
 
 "$SCRIPT_DIR/package-macos.sh" --notarize
 
-PACKAGE_ZIP="UCDemo-MacOS-$VERSION-x86_64.zip"
+PACKAGE_ZIP="UCDemo-MacOS-$VERSION-$(uname -m).zip"
 cd "$SCRIPT_DIR/dist-macos"
 rm -f "$SCRIPT_DIR/$PACKAGE_ZIP"
 zip -r "$SCRIPT_DIR/$PACKAGE_ZIP" *.app
