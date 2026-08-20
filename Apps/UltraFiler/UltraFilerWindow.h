@@ -26,10 +26,11 @@
 // entries navigate like bookmarks; the tree's context menu offers Copy /
 // Delete / Paste (folders only), a Pin submenu whose "To Treeview" /
 // "To Favorites" flags show and toggle where the folder is pinned, and Unpin
-// (pinned entries only). The Extras menu carries the same Pin / Unpin pair as
-// a block below "Open prompt", acting on the current selection.
-// Version: 1.8.0
-// Last Modified: 2026-08-17
+// (pinned entries only). The filer context menus' Extras submenu ends with an
+// app-provided block (extrasMenuProvider): "Open prompt", then Pin / Unpin
+// submenus with the same flags, acting on the current selection.
+// Version: 1.9.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -183,23 +184,21 @@ private:
     // The filer the user is looking at: a Favorites / History page while one
     // of those views is shown, else the active tab's filer.
     UltraCanvasFilerWidget* VisibleFiler() const;
-    // What the menu bar's Pin menu would pin: the visible filer's selection,
-    // or the shown folder itself while nothing is selected in the browsing
-    // view.
+    // What the Pin / Unpin entries act on: the visible filer's selection, or
+    // the shown folder itself while nothing is selected in the browsing view.
     std::vector<FilerEntry> PinTargets() const;
-    // The Pin menu's items (Favorites / Treeview), built fresh on every open
-    // so their enabled state follows the current selection.
-    std::vector<MenuItemData> BuildPinMenuItems();
-    // Pin > Favorites: each target goes into the tab its kind belongs to.
+    // Pin > To Favorites: each target goes into the tab its kind belongs to.
     void PinTargetsToFavorites();
-    // Pin > Treeview: each target folder appears under the tree's Pinned node.
+    // Pin > To Treeview: each target folder appears under the tree's Pinned
+    // node.
     void PinTargetsToTree();
-    // Extras > Unpin: the reverse of the two Pin actions above.
+    // Unpin > To Favorites / To Treeview: the reverse of the two Pin actions.
     void UnpinTargetsFromFavorites();
     void UnpinTargetsFromTree();
-    // The Extras menu's items, built fresh on every open: "Open prompt", then
-    // a Pin / Unpin block whose "To Treeview" / "To Favorites" flags show
-    // whether the current selection is pinned there.
+    // The app's tail of the filer context menus' Extras submenu (wired into
+    // every filer's extrasMenuProvider, rebuilt on each open): "Open prompt",
+    // then Pin / Unpin submenus whose "To Treeview" / "To Favorites" flags
+    // show whether the current selection is pinned there.
     std::vector<MenuItemData> BuildExtrasMenuItems();
 
     // ===== FOLDER TREE: PINNED SECTION + CONTEXT MENU =====
@@ -267,6 +266,10 @@ private:
     // Re-reads whatever listing is on screen: the History / Favorites lists
     // while one of those views is shown, else the active tab's folder.
     void RefreshVisibleListing();
+    // Extras > Open prompt: starts the OS command line program in the folder
+    // of the active tab. Which application that is comes from the settings
+    // (Extras > Open prompt); an empty setting uses the platform default.
+    void OpenSystemPrompt();
 
     // ===== SETTINGS =====
     // Pushes the persisted settings into the widgets they configure (the

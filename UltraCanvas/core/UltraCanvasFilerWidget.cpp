@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.14.0
-// Last Modified: 2026-08-17
+// Version: 1.15.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -7565,6 +7565,17 @@ namespace UltraCanvas {
             });
             access.enabled = static_cast<bool>(onAccess);
             extraItems.push_back(access);
+
+            // The host's tail (extrasMenuProvider) — asked on every open so
+            // item flags can follow the host's state (e.g. pinned-or-not).
+            if (extrasMenuProvider) {
+                std::vector<MenuItemData> hostItems = extrasMenuProvider();
+                if (!hostItems.empty()) {
+                    extraItems.push_back(MenuItemData::Separator());
+                    for (MenuItemData& item : hostItems)
+                        extraItems.push_back(std::move(item));
+                }
+            }
 
             menu.AddItem(MenuItemData::Submenu("Extras", extraItems));
         }
