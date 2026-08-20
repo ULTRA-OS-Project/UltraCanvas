@@ -181,7 +181,7 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasButton> UltraCanvasToolbar::AddToggleButton(
             const std::string& id, const std::string& text,
             const std::string& icon, std::function<void(bool)> onToggle) {
-        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 32, 32, text);
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
         if (!icon.empty()) {
             button->SetIcon(icon);
             button->SetIconSize(24, 24);

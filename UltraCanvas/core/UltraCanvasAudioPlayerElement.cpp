@@ -1,8 +1,8 @@
 // core/UltraCanvasAudioPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasAudioPlayer, built from child widgets
 // (icon buttons, sliders, label) arranged by a flex row layout.
-// Version: 0.3.0
-// Last Modified: 2026-06-23
+// Version: 0.3.1
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayerElement.h"
@@ -18,6 +18,8 @@ namespace {
     constexpr int kGap = 8;
     constexpr int kTimeWidth = 90;     // "00:00 / 00:00"
     constexpr int kVolumeWidth = 90;
+    constexpr int kVolumeMinWidth = 48; // volume bar may shrink down to this
+    constexpr int kMinSeekWidth = 60;  // below this a seek bar isn't usable
     constexpr int kCtrlHeight = 20;    // height of sliders/label inside the row
     constexpr int kIconSize = 18;      // transport icon size inside the buttons
 }
@@ -50,6 +52,12 @@ UltraCanvasAudioPlayerElement::UltraCanvasAudioPlayerElement(
 }
 
 UltraCanvasAudioPlayerElement::~UltraCanvasAudioPlayerElement() {
+    uiAlive->store(false);   // cancel queued cross-thread UI tasks
+    // The player can outlive this element via GetPlayer() — disconnect the
+    // callbacks that capture `this`.
+    player->onPlaybackStateChanged = nullptr;
+    player->onPositionChanged = nullptr;
+    player->onEnded = nullptr;
     StopPosTimer();
 }
 
@@ -130,7 +138,16 @@ void UltraCanvasAudioPlayerElement::BuildChildren() {
         volumeSlider->onValueChanging = cb;
         volumeSlider->onValueChanged  = cb;
     }
-    fixed(volumeSlider);
+    // Unlike the other fixed children the volume bar may give up width (down
+    // to kVolumeMinWidth) when the row runs out of space, instead of pushing
+    // itself past the right edge; ApplyResponsiveVisibility() hides it
+    // entirely when even the minimum doesn't fit.
+    volumeSlider->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+                            .SetFlexBasis(CSSLayout::Dimension::Px(kVolumeWidth))
+                            .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    CSSLayout::BoxConstraints volumeLimits;
+    volumeLimits.minWidth = CSSLayout::Dimension::Px(kVolumeMinWidth);
+    volumeSlider->boxConstraints = volumeLimits;
     AddChild(volumeSlider);
 }
 
@@ -152,17 +169,79 @@ void UltraCanvasAudioPlayerElement::ApplyStyleToChildren() {
                                             style.progressFillColor, style.knobColor);
     if (volumeSlider) volumeSlider->SetColors(style.progressTrackColor,
                                               style.progressFillColor, style.knobColor);
+    ApplyResponsiveVisibility();   // re-apply the width limits on top of style
     InvalidateLayout();
 }
 
+bool UltraCanvasAudioPlayerElement::ComputeResponsiveWants(bool& wantVol,
+                                                           bool& wantTime) const {
+    if (!volumeSlider || !timeLabel) return false;
+    const float w = GetWidth();
+    if (w <= 0.0f) return false;   // not laid out yet
+
+    const bool styleVol  = style.showVolumeSlider && !style.compact;
+    const bool styleTime = style.showTimeLabels;
+
+    // Width the always-present controls need beside a still-usable seek bar.
+    float base = 2.0f * kPadding + style.buttonSize + kGap + kMinSeekWidth; // play + seek
+    if (!style.compact) base += style.buttonSize + kGap;                    // stop
+    if (styleVol)       base += style.buttonSize + kGap;                    // mute
+    const float needTime   = base + kTimeWidth + kGap;
+    // Volume appears only when it fits at full width beside a usable seek
+    // bar (its shrink-to-kVolumeMinWidth remains as a safety net between
+    // layout passes) — otherwise the seek bar would get shorter with a wider
+    // row around the threshold.
+    const float needVolume = needTime + kVolumeWidth + kGap;
+
+    // Drop the volume slider first, then the time label. The mute button
+    // stays visible so the sound can still be silenced from a narrow pane.
+    wantVol  = styleVol  && w >= needVolume;
+    wantTime = styleTime && w >= needTime;
+    return true;
+}
+
+void UltraCanvasAudioPlayerElement::ApplyResponsiveVisibility() {
+    bool wantVol = false, wantTime = false;
+    if (!ComputeResponsiveWants(wantVol, wantTime)) return;
+    bool changed = false;
+    if (volumeSlider->IsVisible() != wantVol) { volumeSlider->SetVisible(wantVol); changed = true; }
+    if (timeLabel->IsVisible() != wantTime)   { timeLabel->SetVisible(wantTime); changed = true; }
+    // SetVisible invalidates layout but doesn't schedule a frame; without a
+    // repaint request the new arrangement would only appear with the next
+    // unrelated event.
+    if (changed) RequestRedraw();
+}
+
+void UltraCanvasAudioPlayerElement::Arrange(const Rect2Df& finalRect,
+                                            const CSSLayout::LayoutContext& ctx) {
+    UltraCanvasContainer::Arrange(finalRect, ctx);
+    // With every control at a fixed width, a narrow host (the UltraFiler
+    // preview pane can go down to ~260px) used to overflow the flex row and
+    // clip the volume slider at the right edge. Re-check what fits against
+    // the arranged width. The visibility flip cannot happen inside this pass:
+    // the unwinding Arrange recursion re-marks ancestors layout-valid, which
+    // swallows the invalidation — queue it to run right after the pass.
+    bool wantVol = false, wantTime = false;
+    if (ComputeResponsiveWants(wantVol, wantTime) &&
+        (volumeSlider->IsVisible() != wantVol || timeLabel->IsVisible() != wantTime)) {
+        RunOnUIThread([this]() { ApplyResponsiveVisibility(); });
+    }
+}
+
 void UltraCanvasAudioPlayerElement::UpdatePlayIcon() {
-    if (playButton)
-        playButton->SetIcon(AudioIconPath(player->IsPlaying() ? "pause.svg" : "play.svg"));
+    if (!playButton) return;
+    std::string icon = AudioIconPath(player->IsPlaying() ? "pause.svg" : "play.svg");
+    if (icon == appliedPlayIcon) return;
+    appliedPlayIcon = icon;
+    playButton->SetIcon(icon);
 }
 
 void UltraCanvasAudioPlayerElement::UpdateMuteIcon() {
-    if (muteButton)
-        muteButton->SetIcon(AudioIconPath(player->IsMuted() ? "volume-x.svg" : "volume-2.svg"));
+    if (!muteButton) return;
+    std::string icon = AudioIconPath(player->IsMuted() ? "volume-x.svg" : "volume-2.svg");
+    if (icon == appliedMuteIcon) return;
+    appliedMuteIcon = icon;
+    muteButton->SetIcon(icon);
 }
 
 void UltraCanvasAudioPlayerElement::SyncTimeAndSeek() {
@@ -176,6 +255,11 @@ void UltraCanvasAudioPlayerElement::SyncTimeAndSeek() {
         seekSlider->SetValue(dur > 0.0 ? static_cast<float>(pos / dur) : 0.0f);
         suppressSeekCallback = false;
     }
+    // Runs on every position tick (UI thread), so the transport icons heal
+    // even if a state-change notification was lost; the applied-icon guard
+    // makes this free when nothing changed.
+    UpdatePlayIcon();
+    UpdateMuteIcon();
 }
 
 void UltraCanvasAudioPlayerElement::StartPosTimer() {
@@ -191,20 +275,44 @@ void UltraCanvasAudioPlayerElement::StopPosTimer() {
     posTimerId = InvalidTimerId;
 }
 
+void UltraCanvasAudioPlayerElement::RunOnUIThread(std::function<void()> fn) {
+    // Player callbacks arrive on the audio backend thread (position pumping,
+    // end-of-stream). Child widgets, the layout caches and the window's
+    // dirty-rect list are not thread-safe, so all UI work is queued to the
+    // event loop; `uiAlive` cancels tasks that would land after this element
+    // is destroyed. Without an application (headless use) run inline — there
+    // is no event loop to race against.
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { fn(); return; }
+    app->PostToUIThread([alive = uiAlive, fn = std::move(fn)]() {
+        if (alive->load()) fn();
+    });
+}
+
 void UltraCanvasAudioPlayerElement::HookPlayerCallbacks() {
     player->onPlaybackStateChanged = [this](AudioPlaybackState) {
-        UpdatePlayIcon();
-        if (player->IsPlaying()) StartPosTimer(); else StopPosTimer();
-        SyncTimeAndSeek();
-        RequestRedraw();
+        RunOnUIThread([this]() {
+            UpdatePlayIcon();
+            if (player->IsPlaying()) StartPosTimer(); else StopPosTimer();
+            SyncTimeAndSeek();
+            RequestRedraw();
+        });
     };
-    player->onPositionChanged = [this](double) { SyncTimeAndSeek(); };
+    player->onPositionChanged = [this](double) {
+        RunOnUIThread([this]() { SyncTimeAndSeek(); });
+    };
     player->onEnded = [this]() {
-        StopPosTimer();
-        UpdatePlayIcon();
-        SyncTimeAndSeek();
-        if (onEnded) onEnded();
-        RequestRedraw();
+        RunOnUIThread([this]() {
+            if (player->IsPlaying()) return;   // restarted before this task ran
+            StopPosTimer();
+            // Halt the output device: after end-of-stream it keeps running
+            // (feeding silence) until a transport call stops it.
+            player->Stop();
+            UpdatePlayIcon();
+            SyncTimeAndSeek();
+            if (onEnded) onEnded();
+            RequestRedraw();
+        });
     };
 }
 
