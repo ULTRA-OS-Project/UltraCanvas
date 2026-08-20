@@ -48,12 +48,12 @@
 // selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
 // Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
 // expensive files can be browsed with only the cheap previews switched on.
+// Version: 1.15.0
+// Last Modified: 2026-08-17
 // The context menu's "Open with >" lists the applications the OS registers
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
 // background), the host's own entries, and an "Other application…" picker.
-// Version: 1.14.0
-// Last Modified: 2026-08-16
-// Author: UltraCanvas Framework
+
 #pragma once
 
 #include "UltraCanvasContainer.h"
@@ -583,6 +583,12 @@ namespace UltraCanvas {
         // "tar.zst"); defaults to a .zip archive.
         void CompressSelection(const std::string& extension = "zip");
         void ExtractSelection();   // unpack selected archives alongside
+        // The context menu's Extract: the same overlay dialog as Compress,
+        // editing the destination folder name (default: the archive's name
+        // without its suffix). The icon can be dragged onto a folder to
+        // retarget where the archives unpack; several selected archives each
+        // unpack into their own subfolder of the named folder.
+        void OpenExtractDialog();
         static bool ClipboardHasContent();
 
         // "New >" document kinds (replaces the default seven).
@@ -1305,10 +1311,21 @@ namespace UltraCanvas {
         // text still does not fit, the head of what is left is dropped and the
         // last line opens with "…", keeping the end of the name (extension)
         // visible. `outTruncated` reports whether anything was dropped.
+        // A text that fits its lines completely is re-broken at the smallest
+        // line width needing no extra line, so the lines come out near equal
+        // ("CoderBox" / "compiler.png" instead of the greedily filled
+        // "CoderBox compiler" / ".png") without changing the line count.
         std::vector<std::string> WrapText(IRenderContext* ctx,
                                           const std::string& text,
                                           int maxWidth, int maxLines,
                                           bool* outTruncated = nullptr) const;
+        // The greedy pass behind WrapText: fills each line up to `lineWidth`
+        // before breaking. Line count only depends on this pass, so the
+        // layout's CaptionLinesFor uses it directly, skipping the balancing.
+        std::vector<std::string> WrapTextGreedy(IRenderContext* ctx,
+                                                const std::string& text,
+                                                int lineWidth, int maxLines,
+                                                bool* outTruncated) const;
         // WrapText for an entry name; records whether it had to be shortened,
         // so the hover tooltip only pops for names that are really cut off.
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
@@ -1474,17 +1491,26 @@ namespace UltraCanvas {
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;
 
-        // ===== COMPRESS DIALOG (modal in-widget overlay) =====
+        // ===== COMPRESS / EXTRACT DIALOG (modal in-widget overlay) =====
         // Shown when a format is picked from the context menu's "Compress"
-        // submenu. It previews the archive's file-type icon, lets the name be
-        // edited, and shows the destination folder as smaller text. The icon can
-        // be dragged onto any folder in the view to retarget that destination —
-        // which is why this is an in-widget overlay rather than a separate modal
-        // window (a top-level modal would block the folders behind it).
+        // submenu, and (in extract mode) by the context menu's "Extract". It
+        // previews the archive's file-type icon, lets the name be edited —
+        // the archive's base name when compressing, the destination folder
+        // name when extracting — and shows the destination folder as smaller
+        // text. The icon can be dragged onto any folder in the view to
+        // retarget that destination — which is why this is an in-widget
+        // overlay rather than a separate modal window (a top-level modal
+        // would block the folders behind it).
         struct CompressDialogState {
             bool        active = false;
+            // Extract mode: the same panel unpacks the selected archives into
+            // a folder named by the editor instead of packing the selection.
+            bool        extractMode = false;
             std::string extension;      // archive extension, e.g. "zip", "tar.gz"
-            std::string formatLabel;    // human label, e.g. "TAR + gzip"
+                                        // (in extract mode: the source archive's
+                                        // suffix, driving the icon tag only)
+            std::string formatLabel;    // human label, e.g. "TAR + gzip"; in
+                                        // extract mode the archive name / count
             std::string nameBuffer;     // base name (no extension), kept in sync
                                         // with the editor below
             std::string destDir;        // folder the archive is written to
@@ -1530,6 +1556,10 @@ namespace UltraCanvas {
 
         void OpenCompressDialog(const std::string& extension,
                                 const std::string& formatLabel);
+        // Shared dialog chrome (name editor, OK/Cancel buttons, key filter);
+        // the state fields must be filled before this is called.
+        void OpenArchiveDialogChrome(const std::string& defaultName,
+                                     const std::string& okLabel);
         void LayoutCompressDialog(const Rect2Di& bounds);
         void PositionCompressNameInput();
         void DestroyCompressNameInput();

@@ -75,6 +75,75 @@
   edge instead. Axis bands, the title band and the legend margin remain out
   of bounds.
 
+- **FilerWidget / UltraFiler: the context menu's Extract got the same dialog
+  as Compress.** Extract used to unpack immediately with no way to pick the
+  destination; it now opens the compress dialog's panel in extract mode: the
+  archive's file-type icon with its name (or "N archives") beneath, an
+  editable destination **folder** name — suggested from the archive's name
+  without its suffix, so `sources.tar.gz` offers `sources` — and the
+  location line. The icon can be dragged onto any folder in the view to
+  retarget the destination, Enter / Extract unpacks, Esc / Cancel dismisses,
+  and an existing folder name gets the usual " (2)" suffix instead of being
+  written into. Several selected archives each unpack into their own
+  subfolder of the named folder so their contents cannot collide. Unpacking
+  still runs through the VirtualFS bridge (`UCVFSBridge::ExtractArchive`);
+  the dialog-free `ExtractSelection()` remains for programmatic use, and the
+  new `OpenExtractDialog()` is public for hosts.
+- **Audio player: a finished track no longer restarts itself.** When a
+  non-looping source played to its end, the output device kept pulling frames
+  and the playback cursor had been reset to 0 — so the track audibly started
+  over from the beginning while the player reported *Stopped* and the
+  transport showed the Play icon. This is what made the UltraFiler preview
+  with auto-play look like "it plays but never shows the Pause icon": the
+  first pass played with the correct Pause icon, then looped forever in the
+  stopped state. `UltraCanvasAudioPlayer` now feeds silence after end of
+  stream until the next transport call, `onEnded` fires exactly once, and
+  `UltraCanvasAudioPlayerElement` stops the device when it learns the track
+  ended. `Play()` after the end still restarts from 0:00.
+- **Audio player element: UI work moved off the audio thread.** The backend
+  delivers position updates, end-of-stream and the resulting state change on
+  its audio thread, and the element used to update its label, sliders and
+  icons directly from those callbacks — racing the UI thread's layout,
+  text-measurement and dirty-rectangle bookkeeping (reproducibly crashing in
+  pango under load, and losing repaints such as the play/pause icon refresh).
+  All player callbacks are now marshalled to the UI thread
+  (`PostToUIThread`), the transport icons also re-sync from the UI-thread
+  position timer, and the element disconnects its callbacks on destruction.
+- **Audio player element: narrow hosts no longer clip the volume slider.**
+  All controls had fixed widths, so in a narrow host (the UltraFiler preview
+  pane goes down to ~260px) the flex row overflowed: the seek bar collapsed
+  to zero and the volume slider ran off the pane's right edge (the bug
+  report's screenshot). The row is now responsive — when the width cannot
+  fit everything beside a usable seek bar it hides the volume slider first,
+  then the time label; the mute button stays so the sound can still be
+  silenced, and everything returns as soon as the element is wide enough.
+
+#### 2026-08-17 *0.3.52*
+- **FilerWidget: balanced line breaks for wrapped tile captions.** A name that
+  needs two or three caption lines was broken greedily — the first line took
+  everything that fit and the rest became a stub, "CoderBox compiler" /
+  ".png". A name that fits its lines completely is now re-broken at the
+  smallest line width that still needs no extra line, so the lines come out
+  near equal: "CoderBox" / "compiler.png", "Diagram" / "Wordcloud.png". The
+  line count — and with it the caption band and tile height — never changes,
+  and names too long even for `captionMaxLines` keep the greedy break with the
+  leading-"…" last line, whose every line is full anyway. Applies to the
+  thumbnail grids and the treemap in the FilerWidget and everything built on
+  it (UltraFiler, file dialogs).
+
+#### 2026-08-17 *0.3.51*
+- **UltraFiler: Pin / Unpin with state flags in the Extras menu and the folder
+  tree's context menu.** The Extras menu grows a block below "Open prompt"
+  (behind a separator): **Pin** and **Unpin** submenus, each with
+  "To Treeview" / "To Favorites" entries acting on the current selection (or
+  the shown folder while nothing is selected). The entries are check items
+  whose flag shows whether the selection is pinned there right now — Pin is
+  enabled while something is still unpinned, Unpin while something is pinned.
+  The folder tree's context menu gets the same **Pin** submenu between the
+  file commands and Unpin; there the "To Treeview" / "To Favorites" flags
+  directly toggle the folder's pin in the tree's Pinned section / the
+  Favorites view's Folders tab. Both menus build their items when they open,
+  so the flags always reflect the current pin state.
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
   content used to show only a small "(empty folder)" line; it now draws a
