@@ -178,6 +178,7 @@ namespace UltraCanvas {
     struct ChartLegendLayout {
         Rect2Dd box;                             // total area the legend occupies
         Rect2Dd titleRect;
+        Rect2Dd customRect;                      // SetCustomArea's reserved panel
         std::vector<ChartLegendItemRect> items;
         size_t  visibleCount = 0;                // entries actually laid out
         size_t  overflowCount = 0;               // entries dropped (see maxEntries)
@@ -236,6 +237,26 @@ namespace UltraCanvas {
             Invalidate();
         }
 
+        // A host-drawn panel inside the legend box, below the entries - for a
+        // key richer than any swatch: an annotated confidence-ellipse diagram,
+        // a bubble-size scale, a mini axis. The legend reserves `size` in its
+        // layout and calls `draw` with the reserved rectangle (clipped) while
+        // rendering; the drawing shares the legend's background and border.
+        using LegendCustomDraw = std::function<void(IRenderContext*, const Rect2Dd&)>;
+        void SetCustomArea(const Size2Dd& size, LegendCustomDraw draw) {
+            customAreaSize = size;
+            customDraw = std::move(draw);
+            Invalidate();
+        }
+        void ClearCustomArea() {
+            customAreaSize = Size2Dd(0.0, 0.0);
+            customDraw = nullptr;
+            Invalidate();
+        }
+        bool HasCustomArea() const {
+            return customDraw && customAreaSize.width > 0.0 && customAreaSize.height > 0.0;
+        }
+
         // ----- layout & painting -----
 
         // Lay the legend out inside availableArea and return the rectangle it
@@ -276,6 +297,8 @@ namespace UltraCanvas {
         LegendIntervalFormat intervalFormat = LegendIntervalFormat::Brackets;
         int    intervalDecimals = 2;
         std::function<std::string(const ChartLegendEntry&)> labelFormatter;
+        Size2Dd customAreaSize;
+        LegendCustomDraw customDraw;
 
         ChartLegendLayout layout;
         Rect2Dd lastArea;

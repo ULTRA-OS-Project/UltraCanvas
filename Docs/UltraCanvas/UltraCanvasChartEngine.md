@@ -194,6 +194,11 @@ bar collapsing mid-animation degrades gracefully.
   - `SetLegendTitle(text)`, and `Legend()` for the component's long tail:
     per-entry `valueText`, interval/band entries, a max-entries overflow row,
     a label formatter, hit-testing.
+  - `Legend().SetCustomArea(size, draw)` — a host-drawn panel below the
+    entries, inside the legend box, for a key richer than any swatch: an
+    annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.
+    The legend reserves the size in its layout and calls the drawing
+    callback with the reserved (clipped) rectangle.
   - `ChartLegendEntry.swatch` picks the swatch: `Square | Circle | Ring |
     Line | DashedLine | Marker | Glyph | Gradient | Outline | Hatched |
     Image` (`imagePath` for `Image`) — line series get a line, scatter gets

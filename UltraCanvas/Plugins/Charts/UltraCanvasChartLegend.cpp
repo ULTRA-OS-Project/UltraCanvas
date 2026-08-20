@@ -172,7 +172,7 @@ namespace UltraCanvas {
         lastArea = availableArea;
         layout = ChartLegendLayout();
 
-        if (!visible || entries.empty() || ctx == nullptr) {
+        if (!visible || (entries.empty() && !HasCustomArea()) || ctx == nullptr) {
             layout.box = Rect2Dd(availableArea.x, availableArea.y, 0, 0);
             layout.valid = true;
             return layout;
@@ -263,6 +263,11 @@ namespace UltraCanvas {
         }
 
         contentW = std::max(contentW, titleW);
+        if (HasCustomArea()) {
+            contentW = std::max(contentW, customAreaSize.width);
+            if (contentH > 0.0) contentH += style.entrySpacingY;
+            contentH += customAreaSize.height;
+        }
         double boxW = contentW + 2.0 * style.paddingX;
         double boxH = contentH + 2.0 * style.paddingY;
         if (!title.empty()) boxH += titleH + style.titleGap;
@@ -369,12 +374,19 @@ namespace UltraCanvas {
             cursorY += thisRowH + style.entrySpacingY;
         }
 
+        if (HasCustomArea()) {
+            layout.customRect = Rect2Dd(bx + style.paddingX, cursorY,
+                                        std::min(contentW, customAreaSize.width),
+                                        customAreaSize.height);
+        }
+
         layout.valid = true;
         return layout;
     }
 
     Rect2Dd ChartLegend::RemainingArea(const Rect2Dd& availableArea) const {
-        if (!visible || entries.empty() || IsInset() || !layout.valid) {
+        if (!visible || (entries.empty() && !HasCustomArea()) || IsInset() ||
+            !layout.valid) {
             return availableArea;
         }
 
@@ -560,10 +572,10 @@ namespace UltraCanvas {
     }
 
     void ChartLegend::Render(IRenderContext* ctx, const Rect2Dd& availableArea) {
-        if (!visible || entries.empty() || ctx == nullptr) return;
+        if (!visible || (entries.empty() && !HasCustomArea()) || ctx == nullptr) return;
 
         Measure(ctx, availableArea);
-        if (layout.items.empty()) return;
+        if (layout.items.empty() && !HasCustomArea()) return;
 
         ctx->PushState();
 
@@ -623,6 +635,13 @@ namespace UltraCanvas {
             if (entry.highlighted || item.entryIndex == highlightedIndex) {
                 ctx->SetFontWeight(FontWeight::Normal);
             }
+        }
+
+        if (HasCustomArea() && layout.customRect.width > 0.0) {
+            ctx->PushState();
+            ctx->ClipRect(layout.customRect);
+            customDraw(ctx, layout.customRect);
+            ctx->PopState();
         }
 
         ctx->PopState();

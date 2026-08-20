@@ -36,7 +36,10 @@
   Marker, Glyph, Gradient, Outline, Hatched and Image — and the engine
   legend follows the active chart theme. This also removes the duplicate
   `ChartLegendEntry` type the engine declared in parallel with the shared
-  one.
+  one. New `SetCustomArea(size, draw)` reserves a host-drawn panel below
+  the entries for keys richer than any swatch (an annotated
+  confidence-ellipse diagram, a bubble-size scale); the demo's Inset mode
+  shows one.
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

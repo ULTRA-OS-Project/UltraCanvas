@@ -1097,11 +1097,37 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "placements horizontally and wraps rows to the width",
                           "Legend inset top-right — floats over the plot, reserves "
                           "nothing, and rides the label plan as an obstacle the "
-                          "solved value labels steer around",
+                          "solved value labels steer around. The panel below the "
+                          "entries is SetCustomArea: a host-drawn key richer than "
+                          "any swatch",
                           "Legend off — its reserved margin returns to the plot area"};
                       if (i == 3) {
                           chartPtr->SetShowLegendPanel(false);
                       } else {
+                          if (i == 2) {
+                              // An annotated ellipse key, the kind a swatch
+                              // cannot express - drawn by the host into the
+                              // legend's reserved custom panel.
+                              chartPtr->Legend().SetCustomArea(
+                                  Size2Dd(150.0, 52.0),
+                                  [](IRenderContext* ctx, const Rect2Dd& r) {
+                                      const Point2Dd c(r.x + 52.0,
+                                                       r.y + r.height / 2.0 + 4.0);
+                                      ctx->SetStrokePaint(Color(150, 150, 150, 255));
+                                      ctx->SetStrokeWidth(1.0f);
+                                      ctx->DrawEllipse(Rect2Dd(c.x - 36, c.y - 18, 72, 36));
+                                      ctx->DrawEllipse(Rect2Dd(c.x - 17, c.y - 8, 34, 16));
+                                      ctx->SetFillPaint(Color(60, 60, 60, 255));
+                                      ctx->FillCircle(c, 2.5);
+                                      ctx->SetFontSize(9.0f);
+                                      ctx->SetTextPaint(Color(120, 120, 120, 255));
+                                      ctx->DrawText("95%", Point2Dd(r.x + 2.0, r.y + 1.0));
+                                      ctx->DrawText("50%", Point2Dd(c.x - 10.0, c.y - 26.0));
+                                      ctx->DrawText("mean", Point2Dd(c.x + 40.0, c.y - 5.0));
+                                  });
+                          } else {
+                              chartPtr->Legend().ClearCustomArea();
+                          }
                           const ChartLegendPosition where[] = {
                               ChartLegendPosition::RightStart,
                               ChartLegendPosition::BottomCenter,
