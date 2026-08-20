@@ -288,8 +288,12 @@ public:
                 Palette().ColorAt(span.seriesIndex, seriesNames.size());
 
             PaintBar(ctx, outline, hovered ? Lighten(base, 45) : base);
+            // The edge is the bar's own colour darkened, not a fixed near-black:
+            // soft palettes (Pastel) keep their softness and dark themes get
+            // coloured edges instead of invisible ones.
             ctx->SetStrokePaint(seriesPaint == SeriesPaint::Outline
-                                    ? base : Color(40, 40, 40, hovered ? 255 : 120));
+                                    ? base
+                                    : base.Darken(0.35f).WithAlpha(hovered ? 255 : 170));
             ctx->SetStrokeWidth((hovered || seriesPaint == SeriesPaint::Outline)
                                     ? 2.0f : 1.0f);
             ctx->DrawLinePath(outline, true);
@@ -836,6 +840,7 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     chart->SetDataset(datasets[0]);          // also titles the chart
     chart->SetValueLabelMode(EngineFeatureChart::ValueLabelMode::Declutter);
+    chart->SetTheme("Pastel");               // the showcase's default look
     auto* chartPtr = chart.get();
     root->AddChild(chart);
 
@@ -1155,7 +1160,7 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "14 built-in ChartThemes; furniture and palette change "
                           "together, and it is repaint-only: no layout, no label "
                           "re-solve. Also reachable as SetProperty(\"theme\", name)");
-                  }, 0);
+                  }, 3);          // Pastel - the showcase's default look
     row8->AddSpacer(20);
     AppendLabeledButtons(row8, "engine_palette_", "Palette", 56, 84, kBtnH,
                   {"Theme's", "Viridis N"},

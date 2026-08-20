@@ -15,8 +15,11 @@
   `UltraCanvasColormap` map into a palette of the requested size. A theme
   change is repaint-only — no layout, no label re-solve — with an
   `OnThemeChanged()` hook for content that caches theme colours (legend
-  entries). The Chart Engine demo gained a Theme row; model-layer tests cover
-  the registry, cycling, count-aware selection and colormap sampling.
+  entries). Pastel carries soft warm-grey furniture of its own, and is the
+  Chart Engine demo's default look; the demo gained a Theme row and its bar
+  edges follow the bar colour (darkened) instead of a fixed near-black.
+  Model-layer tests cover the registry, cycling, count-aware selection and
+  colormap sampling.
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

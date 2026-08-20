@@ -150,13 +150,28 @@ const ChartTheme& Vibrant() {
 }
 
 const ChartTheme& Pastel() {
-    static const ChartTheme theme = MakeLightTheme(
-        "Pastel",
-        ChartPalette("Pastel",
-                     {Color(129, 199, 212, 255), Color(160, 214, 180, 255),
-                      Color(247, 214, 141, 255), Color(244, 177, 131, 255),
-                      Color(240, 152, 152, 255), Color(190, 168, 220, 255),
-                      Color(150, 206, 199, 255), Color(176, 186, 200, 255)}));
+    // Soft furniture to match the soft palette: warm off-white ground, gentle
+    // grid, muted warm-grey text - none of the Light theme's hard contrast.
+    static const ChartTheme theme = [] {
+        ChartTheme t;
+        t.name = "Pastel";
+        t.backgroundColor = Color(251, 249, 246, 255);
+        t.plotAreaColor = Color(255, 255, 255, 255);
+        t.gridColor = Color(234, 230, 224, 255);
+        t.axisLineColor = Color(150, 145, 138, 255);
+        t.axisTickColor = Color(150, 145, 138, 255);
+        t.axisLabelColor = Color(120, 115, 108, 255);
+        t.titleTextColor = Color(90, 85, 80, 255);
+        t.legendTextColor = Color(110, 105, 98, 255);
+        t.legendBackground = Color(255, 255, 255, 230);
+        t.palette = ChartPalette(
+            "Pastel",
+            {Color(129, 199, 212, 255), Color(160, 214, 180, 255),
+             Color(247, 214, 141, 255), Color(244, 177, 131, 255),
+             Color(240, 152, 152, 255), Color(190, 168, 220, 255),
+             Color(150, 206, 199, 255), Color(176, 186, 200, 255)});
+        return t;
+    }();
     return theme;
 }
 

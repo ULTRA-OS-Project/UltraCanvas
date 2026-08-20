@@ -8923,7 +8923,8 @@ draw time). The frozen frame carries `frame.theme` for phase-2 drawing.
 The built-in themes are the palettes the pre-engine charts each carried
 privately, lifted verbatim: **Light** (default furniture, Paul Tol bright),
 **Dark** (dark furniture with the git graph's dark lane colours),
-**Corporate**, **Vibrant**, **Pastel**, **Colorblind** (Okabe–Ito),
+**Corporate**, **Vibrant**, **Pastel** (soft palette *and* soft warm-grey
+furniture of its own — the demo's default), **Colorblind** (Okabe–Ito),
 **Material** (10), **Classic** (10, Chart.js), **Tableau** (10), and the
 light-to-dark ramps **Ocean**, **Sunset**, **Forest**, **Slate**,
 **Monochrome** (6).
