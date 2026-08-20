@@ -1,3 +1,33 @@
+#### 2026-08-20 *0.3.52*
+- **Audio player: a finished track no longer restarts itself.** When a
+  non-looping source played to its end, the output device kept pulling frames
+  and the playback cursor had been reset to 0 — so the track audibly started
+  over from the beginning while the player reported *Stopped* and the
+  transport showed the Play icon. This is what made the UltraFiler preview
+  with auto-play look like "it plays but never shows the Pause icon": the
+  first pass played with the correct Pause icon, then looped forever in the
+  stopped state. `UltraCanvasAudioPlayer` now feeds silence after end of
+  stream until the next transport call, `onEnded` fires exactly once, and
+  `UltraCanvasAudioPlayerElement` stops the device when it learns the track
+  ended. `Play()` after the end still restarts from 0:00.
+- **Audio player element: UI work moved off the audio thread.** The backend
+  delivers position updates, end-of-stream and the resulting state change on
+  its audio thread, and the element used to update its label, sliders and
+  icons directly from those callbacks — racing the UI thread's layout,
+  text-measurement and dirty-rectangle bookkeeping (reproducibly crashing in
+  pango under load, and losing repaints such as the play/pause icon refresh).
+  All player callbacks are now marshalled to the UI thread
+  (`PostToUIThread`), the transport icons also re-sync from the UI-thread
+  position timer, and the element disconnects its callbacks on destruction.
+- **Audio player element: narrow hosts no longer clip the volume slider.**
+  All controls had fixed widths, so in a narrow host (the UltraFiler preview
+  pane goes down to ~260px) the flex row overflowed: the seek bar collapsed
+  to zero and the volume slider ran off the pane's right edge (the bug
+  report's screenshot). The row is now responsive — when the width cannot
+  fit everything beside a usable seek bar it hides the volume slider first,
+  then the time label; the mute button stays so the sound can still be
+  silenced, and everything returns as soon as the element is wide enough.
+
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
   content used to show only a small "(empty folder)" line; it now draws a

@@ -1,8 +1,8 @@
 // core/UltraCanvasAudioPlayer.cpp
 // Skeleton implementation. Backend wiring (output stream + fill callback) is a
 // TODO; this file holds the public-API contract and state machine.
-// Version: 0.1.0
-// Last Modified: 2026-06-12
+// Version: 0.1.1
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayer.h"
@@ -24,6 +24,12 @@ struct UltraCanvasAudioPlayer::Impl {
     std::atomic<double> position{0.0};
     std::atomic<size_t> playCursorFrames{0};
     std::atomic<bool> reachedEnd{false};
+    // Set when a non-looping source has played to its end. The device callback
+    // cannot stop its own device, so until a transport call (Play/Seek/Stop)
+    // clears this, FillOutput emits silence — without it the backend kept
+    // pulling frames and the track audibly restarted from frame 0 while the
+    // state said Stopped.
+    std::atomic<bool> playbackDone{false};
     // Throttling: emit onPositionChanged at most positionUpdateHz
     std::atomic<size_t> framesSinceLastPosUpdate{0};
 
@@ -67,6 +73,12 @@ struct UltraCanvasAudioPlayer::Impl {
     size_t FillOutput(void* out, size_t frames) {
         // Called on the backend audio thread. Must be lock-free and brief.
         if (!audio || !audio->IsValid() || frames == 0) {
+            std::memset(out, 0, frames * audio->GetInfo().BytesPerFrame());
+            return frames;
+        }
+        if (playbackDone.load(std::memory_order_acquire)) {
+            // Played to the end and no transport call restarted us yet: keep
+            // the still-running device fed with silence instead of replaying.
             std::memset(out, 0, frames * audio->GetInfo().BytesPerFrame());
             return frames;
         }
@@ -120,6 +132,7 @@ struct UltraCanvasAudioPlayer::Impl {
             reachedEnd.store(false, std::memory_order_relaxed);
             playCursorFrames.store(0, std::memory_order_relaxed);
             position.store(0.0, std::memory_order_relaxed);
+            playbackDone.store(true, std::memory_order_release);
             SetState(AudioPlaybackState::Stopped);
             if (owner && owner->onEnded) owner->onEnded();
         }
@@ -176,6 +189,7 @@ void UltraCanvasAudioPlayer::Unload() {
     impl->audio.reset();
     impl->position.store(0.0);
     impl->playCursorFrames.store(0);
+    impl->playbackDone.store(false);
     impl->state = AudioPlaybackState::Idle;
 }
 
@@ -183,6 +197,7 @@ void UltraCanvasAudioPlayer::Unload() {
 bool UltraCanvasAudioPlayer::Play() {
     if (!impl->audio) return false;
     if (!impl->stream && !impl->OpenStream()) return false;
+    impl->playbackDone.store(false, std::memory_order_release);
     if (!impl->stream->Start()) { impl->EmitError("stream start failed"); return false; }
     impl->SetState(AudioPlaybackState::Playing);
     return true;
@@ -199,6 +214,7 @@ bool UltraCanvasAudioPlayer::Stop() {
     if (impl->stream) impl->stream->Stop();
     impl->position.store(0.0);
     impl->playCursorFrames.store(0);
+    impl->playbackDone.store(false, std::memory_order_release);
     impl->SetState(AudioPlaybackState::Stopped);
     return true;
 }
@@ -210,6 +226,7 @@ bool UltraCanvasAudioPlayer::Seek(double seconds) {
     impl->position.store(clamped);
     impl->playCursorFrames.store(
         static_cast<size_t>(clamped * impl->audio->GetSampleRate()));
+    impl->playbackDone.store(false, std::memory_order_release);
     if (onPositionChanged) onPositionChanged(clamped);
     return true;
 }

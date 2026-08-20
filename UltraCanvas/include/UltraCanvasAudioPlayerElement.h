@@ -2,8 +2,8 @@
 // Composite UI control wrapping UltraCanvasAudioPlayer, built from child widgets
 // (icon buttons, sliders, label) arranged by a flex row layout so the framework
 // owns alignment/centering instead of hand-computed draw offsets.
-// Version: 0.3.0
-// Last Modified: 2026-06-23
+// Version: 0.3.1
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,6 +16,7 @@
 #include "UltraCanvasAudioPlayer.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTimer.h"
+#include <atomic>
 #include <string>
 #include <memory>
 #include <functional>
@@ -127,6 +128,10 @@ public:
     // widgets. Events are routed to the children by UltraCanvasContainer, so no
     // OnEvent override / manual hit-testing is needed.
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    // Post-layout hook: hides the volume slider (then the time label) when the
+    // arranged width cannot fit them beside a usable seek bar, so narrow hosts
+    // (e.g. the UltraFiler preview pane) don't clip controls at the right edge.
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
 private:
     std::shared_ptr<UltraCanvasAudioPlayer> player;
@@ -147,15 +152,28 @@ private:
     // Guards the SetValue()->onValueChanged feedback loop when we push playback
     // position into the seek slider (see UltraCanvasSlider::SetValue).
     bool suppressSeekCallback = false;
+    // Player callbacks can fire on the audio backend thread; their UI work is
+    // queued to the UI thread (see RunOnUIThread). This flag cancels tasks
+    // that would otherwise land after the element is destroyed.
+    std::shared_ptr<std::atomic<bool>> uiAlive =
+            std::make_shared<std::atomic<bool>>(true);
+    // Last icon paths pushed into the buttons, so periodic refreshes only call
+    // SetIcon (and invalidate layout) when the icon actually changes.
+    std::string appliedPlayIcon;
+    std::string appliedMuteIcon;
 
     void BuildChildren();
     void ApplyStyleToChildren();   // visibility + colors derived from `style`
+    // Width-driven visibility (see Arrange): what fits beside a usable seek bar.
+    bool ComputeResponsiveWants(bool& wantVol, bool& wantTime) const;
+    void ApplyResponsiveVisibility();
     void UpdatePlayIcon();
     void UpdateMuteIcon();
     void SyncTimeAndSeek();
     void StartPosTimer();
     void StopPosTimer();
     void HookPlayerCallbacks();
+    void RunOnUIThread(std::function<void()> fn);
     static std::string FormatTime(double seconds);
 };
 

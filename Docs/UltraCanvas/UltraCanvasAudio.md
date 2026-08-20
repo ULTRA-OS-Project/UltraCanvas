@@ -132,6 +132,15 @@ Composite based on existing primitives (`UltraCanvasButton`, `UltraCanvasSlider`
 Style flags via `AudioPlayerStyle`: `showVolumeSlider`, `showTimeLabels`,
 `showLoopButton`, `showWaveform`, `compact`.
 
+The row adapts to the width it is given (e.g. the UltraFiler preview pane can
+go down to ~260px): when the fixed-size controls would overflow, the volume
+slider is hidden first, then the time label — the mute button stays so the
+sound can still be silenced, and the seek bar always keeps a usable length
+instead of being squeezed out or clipping controls at the right edge. The
+style flags remain the upper bound: a control disabled by style never
+reappears, and everything hidden for width returns as soon as the element is
+wide enough again.
+
 Factories: `CreateAudioPlayer`, `CreateAudioPlayerFromFile`,
 `CreateCompactAudioPlayer`.
 
@@ -177,9 +186,19 @@ brew install flac libvorbis opus opusfile libopusenc lame
 - Backend is selected via the `IAudioBackend` interface
   (`libspecific/Audio/IAudioBackend.h`). One real implementation per supported
   platform/library; the null stub ships unconditionally as a fallback.
-- Backend audio callbacks fire on the backend's audio thread. The player /
-  recorder marshal user-facing callbacks back to the UI thread via the
-  existing event/timer infrastructure (TODO during full implementation).
+- Backend audio callbacks fire on the backend's audio thread.
+  `UltraCanvasAudioPlayer` documents its `onPositionChanged` / `onEnded` /
+  state-change callbacks as audio-thread calls; `UltraCanvasAudioPlayerElement`
+  marshals all of its UI work back to the UI thread via
+  `UltraCanvasApplicationBase::PostToUIThread`, so consumers of the element
+  never see a cross-thread callback. Direct users of the player must marshal
+  themselves before touching UI.
+- End of stream: when a non-looping source plays out, the player emits
+  `onEnded` (once), reports `Stopped`, and feeds silence to the still-open
+  device until the next transport call (`Play` restarts from the beginning);
+  the element additionally stops the device. Earlier the device kept pulling
+  frames past the end and the track audibly restarted from 0:00 while the
+  state said `Stopped`.
 - Decoders/encoders beyond miniaudio's built-ins live in
   `libspecific/Audio/AudioCodecsExtra.cpp`, compile-gated on the
   `ULTRACANVAS_HAS_*` defines set by CMake codec detection. The backend
