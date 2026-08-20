@@ -1,13 +1,15 @@
 // include/Plugins/Charts/UltraCanvasPyramidChart.h
 // Pyramid diagram: a static hierarchy whose levels are independent parts of a whole
-// Version: 1.0.0
-// Last Modified: 2026-07-31
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasChartDataStructures.h"
 #include "UltraCanvasTooltipManager.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -311,6 +313,8 @@ namespace UltraCanvas {
         BadgeOnLabelRow     // On the level label column instead of the pyramid
     };
 
+// Kept for API stability; SetLegendPosition() maps each value onto the shared
+// ChartLegendPosition (Left/Center/Right become Start/Center/End on that edge).
     enum class PyramidLegendPosition {
         LegendTopLeft,
         LegendTopCenter,
@@ -509,10 +513,10 @@ namespace UltraCanvas {
         std::string benchmarkLabel;
         Color benchmarkColor = Color(215, 85, 75, 220);
 
-        // Legend
-        bool showLegend = false;
-        PyramidLegendPosition legendPosition = PyramidLegendPosition::LegendBottomCenter;
-        double legendFontSize = 10.0;
+        // Legend - the shared ChartLegend component; the public
+        // PyramidLegendPosition API maps onto its ChartLegendPosition
+        ChartLegend legend;
+        double legendInset = 0.0;   // Measured height the legend consumes at its edge
 
         // Card rows (PyramidShapeMode::CardRows)
         Color cardFillColor = Color(255, 255, 255, 255);
@@ -710,7 +714,7 @@ namespace UltraCanvas {
 
         // ===== LEGEND =====
         void SetShowLegend(bool show);
-        bool GetShowLegend() const { return showLegend; }
+        bool GetShowLegend() const { return legend.IsVisible(); }
         void SetLegendPosition(PyramidLegendPosition position);
         void SetLegendFontSize(double size);
 
@@ -791,6 +795,12 @@ namespace UltraCanvas {
         double GetMarginFlowStart() const;
         double GetMarginFlowEnd() const;
 
+        // ===== LEGEND (shared ChartLegend component) =====
+        bool LegendAtTop() const;
+        Rect2Dd LegendArea() const;
+        void RebuildLegendEntries();
+        void UpdateLegendLayout(IRenderContext* ctx);
+
         // ===== COLOUR =====
         Color ResolveLevelColor(size_t displayIndex, size_t dataIndex,
                                 const PyramidLevelMetrics& metrics) const;
@@ -815,7 +825,6 @@ namespace UltraCanvas {
         void RenderBadges(IRenderContext* ctx);
         void RenderCallouts(IRenderContext* ctx);
         void RenderCalloutConnector(IRenderContext* ctx, const PyramidLevelGeometry& geo);
-        void RenderLegend(IRenderContext* ctx);
         void RenderTitle(IRenderContext* ctx);
 
         void DrawBadgeChip(IRenderContext* ctx, const Point2Dd& center, const std::string& text,
