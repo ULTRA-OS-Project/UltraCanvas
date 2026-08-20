@@ -28,11 +28,19 @@ if [ -z "$VERSION" ]; then
     echo "Error: could not parse version from $UC_CHANGELOG (expected '#### YYYY-MM-DD *x.y.z*')" >&2
     exit 1
 fi
-MINGW_BIN="/mingw64/bin"
+# MSYS2 environment root: /mingw64 (Intel, MINGW64) or /clangarm64
+# (ARM64, CLANGARM64). MSYSTEM_PREFIX is set by every MSYS2 login shell.
+MSYS_PREFIX="${MSYSTEM_PREFIX:-/mingw64}"
+MINGW_BIN="$MSYS_PREFIX/bin"
 DIST_DIR="dist"
 
+# Architecture label for the package name (aarch64 → arm64 to match the
+# artifact naming used on the other platforms).
+ARCH="${MSYSTEM_CARCH:-x86_64}"
+[ "$ARCH" = "aarch64" ] && ARCH="arm64"
+
 if [ -z "$PACKAGE_ZIP" ]; then
-  PACKAGE_ZIP="UCDemo-Windows-$VERSION-x86_64.zip"
+  PACKAGE_ZIP="UCDemo-Windows-$VERSION-$ARCH.zip"
 fi
 
 # Create output directory
@@ -70,9 +78,36 @@ echo ""
 echo "Collecting DLLs..."
 DLL_COUNT=0
 
+# Resolve dependencies from the PE import table STATICALLY with objdump, not
+# MSYS2's ldd. ldd actually loads each module and runs its DllMain; some modules
+# (ImageMagick coder modules, libheif codec plugins) deadlock in that init path
+# on ARM64 and hang ldd forever. Bounding ldd with `timeout` only turned the hang
+# into a ~20s stall per module, and across 130+ coder modules that overran the
+# job timeout (the batch wrapper's "Terminate batch job (Y/N)?" in the log).
+# objdump reads the import directory without loading anything — correct for
+# dlopened plugin modules and immune to the deadlock.
+if command -v objdump >/dev/null 2>&1; then
+    OBJDUMP=objdump
+elif command -v llvm-objdump >/dev/null 2>&1; then
+    OBJDUMP=llvm-objdump          # CLANGARM64 ships llvm tools, not GNU binutils
+else
+    echo "Error: need objdump or llvm-objdump to resolve DLL dependencies" >&2
+    exit 1
+fi
+
+# Print the MinGW-prefix dependency DLLs of a PE file as full paths (direct
+# imports only; the closure loop below iterates until complete).
+pe_deps() {
+    "$OBJDUMP" -p "$1" 2>/dev/null \
+        | sed -n 's/.*DLL Name:[[:space:]]*//p' \
+        | while read -r _name; do
+            [ -f "$MINGW_BIN/$_name" ] && printf '%s\n' "$MINGW_BIN/$_name"
+        done
+}
+
 for EXE_PATH in $DIST_DIR/*.exe ; do
-  ldd "$EXE_PATH" | grep -i '/mingw64/' | awk '{print $3}' | sort -u | while read -r dll; do
-      if [ -f "$dll" ]; then
+  pe_deps "$EXE_PATH" | sort -u | while read -r dll; do
+      if [ ! -f "$DIST_DIR/$(basename "$dll")" ]; then
           cp "$dll" "$DIST_DIR/"
           echo "  $(basename "$dll")"
           DLL_COUNT=$((DLL_COUNT + 1))
@@ -81,7 +116,7 @@ for EXE_PATH in $DIST_DIR/*.exe ; do
 done
 
 # Copy libvips modules (only the ones we need and can bundle)
-VIPS_MODULE_DIR=$(ls -d /mingw64/lib/vips-modules-* 2>/dev/null | head -1)
+VIPS_MODULE_DIR=$(ls -d $MSYS_PREFIX/lib/vips-modules-* 2>/dev/null | head -1)
 if [ -d "$VIPS_MODULE_DIR" ]; then
     VIPS_MOD_DEST="$DIST_DIR/lib/$(basename "$VIPS_MODULE_DIR")"
     mkdir -p "$VIPS_MOD_DEST"
@@ -93,16 +128,16 @@ if [ -d "$VIPS_MODULE_DIR" ]; then
 fi
 
 # Copy libheif codec plugins (AOM for AVIF, x265 for HEIC, etc.)
-if [ -d "/mingw64/lib/libheif" ]; then
+if [ -d "$MSYS_PREFIX/lib/libheif" ]; then
     mkdir -p "$DIST_DIR/lib/libheif"
-    cp /mingw64/lib/libheif/*.dll "$DIST_DIR/lib/libheif/" 2>/dev/null || true
+    cp $MSYS_PREFIX/lib/libheif/*.dll "$DIST_DIR/lib/libheif/" 2>/dev/null || true
     echo "  Copied libheif codec plugins"
 fi
 
 # Copy ImageMagick coder modules and config
-cp /mingw64/bin/libMagickCore*.dll "$DIST_DIR/" 2>/dev/null
+cp $MSYS_PREFIX/bin/libMagickCore*.dll "$DIST_DIR/" 2>/dev/null
 
-IM_LIB_DIR=$(ls -d /mingw64/lib/ImageMagick-* 2>/dev/null | head -1)
+IM_LIB_DIR=$(ls -d $MSYS_PREFIX/lib/ImageMagick-* 2>/dev/null | head -1)
 if [ -d "$IM_LIB_DIR" ]; then
     IM_BASENAME=$(basename "$IM_LIB_DIR")
     CODERS_DEST="$DIST_DIR/lib/$IM_BASENAME/modules-Q16HDRI/coders"
@@ -124,33 +159,39 @@ if [ -d "$IM_LIB_DIR" ]; then
     echo "  Copied $CODER_COUNT ImageMagick coder modules from $IM_BASENAME"
 fi
 # Copy ImageMagick configuration XMLs
-IM_ETC_DIR=$(ls -d /mingw64/etc/ImageMagick-* 2>/dev/null | head -1)
+IM_ETC_DIR=$(ls -d $MSYS_PREFIX/etc/ImageMagick-* 2>/dev/null | head -1)
 if [ -d "$IM_ETC_DIR" ]; then
     mkdir -p "$DIST_DIR/etc/$(basename "$IM_ETC_DIR")"
     cp "$IM_ETC_DIR"/*.xml "$DIST_DIR/etc/$(basename "$IM_ETC_DIR")/"
     echo "  Copied ImageMagick config XMLs"
 fi
 
-# Also collect DLLs needed by the DLLs themselves (transitive deps)
-# Run ldd on ALL copied DLLs including those in subdirectories (vips modules, IM coders)
-find "$DIST_DIR" -name '*.dll' | while read -r dll; do
-    ldd "$dll" 2>/dev/null | grep -i '/mingw64/' | awk '{print $3}' | sort -u | while read -r dep; do
-        dep_name=$(basename "$dep")
-        if [ -f "$dep" ] && [ ! -f "$DIST_DIR/$dep_name" ]; then
+# Also collect DLLs needed by the DLLs/modules themselves (transitive closure),
+# including the vips modules, ImageMagick coders and libheif codec plugins in
+# subdirectories. Repeat full passes until one adds nothing new; objdump keeps
+# each pass fast and hang-free even over the 130+ coder modules.
+while : ; do
+    before=$(find "$DIST_DIR" -name '*.dll' | wc -l)
+    while IFS= read -r dll; do
+        pe_deps "$dll" | while read -r dep; do
+            dep_name=$(basename "$dep")
+            [ -f "$DIST_DIR/$dep_name" ] && continue
             cp "$dep" "$DIST_DIR/"
             echo "  $dep_name (transitive from $(basename "$dll"))"
-        fi
-    done
+        done
+    done < <(find "$DIST_DIR" -name '*.dll')
+    after=$(find "$DIST_DIR" -name '*.dll' | wc -l)
+    [ "$before" = "$after" ] && break
 done
 
 # Copy GLib schema files if they exist (needed by some GTK/GLib apps)
-#if [ -d "/mingw64/share/glib-2.0/schemas" ]; then
+#if [ -d "$MSYS_PREFIX/share/glib-2.0/schemas" ]; then
 #    mkdir -p "$DIST_DIR/share/glib-2.0/schemas"
-#    cp /mingw64/share/glib-2.0/schemas/gschemas.compiled "$DIST_DIR/share/glib-2.0/schemas/" 2>/dev/null || true
+#    cp $MSYS_PREFIX/share/glib-2.0/schemas/gschemas.compiled "$DIST_DIR/share/glib-2.0/schemas/" 2>/dev/null || true
 #fi
 
 # Copy GDK-Pixbuf loaders for image format support (used by libvips)
-# PIXBUF_DIR="/mingw64/lib/gdk-pixbuf-2.0"
+# PIXBUF_DIR="$MSYS_PREFIX/lib/gdk-pixbuf-2.0"
 # if [ -d "$PIXBUF_DIR" ]; then
 #     PIXBUF_VER=$(ls "$PIXBUF_DIR" | head -1)
 #     if [ -n "$PIXBUF_VER" ]; then

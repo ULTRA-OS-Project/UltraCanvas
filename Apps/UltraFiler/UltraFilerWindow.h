@@ -1,11 +1,10 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
-// a menu bar (Settings menu opening the settings window, Pin menu pinning the
-// selection to the Favorites view or the folder tree's Pinned section),
 // a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, the
-// History clock toggle, the Favorites heart toggle, folder breadcrumb +
-// recursive search field), a command
-// bar (New folder / New file, Cut / Copy / Paste / Rename / Delete, Sort and
+// History clock toggle, the Favorites heart toggle, folder breadcrumb, and
+// the settings gear at the far right opening the settings window), a command
+// bar (New folder / New file, Cut / Copy / Paste / Rename / Delete, the
+// recursive search field, Sort and
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
 // the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
@@ -22,8 +21,8 @@
 // reported by the filer's onFolderModified) — not by being browsed.
 // The heart button swaps the same area for the Favorites view — the same
 // Files / Folders / Apps layout, but showing the deliberately pinned paths
-// (UltraFilerFavorites, menu bar Pin > Favorites) instead of recent ones.
-// Pin > Treeview pins a folder into the folder tree's "Pinned" section, whose
+// (UltraFilerFavorites) instead of recent ones. The folder tree's "Pinned"
+// section holds the tree pins, whose
 // entries navigate like bookmarks; the tree's context menu offers Copy /
 // Delete / Paste (folders only), a Pin submenu whose "To Treeview" /
 // "To Favorites" flags show and toggle where the folder is pinned, and Unpin
@@ -92,7 +91,6 @@ private:
     enum HistoryTab { HistoryFiles = 0, HistoryFolders, HistoryApps, HistoryTabCount };
 
     // ===== UI CONSTRUCTION =====
-    std::shared_ptr<UltraCanvasMenu>      BuildMenuBar();
     std::shared_ptr<UltraCanvasContainer> BuildNavigationRow();
     std::shared_ptr<UltraCanvasContainer> BuildCommandBar();
     void BuildFolderTree();
@@ -171,7 +169,7 @@ private:
     void OpenHistoryEntry(const std::string& path, bool isFolder);
     UltraCanvasFilerWidget* ActiveHistoryFiler() const;
 
-    // ===== FAVORITES (the heart button and the Pin menu) =====
+    // ===== FAVORITES (the heart button) =====
     // Swaps the tree + folder area for the Favorites view and back; showing
     // it and showing the History view are mutually exclusive.
     void SetFavoritesVisible(bool visible);
@@ -255,22 +253,33 @@ private:
     // entry, so the pane shows that file instead of folding away.
     void ApplyPreviewSelectionPolicy();
 
+    // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
+    // Prints the text files among `targets` through the OS print dialog.
+    void HandlePrint(const std::vector<FilerEntry>& targets);
+    // Hands the files among `targets` to the platform's e-mail composer as
+    // attachments (UltraFilerShare).
+    void HandleShare(const std::vector<FilerEntry>& targets);
+    // Opens the Attributes window for `targets` (UltraFilerPropertiesDialogs).
+    void HandleAttributes(const std::vector<FilerEntry>& targets);
+    // Opens the Access (permissions) window for `targets`; applying refreshes
+    // the visible listing so the attribute column follows.
+    void HandleAccess(const std::vector<FilerEntry>& targets);
+    // Re-reads whatever listing is on screen: the History / Favorites lists
+    // while one of those views is shown, else the active tab's folder.
+    void RefreshVisibleListing();
+
     // ===== SETTINGS =====
     // Pushes the persisted settings into the widgets they configure (the
     // preview's transparent-image backdrop). Called at startup and by the
     // settings dialog after every change.
     void ApplySettings();
+    // Opens the settings window (the navigation row's gear button and the
+    // filer context menus' Settings item), which also hosts the Clear
+    // History / Clear Favorites actions.
     void OpenSettingsDialog();
-
-    // ===== EXTRAS =====
-    // "Extras > Open prompt": starts the OS command line program in the folder
-    // of the active tab. Which application that is comes from the settings
-    // (Extras > Open prompt); an empty setting uses the platform default.
-    void OpenSystemPrompt();
 
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
-    std::shared_ptr<UltraCanvasMenu>            menuBar;
     std::shared_ptr<UltraCanvasTreeView>        folderTree;
     std::shared_ptr<UltraCanvasTabbedContainer> tabbedContainer;
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
