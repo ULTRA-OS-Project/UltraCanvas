@@ -1,3 +1,29 @@
+#### 2026-08-20 *0.3.52*
+- **TableView: real widget with predefined table designs.** The dead
+  `UltraCanvasTableView.h` draft (never compiled into the build; the demo
+  showed a "Not Implemented" placeholder) is replaced by a working core
+  element plus a shared, region-based style model
+  (`UltraCanvasTableStyle.h`): `TableStyleSheet` layers region styles
+  (whole table, header, section band, total row, first/last column, row
+  bands, highlighted column, hover/selection) the way OOXML table styles
+  do, and `TableStyles::Create(design [, palette])` ships four presets —
+  **Comparison** (pricing/feature matrix: hairline rules, grey section
+  bands, tinted highlight column with a badge chip above the header, CTA
+  buttons), **Professional** (accent header + zebra bands), **Minimal**
+  (booktabs editorial rules), **Financial** (right-aligned numerics, red
+  negatives, double-rule total row) — recolorable with seven palettes
+  (Classic/Ocean/Olive/Slate/Warm/Dark/Custom). The widget adds typed
+  cells (text, formatted numbers, check/cross/minus glyphs, badge chips,
+  action buttons, custom renderers), section/total rows, per-section
+  stable sorting on header click, row/cell selection with keyboard
+  navigation that skips section rows, hover states, and virtualized
+  vertical scrolling. Demo page "Table View"
+  (`UltraCanvasTableViewExamples.cpp`) reproduces the motivating pricing
+  matrix next to a sortable data grid and an income statement; docs in
+  `UltraCanvasTableView.md`, research in
+  `UltraCanvasTableViewProposal.md`. The old header's non-compiling
+  `extern "C"` legacy interface is gone.
+
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
   content used to show only a small "(empty folder)" line; it now draws a

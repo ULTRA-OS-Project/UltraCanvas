@@ -1,6 +1,28 @@
 # UltraCanvasTableView & Predefined Table Designs — Investigation
 
-**Status:** Design survey (pre-implementation research)
+**Status:** P1 implemented — see
+[`UltraCanvasTableView.md`](UltraCanvasTableView.md) for the API
+documentation and `Apps/DemoApp/UltraCanvasTableViewExamples.cpp` for the
+demo. This document is kept as the research write-up and the roadmap for
+the remaining phases.
+
+Delivered in the first drop: `UltraCanvasTableStyle.h` with the
+region-based `TableStyleSheet` (§4; implemented with lightweight
+framework types rather than the spreadsheet's `CellFont`/`CellBorders` —
+open question 1 resolved toward zero spreadsheet dependency), the seven
+palettes, the four P1 designs D1/D2/D3/D6 (§5), and the rebuilt
+`UltraCanvasTableView` core element covering F1–F3 and F5–F9 partially
+(section rows, column highlight + badge, typed cells incl. custom
+renderers, total rows, hover/selection states, sticky header with
+virtualized vertical scrolling, fixed + stretch column sizing, keyboard
+navigation) plus per-section sorting. Open question 2 resolved: the
+`extern "C"` legacy interface is dropped. Open question 3 resolved:
+read-only + callbacks in P1.
+
+Still open: P2 (spreadsheet `ApplyTableStyle`, designs D4/D5/D7, `ToCSV`),
+P3 (D8 heatmap, multi-level headers F4, `ToHTML` export, HTMLReader
+rendering, XLSX mapping S4), horizontal scrolling, and the GitGraph
+row-alignment pairing (open question 4).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-08-20

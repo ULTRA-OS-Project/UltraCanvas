@@ -88,26 +88,7 @@ namespace UltraCanvas {
 //        return container;
 //    }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTableViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TableViewExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("TableViewTitle", 10, 10, 300, 30);
-        title->SetText("Spreadsheet View Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("TableViewPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Table View Component - Not Implemented\n\nPlanned Features:\n• Data grid with rows and columns\n• Sortable column headers\n• Cell editing capabilities\n• Row selection (single/multiple)\n• Virtual scrolling for large datasets\n• Custom cell renderers\n• Column resizing and reordering\n• Filtering and search\n• Export to CSV/Excel");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
+    // CreateTableViewExamples() moved to UltraCanvasTableViewExamples.cpp
 
     // CreateListViewExamples() moved to UltraCanvasListViewExamples.cpp
 

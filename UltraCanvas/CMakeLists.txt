@@ -305,6 +305,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColumnsTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTableStyle.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTableView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListDelegate.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTabbedContainer.cpp

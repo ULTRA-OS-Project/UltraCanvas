@@ -179,6 +179,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
             Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
+            Apps/DemoApp/UltraCanvasTableViewExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp

@@ -837,6 +837,16 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
 
+        extendedBuilder.AddItem("tableview", "Table View",
+                                "Styled tables with design presets: comparison matrix, banded grid, financial statement",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateTableViewExamples(); },
+                                "DemoApp/UltraCanvasTableViewExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasTableView.md")
+                .AddVariant("tableview", "Comparison Matrix")
+                .AddVariant("tableview", "Data Grid")
+                .AddVariant("tableview", "Financial Statement");
+
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
