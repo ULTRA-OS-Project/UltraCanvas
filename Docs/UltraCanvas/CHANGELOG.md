@@ -1,4 +1,18 @@
 #### 2026-08-20 *0.3.52*
+- **FilerWidget / UltraFiler: the context menu's Extract got the same dialog
+  as Compress.** Extract used to unpack immediately with no way to pick the
+  destination; it now opens the compress dialog's panel in extract mode: the
+  archive's file-type icon with its name (or "N archives") beneath, an
+  editable destination **folder** name — suggested from the archive's name
+  without its suffix, so `sources.tar.gz` offers `sources` — and the
+  location line. The icon can be dragged onto any folder in the view to
+  retarget the destination, Enter / Extract unpacks, Esc / Cancel dismisses,
+  and an existing folder name gets the usual " (2)" suffix instead of being
+  written into. Several selected archives each unpack into their own
+  subfolder of the named folder so their contents cannot collide. Unpacking
+  still runs through the VirtualFS bridge (`UCVFSBridge::ExtractArchive`);
+  the dialog-free `ExtractSelection()` remains for programmatic use, and the
+  new `OpenExtractDialog()` is public for hosts.
 - **Audio player: a finished track no longer restarts itself.** When a
   non-looping source played to its end, the output device kept pulling frames
   and the playback cursor had been reset to 0 — so the track audibly started

@@ -583,6 +583,12 @@ namespace UltraCanvas {
         // "tar.zst"); defaults to a .zip archive.
         void CompressSelection(const std::string& extension = "zip");
         void ExtractSelection();   // unpack selected archives alongside
+        // The context menu's Extract: the same overlay dialog as Compress,
+        // editing the destination folder name (default: the archive's name
+        // without its suffix). The icon can be dragged onto a folder to
+        // retarget where the archives unpack; several selected archives each
+        // unpack into their own subfolder of the named folder.
+        void OpenExtractDialog();
         static bool ClipboardHasContent();
 
         // "New >" document kinds (replaces the default seven).
@@ -1474,17 +1480,26 @@ namespace UltraCanvas {
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;
 
-        // ===== COMPRESS DIALOG (modal in-widget overlay) =====
+        // ===== COMPRESS / EXTRACT DIALOG (modal in-widget overlay) =====
         // Shown when a format is picked from the context menu's "Compress"
-        // submenu. It previews the archive's file-type icon, lets the name be
-        // edited, and shows the destination folder as smaller text. The icon can
-        // be dragged onto any folder in the view to retarget that destination —
-        // which is why this is an in-widget overlay rather than a separate modal
-        // window (a top-level modal would block the folders behind it).
+        // submenu, and (in extract mode) by the context menu's "Extract". It
+        // previews the archive's file-type icon, lets the name be edited —
+        // the archive's base name when compressing, the destination folder
+        // name when extracting — and shows the destination folder as smaller
+        // text. The icon can be dragged onto any folder in the view to
+        // retarget that destination — which is why this is an in-widget
+        // overlay rather than a separate modal window (a top-level modal
+        // would block the folders behind it).
         struct CompressDialogState {
             bool        active = false;
+            // Extract mode: the same panel unpacks the selected archives into
+            // a folder named by the editor instead of packing the selection.
+            bool        extractMode = false;
             std::string extension;      // archive extension, e.g. "zip", "tar.gz"
-            std::string formatLabel;    // human label, e.g. "TAR + gzip"
+                                        // (in extract mode: the source archive's
+                                        // suffix, driving the icon tag only)
+            std::string formatLabel;    // human label, e.g. "TAR + gzip"; in
+                                        // extract mode the archive name / count
             std::string nameBuffer;     // base name (no extension), kept in sync
                                         // with the editor below
             std::string destDir;        // folder the archive is written to
@@ -1530,6 +1545,10 @@ namespace UltraCanvas {
 
         void OpenCompressDialog(const std::string& extension,
                                 const std::string& formatLabel);
+        // Shared dialog chrome (name editor, OK/Cancel buttons, key filter);
+        // the state fields must be filled before this is called.
+        void OpenArchiveDialogChrome(const std::string& defaultName,
+                                     const std::string& okLabel);
         void LayoutCompressDialog(const Rect2Di& bounds);
         void PositionCompressNameInput();
         void DestroyCompressNameInput();
