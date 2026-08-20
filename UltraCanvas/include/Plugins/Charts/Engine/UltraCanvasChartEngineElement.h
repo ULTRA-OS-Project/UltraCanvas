@@ -25,6 +25,7 @@
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartHighlights.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
@@ -138,6 +139,15 @@ public:
     size_t AddLimiter(const ChartLimiter& limiter);
     void ClearLimiters();
 
+    // Highlights (Engine/UltraCanvasChartHighlights.h): group washes drawn
+    // under the grid (zSlot 200) or overlaid above the content (zSlot 700),
+    // clipped to the plot. Computed shapes (ConfidenceEllipse, Hull, Blob,
+    // PointHalo) take value-space member points mapped through the axes at
+    // xAxisIndex/yAxisIndex; a highlight's label rides the label plan as
+    // ChartLabelClass::HighlightLabel.
+    size_t AddHighlight(const ChartHighlight& highlight);
+    void ClearHighlights();
+
     // Legend - the shared ChartLegend component drawn and laid out by the
     // engine: an outside placement reserves its edge in the layout
     // negotiation, an inset placement floats over the plot and reserves
@@ -239,6 +249,7 @@ protected:
     virtual void RenderPhaseOver(IRenderContext* ctx);
 
     virtual void RenderEngineBackground(IRenderContext* ctx);
+    virtual void RenderEngineHighlights(IRenderContext* ctx, int zSlot);
     virtual void RenderEngineGrid(IRenderContext* ctx);
     virtual void RenderEngineLimiters(IRenderContext* ctx);
     // Edge axes render under the content (slot 500); in-plot axes render in
@@ -290,6 +301,11 @@ private:
 
     size_t gridAxisIndex = static_cast<size_t>(-1);
     std::vector<ChartLimiter> limiters;
+    std::vector<ChartHighlight> highlights;
+    // A highlight's value-space point on the projection's screen, or invalid
+    // (NaN) when its axes are out of range.
+    Point2Dd MapHighlightPoint(const ChartHighlight& highlight,
+                               const Point2Dd& value) const;
 
     // The shared legend component; the engine owns its layout: measured
     // against legendArea (the element minus the title band) during the

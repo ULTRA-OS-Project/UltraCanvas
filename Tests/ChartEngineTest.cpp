@@ -14,6 +14,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartHighlights.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
 #include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
 
@@ -896,6 +897,70 @@ static void TestSolveLabelBounds() {
 }
 
 // =============================================================================
+// HIGHLIGHT GEOMETRY
+// =============================================================================
+
+static void TestConfidenceEllipse() {
+    std::printf("ComputeConfidenceEllipse:\n");
+
+    CHECK(!ComputeConfidenceEllipse({{0, 0}, {1, 1}}, 0.95).valid,
+          "fewer than three points is invalid");
+
+    // Points spread along x with tiny y noise: near-horizontal major axis.
+    std::vector<Point2Dd> flat;
+    for (int i = 0; i < 20; ++i) {
+        flat.emplace_back(static_cast<double>(i), (i % 2 == 0) ? 0.1 : -0.1);
+    }
+    const ChartEllipseSpec spec = ComputeConfidenceEllipse(flat, 0.95);
+    CHECK(spec.valid, "flat spread yields a valid ellipse");
+    CHECK(std::abs(spec.rotationRadians) < 0.05,
+          "major axis lies along the spread");
+    CHECK(spec.rx > 10.0 * spec.ry, "major axis dominates the minor");
+    CHECK(Near(spec.center.x, 9.5, 1e-6) && Near(spec.center.y, 0.0, 1e-6),
+          "centre is the mean");
+
+    const ChartEllipseSpec fifty = ComputeConfidenceEllipse(flat, 0.50);
+    CHECK(fifty.rx < spec.rx, "the 50% ellipse sits inside the 95% one");
+
+    // An isotropic 4-corner cloud: near-circular ellipse.
+    const std::vector<Point2Dd> square = {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+    const ChartEllipseSpec round = ComputeConfidenceEllipse(square, 0.95);
+    CHECK(round.valid && Near(round.rx, round.ry, 1e-9),
+          "isotropic cloud yields a circle");
+}
+
+static void TestHullExpandSmooth() {
+    std::printf("ComputeConvexHull / ExpandPolygon / SmoothPolygonChaikin:\n");
+
+    // A square with interior points: hull keeps only the four corners.
+    const std::vector<Point2Dd> cloud = {{0, 0}, {4, 0}, {4, 4}, {0, 4},
+                                         {2, 2}, {1, 3}, {3, 1}};
+    const std::vector<Point2Dd> hull = ComputeConvexHull(cloud);
+    CHECK(hull.size() == 4, "hull of a square cloud has four vertices");
+
+    const std::vector<Point2Dd> grown = ExpandPolygon(hull, 2.0);
+    CHECK(grown.size() == hull.size(), "expansion keeps the vertex count");
+    // Every vertex moved exactly `padding` further from the centroid (2,2).
+    bool allGrown = true;
+    for (size_t i = 0; i < hull.size(); ++i) {
+        const double before = std::hypot(hull[i].x - 2.0, hull[i].y - 2.0);
+        const double after = std::hypot(grown[i].x - 2.0, grown[i].y - 2.0);
+        if (!Near(after - before, 2.0, 1e-9)) allGrown = false;
+    }
+    CHECK(allGrown, "every vertex moved padding away from the centroid");
+
+    const std::vector<Point2Dd> smooth = SmoothPolygonChaikin(hull, 1);
+    CHECK(smooth.size() == 8, "one Chaikin pass doubles the vertex count");
+    // Chaikin points stay on the hull's edges: within the original bounds.
+    bool inside = true;
+    for (const Point2Dd& p : smooth) {
+        if (p.x < -1e-9 || p.x > 4.0 + 1e-9 ||
+            p.y < -1e-9 || p.y > 4.0 + 1e-9) inside = false;
+    }
+    CHECK(inside, "smoothing never leaves the original outline");
+}
+
+// =============================================================================
 // THEME AND PALETTE
 // =============================================================================
 
@@ -1031,6 +1096,8 @@ int main() {
     TestPCPBrushes();
     TestPCPMissingAndHitTest();
     TestSolveLabelBounds();
+    TestConfidenceEllipse();
+    TestHullExpandSmooth();
     TestThemeRegistry();
     TestPaletteCycling();
     TestPaletteCountAware();

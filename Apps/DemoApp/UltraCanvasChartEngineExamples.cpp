@@ -103,6 +103,7 @@ public:
     // (the framework's ChartDirty::Clean is spelled that way for the same reason).
     enum class GridSource { ValueAxis, CategoryAxis, NoGrid };
     enum class LimiterMode { NoLimiter, Average, AverageAndTarget, Thresholds };
+    enum class HighlightMode { NoHighlight, Band, Ellipse, Blob };
     enum class ValueLabelMode { All, Declutter, Off };
     // How the bars are painted. The legend swatch follows this, which is what
     // LegendSwatch is for: a series drawn with a non-solid fill must not
@@ -128,6 +129,7 @@ public:
         datasetName = set.name;
         ApplyTitle();                           // the title names the data
         RebuildLimiters();
+        RebuildHighlights();
         RebuildLegend();
         MarkEngineDirty(ChartDirty::Data);      // rebuilds axes, layout and plan
     }
@@ -146,6 +148,7 @@ public:
             }
         }
         RebuildLimiters();
+        RebuildHighlights();
         MarkEngineDirty(ChartDirty::Data);
     }
 
@@ -170,6 +173,11 @@ public:
     }
 
     void SetLimiterMode(LimiterMode mode) { limiterMode = mode; RebuildLimiters(); }
+
+    void SetHighlightMode(HighlightMode mode) {
+        highlightMode = mode;
+        RebuildHighlights();
+    }
 
     void SetSeriesPaint(SeriesPaint paint) {
         seriesPaint = paint;
@@ -442,6 +450,8 @@ private:
     NumberFormat numberFormat = NumberFormat::CompactDollars;
     GridSource gridSource = GridSource::ValueAxis;
     LimiterMode limiterMode = LimiterMode::AverageAndTarget;
+    HighlightMode highlightMode = HighlightMode::NoHighlight;
+    bool insetKeyRequested = false;
     ValueLabelMode valueLabelMode = ValueLabelMode::Declutter;
     SeriesPaint seriesPaint = SeriesPaint::Solid;
     bool showLegendPanel = true;
@@ -723,6 +733,112 @@ private:
                 add(maximum * 0.75, ChartLimiterKind::Threshold,
                     Color(200, 60, 60, 255), "critical");
                 break;
+        }
+    }
+
+    // One owner for the legend's custom key. A key describes marks the chart
+    // actually draws: the 50%/95% ellipse key travels with the ellipse
+    // highlight style; otherwise the Inset legend demo may request the
+    // limiter-lines key; otherwise there is none.
+public:
+    void SetLegendInsetKey(bool on) {
+        insetKeyRequested = on;
+        SyncLegendKey();
+    }
+
+private:
+    void SyncLegendKey() {
+        if (highlightMode == HighlightMode::Ellipse) {
+            Legend().SetCustomArea(
+                Size2Dd(150.0, 52.0),
+                [](IRenderContext* ctx, const Rect2Dd& r) {
+                    const Point2Dd c(r.x + 52.0, r.y + r.height / 2.0 + 4.0);
+                    ctx->SetStrokePaint(Color(150, 150, 150, 255));
+                    ctx->SetStrokeWidth(1.0f);
+                    ctx->DrawEllipse(Rect2Dd(c.x - 36, c.y - 18, 72, 36));
+                    ctx->DrawEllipse(Rect2Dd(c.x - 17, c.y - 8, 34, 16));
+                    ctx->SetFillPaint(Color(60, 60, 60, 255));
+                    ctx->FillCircle(c, 2.5);
+                    ctx->SetFontSize(9.0f);
+                    ctx->SetTextPaint(Color(120, 120, 120, 255));
+                    ctx->DrawText("95%", Point2Dd(r.x + 2.0, r.y + 1.0));
+                    ctx->DrawText("50%", Point2Dd(c.x - 10.0, c.y - 26.0));
+                    ctx->DrawText("mean", Point2Dd(c.x + 40.0, c.y - 5.0));
+                });
+        } else if (insetKeyRequested) {
+            Legend().SetCustomArea(
+                Size2Dd(150.0, 44.0),
+                [](IRenderContext* ctx, const Rect2Dd& r) {
+                    const struct {
+                        Color color;
+                        const char* label;
+                    } rows[] = {{Color(90, 90, 90, 255), "average"},
+                                {Color(200, 60, 60, 255), "target"}};
+                    ctx->SetFontSize(9.0f);
+                    double y = r.y + 8.0;
+                    for (const auto& row : rows) {
+                        ctx->SetStrokePaint(row.color);
+                        ctx->SetStrokeWidth(1.5f);
+                        ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+                        ctx->DrawLine(Point2Dd(r.x + 2.0, y),
+                                      Point2Dd(r.x + 40.0, y));
+                        ctx->SetLineDash(UCDashPattern());
+                        ctx->SetTextPaint(Color(120, 120, 120, 255));
+                        ctx->DrawText(row.label, Point2Dd(r.x + 48.0, y - 6.0));
+                        y += 18.0;
+                    }
+                });
+        } else {
+            Legend().ClearCustomArea();
+        }
+        MarkEngineDirty(ChartDirty::Geometry);
+    }
+
+    // The highlight layer, driven by the chart's own data.
+    void RebuildHighlights() {
+        ClearHighlights();
+        SyncLegendKey();
+
+        if (highlightMode == HighlightMode::Band) {
+            double sum = 0.0;
+            size_t count = 0;
+            for (double v : PlottedValues()) { sum += v; ++count; }
+            const double average = count ? sum / count : 0.0;
+            ChartHighlight band;
+            band.shape = ChartHighlightShape::ValueBand;
+            band.axisIndex = 0;                       // the value axis
+            band.bandLow = average * 0.8;
+            band.bandHigh = average * 1.2;
+            band.fill = Color(120, 140, 170, 28);
+            band.stroke = Color(120, 140, 170, 120);
+            band.dashed = true;
+            band.label = "expected range";
+            band.zSlot = 200;                         // wash under the grid
+            AddHighlight(band);
+        } else if (highlightMode == HighlightMode::Ellipse ||
+                   highlightMode == HighlightMode::Blob) {
+            // One computed group shape per series, over its bar-tip points
+            // (x = category index through the category axis, y = value).
+            for (size_t s = 0; s < seriesValues.size(); ++s) {
+                if (SeriesDisabled(s)) continue;
+                ChartHighlight group;
+                group.shape = (highlightMode == HighlightMode::Ellipse)
+                                  ? ChartHighlightShape::ConfidenceEllipse
+                                  : ChartHighlightShape::Blob;
+                group.xAxisIndex = 1;                 // category axis drives u
+                group.yAxisIndex = 0;                 // value axis drives v
+                for (size_t c = 0; c < seriesValues[s].size(); ++c) {
+                    group.members.emplace_back(static_cast<double>(c),
+                                               seriesValues[s][c]);
+                }
+                const Color base = Palette().ColorAt(s, seriesValues.size());
+                group.fill = base.WithAlpha(26);
+                group.stroke = base.WithAlpha(190);
+                group.confidence = 0.95;
+                group.padding = 16.0;
+                group.zSlot = (highlightMode == HighlightMode::Ellipse) ? 700 : 200;
+                AddHighlight(group);
+            }
         }
     }
 
@@ -1170,40 +1286,10 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                       if (i == 3) {
                           chartPtr->SetShowLegendPanel(false);
                       } else {
-                          if (i == 2) {
-                              // A key richer than any swatch, drawn by the
-                              // host into the legend's reserved custom panel.
-                              // It keys the limiter reference lines - marks
-                              // this chart actually draws. (A 50%/95%
-                              // confidence-ellipse key pairs with a scatter
-                              // chart's group-highlight ellipses instead.)
-                              chartPtr->Legend().SetCustomArea(
-                                  Size2Dd(150.0, 44.0),
-                                  [](IRenderContext* ctx, const Rect2Dd& r) {
-                                      const struct {
-                                          Color color;
-                                          const char* label;
-                                      } rows[] = {
-                                          {Color(90, 90, 90, 255), "average"},
-                                          {Color(200, 60, 60, 255), "target"}};
-                                      ctx->SetFontSize(9.0f);
-                                      double y = r.y + 8.0;
-                                      for (const auto& row : rows) {
-                                          ctx->SetStrokePaint(row.color);
-                                          ctx->SetStrokeWidth(1.5f);
-                                          ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
-                                          ctx->DrawLine(Point2Dd(r.x + 2.0, y),
-                                                        Point2Dd(r.x + 40.0, y));
-                                          ctx->SetLineDash(UCDashPattern());
-                                          ctx->SetTextPaint(Color(120, 120, 120, 255));
-                                          ctx->DrawText(row.label,
-                                                        Point2Dd(r.x + 48.0, y - 6.0));
-                                          y += 18.0;
-                                      }
-                                  });
-                          } else {
-                              chartPtr->Legend().ClearCustomArea();
-                          }
+                          // The Inset demo requests the limiter-lines key;
+                          // SyncLegendKey arbitrates (the ellipse highlight
+                          // style's own key takes precedence when active).
+                          chartPtr->SetLegendInsetKey(i == 2);
                           const ChartLegendPosition where[] = {
                               ChartLegendPosition::RightStart,
                               ChartLegendPosition::BottomCenter,
@@ -1317,6 +1403,33 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                       say(what[i]);
                   }, 0);
     controls->AddChild(row8);
+
+    // ----- Highlights (slot 200 wash / slot 700 overlay) -----
+    auto row9 = MakeRow("engine_row_highlight");
+    AppendLabeledButtons(row9, "engine_hl_", "Highlight", kLabelW, 62, kBtnH,
+                  {"Off", "Band", "Ellipse", "Blob"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::HighlightMode modes[] = {
+                          EngineFeatureChart::HighlightMode::NoHighlight,
+                          EngineFeatureChart::HighlightMode::Band,
+                          EngineFeatureChart::HighlightMode::Ellipse,
+                          EngineFeatureChart::HighlightMode::Blob};
+                      chartPtr->SetHighlightMode(modes[i]);
+                      const char* what[] = {
+                          "Highlights off (AddHighlight/ClearHighlights)",
+                          "ValueBand at zSlot 200 — a dashed expected-range wash "
+                          "under the grid, its caption riding the label plan as a "
+                          "HighlightLabel",
+                          "ConfidenceEllipse per series at zSlot 700 — covariance "
+                          "ellipses (95%) with mean markers over each series' bar "
+                          "tips, in the series colours; the legend gains the "
+                          "50%/95% ellipse key, because a key describes marks the "
+                          "chart actually draws",
+                          "Blob per series at zSlot 200 — Chaikin-smoothed padded "
+                          "hulls hugging each series' points, washed under the grid"};
+                      say(what[i]);
+                  }, 0);
+    controls->AddChild(row9);
 
     root->AddChild(controls);
     return root;

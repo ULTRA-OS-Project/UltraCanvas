@@ -54,6 +54,18 @@
   area, arc diagram, and the contour surfaces' colour bars) were migrated
   onto the shared component, retiring their incompatible position enums'
   private implementations while keeping every public API working.
+- **Chart engine: the highlight layer (proposal §8.2).** `AddHighlight` /
+  `ClearHighlights` bring group washes to slot 200 (under the grid) and
+  overlays to slot 700: explicit rectangles/ellipses in value space, value
+  bands, and the computed shapes — **confidence ellipses** (covariance eigen
+  decomposition at 50%/95% with a mean marker, the group-of-dots scatter
+  convention), padded convex hulls, Chaikin-smoothed blobs and point halos.
+  Highlight captions ride the label plan as `HighlightLabel`. The geometry
+  (`ComputeConfidenceEllipse`, hull, expand, smooth) is UI-free in
+  `Engine/UltraCanvasChartHighlights` and unit-tested. The demo gained a
+  Highlight row (Band / Ellipse / Blob); the ellipse style brings the
+  legend's 50%/95% ellipse key with it, since a key describes marks the
+  chart actually draws.
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

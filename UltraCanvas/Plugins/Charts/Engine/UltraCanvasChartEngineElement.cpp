@@ -145,6 +145,17 @@ void UltraCanvasChartEngineElement::ClearLimiters() {
     MarkEngineDirty(ChartDirty::Style);
 }
 
+size_t UltraCanvasChartEngineElement::AddHighlight(const ChartHighlight& highlight) {
+    highlights.push_back(highlight);
+    MarkEngineDirty(ChartDirty::Style);       // labels join the label plan
+    return highlights.size() - 1;
+}
+
+void UltraCanvasChartEngineElement::ClearHighlights() {
+    highlights.clear();
+    MarkEngineDirty(ChartDirty::Style);
+}
+
 void UltraCanvasChartEngineElement::SetShowLegend(bool show) {
     engineLegend.SetVisible(show);
     MarkEngineDirty(ChartDirty::Geometry);    // the legend reserves margin
@@ -545,6 +556,45 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         broker.Add(caption);
     }
 
+    // Highlight labels ride the plan too, anchored at the group's centre.
+    for (const ChartHighlight& h : highlights) {
+        if (h.label.empty()) continue;
+        Point2Dd anchor;
+        if (h.shape == ChartHighlightShape::ValueBand) {
+            if (h.axisIndex >= engineAxes.Count()) continue;
+            const ChartAxis& axis = engineAxes.At(h.axisIndex);
+            anchor = engineProjection->ToScreen(ChartNormalizedPoint(
+                0.5, axis.Normalize((h.bandLow + h.bandHigh) / 2.0)));
+        } else if (h.members.empty()) {
+            anchor = MapHighlightPoint(
+                h, Point2Dd(h.rectValueSpace.x + h.rectValueSpace.width / 2.0,
+                            h.rectValueSpace.y + h.rectValueSpace.height / 2.0));
+        } else {
+            double mx = 0.0, my = 0.0;
+            size_t used = 0;
+            for (const Point2Dd& m : h.members) {
+                const Point2Dd p = MapHighlightPoint(h, m);
+                if (std::isnan(p.x)) continue;
+                mx += p.x;
+                my += p.y;
+                ++used;
+            }
+            if (used == 0) continue;
+            anchor = Point2Dd(mx / used, my / used);
+        }
+        if (std::isnan(anchor.x)) continue;
+
+        ChartLabelRequest request;
+        request.text = h.label;
+        request.klass = ChartLabelClass::HighlightLabel;
+        request.anchor = anchor;
+        const Size2Di size = ctx->GetTextLineDimensions(h.label);
+        request.textSize = Size2Dd(size.width, size.height);
+        request.preferredSide = LabelSide::Top;
+        request.priority = 6;
+        broker.Add(request);
+    }
+
     CollectChartLabels(ctx, broker);
     labelPlan = broker.Solve(generation);
 
@@ -678,10 +728,11 @@ void UltraCanvasChartEngineElement::RenderChart(IRenderContext* ctx) {
 }
 
 void UltraCanvasChartEngineElement::RenderPhaseUnder(IRenderContext* ctx) {
-    RenderEngineBackground(ctx);   // slot 100
-    RenderEngineGrid(ctx);         // slot 300
-    RenderEngineLimiters(ctx);     // slot 400
-    RenderEngineAxes(ctx);         // slot 500 - edge axes only
+    RenderEngineBackground(ctx);        // slot 100
+    RenderEngineHighlights(ctx, 200);   // slot 200 - washes under the grid
+    RenderEngineGrid(ctx);              // slot 300
+    RenderEngineLimiters(ctx);          // slot 400
+    RenderEngineAxes(ctx);              // slot 500 - edge axes only
     RenderEngineTitle(ctx);
 }
 
@@ -689,6 +740,7 @@ void UltraCanvasChartEngineElement::RenderPhaseOver(IRenderContext* ctx) {
     // In-plot axes sit above the content: a dense chart would otherwise bury
     // its own axis rules and value labels under the data marks.
     RenderEngineInPlotAxes(ctx);
+    RenderEngineHighlights(ctx, 700);   // slot 700 - overlays above content
     RenderPlannedLabels(ctx);      // slot 800
     RenderEngineLegend(ctx);       // slot 800
     ctx->PushState();
@@ -701,6 +753,146 @@ void UltraCanvasChartEngineElement::RenderEngineBackground(IRenderContext* ctx) 
     ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
     ctx->SetFillPaint(plotAreaColor);
     ctx->FillRectangle(frame.plotArea);
+}
+
+Point2Dd UltraCanvasChartEngineElement::MapHighlightPoint(
+        const ChartHighlight& highlight, const Point2Dd& value) const {
+    if (highlight.xAxisIndex >= engineAxes.Count() ||
+        highlight.yAxisIndex >= engineAxes.Count() || !engineProjection) {
+        return Point2Dd(std::nan(""), std::nan(""));
+    }
+    const double u = engineAxes.At(highlight.xAxisIndex).Normalize(value.x);
+    const double v = engineAxes.At(highlight.yAxisIndex).Normalize(value.y);
+    return engineProjection->ToScreen(ChartNormalizedPoint(u, v));
+}
+
+void UltraCanvasChartEngineElement::RenderEngineHighlights(IRenderContext* ctx,
+                                                           int zSlot) {
+    if (highlights.empty()) return;
+    ctx->PushState();
+    ctx->ClipRect(frame.plotArea);
+
+    for (const ChartHighlight& h : highlights) {
+        if (h.zSlot != zSlot) continue;
+
+        if (h.dashed) ctx->SetLineDash(UCDashPattern({6.0, 4.0}));
+        const bool strokes = h.strokeWidth > 0.0f && h.stroke.a > 0;
+
+        switch (h.shape) {
+            case ChartHighlightShape::Rectangle:
+            case ChartHighlightShape::Ellipse: {
+                const Point2Dd a = MapHighlightPoint(
+                    h, Point2Dd(h.rectValueSpace.x, h.rectValueSpace.y));
+                const Point2Dd b = MapHighlightPoint(
+                    h, Point2Dd(h.rectValueSpace.Right(), h.rectValueSpace.Bottom()));
+                if (std::isnan(a.x) || std::isnan(b.x)) break;
+                const Rect2Dd screen(std::min(a.x, b.x), std::min(a.y, b.y),
+                                     std::abs(b.x - a.x), std::abs(b.y - a.y));
+                if (h.shape == ChartHighlightShape::Rectangle) {
+                    ctx->SetFillPaint(h.fill);
+                    ctx->FillRectangle(screen);
+                    if (strokes) {
+                        ctx->SetStrokePaint(h.stroke);
+                        ctx->SetStrokeWidth(h.strokeWidth);
+                        ctx->DrawRectangle(screen);
+                    }
+                } else {
+                    ctx->SetFillPaint(h.fill);
+                    ctx->FillEllipse(screen);
+                    if (strokes) {
+                        ctx->SetStrokePaint(h.stroke);
+                        ctx->SetStrokeWidth(h.strokeWidth);
+                        ctx->DrawEllipse(screen);
+                    }
+                }
+                break;
+            }
+            case ChartHighlightShape::ConfidenceEllipse: {
+                std::vector<Point2Dd> screen;
+                screen.reserve(h.members.size());
+                for (const Point2Dd& m : h.members) {
+                    const Point2Dd p = MapHighlightPoint(h, m);
+                    if (!std::isnan(p.x)) screen.push_back(p);
+                }
+                const ChartEllipseSpec ellipse =
+                    ComputeConfidenceEllipse(screen, h.confidence);
+                if (!ellipse.valid) break;
+                ctx->ClearPath();
+                ctx->Ellipse(ellipse.center.x, ellipse.center.y, ellipse.rx,
+                             std::max(ellipse.ry, 1.0), ellipse.rotationRadians);
+                ctx->SetFillPaint(h.fill);
+                ctx->FillPathPreserve();
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->StrokePathPreserve();
+                }
+                ctx->ClearPath();
+                if (h.showMeanMarker) {
+                    Color mean = h.stroke;
+                    mean.a = 255;
+                    ctx->SetFillPaint(mean);
+                    ctx->FillCircle(ellipse.center, 3.5);
+                }
+                break;
+            }
+            case ChartHighlightShape::Hull:
+            case ChartHighlightShape::Blob: {
+                std::vector<Point2Dd> screen;
+                screen.reserve(h.members.size());
+                for (const Point2Dd& m : h.members) {
+                    const Point2Dd p = MapHighlightPoint(h, m);
+                    if (!std::isnan(p.x)) screen.push_back(p);
+                }
+                std::vector<Point2Dd> outline =
+                    ExpandPolygon(ComputeConvexHull(std::move(screen)), h.padding);
+                if (outline.size() < 3) break;
+                if (h.shape == ChartHighlightShape::Blob) {
+                    const int iterations = std::clamp(
+                        static_cast<int>(std::lround(h.smoothing * 4.0)), 0, 4);
+                    outline = SmoothPolygonChaikin(outline, iterations);
+                }
+                ctx->SetFillPaint(h.fill);
+                ctx->FillLinePath(outline);
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->DrawLinePath(outline, true);
+                }
+                break;
+            }
+            case ChartHighlightShape::ValueBand: {
+                if (h.axisIndex >= engineAxes.Count()) break;
+                const ChartAxis& axis = engineAxes.At(h.axisIndex);
+                const double lo = axis.Normalize(std::min(h.bandLow, h.bandHigh));
+                const double hi = axis.Normalize(std::max(h.bandLow, h.bandHigh));
+                const std::vector<Point2Dd> quad = {
+                    engineProjection->ToScreen(ChartNormalizedPoint(0.0, lo)),
+                    engineProjection->ToScreen(ChartNormalizedPoint(1.0, lo)),
+                    engineProjection->ToScreen(ChartNormalizedPoint(1.0, hi)),
+                    engineProjection->ToScreen(ChartNormalizedPoint(0.0, hi))};
+                ctx->SetFillPaint(h.fill);
+                ctx->FillLinePath(quad);
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->DrawLine(quad[0], quad[1]);
+                    ctx->DrawLine(quad[3], quad[2]);
+                }
+                break;
+            }
+            case ChartHighlightShape::PointHalo: {
+                ctx->SetFillPaint(h.fill);
+                for (const Point2Dd& m : h.members) {
+                    const Point2Dd p = MapHighlightPoint(h, m);
+                    if (!std::isnan(p.x)) ctx->FillCircle(p, h.padding);
+                }
+                break;
+            }
+        }
+        if (h.dashed) ctx->SetLineDash(UCDashPattern());
+    }
+    ctx->PopState();
 }
 
 void UltraCanvasChartEngineElement::RenderEngineGrid(IRenderContext* ctx) {

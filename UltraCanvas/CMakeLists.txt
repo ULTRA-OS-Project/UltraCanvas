@@ -398,6 +398,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp

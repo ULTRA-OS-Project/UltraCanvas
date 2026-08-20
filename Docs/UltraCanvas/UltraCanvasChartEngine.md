@@ -119,6 +119,25 @@ the projection, so it comes out as a radial rule with its ticks along it — and
 stand the category axis down, naming its slots with annotation labels around
 the rim (what the demo's Polar mode does).
 
+## Highlights (slot 200 wash / slot 700 overlay)
+
+`AddHighlight(ChartHighlight)` / `ClearHighlights()` — the proposal's §8.2
+layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Seven
+shapes: explicit `Rectangle`/`Ellipse` in value space, a `ValueBand` on one
+axis, and the computed group shapes — `ConfidenceEllipse` (covariance eigen
+decomposition at a `confidence` level, the 50%/95%-around-grouped-dots
+convention, with a mean marker), `Hull` (padded convex hull), `Blob`
+(Chaikin-smoothed hull hugging a cluster) and `PointHalo`. Computed shapes
+take value-space `members`, x through the axis at `xAxisIndex` (the
+projection's domain/u coordinate) and y through `yAxisIndex`. `zSlot` picks
+the layer: 200 draws as a wash under the grid, 700 as an overlay above the
+content. A highlight's `label` rides the label plan as
+`ChartLabelClass::HighlightLabel`. The geometry helpers
+(`ComputeConfidenceEllipse`, `ComputeConvexHull`, `ExpandPolygon`,
+`SmoothPolygonChaikin`) are UI-free and unit-tested. Pair a confidence-
+ellipse highlight with the legend's ellipse custom key (`SetCustomArea`) —
+a key describes marks the chart actually draws.
+
 ## Phase-1 services
 
 - **Grid follows ticks**: `SetGridAxis(index)` derives gridlines from that
