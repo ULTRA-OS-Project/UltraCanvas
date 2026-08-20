@@ -170,6 +170,11 @@ void UltraCanvasChartEngineElement::SetLegendTitle(const std::string& title) {
     MarkEngineDirty(ChartDirty::Geometry);
 }
 
+void UltraCanvasChartEngineElement::SetLegendMode(ChartLegendMode mode) {
+    engineLegend.SetMode(mode);
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
 void UltraCanvasChartEngineElement::MarkEngineDirty(ChartDirty flags) {
     pendingDirty |= flags;
     if (animateOnDataChange && HasDirty(flags, ChartDirty::Data)) {

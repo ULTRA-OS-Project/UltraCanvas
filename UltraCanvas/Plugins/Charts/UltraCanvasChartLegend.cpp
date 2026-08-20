@@ -54,6 +54,12 @@ namespace UltraCanvas {
         return std::string(buf);
     }
 
+    static std::string DefaultLegendNumber(double v) {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%g", v);
+        return std::string(buf);
+    }
+
     std::string FormatLegendInterval(double low, double high, bool openHigh,
                                      LegendIntervalFormat format, int decimals) {
         const std::string a = FormatNumber(low, decimals);
@@ -128,6 +134,15 @@ namespace UltraCanvas {
 // LAYOUT
 // =============================================================================
 
+    bool ChartLegend::HasContent() const {
+        switch (mode) {
+            case ChartLegendMode::ColorBar:   return true;
+            case ChartLegendMode::SizeLegend: return sizeScale.sampleCount > 0;
+            case ChartLegendMode::Discrete:
+            default:                          return !entries.empty() || HasCustomArea();
+        }
+    }
+
     bool ChartLegend::IsInset() const {
         switch (position) {
             case ChartLegendPosition::InsetTopLeft:
@@ -159,6 +174,62 @@ namespace UltraCanvas {
         }
     }
 
+    void ChartLegend::PlaceBox(const Rect2Dd& availableArea, double boxW, double boxH) {
+        double bx = availableArea.x;
+        double by = availableArea.y;
+        switch (position) {
+            case ChartLegendPosition::TopStart:
+                bx = availableArea.x; by = availableArea.y; break;
+            case ChartLegendPosition::TopCenter:
+                bx = availableArea.x + (availableArea.width - boxW) / 2.0;
+                by = availableArea.y; break;
+            case ChartLegendPosition::TopEnd:
+                bx = availableArea.x + availableArea.width - boxW;
+                by = availableArea.y; break;
+            case ChartLegendPosition::BottomStart:
+                bx = availableArea.x;
+                by = availableArea.y + availableArea.height - boxH; break;
+            case ChartLegendPosition::BottomCenter:
+                bx = availableArea.x + (availableArea.width - boxW) / 2.0;
+                by = availableArea.y + availableArea.height - boxH; break;
+            case ChartLegendPosition::BottomEnd:
+                bx = availableArea.x + availableArea.width - boxW;
+                by = availableArea.y + availableArea.height - boxH; break;
+            case ChartLegendPosition::LeftStart:
+                bx = availableArea.x; by = availableArea.y; break;
+            case ChartLegendPosition::LeftCenter:
+                bx = availableArea.x;
+                by = availableArea.y + (availableArea.height - boxH) / 2.0; break;
+            case ChartLegendPosition::LeftEnd:
+                bx = availableArea.x;
+                by = availableArea.y + availableArea.height - boxH; break;
+            case ChartLegendPosition::RightStart:
+                bx = availableArea.x + availableArea.width - boxW;
+                by = availableArea.y; break;
+            case ChartLegendPosition::RightCenter:
+                bx = availableArea.x + availableArea.width - boxW;
+                by = availableArea.y + (availableArea.height - boxH) / 2.0; break;
+            case ChartLegendPosition::RightEnd:
+                bx = availableArea.x + availableArea.width - boxW;
+                by = availableArea.y + availableArea.height - boxH; break;
+            case ChartLegendPosition::InsetTopLeft:
+                bx = availableArea.x + style.hostGap;
+                by = availableArea.y + style.hostGap; break;
+            case ChartLegendPosition::InsetTopRight:
+                bx = availableArea.x + availableArea.width - boxW - style.hostGap;
+                by = availableArea.y + style.hostGap; break;
+            case ChartLegendPosition::InsetBottomLeft:
+                bx = availableArea.x + style.hostGap;
+                by = availableArea.y + availableArea.height - boxH - style.hostGap; break;
+            case ChartLegendPosition::InsetBottomRight:
+                bx = availableArea.x + availableArea.width - boxW - style.hostGap;
+                by = availableArea.y + availableArea.height - boxH - style.hostGap; break;
+        }
+
+
+        layout.box = Rect2Dd(bx, by, boxW, boxH);
+    }
+
     const ChartLegendLayout& ChartLegend::Measure(IRenderContext* ctx,
                                                   const Rect2Dd& availableArea) {
         const bool areaChanged =
@@ -172,7 +243,7 @@ namespace UltraCanvas {
         lastArea = availableArea;
         layout = ChartLegendLayout();
 
-        if (!visible || (entries.empty() && !HasCustomArea()) || ctx == nullptr) {
+        if (!visible || !HasContent() || ctx == nullptr) {
             layout.box = Rect2Dd(availableArea.x, availableArea.y, 0, 0);
             layout.valid = true;
             return layout;
@@ -219,6 +290,18 @@ namespace UltraCanvas {
             titleW = ts.width;
             titleH = ts.height;
             ctx->SetFontSize(style.fontSize);
+        }
+
+        // The continuous modes lay themselves out and ignore the entry list.
+        if (mode == ChartLegendMode::ColorBar) {
+            MeasureColorBar(ctx, availableArea, titleH);
+            layout.valid = true;
+            return layout;
+        }
+        if (mode == ChartLegendMode::SizeLegend) {
+            MeasureSizeScale(ctx, availableArea, titleH);
+            layout.valid = true;
+            return layout;
         }
 
         const bool vertical = IsVerticalFlow();
@@ -311,59 +394,9 @@ namespace UltraCanvas {
         boxW = std::min(boxW, availableArea.width);
         boxH = std::min(boxH, availableArea.height);
 
-        // Place the box.
-        double bx = availableArea.x;
-        double by = availableArea.y;
-        switch (position) {
-            case ChartLegendPosition::TopStart:
-                bx = availableArea.x; by = availableArea.y; break;
-            case ChartLegendPosition::TopCenter:
-                bx = availableArea.x + (availableArea.width - boxW) / 2.0;
-                by = availableArea.y; break;
-            case ChartLegendPosition::TopEnd:
-                bx = availableArea.x + availableArea.width - boxW;
-                by = availableArea.y; break;
-            case ChartLegendPosition::BottomStart:
-                bx = availableArea.x;
-                by = availableArea.y + availableArea.height - boxH; break;
-            case ChartLegendPosition::BottomCenter:
-                bx = availableArea.x + (availableArea.width - boxW) / 2.0;
-                by = availableArea.y + availableArea.height - boxH; break;
-            case ChartLegendPosition::BottomEnd:
-                bx = availableArea.x + availableArea.width - boxW;
-                by = availableArea.y + availableArea.height - boxH; break;
-            case ChartLegendPosition::LeftStart:
-                bx = availableArea.x; by = availableArea.y; break;
-            case ChartLegendPosition::LeftCenter:
-                bx = availableArea.x;
-                by = availableArea.y + (availableArea.height - boxH) / 2.0; break;
-            case ChartLegendPosition::LeftEnd:
-                bx = availableArea.x;
-                by = availableArea.y + availableArea.height - boxH; break;
-            case ChartLegendPosition::RightStart:
-                bx = availableArea.x + availableArea.width - boxW;
-                by = availableArea.y; break;
-            case ChartLegendPosition::RightCenter:
-                bx = availableArea.x + availableArea.width - boxW;
-                by = availableArea.y + (availableArea.height - boxH) / 2.0; break;
-            case ChartLegendPosition::RightEnd:
-                bx = availableArea.x + availableArea.width - boxW;
-                by = availableArea.y + availableArea.height - boxH; break;
-            case ChartLegendPosition::InsetTopLeft:
-                bx = availableArea.x + style.hostGap;
-                by = availableArea.y + style.hostGap; break;
-            case ChartLegendPosition::InsetTopRight:
-                bx = availableArea.x + availableArea.width - boxW - style.hostGap;
-                by = availableArea.y + style.hostGap; break;
-            case ChartLegendPosition::InsetBottomLeft:
-                bx = availableArea.x + style.hostGap;
-                by = availableArea.y + availableArea.height - boxH - style.hostGap; break;
-            case ChartLegendPosition::InsetBottomRight:
-                bx = availableArea.x + availableArea.width - boxW - style.hostGap;
-                by = availableArea.y + availableArea.height - boxH - style.hostGap; break;
-        }
-
-        layout.box = Rect2Dd(bx, by, boxW, boxH);
+        PlaceBox(availableArea, boxW, boxH);
+        const double bx = layout.box.x;
+        const double by = layout.box.y;
 
         double cursorY = by + style.paddingY;
         if (!title.empty()) {
@@ -429,9 +462,124 @@ namespace UltraCanvas {
         return layout;
     }
 
+    void ChartLegend::MeasureColorBar(IRenderContext* ctx, const Rect2Dd& availableArea,
+                                      double titleH) {
+        const bool vertical = IsVerticalFlow();
+        const auto format = colorBar.formatter ? colorBar.formatter
+                                               : DefaultLegendNumber;
+        const int ticks = std::max(2, colorBar.tickCount);
+
+        double maxLabelW = 0.0, maxLabelH = 0.0;
+        for (int i = 0; i < ticks; ++i) {
+            const double v = colorBar.minValue +
+                             (colorBar.maxValue - colorBar.minValue) * i / (ticks - 1);
+            const Size2Di ts = ctx->GetTextLineDimensions(format(v));
+            maxLabelW = std::max(maxLabelW, static_cast<double>(ts.width));
+            maxLabelH = std::max(maxLabelH, static_cast<double>(ts.height));
+        }
+
+        const double labelGap = 4.0;
+        double barLen = colorBar.barLength;
+        if (vertical) {
+            double maxLen = availableArea.height - 2.0 * style.paddingY;
+            if (titleH > 0.0) maxLen -= titleH + style.titleGap;
+            barLen = std::max(24.0, std::min(barLen, maxLen));
+        } else {
+            barLen = std::max(24.0,
+                              std::min(barLen, availableArea.width - 2.0 * style.paddingX));
+        }
+
+        const double contentW = vertical
+                                    ? colorBar.barThickness + labelGap + maxLabelW
+                                    : barLen;
+        const double contentH = vertical
+                                    ? barLen
+                                    : colorBar.barThickness + labelGap + maxLabelH;
+
+        double boxW = contentW + 2.0 * style.paddingX;
+        double boxH = contentH + 2.0 * style.paddingY;
+        if (titleH > 0.0) boxH += titleH + style.titleGap;
+        boxW = std::min(boxW, availableArea.width);
+        boxH = std::min(boxH, availableArea.height);
+
+        PlaceBox(availableArea, boxW, boxH);
+
+        double cursorY = layout.box.y + style.paddingY;
+        if (titleH > 0.0) {
+            layout.titleRect = Rect2Dd(layout.box.x + style.paddingX, cursorY,
+                                       contentW, titleH);
+            cursorY += titleH + style.titleGap;
+        }
+        layout.barRect = vertical
+                             ? Rect2Dd(layout.box.x + style.paddingX, cursorY,
+                                       colorBar.barThickness, barLen)
+                             : Rect2Dd(layout.box.x + style.paddingX, cursorY,
+                                       barLen, colorBar.barThickness);
+    }
+
+    void ChartLegend::MeasureSizeScale(IRenderContext* ctx, const Rect2Dd& availableArea,
+                                       double titleH) {
+        const auto format = sizeScale.formatter ? sizeScale.formatter
+                                                : DefaultLegendNumber;
+        const int samples = std::max(1, sizeScale.sampleCount);
+
+        layout.sizeRadii.clear();
+        layout.sizeLabels.clear();
+        double maxLabelW = 0.0, maxLabelH = 0.0;
+        for (int i = 0; i < samples; ++i) {
+            // Largest first, the way printed size keys read.
+            const double t = (samples == 1)
+                                 ? 1.0
+                                 : 1.0 - static_cast<double>(i) / (samples - 1);
+            const double v = sizeScale.minValue +
+                             (sizeScale.maxValue - sizeScale.minValue) * t;
+            layout.sizeRadii.push_back(
+                sizeScale.minRadius + (sizeScale.maxRadius - sizeScale.minRadius) * t);
+            layout.sizeLabels.push_back(format(v));
+            const Size2Di ts = ctx->GetTextLineDimensions(layout.sizeLabels.back());
+            maxLabelW = std::max(maxLabelW, static_cast<double>(ts.width));
+            maxLabelH = std::max(maxLabelH, static_cast<double>(ts.height));
+        }
+
+        const double diameterColumn = 2.0 * sizeScale.maxRadius;
+        const double contentW = diameterColumn + style.swatchTextGap + maxLabelW;
+        double contentH = 0.0;
+        std::vector<double> rowHeights;
+        for (int i = 0; i < samples; ++i) {
+            const double h = std::max(2.0 * layout.sizeRadii[i], maxLabelH);
+            rowHeights.push_back(h);
+            contentH += h;
+            if (i + 1 < samples) contentH += style.entrySpacingY;
+        }
+
+        double boxW = contentW + 2.0 * style.paddingX;
+        double boxH = contentH + 2.0 * style.paddingY;
+        if (titleH > 0.0) boxH += titleH + style.titleGap;
+        boxW = std::min(boxW, availableArea.width);
+        boxH = std::min(boxH, availableArea.height);
+
+        PlaceBox(availableArea, boxW, boxH);
+
+        double cursorY = layout.box.y + style.paddingY;
+        if (titleH > 0.0) {
+            layout.titleRect = Rect2Dd(layout.box.x + style.paddingX, cursorY,
+                                       contentW, titleH);
+            cursorY += titleH + style.titleGap;
+        }
+        for (int i = 0; i < samples; ++i) {
+            ChartLegendItemRect item;
+            item.entryIndex = static_cast<size_t>(i);
+            item.bounds = Rect2Dd(layout.box.x + style.paddingX, cursorY,
+                                  contentW, rowHeights[i]);
+            item.swatchRect = Rect2Dd(layout.box.x + style.paddingX, cursorY,
+                                      diameterColumn, rowHeights[i]);
+            layout.items.push_back(item);
+            cursorY += rowHeights[i] + style.entrySpacingY;
+        }
+    }
+
     Rect2Dd ChartLegend::RemainingArea(const Rect2Dd& availableArea) const {
-        if (!visible || (entries.empty() && !HasCustomArea()) || IsInset() ||
-            !layout.valid) {
+        if (!visible || !HasContent() || IsInset() || !layout.valid) {
             return availableArea;
         }
 
@@ -617,10 +765,11 @@ namespace UltraCanvas {
     }
 
     void ChartLegend::Render(IRenderContext* ctx, const Rect2Dd& availableArea) {
-        if (!visible || (entries.empty() && !HasCustomArea()) || ctx == nullptr) return;
+        if (!visible || !HasContent() || ctx == nullptr) return;
 
         Measure(ctx, availableArea);
-        if (layout.items.empty() && !HasCustomArea()) return;
+        if (mode == ChartLegendMode::Discrete && layout.items.empty() &&
+            !HasCustomArea()) return;
 
         ctx->PushState();
 
@@ -651,6 +800,17 @@ namespace UltraCanvas {
         }
 
         ctx->SetFontSize(style.fontSize);
+
+        if (mode == ChartLegendMode::ColorBar) {
+            RenderColorBar(ctx);
+            ctx->PopState();
+            return;
+        }
+        if (mode == ChartLegendMode::SizeLegend) {
+            RenderSizeScale(ctx);
+            ctx->PopState();
+            return;
+        }
 
         for (const auto& item : layout.items) {
             const bool isOverflow = (layout.overflowCount > 0 &&
@@ -692,12 +852,124 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
+    void ChartLegend::RenderColorBar(IRenderContext* ctx) const {
+        const Rect2Dd& bar = layout.barRect;
+        if (bar.width <= 0.0 || bar.height <= 0.0) return;
+        const bool vertical = bar.height >= bar.width;
+        const auto format = colorBar.formatter ? colorBar.formatter
+                                               : DefaultLegendNumber;
+        auto colorAt = [this](double t) {
+            return SampleColormap(colorBar.colormap, colorBar.customColormap,
+                                  t, colorBar.reverse);
+        };
+
+        // The ramp. minValue sits at the bottom (vertical) / left (horizontal).
+        if (colorBar.quantizeLevels >= 2) {
+            const int levels = colorBar.quantizeLevels;
+            for (int k = 0; k < levels; ++k) {
+                const double t0 = static_cast<double>(k) / levels;
+                const double t1 = static_cast<double>(k + 1) / levels;
+                const Rect2Dd band =
+                    vertical ? Rect2Dd(bar.x, bar.Bottom() - t1 * bar.height,
+                                       bar.width, (t1 - t0) * bar.height)
+                             : Rect2Dd(bar.x + t0 * bar.width, bar.y,
+                                       (t1 - t0) * bar.width, bar.height);
+                ctx->SetFillPaint(colorAt((t0 + t1) / 2.0));
+                ctx->FillRectangle(band);
+            }
+        } else {
+            const int stops = 24;
+            std::vector<GradientStop> gradientStops;
+            gradientStops.reserve(stops + 1);
+            for (int s = 0; s <= stops; ++s) {
+                const double t = static_cast<double>(s) / stops;
+                gradientStops.emplace_back(t, colorAt(t));
+            }
+            auto gradient =
+                vertical ? ctx->CreateLinearGradientPattern(
+                               bar.x, bar.Bottom(), bar.x, bar.y, gradientStops)
+                         : ctx->CreateLinearGradientPattern(
+                               bar.x, bar.y, bar.Right(), bar.y, gradientStops);
+            if (gradient) {
+                ctx->SetFillPaint(gradient);
+                ctx->FillRectangle(bar);
+            } else {
+                // No gradient support: draw the ramp as thin slices.
+                for (int s = 0; s < stops; ++s) {
+                    const double t0 = static_cast<double>(s) / stops;
+                    const double t1 = static_cast<double>(s + 1) / stops;
+                    const Rect2Dd slice =
+                        vertical ? Rect2Dd(bar.x, bar.Bottom() - t1 * bar.height,
+                                           bar.width, (t1 - t0) * bar.height + 0.5)
+                                 : Rect2Dd(bar.x + t0 * bar.width, bar.y,
+                                           (t1 - t0) * bar.width + 0.5, bar.height);
+                    ctx->SetFillPaint(colorAt((t0 + t1) / 2.0));
+                    ctx->FillRectangle(slice);
+                }
+            }
+        }
+        ctx->SetStrokePaint(style.swatchBorderColor);
+        ctx->SetStrokeWidth(style.swatchBorderWidth);
+        ctx->DrawRectangle(bar);
+
+        // Ticks and labels beside (vertical) / below (horizontal) the ramp.
+        const int ticks = std::max(2, colorBar.tickCount);
+        const double labelGap = 4.0;
+        ctx->SetFontSize(style.fontSize);
+        ctx->SetTextPaint(style.textColor);
+        for (int i = 0; i < ticks; ++i) {
+            const double frac = static_cast<double>(i) / (ticks - 1);
+            const double v = colorBar.minValue +
+                             (colorBar.maxValue - colorBar.minValue) * frac;
+            const std::string label = format(v);
+            const Size2Di ts = ctx->GetTextLineDimensions(label);
+            ctx->SetStrokePaint(style.swatchBorderColor);
+            ctx->SetStrokeWidth(1.0f);
+            if (vertical) {
+                const double y = bar.Bottom() - frac * bar.height;
+                ctx->DrawLine(Point2Dd(bar.Right(), y),
+                              Point2Dd(bar.Right() + 3.0, y));
+                ctx->DrawText(label, Point2Dd(bar.Right() + labelGap,
+                                              y - ts.height / 2.0));
+            } else {
+                const double x = bar.x + frac * bar.width;
+                ctx->DrawLine(Point2Dd(x, bar.Bottom()),
+                              Point2Dd(x, bar.Bottom() + 3.0));
+                ctx->DrawText(label, Point2Dd(x - ts.width / 2.0,
+                                              bar.Bottom() + labelGap));
+            }
+        }
+    }
+
+    void ChartLegend::RenderSizeScale(IRenderContext* ctx) const {
+        ctx->SetFontSize(style.fontSize);
+        for (size_t i = 0; i < layout.items.size() &&
+                           i < layout.sizeRadii.size(); ++i) {
+            const ChartLegendItemRect& item = layout.items[i];
+            const double r = layout.sizeRadii[i];
+            const Point2Dd centre(item.swatchRect.x + item.swatchRect.width / 2.0,
+                                  item.swatchRect.y + item.swatchRect.height / 2.0);
+            ctx->SetFillPaint(sizeScale.fillColor);
+            ctx->FillCircle(centre, r);
+            ctx->SetStrokePaint(sizeScale.strokeColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawCircle(centre, r);
+
+            const std::string& label = layout.sizeLabels[i];
+            const Size2Di ts = ctx->GetTextLineDimensions(label);
+            ctx->SetTextPaint(style.textColor);
+            ctx->DrawText(label,
+                          Point2Dd(item.swatchRect.Right() + style.swatchTextGap,
+                                   centre.y - ts.height / 2.0));
+        }
+    }
+
 // =============================================================================
 // INTERACTION
 // =============================================================================
 
     size_t ChartLegend::HitTest(const Point2Dd& point) const {
-        if (!layout.valid) return SIZE_MAX;
+        if (!layout.valid || mode != ChartLegendMode::Discrete) return SIZE_MAX;
         for (const auto& item : layout.items) {
             if (layout.overflowCount > 0 && item.entryIndex == layout.visibleCount) continue;
             if (point.x >= item.bounds.x && point.x <= item.bounds.x + item.bounds.width &&

@@ -8901,6 +8901,13 @@ bar collapsing mid-animation degrades gracefully.
   - `SetLegendTitle(text)`, and `Legend()` for the component's long tail:
     per-entry `valueText`, interval/band entries, a max-entries overflow row,
     a label formatter, hit-testing.
+  - `SetLegendMode(...)` — `Discrete` (the entry list), `ColorBar` (a
+    continuous colormap ramp over a value range with tick labels — the key a
+    heatmap or contour surface uses; configure with
+    `Legend().SetColorBar({colormap, min, max, ticks, formatter, ...})`,
+    `quantizeLevels >= 2` draws discrete bands), or `SizeLegend` (sample
+    circles keying a bubble-size scale, largest first —
+    `Legend().SetSizeScale(...)`).
   - `Legend().SetCustomArea(size, draw)` — a host-drawn panel below the
     entries, inside the legend box, for a key richer than any swatch: an
     annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.

@@ -148,6 +148,10 @@ public:
     void SetLegendPosition(ChartLegendPosition position);
     void SetLegendOrientation(LegendOrientation orientation);
     void SetLegendTitle(const std::string& title);
+    // Discrete entries (default), a continuous ColorBar, or a bubble
+    // SizeLegend - configure the latter two through
+    // Legend().SetColorBar(...) / Legend().SetSizeScale(...).
+    void SetLegendMode(ChartLegendMode mode);
     // The component itself, for the long tail (style, value text, interval
     // entries, max-entries overflow, label formatter). Mutations that change
     // the legend's size need MarkEngineDirty(ChartDirty::Geometry) after.

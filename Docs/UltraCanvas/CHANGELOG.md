@@ -45,7 +45,15 @@
   `OnLegendEntryToggled` — the demo hides the series, stacks re-solving
   without it. Tall vertical legends now wrap into further columns instead
   of silently clipping (a `ChartLegend` fix that also benefits the
-  diagrams already using the component).
+  diagrams already using the component). The component grew the engine
+  proposal's continuous modes — `SetMode(ColorBar)` draws a colormap ramp
+  over a value range with tick labels (optionally quantized into bands),
+  `SetMode(SizeLegend)` draws sample circles keying a bubble-size scale —
+  and the legacy charts' private legends (polar, circular progress,
+  funnel, pyramid, Mekko, dumbbell, cumulative flow, population, nested
+  area, arc diagram, and the contour surfaces' colour bars) were migrated
+  onto the shared component, retiring their incompatible position enums'
+  private implementations while keeping every public API working.
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

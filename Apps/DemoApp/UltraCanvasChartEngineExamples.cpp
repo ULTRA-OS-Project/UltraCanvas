@@ -197,6 +197,38 @@ public:
         return s < seriesDisabled.size() && seriesDisabled[s];
     }
 
+    // Legend key showcase: Items is the discrete entry list; ColorBar keys
+    // the value range through a continuous Viridis ramp; SizeLegend keys it
+    // as sample bubble sizes. Both use the chart's own number format.
+    void ShowLegendKey(ChartLegendMode legendMode) {
+        if (legendMode != ChartLegendMode::Discrete) {
+            double lo = std::numeric_limits<double>::max();
+            double hi = -std::numeric_limits<double>::max();
+            for (double v : PlottedValues()) {
+                lo = std::min(lo, v);
+                hi = std::max(hi, v);
+            }
+            if (lo > hi) { lo = 0.0; hi = 1.0; }
+            const ChartAxis datum = DatumFormatter();
+            auto format = [datum](double v) { return datum.FormatValue(v); };
+            if (legendMode == ChartLegendMode::ColorBar) {
+                LegendColorBar bar;
+                bar.colormap = HeatmapColormap::Viridis;
+                bar.minValue = lo;
+                bar.maxValue = hi;
+                bar.formatter = format;
+                Legend().SetColorBar(bar);
+            } else {
+                LegendSizeScale scale;
+                scale.minValue = lo;
+                scale.maxValue = hi;
+                scale.formatter = format;
+                Legend().SetSizeScale(scale);
+            }
+        }
+        SetLegendMode(legendMode);
+    }
+
     void SetValueLabelMode(ValueLabelMode mode) {
         valueLabelMode = mode;
         LabelPlacementOptions options;
@@ -1266,6 +1298,23 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                               "continuous colormap; ColorAt(i, count) spreads the three "
                               "series across the whole ramp");
                       }
+                  }, 0);
+    row8->AddSpacer(20);
+    AppendLabeledButtons(row8, "engine_lkey_", "Key", 34, 46, kBtnH,
+                  {"Items", "Bar", "Size"},
+                  [chartPtr, say](int i) {
+                      const ChartLegendMode modes[] = {ChartLegendMode::Discrete,
+                                                       ChartLegendMode::ColorBar,
+                                                       ChartLegendMode::SizeLegend};
+                      chartPtr->ShowLegendKey(modes[i]);
+                      const char* what[] = {
+                          "SetLegendMode(Discrete) — the classic swatch + label list",
+                          "SetLegendMode(ColorBar) — a continuous Viridis ramp over the "
+                          "value range with tick labels, the key a heatmap or contour "
+                          "surface uses (Legend().SetColorBar)",
+                          "SetLegendMode(SizeLegend) — sample circles keying a bubble-"
+                          "size scale, largest first (Legend().SetSizeScale)"};
+                      say(what[i]);
                   }, 0);
     controls->AddChild(row8);
 
