@@ -1,7 +1,10 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
-// Version: 1.1.0
-// Last Modified: 2026-08-10
+// Version: 1.2.0
+// Last Modified: 2026-08-20
+// V1.2.0: Themes and palettes (Engine/UltraCanvasChartTheme.h) - SetTheme /
+//   SetPalette / the "theme" named property fill the engine's furniture
+//   colours from a ChartTheme; repaint-only, with an OnThemeChanged() hook.
 // V1.1.0: Two fixes the first animated / transposed client exposed.
 //   - The animation driver now advances on a ~60fps application timer.
 //     RequestRedraw() from inside the paint cannot produce the next frame (the
@@ -30,6 +33,9 @@ UltraCanvasChartEngineElement::UltraCanvasChartEngineElement(
     showGrid = false;
     showValueLabels = false;
     engineProperties.Define("title", std::string());
+    engineProperties.Define("theme", std::string("Light"));
+    engineTheme = ChartThemes::Light();
+    frame.theme = &engineTheme;
 }
 
 UltraCanvasChartEngineElement::~UltraCanvasChartEngineElement() {
@@ -52,6 +58,40 @@ void UltraCanvasChartEngineElement::SetProjectionKind(ChartProjectionKind kind) 
 
 ChartProjectionKind UltraCanvasChartEngineElement::GetProjectionKind() const {
     return projectionKind;
+}
+
+void UltraCanvasChartEngineElement::SetTheme(const ChartTheme& theme) {
+    engineTheme = theme;
+    frame.theme = &engineTheme;
+    // The engine layers read these working copies; the base class paints the
+    // backgrounds and the grid from its own fields.
+    backgroundColor = theme.backgroundColor;
+    plotAreaColor = theme.plotAreaColor;
+    gridColor = theme.gridColor;
+    axisLineColor = theme.axisLineColor;
+    axisTickColor = theme.axisTickColor;
+    axisLabelColor = theme.axisLabelColor;
+    titleTextColor = theme.titleTextColor;
+    legendTextColor = theme.legendTextColor;
+    legendBackground = theme.legendBackground;
+    engineProperties.Set("theme", theme.name);
+    OnThemeChanged();
+    // A theme is colours only, so nothing can move: no layout, no label
+    // re-solve (proposal §5.7) - just repaint.
+    RequestRedraw();
+}
+
+bool UltraCanvasChartEngineElement::SetTheme(const std::string& themeName) {
+    const ChartTheme* theme = ChartThemes::Find(themeName);
+    if (!theme) return false;
+    SetTheme(*theme);
+    return true;
+}
+
+void UltraCanvasChartEngineElement::SetPalette(const ChartPalette& palette) {
+    engineTheme.palette = palette;
+    OnThemeChanged();
+    RequestRedraw();
 }
 
 void UltraCanvasChartEngineElement::SetLabelPolicy(const ChartLabelPolicy& policy) {
@@ -240,6 +280,15 @@ bool UltraCanvasChartEngineElement::OnEvent(const UCEvent& event) {
 
 bool UltraCanvasChartEngineElement::SetProperty(const std::string& key,
                                                 const UCPropertyValue& value) {
+    if (key == "theme") {
+        // Validated against the registry before it lands in the bag;
+        // SetTheme stores the canonical capitalization itself.
+        std::string themeName;
+        if (!UCPropertyAsString(value, themeName)) return false;
+        if (!SetTheme(themeName)) return false;
+        OnEnginePropertyChanged(key, engineProperties.Get(key));
+        return true;
+    }
     if (!engineProperties.Set(key, value)) return false;
     if (key == "title") {
         std::string title;

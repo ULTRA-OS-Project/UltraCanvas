@@ -17,8 +17,8 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
-// Version: 1.1.0
-// Last Modified: 2026-08-10
+// Version: 1.2.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +26,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
 #include "UltraCanvasElementProperties.h"
 #include "UltraCanvasTimer.h"
 #include <cstdint>
@@ -43,6 +44,7 @@ struct ChartEngineFrame {
     const ChartAxisSet* axes = nullptr;
     const IChartProjection* projection = nullptr;
     const ChartLabelPlan* labelPlan = nullptr;
+    const ChartTheme* theme = nullptr;
     double animationProgress = 1.0;
     uint64_t generation = 0;
 };
@@ -112,6 +114,22 @@ public:
 
     void SetProjectionKind(ChartProjectionKind kind);
     ChartProjectionKind GetProjectionKind() const;
+
+    // Theme and palette (Engine/UltraCanvasChartTheme.h). A theme change is
+    // repaint-only - it never re-runs layout or the label solver. Content
+    // charts draw their series from Palette() (typically
+    // Palette().ColorAt(i, count)) and refresh anything cached from the
+    // theme - legend entry colours above all - in OnThemeChanged().
+    void SetTheme(const ChartTheme& theme);
+    // Resolves a built-in theme by name ("Dark", "Ocean", ...); returns false
+    // and changes nothing when the name is unknown. Also reachable through
+    // the named-property surface as SetProperty("theme", name).
+    bool SetTheme(const std::string& themeName);
+    const ChartTheme& GetTheme() const { return engineTheme; }
+    // Replace only the series palette, keeping the theme's furniture.
+    void SetPalette(const ChartPalette& palette);
+    const ChartPalette& Palette() const { return engineTheme.palette; }
+    virtual void OnThemeChanged() {}
 
     void SetLabelPolicy(const ChartLabelPolicy& policy);
     void SetLabelOptions(const LabelPlacementOptions& options);
@@ -221,7 +239,9 @@ protected:
 
     Rect2Dd LegendRect() const { return legendRect; }
 
-    // Styling shared by the engine layers (theme work will lift these later).
+    // Styling shared by the engine layers. The colours are working copies
+    // filled from the active theme by SetTheme(); a chart may still override
+    // one after setting a theme.
     float axisFontSize = 11.0f;
     float titleFontSize = 16.0f;
     Color axisLineColor = Color(60, 60, 60, 255);
@@ -236,6 +256,7 @@ protected:
 
 private:
     // Engine state
+    ChartTheme engineTheme;
     ChartAxisSet engineAxes;
     std::unique_ptr<IChartProjection> engineProjection;
     ChartProjectionKind projectionKind = ChartProjectionKind::Vertical;

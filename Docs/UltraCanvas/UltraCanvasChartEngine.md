@@ -28,11 +28,12 @@ parallel coordinate chart
 - Bar series geometry: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
+- Themes and palettes: `include/Plugins/Charts/Engine/UltraCanvasChartTheme.h`
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.2.0
-**Last Modified:** 2026-08-10
+**Version:** 1.3.0
+**Last Modified:** 2026-08-20
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -180,6 +181,62 @@ bar collapsing mid-animation degrades gracefully.
 - **Interaction overlay**: `RenderInteractionOverlay` draws hover emphasis,
   crosshairs, brush bands — last, over everything.
 
+## Themes and palettes
+
+`Engine/UltraCanvasChartTheme.h` is the one home for chart theming — the
+place the engine proposal (§5.2) reserved. A `ChartTheme` bundles the
+furniture colours every engine layer paints with (background, plot area,
+grid, axis lines/ticks/labels, title, legend) with a `ChartPalette`, the
+ordered series colours the content draws from. The engine's protected colour
+fields are working copies filled from the active theme, so a chart can still
+override a single colour after setting one.
+
+```cpp
+chart->SetTheme(ChartThemes::Dark());       // by value
+chart->SetTheme("Ocean");                    // by name (case-insensitive);
+                                             // returns false when unknown
+chart->SetProperty("theme", "Vibrant");     // the named-property surface
+chart->SetPalette(ChartThemes::Get("Colorblind").palette);  // palette only,
+                                             // furniture kept
+ChartThemes::Names();                        // the 14 built-in names
+```
+
+A theme is colours only, so a theme change is **repaint-only**: no layout, no
+label re-solve (proposal §5.7). The engine calls the `OnThemeChanged()` hook
+so content can refresh anything it cached from the theme — legend entry
+colours above all (they are stored in `ChartLegendEntry`, not looked up at
+draw time). The frozen frame carries `frame.theme` for phase-2 drawing.
+
+The built-in themes are the palettes the pre-engine charts each carried
+privately, lifted verbatim: **Light** (default furniture, Paul Tol bright),
+**Dark** (dark furniture with the git graph's dark lane colours),
+**Corporate**, **Vibrant**, **Pastel**, **Colorblind** (Okabe–Ito),
+**Material** (10), **Classic** (10, Chart.js), **Tableau** (10), and the
+light-to-dark ramps **Ocean**, **Sunset**, **Forest**, **Slate**,
+**Monochrome** (6).
+
+Series colours come from the palette's two lookups:
+
+- `Palette().ColorAt(i)` — the classic cycle, except wrapped cycles are
+  re-tinted (lightened, then darkened, progressively), so element 9 of an
+  8-colour palette is not a repeat of element 1.
+- `Palette().ColorAt(i, count)` — tell the palette how many elements the
+  chart draws and it chooses better: a hand-designed categorical list keeps
+  its first `count` colours (the order is deliberate), while a ramp palette
+  (`isRamp`) spreads the picks across the whole run, ends included — three
+  elements get dark / mid / light instead of the three nearly-equal darkest
+  entries. `ColorsFor(count)` returns the whole list at once.
+
+Eight predefined colours per palette is the deliberate default — it is both
+the dominant width among the palettes the charts already carried and about
+the ceiling of what stays distinguishable side by side; the wide 10-colour
+lists (Material, Classic, Tableau) exist for pie/sunburst-style charts with
+many slices. Past any predefined list, sample a continuous colormap instead:
+`ChartPalette::FromColormap(HeatmapColormap::Viridis, 24)` builds a
+categorical palette of any requested size from `UltraCanvasColormap`'s maps
+(continuous value→colour mapping itself — heatmaps, colour bars — stays with
+`SetColormap`/`SampleColormap`).
+
 ## Hit regions and tooltips
 
 Content registers its interactive geometry while rendering phase 2 (the engine
@@ -225,7 +282,8 @@ detected automatically.
 ## Named properties
 
 The engine implements `IConfigurableElement`: subclasses `Define()` keys in
-their constructor (the engine provides `"title"`), react in
+their constructor (the engine provides `"title"` and `"theme"` — the latter
+resolves a built-in theme name and rejects unknown ones), react in
 `OnEnginePropertyChanged`, and by-name creators (registry, templates, module
 hosts) configure the chart with `SetProperty("key", value)` across any module
 boundary.

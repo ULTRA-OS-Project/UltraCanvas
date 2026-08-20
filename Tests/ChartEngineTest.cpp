@@ -14,6 +14,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
 #include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
 
 #include <algorithm>
@@ -847,6 +848,111 @@ static void TestPCPMissingAndHitTest() {
 }
 
 // =============================================================================
+// THEME AND PALETTE
+// =============================================================================
+
+static void TestThemeRegistry() {
+    std::printf("ChartThemes registry:\n");
+
+    CHECK(ChartThemes::Names().size() == 14, "fourteen built-in themes");
+    CHECK(ChartThemes::Find("Dark") != nullptr, "Find resolves an exact name");
+    CHECK(ChartThemes::Find("dARk") == ChartThemes::Find("Dark"),
+          "Find is case-insensitive");
+    CHECK(ChartThemes::Find("NoSuchTheme") == nullptr,
+          "Find returns nullptr for an unknown name");
+    CHECK(&ChartThemes::Get("NoSuchTheme") == &ChartThemes::Light(),
+          "Get falls back to Light for an unknown name");
+    CHECK(ChartThemes::Get("ocean").name == "Ocean",
+          "Get returns the canonical capitalization");
+
+    for (const std::string& name : ChartThemes::Names()) {
+        const ChartTheme& theme = ChartThemes::Get(name);
+        CHECK(!theme.palette.Empty(), ("palette not empty: " + name).c_str());
+        CHECK(theme.palette.Size() >= 6 && theme.palette.Size() <= 10,
+              ("palette size 6..10: " + name).c_str());
+    }
+
+    const ChartTheme& dark = ChartThemes::Dark();
+    CHECK(dark.backgroundColor.r < 80 && dark.axisLabelColor.r > 120,
+          "Dark theme is dark furniture with light labels");
+}
+
+static void TestPaletteCycling() {
+    std::printf("ChartPalette cycling:\n");
+
+    const ChartPalette& palette = ChartThemes::Light().palette;
+    const size_t n = palette.Size();
+
+    CHECK(palette.ColorAt(0) == palette.colors[0], "index 0 is the first colour");
+    CHECK(palette.ColorAt(n - 1) == palette.colors[n - 1],
+          "last in-range index is the last colour");
+    CHECK(!(palette.ColorAt(n) == palette.colors[0]),
+          "first wrapped colour is re-tinted, not a repeat");
+    CHECK(palette.ColorAt(n).a == palette.colors[0].a,
+          "re-tinting preserves alpha");
+    CHECK(!(palette.ColorAt(n) == palette.ColorAt(2 * n)),
+          "second wrap differs from the first wrap");
+
+    const ChartPalette empty;
+    CHECK(empty.ColorAt(3) == Color(128, 128, 128, 255),
+          "empty palette yields the grey fallback");
+}
+
+static void TestPaletteCountAware() {
+    std::printf("ChartPalette count-aware selection:\n");
+
+    // Categorical list: first-k, untouched.
+    const ChartPalette& bright = ChartThemes::Light().palette;
+    CHECK(bright.ColorAt(2, 3) == bright.colors[2],
+          "categorical: element 2 of 3 is base colour 2");
+
+    // Ramp: spread across the run, ends included.
+    const ChartPalette& ocean = ChartThemes::Ocean().palette;
+    CHECK(ocean.isRamp, "Ocean palette is a ramp");
+    CHECK(ocean.ColorAt(0, 3) == ocean.colors.front(),
+          "ramp: first of 3 is the dark end");
+    CHECK(ocean.ColorAt(2, 3) == ocean.colors.back(),
+          "ramp: last of 3 is the light end");
+    CHECK(ocean.ColorAt(0, 1) == ocean.colors[ocean.Size() / 2],
+          "ramp: a single element takes the middle");
+    CHECK(ocean.ColorAt(1, ocean.Size()) == ocean.colors[1],
+          "ramp: count == size is the identity");
+
+    // count > size falls back to tinted cycling.
+    CHECK(ocean.ColorAt(ocean.Size(), ocean.Size() + 1) ==
+              ocean.ColorAt(ocean.Size()),
+          "count beyond size matches plain cycling");
+
+    const std::vector<Color> five = bright.ColorsFor(5);
+    CHECK(five.size() == 5, "ColorsFor returns the requested count");
+    CHECK(five[4] == bright.ColorAt(4, 5), "ColorsFor agrees with ColorAt");
+}
+
+static void TestPaletteFromColormap() {
+    std::printf("ChartPalette::FromColormap:\n");
+
+    const ChartPalette viridis =
+        ChartPalette::FromColormap(HeatmapColormap::Viridis, 12);
+    CHECK(viridis.Size() == 12, "twelve colours sampled");
+    CHECK(viridis.isRamp, "a sequential colormap yields a ramp palette");
+    const std::vector<Color> anchors = ColormapAnchors(HeatmapColormap::Viridis);
+    CHECK(viridis.colors.front() == anchors.front(),
+          "sampling starts at the colormap's first anchor");
+    CHECK(viridis.colors.back() == anchors.back(),
+          "sampling ends at the colormap's last anchor");
+
+    const ChartPalette spectral =
+        ChartPalette::FromColormap(HeatmapColormap::Spectral, 4);
+    CHECK(!spectral.isRamp, "a diverging colormap is not flagged as a ramp");
+
+    const ChartPalette one =
+        ChartPalette::FromColormap(HeatmapColormap::Viridis, 1);
+    CHECK(one.Size() == 1, "a single-colour sample works");
+    CHECK(ChartPalette::FromColormap(HeatmapColormap::Viridis, 0).Empty(),
+          "zero-colour sample yields an empty palette");
+}
+
+// =============================================================================
 
 int main() {
     std::printf("=== ChartEngineTest ===\n\n");
@@ -876,6 +982,10 @@ int main() {
     TestPCPCommonScale();
     TestPCPBrushes();
     TestPCPMissingAndHitTest();
+    TestThemeRegistry();
+    TestPaletteCycling();
+    TestPaletteCountAware();
+    TestPaletteFromColormap();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",

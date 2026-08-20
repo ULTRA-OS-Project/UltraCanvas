@@ -1,3 +1,23 @@
+#### 2026-08-20 *0.3.52*
+- **Chart engine: themes and palettes.** The engine grew the theming home the
+  proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles
+  the furniture colours (background, plot area, grid, axes, title, legend)
+  with a `ChartPalette` of series colours, applied with
+  `SetTheme(theme)` / `SetTheme("name")` / `SetPalette(palette)` and — for
+  by-name creators — `SetProperty("theme", "Dark")`. Fourteen built-in
+  themes, their palettes lifted from the definitions the pre-engine charts
+  each carried privately (Light/Bright, Dark, Corporate, Vibrant, Pastel,
+  Colorblind, Material, Classic, Tableau, and the Ocean/Sunset/Forest/Slate/
+  Monochrome ramps). Palettes answer `ColorAt(index)` (cycling, with wrapped
+  cycles re-tinted so long runs never repeat exactly) and
+  `ColorAt(index, count)` (ramps spread across their run when the element
+  count is known); `ChartPalette::FromColormap(Viridis, n)` samples any
+  `UltraCanvasColormap` map into a palette of the requested size. A theme
+  change is repaint-only — no layout, no label re-solve — with an
+  `OnThemeChanged()` hook for content that caches theme colours (legend
+  entries). The Chart Engine demo gained a Theme row; model-layer tests cover
+  the registry, cycling, count-aware selection and colormap sampling.
+
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
   content used to show only a small "(empty folder)" line; it now draws a

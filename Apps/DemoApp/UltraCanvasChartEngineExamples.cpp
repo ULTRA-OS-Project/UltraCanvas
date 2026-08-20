@@ -36,12 +36,6 @@ namespace {
 // DATA
 // =============================================================================
 
-const Color kSeriesColor[3] = {
-    Color(68, 119, 170, 255),    // blue
-    Color(238, 102, 119, 255),   // red
-    Color(34, 136, 51, 255)      // green
-};
-
 struct EngineDataset {
     std::string name;
     std::string caption;                        // what it is good for
@@ -184,6 +178,10 @@ public:
 
     void SetShowLegendPanel(bool on) { showLegendPanel = on; RebuildLegend(); }
 
+    // The engine repaints on a theme change; the legend swatch colours are
+    // cached in the legend entries, so they are re-derived here.
+    void OnThemeChanged() override { RebuildLegend(); }
+
     void SetValueLabelMode(ValueLabelMode mode) {
         valueLabelMode = mode;
         LabelPlacementOptions options;
@@ -286,7 +284,8 @@ public:
 
             const int64_t id = RegionId(span.seriesIndex, span.categoryIndex);
             const bool hovered = (HoveredRegionId() == id);
-            const Color base = kSeriesColor[span.seriesIndex % 3];
+            const Color base =
+                Palette().ColorAt(span.seriesIndex, seriesNames.size());
 
             PaintBar(ctx, outline, hovered ? Lighten(base, 45) : base);
             ctx->SetStrokePaint(seriesPaint == SeriesPaint::Outline
@@ -677,7 +676,7 @@ private:
         for (size_t i = 0; i < seriesNames.size(); ++i) {
             ChartLegendEntry entry;
             entry.label = seriesNames[i];
-            entry.color = kSeriesColor[i % 3];
+            entry.color = Palette().ColorAt(i, seriesNames.size());
             entry.swatch = swatch;
             entries.push_back(entry);
         }
@@ -1143,6 +1142,40 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                                  : "Background layer off (slot 100 skipped)");
                   }, 0);
     controls->AddChild(row7);
+
+    // ----- Theme / palette -----
+    auto row8 = MakeRow("engine_row_theme");
+    AppendLabeledButtons(row8, "engine_theme_", "Theme", kLabelW, 78, kBtnH,
+                  {"Light", "Dark", "Vibrant", "Pastel", "Colorblind", "Ocean"},
+                  [chartPtr, say](int i) {
+                      const char* names[] = {"Light", "Dark", "Vibrant",
+                                             "Pastel", "Colorblind", "Ocean"};
+                      chartPtr->SetTheme(names[i]);
+                      say(std::string("SetTheme(\"") + names[i] + "\") — one of the "
+                          "14 built-in ChartThemes; furniture and palette change "
+                          "together, and it is repaint-only: no layout, no label "
+                          "re-solve. Also reachable as SetProperty(\"theme\", name)");
+                  }, 0);
+    row8->AddSpacer(20);
+    AppendLabeledButtons(row8, "engine_palette_", "Palette", 56, 84, kBtnH,
+                  {"Theme's", "Viridis N"},
+                  [chartPtr, say](int i) {
+                      if (i == 0) {
+                          chartPtr->SetPalette(
+                              chartPtr->GetTheme().name.empty()
+                                  ? ChartThemes::Light().palette
+                                  : ChartThemes::Get(chartPtr->GetTheme().name).palette);
+                          say("Palette restored from the active theme");
+                      } else {
+                          chartPtr->SetPalette(ChartPalette::FromColormap(
+                              HeatmapColormap::Viridis, 12));
+                          say("SetPalette(ChartPalette::FromColormap(Viridis, 12)) — a "
+                              "categorical palette of any requested size sampled from a "
+                              "continuous colormap; ColorAt(i, count) spreads the three "
+                              "series across the whole ramp");
+                      }
+                  }, 0);
+    controls->AddChild(row8);
 
     root->AddChild(controls);
     return root;
