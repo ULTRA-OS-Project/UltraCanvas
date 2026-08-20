@@ -224,19 +224,55 @@ namespace UltraCanvas {
         const bool vertical = IsVerticalFlow();
         const double maxContentW = std::max(0.0, availableArea.width - 2.0 * style.paddingX);
 
-        // Flow the rows (G6). Vertical: one entry per row unless it does not
-        // fit the height, in which case we add a column. Horizontal: pack
-        // entries per row until the width is exhausted.
-        std::vector<std::vector<size_t>> rows;
+        // Flow the rows (G6). Vertical: one entry per row, wrapped into
+        // further columns when the available height is exhausted, so a tall
+        // legend on a side placement grows sideways instead of silently
+        // clipping. Horizontal: pack entries per row until the width is
+        // exhausted.
+        std::vector<std::vector<size_t>> rows;       // horizontal flow
+        std::vector<std::vector<size_t>> columns;    // vertical flow
+        std::vector<double> columnWidths;
         double contentW = 0.0, contentH = 0.0;
+        double verticalEntriesH = 0.0;
 
         if (vertical) {
-            for (size_t i = 0; i < measured.size(); ++i) {
-                rows.push_back({i});
-                contentW = std::max(contentW, measured[i].w);
-                contentH += measured[i].h;
-                if (i + 1 < measured.size()) contentH += style.entrySpacingY;
+            double maxContentH = availableArea.height - 2.0 * style.paddingY;
+            if (!title.empty()) maxContentH -= titleH + style.titleGap;
+            if (HasCustomArea()) {
+                maxContentH -= customAreaSize.height + style.entrySpacingY;
             }
+            maxContentH = std::max(maxContentH, rowHeight);  // >= one per column
+
+            std::vector<size_t> column;
+            double columnH = 0.0, columnW = 0.0;
+            for (size_t i = 0; i < measured.size(); ++i) {
+                const double add = column.empty()
+                                       ? measured[i].h
+                                       : style.entrySpacingY + measured[i].h;
+                if (!column.empty() && columnH + add > maxContentH) {
+                    columns.push_back(column);
+                    columnWidths.push_back(columnW);
+                    verticalEntriesH = std::max(verticalEntriesH, columnH);
+                    column.clear();
+                    column.push_back(i);
+                    columnH = measured[i].h;
+                    columnW = measured[i].w;
+                } else {
+                    column.push_back(i);
+                    columnH += add;
+                    columnW = std::max(columnW, measured[i].w);
+                }
+            }
+            if (!column.empty()) {
+                columns.push_back(column);
+                columnWidths.push_back(columnW);
+                verticalEntriesH = std::max(verticalEntriesH, columnH);
+            }
+            for (size_t c = 0; c < columnWidths.size(); ++c) {
+                contentW += columnWidths[c];
+                if (c + 1 < columnWidths.size()) contentW += style.entrySpacingX;
+            }
+            contentH = verticalEntriesH;
         } else {
             std::vector<size_t> current;
             double currentW = 0.0;
@@ -335,43 +371,52 @@ namespace UltraCanvas {
             cursorY += titleH + style.titleGap;
         }
 
-        // Place the rows.
-        for (const auto& row : rows) {
-            double rowW = 0.0;
-            for (size_t k = 0; k < row.size(); ++k) {
-                rowW += measured[row[k]].w;
-                if (k + 1 < row.size()) rowW += style.entrySpacingX;
+        // Place the entries: columns for vertical flow, rows for horizontal.
+        auto placeItem = [&](size_t idx, double x, double y, double w, double h) {
+            // The overflow row has no swatch.
+            const bool isOverflow = (layout.overflowCount > 0 && idx == shown);
+            ChartLegendItemRect item;
+            item.entryIndex = idx;
+            item.bounds = Rect2Dd(x, y, w, h);
+            if (isOverflow) {
+                item.swatchRect = Rect2Dd(x, y, 0, 0);
+            } else {
+                item.swatchRect = Rect2Dd(x, y + (h - style.swatchHeight) / 2.0,
+                                          style.swatchWidth, style.swatchHeight);
             }
+            layout.items.push_back(item);
+        };
 
-            double cursorX = bx + style.paddingX;
-            if (!vertical) {
-                // Centre horizontal rows inside the content width.
-                cursorX += (contentW - rowW) / 2.0;
-            }
-
-            double thisRowH = 0.0;
-            for (size_t idx : row) {
-                const double w = measured[idx].w;
-                const double h = vertical ? measured[idx].h : rowHeight;
-                thisRowH = std::max(thisRowH, h);
-
-                // The overflow row has no swatch.
-                const bool isOverflow = (layout.overflowCount > 0 && idx == shown);
-                ChartLegendItemRect item;
-                item.entryIndex = idx;
-                item.bounds = Rect2Dd(cursorX, cursorY, w, h);
-                if (isOverflow) {
-                    item.swatchRect = Rect2Dd(cursorX, cursorY, 0, 0);
-                } else {
-                    item.swatchRect = Rect2Dd(
-                            cursorX,
-                            cursorY + (h - style.swatchHeight) / 2.0,
-                            style.swatchWidth, style.swatchHeight);
+        if (vertical) {
+            double columnX = bx + style.paddingX;
+            for (size_t c = 0; c < columns.size(); ++c) {
+                double y = cursorY;
+                for (size_t idx : columns[c]) {
+                    placeItem(idx, columnX, y, columnWidths[c], measured[idx].h);
+                    y += measured[idx].h + style.entrySpacingY;
                 }
-                layout.items.push_back(item);
-                cursorX += w + style.entrySpacingX;
+                columnX += columnWidths[c] + style.entrySpacingX;
             }
-            cursorY += thisRowH + style.entrySpacingY;
+            cursorY += verticalEntriesH + style.entrySpacingY;
+        } else {
+            for (const auto& row : rows) {
+                double rowW = 0.0;
+                for (size_t k = 0; k < row.size(); ++k) {
+                    rowW += measured[row[k]].w;
+                    if (k + 1 < row.size()) rowW += style.entrySpacingX;
+                }
+
+                // Centre horizontal rows inside the content width.
+                double cursorX = bx + style.paddingX + (contentW - rowW) / 2.0;
+
+                double thisRowH = 0.0;
+                for (size_t idx : row) {
+                    thisRowH = std::max(thisRowH, rowHeight);
+                    placeItem(idx, cursorX, cursorY, measured[idx].w, rowHeight);
+                    cursorX += measured[idx].w + style.entrySpacingX;
+                }
+                cursorY += thisRowH + style.entrySpacingY;
+            }
         }
 
         if (HasCustomArea()) {

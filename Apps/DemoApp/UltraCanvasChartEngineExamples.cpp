@@ -124,6 +124,7 @@ public:
         categoryNames = set.categories;
         seriesNames = set.seriesNames;
         seriesValues = set.values;
+        seriesDisabled.assign(seriesNames.size(), false);
         datasetName = set.name;
         ApplyTitle();                           // the title names the data
         RebuildLimiters();
@@ -181,6 +182,20 @@ public:
     // The engine repaints on a theme change; the legend swatch colours are
     // cached in the legend entries, so they are re-derived here.
     void OnThemeChanged() override { RebuildLegend(); }
+
+    // Clicking a legend entry toggles its series: the entry renders dimmed
+    // (the legend's own state) and the series drops out of the bars, the
+    // stacks and the value labels. Data dirty, so stacked arrangements
+    // re-solve without the hidden series.
+    void OnLegendEntryToggled(size_t entryIndex, bool enabled) override {
+        if (entryIndex >= seriesDisabled.size()) return;
+        seriesDisabled[entryIndex] = !enabled;
+        MarkEngineDirty(ChartDirty::Data);
+    }
+
+    bool SeriesDisabled(size_t s) const {
+        return s < seriesDisabled.size() && seriesDisabled[s];
+    }
 
     void SetValueLabelMode(ValueLabelMode mode) {
         valueLabelMode = mode;
@@ -270,6 +285,7 @@ public:
         const double progress = frame.animationProgress;
 
         for (const ChartBarSpan& span : Spans(value, category)) {
+            if (SeriesDisabled(span.seriesIndex)) continue;
             double v0 = span.v0, v1 = span.v1;
             ClampToPlot(v0, v1);
             v1 = v0 + (v1 - v0) * progress;     // entrance: bars grow from the base
@@ -335,6 +351,7 @@ public:
         size_t champion = 0;
         double best = -std::numeric_limits<double>::max();
         for (size_t i = 0; i < spans.size(); ++i) {
+            if (SeriesDisabled(spans[i].seriesIndex)) continue;
             if (std::abs(spans[i].plotted) > best) {
                 best = std::abs(spans[i].plotted);
                 champion = i;
@@ -359,6 +376,7 @@ public:
 
         for (size_t i = 0; i < spans.size(); ++i) {
             const ChartBarSpan& span = spans[i];
+            if (SeriesDisabled(span.seriesIndex)) continue;
             double v0 = span.v0, v1 = span.v1;
             ClampToPlot(v0, v1);
 
@@ -385,6 +403,7 @@ private:
     std::vector<std::string> categoryNames;
     std::vector<std::string> seriesNames;
     std::vector<std::vector<double>> seriesValues;
+    std::vector<bool> seriesDisabled;           // legend click-to-toggle state
 
     ChartScale valueScale = ChartScale::Linear;
     ChartBarArrangement arrangement = ChartBarArrangement::Grouped;
@@ -432,8 +451,20 @@ private:
     }
 
     std::vector<ChartBarSpan> Spans(const ChartAxis& value, const ChartAxis& category) const {
+        if (seriesDisabled.empty() ||
+            std::none_of(seriesDisabled.begin(), seriesDisabled.end(),
+                         [](bool d) { return d; })) {
+            return BuildBarSpans(value, category, categoryNames.size(),
+                                 seriesValues, BarOptions());
+        }
+        // A toggled-off series is zeroed, not removed: indices (and with
+        // them the palette colours) stay stable, and stacks collapse over it.
+        std::vector<std::vector<double>> values = seriesValues;
+        for (size_t s = 0; s < values.size(); ++s) {
+            if (SeriesDisabled(s)) std::fill(values[s].begin(), values[s].end(), 0.0);
+        }
         return BuildBarSpans(value, category, categoryNames.size(),
-                             seriesValues, BarOptions());
+                             values, BarOptions());
     }
 
     // Data values are formatted through an axis of their own, because the value
@@ -682,6 +713,7 @@ private:
             entry.label = seriesNames[i];
             entry.color = Palette().ColorAt(i, seriesNames.size());
             entry.swatch = swatch;
+            entry.enabled = !SeriesDisabled(i);   // keep toggles across rebuilds
             entries.push_back(entry);
         }
         SetLegendEntries(entries);

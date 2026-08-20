@@ -283,6 +283,35 @@ UltraCanvasChartEngineElement::HitTestRegions(const Point2Dd& point) const {
 }
 
 bool UltraCanvasChartEngineElement::OnEvent(const UCEvent& event) {
+    // Legend interaction first: the legend is chrome above the plot, so a
+    // pointer over it never reaches the content's hit regions.
+    if (engineLegend.IsVisible() &&
+        (event.type == UCEventType::MouseMove ||
+         event.type == UCEventType::MouseDown)) {
+        const size_t entry =
+            engineLegend.HitTest(Point2Dd(event.pointer.x, event.pointer.y));
+        if (event.type == UCEventType::MouseMove) {
+            if (entry != engineLegend.GetHighlightedEntry()) {
+                engineLegend.SetHighlightedEntry(entry);
+                MarkEngineDirty(ChartDirty::Hover);   // repaint only
+            }
+        } else if (entry != SIZE_MAX) {
+            engineLegend.ToggleEntryEnabled(entry);
+            OnLegendEntryToggled(entry,
+                                 engineLegend.GetEntry(entry).enabled);
+            RequestRedraw();
+            return true;                              // click consumed
+        }
+        if (entry != SIZE_MAX && event.type == UCEventType::MouseMove) {
+            if (isTooltipActive) HideTooltip();
+            return true;                              // hover consumed
+        }
+    } else if (event.type == UCEventType::MouseLeave &&
+               engineLegend.GetHighlightedEntry() != SIZE_MAX) {
+        engineLegend.SetHighlightedEntry(SIZE_MAX);
+        MarkEngineDirty(ChartDirty::Hover);
+    }
+
     if (event.type == UCEventType::MouseMove) {
         const ChartHitRegion* hit =
             HitTestRegions(Point2Dd(event.pointer.x, event.pointer.y));

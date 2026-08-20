@@ -210,7 +210,13 @@ bar collapsing mid-animation degrades gracefully.
     Image` (`imagePath` for `Image`) — line series get a line, scatter gets
     a disc, and a non-solid painted series is represented faithfully.
   The legend styles itself from the active theme (`SetTheme` keeps its
-  `ChartLegendStyle` in sync).
+  `ChartLegendStyle` in sync), wraps tall vertical legends into further
+  columns instead of clipping, and is interactive: hovering an entry
+  highlights it (repaint-only), clicking one toggles its enabled state (the
+  entry renders dimmed) and calls the chart's
+  `OnLegendEntryToggled(index, enabled)` — the chart decides what
+  "disabled" means, typically hiding the series and marking
+  `ChartDirty::Data` (the engine demo does exactly that).
 - **Interaction overlay**: `RenderInteractionOverlay` draws hover emphasis,
   crosshairs, brush bands — last, over everything.
 

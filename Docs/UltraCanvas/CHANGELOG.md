@@ -40,7 +40,12 @@
   the entries for keys richer than any swatch (an annotated
   confidence-ellipse diagram, a bubble-size scale); the demo's Inset mode
   keys the chart's limiter reference lines — a key describes marks the
-  chart actually draws.
+  chart actually draws. The engine legend is interactive: hover highlights
+  an entry, a click toggles it (dimmed) and notifies the chart via
+  `OnLegendEntryToggled` — the demo hides the series, stacks re-solving
+  without it. Tall vertical legends now wrap into further columns instead
+  of silently clipping (a `ChartLegend` fix that also benefits the
+  diagrams already using the component).
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

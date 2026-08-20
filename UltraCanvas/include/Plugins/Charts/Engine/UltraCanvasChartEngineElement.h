@@ -153,6 +153,11 @@ public:
     // the legend's size need MarkEngineDirty(ChartDirty::Geometry) after.
     ChartLegend& Legend() { return engineLegend; }
     const ChartLegend& GetLegend() const { return engineLegend; }
+    // The engine owns legend interaction: hovering an entry highlights it
+    // (repaint-only), clicking one toggles its enabled state (the entry
+    // renders dimmed) and notifies the chart, which decides what "disabled"
+    // means - typically hide the series and MarkEngineDirty(ChartDirty::Data).
+    virtual void OnLegendEntryToggled(size_t entryIndex, bool enabled) {}
 
     // =========================================================================
     // ANIMATION DRIVER
