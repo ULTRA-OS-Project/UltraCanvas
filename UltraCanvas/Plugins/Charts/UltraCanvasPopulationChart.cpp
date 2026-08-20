@@ -1,18 +1,51 @@
 // Plogins/Charts/UltraCanvasPopulationChart.cpp
 // Population pyramid chart implementation
-// Version: 1.0.0
-// Last Modified: 2025-01-19
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasPopulationChart.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasWindow.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
 
 namespace UltraCanvas {
+
+    namespace {
+
+        // Parse the stringly typed legend position onto the shared
+        // ChartLegendPosition. Case-insensitive; '-', '_' and spaces are
+        // interchangeable. Corner names keep the old floating behavior
+        // (Inset placements); plain edge names become outside placements
+        // that reserve plot space. Unknown strings fall back to the old
+        // default, "top-right".
+        ChartLegendPosition ParseLegendPosition(const std::string& position) {
+            std::string key;
+            key.reserve(position.size());
+            for (char c : position) {
+                if (c == '-' || c == '_' || c == ' ') continue;
+                key.push_back(static_cast<char>(
+                        std::tolower(static_cast<unsigned char>(c))));
+            }
+            if (key == "top")    return ChartLegendPosition::TopCenter;
+            if (key == "bottom") return ChartLegendPosition::BottomCenter;
+            if (key == "left")   return ChartLegendPosition::LeftCenter;
+            if (key == "right")  return ChartLegendPosition::RightCenter;
+            if (key == "topleft" || key == "lefttop")
+                return ChartLegendPosition::InsetTopLeft;
+            if (key == "bottomleft" || key == "leftbottom")
+                return ChartLegendPosition::InsetBottomLeft;
+            if (key == "bottomright" || key == "rightbottom")
+                return ChartLegendPosition::InsetBottomRight;
+            return ChartLegendPosition::InsetTopRight;   // "top-right" & default
+        }
+
+    } // namespace
 
 // ===== CONSTRUCTOR =====
     UltraCanvasPopulationChart::UltraCanvasPopulationChart(
@@ -43,12 +76,27 @@ namespace UltraCanvas {
             , chartPaddingBottom(20)
             , centerX(0)
             , plotWidth(200)
-            , legendPosition("top-right")
-            , showLegend(true)
             , hoveredGroupIndex(-1)
             , interactionEnabled(true)
     {
         layoutDirty = true;
+        plotArea = Rect2Dd(chartPaddingLeft, chartPaddingTop,
+                           std::max(0.0, static_cast<double>(w) -
+                                         chartPaddingLeft - chartPaddingRight),
+                           std::max(0.0, static_cast<double>(h) -
+                                         chartPaddingTop - chartPaddingBottom));
+
+        // Shared legend defaults matching the old private implementation:
+        // floating top-right box, 15x15 borderless color squares, chart font
+        // size and text color.
+        legend.SetPosition(ChartLegendPosition::InsetTopRight);
+        ChartLegendStyle legendStyle;
+        legendStyle.fontSize = static_cast<float>(fontSize);
+        legendStyle.textColor = textColor;
+        legendStyle.swatchWidth = 15.0f;
+        legendStyle.swatchHeight = 15.0f;
+        legendStyle.drawSwatchBorder = false;
+        legend.SetStyle(legendStyle);
     }
 
     UltraCanvasPopulationChart::~UltraCanvasPopulationChart() {
@@ -124,6 +172,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPopulationChart::SetTextColor(const Color& color) {
         textColor = color;
+        legend.GetStyle().textColor = color;
     }
 
 // ===== DISPLAY OPTIONS =====
@@ -146,23 +195,29 @@ namespace UltraCanvas {
 
     void UltraCanvasPopulationChart::SetFontSize(int size) {
         fontSize = size;
+        legend.GetStyle().fontSize = static_cast<float>(size);
     }
 
 // ===== LEGEND CONFIGURATION =====
     void UltraCanvasPopulationChart::SetLegendPosition(const std::string& position) {
-        legendPosition = position;
+        // Public API stays string-based; parsed onto the shared position enum.
+        legend.SetPosition(ParseLegendPosition(position));
+        layoutDirty = true;
     }
 
     void UltraCanvasPopulationChart::EnableLegend(bool enable) {
-        showLegend = enable;
+        legend.SetVisible(enable);
+        layoutDirty = true;
     }
 
     void UltraCanvasPopulationChart::AddLegendItem(const std::string& label, const Color& color) {
-        legendItems.emplace_back(label, color);
+        legend.AddEntry(ChartLegendEntry(label, color, LegendSwatch::Square));
+        layoutDirty = true;
     }
 
     void UltraCanvasPopulationChart::ClearLegend() {
-        legendItems.clear();
+        legend.ClearEntries();
+        layoutDirty = true;
     }
 
 // ===== LAYOUT CONFIGURATION =====
@@ -218,15 +273,17 @@ namespace UltraCanvas {
 
 // ===== INTERNAL CALCULATION METHODS =====
     void UltraCanvasPopulationChart::CalculateLayout() {
-        int totalWidth = GetWidth();
-        centerX = totalWidth / 2;
-        plotWidth = (totalWidth - chartPaddingLeft - chartPaddingRight) / 2;
+        // plotArea is the padded content area minus whatever an outside
+        // legend placement consumed (see Render). Note: the pyramid is now
+        // centered within the padded plot area rather than the full element
+        // width, so asymmetric paddings shift the center line accordingly.
+        centerX = plotArea.x + plotArea.width / 2;
+        plotWidth = plotArea.width / 2;
         if (!ageGroups.empty()) {
-            barHeight = (GetHeight() - chartPaddingBottom - chartPaddingTop) / ageGroups.size() - barSpacing;
+            barHeight = static_cast<int>(plotArea.height / ageGroups.size()) - barSpacing;
         } else {
             barHeight = 25;
         }
-        layoutDirty = false;
     }
 
     void UltraCanvasPopulationChart::CalculateAutoScale() {
@@ -243,7 +300,8 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasPopulationChart::GetAgeGroupIndexAt(int x, int y) {
-        int relY = y - chartPaddingTop;
+        if (barHeight + barSpacing <= 0) return -1;
+        int relY = y - static_cast<int>(plotArea.y);
         int index = relY / (barHeight + barSpacing);
 
         if (index >= 0 && index < static_cast<int>(ageGroups.size())) {
@@ -258,11 +316,24 @@ namespace UltraCanvas {
             return;
         }
 
+        // Shared legend: measure first so outside placements reserve plot
+        // space (RemainingArea); inset placements float over the plot as the
+        // old private legend did.
+        Rect2Dd contentArea(chartPaddingLeft, chartPaddingTop,
+                            std::max(0.0f, GetWidth() - chartPaddingLeft -
+                                           chartPaddingRight),
+                            std::max(0.0f, GetHeight() - chartPaddingTop -
+                                           chartPaddingBottom));
+        ctx->PushState();
+        legend.Measure(ctx, contentArea);
+        ctx->PopState();
+        plotArea = legend.RemainingArea(contentArea);
+        CalculateLayout();
         if (layoutDirty) {
-            CalculateLayout();
             if (autoScaleAxis) {
                 CalculateAutoScale();
             }
+            layoutDirty = false;
         }
 
         RenderBackground(ctx);
@@ -273,9 +344,7 @@ namespace UltraCanvas {
         if (showCenterLine) {
             RenderCenterLine(ctx);
         }
-        if (showLegend) {
-            RenderLegend(ctx);
-        }
+        legend.Render(ctx, contentArea);
     }
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
@@ -323,11 +392,11 @@ namespace UltraCanvas {
 
             // Left side (males)
             int leftX = centerX - pixelPos;
-            DrawAxisValue(ctx, value, leftX, GetHeight() - chartPaddingBottom);
+            DrawAxisValue(ctx, value, leftX, plotArea.y + plotArea.height);
 
             // Right side (females)
             int rightX = centerX + pixelPos;
-            DrawAxisValue(ctx, value, rightX, GetHeight() - chartPaddingBottom);
+            DrawAxisValue(ctx, value, rightX, plotArea.y + plotArea.height);
         }
     }
 
@@ -346,18 +415,18 @@ namespace UltraCanvas {
 
             // Left side grid line
             double leftX = centerX - pixelPos;
-            ctx->DrawLine({leftX, chartPaddingTop},
-                          {leftX, GetHeight() - chartPaddingBottom});
+            ctx->DrawLine({leftX, plotArea.y},
+                          {leftX, plotArea.y + plotArea.height});
 
             // Right side grid line
             double rightX = centerX + pixelPos;
-            ctx->DrawLine({rightX, chartPaddingTop},
-                          {rightX, GetHeight() - chartPaddingBottom});
+            ctx->DrawLine({rightX, plotArea.y},
+                          {rightX, plotArea.y + plotArea.height});
         }
     }
 
     void UltraCanvasPopulationChart::RenderAgeGroups(IRenderContext* ctx) {
-        int currentY = chartPaddingTop;
+        int currentY = static_cast<int>(plotArea.y);
         if (ageGroups.empty()) {
             return;
         }
@@ -408,32 +477,8 @@ namespace UltraCanvas {
     void UltraCanvasPopulationChart::RenderCenterLine(IRenderContext* ctx) {
         ctx->SetStrokePaint(axisColor);
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawLine(Point2Dd(centerX, chartPaddingTop),
-                      Point2Dd(centerX, GetHeight() - chartPaddingBottom));
-    }
-
-    void UltraCanvasPopulationChart::RenderLegend(IRenderContext* ctx) {
-        if (legendItems.empty()) {
-            return;
-        }
-
-        int legendX = GetWidth() - chartPaddingRight - 80;
-        int legendY = chartPaddingTop;
-        int itemHeight = 20;
-
-        ctx->SetFontSize(fontSize);
-
-        for (const auto& item : legendItems) {
-            // Draw color box
-            ctx->SetFillPaint(item.ItemColor);
-            ctx->FillRectangle(Rect2Dd(legendX, legendY, 15, 15));
-
-            // Draw label
-            ctx->SetTextPaint(textColor);
-            ctx->DrawText(item.Label, {legendX + 20, legendY});
-
-            legendY += itemHeight;
-        }
+        ctx->DrawLine(Point2Dd(centerX, plotArea.y),
+                      Point2Dd(centerX, plotArea.y + plotArea.height));
     }
 
     void UltraCanvasPopulationChart::RenderTooltip(IRenderContext* ctx, int groupIndex,
