@@ -20,6 +20,23 @@
   edges follow the bar colour (darkened) instead of a fixed near-black.
   Model-layer tests cover the registry, cycling, count-aware selection and
   colormap sampling.
+- **Chart engine: the legend is the shared ChartLegend component.** The
+  engine's private right-side-only legend is gone; `SetShowLegend` /
+  `SetLegendEntries` now drive the shared component
+  (`UltraCanvasChartLegend`), which brings the full option set:
+  `SetLegendPosition` with 12 outside placements (Top/Bottom/Left/Right ×
+  Start/Center/End, each reserving its edge in the layout negotiation) plus
+  4 inset corners that float over the plot (reserving nothing, but riding
+  the label plan as an obstacle), `SetLegendOrientation`
+  (Auto/Horizontal/Vertical with row wrapping), `SetLegendTitle`, and
+  `Legend()` for value text, interval entries, overflow capping and label
+  formatting. The shared component gained the engine's paint-mirroring
+  swatches (Outline, Hatched, Image, and a real Gradient ramp), so its
+  swatch vocabulary now spans Square, Circle, Ring, Line, DashedLine,
+  Marker, Glyph, Gradient, Outline, Hatched and Image — and the engine
+  legend follows the active chart theme. This also removes the duplicate
+  `ChartLegendEntry` type the engine declared in parallel with the shared
+  one.
 - **Chart engine: value labels survive the axis maximum.** The label solver
   was clamped to the plot area, so a bar reaching the axis limit had its
   value label pushed down onto the bar. The solver's bounds now also include

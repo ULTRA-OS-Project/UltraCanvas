@@ -179,11 +179,27 @@ bar collapsing mid-animation degrades gracefully.
   its value label just above the plot edge, instead of having it pushed down
   onto the bar. Axis bands, the title band and the legend margin stay out of
   bounds (the legend also rides the plan as an obstacle).
-- **Legend**: `SetShowLegend(true)` + `SetLegendEntries({{label, color}, ...})`
-  — measured, reserved in layout, and an obstacle the solved labels avoid.
-  `ChartLegendEntry.swatch` picks how the swatch is painted —
-  `Solid | Gradient | Outline | Hatched | Image` (`imagePath` for `Image`) —
-  so a non-solid series is represented faithfully.
+- **Legend**: the shared `ChartLegend` component
+  ([`UltraCanvasChartLegend.h`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartLegend.h)),
+  laid out by the engine. `SetShowLegend(true)` +
+  `SetLegendEntries({{label, color}, ...})` as before, plus:
+  - `SetLegendPosition(...)` — 12 outside placements
+    (`Top/Bottom/Left/Right` × `Start/Center/End`) that reserve their edge in
+    the layout negotiation, and 4 insets (`InsetTopLeft` … `InsetBottomRight`)
+    that float over the plot and reserve nothing. Either way the legend box
+    is an obstacle the solved labels steer around.
+  - `SetLegendOrientation(...)` — `Auto` (vertical on the sides, horizontal
+    rows wrapped to the width on top/bottom), or forced
+    `Horizontal`/`Vertical`.
+  - `SetLegendTitle(text)`, and `Legend()` for the component's long tail:
+    per-entry `valueText`, interval/band entries, a max-entries overflow row,
+    a label formatter, hit-testing.
+  - `ChartLegendEntry.swatch` picks the swatch: `Square | Circle | Ring |
+    Line | DashedLine | Marker | Glyph | Gradient | Outline | Hatched |
+    Image` (`imagePath` for `Image`) — line series get a line, scatter gets
+    a disc, and a non-solid painted series is represented faithfully.
+  The legend styles itself from the active theme (`SetTheme` keeps its
+  `ChartLegendStyle` in sync).
 - **Interaction overlay**: `RenderInteractionOverlay` draws hover emphasis,
   crosshairs, brush bands — last, over everything.
 

@@ -18,8 +18,11 @@
 //     ... draw the chart into plotArea ...
 //     legend.Render(ctx, consumed);
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-31
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: Paint-mirroring swatches (Outline, Hatched, Image + a real Gradient
+//   ramp) lifted from the chart engine's private legend, which now delegates
+//   to this component.
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,7 +58,12 @@ namespace UltraCanvas {
         DashedLine,    // dashed stroke (thresholds, optional fields)
         Marker,        // small diamond
         Glyph,         // the entry's own text (letter codes, symbol scales)
-        Gradient       // the entry's own mini colour ramp (band legends)
+        Gradient,      // light-to-colour vertical ramp (gradient-painted series)
+        // A series drawn with a non-solid fill must not be represented by a
+        // colour square that matches nothing - these mirror the series paint.
+        Outline,       // ghost fill + coloured border (outline-painted series)
+        Hatched,       // light fill + diagonal hatching (hatch-painted series)
+        Image          // the entry's imagePath, cover-fitted (image-filled series)
     };
 
     enum class LegendOrientation {
@@ -79,6 +87,9 @@ namespace UltraCanvas {
         // Drawn in the swatch box when swatch == Glyph. Lets a key mix letter
         // codes ("Y", "N", "S") with coloured shapes under one legend.
         std::string glyph;
+
+        // The image cover-fitted into the swatch box when swatch == Image.
+        std::string imagePath;
 
         // Discrete band entries: when set, the label is generated from the
         // interval rather than supplied verbatim. See SetIntervalFormat().

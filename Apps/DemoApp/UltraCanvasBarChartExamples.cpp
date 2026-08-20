@@ -287,12 +287,12 @@ private:
             entry.label = s.name;
             entry.color = s.color;
             switch (fillStyle) {
-                case BarFillStyle::Gradient: entry.swatch = ChartLegendSwatch::Gradient; break;
-                case BarFillStyle::Outline:  entry.swatch = ChartLegendSwatch::Outline;  break;
-                case BarFillStyle::Hatched:  entry.swatch = ChartLegendSwatch::Hatched;  break;
+                case BarFillStyle::Gradient: entry.swatch = LegendSwatch::Gradient; break;
+                case BarFillStyle::Outline:  entry.swatch = LegendSwatch::Outline;  break;
+                case BarFillStyle::Hatched:  entry.swatch = LegendSwatch::Hatched;  break;
                 case BarFillStyle::Texture:
                 case BarFillStyle::Pictogram:
-                    entry.swatch = ChartLegendSwatch::Image;
+                    entry.swatch = LegendSwatch::Image;
                     entry.imagePath = fillImagePath;
                     break;
                 default: break;

@@ -23,6 +23,7 @@
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
@@ -63,16 +64,11 @@ struct ChartLimiter {
     Color captionColor = Color(120, 40, 40, 255);
 };
 
-// How a legend swatch is painted, so a series drawn with a non-solid fill is
-// represented faithfully instead of by a colour square that matches nothing.
-enum class ChartLegendSwatch { Solid, Gradient, Outline, Hatched, Image };
-
-struct ChartLegendEntry {
-    std::string label;
-    Color color;
-    ChartLegendSwatch swatch = ChartLegendSwatch::Solid;
-    std::string imagePath;           // ChartLegendSwatch::Image only
-};
+// The legend is the shared ChartLegend component
+// (Plugins/Charts/UltraCanvasChartLegend.h): ChartLegendEntry, LegendSwatch
+// (Square, Circle, Ring, Line, DashedLine, Marker, Glyph, Gradient, Outline,
+// Hatched, Image), ChartLegendPosition (12 outside placements + 4 insets) and
+// LegendOrientation all come from there.
 
 // =============================================================================
 // ENGINE ELEMENT
@@ -142,8 +138,21 @@ public:
     size_t AddLimiter(const ChartLimiter& limiter);
     void ClearLimiters();
 
+    // Legend - the shared ChartLegend component drawn and laid out by the
+    // engine: an outside placement reserves its edge in the layout
+    // negotiation, an inset placement floats over the plot and reserves
+    // nothing, and either way the legend box is an obstacle the solved
+    // labels steer around.
     void SetShowLegend(bool show);
     void SetLegendEntries(const std::vector<ChartLegendEntry>& entries);
+    void SetLegendPosition(ChartLegendPosition position);
+    void SetLegendOrientation(LegendOrientation orientation);
+    void SetLegendTitle(const std::string& title);
+    // The component itself, for the long tail (style, value text, interval
+    // entries, max-entries overflow, label formatter). Mutations that change
+    // the legend's size need MarkEngineDirty(ChartDirty::Geometry) after.
+    ChartLegend& Legend() { return engineLegend; }
+    const ChartLegend& GetLegend() const { return engineLegend; }
 
     // =========================================================================
     // ANIMATION DRIVER
@@ -230,14 +239,13 @@ protected:
     virtual void RenderEngineTitle(IRenderContext* ctx);
     virtual void RenderPlannedLabels(IRenderContext* ctx);
     virtual void RenderEngineLegend(IRenderContext* ctx);
-    virtual void RenderLegendSwatch(IRenderContext* ctx, const Rect2Dd& box,
-                                    const ChartLegendEntry& entry);
 
     // Layout/plan lifecycle. Both are cheap no-ops when nothing is dirty.
     void EnsureEngineLayout(IRenderContext* ctx);
     void EnsureLabelPlan(IRenderContext* ctx);
 
-    Rect2Dd LegendRect() const { return legendRect; }
+    // The measured legend box from the last layout (zero-sized when hidden).
+    Rect2Dd LegendRect() const { return legendBox; }
 
     // Styling shared by the engine layers. The colours are working copies
     // filled from the active theme by SetTheme(); a chart may still override
@@ -274,9 +282,12 @@ private:
     size_t gridAxisIndex = static_cast<size_t>(-1);
     std::vector<ChartLimiter> limiters;
 
-    bool showLegend = false;
-    std::vector<ChartLegendEntry> legendEntries;
-    Rect2Dd legendRect;
+    // The shared legend component; the engine owns its layout: measured
+    // against legendArea (the element minus the title band) during the
+    // layout negotiation, its box cached for the label plan's obstacle.
+    ChartLegend engineLegend;
+    Rect2Dd legendArea;
+    Rect2Dd legendBox;
 
     // Animation driver state
     bool engineAnimating = false;

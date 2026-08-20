@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasChartLegend.cpp
 // Shared legend component implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-31
+// Version: 1.1.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
@@ -483,7 +483,68 @@ namespace UltraCanvas {
                 ctx->FillLinePath(diamond);
                 break;
             }
-            case LegendSwatch::Gradient:
+            case LegendSwatch::Gradient: {
+                Color light = fill;
+                light.r = static_cast<uint8_t>(std::min(255, light.r + 70));
+                light.g = static_cast<uint8_t>(std::min(255, light.g + 70));
+                light.b = static_cast<uint8_t>(std::min(255, light.b + 70));
+                auto gradient = ctx->CreateLinearGradientPattern(
+                        rect.x, rect.y, rect.x, rect.y + rect.height,
+                        {GradientStop(0.0, light), GradientStop(1.0, fill)});
+                if (gradient) ctx->SetFillPaint(gradient);
+                else ctx->SetFillPaint(fill);
+                ctx->FillRectangle(rect);
+                if (style.drawSwatchBorder) {
+                    ctx->SetStrokePaint(style.swatchBorderColor);
+                    ctx->SetStrokeWidth(style.swatchBorderWidth);
+                    ctx->DrawRectangle(rect);
+                }
+                break;
+            }
+            case LegendSwatch::Outline: {
+                Color ghost = fill;
+                ghost.a = 36;
+                ctx->SetFillPaint(ghost);
+                ctx->FillRectangle(rect);
+                ctx->SetStrokePaint(fill);
+                ctx->SetStrokeWidth(1.5f);
+                ctx->DrawRectangle(rect);
+                break;
+            }
+            case LegendSwatch::Hatched: {
+                Color background = fill;
+                background.r = static_cast<uint8_t>(std::min(255, background.r + 90));
+                background.g = static_cast<uint8_t>(std::min(255, background.g + 90));
+                background.b = static_cast<uint8_t>(std::min(255, background.b + 90));
+                ctx->SetFillPaint(background);
+                ctx->FillRectangle(rect);
+                ctx->PushState();
+                ctx->ClipRect(rect);
+                ctx->SetStrokePaint(fill);
+                ctx->SetStrokeWidth(1.0f);
+                for (double offset = 0.0; offset < rect.width + rect.height; offset += 4.0) {
+                    ctx->DrawLine(Point2Dd(rect.x + offset, rect.y),
+                                  Point2Dd(rect.x + offset - rect.height,
+                                           rect.y + rect.height));
+                }
+                ctx->PopState();
+                break;
+            }
+            case LegendSwatch::Image: {
+                if (!entry.imagePath.empty()) {
+                    ctx->PushState();
+                    ctx->ClipRect(rect);
+                    ctx->DrawImage(entry.imagePath, rect, ImageFitMode::Cover);
+                    ctx->PopState();
+                    ctx->SetStrokePaint(style.swatchBorderColor);
+                    ctx->SetStrokeWidth(style.swatchBorderWidth);
+                    ctx->DrawRectangle(rect);
+                } else {
+                    ctx->SetFillPaint(fill);
+                    ctx->FillRectangle(rect);
+                }
+                break;
+            }
             case LegendSwatch::Square:
             default: {
                 ctx->SetFillPaint(fill);

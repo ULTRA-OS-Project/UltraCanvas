@@ -40,6 +40,19 @@ UltraCanvasChartEngineElement::UltraCanvasChartEngineElement(
     engineProperties.Define("theme", std::string("Light"));
     engineTheme = ChartThemes::Light();
     frame.theme = &engineTheme;
+
+    // The legend is the shared component, hidden until a chart shows it.
+    // The engine box look predates the component's plainer default.
+    engineLegend.SetVisible(false);
+    engineLegend.SetPosition(ChartLegendPosition::RightStart);
+    ChartLegendStyle& legendStyle = engineLegend.GetStyle();
+    legendStyle.fontSize = axisFontSize;
+    legendStyle.textColor = legendTextColor;
+    legendStyle.backgroundColor = legendBackground;
+    legendStyle.drawBackground = true;
+    legendStyle.drawBorder = true;
+    legendStyle.borderColor = Color(190, 190, 190, 255);
+    legendStyle.cornerRadius = 4.0f;
 }
 
 UltraCanvasChartEngineElement::~UltraCanvasChartEngineElement() {
@@ -78,6 +91,14 @@ void UltraCanvasChartEngineElement::SetTheme(const ChartTheme& theme) {
     titleTextColor = theme.titleTextColor;
     legendTextColor = theme.legendTextColor;
     legendBackground = theme.legendBackground;
+    // The shared legend paints from its own style; keep it on the theme.
+    ChartLegendStyle& legendStyle = engineLegend.GetStyle();
+    legendStyle.textColor = theme.legendTextColor;
+    legendStyle.titleColor = theme.legendTextColor;
+    legendStyle.disabledTextColor = theme.axisLabelColor;
+    legendStyle.backgroundColor = theme.legendBackground;
+    legendStyle.borderColor = theme.gridColor;
+    legendStyle.swatchBorderColor = theme.axisLineColor;
     engineProperties.Set("theme", theme.name);
     OnThemeChanged();
     // A theme is colours only, so nothing can move: no layout, no label
@@ -125,12 +146,27 @@ void UltraCanvasChartEngineElement::ClearLimiters() {
 }
 
 void UltraCanvasChartEngineElement::SetShowLegend(bool show) {
-    showLegend = show;
+    engineLegend.SetVisible(show);
     MarkEngineDirty(ChartDirty::Geometry);    // the legend reserves margin
 }
 
 void UltraCanvasChartEngineElement::SetLegendEntries(const std::vector<ChartLegendEntry>& entries) {
-    legendEntries = entries;
+    engineLegend.SetEntries(entries);
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
+void UltraCanvasChartEngineElement::SetLegendPosition(ChartLegendPosition position) {
+    engineLegend.SetPosition(position);
+    MarkEngineDirty(ChartDirty::Geometry);    // the reserved edge moves
+}
+
+void UltraCanvasChartEngineElement::SetLegendOrientation(LegendOrientation orientation) {
+    engineLegend.SetOrientation(orientation);
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
+void UltraCanvasChartEngineElement::SetLegendTitle(const std::string& title) {
+    engineLegend.SetTitle(title);
     MarkEngineDirty(ChartDirty::Geometry);
 }
 
@@ -380,19 +416,22 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
         }
     }
 
-    if (showLegend && !legendEntries.empty()) {
-        double widest = 0.0;
-        for (const ChartLegendEntry& entry : legendEntries) {
-            widest = std::max(widest,
-                              static_cast<double>(ctx->GetTextLineWidth(entry.label)));
-        }
-        const double swatch = 14.0, pad = 8.0;
-        legendRect.width = swatch + 6.0 + widest + pad * 2.0;
-        legendRect.height = legendEntries.size() *
-                                (ctx->GetTextLineHeight("Ag") + 6.0) + pad * 2.0;
-        request.Reserve(ChartAxisEdge::Right, legendRect.width + 10.0);
-    } else {
-        legendRect = Rect2Dd(0, 0, 0, 0);
+    // Legend: the shared component measures itself against the element minus
+    // the exclusive title band. An outside placement's consumed edge becomes
+    // a reservation; an inset placement floats over the plot and reserves
+    // nothing (RemainingArea returns the area unchanged).
+    legendArea = Rect2Dd(0.0, titleBand,
+                         static_cast<double>(GetWidth()),
+                         std::max(0.0, static_cast<double>(GetHeight()) - titleBand));
+    engineLegend.Invalidate();               // layout inputs may have changed
+    legendBox = engineLegend.Measure(ctx, legendArea).box;
+    if (legendBox.width > 0.0 && legendBox.height > 0.0) {
+        const Rect2Dd remaining = engineLegend.RemainingArea(legendArea);
+        request.Reserve(ChartAxisEdge::Left, remaining.x - legendArea.x);
+        request.Reserve(ChartAxisEdge::Right, legendArea.Right() - remaining.Right());
+        request.Reserve(ChartAxisEdge::Top, remaining.y - legendArea.y);
+        request.Reserve(ChartAxisEdge::Bottom,
+                        legendArea.Bottom() - remaining.Bottom());
     }
 
     // The content's own reservations are remembered separately: they are the
@@ -410,11 +449,6 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
                             static_cast<double>(GetHeight()));
     const Rect2Dd plot = SolvePlotArea(chartArea, request.margins);
     engineProjection->SetPlotArea(plot);
-
-    if (showLegend && !legendEntries.empty()) {
-        legendRect.x = plot.Right() + 10.0;
-        legendRect.y = plot.y;
-    }
 
     frame.plotArea = plot;
     frame.axes = &engineAxes;
@@ -450,11 +484,12 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
 
     ChartLabelBroker broker(labelPolicy, options);
 
-    // The legend is opaque chrome: solved labels must steer around it.
-    if (showLegend && legendRect.width > 0.0) {
+    // The legend is opaque chrome: solved labels must steer around it. This
+    // matters most for inset placements, which float over the plot.
+    if (legendBox.width > 0.0) {
         ChartLabelRequest legend;
         legend.klass = ChartLabelClass::LegendEntry;
-        legend.fixedBounds = legendRect;
+        legend.fixedBounds = legendBox;
         broker.Add(legend);
     }
 
@@ -818,98 +853,9 @@ void UltraCanvasChartEngineElement::RenderPlannedLabels(IRenderContext* ctx) {
 }
 
 void UltraCanvasChartEngineElement::RenderEngineLegend(IRenderContext* ctx) {
-    if (!showLegend || legendEntries.empty() || legendRect.width <= 0.0) return;
-
-    ctx->SetFillPaint(legendBackground);
-    ctx->FillRoundedRectangle(legendRect, 4.0);
-    ctx->SetStrokePaint(Color(190, 190, 190, 255));
-    ctx->SetStrokeWidth(1.0f);
-    ctx->DrawRoundedRectangle(legendRect, 4.0);
-
-    ctx->SetFontSize(axisFontSize);
-    const double swatch = 14.0, pad = 8.0;
-    const double rowHeight = ctx->GetTextLineHeight("Ag") + 6.0;
-    double y = legendRect.y + pad;
-    for (const ChartLegendEntry& entry : legendEntries) {
-        const Rect2Dd box(legendRect.x + pad, y + 1.0, swatch, rowHeight - 8.0);
-        RenderLegendSwatch(ctx, box, entry);
-        ctx->SetTextPaint(legendTextColor);
-        ctx->DrawText(entry.label,
-                      Point2Dd(legendRect.x + pad + swatch + 6.0, y));
-        y += rowHeight;
-    }
-}
-
-void UltraCanvasChartEngineElement::RenderLegendSwatch(IRenderContext* ctx,
-                                                       const Rect2Dd& box,
-                                                       const ChartLegendEntry& entry) {
-    switch (entry.swatch) {
-    case ChartLegendSwatch::Gradient: {
-        Color light = entry.color;
-        light.r = static_cast<uint8_t>(std::min(255, light.r + 70));
-        light.g = static_cast<uint8_t>(std::min(255, light.g + 70));
-        light.b = static_cast<uint8_t>(std::min(255, light.b + 70));
-        auto gradient = ctx->CreateLinearGradientPattern(
-            box.x, box.y, box.x, box.y + box.height,
-            {GradientStop(0.0, light), GradientStop(1.0, entry.color)});
-        if (gradient) {
-            ctx->SetFillPaint(gradient);
-            ctx->FillRoundedRectangle(box, 2.0);
-        } else {
-            ctx->SetFillPaint(entry.color);
-            ctx->FillRoundedRectangle(box, 2.0);
-        }
-        break;
-    }
-    case ChartLegendSwatch::Outline: {
-        Color ghost = entry.color;
-        ghost.a = 36;
-        ctx->SetFillPaint(ghost);
-        ctx->FillRoundedRectangle(box, 2.0);
-        ctx->SetStrokePaint(entry.color);
-        ctx->SetStrokeWidth(1.5f);
-        ctx->DrawRoundedRectangle(box, 2.0);
-        break;
-    }
-    case ChartLegendSwatch::Hatched: {
-        Color background = entry.color;
-        background.r = static_cast<uint8_t>(std::min(255, background.r + 90));
-        background.g = static_cast<uint8_t>(std::min(255, background.g + 90));
-        background.b = static_cast<uint8_t>(std::min(255, background.b + 90));
-        ctx->SetFillPaint(background);
-        ctx->FillRoundedRectangle(box, 2.0);
-        ctx->PushState();
-        ctx->ClipRect(box);
-        ctx->SetStrokePaint(entry.color);
-        ctx->SetStrokeWidth(1.0f);
-        for (double offset = 0.0; offset < box.width + box.height; offset += 4.0) {
-            ctx->DrawLine(Point2Dd(box.x + offset, box.y),
-                          Point2Dd(box.x + offset - box.height, box.y + box.height));
-        }
-        ctx->PopState();
-        break;
-    }
-    case ChartLegendSwatch::Image: {
-        if (!entry.imagePath.empty()) {
-            ctx->PushState();
-            ctx->ClipRect(box);
-            ctx->DrawImage(entry.imagePath, box, ImageFitMode::Cover);
-            ctx->PopState();
-            ctx->SetStrokePaint(Color(150, 150, 150, 255));
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRoundedRectangle(box, 2.0);
-        } else {
-            ctx->SetFillPaint(entry.color);
-            ctx->FillRoundedRectangle(box, 2.0);
-        }
-        break;
-    }
-    case ChartLegendSwatch::Solid:
-    default:
-        ctx->SetFillPaint(entry.color);
-        ctx->FillRoundedRectangle(box, 2.0);
-        break;
-    }
+    // The shared component draws itself against the same area it was
+    // measured with during layout; the call is cheap when nothing changed.
+    engineLegend.Render(ctx, legendArea);
 }
 
 } // namespace UltraCanvas

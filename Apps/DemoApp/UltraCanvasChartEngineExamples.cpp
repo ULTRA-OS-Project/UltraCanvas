@@ -105,7 +105,7 @@ public:
     enum class LimiterMode { NoLimiter, Average, AverageAndTarget, Thresholds };
     enum class ValueLabelMode { All, Declutter, Off };
     // How the bars are painted. The legend swatch follows this, which is what
-    // ChartLegendSwatch is for: a series drawn with a non-solid fill must not
+    // LegendSwatch is for: a series drawn with a non-solid fill must not
     // be represented by a colour square that matches nothing.
     enum class SeriesPaint { Solid, Gradient, Outline, Hatched };
 
@@ -668,12 +668,12 @@ private:
             SetShowLegend(false);
             return;
         }
-        ChartLegendSwatch swatch = ChartLegendSwatch::Solid;
+        LegendSwatch swatch = LegendSwatch::Square;
         switch (seriesPaint) {
-            case SeriesPaint::Solid:    swatch = ChartLegendSwatch::Solid; break;
-            case SeriesPaint::Gradient: swatch = ChartLegendSwatch::Gradient; break;
-            case SeriesPaint::Outline:  swatch = ChartLegendSwatch::Outline; break;
-            case SeriesPaint::Hatched:  swatch = ChartLegendSwatch::Hatched; break;
+            case SeriesPaint::Solid:    swatch = LegendSwatch::Square; break;
+            case SeriesPaint::Gradient: swatch = LegendSwatch::Gradient; break;
+            case SeriesPaint::Outline:  swatch = LegendSwatch::Outline; break;
+            case SeriesPaint::Hatched:  swatch = LegendSwatch::Hatched; break;
         }
 
         std::vector<ChartLegendEntry> entries;
@@ -1082,17 +1082,34 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::SeriesPaint::Hatched};
                       chartPtr->SetSeriesPaint(paints[i]);
                       say("Series paint changed — the legend swatch follows it "
-                          "(ChartLegendSwatch), so a non-solid series is never represented by a "
+                          "(LegendSwatch), so a non-solid series is never represented by a "
                           "colour square that matches nothing");
                   }, 0);
     row6->AddSpacer(20);
-    AppendLabeledButtons(row6, "engine_legend_", "Legend", 60, 48, kBtnH,
-                  {"On", "Off"},
+    AppendLabeledButtons(row6, "engine_legend_", "Legend", 60, 56, kBtnH,
+                  {"Right", "Bottom", "Inset", "Off"},
                   [chartPtr, say](int i) {
-                      chartPtr->SetShowLegendPanel(i == 0);
-                      say(i == 0 ? "Legend on — measured, reserved in the layout, and an obstacle "
-                                   "the solved labels steer around"
-                                 : "Legend off — its reserved margin returns to the plot area");
+                      const char* what[] = {
+                          "Legend at RightStart — vertical list, its edge reserved in "
+                          "the layout negotiation. The shared ChartLegend offers 12 "
+                          "outside placements plus 4 insets (SetLegendPosition)",
+                          "Legend at BottomCenter — Auto orientation flows top/bottom "
+                          "placements horizontally and wraps rows to the width",
+                          "Legend inset top-right — floats over the plot, reserves "
+                          "nothing, and rides the label plan as an obstacle the "
+                          "solved value labels steer around",
+                          "Legend off — its reserved margin returns to the plot area"};
+                      if (i == 3) {
+                          chartPtr->SetShowLegendPanel(false);
+                      } else {
+                          const ChartLegendPosition where[] = {
+                              ChartLegendPosition::RightStart,
+                              ChartLegendPosition::BottomCenter,
+                              ChartLegendPosition::InsetTopRight};
+                          chartPtr->SetLegendPosition(where[i]);
+                          chartPtr->SetShowLegendPanel(true);
+                      }
+                      say(what[i]);
                   }, 0);
     row6->AddSpacer(20);
     AppendLabeledButtons(row6, "engine_tips_", "Tooltips", 66, 48, kBtnH,
