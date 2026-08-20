@@ -1,12 +1,14 @@
 // include/Plugins/Charts/UltraCanvasMekkoChart.h
 // Mekko (Marimekko / mosaic) chart element with variable-width 100% stacked columns
-// Version: 1.0.0
-// Last Modified: 2026-07-28
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasChartDataStructures.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -166,10 +168,10 @@ namespace UltraCanvas {
         bool autoContrastSegmentLabels = true;  // Pick black/white text per segment color
         Color segmentLabelColor = Colors::White; // Used when autoContrast is off
 
-        float legendSwatchSize = 12.0f;
-        float legendItemSpacing = 6.0f;
-        float legendFontSize = 11.0f;
-        int legendWidth = 130;                  // Reserved width for LegendPosition::Right
+        // Shared legend component; sizes itself from its entries. legendWidth is
+        // retained for API compatibility only - the legend measures its own width.
+        ChartLegend legend;
+        int legendWidth = 130;
 
         bool highlightHoveredSegment = true;
         Color hoverBorderColor = Color(33, 33, 33, 255);
@@ -199,7 +201,6 @@ namespace UltraCanvas {
             std::vector<double> columnX;          // Left edge per displayed column
             std::vector<double> columnWidth;      // Width per displayed column
             std::vector<SegmentRect> segments;
-            std::vector<Rect2Dd> legendItemRects; // For legend hit testing
             double grandTotal = 0.0;
             double maxColumnTotal = 0.0;
             bool isValid = false;
@@ -216,6 +217,15 @@ namespace UltraCanvas {
             enablePan = false;
             showGrid = false;   // Mekko draws its own percent gridlines
             showAxes = false;   // ...and its own axis labels
+
+            // Shared legend defaults matching the previous private renderer:
+            // 11px text in the label color and plain (borderless) color swatches.
+            ChartLegendStyle legendStyle;
+            legendStyle.fontSize = 11.0f;
+            legendStyle.textColor = labelTextColor;
+            legendStyle.drawSwatchBorder = false;
+            legend.SetStyle(legendStyle);
+            legend.SetPosition(ChartLegendPosition::RightStart);   // LegendPosition::Right
         }
 
         // =============================================================================
@@ -264,11 +274,31 @@ namespace UltraCanvas {
 
         void SetLegendPosition(LegendPosition position) {
             legendPosition = position;
+            // The chart's legacy enum maps onto the closest shared position:
+            //   Right -> RightStart, Bottom -> BottomStart, Top -> TopStart,
+            //   Hidden -> shared legend hidden via SetVisible(false)
+            switch (position) {
+                case LegendPosition::Bottom:
+                    legend.SetPosition(ChartLegendPosition::BottomStart);
+                    break;
+                case LegendPosition::Top:
+                    legend.SetPosition(ChartLegendPosition::TopStart);
+                    break;
+                case LegendPosition::Right:
+                    legend.SetPosition(ChartLegendPosition::RightStart);
+                    break;
+                case LegendPosition::Hidden:
+                default:
+                    break;
+            }
+            legend.SetVisible(position != LegendPosition::Hidden);
             InvalidateMekkoCache();
             RequestRedraw();
         }
         LegendPosition GetLegendPosition() const { return legendPosition; }
 
+        // Kept for API compatibility: the shared legend now measures its own
+        // width, so the value no longer drives the layout.
         void SetLegendWidth(int width) {
             legendWidth = std::max(40, width);
             InvalidateMekkoCache();
@@ -313,6 +343,7 @@ namespace UltraCanvas {
         void SetLabelStyle(const Color& textColor, float fontSize) {
             labelTextColor = textColor;
             labelFontSize = fontSize;
+            legend.GetStyle().textColor = textColor;   // legend text follows the labels
             RequestRedraw();
         }
 
@@ -361,6 +392,7 @@ namespace UltraCanvas {
         ChartPlotArea CalculatePlotArea() override;
         ChartDataBounds CalculateDataBounds() override;
         void UpdateRenderingCache() override;
+        void RenderCommonBackground(IRenderContext* ctx) override;
 
     private:
         void InvalidateMekkoCache() {
@@ -378,7 +410,12 @@ namespace UltraCanvas {
         void DrawColumnLabels(IRenderContext* ctx);
         void DrawYAxisLabels(IRenderContext* ctx);
         void DrawCumulativeXAxis(IRenderContext* ctx);
-        void DrawLegend(IRenderContext* ctx);
+
+        // Shared-legend plumbing: entry list, measure pass and the area the
+        // legend may occupy (the element bounds below the title band).
+        void UpdateLegendLayout(IRenderContext* ctx);
+        void RefreshLegendEntries(const std::shared_ptr<MekkoChartDataVector>& data);
+        Rect2Dd GetLegendContentArea() const;
 
         Color GetSeriesColor(size_t seriesIndex) const;
         Color GetContrastTextColor(const Color& background) const;

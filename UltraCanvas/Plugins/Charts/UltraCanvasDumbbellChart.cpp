@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasDumbbellChart.cpp
 // Dumbbell (DNA / connected dot) chart implementation
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasDumbbellChart.h"
 
@@ -69,6 +70,17 @@ namespace UltraCanvas {
         showAxes = true;
         showValueLabels = true;
         valueLabelFontSize = 9.0f;
+
+        // Shared legend defaults matching the previous private renderer:
+        // 10px dots with a white rim and 10px grey text.
+        ChartLegendStyle legendStyle;
+        legendStyle.fontSize = 10.0f;
+        legendStyle.textColor = Color(50, 50, 50, 255);
+        legendStyle.swatchWidth = 10.0f;
+        legendStyle.swatchHeight = 10.0f;
+        legendStyle.swatchBorderColor = Colors::White;
+        legend.SetStyle(legendStyle);
+        legend.SetPosition(ChartLegendPosition::TopEnd);   // DumbbellLegendPosition::TopRight
     }
 
 // =============================================================================
@@ -264,7 +276,7 @@ namespace UltraCanvas {
 // =============================================================================
 
     void UltraCanvasDumbbellChart::SetShowLegend(bool show) {
-        showLegend = show;
+        legend.SetVisible(show);
         InvalidateCache();
         RequestRedraw();
     }
@@ -276,7 +288,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDumbbellChart::SetLegendPosition(DumbbellLegendPosition position) {
-        legendPosition = position;
+        // The chart's legacy enum maps onto the closest shared position:
+        //   TopRight -> TopEnd, TopLeft -> TopStart,
+        //   BottomRight -> BottomEnd, BottomLeft -> BottomStart
+        switch (position) {
+            case DumbbellLegendPosition::TopLeft:
+                legend.SetPosition(ChartLegendPosition::TopStart);
+                break;
+            case DumbbellLegendPosition::BottomLeft:
+                legend.SetPosition(ChartLegendPosition::BottomStart);
+                break;
+            case DumbbellLegendPosition::BottomRight:
+                legend.SetPosition(ChartLegendPosition::BottomEnd);
+                break;
+            case DumbbellLegendPosition::TopRight:
+            default:
+                legend.SetPosition(ChartLegendPosition::TopEnd);
+                break;
+        }
         InvalidateCache();
         RequestRedraw();
     }
@@ -341,20 +370,21 @@ namespace UltraCanvas {
 
     float UltraCanvasDumbbellChart::GetMarginTop() const {
         float margin = chartTitle.empty() ? 10.0f : 34.0f;
-        if (showLegend && (legendPosition == DumbbellLegendPosition::TopLeft ||
-                           legendPosition == DumbbellLegendPosition::TopRight)) {
-            margin += 22.0f;
-        }
+        // Space consumed above the plot by the shared legend, measured during
+        // rendering (nothing is reserved before the first measure pass).
+        Rect2Dd legendArea = GetLegendContentArea();
+        Rect2Dd remaining = legend.RemainingArea(legendArea);
+        margin += static_cast<float>(remaining.y - legendArea.y);
         return margin;
     }
 
     float UltraCanvasDumbbellChart::GetMarginBottom() const {
         float margin = showAxisValues ? 26.0f : 10.0f;
         if (!axisLabel.empty()) margin += 18.0f;
-        if (showLegend && (legendPosition == DumbbellLegendPosition::BottomLeft ||
-                           legendPosition == DumbbellLegendPosition::BottomRight)) {
-            margin += 22.0f;
-        }
+        // Space consumed below the plot by the shared legend.
+        Rect2Dd legendArea = GetLegendContentArea();
+        Rect2Dd remaining = legend.RemainingArea(legendArea);
+        margin += static_cast<float>(legendArea.Bottom() - remaining.Bottom());
         return margin;
     }
 
@@ -532,6 +562,10 @@ namespace UltraCanvas {
     void UltraCanvasDumbbellChart::RenderCommonBackground(IRenderContext* ctx) {
         if (!ctx) return;
 
+        // Measure the shared legend before anything paints: its footprint feeds
+        // the margins, so a change must refresh the cached plot area first.
+        UpdateLegendLayout(ctx);
+
         if (showBackground) {
             ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
 
@@ -635,7 +669,7 @@ namespace UltraCanvas {
         RenderCategoryLabels(ctx);
         RenderDumbbellRows(ctx);
 
-        if (showLegend) RenderLegend(ctx);
+        legend.Render(ctx, GetLegendContentArea());   // no-op when hidden
     }
 
     void UltraCanvasDumbbellChart::RenderRowHighlight(IRenderContext* ctx) {
@@ -793,58 +827,49 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void UltraCanvasDumbbellChart::RenderLegend(IRenderContext* ctx) {
-        ctx->PushState();
-        ctx->SetFontSize(10.0f);
+    Rect2Dd UltraCanvasDumbbellChart::GetLegendContentArea() const {
+        // The legend band spans the plot columns horizontally (right of the
+        // category labels) and may take the strip above or below the plot.
+        double left = GetMarginLeft();
+        double top = chartTitle.empty() ? 4.0 : 30.0;
+        return Rect2Dd(left, top,
+                       std::max(1.0, static_cast<double>(GetWidth()) - left - rightMargin),
+                       std::max(1.0, static_cast<double>(GetHeight()) - top - 2.0));
+    }
 
-        const double dotR = 5.0;
-        const double textGap = 6.0;
-        const double itemGap = 18.0;
+    void UltraCanvasDumbbellChart::RefreshLegendEntries() {
+        // Two endpoint dots plus the connector, mirroring the mark itself.
+        std::vector<ChartLegendEntry> entries;
+        entries.reserve(3);
+        entries.emplace_back(legendLabel1, defaultColor1, LegendSwatch::Circle);
+        entries.emplace_back(legendLabel2, defaultColor2, LegendSwatch::Circle);
+        entries.emplace_back("Difference", defaultLineColor, LegendSwatch::Line);
 
-        Size2Di size1 = ctx->GetTextLineDimensions(legendLabel1);
-        Size2Di size2 = ctx->GetTextLineDimensions(legendLabel2);
-
-        double totalWidth = dotR * 2 + textGap + size1.width + itemGap +
-                            dotR * 2 + textGap + size2.width;
-        double rowHeightPx = std::max<double>(dotR * 2, std::max(size1.height, size2.height));
-
-        double x, y;
-        switch (legendPosition) {
-            case DumbbellLegendPosition::TopLeft:
-                x = cachedPlotArea.x;
-                y = cachedPlotArea.y - rowHeightPx - 6.0;
-                break;
-            case DumbbellLegendPosition::BottomLeft:
-                x = cachedPlotArea.x;
-                y = static_cast<double>(GetHeight()) - rowHeightPx - 6.0;
-                break;
-            case DumbbellLegendPosition::BottomRight:
-                x = cachedPlotArea.GetRight() - totalWidth;
-                y = static_cast<double>(GetHeight()) - rowHeightPx - 6.0;
-                break;
-            case DumbbellLegendPosition::TopRight:
-            default:
-                x = cachedPlotArea.GetRight() - totalWidth;
-                y = cachedPlotArea.y - rowHeightPx - 6.0;
-                break;
+        // Rebuild only on an actual change so the legend's measure cache holds.
+        if (legend.GetEntryCount() == entries.size()) {
+            bool same = true;
+            for (size_t i = 0; same && i < entries.size(); ++i) {
+                const ChartLegendEntry& current = legend.GetEntry(i);
+                same = current.label == entries[i].label &&
+                       current.color == entries[i].color;
+            }
+            if (same) return;
         }
-        x = std::max(4.0, x);
-        y = std::max(2.0, y);
+        legend.SetEntries(entries);
+    }
 
-        double centerY = y + rowHeightPx / 2.0;
+    void UltraCanvasDumbbellChart::UpdateLegendLayout(IRenderContext* ctx) {
+        RefreshLegendEntries();
 
-        ctx->DrawFilledCircle(Point2Dd(x + dotR, centerY), static_cast<float>(dotR),
-                              defaultColor1, Colors::White, 1.0f);
-        ctx->SetTextPaint(Color(50, 50, 50, 255));
-        ctx->DrawText(legendLabel1, Point2Dd(x + dotR * 2 + textGap, centerY - size1.height / 2.0));
-
-        double x2 = x + dotR * 2 + textGap + size1.width + itemGap;
-        ctx->DrawFilledCircle(Point2Dd(x2 + dotR, centerY), static_cast<float>(dotR),
-                              defaultColor2, Colors::White, 1.0f);
-        ctx->SetTextPaint(Color(50, 50, 50, 255));
-        ctx->DrawText(legendLabel2, Point2Dd(x2 + dotR * 2 + textGap, centerY - size2.height / 2.0));
-
-        ctx->PopState();
+        // The legend's footprint feeds the top/bottom margins, so a change must
+        // invalidate the cached plot area before the background and rows render.
+        Rect2Dd legendArea = GetLegendContentArea();
+        Rect2Dd reservedBefore = legend.RemainingArea(legendArea);
+        legend.Measure(ctx, legendArea);
+        if (!(legend.RemainingArea(legendArea) == reservedBefore)) {
+            InvalidateCache();
+            UpdateRenderingCache();
+        }
     }
 
 // =============================================================================

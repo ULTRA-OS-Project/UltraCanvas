@@ -1,12 +1,14 @@
 // include/Plugins/Charts/UltraCanvasDumbbellChart.h
 // Dumbbell (DNA / connected dot) chart for comparing paired values across categories
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasChartDataStructures.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "UltraCanvasTooltipManager.h"
 #include <vector>
 #include <string>
@@ -193,11 +195,11 @@ namespace UltraCanvas {
         Color defaultColor2 = Color(214, 96, 130, 255);
         Color defaultLineColor = Color(190, 190, 190, 255);
 
-        // Legend
-        bool showLegend = true;
+        // Legend - drawn by the shared ChartLegend component; the labels feed
+        // its entry list (see RefreshLegendEntries)
+        ChartLegend legend;
         std::string legendLabel1 = "Group 1";
         std::string legendLabel2 = "Group 2";
-        DumbbellLegendPosition legendPosition = DumbbellLegendPosition::TopRight;
 
         // Axis
         bool showAxisValues = true;
@@ -281,7 +283,7 @@ namespace UltraCanvas {
 
         // ===== LEGEND =====
         void SetShowLegend(bool show);
-        bool GetShowLegend() const { return showLegend; }
+        bool GetShowLegend() const { return legend.IsVisible(); }
         void SetLegendLabels(const std::string& label1, const std::string& label2);
         void SetLegendPosition(DumbbellLegendPosition position);
 
@@ -320,7 +322,12 @@ namespace UltraCanvas {
         void RenderRowHighlight(IRenderContext* ctx);
         void RenderCategoryLabels(IRenderContext* ctx);
         void RenderDumbbellRows(IRenderContext* ctx);
-        void RenderLegend(IRenderContext* ctx);
+
+        // Shared-legend plumbing: entry list, measure pass and the band the
+        // legend may occupy (above or below the plot columns).
+        void UpdateLegendLayout(IRenderContext* ctx);
+        void RefreshLegendEntries();
+        Rect2Dd GetLegendContentArea() const;
         void DrawDumbbellRow(IRenderContext* ctx, const DumbbellDataPoint& point,
                              int displayIndex, double yCenter, double effRadius);
         void DrawDot(IRenderContext* ctx, double x, double y, double radius,
