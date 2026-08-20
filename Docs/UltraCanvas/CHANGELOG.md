@@ -1,3 +1,29 @@
+#### 2026-08-17 *0.3.52*
+- **FilerWidget: balanced line breaks for wrapped tile captions.** A name that
+  needs two or three caption lines was broken greedily — the first line took
+  everything that fit and the rest became a stub, "CoderBox compiler" /
+  ".png". A name that fits its lines completely is now re-broken at the
+  smallest line width that still needs no extra line, so the lines come out
+  near equal: "CoderBox" / "compiler.png", "Diagram" / "Wordcloud.png". The
+  line count — and with it the caption band and tile height — never changes,
+  and names too long even for `captionMaxLines` keep the greedy break with the
+  leading-"…" last line, whose every line is full anyway. Applies to the
+  thumbnail grids and the treemap in the FilerWidget and everything built on
+  it (UltraFiler, file dialogs).
+
+#### 2026-08-17 *0.3.51*
+- **UltraFiler: Pin / Unpin with state flags in the Extras menu and the folder
+  tree's context menu.** The Extras menu grows a block below "Open prompt"
+  (behind a separator): **Pin** and **Unpin** submenus, each with
+  "To Treeview" / "To Favorites" entries acting on the current selection (or
+  the shown folder while nothing is selected). The entries are check items
+  whose flag shows whether the selection is pinned there right now — Pin is
+  enabled while something is still unpinned, Unpin while something is pinned.
+  The folder tree's context menu gets the same **Pin** submenu between the
+  file commands and Unpin; there the "To Treeview" / "To Favorites" flags
+  directly toggle the folder's pin in the tree's Pinned section / the
+  Favorites view's Folders tab. Both menus build their items when they open,
+  so the flags always reflect the current pin state.
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
   content used to show only a small "(empty folder)" line; it now draws a
