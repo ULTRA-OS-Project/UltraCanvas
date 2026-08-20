@@ -5,6 +5,10 @@
 // V1.2.0: Themes and palettes (Engine/UltraCanvasChartTheme.h) - SetTheme /
 //   SetPalette / the "theme" named property fill the engine's furniture
 //   colours from a ChartTheme; repaint-only, with an OnThemeChanged() hook.
+//   Also: the label solver's bounds now include the margins the content
+//   reserved in MeasureContent (SolveLabelBounds), so a bar that reaches the
+//   axis maximum keeps its value label just above the plot edge instead of
+//   having it pushed down onto the bar.
 // V1.1.0: Two fixes the first animated / transposed client exposed.
 //   - The animation driver now advances on a ~60fps application timer.
 //     RequestRedraw() from inside the paint cannot produce the next frame (the
@@ -391,7 +395,14 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
         legendRect = Rect2Dd(0, 0, 0, 0);
     }
 
-    MeasureContent(ctx, request);
+    // The content's own reservations are remembered separately: they are the
+    // bands its solved labels may spill into (BuildLabelPlan), so a bar that
+    // reaches the axis maximum keeps its value label - just above the plot
+    // edge instead of pushed down onto the bar.
+    ChartLayoutRequest contentRequest;
+    MeasureContent(ctx, contentRequest);
+    contentMargins = contentRequest.margins;
+    request.margins.Merge(contentMargins);
     request.margins.top += titleBand;
 
     // ---- solve --------------------------------------------------------------
@@ -428,7 +439,14 @@ void UltraCanvasChartEngineElement::EnsureLabelPlan(IRenderContext* ctx) {
 
 void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
     LabelPlacementOptions options = labelOptions;
-    options.bounds = frame.plotArea;
+    // Solved labels stay within the plot area plus the bands the content
+    // reserved for itself in MeasureContent. Axis bands, the title band and
+    // the legend margin stay out of bounds (the legend additionally rides the
+    // plan as an obstacle below, so a right-spill band shared with it is
+    // steered around, not overprinted).
+    const Rect2Dd chartArea(0.0, 0.0, static_cast<double>(GetWidth()),
+                            static_cast<double>(GetHeight()));
+    options.bounds = SolveLabelBounds(frame.plotArea, contentMargins, chartArea);
 
     ChartLabelBroker broker(labelPolicy, options);
 

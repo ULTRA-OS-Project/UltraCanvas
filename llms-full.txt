@@ -8879,7 +8879,13 @@ bar collapsing mid-animation degrades gracefully.
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
   collision solver **once per invalidation, never per frame**. `allowSuppress`
   drops labels that would overprint (set `priority` on the ones that must
-  survive); leaders and rotation are drawn by the engine.
+  survive); leaders and rotation are drawn by the engine. Solved labels are
+  kept within the plot area **plus whatever margins the chart reserved for
+  itself in `MeasureContent`** (`SolveLabelBounds`): reserve a text-height
+  band on the value-axis end and a bar that reaches the axis maximum keeps
+  its value label just above the plot edge, instead of having it pushed down
+  onto the bar. Axis bands, the title band and the legend margin stay out of
+  bounds (the legend also rides the plan as an obstacle).
 - **Legend**: `SetShowLegend(true)` + `SetLegendEntries({{label, color}, ...})`
   — measured, reserved in layout, and an obstacle the solved labels avoid.
   `ChartLegendEntry.swatch` picks how the swatch is painted —

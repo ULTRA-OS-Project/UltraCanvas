@@ -848,6 +848,54 @@ static void TestPCPMissingAndHitTest() {
 }
 
 // =============================================================================
+// LABEL BOUNDS (spill into content-reserved margins)
+// =============================================================================
+
+static void TestSolveLabelBounds() {
+    std::printf("SolveLabelBounds:\n");
+
+    const Rect2Dd chart(0, 0, 800, 600);
+    const Rect2Dd plot(60, 40, 700, 510);
+
+    ChartMargins none;
+    const Rect2Dd same = SolveLabelBounds(plot, none, chart);
+    CHECK(Near(same.x, plot.x) && Near(same.y, plot.y) &&
+              Near(same.width, plot.width) && Near(same.height, plot.height),
+          "no content margins: label bounds are the plot area");
+
+    // A vertical bar chart reserving a spill band above the bars.
+    ChartMargins topBand;
+    topBand.top = 20.0;
+    const Rect2Dd spillTop = SolveLabelBounds(plot, topBand, chart);
+    CHECK(Near(spillTop.y, plot.y - 20.0), "top spill band joins the bounds");
+    CHECK(Near(spillTop.height, plot.height + 20.0), "height grows by the band");
+    CHECK(Near(spillTop.x, plot.x) && Near(spillTop.width, plot.width),
+          "horizontal extent unchanged");
+
+    // A horizontal chart reserving a spill band right of the bars (the plot
+    // here leaves 100px of right margin, so the 50px band fits unclamped).
+    const Rect2Dd narrowPlot(60, 40, 640, 510);
+    ChartMargins rightBand;
+    rightBand.right = 50.0;
+    const Rect2Dd spillRight = SolveLabelBounds(narrowPlot, rightBand, chart);
+    CHECK(Near(spillRight.Right(), narrowPlot.Right() + 50.0),
+          "right spill band joins the bounds");
+
+    // Never past the element, whatever was asked for.
+    ChartMargins greedy;
+    greedy.top = 500.0;
+    greedy.right = 500.0;
+    const Rect2Dd clamped = SolveLabelBounds(plot, greedy, chart);
+    CHECK(Near(clamped.y, chart.y) && Near(clamped.Right(), chart.Right()),
+          "spill is clamped to the chart area");
+
+    ChartMargins negative;
+    negative.top = -30.0;
+    const Rect2Dd guarded = SolveLabelBounds(plot, negative, chart);
+    CHECK(Near(guarded.y, plot.y), "negative margins are ignored");
+}
+
+// =============================================================================
 // THEME AND PALETTE
 // =============================================================================
 
@@ -982,6 +1030,7 @@ int main() {
     TestPCPCommonScale();
     TestPCPBrushes();
     TestPCPMissingAndHitTest();
+    TestSolveLabelBounds();
     TestThemeRegistry();
     TestPaletteCycling();
     TestPaletteCountAware();

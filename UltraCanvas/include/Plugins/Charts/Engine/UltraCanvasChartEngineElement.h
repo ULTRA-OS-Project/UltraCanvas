@@ -264,6 +264,9 @@ private:
     LabelPlacementOptions labelOptions;
     ChartLabelPlan labelPlan;
     ChartEngineFrame frame;
+    // What the content itself reserved in MeasureContent - the bands its
+    // solved labels may spill into (see BuildLabelPlan).
+    ChartMargins contentMargins;
     ChartDirty pendingDirty = ChartDirty::All;
     uint64_t generation = 0;
     int lastLayoutWidth = -1, lastLayoutHeight = -1;

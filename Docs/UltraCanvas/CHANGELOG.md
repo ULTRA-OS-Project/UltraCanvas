@@ -17,6 +17,14 @@
   `OnThemeChanged()` hook for content that caches theme colours (legend
   entries). The Chart Engine demo gained a Theme row; model-layer tests cover
   the registry, cycling, count-aware selection and colormap sampling.
+- **Chart engine: value labels survive the axis maximum.** The label solver
+  was clamped to the plot area, so a bar reaching the axis limit had its
+  value label pushed down onto the bar. The solver's bounds now also include
+  the margins the chart content reserved for itself in `MeasureContent`
+  (`SolveLabelBounds`) - the spill band above the bars (or right of them
+  under the horizontal projection) - so the label sits just above the plot
+  edge instead. Axis bands, the title band and the legend margin remain out
+  of bounds.
 
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
