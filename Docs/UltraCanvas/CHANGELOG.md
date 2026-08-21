@@ -1,4 +1,17 @@
 #### 2026-08-21 *0.3.54*
+- **Filer widget: embedded application icons on Windows.** `.exe`, `.dll`
+  and `.ico` entries now show the icon embedded in the file — what
+  Explorer shows — instead of the generic EXE/DLL glyph, in every view
+  from the Details icon column to the largest thumbnail tiles. Extraction
+  goes through the shell (`SHDefExtractIconW`, nearest embedded size up
+  to 256 px, alpha-masked legacy icons handled) on the existing
+  background thumbnail workers, so folders of executables stay smooth;
+  files without an icon resource keep their glyph, and the Display >
+  Preview switches are not involved — this is an icon, not a content
+  preview. New `UltraCanvasNativeFileIcons.h` platform API
+  (`NativeFileIconAvailable` / `LoadNativeFileIconPixmap`) with the
+  Windows extractor in `OS/MSWindows/UltraCanvasWindowsFileIcons.cpp`
+  and no-op stubs elsewhere, so other platforms are unchanged.
 - **Filer widget: the remaining "ask the user" gaps.** Every operation that
   silently invented " (2)" names or only logged an error now asks, in the
   same exclusive-switch dialog style. Drag & drop — inside the widget and

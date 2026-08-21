@@ -15900,6 +15900,20 @@ Notes:
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
 
+### Native application icons (Windows)
+
+On Windows, `.exe`, `.dll` and `.ico` files show the **icon embedded in the
+file** — what Explorer shows — instead of the generic EXE/DLL glyph, in every
+view from the Details icon column up to the largest thumbnail tiles. The icon
+is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
+up to 256 px) on the same background workers as the image thumbnails, so a
+folder of executables scrolls as smoothly as one of photos; a file without an
+icon resource keeps its glyph. This is an icon, not a content preview, so the
+Display > Preview switches do not affect it. The extractor lives behind
+`UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
+`LoadNativeFileIconPixmap`); on other platforms it reports no icon and
+nothing changes.
+
 ## Selection info bar
 
 A one-line bar under the folder display (`SetSelectionInfoVisible`, default on,

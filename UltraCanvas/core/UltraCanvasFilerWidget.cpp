@@ -57,6 +57,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
@@ -5838,6 +5839,14 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
+        // Executables show their embedded application icon (Windows .exe /
+        // .dll / .ico — Explorer-style). Not a content preview, so it is not
+        // gated by the Display > Preview toggles; an explicit thumbnail
+        // still wins below. On platforms without an extractor this is false
+        // for every path.
+        if (!e.isDirectory && e.thumbnailPath.empty() &&
+            NativeFileIconAvailable(e.path))
+            return e.path;
         // Display > Preview: a switched-off kind is never read at all.
         if (!PreviewEnabledFor(e)) return {};
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
@@ -6281,7 +6290,13 @@ namespace UltraCanvas {
             // entry: the request may name an entry's explicit thumbnail image
             // rather than the entry's own file.
             std::shared_ptr<UCPixmap> pm;
-            switch (PreviewTypeForPath(req.path)) {
+            if (NativeFileIconAvailable(req.path)) {
+                // The icon embedded in an executable (or an .ico file),
+                // extracted by the OS shell at the nearest embedded size.
+                const int edge = std::max(1, static_cast<int>(std::lround(
+                        std::max(req.w, req.h) * req.scale)));
+                pm = LoadNativeFileIconPixmap(req.path, edge);
+            } else switch (PreviewTypeForPath(req.path)) {
                 case FilerPreviewType::Videos: {
                     // Poster frame of a video (may block for a few seconds on
                     // a cold file — that is exactly what these workers are
