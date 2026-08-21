@@ -1,8 +1,12 @@
 # UltraVault — Credential & Secret Storage for ULTRA OS
 
 **Status:** Architectural recommendation. UltraVault module does not yet exist.
+The cryptographic primitives its encrypted-file backend needs (Argon2id key
+derivation, XChaCha20-Poly1305 AEAD, zeroizing secure buffers) are being
+added separately as the **UltraCrypt** module — the file backend should
+build on UltraCrypt rather than calling a crypto library directly.
 **Author:** UltraAI Module
-**Last Modified:** 2026-05-08
+**Last Modified:** 2026-08-21
 
 ULTRA OS needs a single, system-level service for storing API keys,
 SSH credentials, OAuth tokens, encryption passphrases, and any other
@@ -128,7 +132,7 @@ be declared per prefix; UI panels can group by leading segment.
 | Build target | Backend |
 |---|---|
 | ULTRA OS (native) | Kernel-mediated encrypted store with per-app entitlements |
-| Linux host | `libsecret` (Secret Service over D-Bus); fallback to file encrypted with PBKDF2-derived key when no daemon is running |
+| Linux host | `libsecret` (Secret Service over D-Bus); fallback to a file encrypted via UltraCrypt (Argon2id-derived key, XChaCha20-Poly1305) when no daemon is running |
 | macOS host | Security framework / Keychain Services |
 | Windows host | Credential Manager + DPAPI |
 | WASM | `IndexedDB` + Web Crypto (for browser-based UltraCanvas builds) |

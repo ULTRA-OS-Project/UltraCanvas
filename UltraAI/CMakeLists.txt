@@ -51,6 +51,10 @@ set(ULTRAAI_PUBLIC_HEADERS
     include/UltraAITextToSpeech.h
     include/UltraAIImageGen.h
     include/UltraAIVisionAnalyzer.h
+    include/UltraAITranslator.h
+    include/UltraAIVideoGen.h
+    include/UltraAIMusicGen.h
+    include/UltraAICodeAssist.h
 )
 
 # ===== Core static library =====

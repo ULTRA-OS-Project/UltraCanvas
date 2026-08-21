@@ -211,6 +211,11 @@ UltraNetResult UltraNet_SessionSaveCookies(UltraNetHandle session,
     s->cookieJar = filePath;
     // libcurl flushes the jar when the easy handle is destroyed. Trigger a
     // no-op request to force a flush of the current cookie state.
+    // Attaching the share binds this handle to the session's cookie db, so
+    // COOKIELIST=FLUSH writes the shared cookies (probe-verified). Caveat on
+    // libcurl >= ~8.10: FLUSH is gated on the cookie db's `running` flag,
+    // which is only set once a transfer has run — saving from a session that
+    // never issued a request writes nothing (there is nothing to save).
     std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> e(curl_easy_init(),
                                                           curl_easy_cleanup);
     if (e) {

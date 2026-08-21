@@ -137,12 +137,16 @@ UltraTexter, UltraFiler, and any other UltraCanvas-based application that
 requires network connectivity. FileLoader uses UltraNet internally when
 loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 
-**Implementation status (this branch):** Stage 1 of the rollout —
-`UltraNet_HttpGet/Post/Put/Delete/Head/Patch`, `UltraNet_HttpRequest`,
-`UltraNet_HttpDownloadFile/UploadFile`, and the URL utilities are
-implemented synchronously on libcurl. Async, WebSocket, FTP, raw sockets,
-TLS layering, DNS, sessions, and the plugin manager are planned for
-Stages 2-3. See `Docs/Modules/UltraNet/README.md`.
+**Implementation status (this branch):** Stage 2/3 — the synchronous HTTP
+verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
+worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
+`UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
+`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
+sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
+on libcurl. Remaining gaps are per-function and environment-dependent —
+build and run the `UltraNetApiStatus` probe tool for ground truth on a
+given machine. See `Docs/Modules/UltraNet/README.md`.
 
 ### **6. UltraDatabase**
 

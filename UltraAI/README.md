@@ -153,8 +153,8 @@ cmake -S UltraAI -B build \
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
 | Unit tests | Complete (3 executables, all passing) |
-| Real network adapters | Not yet — pending UltraNet integration |
-| UltraVault credential lookup | Wired, awaits UltraVault module |
+| Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
+| UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
 
 ---
 

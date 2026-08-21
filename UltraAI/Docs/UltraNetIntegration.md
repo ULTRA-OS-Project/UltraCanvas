@@ -1,13 +1,18 @@
 # UltraAI ↔ UltraNet Integration
 
-**Status:** Design proposal, not yet implemented.
+**Status:** UltraNet side implemented and probe-verified; adapters not yet written.
 **Author:** UltraAI Module
-**Last Modified:** 2026-05-08
+**Last Modified:** 2026-08-21
 
 UltraAI capability adapters (Anthropic, OpenAI, ElevenLabs, …) make
 network requests through **UltraNet** — they do not bundle their own
 HTTP client. This document specifies how that integration works so the
 first real adapter doesn't have to invent the conventions.
+
+Every API named here exists and is exercised by the `UltraNetApiStatus`
+probe suite (`Tests/UltraNet/ApiStatus/`). Build and run that tool before
+assuming an entry point works in a given build — see
+`Docs/Modules/UltraNet/ApiStatus.md`.
 
 ---
 
@@ -16,9 +21,9 @@ first real adapter doesn't have to invent the conventions.
 | Decision | Value |
 |---|---|
 | CMake target name | `UltraNet` |
-| Header include style | `<UltraNet/UltraNetHttp.h>`, `<UltraNet/UltraNetWebSocket.h>`, etc. |
+| Header include style | `<UltraNet/UltraNetHttp.h>`, `<UltraNet/UltraNetSse.h>`, `<UltraNet/UltraNetWebSocket.h>`, … |
 | Async callback thread | libcurl multi-worker thread (caller must marshal to UI / app thread) |
-| SSE support | Adapter-side parser (UltraNet has no SSE helper today) |
+| SSE support | Native — `UltraNet_SseStream[Async]` plus a reusable `UltraNetSseParser` |
 | Credential storage | `UltraVault` — see [UltraVault.md](UltraVault.md) |
 
 ---
@@ -31,7 +36,7 @@ App
  │     │
  │     └─► UltraAI adapter (e.g. AnthropicTextLLM)
  │           │
- │           ├─► UltraNet  (HTTP, WS, FTP, sockets, TLS, DNS)
+ │           ├─► UltraNet  (HTTP, SSE, WS, sockets, TLS, DNS)
  │           └─► UltraVault (credential resolution, optional)
  │
  └─► UltraCanvas (UI)
@@ -50,70 +55,73 @@ App
 |---|---|
 | Provider REST call (sync) | `UltraNet_HttpRequest` |
 | Provider REST call (background) | `UltraNet_HttpRequestAsync` + `onComplete` |
-| Long-running upload (audio / image / video) | `UltraNet_HttpUploadFile` (streamed; surfaces `onUploadProgress`) |
-| Long-running download (generated video / music) | `UltraNet_HttpDownloadFile` (streamed; surfaces `onDownloadProgress`) |
-| LLM token streaming (SSE over HTTPS) | `UltraNet_HttpRequestAsync` + `onDataReceive` chunked → adapter-side SSE parser |
+| Long-running upload (audio / image / video) | `UltraNet_HttpUploadFile` (streamed; `UltraNetHttpRequest::onUploadProgress`) |
+| Long-running download (generated video / music) | `UltraNet_HttpDownloadFile` (streamed; `UltraNetHttpRequest::onDownloadProgress`) |
+| LLM token streaming (SSE over HTTPS) | `UltraNet_SseStreamAsync` → parsed `UltraNetSseEvent`s |
+| Raw chunked streaming (non-SSE) | `UltraNet_HttpRequestAsync` + `UltraNetHttpRequest::onDataChunk` |
 | Live STT (push audio chunks, get partials) | `UltraNet_WebSocketConnect` + `UltraNet_WebSocketSendBinary` |
 | Reusing connections for chat-style traffic | `UltraNet_CreateSession` + `UltraNet_SessionHttpPost` |
 | Cancelling an in-flight generation | `UltraNet_CancelRequest(handle)` invoked from `IStreamHandle::Cancel()` |
 | Per-job progress events (image / video / music) | `onUploadProgress` / `onDownloadProgress` → `ImageJobEvent::progress`, etc. |
 | Local-vs-cloud routing | UltraNet honors system proxy + `noProxyHosts`; adapters set `baseUrl` |
-| TLS pinning / self-hosted endpoints | `UltraNet_TlsAddTrustedCert`, `onCertificateVerify` |
+| TLS pinning / self-hosted endpoints | `UltraNet_TlsSetCABundle`, `UltraNet_TlsAddTrustedCert`, per-request `options.verifyTls` |
+
+Two callback-placement details that are easy to get wrong:
+
+* `onDataChunk`, `onDownloadProgress` and `onUploadProgress` live on
+  **`UltraNetHttpRequest` itself**, not on `UltraNetHttpOptions`.
+* When `onDataChunk` is set, chunks stream to the callback in arrival
+  order and `response.body` stays **empty** after completion.
 
 ---
 
 ## 4. SSE (Server-Sent Events) handling
 
 OpenAI, Anthropic, and many vision / TTS providers stream over
-`text/event-stream`. UltraNet does not (yet) have a first-class SSE
-helper, so adapters parse SSE on top of `UltraNet_HttpRequestAsync`.
-
-### Minimal SSE state machine
-
-```cpp
-// UltraAI/adapters/_shared/SseParser.h  (proposed)
-class SseParser {
-public:
-    struct Event {
-        std::string event;     // "" if not provided -> implicit "message"
-        std::string data;      // multi-line concatenation
-        std::string id;
-        int retryMs = -1;
-    };
-
-    void Feed(const std::vector<uint8_t>& chunk,
-              const std::function<void(const Event&)>& onEvent);
-    void Reset();
-
-private:
-    std::string buffer_;       // line-accumulator
-    Event current_;
-};
-```
-
-Wire-up inside an adapter:
+`text/event-stream`. UltraNet ships a first-class SSE client
+(`<UltraNet/UltraNetSse.h>`), so adapters never parse SSE bytes
+themselves:
 
 ```cpp
-SseParser sse;
-UltraNetHttpRequest req = BuildAnthropicChatRequest(/* ... */);
-req.options.onDataReceive = [&](const std::vector<uint8_t>& chunk) {
-    sse.Feed(chunk, [&](const SseParser::Event& ev) {
-        // parse ev.data as JSON, dispatch UltraAI StreamEvent on the
-        // adapter's outbound stream callback
+#include <UltraNet/UltraNetSse.h>
+
+UltraNetHttpRequest req = BuildAnthropicStreamingRequest(request);
+UltraNetHandle h = UltraNet_SseStreamAsync(
+    req,
+    [](const UltraNetSseEvent& ev) {
+        // ev.event  — event type ("" == "message")
+        // ev.data   — concatenated data: lines (joined by '\n')
+        // parse ev.data as JSON, dispatch an UltraAI StreamEvent
+    },
+    [](const UltraNetResult& final) {
+        // stream ended — emit Done or Error
     });
-};
 ```
 
-A reusable `SseParser` lives in `UltraAI/adapters/_shared/` so every
-network adapter shares the implementation. **TODO**: revisit if/when
-UltraNet adds `UltraNet_HttpSseSubscribe`.
+`UltraNet_SseStream` is the blocking variant. Both conform to the WHATWG
+SSE spec (data / event / id / retry / comments, multi-line `data:`
+concatenation, blank-line event termination) and set the `Accept` /
+`Cache-Control` headers automatically.
+
+For feeding bytes from a non-HTTP source (a test fixture, a recorded
+cassette, a raw socket), the parser is public on its own:
+
+```cpp
+UltraNetSseParser sse;
+sse.Feed(chunk, [&](const UltraNetSseEvent& ev) { /* ... */ });
+sse.Flush([&](const UltraNetSseEvent& ev) { /* ... */ });   // at shutdown
+```
+
+Adapter unit tests should drive their event dispatch through
+`UltraNetSseParser::Feed` with recorded provider output — no network.
 
 ---
 
 ## 5. Threading model
 
-UltraNet documents `UltraNet_HttpRequestAsync`'s `onComplete` as
-running on the **libcurl multi worker thread**. UltraAI's
+UltraNet runs `UltraNet_HttpRequestAsync` / `UltraNet_SseStreamAsync`
+callbacks (`onComplete`, `onDataChunk`, per-event SSE callbacks) on the
+**curl_multi worker thread** — one worker per process. UltraAI's
 `StreamCallback` documentation already says "implementation-defined
 thread", so there is no contract change — but adapter authors must:
 
@@ -129,6 +137,9 @@ thread", so there is no contract change — but adapter authors must:
    `UltraNet_CancelRequest`, and surface the next event as `Done`
    (cancelled) or `Error::Cancelled`.
 
+WebSocket callbacks fire on a per-connection receiver thread instead;
+the same four rules apply.
+
 **Recommended adapter skeleton for streaming:**
 
 ```cpp
@@ -142,6 +153,7 @@ public:
         if (netHandle_) UltraNet_CancelRequest(netHandle_);
     }
     bool IsDone() const override { return done_.load(); }
+    bool IsCancelled() const { return cancelled_.load(); }
     // ...
 };
 ```
@@ -159,20 +171,21 @@ UltraAI::ChatResponse AnthropicTextLLM::Chat(const ChatRequest& request) {
     UltraNetHttpRequest req;
     req.url    = baseUrl_ + "/v1/messages";
     req.method = UltraNetHttpMethod::Post;
-    req.headers.Set("x-api-key", ResolveApiKey());           // see §8
+    req.headers.Set("x-api-key", ResolveApiKey());           // see §9
     req.headers.Set("anthropic-version", "2023-06-01");
     req.headers.Set("content-type", "application/json");
     req.body   = SerializeAnthropicMessages(request);
+    req.options.timeoutMs = config_.timeoutMs;
 
     UltraNetResponse netResp;
-    auto result = UltraNet_HttpRequest(req, netResp);
+    UltraNetResult result = UltraNet_HttpRequest(req, netResp);
 
     ChatResponse out;
-    if (!result.success) {
+    if (!result) {                       // transport-level failure
         out.error = MapNetError(result);
         return out;
     }
-    if (netResp.statusCode >= 400) {
+    if (netResp.statusCode >= 400) {     // provider-level failure
         out.error = MapHttpError(netResp);
         return out;
     }
@@ -180,37 +193,29 @@ UltraAI::ChatResponse AnthropicTextLLM::Chat(const ChatRequest& request) {
 }
 ```
 
-## 7. End-to-end example — streaming with adapter-side SSE
+## 7. End-to-end example — streaming over SSE
 
 ```cpp
+#include <UltraNet/UltraNetSse.h>
+
 StreamHandle AnthropicTextLLM::ChatStream(const ChatRequest& request,
                                           StreamCallback onEvent) {
     auto handle = std::make_shared<AnthropicStreamHandle>();
-    auto sse    = std::make_shared<SseParser>();
 
     UltraNetHttpRequest req = BuildAnthropicStreamingRequest(request);
-    req.options.onHeadersReceive = [handle](const UltraNetHttpHeaders& h) {
-        // capture status / rate-limit headers if needed
-    };
-    req.options.onDataReceive = [handle, sse, onEvent](
-        const std::vector<uint8_t>& chunk) {
-        if (handle->IsCancelled()) return;
-        sse->Feed(chunk, [&](const SseParser::Event& ev) {
-            DispatchAnthropicStreamEvent(ev, onEvent);
-        });
-    };
 
-    handle->netHandle_ = UltraNet_HttpRequestAsync(
+    handle->netHandle_ = UltraNet_SseStreamAsync(
         req,
-        [handle, onEvent](const UltraNetResponse& finalResp) {
+        [handle, onEvent](const UltraNetSseEvent& ev) {
+            if (handle->IsCancelled()) return;
+            DispatchAnthropicStreamEvent(ev, onEvent);   // TextDelta / ToolCallDelta / ...
+        },
+        [handle, onEvent](const UltraNetResult& final) {
             StreamEvent done;
-            done.kind = handle->IsCancelled()
-                ? StreamEventKind::Error
-                : StreamEventKind::Done;
-            if (finalResp.statusCode >= 400) {
-                done.kind  = StreamEventKind::Error;
-                done.error = MapHttpError(finalResp);
-            }
+            done.kind = (final && !handle->IsCancelled())
+                ? StreamEventKind::Done
+                : StreamEventKind::Error;
+            if (!final) done.error = MapNetError(final);
             onEvent(done);
             handle->done_.store(true);
         });
@@ -222,17 +227,20 @@ StreamHandle AnthropicTextLLM::ChatStream(const ChatRequest& request,
 ## 8. End-to-end example — live STT over WebSocket
 
 ```cpp
+#include <UltraNet/UltraNetWebSocket.h>
+
 LiveTranscriber DeepgramSpeechToText::StartLiveTranscribe(
     const TranscribeRequest& request, TranscriptCallback onEvent) {
 
     UltraNetWebSocketOptions ws;
     ws.headers.Set("authorization", "Token " + ResolveApiKey());
-    UltraNetHandle h = UltraNet_WebSocketConnect(
-        BuildLiveSttUrl(request), ws);
+    UltraNetHandle h = UltraNet_WebSocketConnect(BuildLiveSttUrl(request), ws);
 
     auto live = std::make_shared<DeepgramLiveTranscriber>(h, onEvent);
-    // Wire UltraNet WebSocket callbacks to the live object's
-    // PushAudio / Finish / Cancel handlers.
+    // Inbound frames arrive via the global callback bag
+    // (UltraNet_WebSocketSetCallbacks); dispatch on the UltraNetHandle
+    // argument to route frames to this transcriber's PushAudio /
+    // Finish / Cancel handlers.
     return live;
 }
 ```
@@ -249,7 +257,11 @@ order (implemented by a shared helper in `UltraAI/adapters/_shared/`):
    `ULTRAAI_USE_ULTRAVAULT=ON`.
 3. Fail with `Error{ ErrorCode::AuthenticationFailed, ... }`.
 
-See [UltraVault.md](UltraVault.md) for the storage architecture.
+See [UltraVault.md](UltraVault.md) for the storage architecture. The
+UltraVault module itself is not implemented yet; the cryptographic
+primitives its portable file backend needs (Argon2id, XChaCha20-Poly1305,
+zeroizing buffers) are arriving separately as the **UltraCrypt** module.
+Until UltraVault lands, adapters run on step 1 alone.
 
 ---
 
@@ -263,21 +275,22 @@ A new network-using adapter should:
 - [ ] Be opt-in via a `ULTRAAI_ADAPTER_<NAME>` CMake option.
 - [ ] Self-register through `RegisterTextLLMProvider` / etc. when its
       object file is linked.
-- [ ] Use `UltraNet_HttpRequestAsync` for any call that may exceed
-      ~1 second; only use `UltraNet_HttpRequest` (sync) for short
-      auxiliary requests (e.g. `ListVoices`).
+- [ ] Use `UltraNet_HttpRequestAsync` / `UltraNet_SseStreamAsync` for any
+      call that may exceed ~1 second; only use `UltraNet_HttpRequest`
+      (sync) for short auxiliary requests (e.g. `ListVoices`).
 - [ ] Implement cancellation via the worker-thread-safe pattern in §5.
 - [ ] Surface every UltraNet error via `MapNetError` → `Error{}`.
-- [ ] Have at least a smoke test (mock UltraNet transport or a recorded
-      session) — never call out to the live provider in CI.
+- [ ] Have at least a smoke test — feed recorded provider output through
+      `UltraNetSseParser` for streaming paths; never call out to the live
+      provider in CI.
 
 ---
 
 ## 11. Open items
 
 - Mock UltraNet transport for adapter unit tests (so CI never calls real
-  providers).
+  providers). SSE dispatch is already testable offline via
+  `UltraNetSseParser::Feed`; a transport seam is still needed for the
+  non-streaming request path.
 - Recorded-cassette format for replaying real provider responses
   offline.
-- Whether UltraNet should grow `UltraNet_HttpSseSubscribe` (would let
-  every adapter drop its `SseParser` dependency).
