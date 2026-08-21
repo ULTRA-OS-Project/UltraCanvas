@@ -45,6 +45,7 @@ target_compile_features(UltraAI INTERFACE cxx_std_20)
 set(ULTRAAI_PUBLIC_HEADERS
     include/UltraAI.h
     include/UltraAICommon.h
+    include/UltraAIRouting.h
     include/UltraAITextLLM.h
     include/UltraAIEmbeddings.h
     include/UltraAISpeechToText.h
@@ -63,6 +64,7 @@ set(ULTRAAI_PUBLIC_HEADERS
 add_library(UltraAI_Core STATIC
     src/TextLLMFactory.cpp
     src/CapabilityFactories.cpp
+    src/Routing.cpp
 )
 add_library(UltraAI::Core ALIAS UltraAI_Core)
 

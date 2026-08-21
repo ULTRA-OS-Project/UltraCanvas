@@ -17,6 +17,11 @@ target_link_libraries(ultraai_test_mock_more_capabilities PRIVATE UltraAI_Core)
 target_compile_features(ultraai_test_mock_more_capabilities PRIVATE cxx_std_20)
 add_test(NAME ultraai.mock_more_capabilities COMMAND ultraai_test_mock_more_capabilities)
 
+add_executable(ultraai_test_routing test_routing.cpp)
+target_link_libraries(ultraai_test_routing PRIVATE UltraAI_Core)
+target_compile_features(ultraai_test_routing PRIVATE cxx_std_20)
+add_test(NAME ultraai.routing COMMAND ultraai_test_routing)
+
 add_executable(ultraai_test_adapter_shared test_adapter_shared.cpp)
 target_link_libraries(ultraai_test_adapter_shared PRIVATE UltraAI_AdapterShared)
 target_compile_features(ultraai_test_adapter_shared PRIVATE cxx_std_20)

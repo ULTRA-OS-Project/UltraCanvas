@@ -8,7 +8,12 @@
 #include "UltraAIDialogs.h"
 
 #include "UltraAI.h"
+#include "UltraCanvasDropdown.h"
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+#include <UltraVault/UltraVault.h>
+#endif
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -64,10 +69,49 @@ std::string ErrorLine(const Error& e) {
 
 ChatDialog::ChatDialog()
     : UltraAIServiceDialog("Chat (LLM)",
-        "Send a prompt to the LLM and receive a single-turn reply. "
-        "Backed by the in-process Mock TextLLM adapter.") {}
+        "Send a prompt to the LLM and receive a single-turn reply. The "
+        "provider list comes from the UltraAI registry; \"(default route)\" "
+        "follows the routing policy. Cloud API keys are stored in UltraVault, "
+        "never in this window.") {}
+
+namespace {
+constexpr const char* kDefaultRouteLabel = "(default route)";
+
+bool ProviderNeedsApiKey(const std::string& provider) {
+    return !provider.empty() && provider != "mock" && provider != "llama-cpp";
+}
+} // namespace
 
 long ChatDialog::BuildForm(long y) {
+    AddDialogElement(MakeLabel("prov-lbl", kMargin, y, 200, kLabelHeight,
+                               "Provider"));
+    AddDialogElement(MakeLabel("model-lbl", kMargin + 220, y,
+                               kFormWidth - 220, kLabelHeight,
+                               "Model (or GGUF path for llama-cpp; optional)"));
+    y += kLabelHeight + 2;
+    providerDropdown_ = CreateDropdown("chat-provider",
+                                       kMargin, y, 200, kRowHeight);
+    providerDropdown_->AddItem(kDefaultRouteLabel);
+    for (const auto& id : ListTextLLMProviders()) {
+        providerDropdown_->AddItem(id);
+    }
+    providerDropdown_->SetSelectedIndex(0);
+    AddDialogElement(providerDropdown_);
+    modelInput_ = MakeInput("chat-model", kMargin + 220, y,
+                            kFormWidth - 220, kRowHeight,
+                            "provider default");
+    AddDialogElement(modelInput_);
+    y += kRowHeight + kRowGap;
+
+    AddDialogElement(MakeLabel("key-lbl", kMargin, y, kFormWidth, kLabelHeight,
+                               "API key (cloud providers; saved to UltraVault "
+                               "as ai.<provider>.api_key and cleared here)"));
+    y += kLabelHeight + 2;
+    keyInput_ = MakeInput("chat-key", kMargin, y, kFormWidth, kRowHeight,
+                          "leave empty to use the stored key");
+    AddDialogElement(keyInput_);
+    y += kRowHeight + kRowGap;
+
     AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "System prompt (optional)"));
     y += kLabelHeight + 2;
@@ -79,10 +123,10 @@ long ChatDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("usr-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "User message"));
     y += kLabelHeight + 2;
-    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 80,
+    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 60,
                         "Type your prompt...", true);
     AddDialogElement(input2_);
-    y += 80 + kRowGap;
+    y += 60 + kRowGap;
     return y;
 }
 
@@ -90,8 +134,46 @@ void ChatDialog::RunCapability() {
     SetStatus("Running...");
     SetResult("");
 
-    auto llm = CreateTextLLM({.providerId = "mock"});
-    if (!llm) { SetStatus("Failed to create mock TextLLM"); return; }
+    std::string provider;
+    if (providerDropdown_) {
+        if (const auto* item = providerDropdown_->GetSelectedItem()) {
+            if (item->text != kDefaultRouteLabel) provider = item->text;
+        }
+    }
+
+    TextLLMConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+
+    if (ProviderNeedsApiKey(provider)) {
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+        const std::string vaultRef = "ai." + provider + ".api_key";
+        if (keyInput_ && !keyInput_->GetText().empty()) {
+            if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+            std::string typed = keyInput_->GetText();
+            auto stored = UltraVault::Put(
+                vaultRef, UltraVault::SecretValue::FromString(typed));
+            keyInput_->SetText("");   // the key lives in the vault now
+            if (!stored.IsOk()) {
+                SetStatus("Could not store the key: " + stored.message);
+                return;
+            }
+        }
+        cfg.apiKeyVaultRef = vaultRef;
+#else
+        // No vault in this build: the key stays in the widget for the call.
+        if (keyInput_) cfg.apiKey = keyInput_->GetText();
+#endif
+    }
+
+    Error createError;
+    auto llm = CreateTextLLM(cfg, &createError);
+    if (!llm) {
+        SetStatus("Failed to create TextLLM: " + createError.message);
+        return;
+    }
 
     ChatRequest req;
     if (input1_ && !input1_->GetText().empty()) {
@@ -105,7 +187,8 @@ void ChatDialog::RunCapability() {
     auto resp = llm->Chat(req);
     std::ostringstream os;
     os << ErrorLine(resp.error) << resp.text
-       << "\n\n(model=" << resp.model
+       << "\n\n(provider=" << llm->GetCapabilities().providerId
+       << "  model=" << resp.model
        << "  in=" << resp.usage.inputTokens
        << "  out=" << resp.usage.outputTokens << ")";
     SetResult(os.str());

@@ -46,7 +46,8 @@ bool UltraAIDashboard::Create() {
 
     auto sub = std::make_shared<UltraCanvasLabel>(
         "dash-sub", 20, 38, kWindowWidth - 40, 18,
-        "All services use the in-process mock adapter (no network).");
+        "Chat routes through the provider registry (mock, Anthropic, local "
+        "llama.cpp when built); the other services use the mock adapter.");
     window_->AddChild(sub);
 
     CreateButtons();

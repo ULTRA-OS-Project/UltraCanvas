@@ -10,6 +10,7 @@
 #include "UltraAIServiceDialog.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasDropdown.h"
 
 #include <memory>
 
@@ -28,7 +29,24 @@ private:                                                                \
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input3_;        \
 };
 
-ULTRAAI_DECLARE_DIALOG(ChatDialog)
+// Chat is the routing flagship: unlike the other dialogs it carries a
+// provider picker (fed by ListTextLLMProviders), an optional model /
+// GGUF-path field, and an API-key field that stores into UltraVault as
+// ai.<provider>.api_key instead of living in the widget.
+class ChatDialog : public UltraAIServiceDialog {
+public:
+    ChatDialog();
+protected:
+    long BuildForm(long formTop) override;
+    void RunCapability() override;
+private:
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>   providerDropdown_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input1_;   // system
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // user
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  modelInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  keyInput_;
+};
+
 ULTRAAI_DECLARE_DIALOG(EmbeddingsDialog)
 ULTRAAI_DECLARE_DIALOG(SpeechToTextDialog)
 ULTRAAI_DECLARE_DIALOG(TextToSpeechDialog)

@@ -23,6 +23,11 @@ void UltraAIServiceDialog::CreateServiceDialog() {
     cfg.buttons  = DialogButtons::NoButtons;     // we add our own footer
     cfg.position = DialogPosition::CenterParent;
     cfg.resizable = false;
+    // The form is absolutely laid out against kDialogWidth/kDialogHeight;
+    // the modal's fit-height-to-message pass would collapse the empty-message
+    // dialog to its minimum, clipping the form (same opt-out as the input
+    // and file dialogs).
+    autoSizeHeight = false;
     CreateDialog(cfg);
 
     // ===== Header: bold service name + description =====

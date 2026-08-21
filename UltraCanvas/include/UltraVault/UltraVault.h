@@ -33,6 +33,13 @@
 #include <string>
 #include <vector>
 
+// When included after X11 headers, Xlib's `Success` macro (0) collides with
+// ResultCode::Success — the same collision UltraAICommon.h neutralizes for
+// X11's `None`. Undefine it before our declarations.
+#ifdef Success
+#undef Success
+#endif
+
 namespace UltraVault {
 
 // ============================================================================
