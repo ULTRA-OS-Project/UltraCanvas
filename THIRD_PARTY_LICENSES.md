@@ -6,6 +6,20 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## libsodium (cryptographic backend)
+
+- **Used by:** UltraCrypt (`UltraCanvas/core/UltraCrypt/`), and through it the
+  UCD document encryption envelope and every other consumer of framework
+  cryptography.
+- **Upstream:** https://github.com/jedisct1/libsodium
+- **Linked, not vendored:** the system package is used
+  (`libsodium-dev` / `brew install libsodium` /
+  `mingw-w64-x86_64-libsodium`). No libsodium source is carried in this
+  repository, and no libsodium type appears in any UltraCanvas public header.
+- **License:** ISC License — Copyright (c) 2013-2025 Frank Denis.
+
+---
+
 ## MicroTeX (LaTeX math engine)
 
 - **Used by:** the LaTeX math plugin (`ULTRACANVAS_PLUGIN_LATEX`).

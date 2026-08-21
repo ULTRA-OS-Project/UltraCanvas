@@ -39,10 +39,16 @@ enum class UCCompressionType {
 };
 
 // Encryption types
+// One cipher, deliberately. UCD is our own format, so it offers no algorithm
+// menu: every writer emits XChaCha20-Poly1305 keyed with Argon2id, and every
+// reader implements only that pair. Agility lives in the envelope version
+// inside the encrypted blob, not in a per-file algorithm identifier.
+// (The former AES256 / ChaCha20 members named ciphers that were never actually
+// produced — the encryption path silently wrote plaintext. See
+// Docs/Modules/UltraCrypt/README.md §1.1.)
 enum class UCEncryptionType {
-    None,
-    AES256,
-    ChaCha20
+    None = 0,
+    XChaCha20Poly1305 = 1
 };
 
 // Document metadata
@@ -162,15 +168,25 @@ struct UCMediaResource {
     std::string ExternalPath; // If not embedded
 };
 
-// Document security settings
+// Document security settings.
+//
+// The password verifier below exists only for in-memory permission gating via
+// VerifyPassword(). It is never written to a file: the authoritative check when
+// loading is the AEAD authentication tag, which fails closed on a wrong
+// password. Keeping no verifier on disk also means a stolen file offers no
+// cheap offline target beyond the Argon2id-protected body itself.
 struct UCSecuritySettings {
-    UCEncryptionType EncryptionType;
-    std::string PasswordHash;
-    std::string Salt;
-    bool AllowPrint;
-    bool AllowCopy;
-    bool AllowEdit;
-    bool AllowFormFilling;
+    UCEncryptionType EncryptionType = UCEncryptionType::None;
+
+    std::vector<uint8_t> PasswordVerifier;   // Argon2id output, empty if unset
+    std::vector<uint8_t> VerifierSalt;
+    uint32_t VerifierIterations = 0;         // Argon2id passes
+    uint32_t VerifierMemoryKiB  = 0;         // Argon2id memory cost
+
+    bool AllowPrint = true;
+    bool AllowCopy = true;
+    bool AllowEdit = true;
+    bool AllowFormFilling = true;
 };
 
 // Main document structure
@@ -305,11 +321,15 @@ private:
     // Internal helper methods (updated for multi-page)
     bool CompressData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, UCCompressionType type);
     bool DecompressData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, UCCompressionType type);
-    bool EncryptData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, const std::string& password);
-    bool DecryptData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, const std::string& password);
-    
-    std::string GeneratePasswordHash(const std::string& password, const std::string& salt);
-    std::string GenerateSalt();
+    // Both carry the file header as associated data, so an edit to the header
+    // (compression or encryption byte) invalidates the authentication tag.
+    // Encrypt writes a self-describing envelope: see kEnvelope* in the .cpp.
+    bool EncryptData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output,
+                     const std::string& password,
+                     const std::vector<uint8_t>& associatedData);
+    bool DecryptData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output,
+                     const std::string& password,
+                     const std::vector<uint8_t>& associatedData);
     std::string GetCurrentDateTime();
     std::string EscapeXML(const std::string& input);
     std::string Base64Encode(const std::vector<uint8_t>& data);
