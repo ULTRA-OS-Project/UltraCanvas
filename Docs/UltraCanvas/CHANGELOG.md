@@ -1,4 +1,18 @@
 #### 2026-08-21 *0.3.54*
+- **Filer widget: delete problem dialog.** A delete that runs into trouble
+  no longer just logs to `onError`: a write-protected (locked) entry asks
+  *before* the attempt — **Delete it anyway** (lifting the protection
+  first, so it also works on Windows) / **Skip this file**, Skip
+  preselected — and a failed delete asks *afterwards* with the failure
+  reason ("may be locked or in use by another program") — **Try again** /
+  **Skip this file**, Try again preselected. Both flavors carry a
+  "Do this for all remaining …" scope switch and Continue / Cancel
+  buttons in the same exclusive-switch style as the paste conflict
+  dialog; Cancel keeps what was already deleted. A stored
+  try-again-for-all grants each later failing entry one silent retry
+  before asking again, so nothing can loop forever. Archive-batch
+  deletions and the no-dialogs fallback keep the previous behavior, and
+  `onFolderModified` now reports only folders that really lost an entry.
 - **Filer widget: paste conflict dialog.** Pasting an entry whose name is
   already taken in the target folder no longer silently invents a " (2)"
   name: the paste pauses on a conflict dialog whose choice is set by three

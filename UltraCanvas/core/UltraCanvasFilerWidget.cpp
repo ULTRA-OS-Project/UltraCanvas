@@ -3251,6 +3251,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims) {
+        if (pendingDelete) return;   // one delete (and its dialogs) at a time
         // When the delete takes the whole selection away, hand the selection
         // on to the entry that fills its place instead of leaving nothing
         // selected (SetSelectNextAfterDelete). Picked here, while the old
@@ -3269,8 +3270,11 @@ namespace UltraCanvas {
                 selectAfterScanPath = NeighbourPathAfterRemoval(victims);
         }
 
-        std::error_code ec;
+        // Folders that already lost an entry (archive deletions below) —
+        // seeds the queue's onFolderModified reports.
+        std::vector<std::string> archiveModified;
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
+        std::error_code ec;
         // Entries living inside an archive cannot be removed via the real
         // filesystem. They are grouped per archive and deleted with ONE
         // batched VirtualFS call each, so the archive is rewritten once for
@@ -3279,6 +3283,7 @@ namespace UltraCanvas {
         // practically forever.
         std::vector<std::string> archiveOrder;
         std::map<std::string, std::vector<std::string>> archiveVictims;
+        std::map<std::string, std::vector<std::string>> archiveParents;
         std::vector<FilerEntry> fsVictims;
         for (const FilerEntry& e : victims) {
             // A real file/dir always wins - even if a path component looks
@@ -3289,6 +3294,8 @@ namespace UltraCanvas {
                     auto& list = archiveVictims[resolved.realPath];
                     if (list.empty()) archiveOrder.push_back(resolved.realPath);
                     list.push_back(resolved.virtualPath);
+                    archiveParents[resolved.realPath].push_back(
+                            fs::path(e.path).parent_path().string());
                     continue;
                 }
             }
@@ -3300,32 +3307,212 @@ namespace UltraCanvas {
             if (result != VirtualFS::VirtualFSResult::Success) {
                 ReportError("Delete failed in " + archive + ": " +
                             VirtualFS::VirtualFSResultToString(result));
+                continue;
             }
+            for (const std::string& folder : archiveParents[archive])
+                if (!folder.empty()) archiveModified.push_back(folder);
         }
 #else
         const std::vector<FilerEntry>& fsVictims = victims;
 #endif
-        for (const FilerEntry& e : fsVictims) {
+        // Real-filesystem victims go through an interactive queue: a
+        // write-protected (locked) entry asks before the attempt, a failed
+        // delete asks afterwards — see ShowDeleteProblemDialog.
+        pendingDelete = std::make_unique<PendingDelete>();
+        pendingDelete->victims = fsVictims;   // copy: Refresh() rebuilds `entries`
+        pendingDelete->modifiedFolders = std::move(archiveModified);
+        ContinuePendingDelete();
+    }
+
+    void UltraCanvasFilerWidget::ContinuePendingDelete() {
+        std::error_code ec;
+        while (pendingDelete && pendingDelete->next < pendingDelete->victims.size()) {
+            PendingDelete& pd = *pendingDelete;
+            const FilerEntry& e = pd.victims[pd.next];
+            // A write-protected (locked) entry asks before the attempt.
+            if (e.isReadOnly) {
+                DeleteProblemAction action;
+                if (pd.currentDecided)       action = pd.currentAction;
+                else if (pd.protectedForAll) action = pd.protectedAction;
+                else { ShowDeleteProblemDialog(e, true, {}); return; }
+                if (action == DeleteProblemAction::Skip) {
+                    AdvancePendingDelete();
+                    continue;
+                }
+                // Delete anyway: lift the protection first — a read-only
+                // entry cannot be removed at all on Windows without this.
+                std::error_code pec;
+                fs::permissions(e.path, fs::perms::owner_write,
+                                fs::perm_options::add, pec);
+            }
             fs::remove_all(e.path, ec);
-            if (ec) ReportError("Delete failed for " + e.path + ": " + ec.message());
+            if (ec) {
+                if (pd.skipFailedForAll) { AdvancePendingDelete(); continue; }
+                if (pd.retryFailedForAll && !pd.currentRetried) {
+                    pd.currentRetried = true;   // one silent retry, then ask
+                    continue;
+                }
+                ShowDeleteProblemDialog(e, false, ec.message());
+                return;
+            }
+            const std::string folder = fs::path(e.path).parent_path().string();
+            if (!folder.empty()) pd.modifiedFolders.push_back(folder);
+            AdvancePendingDelete();
         }
+        FinishPendingDelete();
+    }
+
+    void UltraCanvasFilerWidget::AdvancePendingDelete() {
+        if (!pendingDelete) return;
+        ++pendingDelete->next;
+        pendingDelete->currentDecided = false;
+        pendingDelete->currentRetried = false;
+    }
+
+    void UltraCanvasFilerWidget::FinishPendingDelete() {
+        if (!pendingDelete) return;
+        std::unique_ptr<PendingDelete> pd = std::move(pendingDelete);
         // Silent clear when a neighbour is waiting to inherit the selection:
         // the rescan reports that one change. Firing an empty selection first
         // would fold an attached preview pane away and open it again.
         if (selectAfterScanPath.empty()) ClearSelection();
         else                             selection.clear();
         Refresh();
-        // Report every folder the deletion emptied: in a file-list display the
-        // victims can come from different folders. For a folder listing they
-        // all share currentPath, so this reports it once.
+        // Report every folder that really lost an entry: in a file-list
+        // display the victims can come from different folders. For a folder
+        // listing they all share currentPath, so this reports it once.
         if (onFolderModified) {
             std::unordered_set<std::string> reported;
-            for (const FilerEntry& e : victims) {
-                const std::string folder = fs::path(e.path).parent_path().string();
-                if (!folder.empty() && reported.insert(folder).second)
-                    NotifyFolderModified(folder);
-            }
+            for (const std::string& folder : pd->modifiedFolders)
+                if (reported.insert(folder).second) NotifyFolderModified(folder);
         }
+    }
+
+    void UltraCanvasFilerWidget::ShowDeleteProblemDialog(const FilerEntry& entry,
+                                                         bool writeProtected,
+                                                         const std::string& reason) {
+        const std::string kind = entry.isDirectory ? "folder" : "file";
+
+        DialogConfig cfg;
+        cfg.dialogType = DialogType::Warning;
+        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
+        cfg.width = 560;
+        cfg.height = 300;
+        if (writeProtected) {
+            cfg.title = entry.isDirectory
+                    ? "Folder Is Write-Protected" : "File Is Write-Protected";
+            cfg.message = "\"" + entry.name + "\" is write-protected.";
+            cfg.details = "Choose what to do with the locked " + kind + ":";
+        } else {
+            cfg.title = "Cannot Delete";
+            cfg.message = "\"" + entry.name + "\" could not be deleted: "
+                    + (reason.empty() ? std::string("unknown error") : reason)
+                    + ".";
+            cfg.details = "The " + kind
+                    + " may be locked or in use by another program.";
+        }
+
+        auto self = this;
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) {   // dialogs disabled — the old fixed behavior
+            if (writeProtected) {   // attempt the delete like before
+                pendingDelete->currentDecided = true;
+                pendingDelete->currentAction = DeleteProblemAction::Delete;
+            } else {
+                ReportError("Delete failed for " + entry.path + ": " + reason);
+                AdvancePendingDelete();
+            }
+            ContinuePendingDelete();
+            return;
+        }
+
+        // The action, one switch per choice, exclusive like the paste
+        // conflict dialog's: toggling one on turns the other off, and the
+        // selected one cannot be toggled off — only replaced. Skipping is
+        // the safe default for a locked entry, trying again for a failure.
+        pendingDelete->dialogAction = writeProtected ? DeleteProblemAction::Skip
+                                                     : DeleteProblemAction::Delete;
+        pendingDelete->dialogAll = false;
+        struct Option { std::string text; DeleteProblemAction action; };
+        const Option options[2] = {
+            {writeProtected ? "Delete it anyway" : "Try again",
+             DeleteProblemAction::Delete},
+            {"Skip this " + kind, DeleteProblemAction::Skip},
+        };
+        std::array<std::shared_ptr<UltraCanvasSwitch>, 2> switches;
+        std::array<UltraCanvasSwitch*, 2> raw{};
+        for (size_t i = 0; i < 2; ++i) {
+            switches[i] = UltraCanvasSwitch::Create(
+                    "FilerDelOpt" + std::to_string(i), 0, 0, options[i].text,
+                    options[i].action == pendingDelete->dialogAction);
+            switches[i]->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            raw[i] = switches[i].get();
+        }
+        for (size_t i = 0; i < 2; ++i) {
+            UltraCanvasSwitch* me = raw[i];
+            const DeleteProblemAction act = options[i].action;
+            me->onChecked = [self, raw, me, act]() {
+                if (self->pendingDelete) self->pendingDelete->dialogAction = act;
+                for (UltraCanvasSwitch* other : raw)
+                    if (other != me) other->SetChecked(false);
+            };
+            me->onUnchecked = [self, me, act]() {
+                // The selected choice cannot be switched off, only replaced.
+                if (self->pendingDelete && self->pendingDelete->dialogAction == act)
+                    me->SetChecked(true);
+            };
+            dialog->AddDialogElement(switches[i]);
+        }
+
+        // Scope: ask again on the next problem (off, the default) or apply
+        // this choice to the remaining entries of this delete.
+        auto allSwitch = UltraCanvasSwitch::Create(
+                "FilerDelAll", 0, 0,
+                writeProtected
+                        ? "Do this for all remaining write-protected items"
+                        : "Do this for all remaining items",
+                false);
+        allSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        allSwitch->onStateChanged = [self](CheckedState, CheckedState state) {
+            if (self->pendingDelete)
+                self->pendingDelete->dialogAll = (state == CheckedState::Checked);
+        };
+        dialog->AddDialogElement(allSwitch);
+
+        dialog->AddCustomButton("Continue", DialogResult::Yes, nullptr);
+        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+        dialog->onResult = [self, writeProtected](DialogResult result) {
+            if (!self->pendingDelete) return;
+            PendingDelete& pd = *self->pendingDelete;
+            if (result != DialogResult::Yes) {
+                // Cancel keeps what was already deleted and drops the rest.
+                self->FinishPendingDelete();
+                return;
+            }
+            if (writeProtected) {
+                if (pd.dialogAll) {
+                    pd.protectedForAll = true;
+                    pd.protectedAction = pd.dialogAction;
+                }
+                if (pd.dialogAction == DeleteProblemAction::Skip) {
+                    self->AdvancePendingDelete();
+                } else {
+                    pd.currentDecided = true;
+                    pd.currentAction = DeleteProblemAction::Delete;
+                }
+            } else if (pd.dialogAction == DeleteProblemAction::Skip) {
+                if (pd.dialogAll) pd.skipFailedForAll = true;
+                self->AdvancePendingDelete();
+            } else {
+                // Try again now; a stored "for all" grants every later
+                // failing entry one silent retry before asking again.
+                if (pd.dialogAll) pd.retryFailedForAll = true;
+                pd.currentRetried = true;
+            }
+            self->ContinuePendingDelete();
+        };
+
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
 
     void UltraCanvasFilerWidget::ShowDeleteConfirmation(

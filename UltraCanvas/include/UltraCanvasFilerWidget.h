@@ -1542,6 +1542,48 @@ namespace UltraCanvas {
         // Continue / Cancel buttons.
         void ShowPasteConflictDialog(const std::string& src);
 
+        // ===== DELETE PROBLEMS =====
+        // What the delete-problem dialog decides for the entry it is about:
+        // delete it after all (a write-protected entry, or another try after
+        // a failure) or leave it alone.
+        enum class DeleteProblemAction { Delete, Skip };
+
+        // One delete in flight: the real-filesystem victims not yet processed
+        // and the choices the problem dialogs collected so far.
+        struct PendingDelete {
+            std::vector<FilerEntry> victims;
+            size_t next = 0;
+            // "Do this for all" answers, kept per dialog flavor.
+            bool protectedForAll = false;          // write-protected entries…
+            DeleteProblemAction protectedAction = DeleteProblemAction::Skip;
+            bool skipFailedForAll = false;         // skip every failing entry
+            bool retryFailedForAll = false;        // one silent retry each
+            // The entry at `next`: its write-protected question, once
+            // answered, and whether its silent retry has been spent.
+            bool currentDecided = false;
+            DeleteProblemAction currentAction = DeleteProblemAction::Skip;
+            bool currentRetried = false;
+            // What the open dialog's switches currently say.
+            DeleteProblemAction dialogAction = DeleteProblemAction::Skip;
+            bool dialogAll = false;
+            // Folders that really lost an entry, for onFolderModified.
+            std::vector<std::string> modifiedFolders;
+        };
+        std::unique_ptr<PendingDelete> pendingDelete;
+
+        // Processes victims until a problem needs a dialog (which resumes it)
+        // or the queue is done (FinishPendingDelete).
+        void ContinuePendingDelete();
+        void FinishPendingDelete();
+        void AdvancePendingDelete();   // to the next victim, forgetting the
+                                       // per-entry decisions
+        // The problem dialog, in two flavors: a write-protected (locked)
+        // entry before the attempt ("Delete it anyway" / "Skip"), or a
+        // failed delete ("Try again" / "Skip" with the failure reason).
+        void ShowDeleteProblemDialog(const FilerEntry& entry,
+                                     bool writeProtected,
+                                     const std::string& reason);
+
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;

@@ -456,6 +456,30 @@ filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
 
+### Delete problems (locked / failing entries)
+
+A delete that runs into trouble pauses on a **problem dialog** styled like the
+paste conflict dialog — two exclusive switches for the action, a scope switch,
+and **Continue** / **Cancel** buttons (Cancel keeps what was already deleted
+and drops the rest):
+
+- A **write-protected (locked) entry** asks *before* the attempt —
+  `"X" is write-protected.` — with **Delete it anyway** / **Skip this file**
+  (Skip preselected) and a *"Do this for all remaining write-protected items"*
+  scope switch. Delete-anyway lifts the protection first, so it also works on
+  Windows, where a read-only file can never be removed directly.
+- A **failed delete** asks *afterwards* — `"X" could not be deleted:
+  Permission denied.` ("The file may be locked or in use by another
+  program.") — with **Try again** / **Skip this file** (Try again
+  preselected) and a *"Do this for all remaining items"* scope switch.
+  A stored try-again-for-all grants each later failing entry one silent
+  retry before asking again, so a stubborn entry can never loop forever.
+
+Entries inside archives are still deleted in one batched archive rewrite
+before the interactive queue; their failures are reported via `onError` as
+before. When modal dialogs are unavailable the delete falls back to the old
+fixed behavior (attempt everything, report failures).
+
 ### Selection after a delete
 
 By default a delete leaves nothing selected. `SetSelectNextAfterDelete(true)`
