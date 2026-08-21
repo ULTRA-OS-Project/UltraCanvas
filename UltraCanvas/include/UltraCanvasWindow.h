@@ -450,12 +450,14 @@ namespace UltraCanvas {
 
 // __ANDROID__ must be tested before __linux__: bionic defines __linux__, so the
 // Linux/X11 branch would otherwise shadow the Android one on every NDK build.
+// (__EMSCRIPTEN__ likewise precedes the __unix__ test, which Emscripten defines.)
 #if defined(__ANDROID__)
 #include "../OS/Android/UltraCanvasAndroidWindow.h"
 namespace UltraCanvas {
     using UltraCanvasWindow = UltraCanvasAndroidWindow;
-#if defined(__EMSCRIPTEN__)
-// Web/WASM (checked first: Emscripten also defines __unix__)
+}
+#elif defined(__EMSCRIPTEN__)
+// Web/WASM
 #include "../OS/WASM/UltraCanvasWASMWindow.h"
 namespace UltraCanvas {
     using UltraCanvasWindow = UltraCanvasWASMWindow;
@@ -487,16 +489,6 @@ namespace UltraCanvas {
     #else
         #error "Unsupported Apple platform"
     #endif
-#elif defined(__WASM__)
-    // Web/WASM
-    #include "../OS/Web/UltraCanvasWebWindow.h"
-    namespace UltraCanvas {
-        using UltraCanvasWindow = UltraCanvasWebWindow;
-#elif defined(__ANDROID__)
-    #include "../OS/Android/UltraCanvasAndroidWindow.h"
-    namespace UltraCanvas {
-        using UltraCanvasWindow = UltraCanvasAndroidWindow;
-    }
 #else
 #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif
