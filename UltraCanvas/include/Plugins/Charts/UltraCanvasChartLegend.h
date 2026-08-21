@@ -18,12 +18,16 @@
 //     ... draw the chart into plotArea ...
 //     legend.Render(ctx, consumed);
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-31
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: Paint-mirroring swatches (Outline, Hatched, Image + a real Gradient
+//   ramp) lifted from the chart engine's private legend, which now delegates
+//   to this component.
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Charts/UltraCanvasColormap.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -50,16 +54,59 @@ namespace UltraCanvas {
     enum class LegendSwatch {
         Square,        // filled rectangle (categorical series, packet layers)
         Circle,        // filled disc (scatter, node roles - "* Routers")
+        Ring,          // hollow disc - stays distinct from Circle in greyscale
         Line,          // horizontal stroke (line series)
         DashedLine,    // dashed stroke (thresholds, optional fields)
         Marker,        // small diamond
-        Gradient       // the entry's own mini colour ramp (band legends)
+        Glyph,         // the entry's own text (letter codes, symbol scales)
+        Gradient,      // light-to-colour vertical ramp (gradient-painted series)
+        // A series drawn with a non-solid fill must not be represented by a
+        // colour square that matches nothing - these mirror the series paint.
+        Outline,       // ghost fill + coloured border (outline-painted series)
+        Hatched,       // light fill + diagonal hatching (hatch-painted series)
+        Image          // the entry's imagePath, cover-fitted (image-filled series)
     };
 
     enum class LegendOrientation {
         Auto,          // Horizontal for top/bottom, Vertical for left/right
         Horizontal,
         Vertical
+    };
+
+// What the legend shows. Discrete is the classic entry list; the other two
+// are the continuous keys the engine proposal calls SetLegendMode modes.
+    enum class ChartLegendMode {
+        Discrete,      // swatch + label entries
+        ColorBar,      // continuous value-to-colour ramp with tick labels
+        SizeLegend     // sample circles keying a bubble-size scale
+    };
+
+// ColorBar configuration: a colormap over [minValue, maxValue], drawn as a
+// bar along the legend's flow direction with tick labels beside it.
+    struct LegendColorBar {
+        HeatmapColormap colormap = HeatmapColormap::Viridis;
+        std::vector<Color> customColormap;   // used when colormap == Custom
+        bool reverse = false;
+        double minValue = 0.0;
+        double maxValue = 1.0;
+        int tickCount = 5;                   // min and max included
+        int quantizeLevels = 0;              // >= 2 draws discrete bands
+        std::function<std::string(double)> formatter;   // default: %g
+        double barThickness = 14.0;
+        double barLength = 160.0;            // along the bar's axis
+    };
+
+// SizeLegend configuration: sampleCount circles from maxValue down to
+// minValue, radius interpolated between maxRadius and minRadius.
+    struct LegendSizeScale {
+        double minValue = 0.0;
+        double maxValue = 1.0;
+        double minRadius = 4.0;
+        double maxRadius = 14.0;
+        int sampleCount = 3;
+        std::function<std::string(double)> formatter;   // default: %g
+        Color fillColor = Color(150, 150, 150, 110);
+        Color strokeColor = Color(90, 90, 90, 255);
     };
 
 // =============================================================================
@@ -73,6 +120,13 @@ namespace UltraCanvas {
 
         // Optional right-aligned secondary text (value, count, percentage).
         std::string valueText;
+
+        // Drawn in the swatch box when swatch == Glyph. Lets a key mix letter
+        // codes ("Y", "N", "S") with coloured shapes under one legend.
+        std::string glyph;
+
+        // The image cover-fitted into the swatch box when swatch == Image.
+        std::string imagePath;
 
         // Discrete band entries: when set, the label is generated from the
         // interval rather than supplied verbatim. See SetIntervalFormat().
@@ -161,7 +215,11 @@ namespace UltraCanvas {
     struct ChartLegendLayout {
         Rect2Dd box;                             // total area the legend occupies
         Rect2Dd titleRect;
-        std::vector<ChartLegendItemRect> items;
+        Rect2Dd customRect;                      // SetCustomArea's reserved panel
+        Rect2Dd barRect;                         // ColorBar mode: the ramp itself
+        std::vector<ChartLegendItemRect> items;  // Discrete and SizeLegend rows
+        std::vector<double> sizeRadii;           // SizeLegend: per-row radius
+        std::vector<std::string> sizeLabels;     // SizeLegend: per-row label
         size_t  visibleCount = 0;                // entries actually laid out
         size_t  overflowCount = 0;               // entries dropped (see maxEntries)
         bool    valid = false;
@@ -198,6 +256,15 @@ namespace UltraCanvas {
         void SetOrientation(LegendOrientation o) { orientation = o; Invalidate(); }
         LegendOrientation GetOrientation() const { return orientation; }
 
+        // Continuous modes. ColorBar and SizeLegend ignore the entry list and
+        // draw from their configuration instead; Discrete is the default.
+        void SetMode(ChartLegendMode m) { mode = m; Invalidate(); }
+        ChartLegendMode GetMode() const { return mode; }
+        void SetColorBar(const LegendColorBar& bar) { colorBar = bar; Invalidate(); }
+        const LegendColorBar& GetColorBar() const { return colorBar; }
+        void SetSizeScale(const LegendSizeScale& scale) { sizeScale = scale; Invalidate(); }
+        const LegendSizeScale& GetSizeScale() const { return sizeScale; }
+
         void SetVisible(bool v) { visible = v; Invalidate(); }
         bool IsVisible() const { return visible; }
 
@@ -217,6 +284,26 @@ namespace UltraCanvas {
         void SetLabelFormatter(std::function<std::string(const ChartLegendEntry&)> fn) {
             labelFormatter = std::move(fn);
             Invalidate();
+        }
+
+        // A host-drawn panel inside the legend box, below the entries - for a
+        // key richer than any swatch: an annotated confidence-ellipse diagram,
+        // a bubble-size scale, a mini axis. The legend reserves `size` in its
+        // layout and calls `draw` with the reserved rectangle (clipped) while
+        // rendering; the drawing shares the legend's background and border.
+        using LegendCustomDraw = std::function<void(IRenderContext*, const Rect2Dd&)>;
+        void SetCustomArea(const Size2Dd& size, LegendCustomDraw draw) {
+            customAreaSize = size;
+            customDraw = std::move(draw);
+            Invalidate();
+        }
+        void ClearCustomArea() {
+            customAreaSize = Size2Dd(0.0, 0.0);
+            customDraw = nullptr;
+            Invalidate();
+        }
+        bool HasCustomArea() const {
+            return customDraw && customAreaSize.width > 0.0 && customAreaSize.height > 0.0;
         }
 
         // ----- layout & painting -----
@@ -259,6 +346,11 @@ namespace UltraCanvas {
         LegendIntervalFormat intervalFormat = LegendIntervalFormat::Brackets;
         int    intervalDecimals = 2;
         std::function<std::string(const ChartLegendEntry&)> labelFormatter;
+        Size2Dd customAreaSize;
+        LegendCustomDraw customDraw;
+        ChartLegendMode mode = ChartLegendMode::Discrete;
+        LegendColorBar colorBar;
+        LegendSizeScale sizeScale;
 
         ChartLegendLayout layout;
         Rect2Dd lastArea;
@@ -266,8 +358,16 @@ namespace UltraCanvas {
         std::string EntryText(const ChartLegendEntry& entry) const;
         bool IsVerticalFlow() const;
         bool IsInset() const;
+        bool HasContent() const;
         void DrawSwatch(IRenderContext* ctx, const ChartLegendEntry& entry,
                         const Rect2Dd& rect) const;
+        void MeasureColorBar(IRenderContext* ctx, const Rect2Dd& availableArea,
+                             double titleH);
+        void MeasureSizeScale(IRenderContext* ctx, const Rect2Dd& availableArea,
+                              double titleH);
+        void PlaceBox(const Rect2Dd& availableArea, double boxW, double boxH);
+        void RenderColorBar(IRenderContext* ctx) const;
+        void RenderSizeScale(IRenderContext* ctx) const;
     };
 
 // =============================================================================

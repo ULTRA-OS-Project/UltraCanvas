@@ -14,6 +14,8 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartHighlights.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
 #include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
 
 #include <algorithm>
@@ -847,6 +849,223 @@ static void TestPCPMissingAndHitTest() {
 }
 
 // =============================================================================
+// LABEL BOUNDS (spill into content-reserved margins)
+// =============================================================================
+
+static void TestSolveLabelBounds() {
+    std::printf("SolveLabelBounds:\n");
+
+    const Rect2Dd chart(0, 0, 800, 600);
+    const Rect2Dd plot(60, 40, 700, 510);
+
+    ChartMargins none;
+    const Rect2Dd same = SolveLabelBounds(plot, none, chart);
+    CHECK(Near(same.x, plot.x) && Near(same.y, plot.y) &&
+              Near(same.width, plot.width) && Near(same.height, plot.height),
+          "no content margins: label bounds are the plot area");
+
+    // A vertical bar chart reserving a spill band above the bars.
+    ChartMargins topBand;
+    topBand.top = 20.0;
+    const Rect2Dd spillTop = SolveLabelBounds(plot, topBand, chart);
+    CHECK(Near(spillTop.y, plot.y - 20.0), "top spill band joins the bounds");
+    CHECK(Near(spillTop.height, plot.height + 20.0), "height grows by the band");
+    CHECK(Near(spillTop.x, plot.x) && Near(spillTop.width, plot.width),
+          "horizontal extent unchanged");
+
+    // A horizontal chart reserving a spill band right of the bars (the plot
+    // here leaves 100px of right margin, so the 50px band fits unclamped).
+    const Rect2Dd narrowPlot(60, 40, 640, 510);
+    ChartMargins rightBand;
+    rightBand.right = 50.0;
+    const Rect2Dd spillRight = SolveLabelBounds(narrowPlot, rightBand, chart);
+    CHECK(Near(spillRight.Right(), narrowPlot.Right() + 50.0),
+          "right spill band joins the bounds");
+
+    // Never past the element, whatever was asked for.
+    ChartMargins greedy;
+    greedy.top = 500.0;
+    greedy.right = 500.0;
+    const Rect2Dd clamped = SolveLabelBounds(plot, greedy, chart);
+    CHECK(Near(clamped.y, chart.y) && Near(clamped.Right(), chart.Right()),
+          "spill is clamped to the chart area");
+
+    ChartMargins negative;
+    negative.top = -30.0;
+    const Rect2Dd guarded = SolveLabelBounds(plot, negative, chart);
+    CHECK(Near(guarded.y, plot.y), "negative margins are ignored");
+}
+
+// =============================================================================
+// HIGHLIGHT GEOMETRY
+// =============================================================================
+
+static void TestConfidenceEllipse() {
+    std::printf("ComputeConfidenceEllipse:\n");
+
+    CHECK(!ComputeConfidenceEllipse({{0, 0}, {1, 1}}, 0.95).valid,
+          "fewer than three points is invalid");
+
+    // Points spread along x with tiny y noise: near-horizontal major axis.
+    std::vector<Point2Dd> flat;
+    for (int i = 0; i < 20; ++i) {
+        flat.emplace_back(static_cast<double>(i), (i % 2 == 0) ? 0.1 : -0.1);
+    }
+    const ChartEllipseSpec spec = ComputeConfidenceEllipse(flat, 0.95);
+    CHECK(spec.valid, "flat spread yields a valid ellipse");
+    CHECK(std::abs(spec.rotationRadians) < 0.05,
+          "major axis lies along the spread");
+    CHECK(spec.rx > 10.0 * spec.ry, "major axis dominates the minor");
+    CHECK(Near(spec.center.x, 9.5, 1e-6) && Near(spec.center.y, 0.0, 1e-6),
+          "centre is the mean");
+
+    const ChartEllipseSpec fifty = ComputeConfidenceEllipse(flat, 0.50);
+    CHECK(fifty.rx < spec.rx, "the 50% ellipse sits inside the 95% one");
+
+    // An isotropic 4-corner cloud: near-circular ellipse.
+    const std::vector<Point2Dd> square = {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+    const ChartEllipseSpec round = ComputeConfidenceEllipse(square, 0.95);
+    CHECK(round.valid && Near(round.rx, round.ry, 1e-9),
+          "isotropic cloud yields a circle");
+}
+
+static void TestHullExpandSmooth() {
+    std::printf("ComputeConvexHull / ExpandPolygon / SmoothPolygonChaikin:\n");
+
+    // A square with interior points: hull keeps only the four corners.
+    const std::vector<Point2Dd> cloud = {{0, 0}, {4, 0}, {4, 4}, {0, 4},
+                                         {2, 2}, {1, 3}, {3, 1}};
+    const std::vector<Point2Dd> hull = ComputeConvexHull(cloud);
+    CHECK(hull.size() == 4, "hull of a square cloud has four vertices");
+
+    const std::vector<Point2Dd> grown = ExpandPolygon(hull, 2.0);
+    CHECK(grown.size() == hull.size(), "expansion keeps the vertex count");
+    // Every vertex moved exactly `padding` further from the centroid (2,2).
+    bool allGrown = true;
+    for (size_t i = 0; i < hull.size(); ++i) {
+        const double before = std::hypot(hull[i].x - 2.0, hull[i].y - 2.0);
+        const double after = std::hypot(grown[i].x - 2.0, grown[i].y - 2.0);
+        if (!Near(after - before, 2.0, 1e-9)) allGrown = false;
+    }
+    CHECK(allGrown, "every vertex moved padding away from the centroid");
+
+    const std::vector<Point2Dd> smooth = SmoothPolygonChaikin(hull, 1);
+    CHECK(smooth.size() == 8, "one Chaikin pass doubles the vertex count");
+    // Chaikin points stay on the hull's edges: within the original bounds.
+    bool inside = true;
+    for (const Point2Dd& p : smooth) {
+        if (p.x < -1e-9 || p.x > 4.0 + 1e-9 ||
+            p.y < -1e-9 || p.y > 4.0 + 1e-9) inside = false;
+    }
+    CHECK(inside, "smoothing never leaves the original outline");
+}
+
+// =============================================================================
+// THEME AND PALETTE
+// =============================================================================
+
+static void TestThemeRegistry() {
+    std::printf("ChartThemes registry:\n");
+
+    CHECK(ChartThemes::Names().size() == 14, "fourteen built-in themes");
+    CHECK(ChartThemes::Find("Dark") != nullptr, "Find resolves an exact name");
+    CHECK(ChartThemes::Find("dARk") == ChartThemes::Find("Dark"),
+          "Find is case-insensitive");
+    CHECK(ChartThemes::Find("NoSuchTheme") == nullptr,
+          "Find returns nullptr for an unknown name");
+    CHECK(&ChartThemes::Get("NoSuchTheme") == &ChartThemes::Light(),
+          "Get falls back to Light for an unknown name");
+    CHECK(ChartThemes::Get("ocean").name == "Ocean",
+          "Get returns the canonical capitalization");
+
+    for (const std::string& name : ChartThemes::Names()) {
+        const ChartTheme& theme = ChartThemes::Get(name);
+        CHECK(!theme.palette.Empty(), ("palette not empty: " + name).c_str());
+        CHECK(theme.palette.Size() >= 6 && theme.palette.Size() <= 10,
+              ("palette size 6..10: " + name).c_str());
+    }
+
+    const ChartTheme& dark = ChartThemes::Dark();
+    CHECK(dark.backgroundColor.r < 80 && dark.axisLabelColor.r > 120,
+          "Dark theme is dark furniture with light labels");
+}
+
+static void TestPaletteCycling() {
+    std::printf("ChartPalette cycling:\n");
+
+    const ChartPalette& palette = ChartThemes::Light().palette;
+    const size_t n = palette.Size();
+
+    CHECK(palette.ColorAt(0) == palette.colors[0], "index 0 is the first colour");
+    CHECK(palette.ColorAt(n - 1) == palette.colors[n - 1],
+          "last in-range index is the last colour");
+    CHECK(!(palette.ColorAt(n) == palette.colors[0]),
+          "first wrapped colour is re-tinted, not a repeat");
+    CHECK(palette.ColorAt(n).a == palette.colors[0].a,
+          "re-tinting preserves alpha");
+    CHECK(!(palette.ColorAt(n) == palette.ColorAt(2 * n)),
+          "second wrap differs from the first wrap");
+
+    const ChartPalette empty;
+    CHECK(empty.ColorAt(3) == Color(128, 128, 128, 255),
+          "empty palette yields the grey fallback");
+}
+
+static void TestPaletteCountAware() {
+    std::printf("ChartPalette count-aware selection:\n");
+
+    // Categorical list: first-k, untouched.
+    const ChartPalette& bright = ChartThemes::Light().palette;
+    CHECK(bright.ColorAt(2, 3) == bright.colors[2],
+          "categorical: element 2 of 3 is base colour 2");
+
+    // Ramp: spread across the run, ends included.
+    const ChartPalette& ocean = ChartThemes::Ocean().palette;
+    CHECK(ocean.isRamp, "Ocean palette is a ramp");
+    CHECK(ocean.ColorAt(0, 3) == ocean.colors.front(),
+          "ramp: first of 3 is the dark end");
+    CHECK(ocean.ColorAt(2, 3) == ocean.colors.back(),
+          "ramp: last of 3 is the light end");
+    CHECK(ocean.ColorAt(0, 1) == ocean.colors[ocean.Size() / 2],
+          "ramp: a single element takes the middle");
+    CHECK(ocean.ColorAt(1, ocean.Size()) == ocean.colors[1],
+          "ramp: count == size is the identity");
+
+    // count > size falls back to tinted cycling.
+    CHECK(ocean.ColorAt(ocean.Size(), ocean.Size() + 1) ==
+              ocean.ColorAt(ocean.Size()),
+          "count beyond size matches plain cycling");
+
+    const std::vector<Color> five = bright.ColorsFor(5);
+    CHECK(five.size() == 5, "ColorsFor returns the requested count");
+    CHECK(five[4] == bright.ColorAt(4, 5), "ColorsFor agrees with ColorAt");
+}
+
+static void TestPaletteFromColormap() {
+    std::printf("ChartPalette::FromColormap:\n");
+
+    const ChartPalette viridis =
+        ChartPalette::FromColormap(HeatmapColormap::Viridis, 12);
+    CHECK(viridis.Size() == 12, "twelve colours sampled");
+    CHECK(viridis.isRamp, "a sequential colormap yields a ramp palette");
+    const std::vector<Color> anchors = ColormapAnchors(HeatmapColormap::Viridis);
+    CHECK(viridis.colors.front() == anchors.front(),
+          "sampling starts at the colormap's first anchor");
+    CHECK(viridis.colors.back() == anchors.back(),
+          "sampling ends at the colormap's last anchor");
+
+    const ChartPalette spectral =
+        ChartPalette::FromColormap(HeatmapColormap::Spectral, 4);
+    CHECK(!spectral.isRamp, "a diverging colormap is not flagged as a ramp");
+
+    const ChartPalette one =
+        ChartPalette::FromColormap(HeatmapColormap::Viridis, 1);
+    CHECK(one.Size() == 1, "a single-colour sample works");
+    CHECK(ChartPalette::FromColormap(HeatmapColormap::Viridis, 0).Empty(),
+          "zero-colour sample yields an empty palette");
+}
+
+// =============================================================================
 
 int main() {
     std::printf("=== ChartEngineTest ===\n\n");
@@ -876,6 +1095,13 @@ int main() {
     TestPCPCommonScale();
     TestPCPBrushes();
     TestPCPMissingAndHitTest();
+    TestSolveLabelBounds();
+    TestConfidenceEllipse();
+    TestHullExpandSmooth();
+    TestThemeRegistry();
+    TestPaletteCycling();
+    TestPaletteCountAware();
+    TestPaletteFromColormap();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",

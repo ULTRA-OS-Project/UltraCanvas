@@ -48,8 +48,13 @@
 // selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
 // Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
 // expensive files can be browsed with only the cheap previews switched on.
-// Version: 1.13.0
-// Last Modified: 2026-08-09
+// The context menu's "Open with >" lists the applications the OS registers
+// for the selected files (UltraCanvasFileAssociations, prewarmed in the
+// background), the host's own entries, and an "Other application…" picker;
+// the host can extend the context menu's Extras submenu via
+// extrasMenuProvider.
+// Version: 1.15.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -57,6 +62,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
@@ -378,6 +384,22 @@ namespace UltraCanvas {
         void SetShrinkThumbnailRows(bool enabled);
         bool GetShrinkThumbnailRows() const { return shrinkThumbnailRows; }
 
+        // "Flexible tile widths": the thumbnail grids derive their column
+        // count from the fixed tile edge, which leaves a strip on the right —
+        // too narrow for one more column — empty. That strip grows as the
+        // window widens, until the next column suddenly snaps in. When this
+        // is enabled (default), the leftover is distributed across the row
+        // instead (Explorer-style): every cell widens equally so the grid
+        // always fills the width, resizing the window stretches the cells
+        // smoothly until another column fits, and the extra room benefits the
+        // captions (long names wrap later). Only the cell grows — the image
+        // box inside it keeps the square Small / Medium / Big / Maximized
+        // edge, centered, so thumbnails keep their size while the window is
+        // dragged and the async decode cache is not churned by resizes. Off
+        // restores the fixed-width grid with the right-hand gap.
+        void SetFlexibleTileWidths(bool enabled);
+        bool GetFlexibleTileWidths() const { return flexibleTileWidths; }
+
         // Snapshot of what the thumbnail cache currently holds — lets an
         // application (or an A/B test) compare the footprint of compressed
         // vs. raw storage. rawBytes is what the same thumbnails would take
@@ -564,15 +586,35 @@ namespace UltraCanvas {
         // "tar.zst"); defaults to a .zip archive.
         void CompressSelection(const std::string& extension = "zip");
         void ExtractSelection();   // unpack selected archives alongside
+        // The context menu's Extract: the same overlay dialog as Compress,
+        // editing the destination folder name (default: the archive's name
+        // without its suffix). The icon can be dragged onto a folder to
+        // retarget where the archives unpack; several selected archives each
+        // unpack into their own subfolder of the named folder.
+        void OpenExtractDialog();
         static bool ClipboardHasContent();
 
         // "New >" document kinds (replaces the default seven).
         void SetNewDocumentTypes(const std::vector<FilerNewDocumentType>& types);
         void CreateNewDocument(const FilerNewDocumentType& type);
 
-        // "Open with >" applications.
+        // "Open with >" applications. The submenu lists the applications the
+        // OS has registered for the selected files (via
+        // UltraCanvasFileAssociations, default application first), then the
+        // entries added here, then "Other application…" (a file-dialog picker).
+        // The OS lookups are prewarmed on a background thread — the first
+        // widget triggers the association-database parse, every folder scan
+        // pre-resolves the folder's extensions — so opening the menu never
+        // parses anything.
         void AddOpenWithApp(const FilerOpenWithApp& app);
         void ClearOpenWithApps();
+        // Off = the pre-1.14 behaviour: only AddOpenWithApp entries.
+        void SetSystemOpenWithEnabled(bool enabled) { systemOpenWith = enabled; }
+        // When enabled, double-click / Enter on a file launches it with the
+        // OS default application — but only while no onFileActivated callback
+        // is installed (a host with its own activation handling, like
+        // UltraFiler's preview, decides there instead).
+        void SetActivateOpensWithDefaultApp(bool enabled) { activateOpensDefault = enabled; }
 
         // ===== CALLBACKS =====
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
@@ -615,6 +657,11 @@ namespace UltraCanvas {
         std::function<void(const std::vector<FilerEntry>&)> onAccess;
         std::function<void()> onSettings;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
+        // Host-provided tail of the context menu's Extras submenu, called
+        // every time the menu opens (so item flags can follow the host's
+        // state); non-empty results are appended behind a separator. The
+        // UltraFiler adds "Open prompt" and its Pin / Unpin submenus here.
+        std::function<std::vector<MenuItemData>()> extrasMenuProvider;
 
         // File-list (search result) display: while active, ScanFolder() builds
         // the entries from these explicit paths instead of listing currentPath.
@@ -648,6 +695,7 @@ namespace UltraCanvas {
         std::string openPathItemLabel = "Open Path";
         bool showSelectionInfo = true;
         bool shrinkThumbnailRows = true;
+        bool flexibleTileWidths = true;
         bool columnResizeEnabled = true;
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
@@ -690,6 +738,11 @@ namespace UltraCanvas {
 
         std::vector<FilerNewDocumentType> newDocumentTypes;
         std::vector<FilerOpenWithApp> openWithApps;
+        bool systemOpenWith = true;        // OS-registered apps in "Open with >"
+        bool activateOpensDefault = false; // activation fallback (see setter)
+        // "Open with > Other application…": file-dialog picker, then launches
+        // the selection with the chosen application.
+        void OpenSelectionWithChooser();
 
         // Computed per-entry geometry (content space, before scroll offset).
         struct ItemLayout {
@@ -1212,6 +1265,10 @@ namespace UltraCanvas {
         void DrawTreeMapCell(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         void DrawPlaceholderView(IRenderContext* ctx, const Rect2Di& bounds,
                                  const std::string& message);
+        // "Nothing to show" notice for an empty folder / file list: an
+        // attention icon above the message, vertically centered in the view.
+        void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
+                            const std::string& message);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
@@ -1262,10 +1319,21 @@ namespace UltraCanvas {
         // text still does not fit, the head of what is left is dropped and the
         // last line opens with "…", keeping the end of the name (extension)
         // visible. `outTruncated` reports whether anything was dropped.
+        // A text that fits its lines completely is re-broken at the smallest
+        // line width needing no extra line, so the lines come out near equal
+        // ("CoderBox" / "compiler.png" instead of the greedily filled
+        // "CoderBox compiler" / ".png") without changing the line count.
         std::vector<std::string> WrapText(IRenderContext* ctx,
                                           const std::string& text,
                                           int maxWidth, int maxLines,
                                           bool* outTruncated = nullptr) const;
+        // The greedy pass behind WrapText: fills each line up to `lineWidth`
+        // before breaking. Line count only depends on this pass, so the
+        // layout's CaptionLinesFor uses it directly, skipping the balancing.
+        std::vector<std::string> WrapTextGreedy(IRenderContext* ctx,
+                                                const std::string& text,
+                                                int lineWidth, int maxLines,
+                                                bool* outTruncated) const;
         // WrapText for an entry name; records whether it had to be shortened,
         // so the hover tooltip only pops for names that are really cut off.
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
@@ -1431,17 +1499,26 @@ namespace UltraCanvas {
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;
 
-        // ===== COMPRESS DIALOG (modal in-widget overlay) =====
+        // ===== COMPRESS / EXTRACT DIALOG (modal in-widget overlay) =====
         // Shown when a format is picked from the context menu's "Compress"
-        // submenu. It previews the archive's file-type icon, lets the name be
-        // edited, and shows the destination folder as smaller text. The icon can
-        // be dragged onto any folder in the view to retarget that destination —
-        // which is why this is an in-widget overlay rather than a separate modal
-        // window (a top-level modal would block the folders behind it).
+        // submenu, and (in extract mode) by the context menu's "Extract". It
+        // previews the archive's file-type icon, lets the name be edited —
+        // the archive's base name when compressing, the destination folder
+        // name when extracting — and shows the destination folder as smaller
+        // text. The icon can be dragged onto any folder in the view to
+        // retarget that destination — which is why this is an in-widget
+        // overlay rather than a separate modal window (a top-level modal
+        // would block the folders behind it).
         struct CompressDialogState {
             bool        active = false;
+            // Extract mode: the same panel unpacks the selected archives into
+            // a folder named by the editor instead of packing the selection.
+            bool        extractMode = false;
             std::string extension;      // archive extension, e.g. "zip", "tar.gz"
-            std::string formatLabel;    // human label, e.g. "TAR + gzip"
+                                        // (in extract mode: the source archive's
+                                        // suffix, driving the icon tag only)
+            std::string formatLabel;    // human label, e.g. "TAR + gzip"; in
+                                        // extract mode the archive name / count
             std::string nameBuffer;     // base name (no extension), kept in sync
                                         // with the editor below
             std::string destDir;        // folder the archive is written to
@@ -1487,6 +1564,10 @@ namespace UltraCanvas {
 
         void OpenCompressDialog(const std::string& extension,
                                 const std::string& formatLabel);
+        // Shared dialog chrome (name editor, OK/Cancel buttons, key filter);
+        // the state fields must be filled before this is called.
+        void OpenArchiveDialogChrome(const std::string& defaultName,
+                                     const std::string& okLabel);
         void LayoutCompressDialog(const Rect2Di& bounds);
         void PositionCompressNameInput();
         void DestroyCompressNameInput();

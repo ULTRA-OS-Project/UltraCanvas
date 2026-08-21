@@ -34,6 +34,33 @@ namespace UltraCanvas {
     std::string GetExecutableDir();
     std::string NormalizePath(const std::string& in);
 
+    // Is the file/folder hidden by the conventions of the platform it lives
+    // on? A leading dot hides on every platform; Windows additionally hides
+    // entries carrying the HIDDEN file attribute (the NTUSER.DAT hives and
+    // the "Anwendungsdaten"-style compatibility junctions of a profile
+    // folder), macOS entries carrying the UF_HIDDEN flag (~/Library).
+    // Costs one file-attribute lookup on Windows/macOS when the name alone
+    // does not already decide it; `path` must be the full path of the entry.
+    bool IsHiddenFileSystemEntry(const std::filesystem::path& path);
+
+    // The user's well-known folders, resolved through the platform:
+    // SHGetKnownFolderPath on Windows (follows folder redirection, e.g. a
+    // Documents folder moved into OneDrive), the fixed home subfolders on
+    // macOS, the xdg-user-dirs configuration on Linux (localized names,
+    // entries pointing at $HOME itself are disabled per the spec). Only
+    // folders that exist are returned, in the canonical Desktop, Documents,
+    // Downloads, Music, Pictures, Videos, Public, Templates order; paths are
+    // encoded like std::filesystem::path::string() on the platform.
+    enum class UserFolderKind {
+        Desktop, Documents, Downloads, Music, Pictures, Videos, Public, Templates
+    };
+    struct UserFolderInfo {
+        UserFolderKind kind;
+        std::string path;    // absolute path of an existing directory
+        std::string label;   // display name (the on-disk folder name)
+    };
+    std::vector<UserFolderInfo> GetWellKnownUserFolders();
+
     // UltraCanvas strings are UTF-8 everywhere. On Windows the narrow CRT /
     // ANSI Win32 APIs interpret narrow strings in the legacy system code page,
     // so characters outside it (Thai, CJK, ...) get mangled to '?'. These
@@ -48,6 +75,18 @@ namespace UltraCanvas {
 #endif
 
     void OpenURL(const std::string& url);
+
+    // Starts argv[0] with the given arguments, fully detached from the
+    // calling process: closing this application never takes the launched one
+    // down, and no zombie is left behind (POSIX: double fork + setsid;
+    // Windows: CreateProcess into a new detached process group).
+    // workingDirectory may be empty (the child inherits the current one).
+    // Returns false with a user-presentable outError when nothing could be
+    // started; a child that starts but fails to exec reports success — the
+    // detachment makes the exec result unobservable.
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               std::string& outError);
 
     std::vector<uint8_t> Base64Decode(const std::string& input);
     std::string Base64Encode(const std::vector<uint8_t>& in, bool wrap = true);

@@ -202,15 +202,28 @@ architecture.
 | Component | State |
 |---|---|
 | Public API (master registry) | Locked at v1.0.0 |
-| Core implementation | In progress (libcurl + OpenSSL) |
-| Linux / macOS / Windows backends | Planned |
+| Core implementation | Stage 2/3 on libcurl: sync + async HTTP, chunked streaming, SSE, WebSocket, sessions, TLS, DNS |
+| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket needs libcurl >= 7.86 with ws) |
 | ULTRA OS native backend | Planned |
-| Plugins (SMTP, MQTT, SSH, …) | Tracked separately |
+| Plugins (SMTP, MQTT, SSH, ...) | Tracked separately |
+
+Per-function status is reported by the **`UltraNetApiStatus`** tool, which
+probes every public entry point on the machine in front of you and marks it
+WORKING, IMPLEMENTED (present but unverifiable here), NOT IMPLEMENTED, or
+BROKEN. It brings its own HTTP, WebSocket, TCP/UDP and TLS peers, so it needs
+no internet access.
+
+```bash
+cmake -S . -B build -DULTRACANVAS_BUILD_NET_TESTS=ON
+cmake --build build --target UltraNetApiStatus
+./build/bin/UltraNetApiStatus                     # or --format=markdown / --format=json
+```
 
 ---
 
 ## Reference
 
+* **API status report** — `Docs/Modules/UltraNet/ApiStatus.md`.
 * **Master registry** — full function list, types, callbacks, plugin
   interfaces, reserved patterns, and security/performance rules.
 * **UltraAI integration** — `UltraAI/Docs/UltraNetIntegration.md`

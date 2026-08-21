@@ -323,7 +323,8 @@ private:
     
     // ===== INTERACTION STATE =====
     bool isDragging;
-    Point2Di dragStartPosition;
+    Point2Di dragStartPosition;   // kept for compatibility / debugging
+    size_t dragAnchorPosition = 0; // character index the drag-selection is anchored to
     
     // ===== PLACEHOLDER =====
     bool showPlaceholderAlways = false;  // Show placeholder even when focused (if text is empty)
@@ -578,7 +579,15 @@ private:
         return { std::min(selectionStart, selectionEnd),
                  std::max(selectionStart, selectionEnd) };
     }
-    
+
+    // Word-boundary navigation for Ctrl+Left/Ctrl+Right. Both take and return a
+    // byte offset into `text` (caretPosition is a byte offset), operating on
+    // UTF-8 codepoints internally so multi-byte glyphs are never split. A "word"
+    // char is alphanumeric or '_' (mirrors UltraCanvasTextArea); the caret lands
+    // at the start of the previous / next word.
+    size_t FindPrevWordBoundary(size_t bytePos) const;
+    size_t FindNextWordBoundary(size_t bytePos) const;
+
     void UpdateDisplayText();
     
     // Placeholder clipboard functions - would need platform-specific implementation

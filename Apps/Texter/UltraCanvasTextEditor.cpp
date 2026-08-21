@@ -1041,7 +1041,7 @@ namespace {
 
         tabContainer->SetTabContextMenu(tabContextMenu);
 
-        tabContainer->onTabContextMenu = [this](int tabIndex) {
+        tabContainer->onTabContextMenu = [this](int tabIndex, int windowX, int windowY) {
             tabContextMenu->Clear();
 
             // 1. Tab title — disabled display item, font reduced by 20% (9.6pt vs default 12pt)
@@ -1098,6 +1098,11 @@ namespace {
             tabContextMenu->AddItem(MenuItemData::Action("Close All Tabs", [this]() {
                 OnFileCloseAll();
             }));
+
+            UltraCanvas::PopupElementSettings settings;
+            settings.closeByEscapeKey = true;
+            settings.closeByClickOutside = true;
+            tabContextMenu->OpenMenu(UltraCanvas::Point2Di(windowX, windowY), *window, settings);
         };
     }
 

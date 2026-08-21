@@ -3,8 +3,9 @@
 // the standard Kanban analytics chart. Binds directly to a KanbanDataSource
 // (deriving daily stage counts from its move history) or takes manual series,
 // and draws the classic Lead Time / Cycle Time / WIP span annotations.
-// Version: 1.0.0
-// Last Modified: 2026-07-30
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasCumulativeFlowChart.h"
@@ -100,6 +101,7 @@ UltraCanvasCumulativeFlowChartElement::UltraCanvasCumulativeFlowChartElement(
     showBackground = false;
     showGrid = false;
     showAxes = false;
+    ApplyLegendStyle();
 }
 
 void UltraCanvasCumulativeFlowChartElement::SetStages(
@@ -223,11 +225,38 @@ void UltraCanvasCumulativeFlowChartElement::ClearAnnotations() {
 void UltraCanvasCumulativeFlowChartElement::SetStyle(
         const CumulativeFlowChartStyle& newStyle) {
     style = newStyle;
+    ApplyLegendStyle();
     RequestRedraw();
 }
 
 void UltraCanvasCumulativeFlowChartElement::StyleChanged() {
+    ApplyLegendStyle();
     RequestRedraw();
+}
+
+// Map the chart style's legend fields (panel/border/text colors, font size,
+// dot radius — including the per-preset values of CreateModern / CreateOlive /
+// CreateDark) onto the shared ChartLegendStyle.
+void UltraCanvasCumulativeFlowChartElement::ApplyLegendStyle() {
+    ChartLegendStyle ls;
+    if (!style.fontFamily.empty()) ls.fontFamily = style.fontFamily;
+    ls.fontSize = style.legendFontSize;
+    ls.textColor = style.legendTextColor;
+    ls.titleColor = style.legendTextColor;
+    ls.drawBackground = true;
+    ls.backgroundColor = style.legendPanelColor;
+    ls.drawBorder = true;
+    ls.borderColor = style.legendBorderColor;
+    ls.cornerRadius = 4.0f;                     // Old rounded panel radius
+    // Old look: a colored dot per stage.
+    ls.swatchWidth = style.legendDotRadius * 2.0f;
+    ls.swatchHeight = style.legendDotRadius * 2.0f;
+    ls.drawSwatchBorder = false;
+    legend.SetStyle(ls);
+    // CFDLegendPosition mapping: Right -> RightCenter (the closest shared
+    // position to the old right-hand side panel), Hidden -> invisible.
+    legend.SetPosition(ChartLegendPosition::RightCenter);
+    legend.SetVisible(style.legendPosition == CFDLegendPosition::Right);
 }
 
 // =============================================================================
@@ -313,12 +342,23 @@ void UltraCanvasCumulativeFlowChartElement::ComputePlot(IRenderContext* ctx) {
     double top = local.y + style.paddingTop;
     if (!chartTitle.empty()) top += 26.0;
 
-    double legendW = style.legendPosition == CFDLegendPosition::Right
-                             ? style.legendWidth + 10.0 : 0.0;
-    plotRect = Rect2Dd(local.x + style.paddingLeft, top,
-                       local.width - style.paddingLeft - style.paddingRight -
-                               legendW,
-                       local.y + local.height - style.paddingBottom - top);
+    chartArea = Rect2Dd(local.x + style.paddingLeft, top,
+                        local.width - style.paddingLeft - style.paddingRight,
+                        local.y + local.height - style.paddingBottom - top);
+
+    // Shared legend: one entry per stage (stage name, stage color), sized by
+    // its own measurement. Replaces the old fixed-width right panel.
+    std::vector<ChartLegendEntry> entries;
+    entries.reserve(stages.size());
+    for (size_t k = 0; k < stages.size(); ++k) {
+        entries.emplace_back(stages[k].name, StageColor(k),
+                             LegendSwatch::Circle);
+    }
+    legend.SetEntries(entries);
+    ctx->PushState();
+    legend.Measure(ctx, chartArea);
+    ctx->PopState();
+    plotRect = legend.RemainingArea(chartArea);
 
     periodCount = PeriodCount();
     double maxTotal = 0.0;
@@ -391,7 +431,7 @@ void UltraCanvasCumulativeFlowChartElement::RenderChart(IRenderContext* ctx) {
     ctx->PopState();
 
     RenderAnnotations(ctx);
-    if (style.legendPosition == CFDLegendPosition::Right) RenderLegend(ctx);
+    legend.Render(ctx, chartArea);
 }
 
 void UltraCanvasCumulativeFlowChartElement::RenderGridAndAxes(IRenderContext* ctx) {
@@ -487,41 +527,6 @@ void UltraCanvasCumulativeFlowChartElement::RenderMarkers(IRenderContext* ctx) {
             ctx->DrawFilledCircle(center, style.markerRadius,
                                   style.markerFill, edge, 1.4f);
         }
-    }
-}
-
-void UltraCanvasCumulativeFlowChartElement::RenderLegend(IRenderContext* ctx) {
-    Rect2Df local = GetLocalBounds();
-    Rect2Dd panel(local.x + local.width - style.legendWidth - 4,
-                  plotRect.y, style.legendWidth,
-                  plotRect.height);
-    ctx->SetFillPaint(style.legendPanelColor);
-    ctx->FillRoundedRectangle(panel, 4.0);
-    ctx->SetStrokePaint(style.legendBorderColor);
-    ctx->SetStrokeWidth(1.0f);
-    ctx->DrawRoundedRectangle(panel, 4.0);
-
-    // Entries in stage order, evenly distributed vertically.
-    size_t n = stages.size();
-    if (n == 0) return;
-    ctx->SetFontSize(style.legendFontSize);
-    double slot = panel.height / static_cast<double>(n);
-    double dotX = panel.x + 22;
-
-    // Guide line through the dots, as in the reference layout.
-    ctx->SetStrokePaint(style.legendBorderColor);
-    ctx->DrawLine(Point2Dd(dotX, panel.y + slot / 2.0),
-                  Point2Dd(dotX, panel.y + panel.height - slot / 2.0));
-
-    for (size_t k = 0; k < n; ++k) {
-        double cy = panel.y + slot * (k + 0.5);
-        ctx->DrawFilledCircle(Point2Dd(dotX, cy), style.legendDotRadius,
-                              StageColor(k),
-                              StageColor(k).Darken(0.2f), 1.0f);
-        ctx->SetTextPaint(style.legendTextColor);
-        Size2Di sz = ctx->GetTextLineDimensions(stages[k].name);
-        ctx->DrawText(stages[k].name,
-                      Point2Dd(dotX + 16, cy - sz.height / 2.0));
     }
 }
 

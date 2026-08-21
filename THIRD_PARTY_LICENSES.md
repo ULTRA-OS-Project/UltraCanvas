@@ -6,6 +6,20 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## libsodium (cryptographic backend)
+
+- **Used by:** UltraCrypt (`UltraCanvas/core/UltraCrypt/`), and through it the
+  UCD document encryption envelope and every other consumer of framework
+  cryptography.
+- **Upstream:** https://github.com/jedisct1/libsodium
+- **Linked, not vendored:** the system package is used
+  (`libsodium-dev` / `brew install libsodium` /
+  `mingw-w64-x86_64-libsodium`). No libsodium source is carried in this
+  repository, and no libsodium type appears in any UltraCanvas public header.
+- **License:** ISC License — Copyright (c) 2013-2025 Frank Denis.
+
+---
+
 ## MicroTeX (LaTeX math engine)
 
 - **Used by:** the LaTeX math plugin (`ULTRACANVAS_PLUGIN_LATEX`).
@@ -44,6 +58,23 @@ The engine is built in **Uni-math** mode with glyphs rendered as vector paths
 
 The header is vendored verbatim from the upstream v3.12.0 release with no
 local modifications.
+
+---
+
+## llama.cpp (+ ggml)
+
+- **Used by:** the UltraAI local inference adapter
+  (`ULTRAAI_ADAPTER_LLAMACPP`, off by default).
+- **Website:** https://github.com/ggml-org/llama.cpp
+- **Upstream:** fetched at configure time via CMake FetchContent, pinned to
+  the commit recorded in `ULTRAAI_LLAMACPP_GIT_TAG`
+  (`UltraAI/adapters/llamacpp/CMakeLists.txt`); not vendored in this
+  repository.
+- **License:** MIT License — Copyright (c) 2023-2026 The ggml authors.
+- **Full text:** `LICENSE` in the fetched source tree.
+
+Built as static libraries and linked into `UltraAI_AdapterLlama` only when
+the adapter option is enabled; no sources are modified.
 
 ---
 

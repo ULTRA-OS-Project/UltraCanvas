@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.4.3
-// Last Modified: 2026-08-08
+// Version: 1.5.0
+// Last Modified: 2026-08-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,8 +72,24 @@ namespace UltraCanvas {
         bool hasDropdown = false;                       // Show dropdown chevron next to item
         std::vector<MenuItemData> dropdownItems;        // Items shown when dropdown is opened
         std::function<std::vector<MenuItemData>()> dropdownItemsProvider; // Lazy provider
+        // Cheap "does this dropdown have anything in it?" probe for a lazily
+        // filled dropdown. When it answers false the item shows no chevron and
+        // reserves no dropdown click area — an empty list gets no control at
+        // all. Asked once per item and cached (see RefreshDropdownAvailability),
+        // so it must be much cheaper than dropdownItemsProvider: it only has to
+        // find the *first* entry, not build them all.
+        std::function<bool()> dropdownAvailableProvider;
+        // Sort the dropdown entries by label (case-insensitive) before showing
+        // them. Off by default: a hand-written menu is usually already in the
+        // order its author meant. Lists gathered from elsewhere — the folders
+        // of a directory, the mounted drives — set it.
+        bool sortDropdownItems = false;
         std::function<void()> onClick;                  // Per-item click callback
         void* userData = nullptr;                       // Arbitrary user data
+
+        // Cached answer of dropdownAvailableProvider: -1 unknown, 0 empty,
+        // 1 has entries. Mutable because layout only ever reads an item.
+        mutable int cachedDropdownAvailability = -1;
 
         BreadcrumbItem() = default;
         BreadcrumbItem(const std::string& itemText) : text(itemText) {}
@@ -128,6 +144,22 @@ namespace UltraCanvas {
         Color itemHoverBackgroundColor = Color(225, 235, 245, 255);
         Color itemPressedBackgroundColor = Color(200, 220, 240, 255);
         Color currentItemBackgroundColor = Color(235, 240, 245, 255);
+        // Hover / press feedback for the *current* item. Transparent (the
+        // default) means "derive it from currentItemBackgroundColor" by tinting
+        // that colour towards the opposite end of the luminance scale. The
+        // generic hover colours are cut for the muted resting background, so
+        // handing them the current item — which usually carries a saturated
+        // fill and a white label — used to leave the label unreadable.
+        Color currentItemHoverBackgroundColor = Colors::Transparent;
+        Color currentItemPressedBackgroundColor = Colors::Transparent;
+        // Readability guard. When an item's label ends up on an opaque
+        // background it cannot be read against, the label falls back to black
+        // or white — whichever the background allows. The threshold is a
+        // contrast ratio (WCAG, 1..21); 0 switches the guard off. It sits well
+        // below the WCAG AA text minimum (4.5) on purpose: it is there to catch
+        // colour pairs that are effectively invisible, not to overrule a
+        // deliberate low-contrast palette.
+        float minTextContrastRatio = 2.2f;
 
         // Separator
         BreadcrumbSeparatorStyle separatorStyle = BreadcrumbSeparatorStyle::Chevron;
@@ -158,6 +190,14 @@ namespace UltraCanvas {
         int iconTextSpacing = 4;
         int dropdownChevronSize = 6;
         int dropdownChevronSpacing = 4;
+        // The chevron glyph is a 6px mark — far too small to aim at. What
+        // actually opens the dropdown is a full-height zone at the trailing end
+        // of the item: the chevron, the gap in front of it and the item's
+        // trailing padding, widened to at least this many pixels (and, in the
+        // Arrow / Parallelogram styles, extended over the tip drawn past the
+        // segment's right edge, so the whole arrow head is clickable).
+        // The zone never eats more than the trailing half of an item.
+        int dropdownHitAreaMinWidth = 24;
         bool underlineOnHover = false;          // For Plain style only
         bool underlineCurrent = false;
 
@@ -199,8 +239,10 @@ namespace UltraCanvas {
 
     // Every dropdown below - the drives under "Computer" as much as the
     // sub-folders under a path segment - is filled when it opens, so building
-    // the strip touches no filesystem at all and can be redone on each
-    // navigation without delaying it.
+    // the strip can be redone on each navigation without delaying it. All a
+    // segment asks the filesystem while it is laid out is whether it holds a
+    // first sub-folder at all: a segment with nothing under it shows no
+    // dropdown chevron rather than opening an empty menu.
     struct FolderBreadcrumbOptions {
         // Leading node listing every drive / mounted volume in its dropdown.
         bool showComputerItem = true;
@@ -283,6 +325,14 @@ namespace UltraCanvas {
         // open menu is the overflow menu.
         int GetOpenDropdownItemIndex() const;
         void CloseDropdown();
+        // Does this item currently show a dropdown control? False for an item
+        // whose list is known to be empty — no chevron, no click area, nothing
+        // to open (see BreadcrumbItem::dropdownAvailableProvider).
+        bool ItemShowsDropdown(const BreadcrumbItem& item) const;
+        // Forgets every cached dropdownAvailableProvider answer and relays out,
+        // so chevrons appear/disappear after the thing they list has changed
+        // (a folder gained its first sub-folder, a drive was mounted).
+        void RefreshDropdownAvailability();
 
         // ===== CURRENT ITEM (the "leaf" / active position) =====
         // By default the current item is the last one. SetCurrentIndex lets a
@@ -325,7 +375,8 @@ namespace UltraCanvas {
             Rect2Di indicatorRect;        // Level-indicator badge (empty if disabled)
             Rect2Di iconRect;
             Rect2Di textRect;
-            Rect2Di dropdownRect;         // Empty if no dropdown
+            Rect2Di dropdownRect;         // Chevron glyph box (empty if no dropdown)
+            Rect2Di dropdownHitRect;      // Full-height zone that opens the dropdown
             std::string displayText;      // Original item text (kept for overflow menu / debugging)
             Size2Dd textSize;             // Cached logical size from textLayout
             std::unique_ptr<ITextLayout> textLayout;
@@ -386,6 +437,12 @@ namespace UltraCanvas {
         int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Dd& textSize,
                                  bool includeDropdown) const;
         int MeasureSeparator(IRenderContext* ctx);
+        // Full-height click zone at the trailing end of a slot, covering the
+        // chevron and — in the segment styles — the arrow tip past its right
+        // edge. `tipExtra` is that overhang, 0 for every other item style;
+        // `maxRight` is the clipped right edge of the content area.
+        Rect2Di ComputeDropdownHitRect(const Rect2Di& slotRect, const Rect2Di& chevronRect,
+                                       int tipExtra, int maxRight) const;
 
         // Hit testing (returns slot index or -1).
         int HitTest(const Point2Di& localPoint, bool& onDropdown) const;

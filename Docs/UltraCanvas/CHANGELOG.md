@@ -1,3 +1,487 @@
+#### 2026-08-20 *0.3.53*
+- **Chart engine: themes and palettes.** The engine grew the theming home the
+  proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles
+  the furniture colours (background, plot area, grid, axes, title, legend)
+  with a `ChartPalette` of series colours, applied with
+  `SetTheme(theme)` / `SetTheme("name")` / `SetPalette(palette)` and — for
+  by-name creators — `SetProperty("theme", "Dark")`. Fourteen built-in
+  themes, their palettes lifted from the definitions the pre-engine charts
+  each carried privately (Light/Bright, Dark, Corporate, Vibrant, Pastel,
+  Colorblind, Material, Classic, Tableau, and the Ocean/Sunset/Forest/Slate/
+  Monochrome ramps). Palettes answer `ColorAt(index)` (cycling, with wrapped
+  cycles re-tinted so long runs never repeat exactly) and
+  `ColorAt(index, count)` (ramps spread across their run when the element
+  count is known); `ChartPalette::FromColormap(Viridis, n)` samples any
+  `UltraCanvasColormap` map into a palette of the requested size. A theme
+  change is repaint-only — no layout, no label re-solve — with an
+  `OnThemeChanged()` hook for content that caches theme colours (legend
+  entries). Pastel carries soft warm-grey furniture of its own, and is the
+  Chart Engine demo's default look; the demo gained a Theme row and its bar
+  edges follow the bar colour (darkened) instead of a fixed near-black.
+  Model-layer tests cover the registry, cycling, count-aware selection and
+  colormap sampling.
+- **Chart engine: the legend is the shared ChartLegend component.** The
+  engine's private right-side-only legend is gone; `SetShowLegend` /
+  `SetLegendEntries` now drive the shared component
+  (`UltraCanvasChartLegend`), which brings the full option set:
+  `SetLegendPosition` with 12 outside placements (Top/Bottom/Left/Right ×
+  Start/Center/End, each reserving its edge in the layout negotiation) plus
+  4 inset corners that float over the plot (reserving nothing, but riding
+  the label plan as an obstacle), `SetLegendOrientation`
+  (Auto/Horizontal/Vertical with row wrapping), `SetLegendTitle`, and
+  `Legend()` for value text, interval entries, overflow capping and label
+  formatting. The shared component gained the engine's paint-mirroring
+  swatches (Outline, Hatched, Image, and a real Gradient ramp), so its
+  swatch vocabulary now spans Square, Circle, Ring, Line, DashedLine,
+  Marker, Glyph, Gradient, Outline, Hatched and Image — and the engine
+  legend follows the active chart theme. This also removes the duplicate
+  `ChartLegendEntry` type the engine declared in parallel with the shared
+  one. New `SetCustomArea(size, draw)` reserves a host-drawn panel below
+  the entries for keys richer than any swatch (an annotated
+  confidence-ellipse diagram, a bubble-size scale); the demo's Inset mode
+  keys the chart's limiter reference lines — a key describes marks the
+  chart actually draws. The engine legend is interactive: hover highlights
+  an entry, a click toggles it (dimmed) and notifies the chart via
+  `OnLegendEntryToggled` — the demo hides the series, stacks re-solving
+  without it. Tall vertical legends now wrap into further columns instead
+  of silently clipping (a `ChartLegend` fix that also benefits the
+  diagrams already using the component). The component grew the engine
+  proposal's continuous modes — `SetMode(ColorBar)` draws a colormap ramp
+  over a value range with tick labels (optionally quantized into bands),
+  `SetMode(SizeLegend)` draws sample circles keying a bubble-size scale —
+  and the legacy charts' private legends (polar, circular progress,
+  funnel, pyramid, Mekko, dumbbell, cumulative flow, population, nested
+  area, arc diagram, and the contour surfaces' colour bars) were migrated
+  onto the shared component, retiring their incompatible position enums'
+  private implementations while keeping every public API working.
+- **Chart engine: the highlight layer (proposal §8.2).** `AddHighlight` /
+  `ClearHighlights` bring group washes to slot 200 (under the grid) and
+  overlays to slot 700: explicit rectangles/ellipses in value space, value
+  bands, and the computed shapes — **confidence ellipses** (covariance eigen
+  decomposition at 50%/95% with a mean marker, the group-of-dots scatter
+  convention), padded convex hulls, Chaikin-smoothed blobs and point halos.
+  Highlight captions ride the label plan as `HighlightLabel`. The geometry
+  (`ComputeConfidenceEllipse`, hull, expand, smooth) is UI-free in
+  `Engine/UltraCanvasChartHighlights` and unit-tested. The demo gained a
+  Highlight row (Band / Ellipse / Blob); the ellipse style brings the
+  legend's 50%/95% ellipse key with it, since a key describes marks the
+  chart actually draws.
+- **Chart engine: value labels survive the axis maximum.** The label solver
+  was clamped to the plot area, so a bar reaching the axis limit had its
+  value label pushed down onto the bar. The solver's bounds now also include
+  the margins the chart content reserved for itself in `MeasureContent`
+  (`SolveLabelBounds`) - the spill band above the bars (or right of them
+  under the horizontal projection) - so the label sits just above the plot
+  edge instead. Axis bands, the title band and the legend margin remain out
+  of bounds.
+
+- **FilerWidget / UltraFiler: the context menu's Extract got the same dialog
+  as Compress.** Extract used to unpack immediately with no way to pick the
+  destination; it now opens the compress dialog's panel in extract mode: the
+  archive's file-type icon with its name (or "N archives") beneath, an
+  editable destination **folder** name — suggested from the archive's name
+  without its suffix, so `sources.tar.gz` offers `sources` — and the
+  location line. The icon can be dragged onto any folder in the view to
+  retarget the destination, Enter / Extract unpacks, Esc / Cancel dismisses,
+  and an existing folder name gets the usual " (2)" suffix instead of being
+  written into. Several selected archives each unpack into their own
+  subfolder of the named folder so their contents cannot collide. Unpacking
+  still runs through the VirtualFS bridge (`UCVFSBridge::ExtractArchive`);
+  the dialog-free `ExtractSelection()` remains for programmatic use, and the
+  new `OpenExtractDialog()` is public for hosts.
+- **Audio player: a finished track no longer restarts itself.** When a
+  non-looping source played to its end, the output device kept pulling frames
+  and the playback cursor had been reset to 0 — so the track audibly started
+  over from the beginning while the player reported *Stopped* and the
+  transport showed the Play icon. This is what made the UltraFiler preview
+  with auto-play look like "it plays but never shows the Pause icon": the
+  first pass played with the correct Pause icon, then looped forever in the
+  stopped state. `UltraCanvasAudioPlayer` now feeds silence after end of
+  stream until the next transport call, `onEnded` fires exactly once, and
+  `UltraCanvasAudioPlayerElement` stops the device when it learns the track
+  ended. `Play()` after the end still restarts from 0:00.
+- **Audio player element: UI work moved off the audio thread.** The backend
+  delivers position updates, end-of-stream and the resulting state change on
+  its audio thread, and the element used to update its label, sliders and
+  icons directly from those callbacks — racing the UI thread's layout,
+  text-measurement and dirty-rectangle bookkeeping (reproducibly crashing in
+  pango under load, and losing repaints such as the play/pause icon refresh).
+  All player callbacks are now marshalled to the UI thread
+  (`PostToUIThread`), the transport icons also re-sync from the UI-thread
+  position timer, and the element disconnects its callbacks on destruction.
+- **Audio player element: narrow hosts no longer clip the volume slider.**
+  All controls had fixed widths, so in a narrow host (the UltraFiler preview
+  pane goes down to ~260px) the flex row overflowed: the seek bar collapsed
+  to zero and the volume slider ran off the pane's right edge (the bug
+  report's screenshot). The row is now responsive — when the width cannot
+  fit everything beside a usable seek bar it hides the volume slider first,
+  then the time label; the mute button stays so the sound can still be
+  silenced, and everything returns as soon as the element is wide enough.
+
+#### 2026-08-17 *0.3.52*
+- **FilerWidget: balanced line breaks for wrapped tile captions.** A name that
+  needs two or three caption lines was broken greedily — the first line took
+  everything that fit and the rest became a stub, "CoderBox compiler" /
+  ".png". A name that fits its lines completely is now re-broken at the
+  smallest line width that still needs no extra line, so the lines come out
+  near equal: "CoderBox" / "compiler.png", "Diagram" / "Wordcloud.png". The
+  line count — and with it the caption band and tile height — never changes,
+  and names too long even for `captionMaxLines` keep the greedy break with the
+  leading-"…" last line, whose every line is full anyway. Applies to the
+  thumbnail grids and the treemap in the FilerWidget and everything built on
+  it (UltraFiler, file dialogs).
+- **UltraFiler: Pin / Unpin with state flags in the context menus, and
+  "Open prompt" is back.** The filer context menus' Extras submenu ends with
+  an app-provided block (the FilerWidget's new `extrasMenuProvider` hook):
+  **Open prompt** — which had lost its home when the menu bar was dropped —
+  then **Pin** and **Unpin** submenus, each with "To Treeview" /
+  "To Favorites" entries acting on the current selection (or the shown folder
+  while nothing is selected). The entries are check items whose flag shows
+  whether the selection is pinned there right now — Pin is enabled while
+  something is still unpinned, Unpin while something is pinned. The folder
+  tree's context menu gets the same **Pin** submenu between the file commands
+  and Unpin; there the "To Treeview" / "To Favorites" flags directly toggle
+  the folder's pin in the tree's Pinned section / the Favorites view's
+  Folders tab. All menus build their items when they open, so the flags
+  always reflect the current pin state.
+
+#### 2026-08-17 *0.3.51*
+- **FilerWidget / UltraFiler: empty displays say so.** A folder with no
+  content used to show only a small "(empty folder)" line; it now draws a
+  vertically centered notice — an attention icon (a vector-drawn warning
+  triangle, no icon assets involved) with **"Folder is empty!"** beneath it.
+  An empty file-list display shows **"No entries"** the same way, which is
+  what the UltraFiler's History and Favorites tabs show before anything was
+  recorded or pinned (and a search without matches). A widget that never had
+  a folder set keeps the plain "(no folder)" text.
+
+#### 2026-08-13 *0.3.50*
+- **PDFView / UltraFiler preview: five fixes to the PDF page view and its
+  thumbnail strip ("page inventory").** **Stale thumbnails** — opening another
+  PDF kept showing the previous file's thumbnails, because the thumbnail cache
+  deliberately survives zoom changes and the document switch reused that same
+  invalidation. `SetDocument` and every page-mutating operation
+  (delete/move/insert/merge/replace-text/redact) now drop the thumbnail cache
+  too (`InvalidateAllCaches()`), while zoom/resize keep it as before.
+  **Single-page documents show no strip** — a one-page PDF needs no page
+  inventory, so the strip only appears for documents with more than one page.
+  **Wheel-scrolling reads through the document, with hard limits** — before,
+  the view scrolled the one page endlessly into empty space and never
+  advanced. Scrolling now stops once the page edge sits a page-margin inside
+  the viewport; from that resting point the next wheel step continues at the
+  top of the next page (and up past the top edge, at the bottom of the
+  previous page), while on the last/first page the margin is the end of the
+  line. Pages open at their top instead of vertically centered, the strip
+  auto-scrolls so the current page's thumbnail stays visible, and its own
+  scrolling is clamped to its content. **Page area at least 3× the strip** —
+  the strip's effective width is capped at 1/4 of the view, so a narrow
+  preview pane can no longer end up mostly inventory with a tiny page.
+  **"Over the page" numbering in the viewer** — the MediaViewer (UltraFiler's
+  preview pane) now uses `ThumbnailNumberStyle::Overlay`, the large translucent
+  number over the thumbnail page, instead of the caption beneath; slot heights
+  no longer reserve the caption row in that style.
+
+#### 2026-08-12 *0.3.49*
+- **FilerWidget / UltraFiler: hidden files are now the platform's notion, not
+  just dot names.** "Hidden" was tested as `name[0] == '.'` everywhere, a test
+  that never fires on Windows — so a profile folder listed the `NTUSER.DAT`
+  registry hives, `AppData` and the localized hidden compatibility junctions
+  (`Anwendungsdaten`, `Lokale Einstellungen`, `Startmenü`, …) that Explorer
+  never shows, and on macOS `~/Library` was visible. The widget's scans now
+  read the Windows `FILE_ATTRIBUTE_HIDDEN` attribute and the macOS `UF_HIDDEN`
+  file flag inside the one metadata call each entry already paid for (on
+  Windows via `GetFileAttributesExW`, which returns attributes, size and times
+  together — replacing `::stat`, which cannot see attribute bits), so scan
+  cost is unchanged. The UltraFiler's folder tree and recursive search use the
+  same test through the new `UltraCanvas::IsHiddenFileSystemEntry(path)`
+  (`UltraCanvasUtils.h`).
+- **UltraFiler: the Home tree section is curated like the Explorer / Finder
+  sidebars.** Expanding Home now leads with the user's well-known folders —
+  Desktop, Documents, Downloads, Music, Pictures, Videos (plus Public /
+  Templates where the OS defines them) — each with its own icon, resolved
+  through the new `UltraCanvas::GetWellKnownUserFolders()`:
+  `SHGetKnownFolderPath` on Windows (follows folder redirection, e.g. a
+  Documents folder moved into OneDrive), the fixed home subfolders on macOS,
+  and `xdg-user-dirs` on Linux (localized folder names; entries pointing at
+  `$HOME` are disabled per the spec). The remaining visible home folders
+  follow alphabetically, with a well-known folder that physically sits in the
+  home folder not listed twice; the Home node itself now wears the home icon.
+- **Changelog: resolved the duplicate *0.3.44* version number** left by the
+  Breadcrumb merge — its entry (the newer of the two) is now *0.3.48*, so the
+  first-line version the build derives moves forward again instead of
+  regressing below the *0.3.47* beneath it.
+
+#### 2026-08-11 *0.3.48*
+- **Breadcrumb**: four fixes to the per-item dropdowns, all visible in the
+  Filer's and the Media Viewer's path strip. **An empty list gets no
+  control** — a folder with no sub-folders now shows no dropdown chevron
+  and reserves no click area instead of opening a menu that only says
+  "(no sub-folders)". Lazily filled dropdowns answer the question through
+  the new `BreadcrumbItem::dropdownAvailableProvider`, a cheap "is there a
+  first entry?" probe cached per item
+  (`UltraCanvasBreadcrumb::RefreshDropdownAvailability()` clears it);
+  `hasDropdown` with nothing behind it no longer draws a chevron either.
+  **Hover no longer hides the label**: the current item keeps its emphasis
+  text colour through hover and press, and its feedback background is
+  derived from `currentItemBackgroundColor` (tinted towards the other end
+  of the luminance scale) instead of the generic hover colour, which turned
+  the Filer's blue current segment pale while its label stayed white. New
+  `currentItemHoverBackgroundColor` / `currentItemPressedBackgroundColor`
+  override the derived colours, and `minTextContrastRatio` (2.2 by default,
+  0 disables) redraws a label black or white when it cannot be read against
+  its own opaque background. The `Steps` preset's hover/press label colours
+  and the `Parallelogram` preset's current-item label were unreadable on
+  their own backgrounds and were fixed at the source. **Dropdown entries
+  sort alphabetically** (case-insensitive, by the displayed name — sorting
+  full paths put every capitalised folder ahead of every lower-case one),
+  opt-in per item via `BreadcrumbItem::sortDropdownItems`. **The dropdown
+  click area is a full-height zone**, at least
+  `BreadcrumbStyle::dropdownHitAreaMinWidth` (24px) wide, covering the
+  chevron, the gap in front of it and the item's trailing padding — and, in
+  the `Arrow` / `Parallelogram` styles, extending over the tip drawn past
+  the segment's right edge, so the whole arrow head opens the menu. It
+  never takes more than the trailing half of an item, so the label keeps a
+  clickable area of its own.
+#### 2026-08-11 *0.3.47*
+- **macOS: a classic USB mouse wheel is responsive again.** `UCEvent::wheelDelta`
+  is an integer notch count — the X11 backend emits ±1 per button-4/5 press, the
+  Win32 one divides `WM_MOUSEWHEEL` by `WHEEL_DELTA` and guards the result
+  against rounding to zero — but the macOS backend assigned
+  `NSEvent.scrollingDeltaY` straight into it. macOS applies scroll acceleration
+  to a classic wheel and reports it in *lines*, so a single slow notch arrives
+  as a fraction (~0.1) and truncated to 0, while a trackpad or Magic Mouse
+  reports *points*, tens per gesture, and always survived the truncation. Worse
+  than losing the notch: a zero delta is not "no scroll" to widgets, most of
+  which read `wheelDelta > 0 ? up : down`, so it landed in the down branch — in
+  the 3D scatter / contour charts the wheel zoomed *out* whichever way it was
+  turned. Wheel events now round to a notch, never report a real notch as zero,
+  and are not delivered at all when there is no vertical movement (which also
+  stops AppKit's zero-delta gesture / momentum phase events, and horizontal
+  swipes, from registering as scrolls down). Trackpad scroll distances are
+  unchanged.
+
+#### 2026-08-11 *0.3.46*
+- **macOS: double-click now works at all.** The Cocoa event conversion only ever
+  produced `MouseDown` / `MouseUp`, so `UCEventType::MouseDoubleClick` was never
+  raised on macOS and every handler waiting for it was dead code — double-clicking
+  a folder or file in the Filer did nothing, and the same held for each of the
+  ~37 double-click handlers across the framework. A mouse-down now consults
+  AppKit's `NSEvent.clickCount` (which already honours the double-click interval
+  from System Settings) and the doubled press is delivered as `MouseDoubleClick`
+  *instead of* `MouseDown`, matching the X11 and Win32 backends — the first click
+  selects, the second activates — with pairs counted (2, 4, 6 …) so a triple
+  click's third press is an ordinary `MouseDown` there too. The unused
+  hand-rolled click-tracking state (`MouseClickInfo`, `IsDoubleClick`,
+  `UpdateLastClick` — declared, never defined or called) is gone with it.
+
+#### 2026-08-11 *0.3.45*
+- **macOS: frames rendered without a Cocoa event now reach the screen.** The
+  content view is layer-backed, so `setNeedsDisplay:` only queued a layer
+  display: `drawRect:` (the blit of the Cairo surface) and the CoreAnimation
+  commit that puts it on screen both happened at the end of *AppKit's* event
+  cycle, which this framework does not run — its loop blocks in
+  `CFRunLoopRunInMode(..., returnAfterSourceHandled: true)` and returns as soon
+  as the cross-thread wake-up source is handled, before the run-loop observers
+  AppKit relies on fire. Any repaint not provoked by an input event therefore
+  stayed invisible until the next mouse move: opening a folder in one of the
+  Filer's thumbnail views showed no thumbnails at all until the cursor was
+  moved, and the same applied to every other `PostToUIThread` result (video
+  poster frames, network completions) and to timer-driven repaints.
+  `InvalidateWindowNative()` now draws the view immediately and
+  `UltraCanvasMacOSApplication::RunInEventLoop()` flushes the CoreAnimation
+  transaction once per main-loop iteration, outside any AppKit display
+  callback. Linux and Windows were unaffected — their surfaces present on
+  flush.
+
+#### 2026-08-11 *0.3.44*
+- **UltraCanvasAlbum** *(1.7.0)*: video tiles now make their own covers.
+  A `Video` item whose `thumbnailPath` is empty — or points at an image that
+  does not decode — has one representative frame extracted from its clip on a
+  background worker (`AlbumConfig::videoPosterFrames`, on by default, with
+  `videoPosterMaxSize` / `videoPosterTimeSec`), cached in memory by media path
+  and repainted in place, reflowing the aspect-driven layouts around the real
+  frame. Nothing is written to disk, which is what fixes macOS: the previous
+  approach cached poster files next to the clips, impossible inside a
+  code-signed `.app` bundle (and equally in an AppImage or any read-only
+  install), so every video tile in the demo's album fell back to the
+  play-triangle placeholder. An explicit cover that decodes still wins, work is
+  queued only by tiles that actually draw, and with no video backend (or an
+  undecodable clip) the slot fails once and the placeholder stays. The DemoApp
+  album example (2.18.0) dropped its `SaveVideoThumbnail` pre-pass, which also
+  removes a synchronous decode per clip from building the page.
+
+#### 2026-08-09 *0.3.43*
+- **UltraSocial** *(Phase 3)*: the Tier-3 networks and media for Tier 2.
+  **LinkedIn connector** — OAuth2 code flow for the user's own
+  confidential-client app (secret in the form body, no PKCE; redirect
+  port 17997), member id via OpenID `userinfo`, text posts through the
+  versioned `POST /rest/posts` (post URN read from the `x-restli-id`
+  response header), token refresh when the app has it granted.
+  **Facebook Pages connector** — pasted Page id + long-lived Page access
+  token (personal profiles have no posting API); text to `/{page}/feed`,
+  one photo + caption to `/{page}/photos` as multipart (no public URL
+  needed); Meta's `{"error":{...}}` shape added to the shared error
+  surface. **X media** — images upload via the v2 media endpoint and
+  attach as `media_ids` (4 × ≤5 MB), inside the same refresh-retry as
+  text. **Telegram albums** — 2–10 photos via `sendMediaGroup`
+  (`attach://` multipart, caption on the first). Wizard forms for both
+  new networks. 10 new engine tests (47 total).
+
+#### 2026-08-09 *0.3.42*
+- **UltraSocial** *(Phase 2)*: the "automatically" part plus the Tier-2
+  networks. **Scheduling outbox** — "Post later…" opens a date + time
+  dialog and queues one outbox row per selected account (UltraDatabase,
+  raw draft stored so adaptation happens at send time); a scheduler timer
+  flushes due entries through the same `UltraSocialPublisher` path as
+  "Post now", with bounded retries on linear backoff (5 attempts,
+  +5 min × attempt) before a failed history row; queued posts show as
+  closable chips (with retry count) and go out at next launch when they
+  came due while the app was closed. **Reddit connector** — OAuth2
+  "installed app" code flow built from the UltraNetOAuth2 blocks (Reddit
+  has no PKCE; token exchange authenticates HTTP Basic `clientid:` with
+  an empty password), self posts via `/api/submit` with the draft's first
+  line as the title, hourly-token refresh on 401. **X connector** — OAuth2
+  code + PKCE public client via `UltraNet_OAuth2AuthorizeInteractive`,
+  text tweets via `POST /2/tweets`, rotating refresh tokens persisted
+  back to the vault. Both are bring-your-own-client-id (fixed loopback
+  redirect ports 17995/17996); wizard forms added. Capabilities now
+  express "media not supported" (`maxImages == 0`) — the composer drops
+  attachments for such networks with a warning. 11 new engine tests
+  (37 total).
+
+#### 2026-08-09 *0.3.41*
+- **UltraSocial** *(Phase 1 UI)*: the GUI application (target `UltraSocial`)
+  on top of the engine — compose window with per-account target checkboxes
+  and live character counters (per network's limit, switching to the caption
+  limit when media is attached; amber badge + "will be shortened" warning
+  when over), media chips through the file picker, add-account wizard
+  (network picker with per-network fields and hints; Mastodon's browser
+  OAuth or pasted token, Bluesky app password, Telegram bot token), post
+  reporting per target, and the recent-history strip. Sign-in and publishing
+  run on worker threads; results marshal to the UI through a main-thread
+  timer queue, so the window stays live during the OAuth browser consent
+  and slow uploads.
+
+#### 2026-08-09 *0.3.40*
+- **UltraSocial** *(new, Phase 1 engine)*: the cross-posting app's headless
+  engine (`Apps/UltraSocial/engine/`, target `UltraSocialEngine`) —
+  compose-once → adapt-per-network composer (code-point counting,
+  word-boundary truncation with ellipsis, media trimming, caption limits),
+  per-account credential vault (UltraMail's file-backend pattern), account +
+  post-history store on UltraDatabase, and three connectors behind
+  `ISocialConnector`: **Mastodon** (dynamic OAuth client registration +
+  UltraNetOAuth2 interactive flow or pasted token; multipart media upload
+  with 202-processing poll; statuses with `Idempotency-Key`), **Bluesky**
+  (app-password session, `uploadBlob` + `app.bsky.feed.post` records,
+  transparent `ExpiredToken` refresh that hands the rewritten credential
+  blob back for the vault), **Telegram** (Bot API; `sendMessage` /
+  `sendPhoto` with caption; `t.me` permalinks). 26 engine tests against
+  scripted loopback HTTP fakes (`ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS`).
+  Design: `Docs/UltraSocial/Concept.md`.
+
+#### 2026-08-09 *0.3.39*
+- **UltraNet**: new OAuth 2.0 helper (`UltraNet/UltraNetOAuth2.h`) — the
+  authorization-code flow with PKCE (RFC 6749 + 7636) for native apps:
+  `UltraNet_OAuth2GeneratePkce` / `UltraNet_OAuth2ChallengeFromVerifier`
+  (S256, verified against the RFC 7636 test vector),
+  `UltraNet_OAuth2BuildAuthUrl`, a loopback redirect listener
+  (`UltraNet_OAuth2WaitForCallback`, RFC 8252 style — binds 127.0.0.1/::1
+  only, answers stray requests with 404 and keeps waiting),
+  `UltraNet_OAuth2ExchangeCode` / `UltraNet_OAuth2Refresh` (client secret via
+  HTTP Basic or form body; server `error`/`error_description` surfaced in the
+  result), `UltraNet_OAuth2ParseTokenResponse`, and the one-call blocking
+  orchestrator `UltraNet_OAuth2AuthorizeInteractive`, which also resolves a
+  port-0 redirect URI to the ephemeral port actually bound. SHA-256 is
+  self-contained in the module, so no TLS-library crypto dependency.
+- **UltraNet** sockets: `UltraNetSocketOptions.bindAddress` restricts
+  listeners / UDP binds to one interface (e.g. loopback),
+  `UltraNet_TcpAccept` takes an optional timeout, and the new
+  `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
+  they let a port-0 listener discover its ephemeral port.
+#### 2026-08-10 *0.3.39*
+- **UltraCanvasAlbum** *(1.6.1)*: a hover video preview no longer plays
+  alongside the full video opened from its tile. Clicking a video tile (or its
+  Play action) opens the player in its own window while the cursor still rests
+  on the tile, so the album never received a MouseLeave and the muted inline
+  preview kept decoding behind the player — two videos at once. Activating a
+  tile (click, double-click, action icon, context-menu action) now stops the
+  running preview before the app callback fires, and hover previews (video and
+  GIF/WebP animation alike) only run while the album's window is the
+  application's focused window — a preview that is mid-playback when another
+  window takes the focus stops on its next frame tick, and a mouse move over
+  the now-background album no longer re-arms one.
+- **UltraCanvasFilerWidget**: flexible tile widths in the thumbnail grid
+  views. The column count still comes from the selected tile edge, but the
+  leftover strip on the right — too narrow for one more column — is now
+  distributed across the row's cells (Explorer-style), so the grid always
+  fills the widget's width: resizing the window stretches the cells smoothly
+  until the next column fits instead of growing an empty gap. Only the cell
+  widens — captions get the extra room, so long names wrap later — while the
+  image box keeps the square Small / Medium / Big / Maximized edge, centered,
+  so thumbnails keep their size during a resize and the async decode cache is
+  not churned. Controlled by `SetFlexibleTileWidths(bool)` (default on;
+  off restores the fixed-width grid).
+
+#### 2026-08-10 *0.3.38*
+- **UltraFiler**: Favorites (pinning). A new heart button next to the History
+  clock shows the Favorites view — the same Files / Folders / Apps tabbed
+  layout, but listing deliberately pinned paths (`UltraFilerFavorites`,
+  persisted as `favorites.txt` next to the settings) instead of recently used
+  ones. The new menu bar **Pin** menu pins the visible view's selection (or
+  the shown folder when nothing is selected): **Pin ▸ Favorites** into the
+  tab the entry's kind belongs to, **Pin ▸ Treeview** — enabled only while
+  the selection is a folder — into the folder tree's new **Pinned** section,
+  whose entries navigate like bookmarks. The folder tree gained a context
+  menu: **Copy / Delete / Paste** act on the folder under the cursor (Paste
+  only when a folder is under the cursor and the clipboard holds files,
+  Delete with confirmation and never on the top-level roots), **Unpin**
+  (pinned entries only) removes the bookmark without touching the folder.
+  *Settings ▸ Clear Favorites* empties the pins; Esc leaves the Favorites
+  view like it leaves the History view.
+- **UltraCanvasTreeView**: `onNodeRightClicked` now fires only for the right
+  mouse button (it used to fire on every mouse-up over a node) and passes the
+  `UCEvent` along so handlers can place a context menu at the pointer; a
+  right press no longer moves the selection to the node under the cursor.
+
+#### 2026-08-09 *0.3.37*
+- **UltraNet**: new `UltraNetApiStatus` tool (`Tests/UltraNet/ApiStatus/`,
+  target `UltraNetApiStatus`, enabled by `ULTRACANVAS_BUILD_NET_TESTS`) walks
+  the whole public UltraNet surface and reports each entry as **WORKING**
+  (the probe drove the real code path and the result matched the contract),
+  **IMPLEMENTED** (present and reached, but unverifiable in this
+  environment), **NOT IMPLEMENTED** (documented stub / no-op / absent
+  backend) or **BROKEN** (ran and contradicted the API). 108 entries across
+  Core, URL, HTTP, Session, SSE, WebSocket, DNS, Socket, TLS, FTP, MIME and
+  Plugins; `--format=text|markdown|json`, `--area=`, `--output=`,
+  `--network`, `--strict`, and a `--serve` diagnostic that just holds the
+  probe origin open. Registered with CTest; exits non-zero only on BROKEN
+  (or, with `--strict`, on anything short of WORKING).
+- **UltraNet**: the status tool verifies offline by bringing its own peers —
+  an in-process HTTP/1.1 + RFC 6455 WebSocket origin written on UltraNet's
+  own TCP API (keep-alive, chunked bodies, `Expect: 100-continue`,
+  redirects, cookies, Basic-auth challenges, `text/event-stream`, a slow
+  route for cancellation, and a masked-frame echo endpoint with its own
+  SHA-1 for `Sec-WebSocket-Accept`), loopback TCP/UDP peers, and an
+  `openssl s_server` TLS peer whose throwaway certificate makes
+  `UltraNet_TlsSetCABundle` / `UltraNet_TlsAddTrustedCert` checkable in both
+  directions. No Python, no external service and no internet access
+  required.
+- Docs: `Docs/Modules/UltraNet/ApiStatus.md` documents the statuses, the
+  options, how each area is verified and how to add a probe; both UltraNet
+  READMEs point at it from their Status sections.
+- **UltraNet**: the macOS TLS backend now honours custom trust anchors —
+  found by the status tool's first CI run, whose trust-store probes came back
+  BROKEN on macOS. `OS/MacOS/UltraNetTlsImpl.mm` stored the global CA bundle
+  and `UltraNet_TlsAddTrustedCert` PEMs but `VerifyPeer` evaluated the peer
+  against the system keychain only, so `UltraNet_TlsSetCABundle` /
+  `UltraNet_TlsAddTrustedCert` (and the per-wrap
+  `UltraNetTlsOptions::caBundlePath`, equally unread) were silently ignored.
+  Wrap now parses the resolved PEMs into `SecCertificateRef` anchors and
+  `VerifyPeer` applies them via `SecTrustSetAnchorCertificates`; a CA bundle
+  replaces the system roots (matching the OpenSSL backend's
+  `SSL_CTX_load_verify_locations` semantics) while added PEMs alone extend
+  them (`SecTrustSetAnchorCertificatesOnly(false)`).
+
 #### 2026-08-09 *0.3.36*
 - **UltraCanvasFilerWidget** *(1.13.0)*: the compress dialog keeps the whole
   name and stays editable. The suggested archive name was `stem()` of the

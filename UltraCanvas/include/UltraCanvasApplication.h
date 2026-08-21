@@ -24,6 +24,9 @@
 #include <mutex>
 #include <queue>
 #include <optional>
+#include <mutex>
+#include <condition_variable>
+#include <cstdint>
 
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
@@ -59,6 +62,13 @@ namespace UltraCanvas {
     // first thing by UltraCanvasApplicationBase::Initialize().
     void SetupBundledFontconfig();
 
+    // Watches a file descriptor from within the UltraCanvas event loop. Added so a
+    // host integration (e.g. Ladybird's IPC to its WebContent process) can have its
+    // sockets serviced by the same wait the toolkit already runs, instead of needing
+    // a second event loop. Registered via UltraCanvasApplicationBase::AddFdWatch().
+    enum class FdWatchType { Read, Write };
+    using FdWatchId = std::uint64_t;
+
     class UltraCanvasApplicationBase {
     friend UltraCanvasWindowBase;
     protected:
@@ -81,6 +91,20 @@ namespace UltraCanvas {
         // ProcessPostedTasks() each iteration.
         std::vector<std::function<void()>> postedTasks_;
         std::mutex                         postedTasksMutex_;
+
+        // File-descriptor watches (see FdWatchType). Registered via AddFdWatch();
+        // the platform event loop folds these fds into its native wait primitive
+        // (Linux: the select() in CollectAndProcessNativeEvents) and calls
+        // FireFdWatch() for each fd that became ready.
+        struct FdWatch { FdWatchId id; int fd; FdWatchType type; std::function<void()> callback; };
+        std::vector<FdWatch> fdWatches_;
+        mutable std::mutex   fdWatchesMutex_;
+        FdWatchId            nextFdWatchId_ = 1;
+        // (fd,type,id) view used by platform loops to build the wait set without
+        // copying callbacks; FireFdWatch() runs the callback for a ready watch.
+        struct FdWatchKey { FdWatchId id; int fd; FdWatchType type; };
+        std::vector<FdWatchKey> SnapshotFdWatchKeys() const;
+        void FireFdWatch(FdWatchId id);
 
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
         std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
@@ -181,6 +205,13 @@ namespace UltraCanvas {
                            std::function<void(TimerId)> callback = nullptr);
         void StopTimer(TimerId id);
 
+        // Watch `fd` for readability/writability from within the event loop. The
+        // callback runs on the UI thread on each iteration the fd is ready. Returns
+        // an id for RemoveFdWatch(). Used by host integrations that must service
+        // their own sockets (e.g. IPC) on the toolkit's loop. Thread-safe.
+        FdWatchId AddFdWatch(int fd, FdWatchType type, std::function<void()> callback);
+        void RemoveFdWatch(FdWatchId id);
+
         static void InstallWindowEventFilter(UltraCanvasUIElement* elem, const std::vector<UCEventType>& interestedEvents);
         static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
@@ -249,6 +280,11 @@ namespace UltraCanvas {
         std::string GetDefaultWindowIcon() const { return defaultWindowIconPath; }
 
         void Run();
+        // One iteration of the main loop (native events + fd watches, queued UI
+        // events, timers, posted tasks, then render). Exposed so a host embedding
+        // UltraCanvas under its own event loop can pump a single iteration without
+        // calling Run(). Assumes Initialize() succeeded and the app is running.
+        void RunOnce();
         bool Initialize(const std::string& app);
         bool RequestExit();
         virtual void Exit();
@@ -317,6 +353,10 @@ namespace UltraCanvas {
 #if defined(__ANDROID__)
 #include "../OS/Android/UltraCanvasAndroidApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplication; }
+#if defined(__EMSCRIPTEN__)
+// Web/WASM (checked first: Emscripten also defines __unix__)
+#include "../OS/WASM/UltraCanvasWASMApplication.h"
+namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWASMApplication; }
 #elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplication; }
@@ -340,6 +380,9 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
     // Web/WASM
     #include "../OS/Web/UltraCanvasWebApplication.h"
     namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWebApplication; }
+#elif defined(__ANDROID__)
+    #include "../OS/Android/UltraCanvasAndroidApplication.h"
+    namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplication; }
 #else
     #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif

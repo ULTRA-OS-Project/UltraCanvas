@@ -13,7 +13,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.0.0
+**Version:** 1.7.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -23,6 +23,7 @@ cheap and the whole look can be swapped by a single enum.
 
 - **Six layout designs** — Uniform Grid, Justified, Masonry, Mosaic, Filmstrip, Cards
 - **Mixed media** — photo / video / music items with type badges and cover/poster thumbnails
+- **Automatic video poster frames** — a Video item with no cover has one extracted from the clip itself in the background and cached in memory (`videoPosterFrames`), so nothing has to be written next to read-only media
 - **Three viewer modes** — `Display` (visitor), `UserEdit` (owner), `Admin`
 - **Sizing by items-per-row OR by target image size**
 - **Image fit per item** — `Crop` (with focus point), `Zoom`, `Stretch`, `Fit`
@@ -89,8 +90,53 @@ album->AddItem({ "media/images/landscape.jpg", "", "Mountain Dawn",
 ```
 
 Video and music items draw `thumbnailPath` (cover art / poster frame) plus a
-type badge. If no thumbnail decodes, a neutral placeholder with a play / note
-glyph is drawn instead.
+type badge. A **Video** item whose `thumbnailPath` is empty (or does not decode)
+falls back to a poster frame extracted from its own clip — see
+[Automatic video poster frames](#automatic-video-poster-frames). If neither
+yields an image, a neutral placeholder with a play / note glyph is drawn.
+
+### Automatic video poster frames
+
+A Video tile does not need a pre-generated cover: with `videoPosterFrames` (on
+by default) the album decodes one representative frame of `mediaPath` itself and
+uses it as the tile image.
+
+```cpp
+AlbumConfig cfg;
+cfg.videoPosterFrames  = true;    // default
+cfg.videoPosterMaxSize = 640;     // longest edge of the cached frame, px
+cfg.videoPosterTimeSec = -1.0f;   // <0 = auto (~10% in, capped at 1s)
+album->SetConfig(cfg);
+
+AlbumItem clip;
+clip.title     = "Competition";
+clip.mediaType = AlbumMediaType::Video;
+clip.mediaPath = "media/videos/Video A more competition.mp4";
+album->AddItem(clip);   // no thumbnailPath needed — the cover comes from the clip
+```
+
+How it behaves:
+
+- **Never on the UI thread.** A cold clip can take seconds to open and seek, so
+  the extraction runs on one lazily-started worker thread. The tile shows the
+  placeholder until the frame lands, then repaints (and the aspect-driven
+  layouts — Justified / Masonry — reflow around its real aspect ratio).
+- **Only what is on screen.** Requests are queued by tiles as they draw, so
+  laying out a large album does not start a decode per clip.
+- **Cached in memory** for the widget's lifetime, keyed by media path, and
+  dropped when the item list is replaced (`SetItems` / `ClearItems`). Nothing is
+  written to disk — which is the point: an app cannot cache poster files next to
+  clips inside a code-signed macOS `.app` bundle, an AppImage or any read-only
+  install, so on those platforms pre-generating covers simply fails.
+- **An explicit cover still wins.** `thumbnailPath` is used whenever it decodes;
+  extraction is the fallback, not an override.
+- **Needs a video backend** (`ULTRACANVAS_ENABLE_VIDEO`). With the null backend,
+  or a clip that yields no frame, the slot is marked failed once (never retried)
+  and the placeholder stays.
+
+`UltraCanvasVideoThumbnail` (`include/UltraCanvasVideoThumbnail.h`) is the engine
+behind this and can be called directly when an app *does* want to keep poster
+files on disk — see its own docs.
 
 ### Configuration
 
@@ -122,6 +168,9 @@ cfg.imageCornerRadius = -1.0f;     // image corners: <0 follow tile · 0 square 
 cfg.linkColor     = Color(26, 115, 232, 255);  // subtitle-link colour (items with a `link`)
 cfg.linkUnderline = true;
 cfg.dropShadow    = true;
+cfg.videoPosterFrames  = true;     // Video tiles without a cover extract one (default)
+cfg.videoPosterMaxSize = 640;      // longest edge of the cached poster frame, px
+cfg.videoPosterTimeSec = -1.0f;    // where to grab it; <0 = auto (~10% in, max 1s)
 album->SetConfig(cfg);
 ```
 
@@ -156,7 +205,13 @@ cfg.hoverPreviewFps            = 24;     // frame-poll / repaint cadence
 Playback starts only after the dwell delay, so a cursor merely crossing the
 grid never opens a decoder; until the first frame arrives the poster stays, and
 when the preview ends (duration elapsed, clip over, or the cursor leaves) the
-poster returns. One decode session exists at a time. The preview frame is
+poster returns. One decode session exists at a time. Activating a tile — click,
+double-click, an action icon or a context-menu action — also ends the preview
+before the app callback runs, and previews only play while the album's window
+is the application's focused window: when a click opens the full video in its
+own window the cursor typically still rests on the tile, and both rules
+together guarantee the inline preview never plays alongside the real player.
+The preview frame is
 fitted exactly like the thumbnail (`imageDisplay`, focus point, hover zoom) so
 nothing jumps when it starts or ends. Requires a real video backend
 (`ULTRACANVAS_ENABLE_VIDEO`); with the null backend the static thumbnail simply
@@ -263,14 +318,8 @@ yt.mediaPath    = "media/videos/Lola Lexy - No kings.mp4";
 yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
 yt.linkIconPath = "media/icons/youtube.svg";
 
-// Give the video tile a real cover by extracting a poster frame once
-// (see UltraCanvasVideoThumbnail). The encoder is picked from the extension
-// — ".qoi" writes QOI, otherwise PNG.
-VideoThumbnailRequest req;
-req.maxWidth = 640; req.maxHeight = 480;
-if (SaveVideoThumbnail(yt.mediaPath, "media/videos/Lola Lexy - No kings.qoi", req))
-    yt.thumbnailPath = "media/videos/Lola Lexy - No kings.qoi";
-
+// No thumbnailPath: the album extracts the tile's cover from the clip itself
+// (see "Automatic video poster frames" above).
 album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){

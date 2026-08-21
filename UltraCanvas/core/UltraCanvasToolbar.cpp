@@ -181,7 +181,7 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasButton> UltraCanvasToolbar::AddToggleButton(
             const std::string& id, const std::string& text,
             const std::string& icon, std::function<void(bool)> onToggle) {
-        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 32, 32, text);
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
         if (!icon.empty()) {
             button->SetIcon(icon);
             button->SetIconSize(24, 24);
@@ -251,6 +251,18 @@ namespace UltraCanvas {
         }
         RegisterWidget(id, searchBox);
         return searchBox;
+    }
+
+    std::shared_ptr<UltraCanvasAutoComplete> UltraCanvasToolbar::AddAutoComplete(
+            const std::string& id, const std::string& placeholder,
+            std::function<void(const std::string&)> onTextChange) {
+        auto autoComplete = std::make_shared<UltraCanvasAutoComplete>(id, 0, 0, 150, 24);
+        autoComplete->SetPlaceholder(placeholder);
+        if (onTextChange) {
+            autoComplete->onTextChanged = onTextChange;
+        }
+        RegisterWidget(id, autoComplete);
+        return autoComplete;
     }
 
 // ===== APPEARANCE =====

@@ -18,6 +18,36 @@
 # This means OpenSSL is only an explicit dependency on Linux; Windows and
 # macOS pull TLS, the certificate trust store, and the cipher policy from
 # the OS itself.
+# ===== CRYPTOGRAPHY (UltraCrypt) =====
+#
+# UltraCrypt wraps libsodium for all data-at-rest cryptography: hashing, HMAC,
+# authenticated encryption, key derivation, secure random and secure memory.
+# It is a separate concern from TLS, which stays OS-native per the networking
+# policy below (Schannel on Windows, SecureTransport on macOS).
+#
+# libsodium was chosen because it is the only candidate providing both of the
+# algorithms the framework standardised on — XChaCha20-Poly1305 and Argon2id —
+# neither of which is offered by OpenSSL 3.0 (the current LTS version),
+# Windows CNG or macOS CommonCrypto. See Docs/Modules/UltraCrypt/README.md §3.
+#
+# Absence is tolerated at build time but never silently: UltraCrypt still
+# compiles and every operation then fails with BackendUnavailable, so no data
+# is ever written unprotected while reporting success.
+cryptography:
+  core:
+    libsodium:
+      min_version: "1.0.18"           # the version on Ubuntu 24.04 LTS
+      purpose: "Cryptographic backend for UltraCrypt (Tier 1 core)"
+      required: false                 # builds without it; all crypto then fails closed
+      platforms: ["all"]
+      pkg_config: "libsodium"
+      apt: "libsodium-dev"
+      brew: "libsodium"
+      msys2: "mingw-w64-x86_64-libsodium"
+      vcpkg: "libsodium"
+      # 1.0.19+ additionally provides crypto_kdf_hkdf_*; until the floor is
+      # raised, HKDF must be built on top of the HMAC primitives.
+
 networking:
   core:
     libcurl:
@@ -202,3 +232,51 @@ media:
       vcpkg: "mp3lame"
       brew: "lame"
       msys2: "mingw-w64-x86_64-lame"
+
+# ===== WINDOWS-APP COMPATIBILITY (UltraWin) =====
+#
+# UltraWin never links its engines: Wine (and, in Stage 2, QEMU) are spawned
+# as child processes, keeping their LGPL/GPL licensing outside the framework
+# binaries. Wine is therefore a *runtime* dependency only — the module builds
+# everywhere on Linux and probes for the binary via UltraWin_GetCapabilities.
+windows_compatibility:
+  core:
+    wine:
+      min_version: "10.0"             # 11.0 recommended (ntsync, complete WoW64)
+      purpose: "Wine tier: runs Windows apps as native windows (runtime, spawned — never linked)"
+      required: false
+      priority: "high"
+      platforms: ["linux"]
+      # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
+      apt: "wine"
+
+    winetricks:
+      min_version: "20240105"
+      purpose: "Component installer for Wine environments: VC++ runtimes, fonts, .NET, DXVK (runtime, spawned — never linked)"
+      required: false
+      priority: "medium"
+      platforms: ["linux"]
+      # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
+      apt: "winetricks"
+
+# ===== AI CAPABILITIES (UltraAI) =====
+#
+# The interfaces, registry, mock adapters, and shared adapter infrastructure
+# have no third-party dependencies. Individual provider adapters are opt-in
+# and bring their own:
+#
+#   - Anthropic adapter: JSON via the repo-vendored nlohmann/json
+#     (UltraCanvas/third_party/nlohmann; already licensed) — nothing to
+#     install.
+#   - llama.cpp adapter: vendors the inference engine at configure time.
+ai:
+  advanced:
+    llama_cpp:
+      min_version: "pinned commit (see ULTRAAI_LLAMACPP_GIT_TAG in UltraAI/adapters/llamacpp/CMakeLists.txt)"
+      purpose: "Local GGUF inference for the UltraAI llama-cpp adapter (llama.cpp + ggml, MIT)"
+      required: false
+      priority: "medium"
+      platforms: ["linux", "macos", "windows"]
+      # Not a system package: fetched via CMake FetchContent (or an existing
+      # checkout via ULTRAAI_LLAMACPP_SOURCE_DIR) and built as static libs
+      # when ULTRAAI_ADAPTER_LLAMACPP=ON. Off by default.

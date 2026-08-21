@@ -2,8 +2,15 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.17.0
-// Last Modified: 2026-07-19
+// Version: 2.18.0
+// Last Modified: 2026-08-11
+// V2.18.0: Video tile covers now come from the album widget itself
+//   (AlbumConfig::videoPosterFrames, on by default), which extracts a poster
+//   frame in the background and caches it in memory. The example no longer
+//   writes a .qoi poster next to the clip: that cannot work when the media is
+//   read-only, which is exactly the case inside a code-signed macOS .app
+//   bundle — the reason video tiles showed only the placeholder there. It also
+//   no longer blocks building the page on a synchronous decode per clip.
 // V2.17.0: Selectable viewer for opening tiles — a "Viewer" option row picks
 //   between the Mini viewer (the compact per-kind windows implemented here:
 //   photo lightbox, video window with info bar, small audio transport window)
@@ -99,19 +106,8 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasUtils.h"     // OpenURL — open a subtitle link in the browser
-#include <fstream>
 #include <sstream>
 #include <vector>
-
-// Video poster-frame extraction (UltraCanvasVideoThumbnail) lives in its own
-// module; use it when present so video tiles get a real cover, otherwise fall
-// back to the built-in video placeholder.
-#if defined(__has_include)
-#  if __has_include("UltraCanvasVideoThumbnail.h")
-#    include "UltraCanvasVideoThumbnail.h"
-#    define ULTRACANVAS_DEMO_HAVE_VIDEO_THUMBNAIL 1
-#  endif
-#endif
 
 namespace UltraCanvas {
 
@@ -577,32 +573,17 @@ namespace UltraCanvas {
               "Scanned 35mm film frame from a walk in the field — grainy, warm and "
               "full of character.", "https://filmdiary.example/field-notes" },
         };
-        // Video tiles backed by a real clip (Seed::isVideoFile) point mediaPath at
-        // media/videos and get a poster frame extracted once via SaveVideoThumbnail
-        // (cached as a QOI next to the clip) for their cover; if the thumbnail
-        // module or a video backend is unavailable the tile shows the built-in
-        // video placeholder instead. A double-click (or the Play icon) plays them.
+        // Video tiles backed by a real clip (Seed::isVideoFile) just point
+        // mediaPath at media/videos: the album extracts their cover from the clip
+        // itself in the background (AlbumConfig::videoPosterFrames) and caches it
+        // in memory, so nothing has to be written next to read-only media — the
+        // tile shows the built-in video placeholder only until the frame lands,
+        // or when no video backend is available. A double-click (or the Play
+        // icon) plays them.
         for (const auto& s : seeds) {
             AlbumItem it;
             if (s.isVideoFile) {
-                const std::string videoPath =
-                        NormalizePath(GetResourcesDir() + "media/videos/" + s.file);
-                it.mediaPath = videoPath;
-#ifdef ULTRACANVAS_DEMO_HAVE_VIDEO_THUMBNAIL
-                // Cache the poster next to the clip, swapping the extension to .qoi.
-                std::string posterPath = videoPath;
-                const auto dot = posterPath.find_last_of('.');
-                if (dot != std::string::npos)
-                    posterPath.replace(dot, std::string::npos, ".qoi");
-                bool havePoster = std::ifstream(posterPath, std::ios::binary).good();
-                if (!havePoster) {
-                    VideoThumbnailRequest req;
-                    req.maxWidth  = 640;   // downscale the poster to a sensible cover size
-                    req.maxHeight = 480;
-                    havePoster = SaveVideoThumbnail(videoPath, posterPath, req);
-                }
-                if (havePoster) it.thumbnailPath = posterPath;
-#endif
+                it.mediaPath = NormalizePath(GetResourcesDir() + "media/videos/" + s.file);
             } else if (s.isAudioFile) {
                 it.mediaPath = NormalizePath(GetResourcesDir() + "media/audios/" + s.file);
             } else {

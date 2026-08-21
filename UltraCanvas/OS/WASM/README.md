@@ -1,495 +1,152 @@
-# UltraCanvas WASM Platform Implementation
+# UltraCanvas WebAssembly (Emscripten) Backend
 
-## Overview
-
-Complete WebAssembly (WASM) platform implementation for UltraCanvas Framework, enabling C++ applications to run natively in web browsers with near-native performance.
-
-**Version:** 1.0.0  
-**Last Modified:** 2025-01-27  
-**Status:** ✅ Complete - Production Ready
-
----
+**Status: experimental — validated in a browser.** The full stack (this
+backend + wasm-compiled cairo/pango/fontconfig/glib/libvips) links with
+Emscripten 6.0 and runs in Chromium: windows render through the shared
+Cairo/Pango pipeline with the bundled Ubuntu fonts, and mouse input drives
+widget callbacks (see [demo/](demo/)). Not yet exercised: broad widget
+coverage, touch devices, Firefox/Safari.
 
 ## Architecture
 
-### Platform Components
+The backend reuses the **same Cairo + Pango render context as every desktop
+platform** (`libspecific/Cairo/RenderContextCairo.cpp`) instead of
+reimplementing `IRenderContext` on the HTML Canvas 2D API. That keeps text
+layout (`ITextLayout` is Pango-shaped), dirty-rect composition, popups, the
+caret and HiDPI behaviour pixel-identical to the desktop builds.
 
 ```
 OS/WASM/
-├── UltraCanvasWASMApplication.h/cpp    # Main application & event loop
-├── UltraCanvasWASMWindow.h/cpp         # Window/canvas management
-├── UltraCanvasWASMRenderContext.h/cpp  # Canvas 2D rendering backend
-├── UltraCanvasWASMSupport.h/cpp        # Browser integration utilities
-└── CMakeLists.txt                      # Build configuration
+├── UltraCanvasWASMApplication.h/cpp   # Event loop bridge, keyboard, cursors, fonts
+├── UltraCanvasWASMWindow.h/cpp        # <canvas>-backed window, input, presentation
+├── UltraCanvasWASMSupport.h/cpp       # Optional browser utilities (IDBFS, fetch, ...)
+├── build-wasm-sysroot.sh              # Cross-compiles the dependency stack
+├── patches/                           # wasm fixes applied to the deps by the script
+└── demo/                              # Minimal browser validation app
 ```
 
-### Technology Stack
+| Concern | How it works |
+|---|---|
+| Main loop | `app->Run()` works unchanged: `RunBeforeMainLoop()` calls `emscripten_set_main_loop(..., simulate_infinite_loop=1)`, which never returns; each animation frame runs one `RunOnce()` iteration. When `running` clears or the last window closes, the tick performs the same shutdown tail `Run()` would. Hidden tabs fall back to a 250 ms `setTimeout` cadence so timers keep firing. |
+| Window | One absolutely-positioned `<canvas>` per window (backing store in physical px, CSS box in logical px). `nativeSurface` is an offscreen cairo image surface, like the Windows backend. |
+| Presentation | `InvalidateWindowNative()` — the framework's post-composition hook — converts the surface pixels (BGRX) to RGBA and `putImageData()`s them onto the canvas (copying out of the shared wasm heap, which `ImageData` cannot view directly under `-pthread`). |
+| Input | Per-canvas Emscripten HTML5 callbacks convert DOM events to `UCEvent`s and `PushEvent()` them (mouse, wheel with notch normalisation, touch with synthesized left-button mouse events, focus). Keyboard is registered once on the browser window and routed to the focused window by `DispatchEvent()`. |
+| HiDPI | `deviceScale = devicePixelRatio`; DOM coordinates are CSS px = logical units, so events need no physical→logical conversion. |
+| Fonts | Pango + Fontconfig against the bundled Ubuntu/Ubuntu Mono TTFs, preloaded into the virtual FS at `/share/media/fonts` (see below). |
+| Screen | The browser viewport (`window.innerWidth/Height`) in CSS px. `Maximize()` fills it; `SetFullscreen(true)` uses the Fullscreen API. |
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Runtime** | WebAssembly | Execute C++ code in browser |
-| **Compiler** | Emscripten | Compile C++ to WASM |
-| **Graphics** | Canvas 2D API | 2D rendering (immediate mode) |
-| **Windowing** | HTML5 Canvas Element | Display surface |
-| **Events** | HTML5 Events API | Mouse, keyboard, touch input |
-| **Storage** | IndexedDB (IDBFS) | Persistent file system |
-| **Network** | Fetch API | HTTP requests |
+## Building
 
----
+### 1. The wasm sysroot (once)
 
-## Features
-
-### ✅ Implemented
-
-- **Application Lifecycle**
-  - Emscripten main loop integration
-  - Frame rate control (target FPS)
-  - Page lifecycle events (visibility, unload)
-  - Performance monitoring
-
-- **Window Management**
-  - HTML canvas creation and management
-  - Window show/hide/close operations
-  - Fullscreen support
-  - Focus management
-
-- **Event Handling**
-  - Mouse events (move, click, wheel)
-  - Keyboard events (keydown, keyup, keypress)
-  - Touch events (for mobile)
-  - Focus events
-  - Complete event conversion to UCEvent
-
-- **Canvas 2D Rendering**
-  - Basic shapes (rectangles, circles, ellipses, arcs)
-  - Rounded rectangles
-  - Lines and paths
-  - Bezier and quadratic curves
-  - Text rendering with font styling
-  - Gradients (linear, radial)
-  - Shadows and effects
-  - Transformations (translate, rotate, scale)
-  - Clipping regions
-  - State management (push/pop)
-
-- **Browser Integration**
-  - LocalStorage API
-  - Console logging
-  - Alerts, confirms, prompts
-  - File download
-  - Browser info (user agent, platform, screen size)
-  - URL and query parameter access
-
-- **File System**
-  - IndexedDB-based persistence (IDBFS)
-  - File/directory operations
-  - Sync to/from browser storage
-
-- **Performance**
-  - High-resolution timing
-  - Performance marks and measures
-  - FPS monitoring
-
-### ⚠️ Partially Implemented
-
-- **Image Rendering** - Structure present, needs data transfer implementation
-- **Network/Fetch** - Basic structure, needs async callback implementation
-- **Resource Loading** - Fonts and images loading (needs completion)
-
-### 📋 Not Yet Implemented (Future)
-
-- WebGL rendering backend (optional, for 3D)
-- WebAudio integration
-- WebRTC for networking
-- Gamepad API
-- Clipboard API
-- Service Worker/PWA support
-
----
-
-## Building for WASM
-
-### Prerequisites
+The REQUIRED pkg-config dependencies (cairo + pixman, pango + pangocairo,
+fontconfig, freetype, harfbuzz, glib, tinyxml2, libvips + vips-cpp) do not
+ship as Emscripten ports. `build-wasm-sysroot.sh` cross-compiles all of them
+(plus zlib, libpng, expat, libffi, pcre2) into a static sysroot with
+`.pc` files, following [kleisauke/wasm-vips](https://github.com/kleisauke/wasm-vips)
+where that project builds the same dependency — including its pre-patched
+glib and libvips branches. pango gets a small local patch
+(`patches/pango-1.52-wasm-function-pointers.patch`) fixing one-argument
+callbacks cast to `GInterfaceInitFunc`/`GFunc`: native ABIs tolerate the
+arity mismatch, wasm's strict indirect-call signature checking traps on it.
 
 ```bash
-# Install Emscripten SDK
-git clone https://github.com/emscripten-core/emsdk.git
-cd emsdk
-./emsdk install latest
-./emsdk activate latest
-source ./emsdk_env.sh
+source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.x
+./build-wasm-sysroot.sh /path/to/wasm-sysroot
 ```
 
-### Build Commands
+The whole sysroot is compiled `-pthread -fwasm-exceptions`; the library
+build (CMakeLists.txt WASM branch) propagates the same flags PUBLIC, since
+the exception/threading ABI must match across every static library in the
+final link.
+
+### 2. The library / an application
 
 ```bash
-# Create build directory
-mkdir build-wasm
-cd build-wasm
-
-# Configure with Emscripten
-emcmake cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DTARGET_PLATFORM=WASM
-
-# Build
-emmake make -j8
-
-# Output files:
-#  - UltraCanvas.js    (JavaScript glue code)
-#  - UltraCanvas.wasm  (WebAssembly binary)
-#  - UltraCanvas.html  (Optional shell page)
+source /path/to/emsdk/emsdk_env.sh
+export EM_PKG_CONFIG_PATH=/path/to/wasm-sysroot/lib/pkgconfig
+emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
+cmake --build build-wasm
 ```
 
-### Build Configurations
+Application executables additionally need the bundled fonts in the virtual
+FS at `/share/media/fonts`:
 
-**Debug Build:**
-```bash
-emcmake cmake .. -DCMAKE_BUILD_TYPE=Debug
-# Enables: assertions, stack overflow checks, source maps
+```
+--preload-file media/fonts@/share/media/fonts
 ```
 
-**Release Build:**
-```bash
-emcmake cmake .. -DCMAKE_BUILD_TYPE=Release
-# Enables: -O3 optimization, closure compiler, minification
+(`GetExecutableDir()` cannot resolve `/proc/self/exe` in the browser, so
+`GetResourcesDir()` falls back to `./share/` with the MEMFS cwd of `/` —
+**not** the `/usr/share/...` path desktop packages use.)
+
+The core library propagates `-pthread -fwasm-exceptions
+-sPTHREAD_POOL_SIZE=8 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB
+-sNO_EXIT_RUNTIME=1` to executables.
+
+### 3. Serving
+
+Threads need `SharedArrayBuffer`, which browsers only enable on
+cross-origin-isolated pages. Serve with:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
 ```
 
----
+`demo/serve.py` is a minimal python server that sets both.
 
-## Usage Example
+### Application lifetime rule
 
-### C++ Application Code
+`app.Run()` **never returns** in the browser: `emscripten_set_main_loop`
+unwinds `main()`'s frame, and with `-fwasm-exceptions` that unwind runs the
+destructors of `main()`'s locals while the main loop keeps ticking. The
+application object therefore must NOT be a stack local — give it static (or
+heap) storage duration:
 
 ```cpp
-#include <UltraCanvas.h>
-
-int main() {
-    // Create application
-    auto app = UltraCanvasApplication::Create();
-   
-    // Create window (maps to HTML canvas)
-    auto window = app->CreateWindow("UltraCanvas WASM Demo", 800, 600);
-    
-    // Add UI elements
-    auto button = CreateButton("Click Me!", 50, 50, 120, 40);
-    button->OnClick([]() {
-        WASMBrowser::Alert("Button clicked!");
-    });
-    window->AddChild(button);
-    
-    auto label = CreateLabel("Hello from WASM!", 50, 100, 200, 30);
-    label->SetFontSize(18);
-    window->AddChild(label);
-    
-    // Show window and run
-    window->Show();
-    return app->Run(); // Enters Emscripten main loop
+int main(int, char* argv[]) {
+    static UltraCanvasApplication app;   // static, NOT a stack local
+    ...
+    app.Run();
 }
 ```
 
-### HTML Shell Page
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>UltraCanvas WASM Application</title>
-    <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            background: #2c3e50; 
-        }
-        #canvas { 
-            display: block; 
-            margin: 20px auto;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-    </style>
-</head>
-<body>
-    <canvas id="canvas"></canvas>
-    <script>
-        var Module = {
-            canvas: document.getElementById('canvas'),
-            print: function(text) { console.log(text); },
-            printErr: function(text) { console.error(text); },
-            onRuntimeInitialized: function() {
-                console.log('UltraCanvas initialized');
-            }
-        };
-    </script>
-    <script src="UltraCanvas.js"></script>
-</body>
-</html>
-```
-
----
-
-## Deployment
-
-### Static Hosting
-
-Deploy to any static file host:
-
-```bash
-# Files to upload:
-UltraCanvas.js
-UltraCanvas.wasm
-UltraCanvas.data (if using --preload-file)
-index.html
-
-# Example hosts:
-# - GitHub Pages
-# - Netlify
-# - Vercel
-# - AWS S3 + CloudFront
-# - Firebase Hosting
-```
-
-### MIME Types
-
-Ensure server sends correct MIME types:
-
-```
-.wasm → application/wasm
-.js   → application/javascript
-.data → application/octet-stream
-```
-
-### CORS Headers
-
-For fetching external resources:
-
-```
-Access-Control-Allow-Origin: *
-Cross-Origin-Embedder-Policy: require-corp
-Cross-Origin-Opener-Policy: same-origin
-```
-
----
-
-## Progressive Web App (PWA)
-
-### manifest.json
-
-```json
-{
-  "name": "UltraCanvas Application",
-  "short_name": "UltraCanvas",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#2c3e50",
-  "theme_color": "#3498db",
-  "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
-}
-```
-
-### Service Worker (Basic)
-
-```javascript
-// sw.js
-const CACHE_NAME = 'ultracanvas-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/UltraCanvas.js',
-  '/UltraCanvas.wasm',
-  '/UltraCanvas.data'
-];
-
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-  );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => response || fetch(event.request))
-  );
-});
-```
-
----
-
-## Performance Tips
-
-### Optimization Flags
-
-```bash
-# Maximum optimization
-emcc -O3 -flto --closure 1 \
-    -sAGGRESSIVE_VARIABLE_ELIMINATION=1 \
-    -sMINIFY_HTML=1
-
-# Reduce binary size
--sSTRICT=1 \
--sNO_FILESYSTEM=1 \  # If not using file system
--sDYNAMIC_EXECUTION=0
-```
-
-### Memory Configuration
-
-```bash
-# For large applications
--sINITIAL_MEMORY=128MB \
--sMAXIMUM_MEMORY=2GB \
--sALLOW_MEMORY_GROWTH=1
-
-# For memory-constrained environments
--sINITIAL_MEMORY=16MB \
--sMAXIMUM_MEMORY=256MB
-```
-
-### Asset Bundling
-
-```bash
-# Embed assets in binary
-emcc ... --preload-file assets@/assets
-
-# Lazy load assets
-emcc ... --preload-file assets@/assets --use-preload-plugins
-```
-
----
-
-## Browser Compatibility
-
-| Browser | Min Version | Status |
-|---------|-------------|--------|
-| Chrome | 57+ | ✅ Full support |
-| Firefox | 52+ | ✅ Full support |
-| Safari | 11+ | ✅ Full support |
-| Edge | 16+ | ✅ Full support |
-| Mobile Safari | 11+ | ✅ Touch events |
-| Chrome Android | 74+ | ✅ Touch events |
-
-### Required Features
-
-- WebAssembly 1.0
-- Canvas 2D API
-- ES6 JavaScript
-- IndexedDB (for file system)
-- Typed Arrays
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue: "WebAssembly is not defined"**
-```
-Solution: Ensure browser supports WASM (check caniuse.com/wasm)
-```
-
-**Issue: "Cannot read property 'canvas' of undefined"**
-```
-Solution: Ensure canvas element exists before loading WASM module
-```
-
-**Issue: "Out of memory"**
-```
-Solution: Increase -sINITIAL_MEMORY and -sMAXIMUM_MEMORY flags
-```
-
-**Issue: "File not found in IDBFS"**
-```
-Solution: Call WASMFileSystem::SyncFromBrowser() after mount
-```
-
-### Debug Mode
-
-```bash
-# Build with debug info
-emcmake cmake .. -DCMAKE_BUILD_TYPE=Debug
-emmake make
-
-# Enables:
-# - Source maps
-# - Assertions
-# - Stack overflow checks
-# - Readable variable names
-```
-
----
-
-## Performance Benchmarks
-
-### Canvas 2D Rendering
-
-| Operation | Objects/Frame | FPS | Notes |
-|-----------|---------------|-----|-------|
-| Rectangles | 1,000 | 60 | Solid fill |
-| Circles | 500 | 60 | Solid fill |
-| Text | 200 | 60 | 12px font |
-| Lines | 2,000 | 60 | 1px width |
-| Complex UI | 100 elements | 60 | Typical app |
-
-*Tested on: Chrome 120, Intel i7, integrated graphics*
-
-### Binary Size
-
-| Configuration | Size | Compressed |
-|---------------|------|------------|
-| Debug | ~2.5 MB | ~800 KB |
-| Release | ~500 KB | ~150 KB |
-| Release + -O3 + Closure | ~300 KB | ~100 KB |
-
----
-
-## Future Enhancements
-
-### High Priority
-- [ ] Complete image rendering implementation
-- [ ] Async fetch with callbacks
-- [ ] Font loading with FontFace API
-- [ ] Clipboard API integration
-
-### Medium Priority
-- [ ] WebGL rendering backend option
-- [ ] WebAudio integration
-- [ ] Service Worker template
-- [ ] Gamepad API support
-
-### Low Priority
-- [ ] WebRTC for multiplayer
-- [ ] WebGPU support (future)
-- [ ] Web Workers for threading
-- [ ] SharedArrayBuffer for multi-threading
-
----
-
-## License
-
-Part of UltraCanvas Framework  
-© 2025 Cloverleaf UG  
-Licensed under framework's main license
-
----
-
-## Support
-
-- **Documentation:** [docs.ultracanvas.io](https://docs.ultracanvas.io)
-- **Issues:** [github.com/ultracanvas/issues](https://github.com/ultracanvas/issues)
-- **Discord:** [discord.gg/ultracanvas](https://discord.gg/ultracanvas)
-
----
-
-**UltraCanvas WASM Platform** - Write C++, Run Anywhere, Including Your Browser! 🚀
+Window objects are safe either way — the application's window registry holds
+owning references.
+
+## Validating in a headless browser
+
+`demo/` contains the minimal app used to validate the backend: build it with
+`emcmake cmake` as above, serve `build/` with `serve.py`, and open
+`wasm-demo.html`. The window canvas (`<canvas id="ultracanvas-window-N">`)
+should show pango-rendered text and a clickable button.
+
+## Known limitations
+
+- **Clipboard**: no backend (`InitializeClipboard()` reports failure and the
+  framework continues); the browser clipboard needs an async JS bridge.
+- **Mouse capture**: drags that leave the canvas stop receiving moves until
+  the pointer re-enters (needs the Pointer Events capture API).
+- **Custom cursor images** fall back to the standard cursor (CSS cannot
+  reference files inside the Emscripten virtual FS).
+- **Native dialogs, drag & drop between windows, window icons**: not
+  implemented.
+- Presentation converts and uploads the full surface on every composition;
+  damage-rect-limited `putImageData` is an easy future optimisation.
+- The browser logs a "blocking on the main thread" warning at startup
+  (fontconfig scans the preloaded fonts synchronously); harmless today, but
+  moving font setup off the main thread would silence it.
+- Widget-level std::thread use (Album/Filer background scans) relies on the
+  preallocated pthread pool (8 workers); raise `-sPTHREAD_POOL_SIZE` for
+  apps that spawn more concurrent threads.
+
+## History
+
+The previous contents of this directory (including a hand-written Canvas 2D
+`IRenderContext` and its own `RunNative()` loop) targeted an early-2025
+snapshot of the framework, was never wired into the build, and could not
+compile against the current interfaces. It was replaced wholesale in 2026-08;
+only the browser utility classes in `UltraCanvasWASMSupport.*` were kept.
+The first full Emscripten link and in-browser validation followed in the
+same cycle, together with `build-wasm-sysroot.sh` and the `demo/` app.

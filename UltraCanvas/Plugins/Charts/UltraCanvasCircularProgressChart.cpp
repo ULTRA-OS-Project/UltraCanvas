@@ -1,8 +1,9 @@
 // Plugins/Charts/UltraCanvasCircularProgressChart.cpp
 // Circular progress chart element: concentric progress rings ("activity
 // rings"), single progress ring and progress pie, all angle-encoded.
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
 
@@ -440,39 +441,23 @@ namespace UltraCanvas {
         }
 
         // ---- Reserve a band for the legend ----
-        legendBandSize = 0.0;
-        if (legendStyle != CircularLegendStyle::NoLegend) {
-            ctx->PushState();
-            ctx->SetFontFamily(legendFontFamily);
-            ctx->SetFontSize(legendFontSize);
-            double maxRow = 0.0;
-            for (const RingLayout& layout : ringLayouts) {
-                Size2Di ts = ctx->GetTextLineDimensions(rings[layout.ringIndex].label);
-                double row = ts.width + 34.0;                          // chip + gaps
-                if (!rings[layout.ringIndex].iconPath.empty()) row += 22.0;
-                maxRow = std::max(maxRow, row);
-            }
-            ctx->PopState();
-            if (legendPosition == CircularLegendPosition::Left ||
-                legendPosition == CircularLegendPosition::Right) {
-                legendBandSize = maxRow + 12.0;
-            } else {
-                legendBandSize = std::max(24.0, legendFontSize + 14.0);
-            }
+        // The shared ChartLegend component measures itself and hands back the
+        // area left over for the circle.
+        UpdateLegend();
+        Rect2Dd legendContentArea(cachedPlotArea.x, cachedPlotArea.y,
+                                  cachedPlotArea.width, cachedPlotArea.height);
+        Rect2Dd circleArea = legendContentArea;
+        bool legendActive = legend.IsVisible() && legend.GetEntryCount() > 0;
+        if (legendActive) {
+            legend.Measure(ctx, legendContentArea);
+            circleArea = legend.RemainingArea(legendContentArea);
         }
 
         // ---- Circle geometry ----
-        double areaX = cachedPlotArea.x;
-        double areaY = cachedPlotArea.y;
-        double areaW = cachedPlotArea.width;
-        double areaH = cachedPlotArea.height;
-        switch (legendPosition) {
-            case CircularLegendPosition::Left:   areaX += legendBandSize; areaW -= legendBandSize; break;
-            case CircularLegendPosition::Right:  areaW -= legendBandSize; break;
-            case CircularLegendPosition::Top:    areaY += legendBandSize; areaH -= legendBandSize; break;
-            case CircularLegendPosition::Bottom: areaH -= legendBandSize; break;
-        }
-        if (legendStyle == CircularLegendStyle::NoLegend) legendBandSize = 0.0;
+        double areaX = circleArea.x;
+        double areaY = circleArea.y;
+        double areaW = circleArea.width;
+        double areaH = circleArea.height;
 
         double tipMargin = tipLabelContent != RingTipLabel::NoLabel ? tipFontSize + 6.0 : 0.0;
         cachedCenter = Point2Dd(areaX + areaW / 2.0, areaY + areaH / 2.0);
@@ -504,7 +489,7 @@ namespace UltraCanvas {
 
         RenderTipLabels(ctx);
         RenderNameLabels(ctx);
-        RenderLegend(ctx);
+        if (legendActive) legend.Render(ctx, legendContentArea);
     }
 
     void UltraCanvasCircularProgressChart::RenderTitle(IRenderContext* ctx) {
@@ -758,96 +743,55 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void UltraCanvasCircularProgressChart::RenderLegend(IRenderContext* ctx) {
-        if (legendStyle == CircularLegendStyle::NoLegend) return;
+    // Sync the shared legend component from the chart's legacy legend fields:
+    // one entry per visible ring, coloured from the ring / palette index,
+    // exactly like the arcs themselves.
+    void UltraCanvasCircularProgressChart::UpdateLegend() {
+        legend.SetVisible(legendStyle != CircularLegendStyle::NoLegend &&
+                          !rings.empty());
 
-        ctx->PushState();
-        ctx->SetFontFamily(legendFontFamily);
-        ctx->SetFontSize(legendFontSize);
-        ctx->SetFontWeight(FontWeight::Normal);
-
-        bool vertical = legendPosition == CircularLegendPosition::Left ||
-                        legendPosition == CircularLegendPosition::Right;
-        double chipW = legendStyle == CircularLegendStyle::NumberedChips ? 26.0 : 14.0;
-        double chipH = legendStyle == CircularLegendStyle::NumberedChips ? 18.0 : 14.0;
-        double rowH  = std::max(chipH + 6.0, legendFontSize + 8.0);
-
-        // Row extents, needed to centre the block.
-        std::vector<double> rowWidths;
-        double maxRow = 0.0;
-        for (const RingLayout& layout : ringLayouts) {
-            const ProgressRing& ring = rings[layout.ringIndex];
-            Size2Di ts = ctx->GetTextLineDimensions(ring.label);
-            double w = chipW + 8.0 + ts.width;
-            if (!ring.iconPath.empty()) w += 22.0;
-            rowWidths.push_back(w);
-            maxRow = std::max(maxRow, w);
-        }
-
-        double x = 0.0, y = 0.0;
-        size_t count = ringLayouts.size();
+        // Legacy positions map onto the shared enum; each edge keeps the old
+        // centred alignment (Left -> LeftCenter, Bottom -> BottomCenter, ...).
         switch (legendPosition) {
             case CircularLegendPosition::Left:
-                x = cachedPlotArea.x;
-                y = cachedCenter.y - rowH * count / 2.0;
-                break;
+                legend.SetPosition(ChartLegendPosition::LeftCenter);   break;
             case CircularLegendPosition::Right:
-                x = cachedPlotArea.x + cachedPlotArea.width - maxRow;
-                y = cachedCenter.y - rowH * count / 2.0;
-                break;
+                legend.SetPosition(ChartLegendPosition::RightCenter);  break;
             case CircularLegendPosition::Top:
-                y = cachedPlotArea.y;
-                break;
+                legend.SetPosition(ChartLegendPosition::TopCenter);    break;
             case CircularLegendPosition::Bottom:
-                y = cachedPlotArea.y + cachedPlotArea.height - rowH;
-                break;
+                legend.SetPosition(ChartLegendPosition::BottomCenter); break;
         }
 
-        double totalRowW = 0.0;
-        for (double w : rowWidths) totalRowW += w + 16.0;
-        if (!vertical) x = cachedCenter.x - (totalRowW - 16.0) / 2.0;
+        ChartLegendStyle style;
+        style.fontFamily = legendFontFamily;
+        style.fontSize = legendFontSize;
+        style.textColor = legendTextColor;
+        legend.SetStyle(style);
 
+        std::vector<ChartLegendEntry> entries;
+        size_t count = VisibleRingCount();
+        entries.reserve(count);
         for (size_t i = 0; i < count; ++i) {
-            const RingLayout& layout = ringLayouts[i];
-            const ProgressRing& ring = rings[layout.ringIndex];
-            double cx = x;
-
+            ChartLegendEntry entry(rings[i].label, ResolveRingColor(i),
+                                   LegendSwatch::Square);
             if (legendStyle == CircularLegendStyle::NumberedChips) {
-                ctx->SetFillPaint(layout.color);
-                ctx->FillRoundedRectangle(Rect2Dd(cx, y + (rowH - chipH) / 2.0, chipW, chipH), 4.0);
-
-                char num[8];
-                std::snprintf(num, sizeof(num), "%02zu", i + 1);
-                ctx->SetFontWeight(FontWeight::Bold);
-                ctx->SetTextPaint(Colors::White);
-                Size2Di ns = ctx->GetTextLineDimensions(num);
-                ctx->DrawText(num, Point2Dd(cx + (chipW - ns.width) / 2.0,
-                                            y + (rowH - ns.height) / 2.0));
-            } else {
-                ctx->SetFillPaint(layout.color);
-                ctx->FillRoundedRectangle(Rect2Dd(cx, y + (rowH - chipH) / 2.0, chipW, chipH), 3.0);
+                // Closest shared-swatch match for the old numbered chip row:
+                // the ring's icon when it has one, otherwise the "01" number
+                // drawn as a glyph in the ring colour.
+                if (!rings[i].iconPath.empty()) {
+                    entry.swatch = LegendSwatch::Image;
+                    entry.imagePath = rings[i].iconPath;
+                } else {
+                    char num[8];
+                    std::snprintf(num, sizeof(num), "%02zu", i + 1);
+                    entry.swatch = LegendSwatch::Glyph;
+                    entry.glyph = num;
+                }
             }
-            cx += chipW + 8.0;
-
-            if (!ring.iconPath.empty()) {
-                ctx->DrawImage(ring.iconPath,
-                               Rect2Dd(cx, y + (rowH - 16.0) / 2.0, 16.0, 16.0),
-                               ImageFitMode::Contain);
-                cx += 22.0;
-            }
-
-            ctx->SetFontWeight(FontWeight::Normal);
-            ctx->SetTextPaint(legendTextColor);
-            Size2Di ts = ctx->GetTextLineDimensions(ring.label);
-            ctx->DrawText(ring.label, Point2Dd(cx, y + (rowH - ts.height) / 2.0));
-
-            if (vertical) {
-                y += rowH;
-            } else {
-                x += rowWidths[i] + 16.0;
-            }
+            entries.push_back(entry);
         }
-        ctx->PopState();
+        legend.SetEntries(entries);
     }
 
     // =========================================================================

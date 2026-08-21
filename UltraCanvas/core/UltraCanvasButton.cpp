@@ -154,6 +154,12 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasButton::SetIcon(std::shared_ptr<UCImage> image) {
+        icon = std::move(image);
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasButton::SetIconPosition(ButtonIconPosition position) {
         iconPosition = position;
         InvalidateLayout();
@@ -1009,6 +1015,14 @@ namespace UltraCanvas {
             // follows would not fire the click.
             case UCEventType::MouseDoubleClick:
                 if (Contains(event.pointer)) {
+                    // Right-click opens a context menu (if wired) instead of activating.
+                    if (event.button == UCMouseButton::Right) {
+                        if (onContextMenu) {
+                            onContextMenu(event.pointerWindow.x, event.pointerWindow.y);
+                            return true;
+                        }
+                        return false;
+                    }
                     if (IsPressed() && canToggled) {
                         SetPressed(false);
                     } else {

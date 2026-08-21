@@ -35,6 +35,24 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
+  cross-platform "Open with" service: which applications the OS registers
+  for a file, and detached launching. Core worker/cache in
+  `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
+  internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
+  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  Public surface (`namespace FileAssociations` + `FileAssociationApp`):
+  - `GetApplicationsForFiles` — candidates for a selection (intersection),
+    default application first, cache-served once prewarmed.
+  - `OpenWithDefaultApplication` / `OpenWithApplication` /
+    `OpenWithApplicationPath` — detached launches (default handler /
+    enumerated app / user-picked executable).
+  - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
+    for an "Other application…" picker (the picker UI lives with the caller).
+  - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
+    the worker only exists once a caller asks for it.
+  See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
@@ -89,7 +107,12 @@ future.
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
   `UltraNet_FtpDelete`, `UltraNet_FtpRename`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
+  `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
+  `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
+  `UltraNet_OAuth2Refresh`, `UltraNet_OAuth2ParseTokenResponse`,
+  `UltraNet_OAuth2AuthorizeInteractive`
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -114,12 +137,16 @@ UltraTexter, UltraFiler, and any other UltraCanvas-based application that
 requires network connectivity. FileLoader uses UltraNet internally when
 loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 
-**Implementation status (this branch):** Stage 1 of the rollout —
-`UltraNet_HttpGet/Post/Put/Delete/Head/Patch`, `UltraNet_HttpRequest`,
-`UltraNet_HttpDownloadFile/UploadFile`, and the URL utilities are
-implemented synchronously on libcurl. Async, WebSocket, FTP, raw sockets,
-TLS layering, DNS, sessions, and the plugin manager are planned for
-Stages 2-3. See `Docs/Modules/UltraNet/README.md`.
+**Implementation status (this branch):** Stage 2/3 — the synchronous HTTP
+verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
+worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
+`UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
+`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
+sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
+on libcurl. Remaining gaps are per-function and environment-dependent —
+build and run the `UltraNetApiStatus` probe tool for ground truth on a
+given machine. See `Docs/Modules/UltraNet/README.md`.
 
 ### **6. UltraDatabase**
 
@@ -171,3 +198,124 @@ surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
 rollout is SQLite core + registry + query/transaction/migration API
 (Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
 remaining drivers and at-rest encryption (Stage 3).
+
+### **7. UltraWin**
+
+The UltraWin module runs Windows applications on Linux / ULTRA OS as single
+native windows — never a Windows desktop — with the user's own folders
+visible to the applications under a unified drive letter.
+
+UltraWin elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraWinResult`; application instances are
+  opaque `UltraWinHandle`s
+- No Windows desktop is ever displayed; no full-desktop viewer paths
+- Engines are never linked: Wine (and later QEMU) run as spawned child
+  processes, keeping LGPL/GPL licensing outside the framework binaries
+- Wine's default `Z:` → `/` host-root exposure is off by default; the
+  user's home is mapped as `U:` in every environment
+
+UltraWin uses open-source engines (Wine for the API-translation tier;
+QEMU/KVM + FreeRDP RemoteApp planned for the full-virtualisation tier) and
+encapsulates them so backings can be swapped — see
+`Docs/Research/UltraWinDesignProposal.md`.
+
+**Available Functions (Stage 1, Wine tier):**
+- `UltraWin_Initialize`, `UltraWin_Shutdown`, `UltraWin_IsInitialized`,
+  `UltraWin_GetConfig`, `UltraWin_SetConfig`, `UltraWin_GetCapabilities`,
+  `UltraWin_GetVersion`
+- `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
+  `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
+- `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
+  components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
+- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+  `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
+  `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+
+**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
+`UltraWin_VmSuspend`, `UltraWin_VmStop`,
+`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
+for FreeRDP RemoteApp windows.
+
+UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
+application to launch Windows executables. Linux / ULTRA OS only.
+
+**Implementation status (this branch):** Stage 1 of the rollout — module
+lifecycle, capability probing, environments (isolated Wine prefixes with
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
+
+### **8. UltraCrypt**
+
+Cryptographic services — the single place where hashing, message
+authentication, authenticated encryption, key derivation and secure random
+generation are implemented, so no application, plugin or sibling module has
+to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+see `Docs/Modules/UltraCrypt/README.md`.
+
+Scope is **data at rest and data integrity**. Transport security stays in
+UltraNet (per-platform and OS-native); credential *storage and policy* stay
+in UltraVault, which consumes UltraCrypt for its file-backed fallback
+backend.
+
+UltraCrypt elements must comply with the same rules as UltraNet and
+UltraDatabase:
+- Clear structure; call names understandable by their names
+- New algorithms use the same function and type naming patterns
+- **AEAD only** — no raw block-cipher or unauthenticated-mode surface is
+  exposed, so a caller cannot accidentally ship unauthenticated ciphertext
+- Nonces are generated by the module by default; reuse must be opted into
+- The CSPRNG never falls back to a PRNG — entropy failure is an error
+- Secrets travel in `UltraCryptSecureBuffer` (move-only, zeroized on
+  destruction, page-locked where the OS permits), never in `std::string`
+- All blocking operations return `UltraCryptResult`
+
+Like UltraNet and UltraDatabase, it encapsulates an open-source library so
+the backing implementation can be replaced without affecting callers; the
+backing library is never visible in a public header.
+
+**Available Functions (Core, Tier 1):**
+- `UltraCrypt_Initialize`, `UltraCrypt_Shutdown`, `UltraCrypt_IsAvailable`,
+  `UltraCrypt_GetBackendName`
+- `UltraCrypt_Hash`, `UltraCrypt_HashFile`, `UltraCrypt_GetDigestSize`,
+  `UltraCrypt_IsHashAvailable`
+- `UltraCrypt_Hmac`
+- `UltraCrypt_AeadSeal`, `UltraCrypt_AeadOpen`, `UltraCrypt_GetKeySize`,
+  `UltraCrypt_GetNonceSize`, `UltraCrypt_GetTagSize`,
+  `UltraCrypt_IsAeadAvailable`
+- `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
+  `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
+  `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
+- `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
+- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base64Encode`,
+  `UltraCrypt_Base64Decode`, `UltraCrypt_Base32Encode`,
+  `UltraCrypt_Base32Decode`
+
+Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
+
+UltraCrypt is the required cryptographic module for the UCD v2 file format,
+UltraVault, UltraDatabase at-rest encryption, UltraAuthenticator and any
+other UltraCanvas-based code that hashes, signs or encrypts stored data.
+Hand-rolled crypto and direct calls into a vendored crypto library are
+defects, not shortcuts.
+
+**One cipher, one KDF.** Everything UltraCanvas writes is encrypted with
+**XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
+offered, because the formats are ours and a second choice would only be a
+second code path in every reader. AES-256-GCM is present solely for reading
+foreign data and is hardware-gated. Algorithm agility lives in format
+version numbers, not in per-file algorithm identifiers.
+
+**Implementation status (this branch):** Concept / design only. Public
+surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
+is **libsodium** (§3.5 of that document). Suggested rollout is secure
+memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
+Argon2id + HKDF (Stage 2), consumer migration (Stage 3).
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.

@@ -6,19 +6,21 @@
 // UltraCanvasSTLElement. The mesh (per-quad flat colours for the banded look,
 // per-node colours and normals for the smooth look), the wireframe and the
 // on-surface isolines are drawn by OpenGL; the chart title, the 3D axes and
-// the band legend are drawn on top by the normal 2D renderer, using a CPU
-// projection that matches the GL camera exactly.
+// the colour-bar legend are drawn on top by the normal 2D renderer, using a
+// CPU projection that matches the GL camera exactly.
 //
 // Without ULTRACANVAS_ENABLE_GL the class simply derives from the software
 // UltraCanvasContourSurface3DElement, so application code compiles and runs
 // unchanged in every build - it just renders through the painter's-algorithm
 // path instead.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend ColorBar mode.
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/UltraCanvasContourSurface3D.h"
 
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -175,7 +177,7 @@ namespace UltraCanvas {
         SurfaceLegendMode legendMode = SurfaceLegendMode::Horizontal;
         std::string legendTitle;
         int legendDecimals = 0;
-        int legendSwatchSize = 12;
+        ChartLegend legend;                 // shared component, ColorBar mode
         std::string chartTitle;
         Color titleColor = Color(235, 235, 240, 255);
         Color backgroundColor = Color(18, 19, 24, 255);
@@ -219,7 +221,6 @@ namespace UltraCanvas {
         size_t BandCount() const;
         void BandRange(size_t band, double& lo, double& hi) const;
         Color BandColor(size_t band) const;
-        std::string BandIntervalText(size_t band) const;
         std::string FormatTick(double v, const ValueFormatter& fn) const;
 
         // ---- 2D overlay (title, axes, legend on top of the GL image) ----
@@ -237,7 +238,8 @@ namespace UltraCanvas {
                             const Vec3& from, const Vec3& to,
                             const std::vector<std::string>& tickTexts,
                             const std::string& title);
-        void RenderLegend(IRenderContext* ctx);
+        // Push the chart's legend configuration into the shared component.
+        void SyncLegend();
     };
 
 #else // !ULTRACANVAS_ENABLE_GL

@@ -205,6 +205,24 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
+  cross-platform "Open with" service: which applications the OS registers
+  for a file, and detached launching. Core worker/cache in
+  `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
+  internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
+  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  Public surface (`namespace FileAssociations` + `FileAssociationApp`):
+  - `GetApplicationsForFiles` — candidates for a selection (intersection),
+    default application first, cache-served once prewarmed.
+  - `OpenWithDefaultApplication` / `OpenWithApplication` /
+    `OpenWithApplicationPath` — detached launches (default handler /
+    enumerated app / user-picked executable).
+  - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
+    for an "Other application…" picker (the picker UI lives with the caller).
+  - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
+    the worker only exists once a caller asks for it.
+  See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
@@ -259,7 +277,12 @@ future.
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
   `UltraNet_FtpDelete`, `UltraNet_FtpRename`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
+  `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
+  `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
+  `UltraNet_OAuth2Refresh`, `UltraNet_OAuth2ParseTokenResponse`,
+  `UltraNet_OAuth2AuthorizeInteractive`
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -284,12 +307,16 @@ UltraTexter, UltraFiler, and any other UltraCanvas-based application that
 requires network connectivity. FileLoader uses UltraNet internally when
 loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 
-**Implementation status (this branch):** Stage 1 of the rollout —
-`UltraNet_HttpGet/Post/Put/Delete/Head/Patch`, `UltraNet_HttpRequest`,
-`UltraNet_HttpDownloadFile/UploadFile`, and the URL utilities are
-implemented synchronously on libcurl. Async, WebSocket, FTP, raw sockets,
-TLS layering, DNS, sessions, and the plugin manager are planned for
-Stages 2-3. See `Docs/Modules/UltraNet/README.md`.
+**Implementation status (this branch):** Stage 2/3 — the synchronous HTTP
+verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
+worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
+`UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
+`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
+sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
+on libcurl. Remaining gaps are per-function and environment-dependent —
+build and run the `UltraNetApiStatus` probe tool for ground truth on a
+given machine. See `Docs/Modules/UltraNet/README.md`.
 
 ### **6. UltraDatabase**
 
@@ -341,6 +368,127 @@ surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
 rollout is SQLite core + registry + query/transaction/migration API
 (Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
 remaining drivers and at-rest encryption (Stage 3).
+
+### **7. UltraWin**
+
+The UltraWin module runs Windows applications on Linux / ULTRA OS as single
+native windows — never a Windows desktop — with the user's own folders
+visible to the applications under a unified drive letter.
+
+UltraWin elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraWinResult`; application instances are
+  opaque `UltraWinHandle`s
+- No Windows desktop is ever displayed; no full-desktop viewer paths
+- Engines are never linked: Wine (and later QEMU) run as spawned child
+  processes, keeping LGPL/GPL licensing outside the framework binaries
+- Wine's default `Z:` → `/` host-root exposure is off by default; the
+  user's home is mapped as `U:` in every environment
+
+UltraWin uses open-source engines (Wine for the API-translation tier;
+QEMU/KVM + FreeRDP RemoteApp planned for the full-virtualisation tier) and
+encapsulates them so backings can be swapped — see
+`Docs/Research/UltraWinDesignProposal.md`.
+
+**Available Functions (Stage 1, Wine tier):**
+- `UltraWin_Initialize`, `UltraWin_Shutdown`, `UltraWin_IsInitialized`,
+  `UltraWin_GetConfig`, `UltraWin_SetConfig`, `UltraWin_GetCapabilities`,
+  `UltraWin_GetVersion`
+- `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
+  `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
+- `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
+  components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
+- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+  `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
+  `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+
+**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
+`UltraWin_VmSuspend`, `UltraWin_VmStop`,
+`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
+for FreeRDP RemoteApp windows.
+
+UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
+application to launch Windows executables. Linux / ULTRA OS only.
+
+**Implementation status (this branch):** Stage 1 of the rollout — module
+lifecycle, capability probing, environments (isolated Wine prefixes with
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
+
+### **8. UltraCrypt**
+
+Cryptographic services — the single place where hashing, message
+authentication, authenticated encryption, key derivation and secure random
+generation are implemented, so no application, plugin or sibling module has
+to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+see `Docs/Modules/UltraCrypt/README.md`.
+
+Scope is **data at rest and data integrity**. Transport security stays in
+UltraNet (per-platform and OS-native); credential *storage and policy* stay
+in UltraVault, which consumes UltraCrypt for its file-backed fallback
+backend.
+
+UltraCrypt elements must comply with the same rules as UltraNet and
+UltraDatabase:
+- Clear structure; call names understandable by their names
+- New algorithms use the same function and type naming patterns
+- **AEAD only** — no raw block-cipher or unauthenticated-mode surface is
+  exposed, so a caller cannot accidentally ship unauthenticated ciphertext
+- Nonces are generated by the module by default; reuse must be opted into
+- The CSPRNG never falls back to a PRNG — entropy failure is an error
+- Secrets travel in `UltraCryptSecureBuffer` (move-only, zeroized on
+  destruction, page-locked where the OS permits), never in `std::string`
+- All blocking operations return `UltraCryptResult`
+
+Like UltraNet and UltraDatabase, it encapsulates an open-source library so
+the backing implementation can be replaced without affecting callers; the
+backing library is never visible in a public header.
+
+**Available Functions (Core, Tier 1):**
+- `UltraCrypt_Initialize`, `UltraCrypt_Shutdown`, `UltraCrypt_IsAvailable`,
+  `UltraCrypt_GetBackendName`
+- `UltraCrypt_Hash`, `UltraCrypt_HashFile`, `UltraCrypt_GetDigestSize`,
+  `UltraCrypt_IsHashAvailable`
+- `UltraCrypt_Hmac`
+- `UltraCrypt_AeadSeal`, `UltraCrypt_AeadOpen`, `UltraCrypt_GetKeySize`,
+  `UltraCrypt_GetNonceSize`, `UltraCrypt_GetTagSize`,
+  `UltraCrypt_IsAeadAvailable`
+- `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
+  `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
+  `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
+- `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
+- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base64Encode`,
+  `UltraCrypt_Base64Decode`, `UltraCrypt_Base32Encode`,
+  `UltraCrypt_Base32Decode`
+
+Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
+
+UltraCrypt is the required cryptographic module for the UCD v2 file format,
+UltraVault, UltraDatabase at-rest encryption, UltraAuthenticator and any
+other UltraCanvas-based code that hashes, signs or encrypts stored data.
+Hand-rolled crypto and direct calls into a vendored crypto library are
+defects, not shortcuts.
+
+**One cipher, one KDF.** Everything UltraCanvas writes is encrypted with
+**XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
+offered, because the formats are ours and a second choice would only be a
+second code path in every reader. AES-256-GCM is present solely for reading
+foreign data and is hardware-gated. Algorithm agility lives in format
+version numbers, not in per-file algorithm identifiers.
+
+**Implementation status (this branch):** Concept / design only. Public
+surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
+is **libsodium** (§3.5 of that document). Suggested rollout is secure
+memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
+Argon2id + HKDF (Stage 2), consumer migration (Stage 3).
+persisted drive mappings), application launch/supervision, and the
+component installer (winetricks wrapper) are implemented; the VM tier and
+compatibility routing are planned for Stages 2-3. See
+`Docs/Modules/UltraWin/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -890,6 +1038,7 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
+| libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
@@ -913,6 +1062,8 @@ their *License* is likewise marked **—** (OS component).
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
+| Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
 | X11 (libX11) | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libX11](https://gitlab.freedesktop.org/xorg/lib/libX11) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Xcursor | [x.org](https://www.x.org/) | [gitlab.freedesktop.org/xorg/lib/libXcursor](https://gitlab.freedesktop.org/xorg/lib/libXcursor) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -1013,7 +1164,9 @@ their *License* is likewise marked **—** (OS component).
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| No additional third party (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
+| Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
+| Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
+| Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
 
 ### Ultra Net module
 
@@ -1031,6 +1184,20 @@ their *License* is likewise marked **—** (OS component).
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraWin module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
+| Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+
+> UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
+> a `wine` binary at runtime and degrades gracefully
+> (`UltraWin_GetCapabilities`) when none is installed, so Wine is not a build
+> dependency and appears in no package manifest as required. The Stage 2 VM
+> tier will add QEMU/KVM (runtime, child process) and FreeRDP (linked,
+> Apache 2) — tracked when that stage lands.
 
 ### VideoFX module
 
@@ -2236,7 +2403,7 @@ Detection rules:
 | 13 | 1 | Version minor | `0` |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). |
-| 16 | 1 | Encryption type | `0` = none, `1` = AES-256-GCM, `2` = ChaCha20-Poly1305, `3` = SuperVault remote authorization (see 4.4) |
+| 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
 | 17 | 1 | Flags | See 2.4 |
 | 18 | 2 | Reserved | Must be `0x0000`; readers must ignore |
 | 20 | 4 | Thumbnail length | uint32, bytes of raw thumbnail data; `0` if no thumbnail |
@@ -2252,7 +2419,7 @@ and whether a password will be required for the body.
 |---|---|---|
 | 0 | `THUMBNAIL` | A thumbnail is present. Must agree with thumbnail length > 0. |
 | 1 | `THUMB_FORMAT` | `0` = HEIC, `1` = PNG (fallback for writers without a HEIC encoder). |
-| 2 | `ENCRYPTED` | The document body is password-protected. Mirrors *encryption type ≠ 0* so filers can test one bit without reading offset 16. |
+| 2 | `ENCRYPTED` | The document body is password-protected. Mirrors *key source ≠ 0* so filers can test one bit without reading offset 16. |
 | 3 | `PRIVATE` | Confidential document: writers must **omit** the thumbnail and must not expose metadata outside the encrypted body. When set, bit 0 must be `0` and thumbnail length must be `0`. |
 | 4–7 | reserved | Writers set `0`; readers ignore. |
 
@@ -2327,8 +2494,8 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: KDF salt, iteration count, permission bits (print/copy/edit/form-fill) | Never encrypted (it is the input to decryption). |
-| `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when encryption type = `3`. |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
 Rules:
@@ -2350,14 +2517,29 @@ Per section, in this order:
 
 1. Serialize the payload (binary by default; XML/JSON in debug mode).
 2. Compress (unless compression = none for this section).
-3. Encrypt (only if header encryption type ≠ 0 and the section's *encrypted*
-   flag is set), using the key derived via the `SECU` parameters
-   (recommended KDF: Argon2id, fallback PBKDF2-HMAC-SHA256).
+3. Encrypt (only if the header key source ≠ 0 and the section's *encrypted*
+   flag is set) with **XChaCha20-Poly1305**, using the key obtained per the
+   header's key source: derived from the password with **Argon2id** via the
+   `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
+   carries its own random 192-bit nonce; the section header is passed as
+   associated data, so editing it invalidates the tag.
+
+**One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
+algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
+reader need implement only that pair. XChaCha20-Poly1305 is chosen over
+AES-256-GCM because it is constant-time in portable software on hardware
+without AES acceleration (the ARM and RISC-V machines ULTRA OS targets), and
+because its 192-bit nonce makes randomly generated per-section nonces safe
+without any counter or collision bookkeeping — with a 96-bit nonce, random
+generation has a birthday bound that a long-lived key would eventually meet.
+Agility lives in the *key source* field and in the version number, not in a
+cipher list: if the pair ever needs to change, that is a format version bump,
+which is cleaner than every reader carrying four code paths forever.
 
 Compression **per section** (rather than one blob over the whole body, as in
 v1) is what makes the thumbnail-at-front and random page access possible.
 
-### 4.4 SuperVault remote-authorization encryption (encryption type `3`)
+### 4.4 SuperVault remote-authorization encryption (key source `2`)
 
 SuperVault protects a file so that it can only be opened after the **original
 owner confirms the request in real time** (or via a pre-granted policy)
@@ -2415,8 +2597,8 @@ time both the app and the service recompute/compare it, which detects:
    authenticated encrypted channel.
 6. The app derives the actual section cipher key:
    `key = HKDF-SHA256(keyMaterial, salt = KDF salt, info = "UCD-SVLT-v1" ‖ fileUUID)`
-   and decrypts the encrypted sections (AES-256-GCM). Key material is held in
-   memory only and discarded when the document closes.
+   and decrypts the encrypted sections (XChaCha20-Poly1305). Key material is
+   held in memory only and discarded when the document closes.
 
 #### Design notes
 
@@ -2633,6 +2815,11 @@ UltraCanvasUIElement
 - **Area-proportional rooms**: `radius = sqrt(areaSqM) * areaScale`, clamped to [`minRadius`, `maxRadius`]
 - **Five functional type colors** + Custom override per-room
 - **Three link types**: Direct (solid), Secondary (dashed), ServiceOnly (dotted)
+- **Adjacency priority** (`Must` / `Should` / `Maybe`) as a second, independent
+  axis — see [Two axes: kind and priority](#two-axes-kind-and-priority)
+- **Two views of one dataset**: the bubble diagram and a half **matrix**
+  (`SetView`), with no conversion step between them
+- **Legend** for both views (`SetShowLegend`)
 - **Optional directed arrows** on links
 - **Functional zones**: dashed rounded-rect bounding box around a set of rooms, with translucent fill and a zone label
 - **Pan via drag**, content centering
@@ -2812,6 +2999,19 @@ void CenterContent();   // Bounding-box centers all rooms in widget
 
 void SetStyle(const AdjacencyDiagramStyle& s);
 const AdjacencyDiagramStyle& GetStyle() const;
+
+// Views — see "The matrix view" below
+void SetView(AdjacencyView v);              // Bubble (default) | Matrix
+AdjacencyView GetView() const;
+void SetMatrixStyle(AdjacencyMatrixStyle s);  // Staircase (default) | Rotated45
+void SetMatrixOrder(const std::vector<std::string>& roomIds);
+void SetShowMatrixDiagonal(bool on);
+void SetAttributeColumns(const std::vector<std::string>& headers);
+
+// Legend — applies to both views
+void SetShowLegend(bool on);
+void SetLegendPosition(ChartLegendPosition position);
+static const char* PriorityLabel(AdjacencyPriority priority);
 
 int  GetSelectedRoomIndex() const;
 int  GetSelectedLinkIndex() const;
@@ -3024,6 +3224,153 @@ needing to call `UpdateRoom` with a full struct.
 - [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
 
+
+---
+
+## The matrix view
+
+The bubble diagram and the adjacency matrix are two drawings of **one dataset**.
+Architects produce both from the same programme: the matrix to *decide* the
+adjacencies, the bubble diagram to *arrange* them. Switching between them is a
+single call — there is no conversion, no copy, and therefore nothing that can go
+stale:
+
+```cpp
+diagram->SetView(AdjacencyView::Matrix);
+diagram->SetShowLegend(true);
+```
+
+Everything else — `AddRoom`, `AddLink`, `AddZone`, the style struct — is
+unchanged and shared. Zones are a bubble-view concept and are simply not drawn
+in the matrix.
+
+### Two axes: kind and priority
+
+`AdjacencyLinkType` says what **kind** of connection a link is:
+
+| Value | Meaning |
+|---|---|
+| `Direct` | solid line — the rooms share a wall |
+| `Secondary` | dashed — nearby, indirect access |
+| `ServiceOnly` | dotted — a back-of-house route |
+
+`AdjacencyPriority` says how badly the adjacency is **wanted**:
+
+| Value | Matrix mark |
+|---|---|
+| `Must` | filled red disc |
+| `Should` | filled blue disc |
+| `Maybe` | hollow green ring |
+
+These are different questions, and they only partly coincide: a service link can
+itself be mandatory or merely preferred, so `ServiceOnly` is not a weaker
+`Direct`. That is why priority is a separate field rather than three more values
+on the enum.
+
+`AdjacencyLink::priority` defaults to `Must`, so every existing caller keeps its
+current meaning: the bubble view ignores the field entirely, and a matrix view of
+data that never expressed a priority shows each link at full strength — the
+honest reading of data that never said otherwise.
+
+```cpp
+// Express a programme directly in priority terms; `type` follows for the
+// bubble view.
+diagram->AddLink("lobby", "reception", AdjacencyPriority::Must);
+diagram->AddLink("lobby", "print",     AdjacencyPriority::Maybe);
+
+// Or add priority to links you already have.
+diagram->SetLinkPriority("staff", "storage", AdjacencyPriority::Should);
+
+const AdjacencyLink* link = diagram->FindLink("lobby", "reception");
+```
+
+### Geometry
+
+A room adjacency matrix is symmetric — "kitchen next to dining" is the same
+requirement as "dining next to kitchen" — so only the upper triangle carries
+information. Two geometries draw it:
+
+- **`AdjacencyMatrixStyle::Staircase`** (the default) — an ordinary axis-aligned
+  grid whose populated region is the upper-right staircase, with the unused half
+  shaded out. Denser, and the better choice for very large programmes.
+- **`AdjacencyMatrixStyle::Rotated45`** — the classic architectural triangle:
+  horizontal labels down the left, cells as 45° diamonds where each pair of
+  rooms' diagonals cross, the whole figure pointing right. No column headers
+  exist at all — every space is named once. This is the traditional hand-drawn
+  form (the demo's *Triangle 45°* tab reproduces it at 19 spaces, attribute
+  table included).
+
+Despite appearances, `Rotated45` involves no render transform: with `s`/`t` the
+vertical/horizontal position in cell-pitch units, the diagonal coordinates
+`u = s + t` and `v = s − t` turn every diamond into an axis-aligned unit square,
+so cell `(i, j)` centres at `s = (i+j+1)/2, t = (j−i)/2` and hit testing is just
+`i = floor(s−t), j = floor(s+t)` — `t ≥ 0` already guarantees `j ≥ i`.
+
+Where several links join the same pair, the **strongest** priority is the one
+drawn: the matrix answers "how badly", and the strongest requirement is the one
+that constrains the plan.
+
+`SetShowMatrixDiagonal(true)` draws the self-intersections, which are off by
+default — a room is trivially adjacent to itself.
+
+### Ordering
+
+The bubble view positions rooms at explicit `x`/`y`, which gives a matrix no
+ordering at all, so rows and columns default to **insertion order** — the order
+the caller typed their programme in, which is usually meaningful (public spaces
+first, back-of-house last). Override it per diagram:
+
+```cpp
+diagram->SetMatrixOrder({"lobby", "reception", "gallery",     // public
+                         "offices", "staff",                  // private
+                         "plant", "storage"});                // service
+```
+
+Ids you leave out keep their insertion position at the end; unknown ids are
+ignored. Pass an empty vector to return to insertion order.
+
+### Attribute columns
+
+A gutter of free-form per-room values can sit to the left of the row labels:
+
+```cpp
+diagram->SetAttributeColumns({"m²", "Public"});
+
+AdjacencyRoom room = *diagram->GetRoomById("lobby");
+room.attributes = {"80", "Y"};
+diagram->UpdateRoom(room.id, room);
+```
+
+Values are positional against the headers. The bubble view ignores them.
+
+### Interaction
+
+```cpp
+diagram->onMatrixCellClick = [](const std::string& rowRoomId,
+                                const std::string& colRoomId,
+                                const AdjacencyLink* link) {
+    // `link` is nullptr where the two spaces have no requirement — the bubble
+    // view has no equivalent event, since there is nothing to click there.
+};
+```
+
+Hovering highlights the cell's row and column and shows a tooltip naming both
+spaces and the requirement between them.
+
+### Legend
+
+`SetShowLegend(true)` is worth setting for the **bubble** view too, independently
+of any matrix use: that view colours rooms by `RoomFunctionType` and previously
+said so nowhere on screen. The key lists only the function types actually
+present in the diagram.
+
+## See also
+
+- [`UltraCanvasAdjacencyMatrixViewProposal.md`](UltraCanvasAdjacencyMatrixViewProposal.md) —
+  the research behind the matrix view and the roadmap for the rest
+- [`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) — the general
+  matrix diagram, for relationships between lists that are **not** rooms
+
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAlbumExamples.md
 ==============================================================================
@@ -3043,7 +3390,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.0.0
+**Version:** 1.7.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -3053,6 +3400,7 @@ cheap and the whole look can be swapped by a single enum.
 
 - **Six layout designs** — Uniform Grid, Justified, Masonry, Mosaic, Filmstrip, Cards
 - **Mixed media** — photo / video / music items with type badges and cover/poster thumbnails
+- **Automatic video poster frames** — a Video item with no cover has one extracted from the clip itself in the background and cached in memory (`videoPosterFrames`), so nothing has to be written next to read-only media
 - **Three viewer modes** — `Display` (visitor), `UserEdit` (owner), `Admin`
 - **Sizing by items-per-row OR by target image size**
 - **Image fit per item** — `Crop` (with focus point), `Zoom`, `Stretch`, `Fit`
@@ -3119,8 +3467,53 @@ album->AddItem({ "media/images/landscape.jpg", "", "Mountain Dawn",
 ```
 
 Video and music items draw `thumbnailPath` (cover art / poster frame) plus a
-type badge. If no thumbnail decodes, a neutral placeholder with a play / note
-glyph is drawn instead.
+type badge. A **Video** item whose `thumbnailPath` is empty (or does not decode)
+falls back to a poster frame extracted from its own clip — see
+[Automatic video poster frames](#automatic-video-poster-frames). If neither
+yields an image, a neutral placeholder with a play / note glyph is drawn.
+
+### Automatic video poster frames
+
+A Video tile does not need a pre-generated cover: with `videoPosterFrames` (on
+by default) the album decodes one representative frame of `mediaPath` itself and
+uses it as the tile image.
+
+```cpp
+AlbumConfig cfg;
+cfg.videoPosterFrames  = true;    // default
+cfg.videoPosterMaxSize = 640;     // longest edge of the cached frame, px
+cfg.videoPosterTimeSec = -1.0f;   // <0 = auto (~10% in, capped at 1s)
+album->SetConfig(cfg);
+
+AlbumItem clip;
+clip.title     = "Competition";
+clip.mediaType = AlbumMediaType::Video;
+clip.mediaPath = "media/videos/Video A more competition.mp4";
+album->AddItem(clip);   // no thumbnailPath needed — the cover comes from the clip
+```
+
+How it behaves:
+
+- **Never on the UI thread.** A cold clip can take seconds to open and seek, so
+  the extraction runs on one lazily-started worker thread. The tile shows the
+  placeholder until the frame lands, then repaints (and the aspect-driven
+  layouts — Justified / Masonry — reflow around its real aspect ratio).
+- **Only what is on screen.** Requests are queued by tiles as they draw, so
+  laying out a large album does not start a decode per clip.
+- **Cached in memory** for the widget's lifetime, keyed by media path, and
+  dropped when the item list is replaced (`SetItems` / `ClearItems`). Nothing is
+  written to disk — which is the point: an app cannot cache poster files next to
+  clips inside a code-signed macOS `.app` bundle, an AppImage or any read-only
+  install, so on those platforms pre-generating covers simply fails.
+- **An explicit cover still wins.** `thumbnailPath` is used whenever it decodes;
+  extraction is the fallback, not an override.
+- **Needs a video backend** (`ULTRACANVAS_ENABLE_VIDEO`). With the null backend,
+  or a clip that yields no frame, the slot is marked failed once (never retried)
+  and the placeholder stays.
+
+`UltraCanvasVideoThumbnail` (`include/UltraCanvasVideoThumbnail.h`) is the engine
+behind this and can be called directly when an app *does* want to keep poster
+files on disk — see its own docs.
 
 ### Configuration
 
@@ -3152,6 +3545,9 @@ cfg.imageCornerRadius = -1.0f;     // image corners: <0 follow tile · 0 square 
 cfg.linkColor     = Color(26, 115, 232, 255);  // subtitle-link colour (items with a `link`)
 cfg.linkUnderline = true;
 cfg.dropShadow    = true;
+cfg.videoPosterFrames  = true;     // Video tiles without a cover extract one (default)
+cfg.videoPosterMaxSize = 640;      // longest edge of the cached poster frame, px
+cfg.videoPosterTimeSec = -1.0f;    // where to grab it; <0 = auto (~10% in, max 1s)
 album->SetConfig(cfg);
 ```
 
@@ -3186,7 +3582,13 @@ cfg.hoverPreviewFps            = 24;     // frame-poll / repaint cadence
 Playback starts only after the dwell delay, so a cursor merely crossing the
 grid never opens a decoder; until the first frame arrives the poster stays, and
 when the preview ends (duration elapsed, clip over, or the cursor leaves) the
-poster returns. One decode session exists at a time. The preview frame is
+poster returns. One decode session exists at a time. Activating a tile — click,
+double-click, an action icon or a context-menu action — also ends the preview
+before the app callback runs, and previews only play while the album's window
+is the application's focused window: when a click opens the full video in its
+own window the cursor typically still rests on the tile, and both rules
+together guarantee the inline preview never plays alongside the real player.
+The preview frame is
 fitted exactly like the thumbnail (`imageDisplay`, focus point, hover zoom) so
 nothing jumps when it starts or ends. Requires a real video backend
 (`ULTRACANVAS_ENABLE_VIDEO`); with the null backend the static thumbnail simply
@@ -3293,14 +3695,8 @@ yt.mediaPath    = "media/videos/Lola Lexy - No kings.mp4";
 yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
 yt.linkIconPath = "media/icons/youtube.svg";
 
-// Give the video tile a real cover by extracting a poster frame once
-// (see UltraCanvasVideoThumbnail). The encoder is picked from the extension
-// — ".qoi" writes QOI, otherwise PNG.
-VideoThumbnailRequest req;
-req.maxWidth = 640; req.maxHeight = 480;
-if (SaveVideoThumbnail(yt.mediaPath, "media/videos/Lola Lexy - No kings.qoi", req))
-    yt.thumbnailPath = "media/videos/Lola Lexy - No kings.qoi";
-
+// No thumbnailPath: the album extracts the tile's cover from the clip itself
+// (see "Automatic video poster frames" above).
 album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){
@@ -4568,6 +4964,15 @@ Composite based on existing primitives (`UltraCanvasButton`, `UltraCanvasSlider`
 Style flags via `AudioPlayerStyle`: `showVolumeSlider`, `showTimeLabels`,
 `showLoopButton`, `showWaveform`, `compact`.
 
+The row adapts to the width it is given (e.g. the UltraFiler preview pane can
+go down to ~260px): when the fixed-size controls would overflow, the volume
+slider is hidden first, then the time label — the mute button stays so the
+sound can still be silenced, and the seek bar always keeps a usable length
+instead of being squeezed out or clipping controls at the right edge. The
+style flags remain the upper bound: a control disabled by style never
+reappears, and everything hidden for width returns as soon as the element is
+wide enough again.
+
 Factories: `CreateAudioPlayer`, `CreateAudioPlayerFromFile`,
 `CreateCompactAudioPlayer`.
 
@@ -4613,9 +5018,19 @@ brew install flac libvorbis opus opusfile libopusenc lame
 - Backend is selected via the `IAudioBackend` interface
   (`libspecific/Audio/IAudioBackend.h`). One real implementation per supported
   platform/library; the null stub ships unconditionally as a fallback.
-- Backend audio callbacks fire on the backend's audio thread. The player /
-  recorder marshal user-facing callbacks back to the UI thread via the
-  existing event/timer infrastructure (TODO during full implementation).
+- Backend audio callbacks fire on the backend's audio thread.
+  `UltraCanvasAudioPlayer` documents its `onPositionChanged` / `onEnded` /
+  state-change callbacks as audio-thread calls; `UltraCanvasAudioPlayerElement`
+  marshals all of its UI work back to the UI thread via
+  `UltraCanvasApplicationBase::PostToUIThread`, so consumers of the element
+  never see a cross-thread callback. Direct users of the player must marshal
+  themselves before touching UI.
+- End of stream: when a non-looping source plays out, the player emits
+  `onEnded` (once), reports `Stopped`, and feeds silence to the still-open
+  device until the next transport call (`Play` restarts from the beginning);
+  the element additionally stops the device. Earlier the device kept pulling
+  frames past the end and the track audibly restarted from 0:00 while the
+  state said `Stopped`.
 - Decoders/encoders beyond miniaudio's built-ins live in
   `libspecific/Audio/AudioCodecsExtra.cpp`, compile-gated on the
   `ULTRACANVAS_HAS_*` defines set by CMake codec detection. The backend
@@ -7189,6 +7604,8 @@ struct BreadcrumbItem {
     bool hasDropdown  = false;
     std::vector<MenuItemData> dropdownItems;
     std::function<std::vector<MenuItemData>()> dropdownItemsProvider; // Lazy
+    std::function<bool()> dropdownAvailableProvider;  // "is there anything in it?" probe
+    bool sortDropdownItems = false;                   // sort entries by label (case-insensitive)
     std::function<void()> onClick;
     void* userData    = nullptr;
 
@@ -7264,11 +7681,17 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
 
 Every node drops down its own sub-folders: `Computer` lists the drives, the
 drive node the folders of that drive, and each folder node the folders inside
-it — so the path can be extended one level straight from the strip. A folder
-without sub-folders shows a disabled `(no sub-folders)` entry. Every list —
-including the drive list of the `Computer` node — is filled lazily when that
-menu opens, so building the strip never touches the filesystem: rebuilding it on
-each navigation (the pattern below) costs nothing.
+it — so the path can be extended one level straight from the strip. Entries are
+sorted alphabetically, case-insensitively. **A folder without sub-folders shows
+no dropdown chevron at all**, so the strip never offers a menu that would come
+up empty.
+
+Every list — including the drive list of the `Computer` node — is filled lazily
+when that menu opens; while the strip is laid out, each segment only asks
+whether it holds a *first* sub-folder (that is what decides the chevron), and
+the answer is cached per item, so rebuilding the strip on each navigation (the
+pattern below) stays cheap. Call `RefreshDropdownAvailability()` after the
+folders under a visible path have changed to have the chevrons re-evaluated.
 
 ```cpp
 // Keep a filer and its path strip in sync.
@@ -7296,9 +7719,35 @@ bool IsDropdownOpen() const;
 // is the overflow menu.
 int  GetOpenDropdownItemIndex() const;
 void CloseDropdown();
+// Does this item currently show a dropdown control at all?
+bool ItemShowsDropdown(const BreadcrumbItem& item) const;
+// Forget every cached dropdownAvailableProvider answer and re-lay out.
+void RefreshDropdownAvailability();
 ```
 
-The pointer says which parts open a menu: a dropdown chevron — and the whole
+**An item whose list is empty shows no chevron.** `hasDropdown` alone is not
+enough: an item needs entries behind it, either in `dropdownItems` or from
+`dropdownItemsProvider`. A lazily filled list is asked about through the
+optional `dropdownAvailableProvider` — a cheap "is there a first entry?" probe
+that must not build the whole list; it is consulted once per item and cached
+(`RefreshDropdownAvailability()` clears the cache). Without a probe a lazy
+provider is assumed to have entries; if it then comes back empty, the menu is
+not opened and the chevron disappears.
+
+Set `sortDropdownItems` on an item to have its entries sorted by label
+(case-insensitive) before the menu opens — for lists gathered from elsewhere,
+such as the folders of a directory. A hand-written menu keeps its own order.
+
+**What opens the dropdown** is a full-height zone at the trailing end of the
+item, not the 6px chevron glyph: the chevron, the gap in front of it and the
+item's trailing padding, widened to at least
+`BreadcrumbStyle::dropdownHitAreaMinWidth` (24px by default) and — in the
+`Arrow` / `Parallelogram` item styles — extended over the tip drawn past the
+segment's right edge, so the whole arrow head is clickable. The zone never
+takes more than the trailing half of an item, so the label always keeps a
+clickable area of its own.
+
+The pointer says which parts open a menu: the dropdown zone — and the whole
 overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
 (`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
 the rest of the strip shows the item cursor. Both are style fields:
@@ -7332,6 +7781,28 @@ void SetOverflowMode(BreadcrumbOverflowMode mode);
 void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetMaxItemTextWidth(int maxWidth);
+```
+
+### Hover, Press and Readability
+
+The current item keeps its emphasis text colour through hover and press: those
+states move its *background* instead. The generic `itemHoverBackgroundColor` /
+`itemPressedBackgroundColor` are cut for the muted resting background, and
+handing them the current item — which usually carries a saturated fill and a
+white label — is what used to leave that label unreadable. By default the
+feedback is derived from `currentItemBackgroundColor` itself, tinted towards
+the other end of the luminance scale (a dark fill lightens, a light one
+darkens); set the colours explicitly to override:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.currentItemHoverBackgroundColor   = Color(30, 140, 230, 255);  // 0 alpha = derive
+s.currentItemPressedBackgroundColor = Color(0,  100, 190, 255);
+// Readability guard: a label that cannot be made out against its own opaque
+// background is redrawn black or white. The value is a WCAG contrast ratio
+// (1..21); 0 switches the guard off.
+s.minTextContrastRatio = 2.2f;                                   // default
+bc->SetStyle(s);
 ```
 
 ## Enumerations
@@ -7370,10 +7841,12 @@ enum class BreadcrumbOverflowMode {
 
 ```cpp
 enum class BreadcrumbItemStyle {
-    Plain,       // Text only, background on hover
-    Pill,        // Rounded background
-    Underline,   // Underline on hover
-    Tab          // Tab-like with bottom border
+    Plain,         // Text only, background on hover
+    Pill,          // Rounded background
+    Underline,     // Underline on hover
+    Tab,           // Tab-like with bottom border
+    Arrow,         // Interlocking right-pointing arrow segments ("steps")
+    Parallelogram  // Interlocking slanted segments
 };
 ```
 
@@ -7385,6 +7858,9 @@ BreadcrumbStyle::Compact();
 BreadcrumbStyle::Pills();
 BreadcrumbStyle::FileExplorer();
 BreadcrumbStyle::WebDocs();
+BreadcrumbStyle::Arrow();          // interlocking arrow segments
+BreadcrumbStyle::Parallelogram();  // interlocking slanted segments
+BreadcrumbStyle::Steps();          // Arrow segments + round numbered indicators
 ```
 
 ## Events and Callbacks
@@ -7393,7 +7869,7 @@ BreadcrumbStyle::WebDocs();
 // Fired when a non-current item is clicked. `index` is the item's position.
 std::function<void(int index, const BreadcrumbItem& item)> onItemClicked;
 
-// Fired when the dropdown chevron of an item is clicked.
+// Fired when an item's dropdown zone is clicked.
 std::function<void(int index, const BreadcrumbItem& item)> onItemDropdown;
 
 // Fired when the overflow ("...") menu is opened.
@@ -8792,9 +9268,14 @@ axes render **above** the content, so a dense chart cannot bury its own axis
 rules and value labels under its data marks.
 
 Live demo: **Charts → Chart Engine** in the demo application
-(`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one ~90-line bar-chart
-class rendered under the Vertical, Horizontal and Polar projections. The first
-production client is the parallel coordinate chart
+(`Apps/DemoApp/UltraCanvasChartEngineExamples.cpp`) — one bar-chart class
+implementing nothing but the content contract, with an option panel that
+switches every engine service live: the three projections, the axis scales
+(including `Log` and `SymLog`), number formatting, the grid source, tick
+density, bar arrangement and slot geometry, limiters, the label plan's
+declutter, legend swatches, hit-region tooltips, the animation driver, the
+dirty model and the named-property surface. The first production client is the
+parallel coordinate chart
 ([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md)).
 
 - Driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
@@ -8802,11 +9283,12 @@ production client is the parallel coordinate chart
 - Bar series geometry: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
+- Themes and palettes: `include/Plugins/Charts/Engine/UltraCanvasChartTheme.h`
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.1.0
-**Last Modified:** 2026-08-07
+**Version:** 1.3.0
+**Last Modified:** 2026-08-20
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -8856,13 +9338,60 @@ than clamping. Tick labels are decluttered by the 1-D pass
 (`PriorityGreedy`: range ends and zero survive longest) — never by the 2-D
 solver.
 
+**Logarithmic axes** are first-class: `scale = ChartScale::Log` (base from
+`logBase`, default 10) positions by decade and `GenerateTicks` emits one tick
+per decade, thinned toward the requested count, so labels read 1, 10, 100, 1K…
+Non-positive samples are clamped to a floor (`1e-12`) rather than producing
+NaN, which has two consequences worth planning for:
+
+- **Set the range explicitly.** A log axis has no meaningful zero, so an
+  auto range fed a zero (which `ObserveBarSeries` supplies, because bars grow
+  from it) stretches down to the floor. Pin it to whole decades instead —
+  `axis.SetRange(pow(10, floor(log10(minPositive))), pow(10, ceil(log10(max))))`.
+- **Grow marks from the axis floor.** `Normalize(0)` lands far below the plot,
+  so clamp the base edge of a bar or area to `[0,1]` under a log scale.
+
+`ChartScale::SymLog` is the variant for signed data: linear within
+`symLogThreshold` of zero, logarithmic beyond, so negatives keep their sign
+instead of being clamped away. The demo's **Value axis** row switches
+Linear / Log / SymLog / Percentile over datasets chosen to suit each.
+
 ## Projections
 
 `SetProjectionKind(...)`: `Vertical` (domain right, value up), `Horizontal`
-(the same content transposed), `Polar` (domain around the circle, value
-outward; `Space3D` reserved). Content that draws its shapes as subdivided
-projected edges renders correctly under all of them — the demo's bars become
-ring sectors under Polar with no chart-side change.
+(the same content transposed — note the domain runs **downward**, so the first
+category is the top row), `Polar` (domain around the circle, value outward;
+`Space3D` reserved). Content that draws its shapes as subdivided projected
+edges renders correctly under all of them — the demo's bars become ring
+sectors under Polar with no chart-side change. Edge-axis furniture follows the
+projection too: the engine derives which end of an edge carries the low value
+from the projection rather than assuming.
+
+Polar has no edges to hang furniture on, so an **edge** axis would be drawn as
+a straight rule along the rectangular plot bounds beside a round chart. Give
+the value axis `inPlot = true` there instead — in-plot axes are mapped through
+the projection, so it comes out as a radial rule with its ticks along it — and
+stand the category axis down, naming its slots with annotation labels around
+the rim (what the demo's Polar mode does).
+
+## Highlights (slot 200 wash / slot 700 overlay)
+
+`AddHighlight(ChartHighlight)` / `ClearHighlights()` — the proposal's §8.2
+layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Seven
+shapes: explicit `Rectangle`/`Ellipse` in value space, a `ValueBand` on one
+axis, and the computed group shapes — `ConfidenceEllipse` (covariance eigen
+decomposition at a `confidence` level, the 50%/95%-around-grouped-dots
+convention, with a mean marker), `Hull` (padded convex hull), `Blob`
+(Chaikin-smoothed hull hugging a cluster) and `PointHalo`. Computed shapes
+take value-space `members`, x through the axis at `xAxisIndex` (the
+projection's domain/u coordinate) and y through `yAxisIndex`. `zSlot` picks
+the layer: 200 draws as a wash under the grid, 700 as an overlay above the
+content. A highlight's `label` rides the label plan as
+`ChartLabelClass::HighlightLabel`. The geometry helpers
+(`ComputeConfidenceEllipse`, `ComputeConvexHull`, `ExpandPolygon`,
+`SmoothPolygonChaikin`) are UI-free and unit-tested. Pair a confidence-
+ellipse highlight with the legend's ellipse custom key (`SetCustomArea`) —
+a key describes marks the chart actually draws.
 
 ## Phase-1 services
 
@@ -8917,14 +9446,117 @@ bar collapsing mid-animation degrades gracefully.
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
   collision solver **once per invalidation, never per frame**. `allowSuppress`
   drops labels that would overprint (set `priority` on the ones that must
-  survive); leaders and rotation are drawn by the engine.
-- **Legend**: `SetShowLegend(true)` + `SetLegendEntries({{label, color}, ...})`
-  — measured, reserved in layout, and an obstacle the solved labels avoid.
-  `ChartLegendEntry.swatch` picks how the swatch is painted —
-  `Solid | Gradient | Outline | Hatched | Image` (`imagePath` for `Image`) —
-  so a non-solid series is represented faithfully.
+  survive); leaders and rotation are drawn by the engine. Solved labels are
+  kept within the plot area **plus whatever margins the chart reserved for
+  itself in `MeasureContent`** (`SolveLabelBounds`): reserve a text-height
+  band on the value-axis end and a bar that reaches the axis maximum keeps
+  its value label just above the plot edge, instead of having it pushed down
+  onto the bar. Axis bands, the title band and the legend margin stay out of
+  bounds (the legend also rides the plan as an obstacle).
+- **Legend**: the shared `ChartLegend` component
+  ([`UltraCanvasChartLegend.h`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartLegend.h)),
+  laid out by the engine. `SetShowLegend(true)` +
+  `SetLegendEntries({{label, color}, ...})` as before, plus:
+  - `SetLegendPosition(...)` — 12 outside placements
+    (`Top/Bottom/Left/Right` × `Start/Center/End`) that reserve their edge in
+    the layout negotiation, and 4 insets (`InsetTopLeft` … `InsetBottomRight`)
+    that float over the plot and reserve nothing. Either way the legend box
+    is an obstacle the solved labels steer around.
+  - `SetLegendOrientation(...)` — `Auto` (vertical on the sides, horizontal
+    rows wrapped to the width on top/bottom), or forced
+    `Horizontal`/`Vertical`.
+  - `SetLegendTitle(text)`, and `Legend()` for the component's long tail:
+    per-entry `valueText`, interval/band entries, a max-entries overflow row,
+    a label formatter, hit-testing.
+  - `SetLegendMode(...)` — `Discrete` (the entry list), `ColorBar` (a
+    continuous colormap ramp over a value range with tick labels — the key a
+    heatmap or contour surface uses; configure with
+    `Legend().SetColorBar({colormap, min, max, ticks, formatter, ...})`,
+    `quantizeLevels >= 2` draws discrete bands), or `SizeLegend` (sample
+    circles keying a bubble-size scale, largest first —
+    `Legend().SetSizeScale(...)`).
+  - `Legend().SetCustomArea(size, draw)` — a host-drawn panel below the
+    entries, inside the legend box, for a key richer than any swatch: an
+    annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.
+    The legend reserves the size in its layout and calls the drawing
+    callback with the reserved (clipped) rectangle. **A key must describe
+    marks the chart actually draws**: a limiter-line key belongs with a
+    chart that draws limiters, and a 50%/95% confidence-ellipse key belongs
+    with a scatter/jitter chart that draws group-highlight ellipses — that
+    highlighting style is the engine's reserved `Highlight` layer (slot
+    200, group rectangles / ellipses / hull blobs / value bands), not yet
+    implemented; when it lands, its key pairs with this custom area.
+  - `ChartLegendEntry.swatch` picks the swatch: `Square | Circle | Ring |
+    Line | DashedLine | Marker | Glyph | Gradient | Outline | Hatched |
+    Image` (`imagePath` for `Image`) — line series get a line, scatter gets
+    a disc, and a non-solid painted series is represented faithfully.
+  The legend styles itself from the active theme (`SetTheme` keeps its
+  `ChartLegendStyle` in sync), wraps tall vertical legends into further
+  columns instead of clipping, and is interactive: hovering an entry
+  highlights it (repaint-only), clicking one toggles its enabled state (the
+  entry renders dimmed) and calls the chart's
+  `OnLegendEntryToggled(index, enabled)` — the chart decides what
+  "disabled" means, typically hiding the series and marking
+  `ChartDirty::Data` (the engine demo does exactly that).
 - **Interaction overlay**: `RenderInteractionOverlay` draws hover emphasis,
   crosshairs, brush bands — last, over everything.
+
+## Themes and palettes
+
+`Engine/UltraCanvasChartTheme.h` is the one home for chart theming — the
+place the engine proposal (§5.2) reserved. A `ChartTheme` bundles the
+furniture colours every engine layer paints with (background, plot area,
+grid, axis lines/ticks/labels, title, legend) with a `ChartPalette`, the
+ordered series colours the content draws from. The engine's protected colour
+fields are working copies filled from the active theme, so a chart can still
+override a single colour after setting one.
+
+```cpp
+chart->SetTheme(ChartThemes::Dark());       // by value
+chart->SetTheme("Ocean");                    // by name (case-insensitive);
+                                             // returns false when unknown
+chart->SetProperty("theme", "Vibrant");     // the named-property surface
+chart->SetPalette(ChartThemes::Get("Colorblind").palette);  // palette only,
+                                             // furniture kept
+ChartThemes::Names();                        // the 14 built-in names
+```
+
+A theme is colours only, so a theme change is **repaint-only**: no layout, no
+label re-solve (proposal §5.7). The engine calls the `OnThemeChanged()` hook
+so content can refresh anything it cached from the theme — legend entry
+colours above all (they are stored in `ChartLegendEntry`, not looked up at
+draw time). The frozen frame carries `frame.theme` for phase-2 drawing.
+
+The built-in themes are the palettes the pre-engine charts each carried
+privately, lifted verbatim: **Light** (default furniture, Paul Tol bright),
+**Dark** (dark furniture with the git graph's dark lane colours),
+**Corporate**, **Vibrant**, **Pastel** (soft palette *and* soft warm-grey
+furniture of its own — the demo's default), **Colorblind** (Okabe–Ito),
+**Material** (10), **Classic** (10, Chart.js), **Tableau** (10), and the
+light-to-dark ramps **Ocean**, **Sunset**, **Forest**, **Slate**,
+**Monochrome** (6).
+
+Series colours come from the palette's two lookups:
+
+- `Palette().ColorAt(i)` — the classic cycle, except wrapped cycles are
+  re-tinted (lightened, then darkened, progressively), so element 9 of an
+  8-colour palette is not a repeat of element 1.
+- `Palette().ColorAt(i, count)` — tell the palette how many elements the
+  chart draws and it chooses better: a hand-designed categorical list keeps
+  its first `count` colours (the order is deliberate), while a ramp palette
+  (`isRamp`) spreads the picks across the whole run, ends included — three
+  elements get dark / mid / light instead of the three nearly-equal darkest
+  entries. `ColorsFor(count)` returns the whole list at once.
+
+Eight predefined colours per palette is the deliberate default — it is both
+the dominant width among the palettes the charts already carried and about
+the ceiling of what stays distinguishable side by side; the wide 10-colour
+lists (Material, Classic, Tableau) exist for pie/sunburst-style charts with
+many slices. Past any predefined list, sample a continuous colormap instead:
+`ChartPalette::FromColormap(HeatmapColormap::Viridis, 24)` builds a
+categorical palette of any requested size from `UltraCanvasColormap`'s maps
+(continuous value→colour mapping itself — heatmaps, colour bars — stays with
+`SetColormap`/`SampleColormap`).
 
 ## Hit regions and tooltips
 
@@ -8946,6 +9578,13 @@ tooltips are enabled (`SetEnableTooltips`).
 `ChartDirty::Data`. Content scales its geometry by the progress (bars grow
 from the zero line); charts that ignore it simply render finished frames.
 
+The frames come from a ~60fps periodic application timer the engine owns and
+stops when the animation lands. This matters if you write a driver of your
+own: `RequestRedraw()` from inside a paint cannot produce the next frame,
+because the event loop blocks until a native event or a timer wakes it — an
+animation left to redraw itself freezes at whatever progress its last paint
+happened to see, and only unfreezes when something unrelated repaints.
+
 ## Image paint patterns
 
 `IRenderContext::CreateImagePattern(path, anchorRect, fitMode, repeat)`
@@ -8964,7 +9603,8 @@ detected automatically.
 ## Named properties
 
 The engine implements `IConfigurableElement`: subclasses `Define()` keys in
-their constructor (the engine provides `"title"`), react in
+their constructor (the engine provides `"title"` and `"theme"` — the latter
+resolves a built-in theme name and rejects unknown ones), react in
 `OnEnginePropertyChanged`, and by-name creators (registry, templates, module
 hosts) configure the chart with `SetProperty("key", value)` across any module
 boundary.
@@ -15273,6 +15913,113 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
    this at load time rather than at crash time.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
+==============================================================================
+
+# UltraCanvasFileAssociations
+
+Cross-platform "Open with" service: asks the operating system which
+applications are registered for a file, and launches files with the default
+or a chosen application — always detached, so closing the caller never takes
+the launched program down. Design rationale and the phase plan live in
+[`UltraCanvasFileAssociationsProposal.md`](UltraCanvasFileAssociationsProposal.md).
+
+Header: `include/UltraCanvasFileAssociations.h` — everything lives in
+`namespace UltraCanvas::FileAssociations` plus the `FileAssociationApp`
+struct. The per-platform backends are internal
+(`UltraCanvasFileAssociationsBackend.h`, implemented under `OS/<Platform>/`).
+
+## Platform coverage
+
+| Platform | Enumeration | Default open | Launch picked app |
+|---|---|---|---|
+| Linux / BSD | ✓ freedesktop (shared-mime-info, mimeapps.list, .desktop, mimeinfo.cache; plain text parsing, no GIO/GTK dependency) | ✓ registered handler, `xdg-open` fallback | ✓ |
+| Windows | pending (P2: `SHAssocEnumHandlers`) | ✓ ShellExecuteEx "open" | ✓ |
+| macOS | pending (P3: NSWorkspace) | ✓ `/usr/bin/open` | ✓ (`open -a` for bundles) |
+| WASM | — (empty) | — (error) | — (error) |
+
+`Terminal=true` desktop entries are skipped on Linux (Explorer and Finder do
+not offer terminal programs either).
+
+## API
+
+```cpp
+struct FileAssociationApp {
+    std::string id;        // stable key: .desktop id / ProgID / bundle path
+    std::string name;      // "LibreOffice Writer"
+    std::string iconPath;  // resolved icon image file, may be empty
+    bool isDefault;        // what a default open would launch
+};
+```
+
+- `GetApplicationsForFiles(paths)` — the applications registered for **all**
+  of the given files (intersection across their types), ordered as the OS
+  prefers them for the first file, its default application first. Cache-served
+  when prewarmed; a cold call resolves synchronously, bounded by the distinct
+  file types in the selection.
+- `OpenWithDefaultApplication(paths, outError)` — Explorer / Finder
+  double-click semantics. A selection spanning several types launches each
+  type's default handler once with its files.
+- `OpenWithApplication(app, paths, outError)` — launch a specific enumerated
+  application.
+- `OpenWithApplicationPath(applicationPath, paths, outError)` — launch an
+  application the user picked in a file dialog (an executable; a `.app`
+  bundle on macOS). The picker UI lives with the caller — set it up with
+  `GetApplicationFilter()` (platform file-type filter) and
+  `GetApplicationsDirectory()` (where applications live).
+- `PrewarmAsync()` — parse the association database on the service's
+  background worker. The worker only exists once a `Prewarm*` function is
+  called: applications that never use file associations pay nothing.
+- `PrewarmExtensionsAsync(extensions)` — pre-resolve candidate lists (and
+  icons) for these lowercase extensions on the worker.
+
+All launches detach via `LaunchDetachedProcess`
+(`UltraCanvasUtils.h`: POSIX double-fork + `setsid`, Windows
+`CreateProcess` into a detached process group).
+
+## Prewarm / caching model
+
+Lookups are cached per extension and served under a mutex, so
+`GetApplicationsForFiles` from the UI thread is an O(1) map read once warm.
+`UltraCanvasFilerWidget` drives the warm-up automatically: constructing the
+first widget calls `PrewarmAsync()`, and every folder scan passes the
+folder's distinct extensions to `PrewarmExtensionsAsync()`. The Linux index
+re-checks its source files' mtimes (`mimeapps.list`, `mimeinfo.cache`,
+`globs2`, the applications directories) and rebuilds — dropping the
+extension cache — when anything changed.
+
+## Example
+
+```cpp
+#include "UltraCanvasFileAssociations.h"
+using namespace UltraCanvas;
+
+std::vector<std::string> files = {"/home/me/report.odt"};
+
+// Menu construction: enumerate, default first.
+for (const FileAssociationApp& app :
+     FileAssociations::GetApplicationsForFiles(files)) {
+    printf("%s%s  (icon: %s)\n", app.name.c_str(),
+           app.isDefault ? "  [default]" : "", app.iconPath.c_str());
+}
+
+// Double-click semantics.
+std::string error;
+if (!FileAssociations::OpenWithDefaultApplication(files, error))
+    fprintf(stderr, "%s\n", error.c_str());
+```
+
+`UltraCanvasFilerWidget` wires all of this into its context menu — see
+[`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md#context-menu) — so
+applications embedding the filer get a working "Open with >" without any
+code.
+
+## Version
+
+- 1.0.0 (2026-08-16): P1 — service + Linux/BSD backend, prewarm worker,
+  Windows/macOS default-open placeholders.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFilerWidget.md
 ==============================================================================
 
@@ -15311,11 +16058,22 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
+
+## Empty display
+
+A display with nothing to show says so instead of staying blank: an attention
+icon (a vector-drawn warning triangle, so no icon assets are required) with the
+message below it, vertically centered in the folder display. A folder without
+content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
+— the UltraFiler's History and Favorites tabs before anything was recorded or
+pinned, a search without matches — shows **"No entries"**. A widget that never
+had a folder set keeps the plain "(no folder)" text. Icon and text use
+`FilerStyle::secondaryTextColor`.
 
 ## Sorting
 
@@ -15386,6 +16144,14 @@ being cut off after one:
   are frequently one long "word".
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
   restores the old single-line caption).
+- A name that fits its lines completely is broken **balanced**, not greedily:
+  the break points are chosen so the lines come out near equal instead of the
+  first line taking everything that fits and leaving a stub behind:
+
+  ```
+  CoderBox              CoderBox compiler
+  compiler.png     not  .png
+  ```
 - What does not fit even then is dropped from the **front of the last line**,
   which then opens with an `…` overflow marker, so the end of the name — its
   extension — always stays readable:
@@ -15440,13 +16206,17 @@ Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
 ──────────
-Open with      >  applications registered via AddOpenWithApp()
+Open with      >  the applications the OS registers for the selected files
+                  (default app first), then entries added via
+                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
 Print
 ──────────
 Extras         >  Share / Attributes / Copy path / Access
+                  (plus the host's items via extrasMenuProvider — in the
+                  UltraFiler: Open prompt and the Pin / Unpin submenus)
 Settings
 ```
 
@@ -15458,6 +16228,28 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Open with** lists the OS-registered applications through
+  [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
+  icon, the default application first. The lookups are prewarmed on that
+  service's background worker (the first widget triggers the
+  association-database parse, every folder scan pre-resolves the folder's
+  extensions), so opening the menu reads a cache instead of parsing anything.
+  The OS section appears when the whole selection is real files on disk —
+  folders and entries inside archives (virtual paths no external application
+  could read) fall back to the manual entries only. `AddOpenWithApp()`
+  entries keep working unchanged below the OS section, and
+  `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
+  "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
+  preset to the platform's application filter and directory; the pick is
+  launched detached with the selected files. On platforms whose enumeration
+  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
+  section is empty but default-open and the picker already work.
+- `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
+  file with the OS default application **when no `onFileActivated` callback
+  is installed** — activation semantics for simple embedders; hosts with
+  their own activation handling (like UltraFiler's preview) keep full
+  control and call `FileAssociations::OpenWithDefaultApplication` themselves
+  where they want it.
 - **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
   TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
   showing the archive's file-type icon, an editable file name with the chosen
@@ -15473,11 +16265,18 @@ Notes:
   window holds the focus. The icon can be dragged onto any folder in
   the view to change the destination (the target folder highlights while
   dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
-  unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
-  and are available when the VirtualFS module is built
+  opens the same dialog in extract mode: the icon shows the selected archive's
+  file type with its name (or "N archives") beneath, and the editor holds the
+  destination **folder** name instead — suggested from the archive's name
+  without its suffix, with no fixed extension beside the field. Enter /
+  Extract unpacks into that folder (several selected archives each go into
+  their own subfolder of it, so their contents cannot collide), and the icon
+  drag retargets the destination exactly like compressing. Both go through
+  `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
-  `CompressSelection(extension)` still performs an immediate, dialog-free
-  compress for programmatic use.
+  `CompressSelection(extension)` / `ExtractSelection()` still perform the
+  immediate, dialog-free operations for programmatic use;
+  `OpenExtractDialog()` opens the extract dialog the menu uses.
 - **Display > Preview** switches content previews on and off per file kind —
   see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
@@ -15598,6 +16397,37 @@ Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
 `infoBarTextColor`, `infoBarHeight`).
 
+## Hidden entries
+
+`SetShowHiddenFiles(bool)` (default `false`) decides whether hidden entries are
+listed; `GetShowHiddenFiles()` reads it back. What counts as hidden is the
+**platform's own notion**, not just the Unix dot convention:
+
+- **every platform** — names starting with `.`;
+- **Windows** — entries carrying the `FILE_ATTRIBUTE_HIDDEN` attribute. This is
+  what keeps a profile folder looking like Explorer's: the `NTUSER.DAT`
+  registry hives, `AppData` and the localized pre-Vista compatibility junctions
+  (`Anwendungsdaten`, `Lokale Einstellungen`, …) are all hidden by attribute,
+  not by name;
+- **macOS** — entries carrying the `UF_HIDDEN` file flag (`chflags hidden`),
+  e.g. `~/Library`.
+
+The attribute is read inside the single metadata call each scanned entry
+already pays for (`GetFileAttributesExW` on Windows, `stat` elsewhere), so the
+scan cost is unchanged. Hidden entries show an `H` in the Details view's
+attributes column when displayed.
+
+Hosts that filter paths themselves can use the same test through
+`UltraCanvas::IsHiddenFileSystemEntry(path)` (`UltraCanvasUtils.h`) — the
+UltraFiler's folder tree and recursive search do. The companion
+`UltraCanvas::GetWellKnownUserFolders()` returns the user's Desktop /
+Documents / Downloads / Music / Pictures / Videos (plus Public / Templates
+where the OS defines them) resolved through the platform —
+`SHGetKnownFolderPath` on Windows (follows folder redirection, e.g. into
+OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
+(localized names; entries pointing at `$HOME` are disabled per the spec) — for
+building an Explorer/Finder-style curated "Home" section.
+
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
@@ -15643,7 +16473,8 @@ filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
-filer->ExtractSelection();
+filer->ExtractSelection();           // dialog-free: sibling folders
+filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
 
@@ -15908,6 +16739,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
+| `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |
 | `onNewDocument(type, folder) -> bool` | New > item — return true when handled |
@@ -24131,6 +24963,267 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
+==============================================================================
+
+# UltraCanvasMatrixDiagram
+
+A matrix diagram — one of the Seven Management and Planning Tools — makes the
+relationships between two or three ordered lists visible and countable. Rows and
+columns are things; each intersection carries a symbol from a small named scale,
+and the weights behind those symbols roll up into per-row and per-column totals.
+
+**Status:** Phase 1 — the `L` and `T` shapes. `Y`, `X` and the QFD `House`
+composite are planned; see
+[`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
+
+## Which element do I want?
+
+| You have | Use |
+|---|---|
+| Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
+| Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
+| Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
+| Named relationship levels between two or three ordered lists, with totals | **this element** |
+
+The distinction that matters is the cell datum. A heatmap cell holds a *number*
+and encodes it as a fill; a matrix diagram cell holds a *named level* and draws
+it as a glyph on an unfilled cell. Levels also carry weights, which is what lets
+the diagram compute totals — something a heatmap has no concept of.
+
+## Header
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"   // the element
+#include "Plugins/Diagrams/UltraCanvasMatrixModel.h"     // the data model alone
+```
+
+`UltraCanvasMatrixModel.h` is UI-free: it includes nothing from the widget or
+render stack, so model code (and its arithmetic) can be built and tested without
+a window. `Tests/MatrixModelTest.cpp` does exactly that.
+
+## Class hierarchy
+
+```
+UltraCanvasUIElement
+  └── UltraCanvasChartElementBase
+        └── UltraCanvasMatrixDiagram
+```
+
+---
+
+## The three primitives
+
+**Item sets** are the ordered lists. **Panels** cross one set with another.
+**Cell marks** are the symbols at the intersections, taken from the panel's
+**relationship scale**.
+
+```cpp
+MatrixModel model;
+model.title = "Application of improvement tools";
+model.shape = MatrixShape::L;
+
+model.AddSet("departments", "Departments", {"HR", "Finance", "Purchasing"});
+model.AddSet("tools", "Improvement tools", {"SPC", "KPIs", "Kaizen"});
+model.AddPanel("departments", "tools", MatrixScale::Strength531());
+
+model.SetCell(0, "HR",      "KPIs",   "medium");
+model.SetCell(0, "Finance", "SPC",    "strong");
+model.SetCell(0, "Finance", "Kaizen", "weak");
+
+auto diagram = CreateMatrixDiagramElement("matrix", 10, 10, 700, 420, model);
+diagram->SetTotals(MatrixTotals::Both);
+```
+
+`AddSet` uses each label as its own item id, which is what you want for a
+one-off diagram. Build `MatrixItemSet` directly when you need distinct ids or
+per-row importance weights.
+
+Cells are stored **sparsely** — set the marks you have; the rest stay empty.
+
+## Shapes
+
+| Shape | Sets | Panels | Meaning |
+|---|---|---|---|
+| `MatrixShape::L` | 2 | 1 | A × B — the basic form |
+| `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
+| `MatrixShape::Y` | 3 | 3 | *planned* |
+| `MatrixShape::X` | 4 | 4 | *planned* |
+| `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
+
+Unimplemented shapes fall back to the `L` layout of panel 0 rather than drawing
+nothing, so data set against them is still visible.
+
+A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
+the right, and the shared row labels are drawn once between them:
+
+```cpp
+model.shape = MatrixShape::T;
+model.AddSet("employees", "Employees", {"Harvey", "Sami", "Emir"});
+model.AddSet("projects",  "Projects",  {"Paper usage", "Energy saving"});
+model.AddSet("skills",    "Skills",    {"SPC", "5S", "FMEA"});
+
+// The two wings ask different questions, so they carry different scales.
+model.AddPanel("employees", "projects", MatrixScale::Presence());
+model.AddPanel("employees", "skills",   MatrixScale::HighMediumLow());
+```
+
+That is why the scale lives on the **panel** and not on the model.
+
+## Relationship scales
+
+A scale is an ordered list of levels, strongest first. Each level carries an id,
+a label, a mark shape, a colour and a **weight**.
+
+```cpp
+MatrixScale scale;
+scale.title = "Relationship";
+scale.levels.emplace_back("must",   "Must",   Color(214, 45, 45, 255), 5.0);
+scale.levels.emplace_back("should", "Should", Color(35, 70, 180, 255), 3.0,
+                          MatrixMarkShape::Ring);
+```
+
+Built-in presets:
+
+| Preset | Levels and weights |
+|---|---|
+| `MatrixScale::QFD()` | strong 9 (disc), moderate 3 (ring), weak 1 (triangle) |
+| `MatrixScale::Strength531()` | strong 5, medium 3, weak 1 — all discs |
+| `MatrixScale::HighMediumLow()` | high 3, medium 2, low 1 (hollow) |
+| `MatrixScale::Presence()` | a single level, weight 1 |
+
+**Weights are data, not convention.** QFD's 9/3/1 is the best-known scale but
+5/3/1 is at least as common, and the totals differ: the same eight marks total
+18 on 5/3/1 and 22 on 9/3/1.
+
+Mark shapes are `Disc`, `Ring`, `Triangle`, `Square`, `Diamond`, `Cross` and
+`Text`. Prefer a scale with at least one `Ring`: a scale distinguished only by
+hue disappears in greyscale and for colour-blind readers. `Text` draws
+`MatrixLevel::glyph` instead of a shape, which is how a scale mixes coloured
+dots with letter codes under one legend.
+
+## Roll-ups
+
+The point of the weights is that they sum.
+
+```cpp
+double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
+double total = model.RowScore(0, row);
+std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
+```
+
+`MatrixItem::importance` defaults to `1.0`, so an unweighted matrix gets a plain
+sum of cell weights out of the same formula. Set real importances for QFD:
+
+```cpp
+MatrixItemSet needs("needs", "Customer needs");
+needs.items.emplace_back("light",   "Light to carry",         5.0);
+needs.items.emplace_back("comfort", "Comfortable over 10 km", 4.0);
+model.sets.push_back(needs);
+```
+
+Show the totals with `SetTotals`:
+
+```cpp
+diagram->SetTotals(MatrixTotals::Both);      // NoTotals | Rows | Columns | Both
+```
+
+Row totals appear in a gutter to the right of the grid, column totals in a
+gutter underneath — the presentation the printed form uses. Because they are
+computed from the marks they are consistent by construction, which a hand-built
+version is not.
+
+## Presentation
+
+```cpp
+diagram->SetDarkTheme(true);
+diagram->SetHeaderFit(MatrixHeaderFit::Auto);
+diagram->SetShowAxisTitles(true);
+diagram->SetShowLegend(true);
+diagram->SetLegendPosition(ChartLegendPosition::BottomCenter);
+diagram->SetShowCellValues(false);           // draw each cell's weight as text
+```
+
+`MatrixHeaderFit::Auto` measures the column labels once and picks the cheapest
+form that fits — `Horizontal`, then `Wrapped`, then `Rotated45`, then
+`Rotated90`. It never iterates: the cell width settles first, the fit follows
+from the width, and the band height follows from the fit. The grid has first
+claim on the vertical space, so a very long header is ellipsised rather than
+squeezing the rows out.
+
+Style is a plain struct of fields; read it, change what you need, set it back:
+
+```cpp
+MatrixDiagramStyle style = diagram->GetStyle();
+style.alternateRowBands = true;
+style.fillLabelBands = false;      // the solid label band behind row labels
+style.markSize = 0.5;              // fraction of the cell's short side
+diagram->SetStyle(style);
+```
+
+`SetDarkTheme(true)` applies the dark palette to the whole style; call it before
+your own overrides, since it replaces the struct.
+
+## Interaction
+
+```cpp
+diagram->onCellClick = [](const MatrixRef& ref) { /* ref.panel/row/col */ };
+diagram->onRowClick    = [](int panel, int index, const MatrixItem& item) { };
+diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
+```
+
+`MatrixRef` identifies a cell (`IsCell()`), or a whole row or column when the
+click landed in a label band. `onCellClick` fires for empty cells too — check
+`GetModel().LevelAt(...)` to tell them apart.
+
+Hovering highlights the cell's row and column and shows a tooltip. Clicking a
+legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
+
+## Interchange
+
+```cpp
+std::string csv = ExportMatrixCsv(model, 0);
+bool ok = ImportMatrixCsv(csv, model, 0);
+```
+
+The CSV is a header row of column labels then one row per row item, with level
+ids in the cells and empty fields for empty cells. Import fills in marks; it
+does not invent items, so the sets and the scale must already exist. It parses
+the whole file before touching the model, so a malformed file leaves your data
+alone.
+
+## Samples
+
+`MatrixSamples::ImprovementTools()`, `MatrixSamples::EmployeeAllocation()` and
+`MatrixSamples::QualityFunctionDeployment()` build the three models the demo
+shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
+
+## Validation
+
+```cpp
+MatrixValidation result = model.Validate();
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+```
+
+Checks the set count against the shape, panel set references, cell indices,
+level ids and duplicate cells. `warnings` collects things that are drawable but
+suspicious, such as an empty item set.
+
+The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
+items and level ids, so `Validate()` mainly matters when you have assembled a
+`MatrixModel` by hand.
+
+## See also
+
+- [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md) —
+  the research behind the design, and the roadmap for the remaining shapes
+- [`UltraCanvasHeatmapChart.md`](UltraCanvasHeatmapChart.md) — the numeric-cell sibling
+- [`UltraCanvasAdjacencyDiagramExamples.md`](UltraCanvasAdjacencyDiagramExamples.md) —
+  room adjacency, including its own matrix view
+- [`UltraCanvasQuadrantChartExamples.md`](UltraCanvasQuadrantChartExamples.md) —
+  the other component that calls itself a "matrix"
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewer.md
 ==============================================================================
 
@@ -26798,7 +27891,10 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 
 - **Page rendering** at any DPI/zoom with antialiasing, drop shadow, and a
   white underlay; rendered pages and thumbnails are cached per DPI.
-- **Thumbnail strip** with click-to-jump and independent scrolling (toggleable).
+- **Thumbnail strip** with click-to-jump and independent scrolling
+  (toggleable). It only appears for documents with more than one page, its
+  width is capped at 1/4 of the view so the page area always stays at least
+  3× the strip, and it auto-scrolls to keep the current page's thumb visible.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
@@ -26806,6 +27902,11 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+  Scrolling is hard-limited: it stops once the page edge sits `pageMargin`
+  inside the viewport. From that resting point a further wheel step continues
+  into the next (or previous) page — on the last (or first) page it simply
+  stops — so a document reads straight through with the wheel. Pages open at
+  their top, not vertically centered.
 - **Image extraction**: right-click an image on the page to save it via a
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
@@ -26973,6 +28074,7 @@ view->ExportTextToFile("/tmp/page.txt", /*selectionOnly=*/true);
 ### Layout & style
 
 ```cpp
+// Even when enabled, the strip only shows for documents with > 1 page.
 void SetShowThumbnailStrip(bool show);
 bool GetShowThumbnailStrip() const;
 
@@ -26989,12 +28091,15 @@ const PDFViewStyle& GetStyle() const;
 default); `Overlay` draws a large translucent page number centred over the page.
 The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
 (a fraction of the thumbnail height, default `0.30`) and
-`thumbOverlayNumberColor`.
+`thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
+UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
 metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
 `pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
+`thumbStripWidth` is a request: the effective strip width is capped at 1/4 of
+the view width so the page area keeps at least a 3:1 ratio over the strip.
 
 ### Editing passthroughs
 
@@ -27032,7 +28137,7 @@ immediately.
 
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it) |
+| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
 | Ctrl + wheel | Zoom in / out |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
@@ -27242,7 +28347,9 @@ The same edits are reachable from the widget via `ReplaceTextAt`,
 - **Pixel format.** `RenderPage`/`RenderThumbnail` return premultiplied RGBA
   (Cairo-compatible) or 8-bit gray, per `PDFColorMode`.
 - **Caching.** The view caches rendered pages keyed by DPI and thumbnails by
-  page; zoom and resize invalidate the page cache automatically.
+  page; zoom and resize invalidate the page cache automatically (thumbnails
+  survive those), while loading another document or editing pages
+  (delete/move/insert/merge/replace/redact) drops both caches.
 - **Threading.** Treat a single `IPDFDocument` as not thread-safe; render/edit
   from the UI thread (or serialize access).
 - **Drawing custom overlays.** If you subclass or draw on top of the view,
@@ -29219,9 +30326,10 @@ Note: Unlike the chart elements in `UltraCanvasSpecificChartElements.h`, the pop
 - **Title, subtitle, axis labels:** Three independent text slots above the plot
 - **Configurable axis scale:** Fixed `SetMaxAxisValue()` or auto-scale via `EnableAutoScale()`
 - **Grid, axis labels, and centre line:** Each independently toggleable
-- **Legend system:** Add arbitrary legend items and choose position by string (`"top-right"`, etc.)
+- **Average age lines:** Optional dotted horizontal lines (`EnableAverageAgeLine()`) marking the population-weighted average age of males and females separately. Each line runs from the outer plot edge to the border of the bar at the height representing that average age, with the numeric value printed at its outer end. Ages are derived from the age-group labels (`"25-29"`, `"100+"`, …)
+- **Legend system:** Add arbitrary legend items (color boxes via `AddLegendItem()` or dashed line samples via `AddLegendLineItem()`) and choose position by string (`"top-right"`, etc.)
 - **Hover interaction:** `HitTest()` and internal hover index drive the tooltip overlay
-- **Demographic helpers:** `PopulationChartUtils` namespace ships `FormatPopulation`, `CalculateGenderRatio`, `GenerateAgeLabels`, and `CalculateStatistics`
+- **Demographic helpers:** `PopulationChartUtils` namespace ships `FormatPopulation`, `CalculateGenderRatio`, `GenerateAgeLabels`, `ParseAgeRange`, `CalculateAverageAge`, and `CalculateStatistics`
 
 ## Configuration Structs
 
@@ -29250,8 +30358,9 @@ struct PopulationAgeGroup {
 struct PopulationLegendItem {
     std::string Label;
     Color ItemColor;
+    bool IsLine;   // rendered as a dashed line sample instead of a color box
 
-    PopulationLegendItem(const std::string& label, const Color& color);
+    PopulationLegendItem(const std::string& label, const Color& color, bool isLine = false);
 };
 ```
 
@@ -29339,17 +30448,28 @@ void SetTextColor(const Color& color);
 void EnableGrid(bool enable);
 void EnableAxisLabels(bool enable);
 void EnableCenterLine(bool enable);
+void EnableAverageAgeLine(bool enable);   // dotted per-gender average age lines (off by default)
+void SetAverageAgeLineColors(const Color& maleColor, const Color& femaleColor);
 void SetBarHeight(int height);
 void SetBarSpacing(int spacing);
 void SetFontSize(int size);
 ```
+
+`EnableAverageAgeLine(true)` draws one dotted line per gender at the vertical
+position corresponding to that gender's population-weighted average age
+(interpolated inside the matching age-group bar). The male line runs from the
+left plot edge to the tip of the male bar, the female line from the right plot
+edge to the tip of the female bar, and the average age value is printed above
+the outer end of each line. The feature requires parseable age-group labels of
+the form `"lo-hi"` or `"lo+"`; with unparseable labels the lines are skipped.
 
 ### Legend
 
 ```cpp
 void SetLegendPosition(const std::string& position);   // e.g. "top-right"
 void EnableLegend(bool enable);
-void AddLegendItem(const std::string& label, const Color& color);
+void AddLegendItem(const std::string& label, const Color& color);       // color box
+void AddLegendLineItem(const std::string& label, const Color& color);   // dashed line sample
 void ClearLegend();
 ```
 
@@ -29373,6 +30493,8 @@ int HitTest(int x, int y);   // returns age-group index or -1
 double GetTotalMalePopulation() const;
 double GetTotalFemalePopulation() const;
 double GetTotalPopulation() const;
+double GetAverageMaleAge() const;     // -1.0 if labels unparseable or population is zero
+double GetAverageFemaleAge() const;
 ```
 
 ### Rendering & Events (Overrides)
@@ -29392,6 +30514,17 @@ namespace PopulationChartUtils {
     double CalculateGenderRatio(double males, double females);
     std::vector<std::string> GenerateAgeLabels(int minAge, int maxAge,
                                                int groupSize);
+
+    // Parse "25-29" -> lowerAge=25, upperAge=30 (exclusive upper bound);
+    // open-ended labels ("100+") yield a negative upperAge.
+    bool ParseAgeRange(const std::string& label,
+                       double& lowerAge, double& upperAge);
+
+    // Population-weighted average age of one gender; -1.0 when the
+    // labels cannot be parsed or the population is zero
+    double CalculateAverageAge(
+            const std::vector<PopulationAgeGroup>& ageGroups, bool males);
+
     DemographicStats CalculateStatistics(
             const std::vector<PopulationAgeGroup>& ageGroups);
     Color InterpolateGenderColor(const Color& baseColor,
@@ -29447,12 +30580,16 @@ germanyChart->EnableGrid(true);
 germanyChart->EnableAxisLabels(true);
 germanyChart->EnableCenterLine(true);
 germanyChart->SetBarSpacing(2);
+germanyChart->EnableAverageAgeLine(true);   // dotted per-gender average age lines
+germanyChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
 // Legend
 germanyChart->AddLegendItem("Males",          Color(100, 150, 200));
 germanyChart->AddLegendItem("Male surplus",   Color(70, 110, 160));
 germanyChart->AddLegendItem("Females",        Color(220, 120, 140));
 germanyChart->AddLegendItem("Female surplus", Color(190, 90, 110));
+germanyChart->AddLegendLineItem("Avg age males",   Color(30, 80, 160));
+germanyChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
 germanyChart->EnableLegend(true);
 germanyChart->SetLegendPosition("top-right");
 
@@ -29503,11 +30640,15 @@ russiaChart->EnableGrid(true);
 russiaChart->EnableAxisLabels(true);
 russiaChart->EnableCenterLine(true);
 russiaChart->SetBarSpacing(2);
+russiaChart->EnableAverageAgeLine(true);
+russiaChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
 russiaChart->AddLegendItem("Males",          Color(100, 150, 200));
 russiaChart->AddLegendItem("Male surplus",   Color(70, 110, 160));
 russiaChart->AddLegendItem("Females",        Color(220, 120, 140));
 russiaChart->AddLegendItem("Female surplus", Color(190, 90, 110));
+russiaChart->AddLegendLineItem("Avg age males",   Color(30, 80, 160));
+russiaChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
 russiaChart->EnableLegend(true);
 russiaChart->SetLegendPosition("top-right");
 
@@ -29552,8 +30693,9 @@ container->AddChild(statsLabel);
    - Base male/female bar drawn first
    - Surplus overlay drawn on top of the longer side using the surplus color
 6. **Center line** (`RenderCenterLine`) — toggled by `EnableCenterLine()`
-7. **Legend** (`RenderLegend`)
-8. **Tooltip** (`RenderTooltip`) — when `hoveredGroupIndex >= 0`
+7. **Average age lines** (`RenderAverageAgeLines`) — toggled by `EnableAverageAgeLine()`; dotted line per gender from the outer plot edge to the bar border at the interpolated average-age height
+8. **Legend** (`RenderLegend`) — color boxes, or dashed line samples for items added via `AddLegendLineItem()`
+9. **Tooltip** (`RenderTooltip`) — when `hoveredGroupIndex >= 0`
 
 Layout values (centerX, plot width, padding) are recomputed by `CalculateLayout()` when the `layoutDirty` flag is set.
 
@@ -42190,7 +43332,10 @@ std::function<void(TreeNode*)> onNodeDoubleClicked;
 std::function<void(TreeNode*)> onNodeExpanded;
 std::function<void(TreeNode*)> onNodeCollapsed;
 std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop;
-std::function<void(TreeNode*)> onNodeRightClicked;
+// Right mouse button released over a node; the event carries the pointer
+// position (event.pointerWindow) for placing a context menu. A right press
+// never changes the selection.
+std::function<void(TreeNode*, const UCEvent&)> onNodeRightClicked;
 ```
 
 ## Usage Examples
@@ -42285,10 +43430,10 @@ treeView->onNodeExpanded = [](TreeNode* node) {
     }
 };
 
-// Handle right-click
-treeView->onNodeRightClicked = [](TreeNode* node) {
-    // Show context menu
-    ShowContextMenu(node);
+// Handle right-click (open a context menu at the pointer)
+treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
+    // Show context menu, e.g. menu->OpenMenu(event.pointerWindow, ...)
+    ShowContextMenu(node, event);
 };
 ```
 
@@ -46760,6 +47905,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam
 │   └── mock/                      # In-process mocks for every capability
 ├── tests/                         # cassert-based unit tests
 ├── Docs/
@@ -46828,9 +47974,12 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Unit tests | Complete (3 executables, all passing) |
-| Real network adapters | Not yet — pending UltraNet integration |
-| UltraVault credential lookup | Wired, awaits UltraVault module |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam) | Complete |
+| Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
+| llama.cpp adapter (`ITextLLM`: local chat, streaming, JSON grammar, exact token counting; opt-in) | Complete (v0.1 — no tool calls yet) |
+| Unit tests | Complete (5 executables, all passing) |
+| Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
+| UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
 
 ---
 
@@ -46853,6 +48002,935 @@ FILE: Docs/Modules/UltraAI/intro.md
 # UltraAI
 
 **UltraAI** is the provider-agnostic AI layer of ULTRA OS — sibling to UltraCanvas (UI) and UltraNet (networking). It gives every app one stable C++ surface for chat, vision, speech, translation, code assist, and image / video / music generation. Behind that surface sit interchangeable providers — cloud services, local models, or in-process mocks — so an app can switch backends without changing a line. Ten capability interfaces each ship with a programmable mock, so the whole module runs with no network and no external model. Adapters are opt-in and self-registering, and every interface exposes a `RawProvider()` escape hatch for full provider-specific access. The diagram below shows how an app reaches a capability interface, which routes through an adapter down to UltraNet and UltraVault.
+
+==============================================================================
+FILE: Docs/Modules/UltraCrypt/README.md
+==============================================================================
+
+# UltraCrypt — Cryptographic Services for ULTRA OS
+
+**Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
+**Version:** 0.1.0
+**Author:** UltraCanvas Framework / ULTRA OS
+**Last Modified:** 2026-08-10
+
+UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
+framework: the single place where hashing, message authentication,
+authenticated encryption, key derivation and secure random generation are
+implemented, so that no application, plugin or sibling module ever has to
+write its own.
+
+It follows the same rules as UltraNet and UltraDatabase — clear structure,
+names understandable from the name itself, `UltraCryptResult` from every
+blocking operation, and a backing library that is completely wrapped so it
+can be replaced without affecting callers.
+
+This document specifies **what UltraCrypt must provide and why** (§1–2), the
+**backend decision** and how it was reached (§3), and the **public surface**
+(§5).
+
+**Implemented so far** — `UltraCanvas/{include,core}/UltraCrypt/`, backed by
+libsodium, covered by `Tests/UltraCryptTests.cpp`:
+`UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`,
+`UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
+SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
+(XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
+Argon2id key derivation, HKDF-SHA-256/512, and the RFC 4648 Base32/Base64
+companions. First consumer: the UCD document encryption envelope
+(`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
+`Tests/UCDCryptoEnvelopeTests.cpp`), which replaced the broken encryption
+described in §1.1.
+
+Everything UltraAuthenticator's OTP engine needs — `UltraCrypt_Hmac` with
+SHA-1/256/512, and `UltraCrypt_Base32Decode` yielding a secure buffer — is
+therefore in place.
+
+**Notes on two of these.** SHA-1 is vendored (~150 lines in
+`UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
+unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
+built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
+which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
+
+**Not yet implemented:** BLAKE3-256 (§3.1 row 10, optional) and the public-key
+surface (§2, no consumer).
+
+---
+
+## 1. Why this module exists
+
+There is currently **no sanctioned way for UltraCanvas code to compute a hash,
+an HMAC, derive a key, or encrypt a blob.** Outside vendored third-party
+code, only three files in the repository touch a crypto library, and all three
+are TLS backends doing TLS.
+
+The result is that every component needing cryptography has independently
+hand-rolled one, reached around the rules, or stalled at design stage:
+
+| Consumer | Requires | State today |
+|---|---|---|
+| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
+| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Fixed** — now uses UltraCrypt through `UCDCryptoEnvelope`; see §1.1 for what it was |
+| **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header states it is a placeholder awaiting "a vetted crypto surface" |
+| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
+| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
+| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | Blocked |
+
+Six consumers, one missing service. That is the case for building it once.
+
+### 1.1 What the absence already produced
+
+`UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the cautionary
+example. Its `EncryptData` / `DecryptData` are guarded by
+`#ifdef ULTRACANVAS_USE_OPENSSL`, **a macro no build file anywhere defines**.
+The branch that actually compiles is:
+
+```cpp
+// Fallback - no encryption
+output = input;
+return true;
+```
+
+So `Save()` with a password writes a header claiming `AES256` over entirely
+plaintext content, and `Load()` accepts *any* password. With the macro defined
+it is worse, not better: the line appending the ciphertext is commented out
+(output would contain only the IV, destroying the document) and `DecryptData`
+never assigns its output — both still returning `true`. Supporting routines
+are independently unsound: a single SHA-256 round used as a password hash with
+a `std::hash<std::string>` fallback, `std::mt19937` for salt generation, and
+PBKDF2 at 10 000 iterations with the salt taken from the IV.
+
+**That file was not in the CMake source list, so this was dormant code and
+never a shipping vulnerability** — it must not be reported as one. Its
+relevance is diagnostic: it is exactly what a missing shared API produces.
+Plausible, well-intentioned security code that silently does nothing.
+
+**Resolved.** The cryptography now lives in
+`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, which depends only
+on UltraCrypt and is therefore compiled and unit-tested on its own
+(`Tests/UCDCryptoEnvelopeTests.cpp`) rather than reviewed by eye.
+`UltraCanvasDocument::EncryptData` / `DecryptData` are now thin adapters over
+it, `SetPassword` / `VerifyPassword` use Argon2id with a constant-time
+comparison instead of a bare SHA-256 with a `std::hash` fallback, and
+`GeneratePasswordHash` / `GenerateSalt` are gone. Every regression test in that
+suite fails against the old implementation.
+
+Two caveats stated plainly:
+
+1. `UltraCanvasDocument.cpp` **still does not compile**, for reasons unrelated
+   to cryptography — it references undeclared types (`UCComponentData`,
+   `UltraCanvasWindow`) and defines `GetCurrentDateTime` twice. It therefore
+   remains out of the build, and the crypto changes inside it are verified by
+   inspection, while the logic they delegate to is verified by tests.
+2. Because the old code never produced ciphertext, **no readable encrypted
+   `.ucd` file can exist**, so the new envelope carries no backward-compatibility
+   burden and none is implemented.
+
+---
+
+## 2. Scope
+
+**In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
+authenticated encryption (AEAD), password-based and key-derivation functions,
+cryptographically secure random generation, constant-time comparison, and
+secure (zeroizing) memory.
+
+**Out of scope:**
+
+- **Transport security.** TLS stays in UltraNet, per-platform and OS-native.
+  UltraCrypt never opens a socket and never validates a certificate.
+- **Credential storage and policy.** That is UltraVault's job; UltraVault
+  *consumes* UltraCrypt for its file-backed fallback backend.
+- **Public-key cryptography** (signatures, key agreement, X.509). No consumer
+  needs it yet. The surface is arranged so `UltraCrypt_Sign` /
+  `UltraCrypt_Verify` can be added later without disturbing anything here.
+- **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
+  request flow). Those live in their consumers and are built *from* these
+  primitives.
+
+---
+
+## 3. The backend decision — this needs a ruling before implementation
+
+**Correction to an earlier assumption:** it is *not* true that OpenSSL is
+already linked on every platform. `master_dependencies.yaml` states the policy
+explicitly — *"UltraNet uses whichever TLS backend libcurl was built against;
+we never call OpenSSL directly … OpenSSL is only an explicit dependency on
+Linux"* — and `UltraCanvas/CMakeLists.txt:1407` confirms it: `OpenSSL::SSL` /
+`OpenSSL::Crypto` are linked under `ULTRACANVAS_PLATFORM STREQUAL "Linux"`
+only. Windows links `secur32`/`crypt32` (Schannel); macOS links
+`Security.framework` (SecureTransport).
+
+So there is no free ride. §3.1 lists what has to be covered; §3.2 and §3.3
+compare the candidates against it; §3.4 explains what actually separates them.
+
+> **Ruling (2026-08-10):** UCD v2 is our own format, so it does not need to
+> offer a menu of algorithms — it should use the single best one. That
+> decision has been taken (§3.5) and it removes two of the three things that
+> made this a close call. The analysis in §3.1–3.4 is kept as the record of
+> *why*; §3.7 records why the OS-native route was rejected.
+
+### 3.1 What the backend must supply
+
+Derived from the consumer table in §1 — nothing here is speculative:
+
+| # | Primitive | Required by |
+|---|---|---|
+| 1 | SHA-256 | AnchorPoint, UCD `SVLT` creation hash, UCD section checksums |
+| 2 | SHA-512 | TOTP SHA-512 variant |
+| 3 | SHA-1 (HMAC use only) | TOTP issuer compatibility — the default TOTP algorithm |
+| 4 | HMAC-SHA-1 / -256 / -512 | UltraAuthenticator (RFC 4226/6238) |
+| 5 | AES-256-GCM | UCD v2 encryption type 1 |
+| 6 | ChaCha20-Poly1305 | UCD v2 encryption type 2 |
+| 7 | Argon2id | UCD v2 recommended KDF, UltraVault, authenticator store |
+| 8 | PBKDF2-HMAC-SHA256 | UCD v2 fallback KDF |
+| 9 | HKDF-SHA256 | UCD v2 §4.4 SuperVault subkey derivation |
+| 10 | BLAKE3-256 | UCD v2 `SVLT` hash algorithm `1` (**optional** — `0` = SHA-256 is the default) |
+| 11 | CSPRNG | Salts, nonces, file UUIDs |
+| 12 | Constant-time compare | Every MAC/tag check |
+| 13 | Secure memory (zeroize, page-lock) | Authenticator seeds, vault master keys |
+
+### 3.2 Algorithm coverage
+
+Assessed against the versions **actually packaged on the current Ubuntu LTS**
+(24.04), since that is what a build will link by default:
+OpenSSL 3.0.13, libsodium 1.0.18, mbedTLS 2.28.8.
+
+| # | Primitive | OpenSSL 3.0 | libsodium 1.0.18 | mbedTLS 2.28 |
+|---|---|---|---|---|
+| 1 | SHA-256 | ✅ | ✅ | ✅ |
+| 2 | SHA-512 | ✅ | ✅ | ✅ |
+| 3 | SHA-1 | ✅ | ❌ deliberately omitted — **vendored, ~150 lines** | ✅ |
+| 4 | HMAC-SHA-1/256/512 | ✅ | ⚠️ SHA-256/512 only | ✅ |
+| 5 | AES-256-GCM | ✅ **portable software impl** | ⚠️ **AES-NI hardware only** | ✅ **portable software impl** |
+| 6 | ChaCha20-Poly1305 | ✅ | ✅ (+ XChaCha20) | ✅ |
+| 7 | Argon2id | ❌ **needs OpenSSL 3.2+** | ✅ native | ❌ |
+| 8 | PBKDF2-HMAC-SHA256 | ✅ | ❌ (offers scrypt instead) | ✅ |
+| 9 | HKDF-SHA256 | ✅ | ⚠️ dedicated API is 1.0.19+ — **built on HMAC** | ✅ |
+| 10 | BLAKE3-256 | ❌ | ❌ | ❌ |
+| 11 | CSPRNG | ✅ `RAND_bytes` | ✅ `randombytes_buf` | ✅ CTR-DRBG |
+| 12 | Constant-time compare | ✅ `CRYPTO_memcmp` | ✅ `sodium_memcmp` | ✅ |
+| 13 | Secure memory | ⚠️ `OPENSSL_cleanse`; secure heap is opt-in and awkward | ✅ **best in class** — `sodium_malloc` (guard pages), `sodium_mlock`, `sodium_memzero` | ❌ none |
+
+### 3.3 Practical and operational comparison
+
+| Dimension | OpenSSL | libsodium | mbedTLS |
+|---|---|---|---|
+| Licence | Apache-2.0 | ISC | Apache-2.0 |
+| Approx. added size (static) | ~4–5 MB | **~300 KB** | ~1 MB |
+| Present on Linux today | ✅ already linked for UltraNet | ❌ new | ❌ new |
+| Present on Windows today | ❌ **none** — Schannel is used | ❌ new | ❌ new |
+| Present on macOS today | ❌ **none** — SecureTransport is used | ❌ new | ❌ new |
+| Effect on documented TLS policy | ⚠️ contradicts "OS-native on Win/macOS" | ✅ none — different concern | ✅ none |
+| Cross-platform byte-identical results | ✅ | ✅ | ✅ |
+| API surface to wrap | Very large, many legacy traps | Small, misuse-resistant by design | Moderate |
+| Hardware assumptions | none | **requires AES-NI for AES-GCM** | none |
+| Distro packaging | universal | universal | universal |
+
+### 3.4 Reading the tables — what actually separates them
+
+The tables look close because each candidate covers most of the list. The
+decision turns on **two specific cells**, not on the totals.
+
+**First: nobody gives you Argon2id from a system library.** Ubuntu 24.04 LTS
+ships OpenSSL **3.0.13**, and OpenSSL only gained an Argon2 KDF in **3.2**.
+Debian 12 is likewise on 3.0. So "just use OpenSSL" does *not* deliver the KDF
+that UCD v2 names as its recommendation — it would still need a vendored
+Argon2 (the reference implementation is packaged as `libargon2-dev`, ~2k
+lines, CC0/Apache-2.0), or a bump to a vendored OpenSSL 3.2+, which is a very
+large thing to vendor. libsodium is the only candidate with Argon2id built in,
+because libsodium is where the reference implementation is best maintained.
+
+**Second: libsodium's AES-256-GCM is hardware-gated.** libsodium ships no
+software fallback for AES-GCM — `crypto_aead_aes256gcm_is_available()` returns
+false on any CPU without AES-NI (or the ARMv8 crypto extensions). OpenSSL and
+mbedTLS both include portable constant-time software implementations.
+
+That second point lands squarely on ULTRA OS's stated hardware target —
+*"affordable hardware, from ARM and RISC-V to x86."* ARMv8 crypto extensions
+are **optional**, and a number of popular SBCs omit them; RISC-V's scalar
+crypto extension is newer still and rare in shipping silicon. On such a
+machine, a UCD file written elsewhere with encryption type 1 (AES-256-GCM)
+would simply **not open** — which destroys the "one format, opens everywhere"
+property that motivated picking a single portable library in the first place.
+*(The exact SBC list should be confirmed on the actual target hardware before
+this is treated as settled; the general point — that the extension is optional
+and frequently absent — is not in doubt.)*
+
+**Everything else on the list is cheap to repair, and these two are not
+symmetric in cost:**
+
+| Gap | Repair | Risk |
+|---|---|---|
+| OpenSSL: no Argon2id | link/vendor the reference `libargon2` | Low — well-trodden, RFC 9106 vectors |
+| OpenSSL: weak secure memory | implement `UltraCryptSecureBuffer` over `mlock`/`VirtualLock` + explicit wipe (~80 lines) | Low |
+| libsodium: no SHA-1 | vendor a SHA-1 compression function (~150 lines), HMAC path only | Low — FIPS 180-4 vectors |
+| libsodium: no PBKDF2 | implement over its HMAC (~40 lines) | Low — RFC 6070 vectors |
+| libsodium: no SHA-384 | **drop it** — no consumer needs it (it was speculative in §5.2) | None |
+| libsodium: HKDF in 1.0.18 | implement over HMAC-SHA256 (~30 lines) | Low — RFC 5869 vectors |
+| **libsodium: no software AES-GCM** | **write or vendor a constant-time AES-GCM** | **High — precisely the thing that must never be hand-rolled; vendoring one means shipping a second crypto library** |
+| any: no BLAKE3 | defer; UCD writers emit `SVLT` algorithm `0` (SHA-256) | None |
+
+PBKDF2, HKDF and SHA-1 are all safe to implement given a correct HMAC — they
+are constructions *over* a primitive, with official test vectors, not new
+primitives. AES-GCM is not in that category.
+
+### 3.5 Decision
+
+**Cipher: XChaCha20-Poly1305, alone. KDF: Argon2id, alone. Backend: libsodium.**
+
+UCD v2 previously listed AES-256-GCM, ChaCha20-Poly1305 and a SuperVault mode
+as three "encryption types", with Argon2id and PBKDF2 as two KDFs. Since the
+format is ours and unshipped, that menu buys nothing and costs every reader a
+code path. It is replaced by one cipher and one KDF; the header field at offset
+16 now selects the **key source** (none / password / SuperVault) rather than an
+algorithm, and algorithm agility lives in the format version number.
+
+**Why XChaCha20-Poly1305 is the best single choice:**
+
+- **It is constant-time in portable software.** No hardware dependency, so it
+  behaves identically on x86, on ARM without the optional crypto extensions,
+  and on RISC-V — the full range ULTRA OS targets. AES in software is either
+  slow or timing-vulnerable; that is the whole reason the ChaCha family exists.
+- **Its 192-bit nonce makes random nonces safe outright.** UCD gives every
+  encrypted section a fresh random nonce. At 96 bits (what AES-GCM and IETF
+  ChaCha20-Poly1305 use) random generation carries a birthday bound that a
+  long-lived key would eventually meet, which is exactly the kind of subtle
+  accounting that goes wrong years later. At 192 bits the concern disappears,
+  and with it the need for any counter or collision bookkeeping in the writer.
+- **It is fast without acceleration** — typically faster than software AES on
+  the low-cost boards in question.
+- Nonce-reuse catastrophe is the top practical failure mode of both GCM and
+  Poly1305 constructions; the widest nonce available is the cheapest possible
+  insurance against it.
+
+AES-256-GCM is retained in the *module* (hardware-gated, for reading foreign
+data), but nothing UltraCanvas writes will use it.
+
+**Why the ruling settles the backend question.** The two objections to
+libsodium in §3.4 were its lack of software AES-GCM and its lack of PBKDF2.
+With one cipher and one KDF, neither is required any more:
+
+| Earlier gap | Status after the ruling |
+|---|---|
+| No software AES-GCM (rows 5) | **Moot** — UltraCanvas never writes AES-GCM |
+| No PBKDF2 (row 8) | **Moot** — Argon2id is the only KDF |
+| No SHA-384 | Dropped — no consumer needs it |
+| No SHA-1 | Still needed for TOTP; ~150 lines, HMAC path only, FIPS 180-4 vectors |
+| HKDF only in 1.0.19+ | ~30 lines over HMAC-SHA-256, RFC 5869 vectors |
+
+What remains is two small, well-vectored constructions over a correct HMAC.
+Against that, libsodium supplies the only native Argon2id, XChaCha20-Poly1305
+as a first-class primitive, the best secure-memory support of any candidate
+(`sodium_malloc` guard pages, `sodium_mlock`, `sodium_memzero` — which the
+authenticator and UltraVault genuinely need), a ~300 KB footprint against
+OpenSSL's ~4–5 MB, and no disturbance to the Windows/macOS TLS policy.
+
+mbedTLS and OpenSSL were the right answers only under the assumption that
+portable AES-GCM was mandatory. It is not, so libsodium wins on every
+remaining axis.
+
+### 3.6 Consequent changes
+
+Recorded here because they follow from §3.5 rather than being open questions:
+
+1. **UCD v2 spec updated** — offset 16 becomes *key source* (`0` none, `1`
+   password/Argon2id, `2` SuperVault); §4.3 fixes the cipher at
+   XChaCha20-Poly1305 with the section header as associated data; §4.4's
+   SuperVault path uses the same cipher; `SECU` now stores Argon2id cost
+   parameters rather than a bare iteration count.
+2. **`UltraCryptKdfAlgorithm` collapses to `Argon2id`** (§5.5). PBKDF2 is gone
+   from the surface; nothing needs it.
+3. **`UltraCryptAeadAlgorithm` keeps two entries** (§5.4):
+   `XChaCha20Poly1305` (default, everything we write) and `Aes256Gcm`
+   (hardware-gated, for reading foreign data only).
+4. **`UltraCryptHashAlgorithm::SHA384` dropped** (§5.2); no consumer needs it.
+5. Cost parameters are always stored with the ciphertext, never assumed, so
+   raising the recommended Argon2id costs later cannot orphan existing files.
+
+### 3.7 libsodium versus the native Windows and macOS crypto APIs
+
+Option A (§3) proposed using each OS's own crypto stack rather than a
+portable library, mirroring how UltraNet handles TLS. It was rejected in
+prose; this subsection records the comparison properly, because the ruling in
+§3.5 makes the answer much sharper than it was.
+
+The native stacks are:
+
+- **Windows — CNG** (Cryptography Next Generation, `bcrypt.dll`), the modern
+  replacement for CryptoAPI. Handle-based C API.
+- **macOS — CommonCrypto** (in libSystem, C API) and **CryptoKit**
+  (macOS 10.15+, **Swift only**). Randomness comes from Security.framework.
+
+#### Algorithm coverage against the settled requirement set
+
+| Requirement (post-§3.5) | libsodium | Windows CNG | macOS native |
+|---|---|---|---|
+| **XChaCha20-Poly1305** (the cipher) | ✅ first-class | ❌ **absent** | ❌ **absent** (neither CommonCrypto nor CryptoKit) |
+| **Argon2id** (the KDF) | ✅ native | ❌ **absent** (PBKDF2 only) | ❌ **absent** (PBKDF2 only) |
+| AES-256-GCM (interop reads) | ⚠️ AES-NI only | ✅ | ⚠️ CommonCrypto's GCM is a narrow, late-added surface; CryptoKit has it but is Swift-only |
+| ChaCha20-Poly1305 (IETF, 96-bit nonce) | ✅ | ⚠️ recent Windows only — version-gated | ⚠️ CryptoKit only (Swift), absent from CommonCrypto |
+| SHA-256 / SHA-512 | ✅ | ✅ | ✅ |
+| SHA-1 (HMAC path, TOTP) | ❌ ~150 lines to add | ✅ | ✅ |
+| HMAC-SHA-1/256/512 | ⚠️ SHA-256/512 only | ✅ | ✅ |
+| HKDF-SHA256 | ⚠️ dedicated API in 1.0.19+ | ✅ (Windows 10 1903+) | ❌ CommonCrypto; ✅ CryptoKit (Swift) |
+| PBKDF2 | ❌ (not needed post-ruling) | ✅ | ✅ |
+| CSPRNG | ✅ `randombytes_buf` | ✅ `BCryptGenRandom` | ✅ `SecRandomCopyBytes` / `arc4random_buf` |
+| Constant-time compare | ✅ `sodium_memcmp` | ❌ no API (trivial to write) | ⚠️ `timingsafe_bcmp` from BSD libc |
+| Zeroize | ✅ `sodium_memzero` | ✅ `SecureZeroMemory` | ✅ `memset_s` |
+| Page-lock / guarded allocation | ✅ `sodium_mlock`, `sodium_malloc` (guard pages) | ⚠️ `VirtualLock` only, no guarded allocator | ⚠️ `mlock` only, no guarded allocator |
+
+*Version-gated cells should be confirmed against the minimum Windows and
+macOS versions ULTRA OS intends to support; the two ❌ rows at the top do not
+depend on version and are the decisive ones.*
+
+#### Structural and operational comparison
+
+| Dimension | libsodium | Native (CNG + CommonCrypto/CryptoKit) |
+|---|---|---|
+| Number of crypto implementations to maintain | **1** | **3** (Linux still needs one — the OS stacks cover only Windows and macOS) |
+| Cross-platform byte-identical output | ✅ by construction | ⚠️ must be established by test, per algorithm |
+| Language fit for a C++20 framework | ✅ plain C | ⚠️ CNG is verbose C; **CryptoKit is Swift-only** and needs a bridging layer on macOS |
+| Added binary size | ~300 KB | **0** |
+| New third-party dependency | yes | **none** |
+| Security updates | our vendoring/packaging responsibility | ✅ shipped by the OS vendor |
+| FIPS-validated modules available | ❌ | ✅ (CNG) — may matter for some procurement |
+| Hardware acceleration | ✅ built in | ✅ handled by OS |
+| Code signing / notarization impact | one more binary to sign | ✅ nothing extra |
+| Supply-chain exposure | one vendored library | ✅ none added |
+| API misuse resistance | ✅ designed for it | ⚠️ general-purpose, easy to misconfigure |
+| Test burden | one implementation against published vectors | three implementations, plus mandatory cross-platform fixture tests |
+
+#### What the tables say
+
+**The two algorithms just standardised on are precisely the two that no OS
+crypto stack provides.** XChaCha20-Poly1305 is a CFRG draft that OS vendors
+have not adopted, and Argon2id (RFC 9106) has not reached CNG or CommonCrypto
+either — both platforms still offer PBKDF2 as their password KDF. That is not
+a version-gating problem that will age out soon; it is a difference in what
+these APIs are for.
+
+So a native-backend build cannot implement §3.5 at all. It leaves two choices,
+and both are worse than simply vendoring libsodium:
+
+1. **Revert the cipher and KDF** to AES-256-GCM plus PBKDF2 — the lowest
+   common denominator of OS crypto APIs — giving up portable constant-time
+   encryption on unaccelerated ARM/RISC-V hardware, giving up the 192-bit
+   nonce that removes nonce-reuse accounting, and giving up memory-hard
+   password hashing. The format would be designed around API availability
+   rather than around what is best, which is the opposite of the principle
+   behind the ruling.
+2. **Vendor XChaCha20-Poly1305 and Argon2id anyway** and use the OS only for
+   SHA-2, HMAC and randomness. But those are the easy, uncontroversial parts;
+   the vendored pieces would be the hard ones. The result is a third-party
+   crypto dependency *plus* three platform backends — strictly more work and
+   more risk than one library, for no benefit.
+
+The honest case *for* native remains real and is worth stating: zero added
+binary size, no supply-chain exposure, OS-vendor security updates, nothing
+extra to sign or notarize, and FIPS-validated modules on Windows if
+procurement ever demands them. If a FIPS requirement appears, this decision
+should be revisited — but it would be a decision to change the algorithms
+too, not merely the backend.
+
+One further practical obstacle on macOS: the modern API (CryptoKit) is
+**Swift-only**, so a C++20 framework would have to carry a Swift bridging
+layer to reach it, while the C API that is directly callable (CommonCrypto) is
+the older and considerably weaker one — no ChaCha, no HKDF, and a GCM surface
+that arrived late and narrow. UltraNet tolerates this for TLS because
+SecureTransport is a complete TLS implementation behind a C API; there is no
+equivalent for the primitives UltraCrypt needs.
+
+**Conclusion: native backends are the right call for TLS and the wrong one
+here.** TLS wants the OS because the OS owns the trust store and cipher
+policy; data-at-rest wants one implementation because the requirement is that
+a file written anywhere opens everywhere. §3.5 stands.
+
+## 4. Placement, naming and build target
+
+UltraCrypt follows the **UltraNet / UltraDatabase layout** exactly, being a
+sibling module of the same generation:
+
+| Aspect | Convention followed |
+|---|---|
+| Sources | `UltraCanvas/{include,core}/UltraCrypt/` |
+| Public header | `UltraCrypt/UltraCryptCore.h` |
+| Documentation | `Docs/Modules/UltraCrypt/README.md` (this file) |
+| Registry entry | `Masterfile_modules.md` §8 |
+| Namespace | **None** — matching UltraNet and UltraDatabase, which place their surface in the global namespace behind a module prefix |
+| Functions | `UltraCrypt_<Verb><Noun>` free functions |
+| Types | `UltraCrypt`-prefixed (`UltraCryptResult`, `UltraCryptSecureBuffer`, …) |
+| Blocking ops | Return `UltraCryptResult` with `operator bool()` |
+
+Because UltraVault, UltraDatabase and headless tools also need UltraCrypt and
+must **not** pull in the UI layer, its sources are deliberately free of any UI
+dependency — they include nothing from UltraCanvas beyond fixed-width integer
+types — and are compiled into a small standalone static target, `UltraCrypt`,
+that the framework, the sibling modules and applications all link. UltraCanvas
+core links it for the UCD v2 format.
+
+```cpp
+#include "UltraCrypt/UltraCryptCore.h"
+```
+
+---
+
+## 5. Proposed public surface
+
+Conventions: PascalCase identifiers; module-prefixed free functions and types;
+no backend type in any public header; a structured result with `operator
+bool()` matching `UltraNetResult` / `UltraDbResult`; options carried in structs
+so calls stay readable and extensible; **nothing throws**.
+
+### 5.0 Result type and lifecycle
+
+```cpp
+enum class UltraCryptResultCode : uint8_t {
+    Success,
+    NotSupported,          // algorithm not available in this build
+    InvalidArgument,
+    InvalidKeySize,
+    InvalidNonceSize,
+    AuthenticationFailed,  // AEAD tag mismatch — ciphertext or AAD was altered
+    EntropyFailure,        // CSPRNG unavailable: never fall back to a PRNG
+    BackendUnavailable,
+    InternalError
+};
+
+struct UltraCryptResult {
+    UltraCryptResultCode code = UltraCryptResultCode::InternalError;
+    bool success = false;
+    std::string message;
+
+    operator bool() const { return success; }
+
+    static UltraCryptResult Ok();
+    static UltraCryptResult Error(UltraCryptResultCode code,
+                                  const std::string& message);
+};
+
+// Idempotent and thread-safe; called automatically on first use, but callers
+// that care about deterministic initialisation order may call it explicitly.
+UltraCryptResult UltraCrypt_Initialize();
+void             UltraCrypt_Shutdown();
+bool             UltraCrypt_IsAvailable();
+std::string      UltraCrypt_GetBackendName();   // e.g. "libsodium 1.0.19"
+```
+
+**Error-reporting rule:** `message` is for developers and logs. It must never
+contain key material, plaintext, or password-derived data, and it must not
+distinguish *why* an AEAD open failed beyond `AuthenticationFailed` — that
+distinction is an oracle.
+
+### 5.1 UltraCryptSecureBuffer — the type secrets travel in
+
+Every entry point that touches key material takes or returns an
+`UltraCryptSecureBuffer` rather than `std::string` / `std::vector<uint8_t>`,
+so secrets cannot be copied by accident, are wiped on destruction, and are
+kept out of swap where the OS allows it.
+
+```cpp
+class UltraCryptSecureBuffer {
+public:
+    UltraCryptSecureBuffer();
+    explicit UltraCryptSecureBuffer(size_t size);          // zero-filled
+    UltraCryptSecureBuffer(const void* data, size_t size);
+    ~UltraCryptSecureBuffer();                              // zeroizes, then frees
+
+    // Move-only: copying a secret must be deliberate, never implicit.
+    UltraCryptSecureBuffer(UltraCryptSecureBuffer&&) noexcept;
+    UltraCryptSecureBuffer& operator=(UltraCryptSecureBuffer&&) noexcept;
+    UltraCryptSecureBuffer(const UltraCryptSecureBuffer&) = delete;
+    UltraCryptSecureBuffer& operator=(const UltraCryptSecureBuffer&) = delete;
+    UltraCryptSecureBuffer Clone() const;                   // explicit copy
+
+    uint8_t*       Data();
+    const uint8_t* Data() const;
+    size_t         GetSize() const;
+    bool           IsEmpty() const;
+
+    void Resize(size_t size);     // grow/shrink, wiping any discarded bytes
+    void Clear();                 // zeroize and release
+
+    // Best-effort mlock()/VirtualLock(): keeps pages out of swap. Returns
+    // false when the OS refuses (RLIMIT_MEMLOCK) — a hint, never a guarantee.
+    bool LockPages();
+
+    // Adopts the bytes of a std::string and wipes the source in place. For
+    // bridging from UI text fields, which cannot hand over a secure buffer.
+    static UltraCryptSecureBuffer AdoptString(std::string& text);
+};
+
+// Compiler-barrier-protected wipe; not elided by optimizers.
+void UltraCrypt_SecureZero(void* data, size_t size);
+
+// Length-independent comparison. Use for every MAC / tag / digest check.
+bool UltraCrypt_ConstantTimeEquals(const void* a, const void* b, size_t size);
+```
+
+### 5.2 Hashing
+
+```cpp
+enum class UltraCryptHashAlgorithm : uint8_t {
+    SHA1,        // LEGACY: HMAC-SHA-1 (TOTP) only; see allowLegacy below
+    SHA256,
+    SHA512,      // SHA-384 deliberately absent: no consumer needs it (§3.6)
+    BLAKE2b256,
+    BLAKE3_256   // UCD v2 SVLT alg 1; may report NotSupported (see §3.1)
+};
+
+struct UltraCryptHashOptions {
+    bool allowLegacy = false;    // required to use SHA1 as a plain digest
+};
+
+class UltraCryptHasher {          // streaming; for files and large payloads
+public:
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                              const UltraCryptHashOptions& options =
+                                  UltraCryptHashOptions());
+    ~UltraCryptHasher();
+    UltraCryptHasher(UltraCryptHasher&&) noexcept;
+    UltraCryptHasher(const UltraCryptHasher&) = delete;
+
+    void Update(const void* data, size_t size);
+    // Finalises and returns the digest; the object must be Reset() to reuse.
+    std::vector<uint8_t> Final();
+    void Reset();
+
+    size_t GetDigestSize() const;
+    bool   IsValid() const;       // false when the algorithm is unavailable
+};
+
+size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
+bool   UltraCrypt_IsHashAvailable(UltraCryptHashAlgorithm algorithm);
+
+UltraCryptResult UltraCrypt_Hash(
+        UltraCryptHashAlgorithm algorithm,
+        const void* data, size_t size,
+        std::vector<uint8_t>& outDigest,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
+
+UltraCryptResult UltraCrypt_HashFile(
+        UltraCryptHashAlgorithm algorithm,
+        const std::string& filePath,
+        std::vector<uint8_t>& outDigest);
+
+std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
+bool        UltraCrypt_FromHex(const std::string& hex,
+                               std::vector<uint8_t>& outBytes);
+```
+
+*Serves:* AnchorPoint integrity, UCD `SVLT` creation hash, UCD section
+checksums.
+
+### 5.3 HMAC
+
+```cpp
+class UltraCryptHmacHasher {      // streaming, same shape as UltraCryptHasher
+public:
+    UltraCryptHmacHasher(UltraCryptHashAlgorithm algorithm,
+                         const UltraCryptSecureBuffer& key);
+    ~UltraCryptHmacHasher();
+    void Update(const void* data, size_t size);
+    std::vector<uint8_t> Final();
+    void Reset();                 // keeps the key
+    size_t GetDigestSize() const;
+    bool   IsValid() const;
+};
+
+// SHA1 is permitted here without allowLegacy: HMAC-SHA-1 remains sound and
+// TOTP interoperability requires it.
+UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
+                                 const UltraCryptSecureBuffer& key,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outMac);
+```
+
+*Serves:* UltraAuthenticator (RFC 4226 / 6238), any future signed-manifest work.
+
+### 5.4 Authenticated encryption (AEAD)
+
+Only AEAD is offered. There is **no raw block-cipher or unauthenticated-mode
+surface** — that omission is deliberate and is what prevents the next
+`UltraCanvasDocument` from appearing.
+
+```cpp
+enum class UltraCryptAeadAlgorithm : uint8_t {
+    // The default, and the only cipher UltraCanvas ever writes. 192-bit
+    // nonce, so randomly generated nonces are safe without bookkeeping;
+    // constant-time in portable software on hardware without AES support.
+    XChaCha20Poly1305,
+
+    // Interop only — for reading data produced elsewhere. Hardware-gated:
+    // UltraCrypt_IsAeadAvailable returns false without AES-NI / ARMv8 crypto.
+    // Never select this for new output.
+    Aes256Gcm
+};
+
+struct UltraCryptAeadParams {
+    UltraCryptAeadAlgorithm algorithm =
+        UltraCryptAeadAlgorithm::XChaCha20Poly1305;
+
+    // Seal: if empty, a fresh random nonce is generated and written back here
+    // — the caller must store it. Supplying a nonce is allowed but then
+    // keeping it unique per key is the caller's responsibility.
+    // Open: must be set to the nonce used at Seal time.
+    std::vector<uint8_t> nonce;
+
+    // Authenticated but not encrypted. UCD writers put the section header
+    // here, so a header edit invalidates the tag.
+    std::vector<uint8_t> associatedData;
+};
+
+size_t UltraCrypt_GetKeySize(UltraCryptAeadAlgorithm algorithm);    // 32 both
+size_t UltraCrypt_GetNonceSize(UltraCryptAeadAlgorithm algorithm);  // 24 / 12
+size_t UltraCrypt_GetTagSize(UltraCryptAeadAlgorithm algorithm);    // 16
+bool   UltraCrypt_IsAeadAvailable(UltraCryptAeadAlgorithm algorithm);
+
+// Ciphertext is plaintext-length + tag size; the tag is appended.
+UltraCryptResult UltraCrypt_AeadSeal(const UltraCryptSecureBuffer& key,
+                                     UltraCryptAeadParams& params,
+                                     const void* plaintext, size_t size,
+                                     std::vector<uint8_t>& outCiphertext);
+
+// Returns AuthenticationFailed — and leaves outPlaintext empty — if the
+// ciphertext, the AAD or the nonce was altered. Never returns partially
+// verified plaintext.
+UltraCryptResult UltraCrypt_AeadOpen(const UltraCryptSecureBuffer& key,
+                                     const UltraCryptAeadParams& params,
+                                     const void* ciphertext, size_t size,
+                                     UltraCryptSecureBuffer& outPlaintext);
+```
+
+Taking `UltraCryptAeadParams&` by non-const reference in Seal is the deliberate
+shape: generating the nonce by default makes nonce reuse — the catastrophic
+failure mode of both GCM and Poly1305 — something a caller has to opt *into*
+rather than something they forget to avoid.
+
+*Serves:* UCD v2 §4.3 section pipeline, UltraVault file backend,
+UltraAuthenticator's store, UltraDatabase at-rest encryption — all of which
+use `XChaCha20Poly1305` and none of which need to choose.
+
+### 5.5 Key derivation
+
+```cpp
+// One KDF. Argon2id is memory-hard, is the current standard (RFC 9106) and is
+// what every UltraCanvas format and store uses. No alternative is offered:
+// a second KDF would be a second code path in every reader for no benefit.
+enum class UltraCryptKdfAlgorithm : uint8_t {
+    Argon2id
+};
+
+struct UltraCryptKdfParams {
+    UltraCryptKdfAlgorithm algorithm = UltraCryptKdfAlgorithm::Argon2id;
+
+    // If empty, UltraCrypt_DeriveKeyFromPassword generates 16 random bytes
+    // and writes them back — the caller stores them (UCD keeps them in SECU).
+    std::vector<uint8_t> salt;
+
+    uint32_t iterations   = 0;   // Argon2id passes
+    uint32_t memoryKiB    = 0;   // Argon2id memory cost
+    uint32_t parallelism  = 0;   // Argon2id lanes
+    size_t   outputLength = 32;
+};
+
+// Current-guidance cost parameters: 3 passes, 64 MiB, parallelism 1. These are
+// revisited as hardware moves, so stored data must always record the
+// parameters it was written with rather than assuming today's defaults —
+// otherwise raising the defaults orphans every existing file.
+UltraCryptKdfParams UltraCrypt_RecommendedKdfParams(
+        UltraCryptKdfAlgorithm algorithm = UltraCryptKdfAlgorithm::Argon2id);
+
+UltraCryptResult UltraCrypt_DeriveKeyFromPassword(
+        const UltraCryptSecureBuffer& password,
+        UltraCryptKdfParams& params,
+        UltraCryptSecureBuffer& outKey);
+
+// HKDF (RFC 5869) — derives subkeys from existing high-entropy key material.
+// Not for passwords: it is deliberately fast. UCD v2 §4.4 uses exactly this:
+//   HKDF-SHA256(keyMaterial, salt = SECU salt, info = "UCD-SVLT-v1" + UUID)
+UltraCryptResult UltraCrypt_DeriveKeyHkdf(
+        UltraCryptHashAlgorithm algorithm,
+        const UltraCryptSecureBuffer& inputKeyMaterial,
+        const std::vector<uint8_t>& salt,
+        const std::vector<uint8_t>& info,
+        size_t outputLength,
+        UltraCryptSecureBuffer& outKey);
+```
+
+### 5.6 Random generation
+
+```cpp
+// All draw from the OS CSPRNG. On failure they return EntropyFailure and
+// leave the output untouched — there is deliberately no PRNG fallback.
+UltraCryptResult UltraCrypt_RandomBytes(void* out, size_t size);
+UltraCryptResult UltraCrypt_RandomBytes(std::vector<uint8_t>& out, size_t size);
+UltraCryptResult UltraCrypt_RandomSecureBuffer(size_t size,
+                                               UltraCryptSecureBuffer& out);
+
+// Uniform in [0, bound) without modulo bias.
+UltraCryptResult UltraCrypt_RandomUInt32(uint32_t bound, uint32_t& out);
+
+// RFC 4122 version 4, lowercase hyphenated. UCD v2 needs one per file.
+UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out);
+```
+
+### 5.7 Companion encodings — placement to be decided
+
+TOTP provisioning needs **Base32** (RFC 4648) and several consumers want
+**Base64**. These are encodings, not cryptography, so they arguably belong in
+`DataFormats/` alongside UltraCanvasJSON rather than here. They are listed for
+completeness because no home exists today and secrets pass through them, which
+means the implementations need the same care about intermediate copies:
+
+```cpp
+std::string      UltraCrypt_Base64Encode(const void* data, size_t size);
+UltraCryptResult UltraCrypt_Base64Decode(const std::string& text,
+                                         std::vector<uint8_t>& out);
+
+std::string      UltraCrypt_Base32Encode(const void* data, size_t size,
+                                         bool pad = true);
+// Strict RFC 4648: rejects non-alphabet characters. Case-insensitive.
+UltraCryptResult UltraCrypt_Base32Decode(const std::string& text,
+                                         UltraCryptSecureBuffer& out);
+```
+
+Note the asymmetry: `UltraCrypt_Base32Decode` yields a secure buffer because
+its dominant use is decoding a TOTP seed.
+
+---
+
+## 6. Usage sketches
+
+**UCD v2 section encryption (§4.3 pipeline):**
+
+```cpp
+UltraCryptKdfParams kdf =
+    UltraCrypt_RecommendedKdfParams(UltraCryptKdfAlgorithm::Argon2id);
+UltraCryptSecureBuffer key;
+if (!UltraCrypt_DeriveKeyFromPassword(password, kdf, key)) return false;
+// kdf.salt / iterations / memoryKiB now hold what must be written to SECU.
+
+UltraCryptAeadParams aead;                  // defaults to XChaCha20Poly1305
+aead.associatedData = sectionHeaderBytes;   // header tampering breaks the tag
+std::vector<uint8_t> ciphertext;
+if (!UltraCrypt_AeadSeal(key, aead, payload.data(), payload.size(), ciphertext))
+    return false;
+// aead.nonce holds the generated nonce — store it with the section.
+```
+
+**UCD v2 SuperVault subkey (§4.4 step 6):**
+
+```cpp
+std::vector<uint8_t> info(kSvltInfoPrefix.begin(), kSvltInfoPrefix.end());
+info.insert(info.end(), fileUuid.begin(), fileUuid.end());
+
+UltraCryptSecureBuffer sectionKey;
+UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, serviceKeyMaterial,
+                         kdfSalt, info, 32, sectionKey);
+```
+
+**TOTP code (RFC 6238):**
+
+```cpp
+uint64_t counter = static_cast<uint64_t>(unixTimeUtc) / period;
+uint8_t  message[8];
+for (int i = 0; i < 8; ++i)
+    message[7 - i] = static_cast<uint8_t>(counter >> (i * 8));
+
+std::vector<uint8_t> mac;
+UltraCrypt_Hmac(UltraCryptHashAlgorithm::SHA1, seed, message, sizeof(message), mac);
+
+const size_t offset = mac[mac.size() - 1] & 0x0F;          // RFC 4226 §5.3
+const uint32_t binary = ((mac[offset]     & 0x7F) << 24)
+                      | ((mac[offset + 1] & 0xFF) << 16)
+                      | ((mac[offset + 2] & 0xFF) <<  8)
+                      |  (mac[offset + 3] & 0xFF);
+```
+
+---
+
+## 7. Testing requirements
+
+Cryptographic code is the least tolerant of "looks right", so the test suite
+is part of the deliverable, not a follow-up:
+
+- **Published test vectors, all mandatory** (implemented in
+  `Tests/UltraCryptTests.cpp`): FIPS 180-4 (SHA-1 and SHA-2), RFC 2202 / 4231
+  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8439
+  (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
+  draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
+  interop-only AES path, and RFC 4226 App. D / RFC 6238 App. B once the OTP
+  engine lands.
+
+  **One gap, stated plainly:** RFC 9106's Argon2id vectors use parallelism 4,
+  which libsodium's `crypto_pwhash` does not expose (it fixes lanes at 1), so
+  they cannot be run against this API. Argon2id is instead covered by
+  determinism, salt sensitivity, password sensitivity and cost-parameter
+  sensitivity tests, and `parallelism != 1` is rejected rather than silently
+  ignored so a stored parameter set never misdescribes how a key was derived.
+- **Negative tests:** every AEAD open must be exercised with a flipped
+  ciphertext bit, a flipped AAD bit, a wrong nonce and a truncated tag, each
+  asserting `AuthenticationFailed` **and** an empty output.
+- **Round-trip and cross-platform:** a fixture file sealed on one platform must
+  open on the other two in CI — this is the guarantee Option B exists to
+  provide, so it must be tested, not assumed.
+- **Hygiene:** `UltraCryptSecureBuffer` wipe-on-destroy verified; a test
+  asserting no public header includes a backend header (the wrapped-engine
+  rule, mechanically checked); ASan/UBSan on the `UltraCrypt` target.
+
+---
+
+## 8. Suggested rollout
+
+| Stage | Contents |
+|---|---|
+| **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
+| **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF and Base32/64 |
+| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1). Still to do: retire `AnchorPoint/net/Sha256.h`, UCD v2 writer/reader, UltraVault file backend |
+| **4** | Optional additions as needed: BLAKE3-256, XChaCha20-Poly1305 at volume, public-key surface |
+
+Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
+storage layer and the UCD v2 format.
+
+---
+
+## 9. Open questions
+
+**Resolved:**
+
+- ~~Backend choice~~ — **libsodium** (§3.5), settled by the single-cipher ruling.
+- ~~UCD default cipher~~ — **XChaCha20-Poly1305 only**, with Argon2id as the
+  only KDF (§3.5–3.6). The spec has been updated accordingly.
+
+**Still open:**
+
+1. Do the companion encodings (§5.7) belong in UltraCrypt or in
+   `DataFormats/` alongside UltraCanvasJSON?
+2. Should `UltraCryptHashAlgorithm::SHA1` be exposed at all outside the HMAC
+   path, even behind `allowLegacy`?
+3. Is BLAKE3-256 worth keeping as UCD v2 `SVLT` hash algorithm `1`, or should
+   that field also collapse to SHA-256 only, consistent with the
+   one-algorithm principle applied to the cipher and KDF?
+4. Confirm the disposition of `UltraCanvasDocument`'s dormant encryption code
+   (§1.1): rewrite against UltraCrypt, or delete the entry points?
+5. Confirm the global-namespace + `UltraCrypt_` prefix convention (§4), chosen
+   to match UltraNet and UltraDatabase. UltraAI and the UltraVault design use
+   a named namespace instead, so the framework currently has both patterns.
+6. Is vendoring libsodium under `UltraCanvas/third_party/` preferred to
+   linking the distro package? Vendoring pins the version and guarantees
+   1.0.19+ (so HKDF comes from the library rather than our own construction);
+   linking keeps builds smaller and inherits distro security updates.
+
+---
+
+## See also
+
+- [Masterfile_modules.md](../../../Masterfile_modules.md) §8 — registry entry
+- [UltraCanvasJSON](../../UltraCanvas/UltraCanvasJSON.md) — the wrapped-engine precedent
+- [UCD File Format v2](../../UltraCanvas/UCD-FileFormat-v2.md) — the largest consumer
+- [UltraAuthenticator investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)
+- [UltraVault design](../../../UltraAI/Docs/UltraVault.md) — consumes UltraCrypt
 
 ==============================================================================
 FILE: Docs/Modules/UltraDatabase/README.md
@@ -47226,6 +49304,158 @@ FILE: Docs/Modules/UltraDatabase/intro.md
 The unified data-access layer for every platform. One API covers every database an app touches: embedded SQLite out of the box, plus PostgreSQL, MySQL/MariaDB and more as plug-in drivers, without touching the core. Connections are defined once by name and pooled centrally; the same parameterized query, transaction and streaming-cursor API works across every engine, so an app can prototype on SQLite and deploy on Postgres without a rewrite. Injection-safe by default, TLS for networked engines, and credentials pulled from UltraVault — never embedded in code. Blocking calls run sync; async variants keep the UI responsive.
 
 ==============================================================================
+FILE: Docs/Modules/UltraNet/ApiStatus.md
+==============================================================================
+
+# UltraNet API status report (`UltraNetApiStatus`)
+
+A console tool that walks the **entire public UltraNet surface** and reports,
+per function, what state it is in *on the machine running it*.
+
+It answers a different question from the `UltraNetTests` suite. The test
+suite answers "does the code still behave?" and prints pass/fail. This tool
+answers "which parts of the API can I actually rely on in this build?" and
+prints one of four statuses per entry.
+
+| Status | Meaning |
+|---|---|
+| **WORKING** | The probe drove the real code path end to end and the observable result matched what the API promises. |
+| **IMPLEMENTED** | The implementation exists and was reached, but this environment cannot confirm the behaviour — no live peer, an optional backend is absent, or the effect has no public accessor. |
+| **NOT IMPLEMENTED** | A documented stub / no-op, a field nothing ever writes, or a backend this build of libcurl does not carry. |
+| **BROKEN** | The probe ran and the result contradicted the API. |
+
+`BROKEN` exists on purpose: a status tool that can only report good news
+would quietly turn a regression into a reassuring "implemented".
+
+---
+
+## Building and running
+
+```bash
+cmake -S . -B build -DULTRACANVAS_BUILD_NET_TESTS=ON
+cmake --build build --target UltraNetApiStatus
+./build/bin/UltraNetApiStatus
+```
+
+It is also registered with CTest:
+
+```bash
+ctest --test-dir build -R UltraNetApiStatus
+```
+
+### Options
+
+| Option | Effect |
+|---|---|
+| `--format=text\|markdown\|json` | Report format (default `text`). |
+| `--area=<name>` | Probe one area only: `Core`, `URL`, `HTTP`, `Session`, `SSE`, `WebSocket`, `DNS`, `Socket`, `TLS`, `FTP`, `MIME`, `Plugins`. |
+| `--output=<path>` | Write the report to a file instead of stdout. |
+| `--network` | Also run the probes that need the public internet. |
+| `--strict` | Exit non-zero unless **every** entry is `WORKING`. |
+| `--serve[=<seconds>]` | Diagnostic: start only the loopback origin, print its port, hold it open. Runs no probes. |
+
+Exit code is `0` when nothing is `BROKEN` (and, with `--strict`, when
+everything is `WORKING`), `1` otherwise, `2` on a usage error.
+
+### Environment overrides
+
+| Variable | Purpose |
+|---|---|
+| `ULTRANET_PROBE_NETWORK=1` | Same as `--network`. |
+| `ULTRANET_PROBE_HTTPS_URL` | HTTPS endpoint used by the TLS-info probe. |
+| `ULTRANET_PROBE_DNS_DOMAIN` | Domain used by the record-type DNS probes. |
+| `ULTRANET_PROBE_FTP_URL` | Writable FTP directory, e.g. `ftp://user:pass@host/probe/`. Upgrades the whole FTP area from `IMPLEMENTED` to verified. |
+| `ULTRANET_PROBE_PLUGIN_DIR` | Directory of plug-in DSOs for the `UltraNet_RefreshPlugins` probe. |
+
+---
+
+## How it verifies things without a network
+
+The tool starts its own peers, so a machine with no internet access — and no
+Python, and no external services — still gets verified results for most of
+the surface.
+
+* **HTTP / Session / SSE / WebSocket** — an in-process HTTP/1.1 + WebSocket
+  origin built on UltraNet's *own* TCP API (`UltraNet_TcpListen` /
+  `TcpAccept` / `TcpSend` / `TcpReceive`). It speaks keep-alive, chunked
+  request bodies, `Expect: 100-continue`, redirects, cookies, Basic auth
+  challenges, `text/event-stream`, a deliberately slow route for cancellation
+  probes, and a full RFC 6455 WebSocket echo endpoint (its own SHA-1 for the
+  `Sec-WebSocket-Accept` derivation, so no OpenSSL dependency). Because the
+  origin *is* UltraNet TCP, a broken socket layer makes the origin fail to
+  start and the dependent probes say so instead of silently reporting
+  "unverified".
+* **TCP / UDP** — loopback peers the probes start themselves.
+* **TLS** — `openssl s_server` on loopback with a throwaway self-signed
+  certificate. That also makes the trust-store entries checkable *in both
+  directions*: the same handshake must fail against the default trust store
+  and succeed once the probe's own certificate is trusted.
+* **DNS** — numeric addresses and `localhost` resolve without a network;
+  record types beyond A/AAAA/PTR need `--network`.
+* **URL / MIME / SSE parser / plugin registry** — pure code, always verified.
+* **FTP** — the one area with no offline peer. The probes still establish
+  that each entry point validates its input and that the call reaches the
+  libcurl FTP backend (a closed port must report a connection error, not
+  `UnsupportedScheme`). Set `ULTRANET_PROBE_FTP_URL` for real verification.
+
+All of these peers bind `127.0.0.1` explicitly — never the any-address — so
+running the tool neither opens a port to the network nor triggers the Windows
+firewall prompt.
+
+---
+
+## Antivirus false positives on Windows
+
+`UltraNetApiStatus.exe` is a developer/CI tool, and what it does — start
+loopback TCP/UDP listeners, spawn many short-lived connections, load plug-in
+DLLs at runtime, rewrite proxy environment variables — is exactly the
+behaviour pattern generic AV heuristics score against. AVG/Avast's behaviour
+shield ("Verhaltensschutz") has quarantined it as **IDP.Generic**, a generic
+behavioural verdict, not a recognised malware signature.
+
+For that reason the test binaries (`UltraNetTests`, `UltraNetApiStatus`, and
+the other `*Test`/`*Tests` executables) are **excluded from the end-user
+Windows package** by `package-win.sh` — they are built for developers and CI,
+not for distribution. If you hit the detection on your own build machine,
+restore the file from quarantine and add your build directory to the AV
+exclusion list; a `--no-sign` or self-signed build has no signer reputation,
+so heuristic engines treat it as unknown software.
+
+---
+
+## Adding a probe
+
+Probes live in `Tests/UltraNet/ApiStatus/Probe<Area>.cpp`, one per public
+entry, written in header order — the report preserves declaration order
+within an area.
+
+```cpp
+ULTRANET_PROBE(kArea, UltraNet_HttpGet) {
+    LoopbackServer& server = Loopback();
+    if (!server.Running()) return NoOrigin(server, "a live GET");
+
+    UltraNetResponse resp;
+    const UltraNetResult r = UltraNet_HttpGet(server.Url("/hello"), resp);
+    PROBE_EXPECT_MSG(static_cast<bool>(r), r.message);
+    PROBE_EXPECT(resp.statusCode == 200);
+    return Working("200 body/headers/content-type/length verified");
+}
+```
+
+Rules that keep the report trustworthy:
+
+* `PROBE_EXPECT` failing means the API misbehaved → `BROKEN`, never
+  "unverified".
+* A missing peer, absent backend, or unreachable network is
+  `Implemented("<why>")` — never `Working`.
+* Use `ULTRANET_PROBE_NAMED(area, "display name", uniqueId)` for entries
+  whose reported name is not an identifier (class methods, option fields,
+  grouped entries).
+* The `detail` string is the point of the report. For `WORKING` say what was
+  checked; for anything else say exactly what is missing and how to supply
+  it.
+
+==============================================================================
 FILE: Docs/Modules/UltraNet/JmapSupport.md
 ==============================================================================
 
@@ -47489,6 +49719,7 @@ is purely a libcurl build option.
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build | `UltraNet/UltraNetMime.h` |
@@ -47576,6 +49807,28 @@ std::vector<std::string> mx;
 UltraNet_DnsResolve("example.com", mx, UltraNetDnsType::MX);
 ```
 
+```cpp
+#include <UltraNet/UltraNetOAuth2.h>
+
+// OAuth2 sign-in for a desktop app (public client + PKCE). Blocking —
+// run on a worker thread; the browser opens via the callback.
+UltraNetOAuth2Config cfg;
+cfg.authorizationEndpoint = "https://mastodon.social/oauth/authorize";
+cfg.tokenEndpoint         = "https://mastodon.social/oauth/token";
+cfg.clientId              = clientId;
+cfg.scopes                = {"read", "write"};
+cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral port
+
+UltraNetOAuth2Token token;
+auto r = UltraNet_OAuth2AuthorizeInteractive(
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+if (r) {
+    // token.accessToken -> "authorization: Bearer ..." on API calls
+    // token.refreshToken -> store in the credential vault;
+    //   renew later with UltraNet_OAuth2Refresh(cfg, refreshToken, token)
+}
+```
+
 ---
 
 ## Module layout
@@ -47591,6 +49844,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetOAuth2.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   └── UltraNetPlugins.h
@@ -47649,15 +49903,32 @@ architecture.
 | Component | State |
 |---|---|
 | Public API (master registry) | Locked at v1.0.0 |
-| Core implementation | In progress (libcurl + OpenSSL) |
-| Linux / macOS / Windows backends | Planned |
+| Core implementation | Stage 2/3 on libcurl: sync + async HTTP, chunked streaming, SSE, WebSocket, sessions, TLS, DNS |
+| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket needs libcurl >= 7.86 with ws) |
 | ULTRA OS native backend | Planned |
-| Plugins (SMTP, MQTT, SSH, …) | Tracked separately |
+| Plugins (SMTP, MQTT, SSH, ...) | Tracked separately |
+
+Per-function status is not a table anyone has to maintain by hand: build and
+run **`UltraNetApiStatus`**, which probes every public entry point on the
+machine in front of you and reports it as WORKING, IMPLEMENTED (present but
+unverifiable here), NOT IMPLEMENTED, or BROKEN.
+
+```bash
+cmake -S . -B build -DULTRACANVAS_BUILD_NET_TESTS=ON
+cmake --build build --target UltraNetApiStatus
+./build/bin/UltraNetApiStatus                     # or --format=markdown / --format=json
+```
+
+It brings its own HTTP, WebSocket, TCP/UDP and TLS peers, so it needs no
+internet access. See [`ApiStatus.md`](ApiStatus.md).
 
 ---
 
 ## Reference
 
+* **API status report** — [`ApiStatus.md`](ApiStatus.md) (the
+  `UltraNetApiStatus` tool: statuses, options, how each area is verified,
+  how to add a probe).
 * **Master registry** — full function list, types, callbacks, plugin
   interfaces, reserved patterns, and security/performance rules.
 * **UltraAI integration** — `UltraAI/Docs/UltraNetIntegration.md`
@@ -47676,6 +49947,209 @@ FILE: Docs/Modules/UltraNet/intro.md
 # UltraNet
 
 The unified, secure networking layer for every platform. One API covers HTTP, HTTPS, WebSocket, FTP, FTPS, SFTP, raw TCP and UDP, TLS, and DNS, complete with reusable sessions, proxy support, certificate validation, and async requests for responsive UIs. Additional protocols such as SMTP, IMAP, MQTT, and SSH load as plug-ins without touching the core. Built on libcurl and OpenSSL for proven performance and security.
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/README.md
+==============================================================================
+
+# UltraWin
+
+**Windows-application compatibility module for ULTRA OS.**
+Sibling of `UltraCanvas` (UI), `UltraNet` (networking) and `UltraAI` (AI).
+
+UltraWin runs Windows applications on Linux / ULTRA OS **as single native
+windows — never a Windows desktop — with the user's own folders visible to
+the app**. It wraps open source engines behind an UltraCanvas-owned API so
+backings can be swapped without touching callers.
+
+> Status: Stage 1 (Wine tier) implemented — environments, drive mappings,
+> launch/supervision. The Stage 2 VM tier (QEMU/KVM + FreeRDP RemoteApp) and
+> Stage 3 polish (compatibility routing, gaming profile, ARM64 via Hangover)
+> are specified in
+> [`Docs/Research/UltraWinDesignProposal.md`](../../Research/UltraWinDesignProposal.md).
+
+Linux / ULTRA OS only: the library is skipped on Windows/macOS builds
+(`ULTRACANVAS_ENABLE_ULTRAWIN`, on by default, guarded by platform).
+
+---
+
+## Why it exists
+
+Running Windows software is exactly the kind of concern an OS owns once:
+engine discovery, per-app isolation, drive mapping, process supervision,
+and (later) VM provisioning and seamless RemoteApp windows. Without a shared
+module every app would shell out to `wine` ad hoc — and inevitably leak
+prefixes, expose the whole host filesystem through Wine's default `Z:` drive,
+or hang on Wine's interactive first-run dialogs.
+
+Two tiers, one API (see the research doc for the full comparison):
+
+| Tier | Engine | Windows license | Coverage |
+|---|---|---|---|
+| 1 — **Wine** (this stage) | Wine ≥ 10, spawned as child processes | not needed | most apps, instant launch |
+| 2 — **VM** (Stage 2) | QEMU/KVM guest + FreeRDP RemoteApp | user-supplied | ~100 % (kernel drivers, anti-cheat) |
+
+Nothing is linked: Wine runs as ordinary child processes, keeping LGPL
+outside the framework binaries and letting UltraWin degrade gracefully when
+Wine is not installed (`UltraWin_GetCapabilities`).
+
+## Headers
+
+| Header | Contents |
+|---|---|
+| `UltraWin/UltraWin.h` | umbrella |
+| `UltraWin/UltraWinCore.h` | `UltraWinResult`, `UltraWinHandle`, capabilities, config, init/shutdown |
+| `UltraWin/UltraWinEnvironment.h` | environments (Wine prefixes) + drive mappings |
+| `UltraWin/UltraWinApp.h` | launching and supervising applications |
+
+Conventions match UltraNet: blocking operations return `UltraWinResult`
+(`operator bool()` for the success path); app instances are opaque
+`UltraWinHandle`s; all names PascalCase with the `UltraWin_` prefix.
+
+## Quick start
+
+```cpp
+#include "UltraWin/UltraWin.h"
+
+UltraWin_Initialize();                      // default config is fine
+
+auto caps = UltraWin_GetCapabilities();
+if (!caps.wineTierAvailable) {
+    // tell the user to install Wine; nothing else to do
+    return;
+}
+
+// Launch — the "Photofiltre" environment (an isolated Wine prefix) is
+// created automatically on first use, with U: -> $HOME mapped and the
+// host root NOT exposed.
+UltraWinRunOptions opt;
+opt.environment = "Photofiltre";
+UltraWinHandle app = UltraWinInvalidHandle;
+auto r = UltraWin_RunApp("/home/user/Apps/PhotoFiltre.exe", opt, &app);
+if (!r) { /* r.code / r.message */ }
+
+// ... the app runs as a native window; supervise as needed:
+UltraWin_GetAppState(app);                  // Running / Exited / ...
+UltraWin_CloseApp(app);                     // graceful (SIGTERM)
+int exitCode = -1;
+UltraWin_WaitApp(app, 5000, &exitCode);
+UltraWin_ReleaseApp(app);
+```
+
+## Environments (Wine prefixes)
+
+- One isolated prefix per application by default (Bottles model), under
+  `$XDG_DATA_HOME/ultrawin/environments/<name>` (override:
+  `UltraWinConfig::environmentsRoot`).
+- Created with `wineboot --init`; Wine's interactive mono/gecko download
+  prompts are suppressed (`UltraWinConfig::suppressWinePrompts`).
+- Names are directory names: `[A-Za-z0-9._-]+`, max 64 chars, no leading dot.
+- `UltraWin_DeleteEnvironment` refuses while apps from it are running
+  (`EnvironmentBusy`).
+
+## Drive mappings — the same folders as the native OS
+
+- The user's home directory is mapped under one unified drive letter
+  (default `U:`, `UltraWinConfig::homeDriveLetter`) in **every** environment
+  — the same letter the Stage 2 VM tier will use, so apps see identical
+  paths whichever tier runs them.
+- Wine's default `Z:` → `/` (the entire host filesystem) is **removed** by
+  default; opt back in with `UltraWinConfig::exposeRootDrive`.
+- Additional folders: `UltraWin_MapFolder(env, 'D', "/data")` /
+  `UltraWin_UnmapFolder` / `UltraWin_ListMappings`. Mappings persist in the
+  environment's manifest (`ultrawin-mappings.conf`) and are re-asserted
+  before every launch, because Wine prefix updates recreate the default
+  dosdevices entries.
+- `C:` (the prefix's virtual Windows drive) and the home letter are
+  reserved.
+
+## Running applications
+
+- `UltraWin_RunApp(exePath, options, &handle)` forks and execs
+  `wine <exe> [args...]` in its own process group, with `WINEPREFIX` set and
+  optional extra environment variables (e.g. a DXVK switch) applied.
+- Windows appear as native windows — Wine's default mode; UltraWin never
+  enables Wine's "virtual desktop".
+- Supervision is polling-based (non-blocking `waitpid`): UltraWin installs
+  **no SIGCHLD handler**, so the host application's signal setup is
+  untouched.
+- `UltraWin_CloseApp` signals the app's process group with SIGTERM
+  (graceful), `UltraWin_KillApp` with SIGKILL; `UltraWin_WaitApp` blocks
+  with a timeout; ended instances stay queryable until
+  `UltraWin_ReleaseApp`.
+- `UltraWinRunOptions::forceTier` accepts `Auto` (== Wine in Stage 1) and
+  `Wine`; `Vm` returns `NotSupported` until Stage 2.
+
+## Components — VC++ runtimes, fonts, .NET, DXVK
+
+Many Windows applications fail on a bare prefix because they expect runtime
+dependencies to be present. `UltraWin_InstallComponent(env, name)` installs
+them per environment; names are **winetricks verbs** (`vcrun2019`,
+`corefonts`, `dotnet48`, `dxvk`, …), and the installer is a spawned
+**winetricks** — probed at runtime exactly like Wine
+(`UltraWinCapabilities::winetricksAvailable`, `UltraWinConfig::winetricksPath`
+override), never linked.
+
+```cpp
+UltraWin_InstallComponent("Photofiltre", "vcrun2019");   // blocking; run off
+UltraWin_InstallComponent("Photofiltre", "corefonts");   // the UI thread
+for (auto& c : UltraWin_ListComponents("Photofiltre")) { /* installed */ }
+```
+
+- The environment is created on first use (like `UltraWin_RunApp`);
+  re-installing an installed component succeeds without re-downloading.
+- Installs are **blocking and can be slow** (upstream downloads;
+  `UltraWinConfig::componentInstallTimeoutSeconds`, default 30 min).
+- Failures return `ComponentInstallFailed` with a pointer to the full
+  winetricks output, captured in `<prefix>/ultrawin-install.log`.
+- UltraWin passes the *resolved ELF wine loader* to winetricks (`WINE=`):
+  distro `wine` commands are often script wrappers (Ubuntu alternatives),
+  which winetricks' arch detection rejects.
+
+## Capability probing
+
+`UltraWin_GetCapabilities()` is cheap and safe to call at UI-build time:
+
+| Field | Meaning |
+|---|---|
+| `wineAvailable` / `winePath` / `wineVersion` | usable binary (config override or PATH: `wine`, `wine64`) |
+| `winetricksAvailable` / `winetricksPath` | component installer present (config override or PATH) |
+| `ntsyncAvailable` | `/dev/ntsync` present (Linux ≥ 6.14 — Wine 11 fast sync) |
+| `kvmAvailable` | `/dev/kvm` accessible (Stage 2 readiness) |
+| `hostArchitecture` | `x86_64`, `aarch64`, … (on aarch64, PATH finding a Hangover wine build is the supported setup) |
+| `wineTierAvailable` / `vmTierAvailable` | tier gates (`vmTierAvailable` is always false in Stage 1) |
+
+## Building and testing
+
+Built by default on Linux (`ULTRACANVAS_ENABLE_ULTRAWIN=ON`) as the static
+`UltraWin` library; linked into `libultracanvas` the same way as UltraNet
+(whole-archive in shared builds, `ULTRACANVAS_HAS_ULTRAWIN=1`).
+
+```bash
+cmake -B build -DULTRACANVAS_BUILD_ULTRAWIN_TESTS=ON
+cmake --build build --target UltraWinTests
+./build/Tests/UltraWin/UltraWinTests
+```
+
+The suite needs **no Wine install**: pure helpers are tested directly, the
+launch/supervision path runs against a stub wine script (via the
+`UltraWinConfig::winePath` override), and the one test that exercises a real
+`wineboot` skips itself when no binary is found.
+
+## UltraFiler integration
+
+Double-clicking a `.exe` in UltraFiler launches it through
+`UltraWin_RunApp` in a per-app environment named after the executable
+(created automatically on first launch, off the UI thread). When Wine is
+missing, the status bar says how to install it. Available only in Linux
+builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
+`.exe` behaves as before.
+
+## Not yet implemented (later stages)
+
+- `UltraWin_QueryCompatibility` + automatic tier routing.
+- The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
+  shared folders, `UltraCanvasRemoteAppView` RAIL element.
 
 ==============================================================================
 FILE: Docs/Modules/Vectorizer/README.md

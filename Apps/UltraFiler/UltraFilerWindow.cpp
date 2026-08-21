@@ -6,28 +6,51 @@
 // clock button swaps that whole area for the History view — Files / Folders /
 // Apps tabs listing the recently used paths (UltraFilerHistory) as small
 // thumbnails; folders get there by being worked in (the filer's
-// onFolderModified), not by being browsed. The Settings menu opens the settings
-// window (UltraFilerSettingsDialog) and clears the history; persisted settings
-// load at startup and configure the preview's transparent-image backdrop. Esc
-// closes the History view, or an open media preview.
-// Version: 1.6.0
-// Last Modified: 2026-08-08
+// onFolderModified), not by being browsed. The heart button swaps the same
+// area for the Favorites view — the same tabs, but listing what the user
+// pinned (UltraFilerFavorites); the folder tree's "Pinned" section holds the
+// tree pins, whose bookmark entries navigate on click, and the tree's context
+// menu offers Copy / Delete / Paste on folders, a Pin submenu whose
+// "To Treeview" / "To Favorites" flags show and toggle where the folder is
+// pinned, and Unpin on pinned entries. The filer context menus' Extras
+// submenu ends with an app-provided block (extrasMenuProvider): "Open
+// prompt", then Pin / Unpin submenus whose "To Treeview" / "To Favorites"
+// flags follow the current selection.
+// The gear button at the right end of the navigation row opens the settings
+// window (UltraFilerSettingsDialog), which also clears the history / the
+// favorites; persisted settings load at startup and configure the preview's
+// transparent-image backdrop. Esc closes the History or Favorites view, or an
+// open media preview.
+// Version: 1.9.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
-#include "UltraFilerPrompt.h"
+#include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
+#include "UltraFilerShare.h"
+#include "UltraFilerPrompt.h"
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+#include "UltraWin/UltraWin.h"
+#endif
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <system_error>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -37,6 +60,14 @@ namespace {
 
     // Suffix marking the lazy placeholder child of an unexpanded folder node.
     constexpr const char* kPlaceholderSuffix = "\n#placeholder";
+
+    // Node id of the folder tree's "Pinned" section header, and the id prefix
+    // of its bookmark children ("ufl-pin:" + folder path). The prefix keeps a
+    // pinned folder's node id distinct from the same folder's regular node,
+    // whose id is the bare path.
+    constexpr const char* kPinnedNodeId = "ufl-pinned";
+    constexpr const char* kPinnedChildPrefix = "ufl-pin:";
+    constexpr size_t kPinnedChildPrefixLen = 8;   // strlen(kPinnedChildPrefix)
 
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
@@ -69,19 +100,46 @@ namespace {
         return home ? std::string(home) : std::string();
     }
 
-    bool IsHiddenName(const std::string& name) {
-        return !name.empty() && name.front() == '.';
+    // Tree icon for each of the well-known home folders
+    // (GetWellKnownUserFolders), Explorer / Finder sidebar style.
+    const char* UserFolderIconFile(UserFolderKind kind) {
+        switch (kind) {
+            case UserFolderKind::Desktop:   return "computer.png";
+            case UserFolderKind::Documents: return "document.svg";
+            case UserFolderKind::Downloads: return "download.png";
+            case UserFolderKind::Music:     return "audio.png";
+            case UserFolderKind::Pictures:  return "image.svg";
+            case UserFolderKind::Videos:    return "video.png";
+            default:                        return "folder-brown.svg";
+        }
+    }
+
+    // Identity key that makes two spellings of the same folder compare equal
+    // (used to keep a curated home folder from listing twice): normalised,
+    // no trailing separator, case-folded on Windows.
+    std::string FolderIdentityKey(const std::string& path) {
+        std::string key = fs::path(path).lexically_normal().string();
+        while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
+            key.pop_back();
+#ifdef _WIN32
+        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+#endif
+        return key;
     }
 
     // Does `path` contain at least one visible subfolder? (Cheap check that
     // decides whether a tree node gets an expand button.)
+    // "Hidden" is the platform's own notion (IsHiddenFileSystemEntry): dot
+    // names everywhere, plus the hidden attribute on Windows - which is what
+    // keeps AppData and the "Anwendungsdaten"-style compatibility junctions
+    // of a profile folder out of the tree - and UF_HIDDEN on macOS.
     bool HasSubdirectories(const std::string& path) {
         std::error_code ec;
         fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
         if (ec) return false;
         for (const fs::directory_entry& e : it) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenName(e.path().filename().string()))
+            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
                 return true;
         }
         return false;
@@ -95,7 +153,7 @@ namespace {
         if (ec) return dirs;
         for (const fs::directory_entry& e : it) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenName(e.path().filename().string()))
+            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
                 dirs.push_back(e.path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
@@ -214,6 +272,38 @@ namespace {
                      fs::perms::others_exec)) != fs::perms::none;
     }
 
+    // The favorites list (= Favorites tab) an entry belongs to when pinned.
+    FilerFavoriteKind FavoriteKindOf(const FilerEntry& e) {
+        return e.isDirectory ? FilerFavoriteKind::Folder
+                : IsApplicationEntry(e) ? FilerFavoriteKind::App
+                                        : FilerFavoriteKind::File;
+    }
+
+    // Is `path` equal to `folder` or somewhere below it?
+    bool IsPathInside(const std::string& path, const std::string& folder) {
+        if (folder.empty() || path.size() < folder.size()) return false;
+        if (path.compare(0, folder.size(), folder) != 0) return false;
+        return path.size() == folder.size() || path[folder.size()] == '/' ||
+               path[folder.size()] == '\\' ||
+               folder.back() == '/' || folder.back() == '\\';
+    }
+
+    // First free "name", "name (2)", "name (3)", ... inside `folder` — the
+    // same naming the filer widget uses when pasting.
+    std::string UniqueNameIn(const std::string& folder, const std::string& baseName) {
+        fs::path base(baseName);
+        const std::string stem = base.stem().string();
+        const std::string ext = base.extension().string();   // includes the dot
+        const fs::path dir(folder);
+        fs::path candidate = dir / baseName;
+        std::error_code ec;
+        int n = 2;
+        while (fs::exists(candidate, ec)) {
+            candidate = dir / (stem + " (" + std::to_string(n++) + ")" + ext);
+        }
+        return candidate.string();
+    }
+
     // "12 items    |    1 item selected (3.4 MB)" for a filer's current
     // display — the status bar text of both the folder and the History views.
     std::string DescribeFilerContent(const UltraCanvasFilerWidget* f) {
@@ -255,7 +345,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(249, 249, 251, 255));
 
-    // Esc leaves the History view, and otherwise closes the media preview,
+    // Esc leaves the History or Favorites view, and otherwise closes the media preview,
     // wherever the keyboard focus sits (the filer usually holds it after the
     // click that selected the file). The filter steps back while another
     // interaction claims the key: an open popup / menu, a filer's inline
@@ -269,6 +359,12 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
             UltraCanvasFilerWidget* hf = ActiveHistoryFiler();
             if (hf && hf->WantsEscapeKey()) return false;
             SetHistoryVisible(false);
+            return true;
+        }
+        if (favoritesShown) {
+            UltraCanvasFilerWidget* ff = ActiveFavoritesFiler();
+            if (ff && ff->WantsEscapeKey()) return false;
+            SetFavoritesVisible(false);
             return true;
         }
         if (!previewShown) return false;
@@ -290,16 +386,17 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     settings.Load();
     ApplySettings();
     history.Load();
+    favorites.Load();
 
     BuildTabbedContainer();
 
-    window->AddChild(BuildMenuBar());
     window->AddChild(BuildNavigationRow());
     window->AddChild(BuildCommandBar());
 
     BuildFolderTree();
     BuildSplitLayout();
     BuildHistoryView();
+    BuildFavoritesView();
 
     // Status bar under the split.
     statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 24);
@@ -326,37 +423,99 @@ void UltraFilerWindow::Show() {
     if (window) window->Show();
 }
 
-// ===== MENU BAR =====
+// ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
 
-std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
-    MenuStyle style = MenuStyle::Default();
-    style.backgroundColor = Color(249, 249, 251, 255);
-    style.font.fontSize = kUiFontSize;
+void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
+    // Plain text goes through the OS print dialog; other file kinds have no
+    // renderer yet and are skipped with a note.
+    constexpr uint64_t kMaxPrintBytes = 4ull * 1024 * 1024;
+    constexpr size_t   kMaxPrintJobs  = 5;   // one dialog per file
 
-    menuBar = MenuBuilder("ufl-menubar", 0, 0, 0, 24)
-            .SetType(MenuType::Menubar)
-            .SetStyle(style)
-            .AddSubmenu("Settings", {
-                    MenuItemData::Action("Settings...",
-                            [this]() { OpenSettingsDialog(); }),
-                    MenuItemData::Separator(),
-                    MenuItemData::Action("Clear History", [this]() {
-                        history.ClearAll();
-                        if (historyShown) {
-                            RefreshHistoryTabs();
-                            UpdateStatusBar();
-                        }
-                    }),
-            })
-            .AddSubmenu("Extras", {
-                    MenuItemData::Action("Open prompt",
-                            [this]() { OpenSystemPrompt(); }),
-            })
-            .Build();
-    menuBar->size.height = CSSLayout::Dimension::Px(24);
-    menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    return menuBar;
+    std::vector<FilerEntry> printable;
+    size_t skipped = 0;
+    for (const FilerEntry& e : targets) {
+        if (e.isDirectory) continue;
+        if (e.category == FilerFileCategory::Text) printable.push_back(e);
+        else ++skipped;
+    }
+    if (printable.empty()) {
+        if (statusLabel)
+            statusLabel->SetText("Print: no text files selected - only text "
+                                 "files can be printed yet.");
+        return;
+    }
+
+    size_t printed = 0;
+    for (size_t i = 0; i < printable.size() && i < kMaxPrintJobs; ++i) {
+        const FilerEntry& e = printable[i];
+        if (e.size > kMaxPrintBytes) {
+            if (statusLabel)
+                statusLabel->SetText("Print: \"" + e.name + "\" is too large ("
+                                     + FormatFileSize(e.size) + ").");
+            continue;
+        }
+        std::ifstream in(fs::path(e.path), std::ios::binary);
+        if (!in) {
+            if (statusLabel)
+                statusLabel->SetText("Print: cannot read \"" + e.name + "\".");
+            continue;
+        }
+        std::ostringstream buffer;
+        buffer << in.rdbuf();
+        // A cancelled dialog cancels the remaining queue too.
+        if (!UltraCanvasNativeDialogs::ShowPrintDialog(e.name, buffer.str(),
+                                                       window.get()))
+            break;
+        ++printed;
+    }
+
+    if (printed > 0 && statusLabel) {
+        std::string text = printed == 1
+                ? "Sent \"" + printable.front().name + "\" to the printer."
+                : "Sent " + std::to_string(printed) + " files to the printer.";
+        if (printable.size() > kMaxPrintJobs)
+            text += " First " + std::to_string(kMaxPrintJobs) + " of "
+                  + std::to_string(printable.size()) + " only.";
+        if (skipped > 0)
+            text += " " + std::to_string(skipped) + " non-text item(s) skipped.";
+        statusLabel->SetText(text);
+    }
+}
+
+void UltraFilerWindow::HandleShare(const std::vector<FilerEntry>& targets) {
+    std::vector<std::string> paths;
+    for (const FilerEntry& e : targets)
+        if (!e.isDirectory) paths.push_back(e.path);
+    if (paths.empty()) {
+        if (statusLabel)
+            statusLabel->SetText("Share: select files - folders cannot be "
+                                 "sent as e-mail attachments.");
+        return;
+    }
+    std::string error;
+    if (!UltraFilerShare::ShareByEmail(paths, error))
+        UltraCanvasAlert::Error(error, "Share", nullptr, window.get());
+    else if (statusLabel)
+        statusLabel->SetText("Share: handed " + std::to_string(paths.size())
+                             + (paths.size() == 1 ? " file" : " files")
+                             + " to the e-mail composer.");
+}
+
+void UltraFilerWindow::HandleAttributes(const std::vector<FilerEntry>& targets) {
+    if (targets.empty()) return;
+    UltraFilerPropertiesDialogs::ShowAttributes(window.get(), targets);
+}
+
+void UltraFilerWindow::HandleAccess(const std::vector<FilerEntry>& targets) {
+    if (targets.empty()) return;
+    UltraFilerPropertiesDialogs::ShowAccess(window.get(), targets,
+            [this]() { RefreshVisibleListing(); });
+}
+
+void UltraFilerWindow::RefreshVisibleListing() {
+    if (historyShown) RefreshHistoryTabs();
+    else if (favoritesShown) RefreshFavoritesTabs();
+    else if (filer) filer->Refresh();
 }
 
 // ===== SETTINGS =====
@@ -371,10 +530,25 @@ void UltraFilerWindow::ApplySettings() {
 
 void UltraFilerWindow::OpenSettingsDialog() {
     UltraFilerSettingsDialog::Show(window.get(), &settings,
-                                   [this]() { ApplySettings(); });
+            [this]() { ApplySettings(); },
+            [this]() {   // Clear History
+        history.ClearAll();
+        if (historyShown) {
+            RefreshHistoryTabs();
+            UpdateStatusBar();
+        }
+    },
+            [this]() {   // Clear Favorites
+        favorites.ClearAll();
+        RefreshPinnedTreeNodes();
+        if (favoritesShown) {
+            RefreshFavoritesTabs();
+            UpdateStatusBar();
+        }
+    });
 }
 
-// ===== EXTRAS =====
+// ===== EXTRAS EXTENSION (filer context menus: Open prompt + Pin / Unpin) =====
 
 void UltraFilerWindow::OpenSystemPrompt() {
     // The prompt opens in the folder the active tab is showing, so the shell
@@ -387,7 +561,123 @@ void UltraFilerWindow::OpenSystemPrompt() {
         UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
 }
 
-// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb) =====
+UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
+    if (favoritesShown) return ActiveFavoritesFiler();
+    if (historyShown) return ActiveHistoryFiler();
+    return filer.get();
+}
+
+std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
+    UltraCanvasFilerWidget* f = VisibleFiler();
+    if (!f) return {};
+    std::vector<FilerEntry> sel = f->GetSelectedEntries();
+    if (!sel.empty()) return sel;
+    // Nothing selected: in the browsing view the shown folder itself is the
+    // content, so that is what gets pinned.
+    if (!historyShown && !favoritesShown) {
+        const std::string path = f->GetPath();
+        std::error_code ec;
+        if (!path.empty() && fs::is_directory(path, ec) && !ec) {
+            FilerEntry folder;
+            folder.path = path;
+            folder.name = fs::path(path).filename().string();
+            folder.isDirectory = true;
+            return {folder};
+        }
+    }
+    return {};
+}
+
+std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
+    const std::vector<FilerEntry> targets = PinTargets();
+    const bool allFolders = !targets.empty() &&
+            std::all_of(targets.begin(), targets.end(),
+                        [](const FilerEntry& e) { return e.isDirectory; });
+
+    // The flags show where the selection is pinned right now: checked when
+    // every target is pinned there. Pin stays enabled while something is
+    // still unpinned, Unpin while something is pinned - so the pair also
+    // reads as "partly pinned" when a flag is off but Unpin is enabled.
+    bool allInFavorites = !targets.empty(), anyInFavorites = false;
+    for (const FilerEntry& e : targets) {
+        const bool pinned = favorites.IsPinned(FavoriteKindOf(e), e.path);
+        allInFavorites = allInFavorites && pinned;
+        anyInFavorites = anyInFavorites || pinned;
+    }
+    bool allInTree = allFolders, anyInTree = false;
+    for (const FilerEntry& e : targets) {
+        if (!e.isDirectory) continue;
+        const bool pinned = favorites.IsPinned(FilerFavoriteKind::Tree, e.path);
+        allInTree = allInTree && pinned;
+        anyInTree = anyInTree || pinned;
+    }
+
+    // Only a folder can live in the folder tree.
+    MenuItemData pinTree = MenuItemData::Checkbox("To Treeview", allInTree,
+            [this](bool) { PinTargetsToTree(); });
+    pinTree.enabled = allFolders && !allInTree;
+
+    MenuItemData pinFavorites = MenuItemData::Checkbox("To Favorites", allInFavorites,
+            [this](bool) { PinTargetsToFavorites(); });
+    pinFavorites.enabled = !targets.empty() && !allInFavorites;
+
+    MenuItemData unpinTree = MenuItemData::Checkbox("To Treeview", allInTree,
+            [this](bool) { UnpinTargetsFromTree(); });
+    unpinTree.enabled = anyInTree;
+
+    MenuItemData unpinFavorites = MenuItemData::Checkbox("To Favorites", allInFavorites,
+            [this](bool) { UnpinTargetsFromFavorites(); });
+    unpinFavorites.enabled = anyInFavorites;
+
+    return {
+            MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
+            MenuItemData::Separator(),
+            MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
+            MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
+    };
+}
+
+void UltraFilerWindow::PinTargetsToFavorites() {
+    bool changed = false;
+    for (const FilerEntry& e : PinTargets())
+        changed |= favorites.Pin(FavoriteKindOf(e), e.path);
+    if (changed && favoritesShown) {
+        RefreshFavoritesTabs();
+        UpdateStatusBar();
+    }
+}
+
+void UltraFilerWindow::PinTargetsToTree() {
+    bool changed = false;
+    for (const FilerEntry& e : PinTargets()) {
+        if (!e.isDirectory) continue;
+        changed |= favorites.Pin(FilerFavoriteKind::Tree, e.path);
+    }
+    if (!changed) return;
+    RefreshPinnedTreeNodes();
+    RevealPinnedTreeSection();
+}
+
+void UltraFilerWindow::UnpinTargetsFromFavorites() {
+    bool changed = false;
+    for (const FilerEntry& e : PinTargets())
+        changed |= favorites.Unpin(FavoriteKindOf(e), e.path);
+    if (changed && favoritesShown) {
+        RefreshFavoritesTabs();
+        UpdateStatusBar();
+    }
+}
+
+void UltraFilerWindow::UnpinTargetsFromTree() {
+    bool changed = false;
+    for (const FilerEntry& e : PinTargets()) {
+        if (!e.isDirectory) continue;
+        changed |= favorites.Unpin(FilerFavoriteKind::Tree, e.path);
+    }
+    if (changed) RefreshPinnedTreeNodes();
+}
+
+// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb + settings) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
@@ -410,11 +700,13 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
                                    [this]() { NavigateForward(); });
     upButton = MakeToolButton("ufl-up", "", "arrow-up.svg", 30,
                               [this]() { NavigateUp(); });
-    // Refresh re-reads whatever is on screen: the History lists while they are
-    // shown (dropping what has meanwhile been deleted), else the folder.
+    // Refresh re-reads whatever is on screen: the History or Favorites lists
+    // while they are shown (dropping what has meanwhile been deleted), else
+    // the folder.
     auto refresh = MakeToolButton("ufl-refresh", "", "reload.svg", 30,
             [this]() {
         if (historyShown) RefreshHistoryTabs();
+        else if (favoritesShown) RefreshFavoritesTabs();
         else if (filer) filer->Refresh();
     });
     row->AddChild(backButton);
@@ -430,24 +722,25 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     StyleToggleButton(historyButton.get(), historyShown);
     row->AddChild(historyButton);
 
+    // The heart: shows the Favorites view (pinned Files / Folders / Apps) in
+    // place of the folder tree and folder display, and hides it again.
+    favoritesButton = MakeToolButton("ufl-favorites", "", "rating-heart-on.svg", 30,
+            [this]() { SetFavoritesVisible(!favoritesShown); });
+    favoritesButton->SetTooltip("Favorites");
+    StyleToggleButton(favoritesButton.get(), favoritesShown);
+    row->AddChild(favoritesButton);
+
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
 
-    // Recursive name search under the current folder; Enter runs it, an
-    // empty query returns to the normal folder display.
-    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
-    searchInput->SetFontSize(kUiFontSize);
-    searchInput->SetPlaceholder("Search");
-    searchInput->onEnterPressed = [this](const std::string& text) {
-        RunSearch(text);
-        return true;
-    };
-    searchInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
-    row->AddChild(searchInput);
+    // The gear at the far right opens the settings window.
+    auto settingsButton = MakeToolButton("ufl-settings", "", "settings.svg", 30,
+            [this]() { OpenSettingsDialog(); });
+    settingsButton->SetTooltip("Settings");
+    row->AddChild(settingsButton);
 
     return row;
 }
@@ -456,8 +749,8 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
 void UltraFilerWindow::RunSearch(const std::string& query) {
     // The results are shown in the folder display, so a search leaves the
-    // History view.
-    SetHistoryVisible(false);
+    // History / Favorites views.
+    ShowBrowsingView();
     if (!filer) return;
 
     if (query.empty()) {
@@ -480,7 +773,7 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
             root, fs::directory_options::skip_permission_denied, ec), end;
     for (; !ec && it != end && results.size() < kMaxResults; it.increment(ec)) {
         const std::string name = it->path().filename().string();
-        if (IsHiddenName(name)) {
+        if (IsHiddenFileSystemEntry(it->path())) {
             // Consistent with the folder tree: hidden folders are not entered.
             std::error_code dec;
             if (it->is_directory(dec) && !dec) it.disable_recursion_pending();
@@ -504,7 +797,7 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
     }
 }
 
-// ===== COMMAND BAR (New / clipboard / rename / delete / sort / view / preview) =====
+// ===== COMMAND BAR (New / clipboard / rename / delete / search / sort / view / preview) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     auto row = MakeToolRow("ufl-command-bar");
@@ -512,11 +805,11 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->SetBorderBottom(1, Color(225, 225, 230, 255));
 
     // The file commands work on the folder display and its selection, so each
-    // of them leaves the History view first - the change they make has to be
-    // visible (an inline rename editor especially).
+    // of them leaves the History / Favorites views first - the change they
+    // make has to be visible (an inline rename editor especially).
     row->AddChild(MakeToolButton("ufl-new-folder", "New folder", "add-folder.svg", 0,
             [this]() {
-        SetHistoryVisible(false);
+        ShowBrowsingView();
         if (!filer) return;
         const fs::path folder(filer->GetPath());
         fs::path candidate = folder / "New folder";
@@ -540,7 +833,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     }));
     row->AddChild(MakeToolButton("ufl-new-file", "New file", "add-document.svg", 0,
             [this]() {
-        SetHistoryVisible(false);
+        ShowBrowsingView();
         if (filer) filer->CreateNewDocument({"Text", "txt", ""});
     }));
 
@@ -551,14 +844,14 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(sep1);
 
     row->AddChild(MakeToolButton("ufl-cut", "", "scissors.svg", 30,
-            [this]() { SetHistoryVisible(false); if (filer) filer->CutSelection(); }));
+            [this]() { ShowBrowsingView(); if (filer) filer->CutSelection(); }));
     row->AddChild(MakeToolButton("ufl-copy", "", "copy.svg", 30,
-            [this]() { SetHistoryVisible(false); if (filer) filer->CopySelection(); }));
+            [this]() { ShowBrowsingView(); if (filer) filer->CopySelection(); }));
     row->AddChild(MakeToolButton("ufl-paste", "", "clipboard-list.svg", 30,
-            [this]() { SetHistoryVisible(false); if (filer) filer->Paste(); }));
+            [this]() { ShowBrowsingView(); if (filer) filer->Paste(); }));
     row->AddChild(MakeToolButton("ufl-rename", "", "edit.svg", 30,
             [this]() {
-        SetHistoryVisible(false);
+        ShowBrowsingView();
         if (!filer) return;
         auto sel = filer->GetSelectedEntries();
         if (sel.empty()) return;
@@ -569,7 +862,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     }));
     row->AddChild(MakeToolButton("ufl-delete", "", "delete.svg", 30,
             [this]() {
-        SetHistoryVisible(false);
+        ShowBrowsingView();
         if (!filer) return;
         auto sel = filer->GetSelectedEntries();
         if (sel.empty()) return;
@@ -586,6 +879,20 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sep2->SetFontSize(kUiFontSize);
     sep2->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep2);
+
+    // Recursive name search under the current folder; Enter runs it, an
+    // empty query returns to the normal folder display.
+    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
+    searchInput->SetFontSize(kUiFontSize);
+    searchInput->SetPlaceholder("Search");
+    searchInput->onEnterPressed = [this](const std::string& text) {
+        RunSearch(text);
+        return true;
+    };
+    // May give way (shrink) when the bar gets tight - the dropdowns cannot.
+    searchInput->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    row->AddChild(searchInput);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
     auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
@@ -701,9 +1008,17 @@ void UltraFilerWindow::BuildFolderTree() {
     // let EnsureTreeChildren try to scan "ufl-computer" as a path.
     treeChildrenLoaded.insert("ufl-computer");
 
+    // The "Pinned" section on top: bookmark entries for the folders pinned
+    // through Pin > Treeview. Its children are managed by
+    // RefreshPinnedTreeNodes, never by a folder scan.
+    folderTree->AddNode("ufl-computer",
+            MakeFolderNodeData(kPinnedNodeId, "Pinned", "rating-heart-on.svg"));
+    treeChildrenLoaded.insert(kPinnedNodeId);
+    RefreshPinnedTreeNodes();
+
     const std::string home = UserHomeDir();
     if (!home.empty()) {
-        AddTreeFolderNode("ufl-computer", home, "Home", "folder-open.svg");
+        AddTreeFolderNode("ufl-computer", home, "Home", "home-icon.png");
     }
 
 #ifdef _WIN32
@@ -741,9 +1056,14 @@ void UltraFilerWindow::BuildFolderTree() {
     };
     folderTree->onNodeSelected = [this](TreeNode* node) {
         if (syncingTree || !node) return;
-        const std::string& path = node->data.nodeId;
+        // A pinned entry navigates to its target folder, like a bookmark.
+        const std::string path = TreeNodeTargetPath(node);
+        if (path.empty()) return;
         std::error_code ec;
         if (fs::is_directory(path, ec) && !ec) NavigateTo(path);
+    };
+    folderTree->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
+        ShowTreeContextMenu(node, event);
     };
 }
 
@@ -764,11 +1084,27 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
+    // The home folder leads with its well-known folders - Desktop, Documents,
+    // Downloads, ... resolved through the platform (SHGetKnownFolderPath /
+    // xdg-user-dirs), so a redirected Documents folder is found too - each
+    // with its own icon, like the Explorer and Finder sidebars. The remaining
+    // visible folders follow alphabetically; a well-known folder that
+    // physically sits in the home folder is not listed a second time.
+    std::unordered_set<std::string> curated;
+    if (path == UserHomeDir()) {
+        for (const UserFolderInfo& f : GetWellKnownUserFolders()) {
+            AddTreeFolderNode(path, f.path, f.label, UserFolderIconFile(f.kind));
+            curated.insert(FolderIdentityKey(f.path));
+        }
+    }
     // Add the real children before removing the placeholder: a node whose
     // last child is removed is demoted to a leaf, which drops its expanded
     // state and made the first expansion of a folder appear to do nothing.
-    for (const fs::path& dir : ListSubdirectories(path))
+    for (const fs::path& dir : ListSubdirectories(path)) {
+        if (!curated.empty() && curated.count(FolderIdentityKey(dir.string())))
+            continue;
         AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder-brown.svg");
+    }
     folderTree->RemoveNode(PlaceholderId(path));
 }
 
@@ -872,6 +1208,216 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
     syncingTree = false;
 }
 
+// ===== FOLDER TREE: PINNED SECTION + CONTEXT MENU =====
+
+std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
+    if (!node) return {};
+    const std::string& id = node->data.nodeId;
+    if (id == "ufl-computer" || id == kPinnedNodeId) return {};
+    if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
+        return id.substr(kPinnedChildPrefixLen);
+    // The lazy "..." placeholder children are not folders.
+    if (id.find(kPlaceholderSuffix) != std::string::npos) return {};
+    return id;
+}
+
+void UltraFilerWindow::RefreshPinnedTreeNodes() {
+    if (!folderTree) return;
+    TreeNode* pinned = folderTree->FindNode(kPinnedNodeId);
+    if (!pinned) return;
+    while (!pinned->children.empty())
+        folderTree->RemoveNode(pinned->children.front()->data.nodeId);
+    // Paths() drops pins whose folder no longer exists, so the section heals
+    // itself like the History lists do.
+    for (const std::string& path : favorites.Paths(FilerFavoriteKind::Tree)) {
+        std::string label = fs::path(path).filename().string();
+        if (label.empty()) label = path;   // a filesystem root
+        folderTree->AddNode(kPinnedNodeId,
+                MakeFolderNodeData(kPinnedChildPrefix + path, label,
+                                   "folder-brown.svg"));
+    }
+    folderTree->RequestRedraw();
+}
+
+void UltraFilerWindow::RevealPinnedTreeSection() {
+    // Show the new entry rather than leaving it behind a collapsed header.
+    if (TreeNode* pinned = folderTree ? folderTree->FindNode(kPinnedNodeId) : nullptr) {
+        folderTree->ExpandNode(pinned);
+        folderTree->RequestRedraw();
+    }
+}
+
+void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event) {
+    if (!node || !window) return;
+    const std::string target = TreeNodeTargetPath(node);
+    const bool isFolder = !target.empty();
+    const std::string& id = node->data.nodeId;
+    const bool isPinnedEntry =
+            id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0;
+    // Home, File System and the drive roots sit directly under Computer;
+    // deleting one of those from a context menu would be a catastrophe, so
+    // they keep Delete disabled.
+    const bool isTopLevelRoot = !isPinnedEntry && node->parent &&
+            node->parent->data.nodeId == "ufl-computer";
+
+    std::vector<std::string> clipboardFiles;
+    bool clipboardCut = false;
+    if (UltraCanvasClipboard* cb = GetClipboard())
+        cb->GetFiles(clipboardFiles, clipboardCut);
+
+    MenuItemData copyItem = MenuItemData::Action("Copy", [this, target]() {
+        if (UltraCanvasClipboard* cb = GetClipboard())
+            cb->SetFiles({target}, false);
+    });
+    copyItem.enabled = isFolder;
+
+    MenuItemData deleteItem = MenuItemData::Action("Delete", [this, target]() {
+        ConfirmDeleteTreeFolder(target);
+    });
+    deleteItem.enabled = isFolder && !isTopLevelRoot;
+
+    // Paste needs a target folder under the cursor - and files to paste.
+    MenuItemData pasteItem = MenuItemData::Action("Paste", [this, target]() {
+        PasteIntoFolder(target);
+    });
+    pasteItem.enabled = isFolder && !clipboardFiles.empty();
+
+    // Pin: the flags show where this folder is pinned right now; toggling a
+    // flag pins it there / unpins it from there.
+    MenuItemData pinToTree = MenuItemData::Checkbox("To Treeview",
+            isFolder && favorites.IsPinned(FilerFavoriteKind::Tree, target),
+            [this, target](bool checked) {
+        if (checked) {
+            favorites.Pin(FilerFavoriteKind::Tree, target);
+            RefreshPinnedTreeNodes();
+            RevealPinnedTreeSection();
+        } else {
+            favorites.Unpin(FilerFavoriteKind::Tree, target);
+            RefreshPinnedTreeNodes();
+        }
+    });
+    pinToTree.enabled = isFolder;
+
+    MenuItemData pinToFavorites = MenuItemData::Checkbox("To Favorites",
+            isFolder && favorites.IsPinned(FilerFavoriteKind::Folder, target),
+            [this, target](bool checked) {
+        if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
+        else favorites.Unpin(FilerFavoriteKind::Folder, target);
+        if (favoritesShown) {
+            RefreshFavoritesTabs();
+            UpdateStatusBar();
+        }
+    });
+    pinToFavorites.enabled = isFolder;
+
+    MenuItemData pinSubmenu = MenuItemData::Submenu("Pin",
+            {pinToTree, pinToFavorites});
+    pinSubmenu.enabled = isFolder;
+
+    MenuItemData unpinItem = MenuItemData::Action("Unpin", [this, target]() {
+        favorites.Unpin(FilerFavoriteKind::Tree, target);
+        RefreshPinnedTreeNodes();
+    });
+    unpinItem.enabled = isPinnedEntry;
+
+    MenuStyle style = MenuStyle::Default();
+    style.font.fontSize = kUiFontSize;
+    treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 160, 0);
+    treeContextMenu->SetMenuType(MenuType::PopupMenu);
+    treeContextMenu->SetStyle(style);
+    treeContextMenu->AddItem(copyItem);
+    treeContextMenu->AddItem(deleteItem);
+    treeContextMenu->AddItem(pasteItem);
+    treeContextMenu->AddItem(MenuItemData::Separator());
+    treeContextMenu->AddItem(pinSubmenu);
+    treeContextMenu->AddItem(unpinItem);
+    treeContextMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+}
+
+void UltraFilerWindow::PasteIntoFolder(const std::string& folder) {
+    std::vector<std::string> paths;
+    bool cut = false;
+    if (UltraCanvasClipboard* cb = GetClipboard()) cb->GetFiles(paths, cut);
+    if (paths.empty()) return;
+
+    std::error_code ec;
+    if (!fs::is_directory(folder, ec) || ec) {
+        if (statusLabel) statusLabel->SetText("Error: paste target is not a folder: " + folder);
+        return;
+    }
+    bool changed = false;
+    for (const std::string& src : paths) {
+        const fs::path from(src);
+        if (!fs::exists(from, ec)) continue;
+        // Cut-pasting into the folder the file already lives in is a no-op,
+        // and a folder must never be pasted into itself.
+        if (cut && from.parent_path() == fs::path(folder)) continue;
+        if (fs::is_directory(from, ec) && IsPathInside(folder, src)) {
+            if (statusLabel) statusLabel->SetText("Error: cannot paste a folder into itself: " + src);
+            continue;
+        }
+        const std::string dest = UniqueNameIn(folder, from.filename().string());
+        if (cut) {
+            fs::rename(from, dest, ec);
+            if (ec) {   // cross-device move: copy + delete
+                ec.clear();
+                fs::copy(from, dest, fs::copy_options::recursive, ec);
+                if (!ec) fs::remove_all(from, ec);
+            }
+        } else {
+            fs::copy(from, dest, fs::copy_options::recursive, ec);
+        }
+        if (ec) {
+            if (statusLabel) statusLabel->SetText("Error: paste failed for " + src + ": " + ec.message());
+            ec.clear();
+        } else {
+            changed = true;
+        }
+    }
+    if (!changed) return;
+    // Pasting is work done in the folder, exactly like a paste in the filer.
+    RecordFolderInHistory(folder);
+    for (auto& state : tabStates) {
+        if (state->filer && state->filer->GetPath() == folder)
+            state->filer->Refresh();
+    }
+}
+
+void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
+    std::string name = fs::path(path).filename().string();
+    if (name.empty()) name = path;
+    UltraCanvasAlert::Confirm(
+            "Delete \"" + name + "\" and everything in it?", "Delete",
+            [this, path](bool confirmed) {
+        if (!confirmed) return;
+        const std::string parent = fs::path(path).parent_path().string();
+        std::error_code ec;
+        fs::remove_all(path, ec);
+        if (ec) {
+            if (statusLabel) statusLabel->SetText("Error: cannot delete " + path + ": " + ec.message());
+            return;
+        }
+        // Take the folder out of the tree, its pins, and the bookkeeping of
+        // scanned nodes (it may be recreated and scanned again later).
+        if (folderTree) folderTree->RemoveNode(path);
+        for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
+            if (IsPathInside(*it, path)) it = treeChildrenLoaded.erase(it);
+            else ++it;
+        }
+        RefreshPinnedTreeNodes();
+        // Tabs that were inside the deleted folder move to its parent; tabs
+        // showing the parent re-list it without the deleted entry.
+        for (auto& state : tabStates) {
+            if (!state->filer) continue;
+            const std::string shown = state->filer->GetPath();
+            if (IsPathInside(shown, path)) state->filer->SetPath(parent);
+            else if (shown == parent) state->filer->Refresh();
+        }
+        RecordFolderInHistory(parent);
+        UpdateStatusBar();
+    }, window.get());
+}
+
 // ===== TABS =====
 
 void UltraFilerWindow::BuildTabbedContainer() {
@@ -904,8 +1450,9 @@ void UltraFilerWindow::BuildTabbedContainer() {
 }
 
 void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
-    // The new tab has to be visible, so opening one leaves the History view.
-    if (activate) SetHistoryVisible(false);
+    // The new tab has to be visible, so opening one leaves the History /
+    // Favorites views.
+    if (activate) ShowBrowsingView();
 
     auto state = std::make_unique<FilerTabState>();
     const std::string suffix = std::to_string(++tabCounter);
@@ -964,7 +1511,26 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordEntryInHistory(entry);
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
-        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return;
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+        // Windows executables go to the UltraWin emulation layer, not to the
+        // host's file associations.
+        if (entry.extension == "exe") {
+            LaunchWindowsExecutable(entry);
+            return;
+        }
+#endif
+        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
+            // Not previewable: launch it with the OS default application
+            // (Explorer semantics). Only real files — an entry inside an
+            // archive is a virtual path no external application can read.
+            std::error_code ec;
+            if (!fs::is_regular_file(entry.path, ec) || ec) return;
+            std::string error;
+            if (!FileAssociations::OpenWithDefaultApplication({entry.path}, error)) {
+                if (statusLabel) statusLabel->SetText("Error: " + error);
+            }
+            return;
+        }
         // Double-click / Enter opens the file in the preview, un-hiding it
         // when needed.
         if (!previewEnabled) SetPreviewEnabled(true);
@@ -1011,6 +1577,14 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         const std::string parent = fs::path(entry.path).parent_path().string();
         if (!parent.empty()) AddNewTab(parent, true);
     };
+    // The context menu's Settings item opens the same settings window as the
+    // navigation row's gear button.
+    tab->filer->onSettings = [this]() { OpenSettingsDialog(); };
+    tab->filer->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+    tab->filer->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+    tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+    tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+    tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -1181,6 +1755,12 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onError = [this](const std::string& message) {
             if (statusLabel) statusLabel->SetText("Error: " + message);
         };
+        histFiler->onSettings = [this]() { OpenSettingsDialog(); };
+        histFiler->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+        histFiler->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+        histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+        histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+        histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -1195,6 +1775,8 @@ void UltraFilerWindow::BuildHistoryView() {
 
 void UltraFilerWindow::SetHistoryVisible(bool visible) {
     if (visible == historyShown || !historyPane || !split) return;
+    // Only one of the History / Favorites views can replace the split.
+    if (visible) SetFavoritesVisible(false);
     historyShown = visible;
     StyleToggleButton(historyButton.get(), historyShown);
 
@@ -1228,6 +1810,60 @@ void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
                    entry.path);
 }
 
+#ifdef ULTRACANVAS_HAS_ULTRAWIN
+void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
+    if (!UltraWin_IsInitialized()) UltraWin_Initialize();
+    if (!UltraWin_GetCapabilities().wineTierAvailable) {
+        if (statusLabel)
+            statusLabel->SetText(
+                "Wine is not installed — install it (e.g. 'sudo apt install "
+                "wine') to run Windows applications");
+        return;
+    }
+
+    // Per-app environment named after the executable, so each program keeps
+    // its own isolated prefix (UltraWin creates it on first launch).
+    std::string envName = fs::path(entry.name).stem().string();
+    for (char& c : envName) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' &&
+            c != '_' && c != '-')
+            c = '_';
+    }
+    while (!envName.empty() && envName.front() == '.') envName.erase(0, 1);
+    if (envName.size() > 64) envName.resize(64);
+    if (envName.empty()) envName = "Default";
+
+    const bool firstLaunch = !UltraWin_EnvironmentExists(envName);
+    if (statusLabel)
+        statusLabel->SetText(
+            "Launching " + entry.name +
+            (firstLaunch ? " — first launch prepares its Windows environment, "
+                           "this can take a minute…"
+                         : "…"));
+
+    // Launch off the UI thread: a first launch runs wineboot. The thread
+    // only touches the window through PostToUIThread, guarded by the same
+    // alive flag the subfolder probe worker uses.
+    auto alive = probeAlive;
+    std::thread([this, alive, path = entry.path, name = entry.name,
+                 envName]() {
+        UltraWinRunOptions options;
+        options.environment = envName;
+        UltraWinHandle handle = UltraWinInvalidHandle;
+        auto result = UltraWin_RunApp(path, options, &handle);
+
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, name, result]() {
+            if (!alive->load() || !statusLabel) return;
+            statusLabel->SetText(result ? "Launched " + name
+                                        : "Could not launch " + name + ": " +
+                                              result.message);
+        });
+    }).detach();
+}
+#endif
+
 void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
     // Archive interiors are not real directories - they would only be pruned
     // from the list again on the next read.
@@ -1243,7 +1879,7 @@ void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
 
 void UltraFilerWindow::OpenHistoryEntry(const std::string& path, bool isFolder) {
     if (path.empty()) return;
-    SetHistoryVisible(false);
+    ShowBrowsingView();
     // A folder is opened; a file (or application) is shown selected inside the
     // folder it lives in, which also hands it to the preview when it is media.
     const std::string target = isFolder ? path
@@ -1260,17 +1896,144 @@ UltraCanvasFilerWidget* UltraFilerWindow::ActiveHistoryFiler() const {
     return historyFilers[index].get();
 }
 
+// ===== FAVORITES VIEW (Files | Folders | Apps) =====
+
+void UltraFilerWindow::BuildFavoritesView() {
+    favoritesPane = MakeLayoutBox("ufl-favorites-pane");
+    favoritesPane->layout.SetFlexColumn()
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    favoritesPane->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    favoritesTabs = std::make_shared<UltraCanvasTabbedContainer>("ufl-favorites-tabs");
+    favoritesTabs->fontSize = static_cast<int>(kUiFontSize);
+    favoritesTabs->SetTabHeight(30);
+    favoritesTabs->SetTabMinWidth(90);
+    favoritesTabs->SetCloseMode(TabCloseMode::NoClose);
+    favoritesTabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    favoritesTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
+        UpdateStatusBar();
+    };
+
+    for (int i = 0; i < HistoryTabCount; ++i) {
+        const std::string suffix = std::to_string(i);
+
+        auto page = MakeLayoutBox("ufl-favorites-page-" + suffix);
+        page->layout.SetFlexColumn()
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+        auto favFiler = CreateFilerWidget("ufl-favorites-filer-" + suffix, 0, 0, 0, 0);
+        FilerStyle filerStyle = favFiler->GetStyle();
+        filerStyle.fontSize = kUiFontSize;
+        filerStyle.smallFontSize = kUiFontSize;
+        filerStyle.folderIconScale = 0.7f;
+        favFiler->SetStyle(filerStyle);
+        favFiler->SetViewType(FilerViewType::ThumbnailsSmall);
+        // The lists are handed over in pin order — the order the user made.
+        favFiler->SetFileListOrderPreserved(true);
+        // A pinned path was chosen deliberately, so it belongs in the list
+        // even when it is a dotfile / a folder under one.
+        favFiler->SetShowHiddenFiles(true);
+        // The entries come from all over the filesystem, so the context menu
+        // offers to open the folder an entry lives in.
+        favFiler->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+        favFiler->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        favFiler->onSelectionChanged = [this](const std::vector<FilerEntry>&) {
+            UpdateStatusBar();
+        };
+        favFiler->onFolderRefreshed = [this]() { UpdateStatusBar(); };
+        // Opening a favorite is a real use, so it enters the History too.
+        favFiler->onFileActivated = [this](const FilerEntry& entry) {
+            RecordEntryInHistory(entry);
+            RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+            OpenHistoryEntry(entry.path, false);
+        };
+        // A folder tile is activated by the widget itself (it navigates into
+        // the folder); hand that folder to the browsing view instead of
+        // browsing it inside the Favorites view.
+        favFiler->onPathChanged = [this](const std::string& path) {
+            OpenHistoryEntry(path, true);
+        };
+        favFiler->onOpenPath = [this](const FilerEntry& entry) {
+            const std::string parent = fs::path(entry.path).parent_path().string();
+            if (parent.empty()) return;
+            ShowBrowsingView();
+            AddNewTab(parent, true);
+        };
+        favFiler->onError = [this](const std::string& message) {
+            if (statusLabel) statusLabel->SetText("Error: " + message);
+        };
+        favFiler->onSettings = [this]() { OpenSettingsDialog(); };
+        favFiler->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+        favFiler->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+        favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+        favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+        favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+
+        page->AddChild(favFiler);
+        favoritesFilers[i] = favFiler;
+        favoritesTabs->AddTab(kHistoryTabTitles[i], page);
+    }
+    favoritesTabs->SetActiveTab(HistoryFiles);
+
+    favoritesPane->AddChild(favoritesTabs);
+    favoritesPane->SetVisible(false);   // the heart button turns it on
+    contentBox->AddChild(favoritesPane);
+}
+
+void UltraFilerWindow::SetFavoritesVisible(bool visible) {
+    if (visible == favoritesShown || !favoritesPane || !split) return;
+    // Only one of the History / Favorites views can replace the split.
+    if (visible) SetHistoryVisible(false);
+    favoritesShown = visible;
+    StyleToggleButton(favoritesButton.get(), favoritesShown);
+
+    if (visible) {
+        RefreshFavoritesTabs();
+        split->SetVisible(false);
+        favoritesPane->SetVisible(true);
+    } else {
+        favoritesPane->SetVisible(false);
+        split->SetVisible(true);
+    }
+    UpdateStatusBar();
+    UpdateWindowTitle();
+}
+
+void UltraFilerWindow::ShowBrowsingView() {
+    SetHistoryVisible(false);
+    SetFavoritesVisible(false);
+}
+
+void UltraFilerWindow::RefreshFavoritesTabs() {
+    static const FilerFavoriteKind kinds[HistoryTabCount] = {
+        FilerFavoriteKind::File, FilerFavoriteKind::Folder, FilerFavoriteKind::App};
+    for (int i = 0; i < HistoryTabCount; ++i) {
+        if (favoritesFilers[i]) favoritesFilers[i]->ShowFileList(favorites.Paths(kinds[i]));
+    }
+}
+
+UltraCanvasFilerWidget* UltraFilerWindow::ActiveFavoritesFiler() const {
+    if (!favoritesTabs) return nullptr;
+    const int index = favoritesTabs->GetActiveTab();
+    if (index < 0 || index >= HistoryTabCount) return nullptr;
+    return favoritesFilers[index].get();
+}
+
 // ===== NAVIGATION =====
 
 void UltraFilerWindow::NavigateTo(const std::string& path) {
     // Navigating shows a folder, so it always brings the folder display back.
-    SetHistoryVisible(false);
+    ShowBrowsingView();
     if (!filer || path.empty() || path == filer->GetPath()) return;
     filer->SetPath(path);
 }
 
 void UltraFilerWindow::NavigateBack() {
-    SetHistoryVisible(false);
+    ShowBrowsingView();
     FilerTabState* tab = ActiveTabState();
     if (!tab || tab->historyIndex == 0 || tab->history.empty()) return;
     tab->navigatingHistory = true;
@@ -1280,7 +2043,7 @@ void UltraFilerWindow::NavigateBack() {
 }
 
 void UltraFilerWindow::NavigateForward() {
-    SetHistoryVisible(false);
+    ShowBrowsingView();
     FilerTabState* tab = ActiveTabState();
     if (!tab || tab->history.empty() || tab->historyIndex + 1 >= tab->history.size()) return;
     tab->navigatingHistory = true;
@@ -1355,6 +2118,16 @@ void UltraFilerWindow::UpdateStatusBar() {
         statusLabel->SetText(text);
         return;
     }
+    if (favoritesShown) {
+        const int index = favoritesTabs ? favoritesTabs->GetActiveTab() : -1;
+        std::string text = "Favorites";
+        if (index >= 0 && index < HistoryTabCount)
+            text += " - " + std::string(kHistoryTabTitles[index]);
+        if (const UltraCanvasFilerWidget* ff = ActiveFavoritesFiler())
+            text += "    |    " + DescribeFilerContent(ff);
+        statusLabel->SetText(text);
+        return;
+    }
     if (!filer) return;
     statusLabel->SetText(DescribeFilerContent(filer.get()));
 }
@@ -1363,6 +2136,10 @@ void UltraFilerWindow::UpdateWindowTitle() {
     if (!window) return;
     if (historyShown) {
         window->SetWindowTitle("History - UltraFiler");
+        return;
+    }
+    if (favoritesShown) {
+        window->SetWindowTitle("Favorites - UltraFiler");
         return;
     }
     const std::string path = filer ? filer->GetPath() : std::string();

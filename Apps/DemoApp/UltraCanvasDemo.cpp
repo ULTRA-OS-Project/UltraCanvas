@@ -966,7 +966,7 @@ namespace UltraCanvas {
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 
-        chartBuilder.AddItem("chartengine", "Chart Engine", "The shared chart engine: three-phase rendering, axes, limiters, legend and label plan on one minimal bar chart",
+        chartBuilder.AddItem("chartengine", "Chart Engine", "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateChartEngineExamples(); },
                              "DemoApp/UltraCanvasChartEngineExamples.cpp",
@@ -1503,6 +1503,17 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "Mermaid import + editing")
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
 
+    diagramBuilder.AddItem("matrixdiagram", "Matrix Diagram",
+                           "Relationships between two or three ordered lists, marked from a "
+                           "named scale and rolled up into weighted row and column totals",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateMatrixDiagramExamples(); },
+                           "DemoApp/UltraCanvasMatrixDiagramExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasMatrixDiagram.md")
+                .AddVariant("matrixdiagram", "L-Shaped")
+                .AddVariant("matrixdiagram", "T-Shaped")
+                .AddVariant("matrixdiagram", "Weighted (QFD)");
+
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
 //                               [this]() { return nullptr; });
@@ -1596,9 +1607,8 @@ namespace UltraCanvas {
                             ImplementationStatus::PartiallyImplemented,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
 
-        infoBuilder.AddItem("matrix", "Matrix", "Matrix",
-                            ImplementationStatus::PartiallyImplemented,
-                            [this]() { return CreatePartiallyImplementedExamples("Matrix is not ready yet"); });
+        // ("matrix" placeholder removed: the matrix diagram is implemented and
+        // registered in the Diagrams section as "matrixdiagram".)
 
         infoBuilder.AddItem("performancematrix", "Performance Matrix", "Performance Matrix",
                             ImplementationStatus::PartiallyImplemented,

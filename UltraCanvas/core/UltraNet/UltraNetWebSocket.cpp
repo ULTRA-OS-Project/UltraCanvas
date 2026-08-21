@@ -286,9 +286,15 @@ UltraNetResult UltraNet_WebSocketClose(UltraNetHandle handle,
     payload.push_back(static_cast<uint8_t>(code & 0xff));
     payload.insert(payload.end(), reason.begin(), reason.end());
 
+    // Send the CLOSE frame *before* leaving the Open state. SendFrame() rejects
+    // any send when state != Open, so storing Closing first (as this once did)
+    // made the close handshake fail with "WebSocket not open". Only attempt the
+    // send while still Open — the peer may already have closed us.
+    UltraNetResult sendRes = UltraNetResult::Ok();
+    if (c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open) {
+        sendRes = SendFrame(*c, payload.data(), payload.size(), CURLWS_CLOSE);
+    }
     c->state.store(UltraNetWebSocketState::Closing, std::memory_order_release);
-    UltraNetResult sendRes = SendFrame(*c, payload.data(), payload.size(),
-                                       CURLWS_CLOSE);
     c->Stop();
     c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
 

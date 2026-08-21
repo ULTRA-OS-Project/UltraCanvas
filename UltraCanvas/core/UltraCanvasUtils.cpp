@@ -8,9 +8,23 @@
 #include <windows.h>
 #include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
 #include <shellapi.h>  // ShellExecuteA
+#include <shlobj.h>    // SHGetKnownFolderPath
 #include "UltraCanvasDebug.h"
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
+#include <sys/stat.h>  // UF_HIDDEN
+#else
+#include <sys/stat.h>
+#include <unistd.h>   // readlink; glibc leaks it transitively, musl does not
+#include <climits>    // PATH_MAX
+#endif
+
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <cerrno>
+#include <cstring>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 #include "UltraCanvasUtils.h"
@@ -21,6 +35,7 @@
 #include <iomanip>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 
 // ULTRACANVAS_VERSION is defined by UltraCanvas/CMakeLists.txt from the first
 // line of Docs/UltraCanvas/CHANGELOG.md, the same line the packaging scripts
@@ -578,6 +593,89 @@ namespace UltraCanvas {
 #endif
     }
 
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               std::string& outError) {
+        outError.clear();
+        if (argv.empty() || argv[0].empty()) {
+            outError = "No application to launch.";
+            return false;
+        }
+#if defined(_WIN32) || defined(_WIN64)
+        // Standard argv quoting: quote arguments containing spaces / tabs /
+        // quotes, backslash-escape embedded quotes (and the backslashes
+        // directly before them).
+        std::wstring cmdLine;
+        for (const std::string& a : argv) {
+            if (!cmdLine.empty()) cmdLine += L' ';
+            const std::wstring w = Utf8ToWide(a);
+            if (!w.empty() && w.find_first_of(L" \t\"") == std::wstring::npos) {
+                cmdLine += w;
+                continue;
+            }
+            cmdLine += L'"';
+            size_t backslashes = 0;
+            for (wchar_t c : w) {
+                if (c == L'\\') { ++backslashes; continue; }
+                if (c == L'"') cmdLine.append(backslashes * 2 + 1, L'\\');
+                else cmdLine.append(backslashes, L'\\');
+                backslashes = 0;
+                cmdLine += c;
+            }
+            cmdLine.append(backslashes * 2, L'\\');
+            cmdLine += L'"';
+        }
+        const std::wstring dirW = Utf8ToWide(workingDirectory);
+        STARTUPINFOW si = {};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi = {};
+        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+        mutableCmd.push_back(L'\0');
+        if (!CreateProcessW(nullptr, mutableCmd.data(), nullptr, nullptr, FALSE,
+                            CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+                            nullptr, dirW.empty() ? nullptr : dirW.c_str(),
+                            &si, &pi)) {
+            outError = "Could not start \"" + argv[0] + "\".";
+            return false;
+        }
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return true;
+#else
+        const pid_t pid = ::fork();
+        if (pid < 0) {
+            outError = std::string("Could not start \"") + argv[0] + "\": " +
+                       std::strerror(errno);
+            return false;
+        }
+        if (pid == 0) {
+            // Grandchild execs in its own session; the intermediate child
+            // exits immediately so the parent can reap it and the launched
+            // program is never our zombie.
+            if (::fork() == 0) {
+                ::setsid();
+                if (!workingDirectory.empty()) {
+                    if (::chdir(workingDirectory.c_str()) != 0) {
+                        // Keep the inherited directory - starting the program
+                        // in the wrong folder still beats not starting it.
+                    }
+                }
+                std::vector<char*> args;
+                args.reserve(argv.size() + 1);
+                for (const std::string& a : argv)
+                    args.push_back(const_cast<char*>(a.c_str()));
+                args.push_back(nullptr);
+                ::execvp(args[0], args.data());
+                ::_exit(127);
+            }
+            ::_exit(0);
+        }
+        int status = 0;
+        ::waitpid(pid, &status, 0);
+        return true;
+#endif
+    }
+
     std::string NormalizePath(const std::string& in) {
         std::string result;
 #if defined(_WIN32) || defined(_WIN64)
@@ -596,6 +694,116 @@ namespace UltraCanvas {
 #endif
         }
         return result;
+    }
+
+    bool IsHiddenFileSystemEntry(const std::filesystem::path& path) {
+        const std::string name = path.filename().string();
+        if (!name.empty() && name.front() == '.') return true;
+#if defined(_WIN32) || defined(_WIN64)
+        const DWORD attrs = GetFileAttributesW(path.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_HIDDEN))
+            return true;
+#elif defined(UF_HIDDEN)
+        // macOS (and the BSDs): the Finder-hidden flag, e.g. on ~/Library.
+        struct stat sb{};
+        if (::stat(path.c_str(), &sb) == 0 && (sb.st_flags & UF_HIDDEN))
+            return true;
+#endif
+        return false;
+    }
+
+    std::vector<UserFolderInfo> GetWellKnownUserFolders() {
+        std::vector<UserFolderInfo> folders;
+        // Keeps only existing directories, each once (two configured entries
+        // may point at the same folder).
+        auto add = [&folders](UserFolderKind kind, const std::filesystem::path& p) {
+            std::error_code ec;
+            if (p.empty() || !std::filesystem::is_directory(p, ec) || ec) return;
+            const std::string path = p.string();
+            for (const UserFolderInfo& f : folders)
+                if (f.path == path) return;
+            std::string label = p.filename().string();
+            if (label.empty()) label = path;
+            folders.push_back({kind, path, label});
+        };
+
+#if defined(_WIN32) || defined(_WIN64)
+        static const std::pair<const KNOWNFOLDERID*, UserFolderKind> kKnown[] = {
+            {&FOLDERID_Desktop,   UserFolderKind::Desktop},
+            {&FOLDERID_Documents, UserFolderKind::Documents},
+            {&FOLDERID_Downloads, UserFolderKind::Downloads},
+            {&FOLDERID_Music,     UserFolderKind::Music},
+            {&FOLDERID_Pictures,  UserFolderKind::Pictures},
+            {&FOLDERID_Videos,    UserFolderKind::Videos},
+        };
+        for (const auto& [id, kind] : kKnown) {
+            PWSTR wpath = nullptr;
+            if (SUCCEEDED(SHGetKnownFolderPath(*id, 0, nullptr, &wpath)) && wpath)
+                add(kind, std::filesystem::path(wpath));
+            if (wpath) CoTaskMemFree(wpath);
+        }
+#else
+        const char* homeEnv = std::getenv("HOME");
+        const std::string home = homeEnv ? std::string(homeEnv) : std::string();
+        if (home.empty()) return folders;
+#if defined(__APPLE__)
+        add(UserFolderKind::Desktop,   home + "/Desktop");
+        add(UserFolderKind::Documents, home + "/Documents");
+        add(UserFolderKind::Downloads, home + "/Downloads");
+        add(UserFolderKind::Music,     home + "/Music");
+        add(UserFolderKind::Pictures,  home + "/Pictures");
+        add(UserFolderKind::Videos,    home + "/Movies");
+        add(UserFolderKind::Public,    home + "/Public");
+#else
+        // xdg-user-dirs: ~/.config/user-dirs.dirs holds lines like
+        //   XDG_DOWNLOAD_DIR="$HOME/Downloads"
+        // with the names localized at account creation ("$HOME/Schreibtisch").
+        // Only a leading $HOME is substituted and only absolute results count,
+        // both per the spec; a missing file falls back to the English names.
+        std::unordered_map<std::string, std::string> configured;
+        const char* xdgConfig = std::getenv("XDG_CONFIG_HOME");
+        const std::string configDir = (xdgConfig && *xdgConfig)
+                ? std::string(xdgConfig) : home + "/.config";
+        std::ifstream in(configDir + "/user-dirs.dirs");
+        std::string line;
+        while (std::getline(in, line)) {
+            line = Trim(line);
+            if (line.empty() || line.front() == '#') continue;
+            const size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            std::string value = line.substr(eq + 1);
+            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                value = value.substr(1, value.size() - 2);
+            if (value.rfind("$HOME/", 0) == 0) value = home + value.substr(5);
+            else if (value == "$HOME") value = home;
+            if (value.empty() || value.front() != '/') continue;
+            configured[line.substr(0, eq)] = value;
+        }
+        struct XdgEntry { const char* key; UserFolderKind kind; const char* fallback; };
+        static const XdgEntry kXdg[] = {
+            {"XDG_DESKTOP_DIR",     UserFolderKind::Desktop,   "Desktop"},
+            {"XDG_DOCUMENTS_DIR",   UserFolderKind::Documents, "Documents"},
+            {"XDG_DOWNLOAD_DIR",    UserFolderKind::Downloads, "Downloads"},
+            {"XDG_MUSIC_DIR",       UserFolderKind::Music,     "Music"},
+            {"XDG_PICTURES_DIR",    UserFolderKind::Pictures,  "Pictures"},
+            {"XDG_VIDEOS_DIR",      UserFolderKind::Videos,    "Videos"},
+            {"XDG_PUBLICSHARE_DIR", UserFolderKind::Public,    "Public"},
+            {"XDG_TEMPLATES_DIR",   UserFolderKind::Templates, "Templates"},
+        };
+        const std::filesystem::path homeNorm =
+                std::filesystem::path(home).lexically_normal();
+        for (const XdgEntry& x : kXdg) {
+            const auto it = configured.find(x.key);
+            const std::filesystem::path p = (it != configured.end())
+                    ? std::filesystem::path(it->second)
+                    : std::filesystem::path(home) / x.fallback;
+            // An entry set to the home folder itself means "disabled".
+            if (p.lexically_normal() == homeNorm) continue;
+            add(x.kind, p);
+        }
+#endif
+#endif
+        return folders;
     }
 
     std::string Trim(const std::string& s, const std::string& strippedChars) {

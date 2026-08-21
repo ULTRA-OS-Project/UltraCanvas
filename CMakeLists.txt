@@ -97,6 +97,7 @@ option(BUILD_ULTRAVIEWER_APP "Build the UltraViewer universal media viewer appli
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
+option(BUILD_ULTRAAI_MODULE "Build the UltraAI module (interfaces, registry, adapters)" ON)
 option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_BUILD_NET_TESTS "Build the UltraNet test suite" OFF)
@@ -140,12 +141,19 @@ endif()
 add_subdirectory(UltraCanvas)
 
 # ===== BUILD ULTRAAI MODULE =====
-# Sibling module — header-only interfaces + mock adapters. Pulled in
-# whenever UltraAI-using apps are built, so the UltraAI_Core target
-# is available below.
-if(BUILD_ULTRAAI_APP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.txt")
+# Sibling module — capability interfaces + registry + adapters. Built on
+# its own switch so libraries and apps can link UltraAI_Core without
+# dragging in the dashboard demo app (and vice versa).
+if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.txt")
     message(STATUS "")
     message(STATUS "── Building UltraAI Module ──")
+    # In-tree builds hand UltraAI the UltraNet target by default so the
+    # adapter-shared library gets its UltraNetTransport; -DULTRAAI_USE_ULTRANET
+    # on the command line still wins (cache-first).
+    if(TARGET UltraNet)
+        set(ULTRAAI_USE_ULTRANET ON CACHE BOOL
+            "Enable adapters that depend on UltraNet")
+    endif()
     add_subdirectory(UltraAI)
 endif()
     
@@ -156,6 +164,14 @@ endif()
 option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
 if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraMail)
+endif()
+
+# ===== ULTRASOCIAL =====
+# Cross-posting to social networks. Phase 1 builds the headless engine
+# (connectors + store + composer); UI targets are added in later phases.
+option(BUILD_ULTRASOCIAL "Build the UltraSocial application" ON)
+if(BUILD_ULTRASOCIAL AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraSocial)
 endif()
 
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
@@ -239,6 +255,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTimelineChartExamples.cpp
@@ -510,6 +527,18 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRAWIN TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses the same tiny in-tree framework
+# as the UltraNet suite. Wine itself is NOT required — wine-dependent tests
+# skip themselves when no binary is found.
+option(ULTRACANVAS_BUILD_ULTRAWIN_TESTS "Build the UltraWin test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAWIN_TESTS AND TARGET UltraWin)
+    enable_testing()
+    add_subdirectory(Tests/UltraWin)
+    message(STATUS "")
+    message(STATUS "── UltraWin test suite enabled (target: UltraWinTests) ──")
+endif()
+
 # ===== ULTRADATABASE TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraDatabase is built.
@@ -529,6 +558,17 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     add_subdirectory(Tests/UltraMail)
     message(STATUS "")
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
+endif()
+
+# ===== ULTRASOCIAL ENGINE TESTS =====
+# Headless engine tests (composer, vault, store, connectors against
+# loopback fake servers); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS "Build the UltraSocial engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS AND TARGET UltraSocialEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraSocial)
+    message(STATUS "")
+    message(STATUS "── UltraSocial engine test suite enabled (target: UltraSocialEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
@@ -621,6 +661,8 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerWindow.cpp
             Apps/UltraFiler/UltraFilerSettingsDialog.cpp
             Apps/UltraFiler/UltraFilerPrompt.cpp
+            Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
+            Apps/UltraFiler/UltraFilerShare.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
@@ -665,10 +707,12 @@ if (BUILD_ULTRAFILER_APP)
         )
     endif()
 
-    # Embed manifest with UTF-8 active code page (Windows only) - a file
-    # manager browses arbitrary paths, so narrow Win32/CRT calls must read
-    # them as UTF-8 instead of the legacy code page.
-    ultracanvas_embed_windows_manifest(UltraFiler)
+    # No ultracanvas_embed_windows_manifest(UltraFiler) here: UltraFiler.rc
+    # above already embeds Apps/UltraFiler/UltraFiler.manifest, which is a
+    # superset of the generated one (UTF-8 code page + long paths, plus DPI
+    # awareness, common controls v6 and segment heap). A second RT_MANIFEST
+    # id=1 resource is a hard error with lld (CLANGARM64), even though GNU ld
+    # let the duplicate through silently.
 
     message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
@@ -722,7 +766,10 @@ endif()
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
-if(BUILD_ULTRAAI_APP)
+if(BUILD_ULTRAAI_APP AND NOT TARGET UltraAI_Core)
+    message(STATUS "UltraAIApp skipped: requires the UltraAI module (BUILD_ULTRAAI_MODULE=ON)")
+endif()
+if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     message(STATUS "")
     message(STATUS "── Building UltraAI Dashboard Application ──")
 
@@ -806,6 +853,35 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME JSONTests COMMAND JSONTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD
+    # round-trip plus the mandated negative cases, KDF behaviour and secure
+    # buffer semantics. Compiles only UltraCrypt, so it runs headless.
+    add_executable(UltraCryptTests Tests/UltraCryptTests.cpp)
+    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt)
+    target_compile_features(UltraCryptTests PRIVATE cxx_std_20)
+    set_target_properties(UltraCryptTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraCryptTests COMMAND UltraCryptTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UCD document encryption envelope: round-trip, wrong password, tamper
+    # detection and associated-data binding. Regression cover for the silently
+    # broken encryption this replaced (Docs/Modules/UltraCrypt/README.md §1.1).
+    add_executable(UCDCryptoEnvelopeTests
+        Tests/UCDCryptoEnvelopeTests.cpp
+        UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
+    )
+    target_link_libraries(UCDCryptoEnvelopeTests PRIVATE UltraCrypt)
+    target_include_directories(UCDCryptoEnvelopeTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(UCDCryptoEnvelopeTests PRIVATE cxx_std_20)
+    set_target_properties(UCDCryptoEnvelopeTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UCDCryptoEnvelopeTests COMMAND UCDCryptoEnvelopeTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # Audio encode/decode roundtrip across every save-capable format the

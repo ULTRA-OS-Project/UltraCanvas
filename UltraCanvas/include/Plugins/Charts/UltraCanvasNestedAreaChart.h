@@ -1,13 +1,15 @@
 // include/Plugins/Charts/UltraCanvasNestedAreaChart.h
 // Nested Proportional Area Chart - Layered shapes with area proportional to values
-// Version: 1.2.0
-// Last Modified: 2026-07-29
+// Version: 1.3.0
+// Last Modified: 2026-08-20
+// V1.3.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasChartDataStructures.h"
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -419,7 +421,12 @@ namespace UltraCanvas {
         bool showLegend = true;
         float cornerRadius = 8.0f;   // For RoundedRect mode
         float chartPadding = 10.0f;  // Padding inside chart area
-        float legendHeight = 55.0f;  // Space reserved for legend below the shapes
+
+        // Shared legend component (replaces the old private RenderLegend()
+        // strip). The old bottom strip maps to ChartLegendPosition::BottomStart;
+        // its space is subtracted from the plot via ChartLegend::RemainingArea()
+        // instead of the old fixed legendHeight reserve.
+        ChartLegend legend;
 
         // Grid reference lines (optional)
         bool showGridLines = false;
@@ -705,8 +712,10 @@ namespace UltraCanvas {
         /// Shape rendering
         void RenderShapes(IRenderContext* ctx);
         void RenderShapeLabels(IRenderContext* ctx);
-        void RenderLegend(IRenderContext* ctx);
         void RenderGridLines(IRenderContext* ctx);
+
+        /// Rebuild the shared legend's entries/style from the current chart state
+        void RebuildLegend();
 
         /// Hit test for local mouse position; returns data index or -1
         int HitTest(const Point2Di& pos) const;

@@ -1,7 +1,7 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.4.3
-// Last Modified: 2026-08-08
+// Version: 1.5.0
+// Last Modified: 2026-08-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -26,6 +26,62 @@
 #endif
 
 namespace UltraCanvas {
+
+// ===== COLOUR HELPERS =====
+    namespace {
+        // WCAG relative luminance, 0 (black) .. 1 (white).
+        double RelativeLuminance(const Color& c) {
+            auto linear = [](double u) {
+                u /= 255.0;
+                return (u <= 0.03928) ? u / 12.92 : std::pow((u + 0.055) / 1.055, 2.4);
+            };
+            return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b);
+        }
+
+        // WCAG contrast ratio between two opaque colours, 1 (identical) .. 21.
+        double ContrastRatio(const Color& a, const Color& b) {
+            const double la = RelativeLuminance(a);
+            const double lb = RelativeLuminance(b);
+            return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+        }
+
+        // A state tint of `base` that leaves whatever text sits on it readable:
+        // a light background darkens, a dark one lightens, so the label keeps
+        // the side of the luminance scale it was picked for. Swapping the fill
+        // for an unrelated hover colour is what made the current segment's
+        // white label vanish the moment the pointer touched it.
+        Color StateTintOf(const Color& base, float amount) {
+            return (RelativeLuminance(base) > 0.5) ? base.Darken(amount)
+                                                   : base.Lighten(amount);
+        }
+
+        // Last line of defence for readability: a label that cannot be made out
+        // against its own background is redrawn in black or white, whichever
+        // the background leaves room for. Only ever consulted for an opaque
+        // background — over a translucent one the real backdrop is unknown.
+        Color ReadableTextColor(const Color& text, const Color& background, float minRatio) {
+            if (minRatio <= 0.0f) return text;
+            if (ContrastRatio(text, background) >= minRatio) return text;
+            const Color candidate = (RelativeLuminance(background) > 0.5) ? Colors::Black
+                                                                          : Colors::White;
+            return candidate.WithAlpha(text.a);
+        }
+
+        // Case-insensitive ASCII compare, so "Documents" and "downloads" sort as
+        // neighbours instead of the byte order putting every capital first.
+        bool LabelLess(const std::string& a, const std::string& b) {
+            const size_t n = std::min(a.size(), b.size());
+            for (size_t i = 0; i < n; ++i) {
+                const unsigned char ca = static_cast<unsigned char>(a[i]);
+                const unsigned char cb = static_cast<unsigned char>(b[i]);
+                const unsigned char la = (ca >= 'A' && ca <= 'Z') ? ca + 32 : ca;
+                const unsigned char lb = (cb >= 'A' && cb <= 'Z') ? cb + 32 : cb;
+                if (la != lb) return la < lb;
+            }
+            if (a.size() != b.size()) return a.size() < b.size();
+            return a < b;   // same letters, differing case: stable, deterministic order
+        }
+    }
 
 // ===== STYLE PRESETS =====
     BreadcrumbStyle BreadcrumbStyle::Default() {
@@ -109,7 +165,9 @@ namespace UltraCanvas {
         s.itemPressedBackgroundColor = Color(225, 105, 20, 255);
         s.currentItemBackgroundColor = Color(250, 170, 110, 255);
         s.itemTextColor = Colors::White;
-        s.currentItemTextColor = Colors::White;
+        // Dark on the pale current segment: white over that light orange is
+        // barely a 1.9:1 contrast, which is unreadable at UI text sizes.
+        s.currentItemTextColor = Color(72, 34, 0, 255);
         s.currentItemBold = false;
         s.currentItemClickable = true;
         s.separatorColor = Color(255, 255, 255, 255);   // thin seam between segments
@@ -132,6 +190,10 @@ namespace UltraCanvas {
         s.currentItemBackgroundColor = Color(40, 110, 235, 255);
         s.itemTextColor = Color(210, 212, 216, 255);
         s.currentItemTextColor = Colors::White;
+        // The default hover/press label colours are dark blue — meant for a
+        // pale strip, invisible on this dark one.
+        s.itemHoverTextColor = Colors::White;
+        s.itemPressedTextColor = Color(225, 228, 235, 255);
         s.separatorColor = Color(32, 33, 36, 255);
         s.separatorThickness = 2.0f;
         s.showLevelIndicator = true;
@@ -456,6 +518,29 @@ namespace UltraCanvas {
         return layout;
     }
 
+    bool UltraCanvasBreadcrumb::ItemShowsDropdown(const BreadcrumbItem& item) const {
+        if (!item.hasDropdown) return false;
+        if (!item.dropdownItems.empty()) return true;
+        if (item.dropdownAvailableProvider) {
+            // Asked once per item: the strip is measured several times per
+            // layout pass and the probe usually looks at the filesystem.
+            if (item.cachedDropdownAvailability < 0) {
+                item.cachedDropdownAvailability = item.dropdownAvailableProvider() ? 1 : 0;
+            }
+            return item.cachedDropdownAvailability > 0;
+        }
+        // A lazy provider with no probe alongside it can only be answered by
+        // running it, which is exactly what the probe exists to avoid — assume
+        // it has entries. Nothing at all behind hasDropdown means no chevron.
+        return item.dropdownItemsProvider != nullptr;
+    }
+
+    void UltraCanvasBreadcrumb::RefreshDropdownAvailability() {
+        for (BreadcrumbItem& item : items) item.cachedDropdownAvailability = -1;
+        layoutDirty = true;
+        InvalidateLayout(); RequestRedraw();
+    }
+
     int UltraCanvasBreadcrumb::ComputeItemSlotWidth(const BreadcrumbItem& item,
                                                    const Size2Dd& textSize,
                                                    bool includeDropdown) const {
@@ -470,10 +555,31 @@ namespace UltraCanvas {
         if (hasIcon) width += style.iconSize;
         if (hasIcon && hasText) width += style.iconTextSpacing;
         if (hasText) width += static_cast<int>(textSize.width);
-        if (includeDropdown && item.hasDropdown) {
+        if (includeDropdown && ItemShowsDropdown(item)) {
             width += style.dropdownChevronSpacing + style.dropdownChevronSize;
         }
         return width;
+    }
+
+    Rect2Di UltraCanvasBreadcrumb::ComputeDropdownHitRect(const Rect2Di& slotRect,
+                                                          const Rect2Di& chevronRect,
+                                                          int tipExtra, int maxRight) const {
+        // The zone reaches from in front of the chevron to the trailing edge of
+        // the segment — its trailing padding, plus the arrow tip drawn past
+        // that edge — and is as tall as the slot. It stops at the clipped edge
+        // of the content area: past that the segment isn't drawn any more.
+        const int right = std::min(slotRect.x + slotRect.width + std::max(0, tipExtra),
+                                   std::max(maxRight, chevronRect.x + chevronRect.width));
+        int left = chevronRect.x - style.dropdownChevronSpacing;
+        const int minWidth = std::max(0, style.dropdownHitAreaMinWidth);
+        if (right - left < minWidth) left = right - minWidth;
+        // Leave the leading half of the segment to the label: on a short item
+        // the widened zone would otherwise cover the whole thing and there
+        // would be no way left to navigate to it.
+        left = std::max(left, slotRect.x + slotRect.width / 2);
+        // ...but never so far right that it clips the chevron it belongs to.
+        left = std::min(left, chevronRect.x);
+        return Rect2Di(left, slotRect.y, std::max(0, right - left), slotRect.height);
     }
 
 // ===== LAYOUT =====
@@ -741,12 +847,17 @@ namespace UltraCanvas {
                 slot.textRect = Rect2Di(innerX, slot.rect.y, textW, slotHeight);
                 innerX += textW;
             }
-            if (items[i].hasDropdown) {
+            if (ItemShowsDropdown(items[i])) {
                 innerX += style.dropdownChevronSpacing;
                 slot.dropdownRect = Rect2Di(innerX,
                                             centerY - style.dropdownChevronSize / 2,
                                             style.dropdownChevronSize,
                                             style.dropdownChevronSize);
+                // What the pointer actually aims at: full slot height, and in
+                // the segment styles out to the point of the arrow head.
+                slot.dropdownHitRect = ComputeDropdownHitRect(slot.rect, slot.dropdownRect,
+                                                              segmentStyle ? arrowDepth : 0,
+                                                              content.x + content.width);
             }
             slot.textSize = sizes[i];
             slot.textLayout = std::move(layouts[i]);
@@ -895,14 +1006,18 @@ namespace UltraCanvas {
 // ===== HIT TESTING =====
     int UltraCanvasBreadcrumb::HitTest(const Point2Di& localPoint, bool& onDropdown) const {
         onDropdown = false;
+        // Dropdown zones are tested before the slot boxes because one may reach
+        // beyond its own box: in the segment styles it covers the arrow tip,
+        // which is drawn over the notch of the following segment.
         for (size_t i = 0; i < slots.size(); ++i) {
             const ItemSlot& slot = slots[i];
-            if (slot.rect.Contains(localPoint)) {
-                if (slot.dropdownRect.width > 0 && slot.dropdownRect.Contains(localPoint)) {
-                    onDropdown = true;
-                }
+            if (slot.dropdownHitRect.width > 0 && slot.dropdownHitRect.Contains(localPoint)) {
+                onDropdown = true;
                 return static_cast<int>(i);
             }
+        }
+        for (size_t i = 0; i < slots.size(); ++i) {
+            if (slots[i].rect.Contains(localPoint)) return static_cast<int>(i);
         }
         return -1;
     }
@@ -985,16 +1100,19 @@ namespace UltraCanvas {
                           && (!isCurrent || style.currentItemClickable));
         bool isDisabled = !clickable;
 
-        // Pick text color
+        // Pick text color. The current item keeps its emphasis colour through
+        // hover and press: those states move its *background* (see below), and
+        // the generic hover/pressed text colours are chosen against the muted
+        // resting background, not against the current item's own fill.
         Color textColor;
         if (isDisabled && !isCurrent) {
             textColor = style.disabledItemTextColor;
-        } else if (isPressed) {
-            textColor = style.itemPressedTextColor;
-        } else if (isHovered && !isCurrent) {
-            textColor = style.itemHoverTextColor;
         } else if (isCurrent) {
             textColor = style.currentItemTextColor;
+        } else if (isPressed) {
+            textColor = style.itemPressedTextColor;
+        } else if (isHovered) {
+            textColor = style.itemHoverTextColor;
         } else {
             textColor = style.itemTextColor;
         }
@@ -1014,12 +1132,34 @@ namespace UltraCanvas {
                 drawBackground = true;
             }
         }
-        if (isPressed && clickable && style.itemPressedBackgroundColor.a > 0) {
+        if (isCurrent && style.currentItemBackgroundColor.a > 0 && clickable
+            && (isPressed || isHovered)) {
+            // Feedback derived from the current item's own fill, so its label —
+            // typically white on a saturated colour — stays legible. An
+            // explicit currentItemHover/PressedBackgroundColor overrides it.
+            const Color& explicitBg = isPressed ? style.currentItemPressedBackgroundColor
+                                                : style.currentItemHoverBackgroundColor;
+            bgColor = explicitBg.a > 0
+                      ? explicitBg
+                      : StateTintOf(style.currentItemBackgroundColor, isPressed ? 0.22f : 0.12f);
+            drawBackground = true;
+        } else if (isPressed && clickable && style.itemPressedBackgroundColor.a > 0) {
             bgColor = style.itemPressedBackgroundColor;
             drawBackground = true;
         } else if (isHovered && clickable && style.itemHoverBackgroundColor.a > 0) {
             bgColor = style.itemHoverBackgroundColor;
             drawBackground = true;
+        }
+
+        // Readability guard against whatever the label ends up sitting on: the
+        // item's own fill when it has one, the strip background otherwise. Only
+        // for opaque backdrops (a translucent one leaves the real colour
+        // unknown) and never for the deliberately muted disabled colour.
+        if (!isDisabled || isCurrent) {
+            const Color& backdrop = drawBackground ? bgColor : style.backgroundColor;
+            if (backdrop.a >= 200) {
+                textColor = ReadableTextColor(textColor, backdrop, style.minTextContrastRatio);
+            }
         }
 
         if (drawBackground) {
@@ -1357,7 +1497,7 @@ namespace UltraCanvas {
         if (itemIdx < 0 || itemIdx >= (int)items.size()) return;
         BreadcrumbItem& item = items[itemIdx];
 
-        if (onDropdown && item.hasDropdown) {
+        if (onDropdown && ItemShowsDropdown(item)) {
             OpenDropdownForSlot(slotIdx);
             // Re-check: filling the menu runs the item's provider, which is
             // free to rebuild the path (and with it `items`).
@@ -1426,7 +1566,23 @@ namespace UltraCanvas {
             auto provided = item.dropdownItemsProvider();
             menuItems.insert(menuItems.end(), provided.begin(), provided.end());
         }
-        if (menuItems.empty()) return;
+        if (menuItems.empty()) {
+            // The availability probe said there was something here and there
+            // isn't (it went away in between, or the item never had a probe).
+            // Record the emptiness so the chevron goes with it.
+            if (item.cachedDropdownAvailability != 0) {
+                item.cachedDropdownAvailability = 0;
+                layoutDirty = true;
+                InvalidateLayout(); RequestRedraw();
+            }
+            return;
+        }
+        if (item.sortDropdownItems) {
+            std::stable_sort(menuItems.begin(), menuItems.end(),
+                             [](const MenuItemData& a, const MenuItemData& b) {
+                                 return LabelLess(a.label, b.label);
+                             });
+        }
 
         auto win = GetWindow();
         if (!win) return;
@@ -1543,33 +1699,55 @@ namespace UltraCanvas {
     }
 
     namespace {
+        // Does `folder` hold at least one sub-folder? The chevron question can
+        // only be answered by looking, so this is the one filesystem call the
+        // strip makes while it is being built — and it stops at the first
+        // sub-folder it sees instead of listing (and sorting) them all. The
+        // answer is cached per item, so a segment pays for it once.
+        bool HasSubFolders(const std::string& folder) {
+            std::error_code ec;
+            for (std::filesystem::directory_iterator it(std::filesystem::path(folder), ec), end;
+                 it != end && !ec; it.increment(ec)) {
+                std::error_code dec;
+                if (it->is_directory(dec)) return true;
+            }
+            return false;
+        }
+
         // The folders inside `folder`, listed when that segment's dropdown is
         // opened. Every node drops down its own sub-folders — the drive node the
         // folders of the drive, the last node the folders below the current one —
         // so the path can be extended one level without leaving the breadcrumb.
+        // A leaf folder shows no chevron at all (HasSubFolders above), so an
+        // empty result here only happens when the folder emptied out in the
+        // meantime; the breadcrumb then drops the chevron and opens nothing.
         std::vector<MenuItemData> SubFolderMenu(
                 const std::string& folder,
                 const std::function<void(const std::string&)>& onNavigate) {
             std::vector<MenuItemData> out;
             std::error_code ec;
-            std::vector<std::string> dirs;
+            // Alphabetic by the name shown in the menu, case-insensitively:
+            // sorting the full paths instead put every capitalised folder in
+            // front of every lower-case one.
+            std::vector<std::pair<std::string, std::string>> dirs;   // name, path
             for (std::filesystem::directory_iterator it(std::filesystem::path(folder), ec), end;
                  it != end && !ec; it.increment(ec)) {
                 std::error_code dec;
-                if (it->is_directory(dec)) dirs.push_back(it->path().string());
+                if (!it->is_directory(dec)) continue;
+                std::string path = it->path().string();
+                std::string name = it->path().filename().string();
+                if (name.empty()) name = path;
+                dirs.emplace_back(std::move(name), std::move(path));
             }
-            std::sort(dirs.begin(), dirs.end());
-            for (const std::string& d : dirs) {
-                std::string name = std::filesystem::path(d).filename().string();
-                if (name.empty()) name = d;
-                out.emplace_back(name, [onNavigate, d]() { if (onNavigate) onNavigate(d); });
-            }
-            if (out.empty()) {
-                // A leaf folder still opens its dropdown — say so instead of
-                // popping up an empty menu.
-                MenuItemData empty("(no sub-folders)");
-                empty.enabled = false;
-                out.push_back(empty);
+            std::sort(dirs.begin(), dirs.end(),
+                      [](const std::pair<std::string, std::string>& a,
+                         const std::pair<std::string, std::string>& b) {
+                          return LabelLess(a.first, b.first);
+                      });
+            for (const auto& [name, path] : dirs) {
+                out.emplace_back(name, [onNavigate, path]() {
+                    if (onNavigate) onNavigate(path);
+                });
             }
             return out;
         }
@@ -1604,17 +1782,14 @@ namespace UltraCanvas {
             // enumerating the volumes touches the filesystem, and the strip is
             // rebuilt on every navigation.
             computer.hasDropdown = true;
+            computer.sortDropdownItems = true;
+            computer.dropdownAvailableProvider = []() { return !ListDriveRoots().empty(); };
             computer.dropdownItemsProvider = [onNavigate]() {
                 std::vector<MenuItemData> out;
                 for (const std::string& d : ListDriveRoots()) {
                     out.emplace_back(d, [onNavigate, d]() {
                         if (onNavigate) onNavigate(d);
                     });
-                }
-                if (out.empty()) {
-                    MenuItemData empty("(no drives)");
-                    empty.enabled = false;
-                    out.push_back(empty);
                 }
                 return out;
             };
@@ -1632,6 +1807,10 @@ namespace UltraCanvas {
             drive.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
             if (options.subFolderDropdowns) {
                 drive.hasDropdown = true;
+                drive.sortDropdownItems = true;
+                // No sub-folders, no chevron — asked once, when the strip is
+                // laid out, and answered by the first sub-folder found.
+                drive.dropdownAvailableProvider = [target]() { return HasSubFolders(target); };
                 drive.dropdownItemsProvider = [onNavigate, target]() {
                     return SubFolderMenu(target, onNavigate);
                 };
@@ -1649,6 +1828,8 @@ namespace UltraCanvas {
             item.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
             if (options.subFolderDropdowns) {
                 item.hasDropdown = true;
+                item.sortDropdownItems = true;
+                item.dropdownAvailableProvider = [target]() { return HasSubFolders(target); };
                 item.dropdownItemsProvider = [onNavigate, target]() {
                     return SubFolderMenu(target, onNavigate);
                 };

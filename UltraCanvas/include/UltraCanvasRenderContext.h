@@ -303,9 +303,10 @@ namespace UltraCanvas {
 
         // === Text Methods ===
         virtual std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) = 0;
-        std::unique_ptr<ITextLayout> CreateTextLayout() {
-            return CreateTextLayout("", false);
-        };
+        // Defined out-of-line below, after ITextLayout is a complete type. An
+        // inline body here instantiates ~unique_ptr<ITextLayout> against the
+        // still-incomplete forward declaration, which Clang (unlike GCC) rejects.
+        std::unique_ptr<ITextLayout> CreateTextLayout();
         virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) = 0;
 
         virtual void DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) = 0;
@@ -811,6 +812,12 @@ namespace UltraCanvas {
         // ===== ITERATOR =====
 //        UCTextLayoutIter GetIter() const = 0;
     };
+
+    // Out-of-line so ~unique_ptr<ITextLayout> is instantiated against the now-complete type.
+    inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout()
+    {
+        return CreateTextLayout("", false);
+    }
 
     // factory
     std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarTo);

@@ -568,6 +568,26 @@ add_test(NAME SequenceModelTest COMMAND SequenceModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SequenceModelTest")
 
+# ===== MATRIX MODEL TEST =====
+# Unit tests for the matrix diagram model: scale presets and their weights,
+# sparse cell storage, the weighted row/column roll-ups, stable column ranking,
+# validation, the CSV codec in both directions and the shipped samples. UI-free.
+message(STATUS "  Building MatrixModelTest...")
+add_executable(MatrixModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/MatrixModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMatrixModel.cpp
+)
+target_include_directories(MatrixModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(MatrixModelTest PRIVATE cxx_std_20)
+set_target_properties(MatrixModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME MatrixModelTest COMMAND MatrixModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: MatrixModelTest")
+
 # ===== FISHBONE MODEL TEST =====
 # Unit tests for the fishbone (Ishikawa) model: category presets, cause and
 # sub-cause counting, depth, validation, the indented-outline codec and the
@@ -717,7 +737,10 @@ add_executable(ChartEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasColormap.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
 )
 target_include_directories(ChartEngineTest PRIVATE

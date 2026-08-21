@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasFunnelChart.cpp
 // Funnel chart implementation
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasFunnelChart.h"
 
@@ -153,6 +154,19 @@ namespace {
         animationComplete = true;
         animationDuration = 0.7f;
         palette = DefaultPalette();
+
+        // Legend defaults match the retired private implementation: hidden,
+        // top centre, 10px text with font-sized borderless swatches, stage
+        // label colour for the entry text.
+        legend.SetVisible(false);
+        legend.SetPosition(ChartLegendPosition::TopCenter);
+        ChartLegendStyle legendStyle;
+        legendStyle.fontSize = 10.0f;
+        legendStyle.swatchWidth = 10.0f;
+        legendStyle.swatchHeight = 10.0f;
+        legendStyle.drawSwatchBorder = false;
+        legendStyle.textColor = stageLabelColor;
+        legend.SetStyle(legendStyle);
     }
 
 // =============================================================================
@@ -487,6 +501,8 @@ namespace {
 
     void UltraCanvasFunnelChart::SetStageLabelColor(const Color& color) {
         stageLabelColor = color;
+        // The legacy legend drew its entry text in the stage label colour
+        legend.GetStyle().textColor = color;
         RequestRedraw();
     }
 
@@ -617,19 +633,40 @@ namespace {
     }
 
     void UltraCanvasFunnelChart::SetShowLegend(bool show) {
-        showLegend = show;
+        legend.SetVisible(show);
         InvalidateCache();
         RequestRedraw();
     }
 
     void UltraCanvasFunnelChart::SetLegendPosition(FunnelLegendPosition position) {
-        legendPosition = position;
+        // Closest ChartLegendPosition match: Left/Center/Right map onto
+        // Start/Center/End along the same edge.
+        switch (position) {
+            case FunnelLegendPosition::LegendTopLeft:
+                legend.SetPosition(ChartLegendPosition::TopStart); break;
+            case FunnelLegendPosition::LegendTopRight:
+                legend.SetPosition(ChartLegendPosition::TopEnd); break;
+            case FunnelLegendPosition::LegendBottomLeft:
+                legend.SetPosition(ChartLegendPosition::BottomStart); break;
+            case FunnelLegendPosition::LegendBottomCenter:
+                legend.SetPosition(ChartLegendPosition::BottomCenter); break;
+            case FunnelLegendPosition::LegendBottomRight:
+                legend.SetPosition(ChartLegendPosition::BottomEnd); break;
+            case FunnelLegendPosition::LegendTopCenter:
+            default:
+                legend.SetPosition(ChartLegendPosition::TopCenter); break;
+        }
         InvalidateCache();
         RequestRedraw();
     }
 
     void UltraCanvasFunnelChart::SetLegendFontSize(double size) {
-        legendFontSize = Clamp(size, 6.0, 24.0);
+        double clamped = Clamp(size, 6.0, 24.0);
+        ChartLegendStyle& style = legend.GetStyle();
+        style.fontSize = static_cast<float>(clamped);
+        // The legacy legend sized its swatches to the font
+        style.swatchWidth = static_cast<float>(clamped);
+        style.swatchHeight = static_cast<float>(clamped);
         InvalidateCache();
         RequestRedraw();
     }
@@ -692,11 +729,15 @@ namespace {
                 showDropOffLabels);
     }
 
+// The shared legend always occupies the top or bottom screen edge, so its
+// measured inset comes out of the flow margins of a vertical funnel and out of
+// the cross margins of a horizontal one.
     double UltraCanvasFunnelChart::GetMarginStart() const {
         double margin = kEdgePadding;
         if (OutsideTextTakesStartColumn()) margin += stageLabelColumnWidth + kColumnGap;
         if (PercentTakesStartColumn()) margin += percentColumnWidth + kColumnGap;
         if (showBadges) margin += badgeFontSize * 2.2 + kColumnGap;
+        if (!IsVertical() && LegendAtTop()) margin += legendInset;
         return margin;
     }
 
@@ -708,29 +749,76 @@ namespace {
         if (stageLabelPlacement == FunnelStageLabelPlacement::LeaderLineLabels) {
             margin += 26.0;   // Room for the leader lines themselves
         }
+        if (!IsVertical() && !LegendAtTop()) margin += legendInset;
         return margin;
     }
 
     double UltraCanvasFunnelChart::GetMarginFlowStart() const {
         double margin = chartTitle.empty() ? kEdgePadding : 36.0;
-        if (showLegend && (legendPosition == FunnelLegendPosition::LegendTopLeft ||
-                           legendPosition == FunnelLegendPosition::LegendTopCenter ||
-                           legendPosition == FunnelLegendPosition::LegendTopRight)) {
-            margin += legendFontSize * 2.4;
-        }
+        if (IsVertical() && LegendAtTop()) margin += legendInset;
         return margin;
     }
 
     double UltraCanvasFunnelChart::GetMarginFlowEnd() const {
         double margin = kEdgePadding;
-        if (showLegend && (legendPosition == FunnelLegendPosition::LegendBottomLeft ||
-                           legendPosition == FunnelLegendPosition::LegendBottomCenter ||
-                           legendPosition == FunnelLegendPosition::LegendBottomRight)) {
-            margin += legendFontSize * 2.4;
-        }
+        if (IsVertical() && !LegendAtTop()) margin += legendInset;
         if (showTerminalCallout) margin += terminalCalloutRadius * 2.0 + 16.0;
         if (showTipTriangle) margin += 26.0;
         return margin;
+    }
+
+// =============================================================================
+// LEGEND (shared ChartLegend component)
+// =============================================================================
+
+    bool UltraCanvasFunnelChart::LegendAtTop() const {
+        switch (legend.GetPosition()) {
+            case ChartLegendPosition::TopStart:
+            case ChartLegendPosition::TopCenter:
+            case ChartLegendPosition::TopEnd:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+// The strip the legend may occupy: the element bounds inset by the edge
+// padding, starting below the title.
+    Rect2Dd UltraCanvasFunnelChart::LegendArea() const {
+        double top = chartTitle.empty() ? kEdgePadding : 36.0;
+        return Rect2Dd(kEdgePadding, top,
+                       std::max(1.0, static_cast<double>(GetWidth()) - 2.0 * kEdgePadding),
+                       std::max(1.0, static_cast<double>(GetHeight()) - top - kEdgePadding));
+    }
+
+// The legend explains the stages: same labels, same resolved colours (palette
+// index and all), in drawn order. Rebuilt with the geometry so the two can
+// never disagree.
+    void UltraCanvasFunnelChart::RebuildLegendEntries() {
+        std::vector<ChartLegendEntry> entries;
+        entries.reserve(geometry.size());
+        for (const auto& geo : geometry) {
+            entries.emplace_back(funnelDataSource->GetStage(geo.dataIndex).stageLabel,
+                                 geo.color, LegendSwatch::Square);
+        }
+        legend.SetEntries(entries);
+    }
+
+// Measure the legend and reserve the space it consumes. The measured inset
+// feeds the margins, so a change re-runs the geometry pass before the frame
+// is drawn - Measure() is cached, so this settles immediately.
+    void UltraCanvasFunnelChart::UpdateLegendLayout(IRenderContext* ctx) {
+        double inset = 0.0;
+        if (legend.IsVisible() && legend.GetEntryCount() > 0) {
+            Rect2Dd area = LegendArea();
+            legend.Measure(ctx, area);
+            inset = area.height - legend.RemainingArea(area).height;
+        }
+        if (std::fabs(inset - legendInset) > 0.5) {
+            legendInset = inset;
+            InvalidateCache();
+            UpdateRenderingCache();
+        }
     }
 
     ChartPlotArea UltraCanvasFunnelChart::CalculatePlotArea() {
@@ -910,7 +998,10 @@ namespace {
     void UltraCanvasFunnelChart::RebuildGeometry() {
         geometry.clear();
         bottleneckIndex = -1;
-        if (!funnelDataSource || displayOrder.empty()) return;
+        if (!funnelDataSource || displayOrder.empty()) {
+            legend.ClearEntries();
+            return;
+        }
 
         size_t n = displayOrder.size();
         maxStageValue = 0.0;
@@ -1039,6 +1130,8 @@ namespace {
         for (size_t i = 0; i < n; ++i) {
             geometry[i].color = ResolveStageColor(i, geometry[i].dataIndex, geometry[i].metrics);
         }
+
+        RebuildLegendEntries();
     }
 
     void UltraCanvasFunnelChart::UpdateRenderingCache() {
@@ -1270,6 +1363,9 @@ namespace {
     void UltraCanvasFunnelChart::RenderChart(IRenderContext* ctx) {
         if (!ctx || geometry.empty()) return;
 
+        // The legend consumes real space, so its measured layout comes first
+        UpdateLegendLayout(ctx);
+
         if (shapeMode == FunnelShapeMode::CardRows) RenderCardBackgrounds(ctx);
 
         RenderConnectors(ctx);
@@ -1283,7 +1379,7 @@ namespace {
         if (descriptionColumnWidth > 0.0) RenderDescriptions(ctx);
         if (showBadges) RenderBadges(ctx);
         if (showTerminalCallout) RenderTerminalCallout(ctx);
-        if (showLegend) RenderLegend(ctx);
+        legend.Render(ctx, LegendArea());   // No-op while hidden or empty
 
         // Animation drives itself: keep asking for frames until every stage is in
         if (animationEnabled && !animationComplete) RequestRedraw();
@@ -1758,60 +1854,6 @@ namespace {
         ctx->SetFontSize(std::max(9.0, terminalCalloutRadius * 0.62));
         ctx->SetTextPaint(Color(60, 60, 66, 255));
         DrawCenteredText(ctx, FormatStageValue(last.metrics.value), center);
-        ctx->PopState();
-    }
-
-    void UltraCanvasFunnelChart::RenderLegend(IRenderContext* ctx) {
-        if (geometry.empty()) return;
-
-        ctx->PushState();
-        ctx->SetFontSize(legendFontSize);
-
-        const double swatch = legendFontSize;
-        const double textGap = 6.0;
-        const double itemGap = 16.0;
-
-        double totalWidth = 0.0;
-        for (const auto& geo : geometry) {
-            const FunnelStage& stage = funnelDataSource->GetStage(geo.dataIndex);
-            totalWidth += swatch + textGap + ctx->GetTextLineDimensions(stage.stageLabel).width
-                          + itemGap;
-        }
-        totalWidth = std::max(0.0, totalWidth - itemGap);
-
-        bool atTop = (legendPosition == FunnelLegendPosition::LegendTopLeft ||
-                      legendPosition == FunnelLegendPosition::LegendTopCenter ||
-                      legendPosition == FunnelLegendPosition::LegendTopRight);
-
-        double x;
-        switch (legendPosition) {
-            case FunnelLegendPosition::LegendTopLeft:
-            case FunnelLegendPosition::LegendBottomLeft:
-                x = kEdgePadding;
-                break;
-            case FunnelLegendPosition::LegendTopRight:
-            case FunnelLegendPosition::LegendBottomRight:
-                x = static_cast<double>(GetWidth()) - kEdgePadding - totalWidth;
-                break;
-            default:
-                x = (static_cast<double>(GetWidth()) - totalWidth) / 2.0;
-                break;
-        }
-        x = std::max(2.0, x);
-
-        double y = atTop ? std::max(2.0, GetMarginFlowStart() - legendFontSize * 2.0)
-                         : static_cast<double>(GetHeight()) - kEdgePadding - swatch;
-
-        for (const auto& geo : geometry) {
-            const FunnelStage& stage = funnelDataSource->GetStage(geo.dataIndex);
-            ctx->DrawFilledRectangle(Rect2Dd(x, y, swatch, swatch), geo.color, 0.0f,
-                                     Colors::Transparent, 3.0f);
-            ctx->SetTextPaint(stageLabelColor);
-            Size2Di size = ctx->GetTextLineDimensions(stage.stageLabel);
-            ctx->DrawText(stage.stageLabel,
-                          Point2Dd(x + swatch + textGap, y + (swatch - size.height) / 2.0));
-            x += swatch + textGap + size.width + itemGap;
-        }
         ctx->PopState();
     }
 

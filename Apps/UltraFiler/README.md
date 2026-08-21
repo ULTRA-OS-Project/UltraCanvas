@@ -11,6 +11,7 @@ components:
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
 | Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::ShowFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
+| Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
 
 ## Features
@@ -47,6 +48,27 @@ components:
   any browsing action (navigation, search, a file command) returns to the
   folder view. The lists survive restarts — they are stored next to the
   settings as `history.txt` — and *Settings ▸ Clear History* empties them.
+- **Favorites (pinning):** the heart button next to the clock shows the
+  Favorites view — the same **Files** / **Folders** / **Apps** layout as the
+  History view, but listing what was pinned deliberately instead of what was
+  used recently. The file context menu's **Extras** submenu does the pinning:
+  its **Pin** and **Unpin** submenus each offer **To Favorites** — acting on
+  the selection of the visible view (or, with nothing selected, the folder
+  currently shown) — and **To Treeview** (folders only), which pins the
+  folder into the folder tree's **Pinned** section, where it navigates like a
+  bookmark on click. The entries are check items whose flag shows whether the
+  selection is pinned there right now; Pin is enabled while something is
+  still unpinned, Unpin while something is pinned. Entries keep the order
+  they were pinned in and drop out when their path disappears from disk.
+  Right-clicking the folder tree opens its context menu: **Copy** /
+  **Delete** (with confirmation) / **Paste** act on the folder under the
+  cursor — Paste only when a folder is under the cursor and the clipboard
+  holds files, Delete never on the top-level roots — a **Pin** submenu whose
+  **To Treeview** / **To Favorites** flags directly toggle where that folder
+  is pinned, and **Unpin** (pinned entries only) removes the bookmark
+  without touching the folder. The pins survive restarts — they are stored
+  next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
+  empties them (History and Favorites are separate stores).
 - **Command bar:** New folder / New file (inline rename starts
   automatically), Cut / Copy / Paste (system clipboard interop), Rename,
   Delete (with confirmation), sort field + direction, view type selection,
@@ -78,8 +100,18 @@ components:
   sound, the default), *5 s clip* (a five-second muted preview in the
   `UltraCanvasAlbum` hover style, then pause) or *Still image* (paused
   first frame).
+- **Open files:** double-click / Enter shows a previewable file in the
+  preview pane and launches every other file with the application the OS
+  registers for it (`UltraCanvasFileAssociations`), like a double-click in
+  Explorer. The context menu's **Open with >** lists all registered
+  applications for the selection (default first, with icons) plus **Other
+  application…**, a file-dialog picker; launches are detached, so closing
+  UltraFiler leaves the opened applications running. The application lists
+  are prewarmed in the background while a folder is shown, so the menu opens
+  without any lookup delay.
 - **Status bar:** entry count of the folder, selection count and summed size.
-- **Extras > Open prompt:** starts the operating system's command line program
+- **Extras > Open prompt** (in the file context menu's Extras submenu):
+  starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file
   manager leaves the terminal running). Without configuration it uses the
   platform default — `%COMSPEC%` (cmd.exe) on Windows, Terminal.app on macOS,
