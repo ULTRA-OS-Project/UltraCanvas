@@ -48,18 +48,21 @@
 // selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
 // Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
 // expensive files can be browsed with only the cheap previews switched on.
-// Version: 1.15.0
-// Last Modified: 2026-08-17
 // The context menu's "Open with >" lists the applications the OS registers
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
-// background), the host's own entries, and an "Other application…" picker.
-
+// background), the host's own entries, and an "Other application…" picker;
+// the host can extend the context menu's Extras submenu via
+// extrasMenuProvider.
+// Version: 1.15.0
+// Last Modified: 2026-08-20
+// Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
@@ -654,6 +657,11 @@ namespace UltraCanvas {
         std::function<void(const std::vector<FilerEntry>&)> onAccess;
         std::function<void()> onSettings;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
+        // Host-provided tail of the context menu's Extras submenu, called
+        // every time the menu opens (so item flags can follow the host's
+        // state); non-empty results are appended behind a separator. The
+        // UltraFiler adds "Open prompt" and its Pin / Unpin submenus here.
+        std::function<std::vector<MenuItemData>()> extrasMenuProvider;
 
         // File-list (search result) display: while active, ScanFolder() builds
         // the entries from these explicit paths instead of listing currentPath.
