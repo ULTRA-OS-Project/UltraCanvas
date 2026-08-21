@@ -141,4 +141,12 @@ struct ChartLayoutRequest {
 Rect2Dd SolvePlotArea(const Rect2Dd& chartArea, const ChartMargins& margins,
                       double minWidth = 8.0, double minHeight = 8.0);
 
+// The rectangle solved labels must stay within: the plot area extended by the
+// margins the chart content reserved for itself in MeasureContent - its label
+// spill bands, e.g. the row above a bar that reaches the axis maximum, or the
+// column to its right under a horizontal projection. Clamped to the chart
+// area; axis bands, the title band and the legend margin are not part of it.
+Rect2Dd SolveLabelBounds(const Rect2Dd& plotArea, const ChartMargins& contentMargins,
+                         const Rect2Dd& chartArea);
+
 } // namespace UltraCanvas

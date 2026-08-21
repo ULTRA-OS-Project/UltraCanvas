@@ -1,13 +1,15 @@
 // include/Plugins/Charts/UltraCanvasFunnelChart.h
 // Funnel chart: a staged process whose value shrinks from one step to the next
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasChartDataStructures.h"
 #include "UltraCanvasTooltipManager.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -214,6 +216,8 @@ namespace UltraCanvas {
         HidePercentColumn
     };
 
+// Kept for API stability; SetLegendPosition() maps each value onto the shared
+// ChartLegendPosition (Left/Center/Right become Start/Center/End on that edge).
     enum class FunnelLegendPosition {
         LegendTopLeft,
         LegendTopCenter,
@@ -361,10 +365,10 @@ namespace UltraCanvas {
         bool highlightBottleneck = false;
         Color bottleneckColor = Color(215, 85, 75, 255);
 
-        // Legend
-        bool showLegend = false;
-        FunnelLegendPosition legendPosition = FunnelLegendPosition::LegendTopCenter;
-        double legendFontSize = 10.0;
+        // Legend - the shared ChartLegend component; the public
+        // FunnelLegendPosition API maps onto its ChartLegendPosition
+        ChartLegend legend;
+        double legendInset = 0.0;   // Measured height the legend consumes at its edge
 
         // Card rows (FunnelShapeMode::CardRows)
         Color cardFillColor = Color(255, 255, 255, 255);
@@ -505,7 +509,7 @@ namespace UltraCanvas {
 
         // ===== LEGEND =====
         void SetShowLegend(bool show);
-        bool GetShowLegend() const { return showLegend; }
+        bool GetShowLegend() const { return legend.IsVisible(); }
         void SetLegendPosition(FunnelLegendPosition position);
         void SetLegendFontSize(double size);
 
@@ -561,6 +565,12 @@ namespace UltraCanvas {
         double GetMarginEnd() const;      // After it
         double GetMarginFlowStart() const;
         double GetMarginFlowEnd() const;
+
+        // ===== LEGEND (shared ChartLegend component) =====
+        bool LegendAtTop() const;
+        Rect2Dd LegendArea() const;
+        void RebuildLegendEntries();
+        void UpdateLegendLayout(IRenderContext* ctx);
         bool OutsideTextTakesStartColumn() const;
         bool OutsideTextTakesEndColumn() const;
         bool PercentTakesEndColumn() const;
@@ -589,7 +599,6 @@ namespace UltraCanvas {
         void RenderDescriptions(IRenderContext* ctx);
         void RenderBadges(IRenderContext* ctx);
         void RenderTerminalCallout(IRenderContext* ctx);
-        void RenderLegend(IRenderContext* ctx);
         void RenderTitle(IRenderContext* ctx);
 
         void DrawPolygon(IRenderContext* ctx, const std::vector<Point2Dd>& points,

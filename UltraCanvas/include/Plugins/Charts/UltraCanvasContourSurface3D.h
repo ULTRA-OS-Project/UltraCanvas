@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasContourSurface3D.h
 // 3D contour surface element: renders a scalar grid as a shaded height-field
 // coloured by contour band, with optional wireframe, isolines drawn onto the
-// surface, perspective axes and a band legend.
+// surface, perspective axes and a colour-bar legend.
 //
 // The renderer is pure software (painter's algorithm over IRenderContext), so
 // it works in every build regardless of ULTRACANVAS_ENABLE_GL. A height field
@@ -10,12 +10,14 @@
 // surfaces keep it cheap. Isolines are emitted per cell immediately after their
 // quad, so they are occluded correctly without a depth buffer.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend ColorBar mode.
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/UltraCanvasColormap.h"
 #include "Plugins/Charts/UltraCanvasContourGrid.h"
 #include "Plugins/Charts/UltraCanvasMarchingSquares.h"
@@ -36,11 +38,11 @@ namespace UltraCanvas {
         Smooth       // continuous colour-map value per quad
     };
 
-// Legend placement for the band list.
+// Legend placement for the colour key (drawn by the shared ChartLegend).
     enum class SurfaceLegendMode {
         NoLegend,
-        Horizontal,  // a row of swatches under the plot
-        Vertical     // a column of swatches on the right
+        Horizontal,  // a horizontal colour bar under the plot
+        Vertical     // a vertical colour bar on the right
     };
 
 // =============================================================================
@@ -112,8 +114,9 @@ namespace UltraCanvas {
         SurfaceLegendMode legendMode = SurfaceLegendMode::Horizontal;
         std::string legendTitle;
         int legendDecimals = 0;
-        int legendSwatchSize = 12;
         Color titleColor = Color(0, 0, 0, 255);
+        ChartLegend legend;                 // shared component, ColorBar mode
+        Rect2Dd legendContentArea;          // area Measure()d, reused by Render()
 
         // ---- interaction state ----
         bool dragging = false;
@@ -258,7 +261,6 @@ namespace UltraCanvas {
         size_t BandCount() const;
         void BandRange(size_t band, double& lo, double& hi) const;
         Color BandColor(size_t band) const;
-        std::string BandIntervalText(size_t band) const;
 
         // ---- rendering stages ----
         ChartPlotArea ComputeSurfaceArea(IRenderContext* ctx);
@@ -268,12 +270,10 @@ namespace UltraCanvas {
                             const Vec3& from, const Vec3& to,
                             const std::vector<std::string>& tickTexts,
                             const std::string& title, bool outwardLeft);
-        void RenderLegend(IRenderContext* ctx, const ChartPlotArea& area);
+        // Push the chart's legend configuration into the shared component.
+        void SyncLegend();
 
         std::string FormatTick(double v, const ValueFormatter& fn) const;
-
-        double legendReservedH = 0.0;
-        double legendReservedW = 0.0;
     };
 
 // =============================================================================

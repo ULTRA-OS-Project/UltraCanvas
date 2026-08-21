@@ -17,15 +17,18 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
-// Version: 1.1.0
-// Last Modified: 2026-08-10
+// Version: 1.2.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartHighlights.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
 #include "UltraCanvasElementProperties.h"
 #include "UltraCanvasTimer.h"
 #include <cstdint>
@@ -43,6 +46,7 @@ struct ChartEngineFrame {
     const ChartAxisSet* axes = nullptr;
     const IChartProjection* projection = nullptr;
     const ChartLabelPlan* labelPlan = nullptr;
+    const ChartTheme* theme = nullptr;
     double animationProgress = 1.0;
     uint64_t generation = 0;
 };
@@ -61,16 +65,11 @@ struct ChartLimiter {
     Color captionColor = Color(120, 40, 40, 255);
 };
 
-// How a legend swatch is painted, so a series drawn with a non-solid fill is
-// represented faithfully instead of by a colour square that matches nothing.
-enum class ChartLegendSwatch { Solid, Gradient, Outline, Hatched, Image };
-
-struct ChartLegendEntry {
-    std::string label;
-    Color color;
-    ChartLegendSwatch swatch = ChartLegendSwatch::Solid;
-    std::string imagePath;           // ChartLegendSwatch::Image only
-};
+// The legend is the shared ChartLegend component
+// (Plugins/Charts/UltraCanvasChartLegend.h): ChartLegendEntry, LegendSwatch
+// (Square, Circle, Ring, Line, DashedLine, Marker, Glyph, Gradient, Outline,
+// Hatched, Image), ChartLegendPosition (12 outside placements + 4 insets) and
+// LegendOrientation all come from there.
 
 // =============================================================================
 // ENGINE ELEMENT
@@ -113,6 +112,22 @@ public:
     void SetProjectionKind(ChartProjectionKind kind);
     ChartProjectionKind GetProjectionKind() const;
 
+    // Theme and palette (Engine/UltraCanvasChartTheme.h). A theme change is
+    // repaint-only - it never re-runs layout or the label solver. Content
+    // charts draw their series from Palette() (typically
+    // Palette().ColorAt(i, count)) and refresh anything cached from the
+    // theme - legend entry colours above all - in OnThemeChanged().
+    void SetTheme(const ChartTheme& theme);
+    // Resolves a built-in theme by name ("Dark", "Ocean", ...); returns false
+    // and changes nothing when the name is unknown. Also reachable through
+    // the named-property surface as SetProperty("theme", name).
+    bool SetTheme(const std::string& themeName);
+    const ChartTheme& GetTheme() const { return engineTheme; }
+    // Replace only the series palette, keeping the theme's furniture.
+    void SetPalette(const ChartPalette& palette);
+    const ChartPalette& Palette() const { return engineTheme.palette; }
+    virtual void OnThemeChanged() {}
+
     void SetLabelPolicy(const ChartLabelPolicy& policy);
     void SetLabelOptions(const LabelPlacementOptions& options);
     const ChartLabelPlan& GetLabelPlan() const { return labelPlan; }
@@ -124,8 +139,39 @@ public:
     size_t AddLimiter(const ChartLimiter& limiter);
     void ClearLimiters();
 
+    // Highlights (Engine/UltraCanvasChartHighlights.h): group washes drawn
+    // under the grid (zSlot 200) or overlaid above the content (zSlot 700),
+    // clipped to the plot. Computed shapes (ConfidenceEllipse, Hull, Blob,
+    // PointHalo) take value-space member points mapped through the axes at
+    // xAxisIndex/yAxisIndex; a highlight's label rides the label plan as
+    // ChartLabelClass::HighlightLabel.
+    size_t AddHighlight(const ChartHighlight& highlight);
+    void ClearHighlights();
+
+    // Legend - the shared ChartLegend component drawn and laid out by the
+    // engine: an outside placement reserves its edge in the layout
+    // negotiation, an inset placement floats over the plot and reserves
+    // nothing, and either way the legend box is an obstacle the solved
+    // labels steer around.
     void SetShowLegend(bool show);
     void SetLegendEntries(const std::vector<ChartLegendEntry>& entries);
+    void SetLegendPosition(ChartLegendPosition position);
+    void SetLegendOrientation(LegendOrientation orientation);
+    void SetLegendTitle(const std::string& title);
+    // Discrete entries (default), a continuous ColorBar, or a bubble
+    // SizeLegend - configure the latter two through
+    // Legend().SetColorBar(...) / Legend().SetSizeScale(...).
+    void SetLegendMode(ChartLegendMode mode);
+    // The component itself, for the long tail (style, value text, interval
+    // entries, max-entries overflow, label formatter). Mutations that change
+    // the legend's size need MarkEngineDirty(ChartDirty::Geometry) after.
+    ChartLegend& Legend() { return engineLegend; }
+    const ChartLegend& GetLegend() const { return engineLegend; }
+    // The engine owns legend interaction: hovering an entry highlights it
+    // (repaint-only), clicking one toggles its enabled state (the entry
+    // renders dimmed) and notifies the chart, which decides what "disabled"
+    // means - typically hide the series and MarkEngineDirty(ChartDirty::Data).
+    virtual void OnLegendEntryToggled(size_t entryIndex, bool enabled) {}
 
     // =========================================================================
     // ANIMATION DRIVER
@@ -203,6 +249,7 @@ protected:
     virtual void RenderPhaseOver(IRenderContext* ctx);
 
     virtual void RenderEngineBackground(IRenderContext* ctx);
+    virtual void RenderEngineHighlights(IRenderContext* ctx, int zSlot);
     virtual void RenderEngineGrid(IRenderContext* ctx);
     virtual void RenderEngineLimiters(IRenderContext* ctx);
     // Edge axes render under the content (slot 500); in-plot axes render in
@@ -212,16 +259,17 @@ protected:
     virtual void RenderEngineTitle(IRenderContext* ctx);
     virtual void RenderPlannedLabels(IRenderContext* ctx);
     virtual void RenderEngineLegend(IRenderContext* ctx);
-    virtual void RenderLegendSwatch(IRenderContext* ctx, const Rect2Dd& box,
-                                    const ChartLegendEntry& entry);
 
     // Layout/plan lifecycle. Both are cheap no-ops when nothing is dirty.
     void EnsureEngineLayout(IRenderContext* ctx);
     void EnsureLabelPlan(IRenderContext* ctx);
 
-    Rect2Dd LegendRect() const { return legendRect; }
+    // The measured legend box from the last layout (zero-sized when hidden).
+    Rect2Dd LegendRect() const { return legendBox; }
 
-    // Styling shared by the engine layers (theme work will lift these later).
+    // Styling shared by the engine layers. The colours are working copies
+    // filled from the active theme by SetTheme(); a chart may still override
+    // one after setting a theme.
     float axisFontSize = 11.0f;
     float titleFontSize = 16.0f;
     Color axisLineColor = Color(60, 60, 60, 255);
@@ -236,6 +284,7 @@ protected:
 
 private:
     // Engine state
+    ChartTheme engineTheme;
     ChartAxisSet engineAxes;
     std::unique_ptr<IChartProjection> engineProjection;
     ChartProjectionKind projectionKind = ChartProjectionKind::Vertical;
@@ -243,16 +292,27 @@ private:
     LabelPlacementOptions labelOptions;
     ChartLabelPlan labelPlan;
     ChartEngineFrame frame;
+    // What the content itself reserved in MeasureContent - the bands its
+    // solved labels may spill into (see BuildLabelPlan).
+    ChartMargins contentMargins;
     ChartDirty pendingDirty = ChartDirty::All;
     uint64_t generation = 0;
     int lastLayoutWidth = -1, lastLayoutHeight = -1;
 
     size_t gridAxisIndex = static_cast<size_t>(-1);
     std::vector<ChartLimiter> limiters;
+    std::vector<ChartHighlight> highlights;
+    // A highlight's value-space point on the projection's screen, or invalid
+    // (NaN) when its axes are out of range.
+    Point2Dd MapHighlightPoint(const ChartHighlight& highlight,
+                               const Point2Dd& value) const;
 
-    bool showLegend = false;
-    std::vector<ChartLegendEntry> legendEntries;
-    Rect2Dd legendRect;
+    // The shared legend component; the engine owns its layout: measured
+    // against legendArea (the element minus the title band) during the
+    // layout negotiation, its box cached for the label plan's obstacle.
+    ChartLegend engineLegend;
+    Rect2Dd legendArea;
+    Rect2Dd legendBox;
 
     // Animation driver state
     bool engineAnimating = false;

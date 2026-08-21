@@ -1,7 +1,7 @@
 // UltraCanvasArcDiagram.cpp
 // Arc diagram — nodes on a baseline, edges as cubic Bezier arcs above/below
-// Version: 1.0.2
-// Last Modified: 2026-05-17
+// Version: 1.1.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 // Changes: P1 degree sizing, P2 vertical labels, P3 opacity weight, P4 semicircle mode,
 //          P5 axis arrow, P6 mid-arc arrowhead, P7 self-loops, P8 parallel bundles,
@@ -9,6 +9,7 @@
 //          P11 connected-edge highlight on node hover/select,
 //          P12 auto value/percentage label at arc apex (zenit),
 //          P13 focus mode — dim non-involved nodes/arcs/labels to a user-defined gray
+// V1.1.0: legend: migrated to the shared ChartLegend component
 
 #include "Plugins/Diagrams/UltraCanvasArcDiagram.h"
 #include <algorithm>
@@ -785,37 +786,51 @@ namespace UltraCanvas {
         }
     }
 
-    // P10 — color legend: colored swatches + labels
-    void UltraCanvasArcDiagram::DrawLegend(IRenderContext* ctx) const {
-        if (!style.showLegend || style.legendEntries.empty()) return;
+    // P10 — color legend, drawn by the shared ChartLegend component.
+    // The public ArcDiagramStyle legend API is unchanged and mapped here:
+    //   * legendEntries              → ChartLegendEntry list (same labels/colors)
+    //   * legendX/legendY (floating) → the closest ChartLegendPosition Inset
+    //     corner (picked by the point's quadrant), with hostGap approximating
+    //     the old offset from that corner
+    //   * legendFontSize/legendTextColor → ChartLegendStyle text settings
+    void UltraCanvasArcDiagram::SyncLegend() {
+        const float w = static_cast<float>(GetWidth());
+        const float h = static_cast<float>(GetHeight());
+        const bool nearLeft = style.legendX <= w * 0.5f;
+        const bool nearTop  = style.legendY <= h * 0.5f;
+        legend.SetPosition(nearTop
+                           ? (nearLeft ? ChartLegendPosition::InsetTopLeft
+                                       : ChartLegendPosition::InsetTopRight)
+                           : (nearLeft ? ChartLegendPosition::InsetBottomLeft
+                                       : ChartLegendPosition::InsetBottomRight));
+        legend.SetOrientation(LegendOrientation::Vertical);  // old panel was a vertical list
 
-        float swatchW = 14.0f;
-        float swatchH = 14.0f;
-        float gap     = 4.0f;
-        float rowH    = swatchH + gap;
-        float x       = style.legendX;
-        float y       = style.legendY;
+        // Map the old hand-drawn panel's look onto ChartLegendStyle.
+        ChartLegendStyle ls;
+        ls.fontFamily = "Sans";                              // old SetFontFace("Sans", ...)
+        ls.fontSize = style.legendFontSize;
+        ls.textColor = style.legendTextColor;
+        ls.swatchWidth = 14.0f;                              // old swatchW/swatchH
+        ls.swatchHeight = 14.0f;
+        ls.swatchTextGap = 4.0f;                             // old gap
+        ls.entrySpacingY = 4.0f;                             // old row gap
+        ls.paddingX = 0.0f;                                  // old panel had no box chrome
+        ls.paddingY = 0.0f;
+        ls.drawSwatchBorder = true;
+        ls.swatchBorderColor = Color(120, 120, 120, 180);    // old swatch outline
+        ls.swatchBorderWidth = 0.5f;
+        const float gapX = nearLeft ? style.legendX : std::max(0.0f, w - style.legendX);
+        const float gapY = nearTop  ? style.legendY : std::max(0.0f, h - style.legendY);
+        ls.hostGap = std::max(0.0f, std::min(gapX, gapY));
+        legend.SetStyle(ls);
 
-        ctx->SetFontSize(style.legendFontSize);
-        ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-
+        std::vector<ChartLegendEntry> list;
+        list.reserve(style.legendEntries.size());
         for (const auto& entry : style.legendEntries) {
-            // Swatch
-            ctx->SetFillPaint(entry.color);
-            ctx->FillRectangle(Rect2Dd(x, y, swatchW, swatchH));
-            ctx->SetStrokePaint(Color(120, 120, 120, 180));
-            ctx->SetStrokeWidth(0.5f);
-            ctx->DrawRectangle(Rect2Dd(x, y, swatchW, swatchH));
-
-            // Label
-            ctx->SetTextPaint(style.legendTextColor);
-            auto dims = ctx->GetTextLineDimensions(entry.label);
-            double tw = dims.width, th = dims.height;
-            ctx->DrawText(entry.label,
-                          Point2Dd(x + swatchW + gap, y + swatchH * 0.5f - th * 0.5f));
-
-            y += rowH;
+            list.emplace_back(entry.label, entry.color, LegendSwatch::Square);
         }
+        legend.SetEntries(list);
+        legend.SetVisible(true);
     }
 
     void UltraCanvasArcDiagram::DrawTooltip(IRenderContext* ctx) const {
@@ -862,7 +877,16 @@ namespace UltraCanvas {
         DrawEdges(ctx);
         DrawNodes(ctx);
         DrawLabels(ctx);
-        DrawLegend(ctx);            // P10
+
+        // P10 — shared ChartLegend, floating over the diagram (Inset positions
+        // consume no layout space, matching the old free-floating panel)
+        if (style.showLegend && !style.legendEntries.empty()) {
+            SyncLegend();
+            Rect2Dd contentArea(0.0, 0.0, GetWidth(), GetHeight());
+            legend.Measure(ctx, contentArea);
+            legend.Render(ctx, contentArea);
+        }
+
         DrawTooltip(ctx);
 
         ctx->PopState();

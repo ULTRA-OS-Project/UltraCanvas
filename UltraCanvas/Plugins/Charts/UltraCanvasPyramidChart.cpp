@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasPyramidChart.cpp
 // Pyramid diagram implementation
-// Version: 1.0.0
-// Last Modified: 2026-07-31
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasPyramidChart.h"
 
@@ -186,6 +187,19 @@ namespace {
         animationComplete = true;
         animationDuration = 0.7f;
         palette = PresetPalette(PyramidPalettePreset::SpectrumPalette);
+
+        // Legend defaults match the retired private implementation: hidden,
+        // bottom centre, 10px text with font-sized borderless swatches, level
+        // label colour for the entry text.
+        legend.SetVisible(false);
+        legend.SetPosition(ChartLegendPosition::BottomCenter);
+        ChartLegendStyle legendStyle;
+        legendStyle.fontSize = 10.0f;
+        legendStyle.swatchWidth = 10.0f;
+        legendStyle.swatchHeight = 10.0f;
+        legendStyle.drawSwatchBorder = false;
+        legendStyle.textColor = levelLabelColor;
+        legend.SetStyle(legendStyle);
     }
 
 // =============================================================================
@@ -613,6 +627,8 @@ namespace {
 
     void UltraCanvasPyramidChart::SetLevelLabelColor(const Color& color) {
         levelLabelColor = color;
+        // The legacy legend drew its entry text in the level label colour
+        legend.GetStyle().textColor = color;
         RequestRedraw();
     }
 
@@ -872,19 +888,40 @@ namespace {
     }
 
     void UltraCanvasPyramidChart::SetShowLegend(bool show) {
-        showLegend = show;
+        legend.SetVisible(show);
         InvalidateCache();
         RequestRedraw();
     }
 
     void UltraCanvasPyramidChart::SetLegendPosition(PyramidLegendPosition position) {
-        legendPosition = position;
+        // Closest ChartLegendPosition match: Left/Center/Right map onto
+        // Start/Center/End along the same edge.
+        switch (position) {
+            case PyramidLegendPosition::LegendTopLeft:
+                legend.SetPosition(ChartLegendPosition::TopStart); break;
+            case PyramidLegendPosition::LegendTopCenter:
+                legend.SetPosition(ChartLegendPosition::TopCenter); break;
+            case PyramidLegendPosition::LegendTopRight:
+                legend.SetPosition(ChartLegendPosition::TopEnd); break;
+            case PyramidLegendPosition::LegendBottomLeft:
+                legend.SetPosition(ChartLegendPosition::BottomStart); break;
+            case PyramidLegendPosition::LegendBottomRight:
+                legend.SetPosition(ChartLegendPosition::BottomEnd); break;
+            case PyramidLegendPosition::LegendBottomCenter:
+            default:
+                legend.SetPosition(ChartLegendPosition::BottomCenter); break;
+        }
         InvalidateCache();
         RequestRedraw();
     }
 
     void UltraCanvasPyramidChart::SetLegendFontSize(double size) {
-        legendFontSize = Clamp(size, 6.0, 24.0);
+        double clamped = Clamp(size, 6.0, 24.0);
+        ChartLegendStyle& style = legend.GetStyle();
+        style.fontSize = static_cast<float>(clamped);
+        // The legacy legend sized its swatches to the font
+        style.swatchWidth = static_cast<float>(clamped);
+        style.swatchHeight = static_cast<float>(clamped);
         InvalidateCache();
         RequestRedraw();
     }
@@ -1009,6 +1046,9 @@ namespace {
         }
     }
 
+// The shared legend always occupies the top or bottom screen edge, so its
+// measured inset comes out of the flow margins of a vertical pyramid and out
+// of the cross margins of a horizontal one.
     double UltraCanvasPyramidChart::GetMarginStart() const {
         double margin = kEdgePadding;
         if (CalloutsTakeStartColumn()) margin += calloutColumnWidth + kColumnGap + kConnectorRoom;
@@ -1018,6 +1058,7 @@ namespace {
             badgePlacement == PyramidBadgePlacement::BadgeOutsideStart) {
             margin += badgeRadius * 2.4 + kColumnGap;
         }
+        if (!IsVerticalPyramid() && LegendAtTop()) margin += legendInset;
         return margin;
     }
 
@@ -1033,17 +1074,14 @@ namespace {
         if (shapeMode == PyramidShapeMode::Pyramid3D) {
             margin += depth3D * std::cos(angle3D * M_PI / 180.0) + 4.0;
         }
+        if (!IsVerticalPyramid() && !LegendAtTop()) margin += legendInset;
         return margin;
     }
 
     double UltraCanvasPyramidChart::GetMarginFlowStart() const {
         double margin = chartTitle.empty() ? kEdgePadding : 34.0;
         if (!subtitle.empty()) margin += subtitleFontSize * 1.9;
-        if (showLegend && (legendPosition == PyramidLegendPosition::LegendTopLeft ||
-                           legendPosition == PyramidLegendPosition::LegendTopCenter ||
-                           legendPosition == PyramidLegendPosition::LegendTopRight)) {
-            margin += legendFontSize * 2.4;
-        }
+        if (IsVerticalPyramid() && LegendAtTop()) margin += legendInset;
         if (shapeMode == PyramidShapeMode::Pyramid3D) {
             margin += depth3D * std::sin(angle3D * M_PI / 180.0) + 4.0;
         }
@@ -1052,13 +1090,82 @@ namespace {
 
     double UltraCanvasPyramidChart::GetMarginFlowEnd() const {
         double margin = kEdgePadding;
-        if (showLegend && (legendPosition == PyramidLegendPosition::LegendBottomLeft ||
-                           legendPosition == PyramidLegendPosition::LegendBottomCenter ||
-                           legendPosition == PyramidLegendPosition::LegendBottomRight)) {
-            margin += legendFontSize * 2.4;
-        }
+        if (IsVerticalPyramid() && !LegendAtTop()) margin += legendInset;
         if (showBasePlinth) margin += 14.0;
         return margin;
+    }
+
+// =============================================================================
+// LEGEND (shared ChartLegend component)
+// =============================================================================
+
+    bool UltraCanvasPyramidChart::LegendAtTop() const {
+        switch (legend.GetPosition()) {
+            case ChartLegendPosition::TopStart:
+            case ChartLegendPosition::TopCenter:
+            case ChartLegendPosition::TopEnd:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+// The strip the legend may occupy: the element bounds inset by the edge
+// padding, starting below the title and subtitle.
+    Rect2Dd UltraCanvasPyramidChart::LegendArea() const {
+        double top = chartTitle.empty() ? kEdgePadding : 34.0;
+        if (!subtitle.empty()) top += subtitleFontSize * 1.9;
+        return Rect2Dd(kEdgePadding, top,
+                       std::max(1.0, static_cast<double>(GetWidth()) - 2.0 * kEdgePadding),
+                       std::max(1.0, static_cast<double>(GetHeight()) - top - kEdgePadding));
+    }
+
+// A stacked pyramid explains its segments; a plain one explains its tiers.
+// Labels and colours match what the bands draw, palette indices included.
+// Rebuilt with the geometry so the two can never disagree.
+    void UltraCanvasPyramidChart::RebuildLegendEntries() {
+        std::vector<ChartLegendEntry> entries;
+        for (const auto& geo : geometry) {
+            const PyramidLevel& level = pyramidDataSource->GetLevel(geo.dataIndex);
+            if (!level.HasSegments()) continue;
+            for (size_t s = 0; s < level.segments.size(); ++s) {
+                const auto& segment = level.segments[s];
+                bool seen = false;
+                for (const auto& entry : entries) {
+                    if (entry.label == segment.label) { seen = true; break; }
+                }
+                if (seen) continue;
+                Color color = segment.color.a > 0
+                        ? segment.color
+                        : Lighten(geo.color, 0.36 * static_cast<double>(s) /
+                                             std::max<size_t>(1, level.segments.size() - 1));
+                entries.emplace_back(segment.label, color, LegendSwatch::Square);
+            }
+        }
+        if (entries.empty()) {
+            for (const auto& geo : geometry) {
+                entries.emplace_back(pyramidDataSource->GetLevel(geo.dataIndex).levelLabel,
+                                     geo.color, LegendSwatch::Square);
+            }
+        }
+        legend.SetEntries(entries);
+    }
+
+// Measure the legend and reserve the space it consumes. The measured inset
+// feeds the margins, so a change re-runs the geometry pass before the frame
+// is drawn - Measure() is cached, so this settles immediately.
+    void UltraCanvasPyramidChart::UpdateLegendLayout(IRenderContext* ctx) {
+        double inset = 0.0;
+        if (legend.IsVisible() && legend.GetEntryCount() > 0) {
+            Rect2Dd area = LegendArea();
+            legend.Measure(ctx, area);
+            inset = area.height - legend.RemainingArea(area).height;
+        }
+        if (std::fabs(inset - legendInset) > 0.5) {
+            legendInset = inset;
+            InvalidateCache();
+            UpdateRenderingCache();
+        }
     }
 
     ChartPlotArea UltraCanvasPyramidChart::CalculatePlotArea() {
@@ -1268,7 +1375,10 @@ namespace {
         geometry.clear();
         apexCapPolygon.clear();
         topHeavyIndex = -1;
-        if (!pyramidDataSource || displayOrder.empty()) return;
+        if (!pyramidDataSource || displayOrder.empty()) {
+            legend.ClearEntries();
+            return;
+        }
 
         size_t n = displayOrder.size();
         valuesAvailable = !pyramidDataSource->IsValueless();
@@ -1440,6 +1550,8 @@ namespace {
         for (size_t i = 0; i < n; ++i) {
             geometry[i].color = ResolveLevelColor(i, geometry[i].dataIndex, geometry[i].metrics);
         }
+
+        RebuildLegendEntries();
     }
 
     void UltraCanvasPyramidChart::UpdateRenderingCache() {
@@ -1777,6 +1889,9 @@ namespace {
     void UltraCanvasPyramidChart::RenderChart(IRenderContext* ctx) {
         if (!ctx || geometry.empty()) return;
 
+        // The legend consumes real space, so its measured layout comes first
+        UpdateLegendLayout(ctx);
+
         LayoutCallouts(ctx);
 
         if (shapeMode == PyramidShapeMode::CardRows) RenderCardBackgrounds(ctx);
@@ -1800,7 +1915,7 @@ namespace {
             RenderBadges(ctx);
         }
         RenderCallouts(ctx);
-        if (showLegend) RenderLegend(ctx);
+        legend.Render(ctx, LegendArea());   // No-op while hidden or empty
 
         // Animation drives itself: keep asking for frames until every tier is in
         if (animationEnabled && !animationComplete) RequestRedraw();
@@ -2670,84 +2785,6 @@ namespace {
                     cursorY += lineHeight;
                 }
             }
-        }
-        ctx->PopState();
-    }
-
-    void UltraCanvasPyramidChart::RenderLegend(IRenderContext* ctx) {
-        if (geometry.empty()) return;
-
-        // A stacked pyramid explains its segments; a plain one explains its tiers
-        struct Entry { std::string label; Color color; };
-        std::vector<Entry> entries;
-        for (const auto& geo : geometry) {
-            const PyramidLevel& level = pyramidDataSource->GetLevel(geo.dataIndex);
-            if (!level.HasSegments()) continue;
-            for (size_t s = 0; s < level.segments.size(); ++s) {
-                const auto& segment = level.segments[s];
-                bool seen = false;
-                for (const auto& entry : entries) {
-                    if (entry.label == segment.label) { seen = true; break; }
-                }
-                if (seen) continue;
-                Color color = segment.color.a > 0
-                        ? segment.color
-                        : Lighten(geo.color, 0.36 * static_cast<double>(s) /
-                                             std::max<size_t>(1, level.segments.size() - 1));
-                entries.push_back({segment.label, color});
-            }
-        }
-        if (entries.empty()) {
-            for (const auto& geo : geometry) {
-                entries.push_back({pyramidDataSource->GetLevel(geo.dataIndex).levelLabel,
-                                   geo.color});
-            }
-        }
-
-        ctx->PushState();
-        ctx->SetFontSize(legendFontSize);
-
-        const double swatch = legendFontSize;
-        const double textGap = 6.0;
-        const double itemGap = 16.0;
-
-        double totalWidth = 0.0;
-        for (const auto& entry : entries) {
-            totalWidth += swatch + textGap + ctx->GetTextLineDimensions(entry.label).width + itemGap;
-        }
-        totalWidth = std::max(0.0, totalWidth - itemGap);
-
-        bool atTop = (legendPosition == PyramidLegendPosition::LegendTopLeft ||
-                      legendPosition == PyramidLegendPosition::LegendTopCenter ||
-                      legendPosition == PyramidLegendPosition::LegendTopRight);
-
-        double x;
-        switch (legendPosition) {
-            case PyramidLegendPosition::LegendTopLeft:
-            case PyramidLegendPosition::LegendBottomLeft:
-                x = kEdgePadding;
-                break;
-            case PyramidLegendPosition::LegendTopRight:
-            case PyramidLegendPosition::LegendBottomRight:
-                x = static_cast<double>(GetWidth()) - kEdgePadding - totalWidth;
-                break;
-            default:
-                x = (static_cast<double>(GetWidth()) - totalWidth) / 2.0;
-                break;
-        }
-        x = std::max(2.0, x);
-
-        double y = atTop ? std::max(2.0, GetMarginFlowStart() - legendFontSize * 2.0)
-                         : static_cast<double>(GetHeight()) - kEdgePadding - swatch;
-
-        for (const auto& entry : entries) {
-            ctx->DrawFilledRectangle(Rect2Dd(x, y, swatch, swatch), entry.color, 0.0f,
-                                     Colors::Transparent, 3.0f);
-            ctx->SetTextPaint(levelLabelColor);
-            Size2Di size = ctx->GetTextLineDimensions(entry.label);
-            ctx->DrawText(entry.label,
-                          Point2Dd(x + swatch + textGap, y + (swatch - size.height) / 2.0));
-            x += swatch + textGap + size.width + itemGap;
         }
         ctx->PopState();
     }

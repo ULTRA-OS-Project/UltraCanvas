@@ -3,13 +3,15 @@
 // the standard Kanban analytics chart. Binds directly to a KanbanDataSource
 // (deriving daily stage counts from its move history) or takes manual series,
 // and draws the classic Lead Time / Cycle Time / WIP span annotations.
-// Version: 1.0.0
-// Last Modified: 2026-07-30
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasKanbanBoard.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -54,6 +56,8 @@ namespace UltraCanvas {
 // STYLE SYSTEM
 // =============================================================================
 
+    // Kept for API compatibility; mapped internally onto the shared
+    // ChartLegendPosition (Right -> RightCenter, Hidden -> legend hidden).
     enum class CFDLegendPosition {
         Hidden,
         Right             // Boxed side panel with a dot per stage
@@ -89,6 +93,10 @@ namespace UltraCanvas {
         double yTickStep = 0;           // 0 = automatic "nice" step
 
         // ----- Legend -----
+        // These fields are mapped onto the shared ChartLegendStyle whenever a
+        // style is applied (SetStyle/StyleChanged); the legend itself is a
+        // shared ChartLegend that measures its own width, so legendWidth is
+        // only a historical upper bound and no longer enforced.
         CFDLegendPosition legendPosition = CFDLegendPosition::Right;
         Color legendPanelColor = Color(246, 246, 248);
         Color legendBorderColor = Color(225, 226, 230);
@@ -183,8 +191,12 @@ namespace UltraCanvas {
         CumulativeFlowChartStyle style;
         int hoveredPeriod = -1;
 
+        // Shared legend component (stage name + stage color per entry).
+        ChartLegend legend;
+
         // Resolved per-frame plot geometry.
         Rect2Dd plotRect;
+        Rect2Dd chartArea;      // Padded content area the legend carves from
         size_t periodCount = 0;
         double yMax = 0;
 
@@ -200,11 +212,11 @@ namespace UltraCanvas {
         double CrossingPeriod(size_t boundaryIndex, double value) const;
         int ResolveBoundary(int boundary) const;
 
+        void ApplyLegendStyle();
         void ComputePlot(IRenderContext* ctx);
         void RenderGridAndAxes(IRenderContext* ctx);
         void RenderBands(IRenderContext* ctx);
         void RenderMarkers(IRenderContext* ctx);
-        void RenderLegend(IRenderContext* ctx);
         void RenderAnnotations(IRenderContext* ctx);
         void DrawArrowHead(IRenderContext* ctx, const Point2Dd& tip,
                            double angle, const Color& color);
