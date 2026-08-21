@@ -72,12 +72,16 @@ namespace UltraCanvas {
         germanyChart->EnableAxisLabels(true);
         germanyChart->EnableCenterLine(true);
         germanyChart->SetBarSpacing(2);
+        germanyChart->EnableAverageAgeLine(true);
+        germanyChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
         // Add legend
         germanyChart->AddLegendItem("Males", Color(100, 150, 200));
         germanyChart->AddLegendItem("Male surplus", Color(70, 110, 160));
         germanyChart->AddLegendItem("Females", Color(220, 120, 140));
         germanyChart->AddLegendItem("Female surplus", Color(190, 90, 110));
+        germanyChart->AddLegendLineItem("Avg age males", Color(30, 80, 160));
+        germanyChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
         germanyChart->EnableLegend(true);
         germanyChart->SetLegendPosition("top-right");
 
@@ -124,12 +128,16 @@ namespace UltraCanvas {
         russiaChart->EnableAxisLabels(true);
         russiaChart->EnableCenterLine(true);
         russiaChart->SetBarSpacing(2);
+        russiaChart->EnableAverageAgeLine(true);
+        russiaChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
         // Add legend
         russiaChart->AddLegendItem("Males", Color(100, 150, 200));
         russiaChart->AddLegendItem("Male surplus", Color(70, 110, 160));
         russiaChart->AddLegendItem("Females", Color(220, 120, 140));
         russiaChart->AddLegendItem("Female surplus", Color(190, 90, 110));
+        russiaChart->AddLegendLineItem("Avg age males", Color(30, 80, 160));
+        russiaChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
         russiaChart->EnableLegend(true);
         russiaChart->SetLegendPosition("top-right");
 

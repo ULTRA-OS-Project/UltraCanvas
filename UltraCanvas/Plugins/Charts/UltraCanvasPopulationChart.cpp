@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <sstream>
 #include <iomanip>
 
@@ -67,6 +68,9 @@ namespace UltraCanvas {
             , showGrid(true)
             , showAxisLabels(true)
             , showCenterLine(true)
+            , showAverageAgeLine(false)
+            , maleAverageAgeLineColor(30, 80, 160)
+            , femaleAverageAgeLineColor(170, 40, 80)
             , barSpacing(2)
             , fontSize(10)
             , titleFontSize(16)
@@ -188,6 +192,16 @@ namespace UltraCanvas {
         showCenterLine = enable;
     }
 
+    void UltraCanvasPopulationChart::EnableAverageAgeLine(bool enable) {
+        showAverageAgeLine = enable;
+    }
+
+    void UltraCanvasPopulationChart::SetAverageAgeLineColors(const Color& maleColor,
+                                                             const Color& femaleColor) {
+        maleAverageAgeLineColor = maleColor;
+        femaleAverageAgeLineColor = femaleColor;
+    }
+
     void UltraCanvasPopulationChart::SetBarSpacing(int spacing) {
         barSpacing = spacing;
         layoutDirty = true;
@@ -213,6 +227,10 @@ namespace UltraCanvas {
     void UltraCanvasPopulationChart::AddLegendItem(const std::string& label, const Color& color) {
         legend.AddEntry(ChartLegendEntry(label, color, LegendSwatch::Square));
         layoutDirty = true;
+    }
+
+    void UltraCanvasPopulationChart::AddLegendLineItem(const std::string& label, const Color& color) {
+        legendItems.emplace_back(label, color, true);
     }
 
     void UltraCanvasPopulationChart::ClearLegend() {
@@ -271,6 +289,14 @@ namespace UltraCanvas {
         return GetTotalMalePopulation() + GetTotalFemalePopulation();
     }
 
+    double UltraCanvasPopulationChart::GetAverageMaleAge() const {
+        return PopulationChartUtils::CalculateAverageAge(ageGroups, true);
+    }
+
+    double UltraCanvasPopulationChart::GetAverageFemaleAge() const {
+        return PopulationChartUtils::CalculateAverageAge(ageGroups, false);
+    }
+
 // ===== INTERNAL CALCULATION METHODS =====
     void UltraCanvasPopulationChart::CalculateLayout() {
         // plotArea is the padded content area minus whatever an outside
@@ -297,6 +323,31 @@ namespace UltraCanvas {
     double UltraCanvasPopulationChart::ValueToPixels(double value) {
         if (maxAxisValue <= 0.0) return 0.0;
         return (value / maxAxisValue) * plotWidth;
+    }
+
+    bool UltraCanvasPopulationChart::GetYPositionForAge(double age, float& outY, int& outGroupIndex) {
+        int groupCount = static_cast<int>(ageGroups.size());
+        for (int i = 0; i < groupCount; i++) {
+            double lowerAge, upperAge;
+            if (!PopulationChartUtils::ParseAgeRange(ageGroups[i].AgeLabel, lowerAge, upperAge)) {
+                return false;
+            }
+            if (upperAge < 0.0) {
+                upperAge = lowerAge + 5.0;   // assumed span of the open-ended top group
+            }
+            if (age >= upperAge && i < groupCount - 1) {
+                continue;
+            }
+            double fraction = (age - lowerAge) / (upperAge - lowerAge);
+            fraction = std::max(0.0, std::min(1.0, fraction));
+            // Groups are stacked with the youngest at the bottom; within a bar
+            // the lower age bound maps to the bar bottom
+            float barTop = chartPaddingTop + (groupCount - 1 - i) * (barHeight + barSpacing);
+            outY = barTop + barHeight - static_cast<float>(fraction * barHeight);
+            outGroupIndex = i;
+            return true;
+        }
+        return false;
     }
 
     int UltraCanvasPopulationChart::GetAgeGroupIndexAt(int x, int y) {
@@ -344,7 +395,12 @@ namespace UltraCanvas {
         if (showCenterLine) {
             RenderCenterLine(ctx);
         }
-        legend.Render(ctx, contentArea);
+        if (showAverageAgeLine) {
+            RenderAverageAgeLines(ctx);
+        }
+        if (showLegend) {
+            RenderLegend(ctx);
+        }
     }
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
@@ -477,8 +533,87 @@ namespace UltraCanvas {
     void UltraCanvasPopulationChart::RenderCenterLine(IRenderContext* ctx) {
         ctx->SetStrokePaint(axisColor);
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawLine(Point2Dd(centerX, plotArea.y),
-                      Point2Dd(centerX, plotArea.y + plotArea.height));
+        ctx->DrawLine(Point2Dd(centerX, chartPaddingTop),
+                      Point2Dd(centerX, GetHeight() - chartPaddingBottom));
+    }
+
+    void UltraCanvasPopulationChart::RenderAverageAgeLines(IRenderContext* ctx) {
+        if (ageGroups.empty()) {
+            return;
+        }
+
+        ctx->SetFontSize(fontSize);
+
+        for (int side = 0; side < 2; side++) {
+            bool maleSide = (side == 0);
+            double avgAge = PopulationChartUtils::CalculateAverageAge(ageGroups, maleSide);
+            if (avgAge < 0.0) {
+                continue;
+            }
+
+            float y;
+            int groupIndex;
+            if (!GetYPositionForAge(avgAge, y, groupIndex)) {
+                continue;
+            }
+
+            // The bar extent includes the surplus overlay drawn beyond the base bar
+            const PopulationAgeGroup& group = ageGroups[groupIndex];
+            double barValue = maleSide ? group.MalePopulation + group.MaleSurplus
+                                       : group.FemalePopulation + group.FemaleSurplus;
+            float barExtent = static_cast<float>(ValueToPixels(barValue));
+
+            float outerX = maleSide ? centerX - plotWidth : centerX + plotWidth;
+            float barX = maleSide ? centerX - barExtent : centerX + barExtent;
+
+            const Color& lineColor = maleSide ? maleAverageAgeLineColor : femaleAverageAgeLineColor;
+            ctx->SetStrokePaint(lineColor);
+            ctx->SetStrokeWidth(1.5f);
+            ctx->SetLineDash(UCDashPattern({2.0, 3.0}));
+            ctx->DrawLine(Point2Dd(outerX, y), Point2Dd(barX, y));
+            ctx->SetLineDash(UCDashPattern::EMPTY);
+
+            // Average age value at the outer end of the line
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1) << avgAge;
+            std::string valueLabel = oss.str();
+            double textX = maleSide ? outerX : outerX - ctx->GetTextLineWidth(valueLabel);
+            ctx->SetTextPaint(lineColor);
+            ctx->DrawText(valueLabel, Point2Dd(textX, y - fontSize - 4));
+        }
+    }
+
+    void UltraCanvasPopulationChart::RenderLegend(IRenderContext* ctx) {
+        if (legendItems.empty()) {
+            return;
+        }
+
+        int legendX = GetWidth() - chartPaddingRight - 80;
+        int legendY = chartPaddingTop;
+        int itemHeight = 20;
+
+        ctx->SetFontSize(fontSize);
+
+        for (const auto& item : legendItems) {
+            if (item.IsLine) {
+                // Draw dashed line sample
+                ctx->SetStrokePaint(item.ItemColor);
+                ctx->SetStrokeWidth(1.5f);
+                ctx->SetLineDash(UCDashPattern({2.0, 3.0}));
+                ctx->DrawLine(Point2Dd(legendX, legendY + 7), Point2Dd(legendX + 15, legendY + 7));
+                ctx->SetLineDash(UCDashPattern::EMPTY);
+            } else {
+                // Draw color box
+                ctx->SetFillPaint(item.ItemColor);
+                ctx->FillRectangle(Rect2Dd(legendX, legendY, 15, 15));
+            }
+
+            // Draw label
+            ctx->SetTextPaint(textColor);
+            ctx->DrawText(item.Label, {legendX + 20, legendY});
+
+            legendY += itemHeight;
+        }
     }
 
     void UltraCanvasPopulationChart::RenderTooltip(IRenderContext* ctx, int groupIndex,
@@ -569,6 +704,59 @@ namespace UltraCanvas {
                 labels.push_back(oss.str());
             }
             return labels;
+        }
+
+        bool ParseAgeRange(const std::string& label, double& lowerAge, double& upperAge) {
+            const char* str = label.c_str();
+            char* end = nullptr;
+            lowerAge = std::strtod(str, &end);
+            if (end == str) {
+                return false;
+            }
+            while (*end == ' ') {
+                end++;
+            }
+            if (*end == '+') {
+                upperAge = -1.0;
+                return true;
+            }
+            if (*end != '-') {
+                return false;
+            }
+            const char* upperStr = end + 1;
+            upperAge = std::strtod(upperStr, &end);
+            if (end == upperStr) {
+                return false;
+            }
+            upperAge += 1.0;   // "25-29" covers ages 25 to just under 30
+            return upperAge > lowerAge;
+        }
+
+        double CalculateAverageAge(const std::vector<PopulationAgeGroup>& ageGroups, bool males) {
+            double weightedSum = 0.0;
+            double totalPopulation = 0.0;
+            double previousSpan = 5.0;
+
+            for (const auto& group : ageGroups) {
+                double lowerAge, upperAge;
+                if (!ParseAgeRange(group.AgeLabel, lowerAge, upperAge)) {
+                    return -1.0;
+                }
+                if (upperAge < 0.0) {
+                    upperAge = lowerAge + previousSpan;   // open-ended top group
+                } else {
+                    previousSpan = upperAge - lowerAge;
+                }
+                double midpoint = (lowerAge + upperAge) / 2.0;
+                double population = males ? group.MalePopulation : group.FemalePopulation;
+                weightedSum += midpoint * population;
+                totalPopulation += population;
+            }
+
+            if (totalPopulation <= 0.0) {
+                return -1.0;
+            }
+            return weightedSum / totalPopulation;
         }
 
         DemographicStats CalculateStatistics(const std::vector<PopulationAgeGroup>& ageGroups) {

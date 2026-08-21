@@ -53,9 +53,10 @@ namespace UltraCanvas {
     struct PopulationLegendItem {
         std::string Label;
         Color ItemColor;
+        bool IsLine;   // rendered as a dashed line sample instead of a color box
 
-        PopulationLegendItem(const std::string& label, const Color& color)
-                : Label(label), ItemColor(color) {}
+        PopulationLegendItem(const std::string& label, const Color& color, bool isLine = false)
+                : Label(label), ItemColor(color), IsLine(isLine) {}
     };
 
 // Population pyramid chart class - inherits from UltraCanvasUIElement
@@ -84,6 +85,9 @@ namespace UltraCanvas {
         bool showGrid;
         bool showAxisLabels;
         bool showCenterLine;
+        bool showAverageAgeLine;
+        Color maleAverageAgeLineColor;
+        Color femaleAverageAgeLineColor;
         bool layoutDirty = true;
         int barHeight;
         int barSpacing;
@@ -114,6 +118,7 @@ namespace UltraCanvas {
         void CalculateAutoScale();
         double ValueToPixels(double value);
         int GetAgeGroupIndexAt(int x, int y);
+        bool GetYPositionForAge(double age, float& outY, int& outGroupIndex);
 
         // Rendering methods
         void RenderBackground(IRenderContext* ctx);
@@ -123,6 +128,8 @@ namespace UltraCanvas {
         void RenderAgeGroups(IRenderContext* ctx);
         void RenderAgeGroup(IRenderContext* ctx, const PopulationAgeGroup& group, int yPosition);
         void RenderCenterLine(IRenderContext* ctx);
+        void RenderAverageAgeLines(IRenderContext* ctx);
+        void RenderLegend(IRenderContext* ctx);
         void RenderTooltip(IRenderContext* ctx, int groupIndex, int mouseX, int mouseY);
 
         // Helper methods
@@ -176,6 +183,8 @@ namespace UltraCanvas {
         void EnableGrid(bool enable);
         void EnableAxisLabels(bool enable);
         void EnableCenterLine(bool enable);
+        void EnableAverageAgeLine(bool enable);
+        void SetAverageAgeLineColors(const Color& maleColor, const Color& femaleColor);
         void SetBarHeight(int height);
         void SetBarSpacing(int spacing);
         void SetFontSize(int size);
@@ -189,6 +198,7 @@ namespace UltraCanvas {
         void SetLegendPosition(const std::string& position);
         void EnableLegend(bool enable);
         void AddLegendItem(const std::string& label, const Color& color);
+        void AddLegendLineItem(const std::string& label, const Color& color);
         void ClearLegend();
 
         // Layout configuration
@@ -204,6 +214,8 @@ namespace UltraCanvas {
         double GetTotalMalePopulation() const;
         double GetTotalFemalePopulation() const;
         double GetTotalPopulation() const;
+        double GetAverageMaleAge() const;
+        double GetAverageFemaleAge() const;
 
         // Override base class rendering
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -221,6 +233,16 @@ namespace UltraCanvas {
         // Generate age group labels
         std::vector<std::string> GenerateAgeLabels(int minAge, int maxAge,
                                                    int groupSize);
+
+        // Parse an age group label like "25-29" or "100+".
+        // "25-29" yields lowerAge=25, upperAge=30 (exclusive upper bound);
+        // open-ended labels ("100+") yield a negative upperAge.
+        bool ParseAgeRange(const std::string& label, double& lowerAge, double& upperAge);
+
+        // Population-weighted average age of one gender.
+        // Returns -1.0 when the labels cannot be parsed or the population is zero.
+        double CalculateAverageAge(const std::vector<PopulationAgeGroup>& ageGroups,
+                                   bool males);
 
         // Calculate demographic statistics
         struct DemographicStats {

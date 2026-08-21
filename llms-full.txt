@@ -29794,9 +29794,10 @@ Note: Unlike the chart elements in `UltraCanvasSpecificChartElements.h`, the pop
 - **Title, subtitle, axis labels:** Three independent text slots above the plot
 - **Configurable axis scale:** Fixed `SetMaxAxisValue()` or auto-scale via `EnableAutoScale()`
 - **Grid, axis labels, and centre line:** Each independently toggleable
-- **Legend system:** Add arbitrary legend items and choose position by string (`"top-right"`, etc.)
+- **Average age lines:** Optional dotted horizontal lines (`EnableAverageAgeLine()`) marking the population-weighted average age of males and females separately. Each line runs from the outer plot edge to the border of the bar at the height representing that average age, with the numeric value printed at its outer end. Ages are derived from the age-group labels (`"25-29"`, `"100+"`, …)
+- **Legend system:** Add arbitrary legend items (color boxes via `AddLegendItem()` or dashed line samples via `AddLegendLineItem()`) and choose position by string (`"top-right"`, etc.)
 - **Hover interaction:** `HitTest()` and internal hover index drive the tooltip overlay
-- **Demographic helpers:** `PopulationChartUtils` namespace ships `FormatPopulation`, `CalculateGenderRatio`, `GenerateAgeLabels`, and `CalculateStatistics`
+- **Demographic helpers:** `PopulationChartUtils` namespace ships `FormatPopulation`, `CalculateGenderRatio`, `GenerateAgeLabels`, `ParseAgeRange`, `CalculateAverageAge`, and `CalculateStatistics`
 
 ## Configuration Structs
 
@@ -29825,8 +29826,9 @@ struct PopulationAgeGroup {
 struct PopulationLegendItem {
     std::string Label;
     Color ItemColor;
+    bool IsLine;   // rendered as a dashed line sample instead of a color box
 
-    PopulationLegendItem(const std::string& label, const Color& color);
+    PopulationLegendItem(const std::string& label, const Color& color, bool isLine = false);
 };
 ```
 
@@ -29914,17 +29916,28 @@ void SetTextColor(const Color& color);
 void EnableGrid(bool enable);
 void EnableAxisLabels(bool enable);
 void EnableCenterLine(bool enable);
+void EnableAverageAgeLine(bool enable);   // dotted per-gender average age lines (off by default)
+void SetAverageAgeLineColors(const Color& maleColor, const Color& femaleColor);
 void SetBarHeight(int height);
 void SetBarSpacing(int spacing);
 void SetFontSize(int size);
 ```
+
+`EnableAverageAgeLine(true)` draws one dotted line per gender at the vertical
+position corresponding to that gender's population-weighted average age
+(interpolated inside the matching age-group bar). The male line runs from the
+left plot edge to the tip of the male bar, the female line from the right plot
+edge to the tip of the female bar, and the average age value is printed above
+the outer end of each line. The feature requires parseable age-group labels of
+the form `"lo-hi"` or `"lo+"`; with unparseable labels the lines are skipped.
 
 ### Legend
 
 ```cpp
 void SetLegendPosition(const std::string& position);   // e.g. "top-right"
 void EnableLegend(bool enable);
-void AddLegendItem(const std::string& label, const Color& color);
+void AddLegendItem(const std::string& label, const Color& color);       // color box
+void AddLegendLineItem(const std::string& label, const Color& color);   // dashed line sample
 void ClearLegend();
 ```
 
@@ -29948,6 +29961,8 @@ int HitTest(int x, int y);   // returns age-group index or -1
 double GetTotalMalePopulation() const;
 double GetTotalFemalePopulation() const;
 double GetTotalPopulation() const;
+double GetAverageMaleAge() const;     // -1.0 if labels unparseable or population is zero
+double GetAverageFemaleAge() const;
 ```
 
 ### Rendering & Events (Overrides)
@@ -29967,6 +29982,17 @@ namespace PopulationChartUtils {
     double CalculateGenderRatio(double males, double females);
     std::vector<std::string> GenerateAgeLabels(int minAge, int maxAge,
                                                int groupSize);
+
+    // Parse "25-29" -> lowerAge=25, upperAge=30 (exclusive upper bound);
+    // open-ended labels ("100+") yield a negative upperAge.
+    bool ParseAgeRange(const std::string& label,
+                       double& lowerAge, double& upperAge);
+
+    // Population-weighted average age of one gender; -1.0 when the
+    // labels cannot be parsed or the population is zero
+    double CalculateAverageAge(
+            const std::vector<PopulationAgeGroup>& ageGroups, bool males);
+
     DemographicStats CalculateStatistics(
             const std::vector<PopulationAgeGroup>& ageGroups);
     Color InterpolateGenderColor(const Color& baseColor,
@@ -30022,12 +30048,16 @@ germanyChart->EnableGrid(true);
 germanyChart->EnableAxisLabels(true);
 germanyChart->EnableCenterLine(true);
 germanyChart->SetBarSpacing(2);
+germanyChart->EnableAverageAgeLine(true);   // dotted per-gender average age lines
+germanyChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
 // Legend
 germanyChart->AddLegendItem("Males",          Color(100, 150, 200));
 germanyChart->AddLegendItem("Male surplus",   Color(70, 110, 160));
 germanyChart->AddLegendItem("Females",        Color(220, 120, 140));
 germanyChart->AddLegendItem("Female surplus", Color(190, 90, 110));
+germanyChart->AddLegendLineItem("Avg age males",   Color(30, 80, 160));
+germanyChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
 germanyChart->EnableLegend(true);
 germanyChart->SetLegendPosition("top-right");
 
@@ -30078,11 +30108,15 @@ russiaChart->EnableGrid(true);
 russiaChart->EnableAxisLabels(true);
 russiaChart->EnableCenterLine(true);
 russiaChart->SetBarSpacing(2);
+russiaChart->EnableAverageAgeLine(true);
+russiaChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
 russiaChart->AddLegendItem("Males",          Color(100, 150, 200));
 russiaChart->AddLegendItem("Male surplus",   Color(70, 110, 160));
 russiaChart->AddLegendItem("Females",        Color(220, 120, 140));
 russiaChart->AddLegendItem("Female surplus", Color(190, 90, 110));
+russiaChart->AddLegendLineItem("Avg age males",   Color(30, 80, 160));
+russiaChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
 russiaChart->EnableLegend(true);
 russiaChart->SetLegendPosition("top-right");
 
@@ -30127,8 +30161,9 @@ container->AddChild(statsLabel);
    - Base male/female bar drawn first
    - Surplus overlay drawn on top of the longer side using the surplus color
 6. **Center line** (`RenderCenterLine`) — toggled by `EnableCenterLine()`
-7. **Legend** (`RenderLegend`)
-8. **Tooltip** (`RenderTooltip`) — when `hoveredGroupIndex >= 0`
+7. **Average age lines** (`RenderAverageAgeLines`) — toggled by `EnableAverageAgeLine()`; dotted line per gender from the outer plot edge to the bar border at the interpolated average-age height
+8. **Legend** (`RenderLegend`) — color boxes, or dashed line samples for items added via `AddLegendLineItem()`
+9. **Tooltip** (`RenderTooltip`) — when `hoveredGroupIndex >= 0`
 
 Layout values (centerX, plot width, padding) are recomputed by `CalculateLayout()` when the `layoutDirty` flag is set.
 
