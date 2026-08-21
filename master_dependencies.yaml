@@ -258,3 +258,25 @@ windows_compatibility:
       platforms: ["linux"]
       # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
       apt: "winetricks"
+
+# ===== AI CAPABILITIES (UltraAI) =====
+#
+# The interfaces, registry, mock adapters, and shared adapter infrastructure
+# have no third-party dependencies. Individual provider adapters are opt-in
+# and bring their own:
+#
+#   - Anthropic adapter: JSON via the repo-vendored nlohmann/json
+#     (UltraCanvas/third_party/nlohmann; already licensed) — nothing to
+#     install.
+#   - llama.cpp adapter: vendors the inference engine at configure time.
+ai:
+  advanced:
+    llama_cpp:
+      min_version: "pinned commit (see ULTRAAI_LLAMACPP_GIT_TAG in UltraAI/adapters/llamacpp/CMakeLists.txt)"
+      purpose: "Local GGUF inference for the UltraAI llama-cpp adapter (llama.cpp + ggml, MIT)"
+      required: false
+      priority: "medium"
+      platforms: ["linux", "macos", "windows"]
+      # Not a system package: fetched via CMake FetchContent (or an existing
+      # checkout via ULTRAAI_LLAMACPP_SOURCE_DIR) and built as static libs
+      # when ULTRAAI_ADAPTER_LLAMACPP=ON. Off by default.

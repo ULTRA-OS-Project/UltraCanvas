@@ -61,6 +61,7 @@ option(BUILD_ULTRAVIEWER_APP "Build the UltraViewer universal media viewer appli
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
+option(BUILD_ULTRAAI_MODULE "Build the UltraAI module (interfaces, registry, adapters)" ON)
 option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_BUILD_NET_TESTS "Build the UltraNet test suite" OFF)
@@ -104,12 +105,19 @@ endif()
 add_subdirectory(UltraCanvas)
 
 # ===== BUILD ULTRAAI MODULE =====
-# Sibling module — header-only interfaces + mock adapters. Pulled in
-# whenever UltraAI-using apps are built, so the UltraAI_Core target
-# is available below.
-if(BUILD_ULTRAAI_APP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.txt")
+# Sibling module — capability interfaces + registry + adapters. Built on
+# its own switch so libraries and apps can link UltraAI_Core without
+# dragging in the dashboard demo app (and vice versa).
+if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.txt")
     message(STATUS "")
     message(STATUS "── Building UltraAI Module ──")
+    # In-tree builds hand UltraAI the UltraNet target by default so the
+    # adapter-shared library gets its UltraNetTransport; -DULTRAAI_USE_ULTRANET
+    # on the command line still wins (cache-first).
+    if(TARGET UltraNet)
+        set(ULTRAAI_USE_ULTRANET ON CACHE BOOL
+            "Enable adapters that depend on UltraNet")
+    endif()
     add_subdirectory(UltraAI)
 endif()
     
@@ -722,7 +730,10 @@ endif()
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
-if(BUILD_ULTRAAI_APP)
+if(BUILD_ULTRAAI_APP AND NOT TARGET UltraAI_Core)
+    message(STATUS "UltraAIApp skipped: requires the UltraAI module (BUILD_ULTRAAI_MODULE=ON)")
+endif()
+if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     message(STATUS "")
     message(STATUS "── Building UltraAI Dashboard Application ──")
 

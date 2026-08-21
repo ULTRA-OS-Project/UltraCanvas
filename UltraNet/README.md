@@ -202,10 +202,10 @@ architecture.
 | Component | State |
 |---|---|
 | Public API (master registry) | Locked at v1.0.0 |
-| Core implementation | In progress (libcurl + OpenSSL) |
-| Linux / macOS / Windows backends | Planned |
+| Core implementation | Stage 2/3 on libcurl: sync + async HTTP, chunked streaming, SSE, WebSocket, sessions, TLS, DNS |
+| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket needs libcurl >= 7.86 with ws) |
 | ULTRA OS native backend | Planned |
-| Plugins (SMTP, MQTT, SSH, …) | Tracked separately |
+| Plugins (SMTP, MQTT, SSH, ...) | Tracked separately |
 
 Per-function status is reported by the **`UltraNetApiStatus`** tool, which
 probes every public entry point on the machine in front of you and marks it

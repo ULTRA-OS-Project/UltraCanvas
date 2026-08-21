@@ -61,6 +61,23 @@ local modifications.
 
 ---
 
+## llama.cpp (+ ggml)
+
+- **Used by:** the UltraAI local inference adapter
+  (`ULTRAAI_ADAPTER_LLAMACPP`, off by default).
+- **Website:** https://github.com/ggml-org/llama.cpp
+- **Upstream:** fetched at configure time via CMake FetchContent, pinned to
+  the commit recorded in `ULTRAAI_LLAMACPP_GIT_TAG`
+  (`UltraAI/adapters/llamacpp/CMakeLists.txt`); not vendored in this
+  repository.
+- **License:** MIT License — Copyright (c) 2023-2026 The ggml authors.
+- **Full text:** `LICENSE` in the fetched source tree.
+
+Built as static libraries and linked into `UltraAI_AdapterLlama` only when
+the adapter option is enabled; no sources are modified.
+
+---
+
 ## Latin Modern Math (math font)
 
 - **Used by:** the LaTeX math plugin as the default OpenType math font, together

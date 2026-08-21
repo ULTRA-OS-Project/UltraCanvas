@@ -307,12 +307,16 @@ UltraTexter, UltraFiler, and any other UltraCanvas-based application that
 requires network connectivity. FileLoader uses UltraNet internally when
 loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 
-**Implementation status (this branch):** Stage 1 of the rollout —
-`UltraNet_HttpGet/Post/Put/Delete/Head/Patch`, `UltraNet_HttpRequest`,
-`UltraNet_HttpDownloadFile/UploadFile`, and the URL utilities are
-implemented synchronously on libcurl. Async, WebSocket, FTP, raw sockets,
-TLS layering, DNS, sessions, and the plugin manager are planned for
-Stages 2-3. See `Docs/Modules/UltraNet/README.md`.
+**Implementation status (this branch):** Stage 2/3 — the synchronous HTTP
+verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
+worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
+`UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
+`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
+sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
+on libcurl. Remaining gaps are per-function and environment-dependent —
+build and run the `UltraNetApiStatus` probe tool for ground truth on a
+given machine. See `Docs/Modules/UltraNet/README.md`.
 
 ### **6. UltraDatabase**
 
@@ -1160,7 +1164,9 @@ their *License* is likewise marked **—** (OS component).
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| No additional third party (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
+| Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
+| Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
+| Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
 
 ### Ultra Net module
 
@@ -47464,6 +47470,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam
 │   └── mock/                      # In-process mocks for every capability
 ├── tests/                         # cassert-based unit tests
 ├── Docs/
@@ -47532,9 +47539,12 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Unit tests | Complete (3 executables, all passing) |
-| Real network adapters | Not yet — pending UltraNet integration |
-| UltraVault credential lookup | Wired, awaits UltraVault module |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam) | Complete |
+| Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
+| llama.cpp adapter (`ITextLLM`: local chat, streaming, JSON grammar, exact token counting; opt-in) | Complete (v0.1 — no tool calls yet) |
+| Unit tests | Complete (5 executables, all passing) |
+| Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
+| UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
 
 ---
 
@@ -49458,10 +49468,10 @@ architecture.
 | Component | State |
 |---|---|
 | Public API (master registry) | Locked at v1.0.0 |
-| Core implementation | In progress (libcurl + OpenSSL) |
-| Linux / macOS / Windows backends | Planned |
+| Core implementation | Stage 2/3 on libcurl: sync + async HTTP, chunked streaming, SSE, WebSocket, sessions, TLS, DNS |
+| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket needs libcurl >= 7.86 with ws) |
 | ULTRA OS native backend | Planned |
-| Plugins (SMTP, MQTT, SSH, …) | Tracked separately |
+| Plugins (SMTP, MQTT, SSH, ...) | Tracked separately |
 
 Per-function status is not a table anyone has to maintain by hand: build and
 run **`UltraNetApiStatus`**, which probes every public entry point on the

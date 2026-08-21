@@ -1,7 +1,7 @@
 // include/UltraNet/UltraNetHttp.h
-// HTTP / HTTPS surface for UltraNet, Stage 1 (synchronous variants and the
-// async signature). Async is declared but unimplemented in Stage 1.
-// Version: 0.1.0 (Stage 1)
+// HTTP / HTTPS surface for UltraNet: synchronous variants plus async via a
+// curl_multi worker thread (see core/UltraNet/UltraNetHttpAsync.cpp).
+// Version: 0.2.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -152,9 +152,11 @@ UltraNetResult UltraNet_HttpRequest(
     const UltraNetHttpRequest& request,
     UltraNetResponse& outResponse);
 
-// Async entry point — Stage 2. Declared here so callers can link-check the
-// signature; the Stage 1 implementation returns UltraNetInvalidHandle and an
-// onComplete callback carrying a NotInitialized-style failure response.
+// Async entry point. Enqueues the request on the curl_multi worker thread
+// and returns a handle usable with UltraNet_CancelRequest /
+// UltraNet_IsRequestActive / UltraNet_GetTransferStats. onComplete (and any
+// onDataChunk / progress callbacks on the request) fire on the worker
+// thread — marshal to your own loop and do not block in the callback.
 UltraNetHandle UltraNet_HttpRequestAsync(
     const UltraNetHttpRequest& request,
     std::function<void(const UltraNetResponse&)> onComplete);
