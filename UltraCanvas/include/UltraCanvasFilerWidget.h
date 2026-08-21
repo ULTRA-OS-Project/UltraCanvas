@@ -87,6 +87,16 @@ namespace UltraCanvas {
     class UltraCanvasButton;
     class UltraCanvasTextInput;
 
+    // ===== PASTE NAME CONFLICTS =====
+    // What to do with a pasted entry whose name already exists in the target
+    // folder. KeepBoth gives the pasted entry the next free "name (2)" style
+    // name — the behavior a paste without conflicts always has.
+    enum class PasteConflictAction {
+        KeepBoth,
+        Replace,
+        Skip
+    };
+
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
         Details,             // text columns: name, size, type, dates, attributes, info
@@ -567,6 +577,16 @@ namespace UltraCanvas {
         // after a Cut); a clipboard image or text without files is written as
         // a new file ("Pasted image.png" / "Pasted text.txt" style names).
         void Paste();
+        // Paste `paths` into `folder` (copies, or moves when `cut` is set).
+        // A name that already exists in the folder raises the conflict
+        // dialog — Replace / Keep both / Skip, optionally applied to all
+        // remaining conflicts — and the paste continues with the choice.
+        // With `onDone` set the caller owns the post-paste work (refresh,
+        // history) and is told whether anything changed; without it the
+        // widget refreshes itself and reports to onFolderModified.
+        void PasteFilesInto(std::string folder, std::vector<std::string> paths,
+                            bool cut,
+                            std::function<void(bool changed)> onDone = nullptr);
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
@@ -1494,6 +1514,33 @@ namespace UltraCanvas {
         // Same, but in an arbitrary folder (drop target of a drag).
         static std::string UniquePathIn(const std::string& folder,
                                         const std::string& baseName);
+
+        // ===== PASTE CONFLICTS =====
+        // One paste in flight: the sources not yet processed and the choices
+        // the conflict dialog collected so far.
+        struct PendingPaste {
+            std::string folder;
+            std::vector<std::string> sources;
+            size_t next = 0;
+            bool cut = false;
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            bool applyToAll = false;   // reuse `action` for later conflicts
+            bool changed = false;
+            std::function<void(bool changed)> onDone;
+        };
+        std::unique_ptr<PendingPaste> pendingPaste;
+
+        // Processes sources until a name conflict needs the dialog (which
+        // resumes it) or the queue is done (FinishPendingPaste).
+        void ContinuePendingPaste();
+        void FinishPendingPaste();
+        // Copy / move one source into the pending paste's folder, honoring
+        // `action` when the name is taken.
+        void PasteOneEntry(const std::string& src, PasteConflictAction action);
+        // The "already exists" dialog: exclusive Keep both / Replace / Skip
+        // switches, a "do this for all remaining conflicts" switch, and
+        // Continue / Cancel buttons.
+        void ShowPasteConflictDialog(const std::string& src);
 
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.

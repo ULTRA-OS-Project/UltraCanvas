@@ -65,6 +65,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -78,6 +79,7 @@
 #include "Plugins/Documents/UltraCanvasPDF.h"
 #endif
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -2938,32 +2940,210 @@ namespace UltraCanvas {
             return;
         }
 
+        PasteFilesInto(currentPath, std::move(paths), cut);
+    }
+
+    namespace {
+        // Is `path` equal to `ancestor` or somewhere below it?
+        bool PathIsSameOrBelow(const std::string& path, const std::string& ancestor) {
+            if (ancestor.empty() || path.size() < ancestor.size()) return false;
+            if (path.compare(0, ancestor.size(), ancestor) != 0) return false;
+            return path.size() == ancestor.size() ||
+                   path[ancestor.size()] == '/' || path[ancestor.size()] == '\\' ||
+                   ancestor.back() == '/' || ancestor.back() == '\\';
+        }
+    }
+
+    void UltraCanvasFilerWidget::PasteFilesInto(std::string folder,
+                                                std::vector<std::string> paths,
+                                                bool cut,
+                                                std::function<void(bool changed)> onDone) {
+        if (pendingPaste) return;   // one paste (and its dialog) at a time
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
-            ReportError("Paste target is not a writable folder: " + currentPath);
+        if (!fs::is_directory(folder, ec)) {
+            ReportError("Paste target is not a writable folder: " + folder);
+            if (onDone) onDone(false);
             return;
         }
-        for (const std::string& src : paths) {
-            fs::path from(src);
-            if (!fs::exists(from, ec)) continue;
-            // Cut-pasting into the folder the file already lives in is a no-op.
-            if (cut && fs::path(src).parent_path() == fs::path(currentPath)) continue;
-            std::string dest = UniqueChildPath(from.filename().string());
-            if (cut) {
-                fs::rename(from, dest, ec);
-                if (ec) {   // cross-device move: copy + delete
-                    ec.clear();
-                    fs::copy(from, dest, fs::copy_options::recursive, ec);
-                    if (!ec) fs::remove_all(from, ec);
-                }
-            } else {
-                fs::copy(from, dest, fs::copy_options::recursive, ec);
+        pendingPaste = std::make_unique<PendingPaste>();
+        pendingPaste->folder = std::move(folder);
+        pendingPaste->sources = std::move(paths);
+        pendingPaste->cut = cut;
+        pendingPaste->onDone = std::move(onDone);
+        ContinuePendingPaste();
+    }
+
+    void UltraCanvasFilerWidget::ContinuePendingPaste() {
+        std::error_code ec;
+        while (pendingPaste && pendingPaste->next < pendingPaste->sources.size()) {
+            PendingPaste& pp = *pendingPaste;
+            const std::string& src = pp.sources[pp.next];
+            const fs::path from(src);
+            if (!fs::exists(from, ec)) { ++pp.next; continue; }
+            // Cut-pasting into the folder the file already lives in is a no-op,
+            // and a folder must never be pasted into itself.
+            if (pp.cut && from.parent_path() == fs::path(pp.folder)) { ++pp.next; continue; }
+            if (fs::is_directory(from, ec) && PathIsSameOrBelow(pp.folder, src)) {
+                ReportError("Cannot paste a folder into itself: " + src);
+                ++pp.next;
+                continue;
             }
-            if (ec) ReportError("Paste failed for " + src + ": " + ec.message());
+            const std::string dest = (fs::path(pp.folder) / from.filename()).string();
+            // Copy-pasting alongside the original never asks — the copy simply
+            // takes the next free name, exactly like Duplicate.
+            if (fs::exists(dest, ec) && dest != src) {
+                if (!pp.applyToAll) { ShowPasteConflictDialog(src); return; }
+                PasteOneEntry(src, pp.action);
+            } else {
+                PasteOneEntry(src, PasteConflictAction::KeepBoth);
+            }
+            ++pp.next;
         }
+        FinishPendingPaste();
+    }
+
+    void UltraCanvasFilerWidget::FinishPendingPaste() {
+        if (!pendingPaste) return;
+        const bool changed = pendingPaste->changed;
+        const bool cut = pendingPaste->cut;
+        std::function<void(bool)> onDone = std::move(pendingPaste->onDone);
+        pendingPaste.reset();
         if (cut) { clipboardPaths.clear(); clipboardCut = false; }
+        if (onDone) { onDone(changed); return; }   // the caller owns refresh / history
         Refresh();
-        NotifyFolderModified();
+        if (changed) NotifyFolderModified();
+    }
+
+    void UltraCanvasFilerWidget::PasteOneEntry(const std::string& src,
+                                               PasteConflictAction action) {
+        if (!pendingPaste || action == PasteConflictAction::Skip) return;
+        PendingPaste& pp = *pendingPaste;
+        std::error_code ec;
+        const fs::path from(src);
+        std::string dest = (fs::path(pp.folder) / from.filename()).string();
+        if (fs::exists(dest, ec)) {
+            if (action == PasteConflictAction::Replace && dest != src) {
+                fs::remove_all(dest, ec);
+                if (ec) {
+                    ReportError("Paste could not replace " + dest + ": " + ec.message());
+                    return;
+                }
+            } else {   // keep both (also a copy pasted alongside its original)
+                dest = UniquePathIn(pp.folder, from.filename().string());
+            }
+        }
+        ec.clear();
+        if (pp.cut) {
+            fs::rename(from, dest, ec);
+            if (ec) {   // cross-device move: copy + delete
+                ec.clear();
+                fs::copy(from, dest, fs::copy_options::recursive, ec);
+                if (!ec) fs::remove_all(from, ec);
+            }
+        } else {
+            fs::copy(from, dest, fs::copy_options::recursive, ec);
+        }
+        if (ec) {
+            ReportError("Paste failed for " + src + ": " + ec.message());
+            return;
+        }
+        pp.changed = true;
+    }
+
+    void UltraCanvasFilerWidget::ShowPasteConflictDialog(const std::string& src) {
+        std::error_code ec;
+        const std::string name = fs::path(src).filename().string();
+        const bool isDir = fs::is_directory(src, ec);
+        const std::string kind = isDir ? "folder" : "file";
+
+        DialogConfig cfg;
+        cfg.title = isDir ? "Folder Already Exists" : "File Already Exists";
+        cfg.dialogType = DialogType::Question;
+        cfg.message = "A " + kind + " named \"" + name
+                    + "\" already exists in this folder.";
+        cfg.details = "Choose what to do with the pasted " + kind + ":";
+        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
+        cfg.width = 560;
+        cfg.height = 330;
+
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        auto self = this;
+        if (!dialog) {   // dialogs disabled — keep both, the old fixed behavior
+            pendingPaste->action = PasteConflictAction::KeepBoth;
+            pendingPaste->applyToAll = true;
+            PasteOneEntry(src, PasteConflictAction::KeepBoth);
+            ++pendingPaste->next;
+            ContinuePendingPaste();
+            return;
+        }
+
+        // The action, one switch per choice (the common Keep both / Replace /
+        // Skip trio). The switches are exclusive: toggling one on turns the
+        // others off, and the selected one cannot be toggled off — only
+        // replaced by another. The last dialog's choice is preselected.
+        struct Option { std::string text; PasteConflictAction action; };
+        const Option options[3] = {
+            {"Keep both " + kind + "s (the pasted one is renamed)",
+             PasteConflictAction::KeepBoth},
+            {"Replace the existing " + kind, PasteConflictAction::Replace},
+            {"Skip this " + kind,            PasteConflictAction::Skip},
+        };
+        std::array<std::shared_ptr<UltraCanvasSwitch>, 3> switches;
+        std::array<UltraCanvasSwitch*, 3> raw{};
+        for (size_t i = 0; i < 3; ++i) {
+            switches[i] = UltraCanvasSwitch::Create(
+                    "FilerPasteOpt" + std::to_string(i), 0, 0, options[i].text,
+                    options[i].action == pendingPaste->action);
+            switches[i]->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            raw[i] = switches[i].get();
+        }
+        for (size_t i = 0; i < 3; ++i) {
+            UltraCanvasSwitch* me = raw[i];
+            const PasteConflictAction act = options[i].action;
+            me->onChecked = [self, raw, me, act]() {
+                if (self->pendingPaste) self->pendingPaste->action = act;
+                for (UltraCanvasSwitch* other : raw)
+                    if (other != me) other->SetChecked(false);
+            };
+            me->onUnchecked = [self, me, act]() {
+                // The selected choice cannot be switched off, only replaced.
+                if (self->pendingPaste && self->pendingPaste->action == act)
+                    me->SetChecked(true);
+            };
+            dialog->AddDialogElement(switches[i]);
+        }
+
+        // Scope: ask again on the next conflict (off, the default) or apply
+        // this choice to every remaining conflict of this paste.
+        auto allSwitch = UltraCanvasSwitch::Create(
+                "FilerPasteAll", 0, 0, "Do this for all remaining conflicts",
+                pendingPaste->applyToAll);
+        allSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        allSwitch->onStateChanged = [self](CheckedState, CheckedState state) {
+            if (self->pendingPaste)
+                self->pendingPaste->applyToAll = (state == CheckedState::Checked);
+        };
+        dialog->AddDialogElement(allSwitch);
+
+        // The switches update pendingPaste as they are toggled, so the
+        // buttons only decide whether the paste goes on. Escape and the
+        // window's close button land in onResult as Cancel / NoResult.
+        dialog->AddCustomButton("Continue", DialogResult::Yes, nullptr);
+        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+        const std::string capturedSrc = src;
+        dialog->onResult = [self, capturedSrc](DialogResult result) {
+            if (!self->pendingPaste) return;
+            if (result != DialogResult::Yes) {
+                // Cancel keeps what was already pasted and drops the rest.
+                self->FinishPendingPaste();
+                return;
+            }
+            self->PasteOneEntry(capturedSrc, self->pendingPaste->action);
+            ++self->pendingPaste->next;
+            self->ContinuePendingPaste();
+        };
+
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
 
     namespace {

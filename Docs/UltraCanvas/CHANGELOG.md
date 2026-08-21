@@ -1,3 +1,23 @@
+#### 2026-08-21 *0.3.54*
+- **Filer widget: paste conflict dialog.** Pasting an entry whose name is
+  already taken in the target folder no longer silently invents a " (2)"
+  name: the paste pauses on a conflict dialog whose choice is set by three
+  exclusive switches — **Keep both** (the pasted entry takes the next free
+  " (2)" style name; the default), **Replace the existing file**, **Skip
+  this file** — plus a **"Do this for all remaining conflicts"** switch that
+  decides whether the next conflict asks again (off, the default) or reuses
+  the choice. **Continue** proceeds, **Cancel** keeps what was already
+  pasted and drops the rest. Copy-pasting a file alongside its original
+  never asks (the copy takes the next free name, like Duplicate), and with
+  dialogs unavailable every conflict falls back to keep-both — the previous
+  fixed behavior. The machinery is public as
+  `PasteFilesInto(folder, paths, cut, onDone)` so hosts can aim a paste at
+  any folder (UltraFiler's tree context menu now routes through it, gaining
+  the dialog too); with `onDone` set the caller owns the post-paste work and
+  learns whether anything changed. A folder can no longer be pasted into
+  itself from the widget either — previously only app-side paste guarded
+  against that.
+
 #### 2026-08-20 *0.3.53*
 - **Chart engine: themes and palettes.** The engine grew the theming home the
   proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles

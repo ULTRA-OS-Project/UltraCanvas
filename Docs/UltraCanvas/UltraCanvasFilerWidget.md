@@ -441,8 +441,11 @@ All operations are also available programmatically:
 ```cpp
 filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
-filer->Paste();               // into the current folder (unique names); a
-                              // clipboard image / text becomes a new file
+filer->Paste();               // into the current folder, with the conflict
+                              // dialog on taken names; a clipboard image /
+                              // text becomes a new file
+filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
+                              // aimed at any folder (see below)
 filer->DeleteSelection();     // gated by confirmDelete when set
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
@@ -494,6 +497,38 @@ Paste prefers the system clipboard (whatever was copied last, in this widget
 or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
+
+### Name conflicts
+
+When a pasted entry's name is already taken in the target folder, the paste
+pauses on the **conflict dialog** — "A file named "X" already exists in this
+folder." — with the choice set by three exclusive switches (the common
+formulations):
+
+- **Keep both** — the pasted entry takes the next free " (2)" style name
+  (the default, and what a conflict-free paste always does)
+- **Replace the existing file** — the existing entry is removed first
+- **Skip this file** — the entry is not pasted
+
+A fourth switch, **"Do this for all remaining conflicts"**, decides the scope:
+off (the default) asks again on the next conflict, on applies the same choice
+to every remaining conflict of this paste. **Continue** proceeds with the
+chosen action; **Cancel** keeps what was already pasted and drops the rest.
+Copy-pasting a file alongside its original never asks — the copy simply takes
+the next free name, exactly like Duplicate.
+
+The same machinery is available programmatically for any target folder:
+
+```cpp
+filer->PasteFilesInto(folder, paths, /*cut=*/false,
+                      [](bool changed) { /* refresh, history, ... */ });
+```
+
+With the `onDone` callback set the caller owns the post-paste work (refreshing
+views, recording history) and is told whether anything changed; without it the
+widget refreshes itself and reports the change to `onFolderModified`. When
+modal dialogs are unavailable the paste falls back to "keep both" for every
+conflict — the widget's previous fixed behavior.
 
 When the clipboard holds **raw data instead of files** — an image copied in a
 browser or screenshot tool, text copied in an editor — Paste creates a new
