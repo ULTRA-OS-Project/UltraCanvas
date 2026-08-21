@@ -111,6 +111,13 @@ add_subdirectory(UltraCanvas)
 if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.txt")
     message(STATUS "")
     message(STATUS "── Building UltraAI Module ──")
+    # In-tree builds hand UltraAI the UltraNet target by default so the
+    # adapter-shared library gets its UltraNetTransport; -DULTRAAI_USE_ULTRANET
+    # on the command line still wins (cache-first).
+    if(TARGET UltraNet)
+        set(ULTRAAI_USE_ULTRANET ON CACHE BOOL
+            "Enable adapters that depend on UltraNet")
+    endif()
     add_subdirectory(UltraAI)
 endif()
     

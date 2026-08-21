@@ -1,6 +1,8 @@
 # UltraAI ↔ UltraNet Integration
 
-**Status:** UltraNet side implemented and probe-verified; adapters not yet written.
+**Status:** UltraNet side implemented and probe-verified; shared adapter
+infrastructure (`adapters/_shared/`) in place; provider adapters not yet
+written.
 **Author:** UltraAI Module
 **Last Modified:** 2026-08-21
 
@@ -247,10 +249,34 @@ LiveTranscriber DeepgramSpeechToText::StartLiveTranscribe(
 
 ---
 
-## 9. Credential resolution
+## 9. Shared adapter infrastructure
+
+`UltraAI/adapters/_shared/` (CMake target `UltraAI_AdapterShared`) carries
+the pieces every network adapter needs, so none of them re-invents the
+plumbing:
+
+| Header | Provides |
+|---|---|
+| `UltraAICredentials.h` | `ResolveApiKey(config, outError)` — the resolution order below |
+| `UltraAIHttpError.h` | `MapHttpStatus(status, detail)` → `Error`; `ParseRetryAfterMs(header)` |
+| `UltraAIRetryPolicy.h` | `RetryPolicy` — `ShouldRetry(error, attempt)` / `NextDelayMs(attempt, retryAfterMs)`; Retry-After wins over backoff |
+| `UltraAIStreamHandleBase.h` | `StreamHandleBase` — the §5 cancellation pattern with an injectable cancel hook |
+| `UltraAITransport.h` | `ITransport` seam + `ScriptedTransport` test double |
+| `UltraAIUltraNetTransport.h` | `UltraNetTransport` — the production `ITransport` (built with `ULTRAAI_USE_ULTRANET=ON`) |
+
+Adapters talk to providers through `ITransport` rather than calling
+UltraNet directly: production wiring injects `UltraNetTransport`
+(a completed HTTP exchange with status ≥ 400 comes back as a response to
+map, not a transport error), and unit tests inject `ScriptedTransport`
+with scripted responses and SSE event scripts — CI never contacts a live
+provider. In-tree framework builds enable `ULTRAAI_USE_ULTRANET`
+automatically when the `UltraNet` target exists (cache-first, so an
+explicit `-DULTRAAI_USE_ULTRANET=OFF` still wins).
+
+### Credential resolution
 
 Adapters do **not** read environment variables directly. Resolution
-order (implemented by a shared helper in `UltraAI/adapters/_shared/`):
+order (implemented by `ResolveApiKey`):
 
 1. `ProviderConfig::apiKey` (literal string) — used verbatim if non-empty.
 2. `ProviderConfig::apiKeyVaultRef` — looked up via UltraVault when
@@ -275,22 +301,26 @@ A new network-using adapter should:
 - [ ] Be opt-in via a `ULTRAAI_ADAPTER_<NAME>` CMake option.
 - [ ] Self-register through `RegisterTextLLMProvider` / etc. when its
       object file is linked.
-- [ ] Use `UltraNet_HttpRequestAsync` / `UltraNet_SseStreamAsync` for any
-      call that may exceed ~1 second; only use `UltraNet_HttpRequest`
-      (sync) for short auxiliary requests (e.g. `ListVoices`).
-- [ ] Implement cancellation via the worker-thread-safe pattern in §5.
-- [ ] Surface every UltraNet error via `MapNetError` → `Error{}`.
-- [ ] Have at least a smoke test — feed recorded provider output through
-      `UltraNetSseParser` for streaming paths; never call out to the live
-      provider in CI.
+- [ ] Reach the network through the `ITransport` seam (§9) so its unit
+      tests run on `ScriptedTransport`; use the streaming entry points for
+      any call that may exceed ~1 second and keep blocking `Request` for
+      short auxiliary calls (e.g. `ListVoices`).
+- [ ] Implement cancellation via `StreamHandleBase` (§5, §9).
+- [ ] Map errors with the shared helpers: transport errors arrive as
+      `Error{}` from `ITransport`; HTTP statuses go through
+      `MapHttpStatus`, refined with the provider's error body.
+- [ ] Have at least a smoke test driven by `ScriptedTransport` (or
+      `UltraNetSseParser` for raw SSE fixtures); never call out to the
+      live provider in CI.
 
 ---
 
 ## 11. Open items
 
-- Mock UltraNet transport for adapter unit tests (so CI never calls real
-  providers). SSE dispatch is already testable offline via
-  `UltraNetSseParser::Feed`; a transport seam is still needed for the
-  non-streaming request path.
-- Recorded-cassette format for replaying real provider responses
-  offline.
+- Recorded-cassette *file format* for replaying real provider responses
+  offline. `ScriptedTransport` already replays scripted exchanges and SSE
+  event sequences in-process; what's missing is an on-disk format plus a
+  loader so cassettes can be captured once and committed.
+- A loopback integration test for `UltraNetTransport` itself (the probe
+  suite covers the UltraNet primitives; the transport conversion layer is
+  currently validated by compilation and manual smoke testing).

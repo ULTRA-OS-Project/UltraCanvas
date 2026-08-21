@@ -84,6 +84,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam
 │   └── mock/                      # In-process mocks for every capability
 ├── tests/                         # cassert-based unit tests
 ├── Docs/
@@ -152,7 +153,8 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Unit tests | Complete (3 executables, all passing) |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam) | Complete |
+| Unit tests | Complete (4 executables, all passing) |
 | Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
 | UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
 

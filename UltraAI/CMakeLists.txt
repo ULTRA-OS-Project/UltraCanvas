@@ -98,6 +98,7 @@ if(ULTRAAI_USE_ULTRAVAULT)
         message(STATUS "UltraAI: UltraVault target found; credential lookup enabled.")
         target_link_libraries(UltraAI_Core PUBLIC UltraVault)
         target_compile_definitions(UltraAI_Core PUBLIC ULTRAAI_HAS_ULTRAVAULT=1)
+        set(ULTRAAI_HAS_ULTRAVAULT TRUE)
     else()
         message(STATUS "UltraAI: ULTRAAI_USE_ULTRAVAULT=ON but no 'UltraVault' target visible. "
                        "Credential resolution falls back to ProviderConfig::apiKey only.")

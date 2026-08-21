@@ -2,6 +2,9 @@
 # Aggregator for capability adapters. Each adapter is independently
 # opt-in via its ULTRAAI_ADAPTER_<NAME> option.
 
+# Shared infrastructure for network adapters — always built.
+add_subdirectory(_shared)
+
 if(ULTRAAI_ADAPTER_MOCK)
     add_subdirectory(mock)
 endif()
