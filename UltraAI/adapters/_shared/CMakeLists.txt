@@ -35,7 +35,10 @@ if(ULTRAAI_HAS_ULTRAVAULT)
 endif()
 
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.h")
+# The target itself is deliberately NOT in the UltraAITargets export set:
+# it may link UltraNet, which has no install/export of its own, and CMake
+# rejects an export that references a non-exported target. Adapters consume
+# UltraAI_AdapterShared in-tree; revisit if UltraNet ever gains an export.
 install(TARGETS UltraAI_AdapterShared
-    EXPORT UltraAITargets
     ARCHIVE DESTINATION lib
 )
