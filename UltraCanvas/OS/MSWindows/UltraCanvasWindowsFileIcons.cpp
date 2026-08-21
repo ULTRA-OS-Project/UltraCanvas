@@ -8,7 +8,8 @@
 #include "UltraCanvasNativeFileIcons.h"
 
 #include <windows.h>
-#include <shellapi.h>
+#include <shlobj.h>   // SHDefExtractIconW (WIN32_LEAN_AND_MEAN keeps it
+                      // out of windows.h; shellapi.h does not declare it)
 
 #include <cairo/cairo.h>
 
