@@ -129,7 +129,6 @@ namespace UltraCanvas {
         void RenderAgeGroup(IRenderContext* ctx, const PopulationAgeGroup& group, int yPosition);
         void RenderCenterLine(IRenderContext* ctx);
         void RenderAverageAgeLines(IRenderContext* ctx);
-        void RenderLegend(IRenderContext* ctx);
         void RenderTooltip(IRenderContext* ctx, int groupIndex, int mouseX, int mouseY);
 
         // Helper methods

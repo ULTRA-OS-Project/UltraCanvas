@@ -230,7 +230,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPopulationChart::AddLegendLineItem(const std::string& label, const Color& color) {
-        legendItems.emplace_back(label, color, true);
+        legend.AddEntry(ChartLegendEntry(label, color, LegendSwatch::DashedLine));
+        layoutDirty = true;
     }
 
     void UltraCanvasPopulationChart::ClearLegend() {
@@ -398,9 +399,7 @@ namespace UltraCanvas {
         if (showAverageAgeLine) {
             RenderAverageAgeLines(ctx);
         }
-        if (showLegend) {
-            RenderLegend(ctx);
-        }
+        legend.Render(ctx, contentArea);
     }
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
@@ -580,39 +579,6 @@ namespace UltraCanvas {
             double textX = maleSide ? outerX : outerX - ctx->GetTextLineWidth(valueLabel);
             ctx->SetTextPaint(lineColor);
             ctx->DrawText(valueLabel, Point2Dd(textX, y - fontSize - 4));
-        }
-    }
-
-    void UltraCanvasPopulationChart::RenderLegend(IRenderContext* ctx) {
-        if (legendItems.empty()) {
-            return;
-        }
-
-        int legendX = GetWidth() - chartPaddingRight - 80;
-        int legendY = chartPaddingTop;
-        int itemHeight = 20;
-
-        ctx->SetFontSize(fontSize);
-
-        for (const auto& item : legendItems) {
-            if (item.IsLine) {
-                // Draw dashed line sample
-                ctx->SetStrokePaint(item.ItemColor);
-                ctx->SetStrokeWidth(1.5f);
-                ctx->SetLineDash(UCDashPattern({2.0, 3.0}));
-                ctx->DrawLine(Point2Dd(legendX, legendY + 7), Point2Dd(legendX + 15, legendY + 7));
-                ctx->SetLineDash(UCDashPattern::EMPTY);
-            } else {
-                // Draw color box
-                ctx->SetFillPaint(item.ItemColor);
-                ctx->FillRectangle(Rect2Dd(legendX, legendY, 15, 15));
-            }
-
-            // Draw label
-            ctx->SetTextPaint(textColor);
-            ctx->DrawText(item.Label, {legendX + 20, legendY});
-
-            legendY += itemHeight;
         }
     }
 
