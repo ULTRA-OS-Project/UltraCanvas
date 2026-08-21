@@ -158,7 +158,7 @@ cmake -S UltraAI -B build \
 | llama.cpp adapter (`ITextLLM`: local chat, streaming, JSON grammar, exact token counting; opt-in) | Complete (v0.1 — no tool calls yet) |
 | Unit tests | Complete (5 executables, all passing) |
 | Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
-| UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
+| UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
 
