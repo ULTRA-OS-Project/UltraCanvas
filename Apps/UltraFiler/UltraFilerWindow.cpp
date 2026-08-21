@@ -332,7 +332,7 @@ UltraFilerWindow::~UltraFilerWindow() {
 
 bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     WindowConfig config;
-    config.title = "UltraFiler";
+    config.title = "UltraFiler " ULTRAFILER_VERSION;
     config.width = 1280;
     config.height = 800;
     config.resizable = true;
@@ -1602,7 +1602,6 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
-    UpdateWindowTitle();
 
     // Mirror the tab's sort / view settings into the command bar.
     syncingControls = true;
@@ -1789,7 +1788,6 @@ void UltraFilerWindow::SetHistoryVisible(bool visible) {
         split->SetVisible(true);
     }
     UpdateStatusBar();
-    UpdateWindowTitle();
 }
 
 void UltraFilerWindow::RefreshHistoryTabs() {
@@ -2000,7 +1998,6 @@ void UltraFilerWindow::SetFavoritesVisible(bool visible) {
         split->SetVisible(true);
     }
     UpdateStatusBar();
-    UpdateWindowTitle();
 }
 
 void UltraFilerWindow::ShowBrowsingView() {
@@ -2089,7 +2086,6 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     UpdateStatusBar();
     // Entering a folder clears the selection - fold the preview away.
     UpdatePreviewPane();
-    UpdateWindowTitle();
 }
 
 void UltraFilerWindow::UpdateNavButtons() {
@@ -2130,22 +2126,6 @@ void UltraFilerWindow::UpdateStatusBar() {
     }
     if (!filer) return;
     statusLabel->SetText(DescribeFilerContent(filer.get()));
-}
-
-void UltraFilerWindow::UpdateWindowTitle() {
-    if (!window) return;
-    if (historyShown) {
-        window->SetWindowTitle("History - UltraFiler");
-        return;
-    }
-    if (favoritesShown) {
-        window->SetWindowTitle("Favorites - UltraFiler");
-        return;
-    }
-    const std::string path = filer ? filer->GetPath() : std::string();
-    if (path.empty()) return;
-    const std::string name = fs::path(path).filename().string();
-    window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
 }
 
 std::string UltraFilerWindow::PreviewablePathForSelection() const {
