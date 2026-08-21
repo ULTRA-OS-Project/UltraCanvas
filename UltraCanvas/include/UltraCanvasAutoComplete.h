@@ -79,6 +79,10 @@ namespace UltraCanvas {
         int minCharsToTrigger = 1;
         bool closeOnSelect = true;
         bool autoSelectFirst = false;
+        // Browser omnibox behavior: the popup opens with no highlighted row (the inline completion in
+        // the text field is the default), and moving the highlight with Up/Down copies the row's text
+        // into the input so the field always reflects what will be navigated to.
+        bool omniboxMode = false;
 
     public:
         // ===== CONSTRUCTORS =====
@@ -108,6 +112,11 @@ namespace UltraCanvas {
         void CloseAutocompletePopup();
         bool IsPopupOpen() const { return popupOpen; }
 
+        // Re-pull suggestions from onRequestSuggestions for the current text and open/close the
+        // popup accordingly. Needed when suggestions are provided asynchronously (a network-backed
+        // provider whose data arrives after TextChanged has already run).
+        void RefreshSuggestions();
+
         // ===== STYLING =====
         void SetAutocompleteStyle(const AutoCompleteStyle& newStyle);
         const AutoCompleteStyle& GetAutoCompleteStyle() const { return acStyle; }
@@ -121,6 +130,9 @@ namespace UltraCanvas {
 
         bool GetAutoSelectFirst() const { return autoSelectFirst; }
         void SetAutoSelectFirst(bool value) { autoSelectFirst = value; }
+
+        bool GetOmniboxMode() const { return omniboxMode; }
+        void SetOmniboxMode(bool value) { omniboxMode = value; }
 
         // ===== WINDOW =====
         void SetWindow(UltraCanvasWindowBase* win) override;

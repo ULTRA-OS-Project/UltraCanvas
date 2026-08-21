@@ -15780,6 +15780,8 @@ Compress / Extract
 Print
 ──────────
 Extras         >  Share / Attributes / Copy path / Access
+                  (plus the host's items via extrasMenuProvider — in the
+                  UltraFiler: Open prompt and the Pin / Unpin submenus)
 Settings
 ```
 
@@ -16302,6 +16304,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
+| `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |
 | `onNewDocument(type, folder) -> bool` | New > item — return true when handled |

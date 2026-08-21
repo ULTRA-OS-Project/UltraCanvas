@@ -1,4 +1,4 @@
-#### 2026-08-20 *0.3.52*
+#### 2026-08-20 *0.3.53*
 - **Chart engine: themes and palettes.** The engine grew the theming home the
   proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles
   the furniture colours (background, plot area, grid, axes, title, legend)
@@ -130,20 +130,21 @@
   leading-"…" last line, whose every line is full anyway. Applies to the
   thumbnail grids and the treemap in the FilerWidget and everything built on
   it (UltraFiler, file dialogs).
+- **UltraFiler: Pin / Unpin with state flags in the context menus, and
+  "Open prompt" is back.** The filer context menus' Extras submenu ends with
+  an app-provided block (the FilerWidget's new `extrasMenuProvider` hook):
+  **Open prompt** — which had lost its home when the menu bar was dropped —
+  then **Pin** and **Unpin** submenus, each with "To Treeview" /
+  "To Favorites" entries acting on the current selection (or the shown folder
+  while nothing is selected). The entries are check items whose flag shows
+  whether the selection is pinned there right now — Pin is enabled while
+  something is still unpinned, Unpin while something is pinned. The folder
+  tree's context menu gets the same **Pin** submenu between the file commands
+  and Unpin; there the "To Treeview" / "To Favorites" flags directly toggle
+  the folder's pin in the tree's Pinned section / the Favorites view's
+  Folders tab. All menus build their items when they open, so the flags
+  always reflect the current pin state.
 
-#### 2026-08-17 *0.3.51*
-- **UltraFiler: Pin / Unpin with state flags in the Extras menu and the folder
-  tree's context menu.** The Extras menu grows a block below "Open prompt"
-  (behind a separator): **Pin** and **Unpin** submenus, each with
-  "To Treeview" / "To Favorites" entries acting on the current selection (or
-  the shown folder while nothing is selected). The entries are check items
-  whose flag shows whether the selection is pinned there right now — Pin is
-  enabled while something is still unpinned, Unpin while something is pinned.
-  The folder tree's context menu gets the same **Pin** submenu between the
-  file commands and Unpin; there the "To Treeview" / "To Favorites" flags
-  directly toggle the folder's pin in the tree's Pinned section / the
-  Favorites view's Folders tab. Both menus build their items when they open,
-  so the flags always reflect the current pin state.
 #### 2026-08-17 *0.3.51*
 - **FilerWidget / UltraFiler: empty displays say so.** A folder with no
   content used to show only a small "(empty folder)" line; it now draws a

@@ -51,17 +51,21 @@ components:
 - **Favorites (pinning):** the heart button next to the clock shows the
   Favorites view — the same **Files** / **Folders** / **Apps** layout as the
   History view, but listing what was pinned deliberately instead of what was
-  used recently. The menu bar's **Pin** menu does the pinning: **Pin ▸
-  Favorites** pins the selection of the visible view (or, with nothing
-  selected, the folder currently shown) into the tab its kind belongs to;
-  **Pin ▸ Treeview** — enabled only while the selection is a folder — pins
-  the folder into the folder tree's **Pinned** section, where it navigates
-  like a bookmark on click. Entries keep the order they were pinned in and
-  drop out when their path disappears from disk. Right-clicking the folder
-  tree opens its context menu: **Copy** / **Delete** (with confirmation) /
-  **Paste** act on the folder under the cursor — Paste only when a folder is
-  under the cursor and the clipboard holds files, Delete never on the
-  top-level roots — and **Unpin** (pinned entries only) removes the bookmark
+  used recently. The file context menu's **Extras** submenu does the pinning:
+  its **Pin** and **Unpin** submenus each offer **To Favorites** — acting on
+  the selection of the visible view (or, with nothing selected, the folder
+  currently shown) — and **To Treeview** (folders only), which pins the
+  folder into the folder tree's **Pinned** section, where it navigates like a
+  bookmark on click. The entries are check items whose flag shows whether the
+  selection is pinned there right now; Pin is enabled while something is
+  still unpinned, Unpin while something is pinned. Entries keep the order
+  they were pinned in and drop out when their path disappears from disk.
+  Right-clicking the folder tree opens its context menu: **Copy** /
+  **Delete** (with confirmation) / **Paste** act on the folder under the
+  cursor — Paste only when a folder is under the cursor and the clipboard
+  holds files, Delete never on the top-level roots — a **Pin** submenu whose
+  **To Treeview** / **To Favorites** flags directly toggle where that folder
+  is pinned, and **Unpin** (pinned entries only) removes the bookmark
   without touching the folder. The pins survive restarts — they are stored
   next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
   empties them (History and Favorites are separate stores).
@@ -106,7 +110,8 @@ components:
   are prewarmed in the background while a folder is shown, so the menu opens
   without any lookup delay.
 - **Status bar:** entry count of the folder, selection count and summed size.
-- **Extras > Open prompt:** starts the operating system's command line program
+- **Extras > Open prompt** (in the file context menu's Extras submenu):
+  starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file
   manager leaves the terminal running). Without configuration it uses the
   platform default — `%COMSPEC%` (cmd.exe) on Windows, Terminal.app on macOS,

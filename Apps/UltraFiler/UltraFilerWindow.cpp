@@ -8,19 +8,21 @@
 // thumbnails; folders get there by being worked in (the filer's
 // onFolderModified), not by being browsed. The heart button swaps the same
 // area for the Favorites view — the same tabs, but listing what the user
-// pinned through the menu bar's Pin > Favorites (UltraFilerFavorites).
-// Pin > Treeview (folders only) pins into the folder tree's "Pinned" section,
-// whose bookmark entries navigate on click; the tree's context menu offers
-// Copy / Delete / Paste on folders, a Pin submenu whose "To Treeview" /
-// "To Favorites" flags show and toggle where the folder is pinned, and Unpin
-// on pinned entries. The Extras menu carries the same Pin / Unpin pair as a
-// block below "Open prompt", acting on the current selection. The Settings
-// menu opens the settings window (UltraFilerSettingsDialog) and clears the
-// history / the favorites; persisted settings load at startup and configure
-// the preview's transparent-image backdrop. Esc closes the History or
-// Favorites view, or an open media preview.
-// Version: 1.8.0
-// Last Modified: 2026-08-17
+// pinned (UltraFilerFavorites); the folder tree's "Pinned" section holds the
+// tree pins, whose bookmark entries navigate on click, and the tree's context
+// menu offers Copy / Delete / Paste on folders, a Pin submenu whose
+// "To Treeview" / "To Favorites" flags show and toggle where the folder is
+// pinned, and Unpin on pinned entries. The filer context menus' Extras
+// submenu ends with an app-provided block (extrasMenuProvider): "Open
+// prompt", then Pin / Unpin submenus whose "To Treeview" / "To Favorites"
+// flags follow the current selection.
+// The gear button at the right end of the navigation row opens the settings
+// window (UltraFilerSettingsDialog), which also clears the history / the
+// favorites; persisted settings load at startup and configure the preview's
+// transparent-image backdrop. Esc closes the History or Favorites view, or an
+// open media preview.
+// Version: 1.9.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -35,6 +37,7 @@
 #include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerShare.h"
+#include "UltraFilerPrompt.h"
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
 #include "UltraWin/UltraWin.h"
 #endif
@@ -422,45 +425,11 @@ void UltraFilerWindow::Show() {
 
 // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
 
-std::shared_ptr<UltraCanvasMenu> UltraFilerWindow::BuildMenuBar() {
-    MenuStyle style = MenuStyle::Default();
-    style.backgroundColor = Color(249, 249, 251, 255);
-    style.font.fontSize = kUiFontSize;
-
-    menuBar = MenuBuilder("ufl-menubar", 0, 0, 0, 24)
-            .SetType(MenuType::Menubar)
-            .SetStyle(style)
-            .AddSubmenu("Settings", {
-                    MenuItemData::Action("Settings...",
-                            [this]() { OpenSettingsDialog(); }),
-                    MenuItemData::Separator(),
-                    MenuItemData::Action("Clear History", [this]() {
-                        history.ClearAll();
-                        if (historyShown) {
-                            RefreshHistoryTabs();
-                            UpdateStatusBar();
-                        }
-                    }),
-                    MenuItemData::Action("Clear Favorites", [this]() {
-                        favorites.ClearAll();
-                        RefreshPinnedTreeNodes();
-                        if (favoritesShown) {
-                            RefreshFavoritesTabs();
-                            UpdateStatusBar();
-                        }
-                    }),
-            })
-            // The submenus are provided by lambdas so the items' enabled and
-            // checked state can follow the selection at the moment the menu
-            // opens.
-            .AddSubmenu("Pin", [this]() { return BuildPinMenuItems(); })
-            .AddSubmenu("Extras", [this]() { return BuildExtrasMenuItems(); })
-            .Build();
-    menuBar->size.height = CSSLayout::Dimension::Px(24);
-    menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    return menuBar;
-}
+void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
+    // Plain text goes through the OS print dialog; other file kinds have no
+    // renderer yet and are skipped with a note.
+    constexpr uint64_t kMaxPrintBytes = 4ull * 1024 * 1024;
+    constexpr size_t   kMaxPrintJobs  = 5;   // one dialog per file
 
     std::vector<FilerEntry> printable;
     size_t skipped = 0;
@@ -532,6 +501,93 @@ void UltraFilerWindow::HandleShare(const std::vector<FilerEntry>& targets) {
                              + " to the e-mail composer.");
 }
 
+void UltraFilerWindow::HandleAttributes(const std::vector<FilerEntry>& targets) {
+    if (targets.empty()) return;
+    UltraFilerPropertiesDialogs::ShowAttributes(window.get(), targets);
+}
+
+void UltraFilerWindow::HandleAccess(const std::vector<FilerEntry>& targets) {
+    if (targets.empty()) return;
+    UltraFilerPropertiesDialogs::ShowAccess(window.get(), targets,
+            [this]() { RefreshVisibleListing(); });
+}
+
+void UltraFilerWindow::RefreshVisibleListing() {
+    if (historyShown) RefreshHistoryTabs();
+    else if (favoritesShown) RefreshFavoritesTabs();
+    else if (filer) filer->Refresh();
+}
+
+// ===== SETTINGS =====
+
+void UltraFilerWindow::ApplySettings() {
+    if (!preview) return;
+    preview->SetTransparentBackground(settings.previewCheckeredBackground
+            ? TransparentImageBackground::Checkered
+            : TransparentImageBackground::SolidColor);
+    preview->SetTransparentColor(settings.previewTransparentColor);
+}
+
+void UltraFilerWindow::OpenSettingsDialog() {
+    UltraFilerSettingsDialog::Show(window.get(), &settings,
+            [this]() { ApplySettings(); },
+            [this]() {   // Clear History
+        history.ClearAll();
+        if (historyShown) {
+            RefreshHistoryTabs();
+            UpdateStatusBar();
+        }
+    },
+            [this]() {   // Clear Favorites
+        favorites.ClearAll();
+        RefreshPinnedTreeNodes();
+        if (favoritesShown) {
+            RefreshFavoritesTabs();
+            UpdateStatusBar();
+        }
+    });
+}
+
+// ===== EXTRAS EXTENSION (filer context menus: Open prompt + Pin / Unpin) =====
+
+void UltraFilerWindow::OpenSystemPrompt() {
+    // The prompt opens in the folder the active tab is showing, so the shell
+    // starts where the user is looking.
+    std::string folder = filer ? filer->GetPath() : std::string();
+    if (folder.empty()) folder = UserHomeDir();
+
+    std::string error;
+    if (!UltraFilerPrompt::Launch(settings.promptApplication, folder, error))
+        UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
+}
+
+UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
+    if (favoritesShown) return ActiveFavoritesFiler();
+    if (historyShown) return ActiveHistoryFiler();
+    return filer.get();
+}
+
+std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
+    UltraCanvasFilerWidget* f = VisibleFiler();
+    if (!f) return {};
+    std::vector<FilerEntry> sel = f->GetSelectedEntries();
+    if (!sel.empty()) return sel;
+    // Nothing selected: in the browsing view the shown folder itself is the
+    // content, so that is what gets pinned.
+    if (!historyShown && !favoritesShown) {
+        const std::string path = f->GetPath();
+        std::error_code ec;
+        if (!path.empty() && fs::is_directory(path, ec) && !ec) {
+            FilerEntry folder;
+            folder.path = path;
+            folder.name = fs::path(path).filename().string();
+            folder.isDirectory = true;
+            return {folder};
+        }
+    }
+    return {};
+}
+
 std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     const std::vector<FilerEntry> targets = PinTargets();
     const bool allFolders = !targets.empty() &&
@@ -579,26 +635,6 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
             MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
     };
-}
-
-// ===== PIN MENU (menu bar: Pin > Favorites / Treeview) =====
-
-UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
-    if (favoritesShown) return ActiveFavoritesFiler();
-    if (historyShown) return ActiveHistoryFiler();
-    return filer.get();
-}
-
-void UltraFilerWindow::HandleAccess(const std::vector<FilerEntry>& targets) {
-    if (targets.empty()) return;
-    UltraFilerPropertiesDialogs::ShowAccess(window.get(), targets,
-            [this]() { RefreshVisibleListing(); });
-}
-
-void UltraFilerWindow::RefreshVisibleListing() {
-    if (historyShown) RefreshHistoryTabs();
-    else if (favoritesShown) RefreshFavoritesTabs();
-    else if (filer) filer->Refresh();
 }
 
 void UltraFilerWindow::PinTargetsToFavorites() {
@@ -1548,6 +1584,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+    tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -1723,6 +1760,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+        histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -1933,6 +1971,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+        favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;

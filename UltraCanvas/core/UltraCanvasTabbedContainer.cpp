@@ -274,9 +274,27 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::SetTabIconImage(int index, std::shared_ptr<UCImage> image) {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->iconImage = std::move(image);
-            tabs[index]->hasIcon = tabs[index]->iconImage != nullptr || !tabs[index]->iconPath.empty();
+            tabs[index]->hasIcon = tabs[index]->iconImage != nullptr || tabs[index]->iconAnimation != nullptr || !tabs[index]->iconPath.empty();
             InvalidateTabbar();
         }
+    }
+    void UltraCanvasTabbedContainer::SetTabIconAnimation(int index, std::shared_ptr<UCImage> animated) {
+        if (index < 0 || index >= (int)tabs.size())
+            return;
+        auto* tab = tabs[index].get();
+        tab->iconAnimation.reset();
+        if (animated && animated->IsAnimated()) {
+            if (auto anim = animated->GetAnimation()) {
+                auto controller = std::make_shared<UCImageAnimationController>();
+                controller->SetAnimation(anim);
+                controller->SetLoopForever(true);
+                controller->onFrameChanged = [this]() { InvalidateTabbar(); };
+                controller->Play();
+                tab->iconAnimation = std::move(controller);
+            }
+        }
+        tab->hasIcon = tab->iconAnimation != nullptr || tab->iconImage != nullptr || !tab->iconPath.empty();
+        InvalidateTabbar();
     }
 
     std::string UltraCanvasTabbedContainer::GetTabIcon(int index) const {
@@ -567,7 +585,15 @@ namespace UltraCanvas {
         int iconX = tabBounds.x + tabPadding;
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
-        // Prefer an in-memory image (e.g. a favicon); fall back to a file path.
+        // An animated icon (e.g. a loading spinner) takes precedence: draw its current frame.
+        if (tab->iconAnimation) {
+            if (auto pixmap = tab->iconAnimation->GetCurrentFramePixmap()) {
+                ctx->DrawPixmap(*pixmap, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
+                return;
+            }
+        }
+
+        // Otherwise prefer an in-memory image (e.g. a favicon); fall back to a file path.
         if (tab->iconImage)
             ctx->DrawImage(*tab->iconImage, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
         else if (!tab->iconPath.empty())
@@ -917,12 +943,17 @@ namespace UltraCanvas {
 
         int clickedTab = GetTabAtPosition(x, y);
         if (clickedTab >= 0 && event.button == UCMouseButton::Right) {
+            contextMenuTabIndex = clickedTab;
+            // Notify the app-provided handler (window-relative coords) so it can pop up its own menu.
+            if (onTabContextMenu) {
+                onTabContextMenu(clickedTab, event.pointerWindow.x, event.pointerWindow.y);
+                return true;
+            }
             if (tabContextMenu) {
-                contextMenuTabIndex = clickedTab;
-                if (onTabContextMenu) {
-                    onTabContextMenu(clickedTab);
-                }
-                //tabContextMenu->ShowAtWindow(event.pointer.x, event.pointer.y, GetWindow());
+                UltraCanvas::PopupElementSettings settings;
+                settings.closeByEscapeKey = true;
+                settings.closeByClickOutside = true;
+                tabContextMenu->OpenMenu(UltraCanvas::Point2Di(event.pointerWindow.x, event.pointerWindow.y), *window, settings);
                 return true;
             }
         }
