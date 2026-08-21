@@ -37,6 +37,7 @@
 #include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerShare.h"
+#include "UltraFilerPrompt.h"
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
 #include "UltraWin/UltraWin.h"
 #endif
