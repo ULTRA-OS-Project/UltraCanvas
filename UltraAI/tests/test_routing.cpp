@@ -92,8 +92,8 @@ void TestLiveFactories() {
     auto llm = CreateTextLLM(cfg);
     EXPECT_TRUE(llm != nullptr);
     const std::string routed = llm->GetCapabilities().providerId;
-    EXPECT_TRUE(routed == "anthropic" || routed == "llama-cpp" ||
-                routed == "mock");
+    EXPECT_TRUE(routed == "anthropic" || routed == "openai" ||
+                routed == "llama-cpp" || routed == "mock");
 
     // Routing can pin the mock back explicitly.
     SetDefaultProvider("textllm", "mock");

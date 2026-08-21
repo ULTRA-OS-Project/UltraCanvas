@@ -16,6 +16,9 @@
 #ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
 #include "UltraAIAnthropicTextLLM.h"
 #endif
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+#include "UltraAIOpenAI.h"
+#endif
 #ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
 #include "UltraAILlamaTextLLM.h"
 #endif
@@ -48,6 +51,14 @@ struct Registry {
             providers["anthropic"] =
                 [](const TextLLMConfig& cfg, Error* err) {
                     return CreateAnthropicTextLLM(cfg, err);
+                };
+        }
+#endif
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+        if (providers.find("openai") == providers.end()) {
+            providers["openai"] =
+                [](const TextLLMConfig& cfg, Error* err) {
+                    return CreateOpenAITextLLM(cfg, err);
                 };
         }
 #endif

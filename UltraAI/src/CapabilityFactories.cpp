@@ -30,6 +30,13 @@
 #include "UltraAIMockCodeAssist.h"
 #endif
 
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+#include "UltraAIOpenAI.h"
+#endif
+#ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
+#include "UltraAILlamaEmbeddings.h"
+#endif
+
 #include <cmath>
 #include <map>
 #include <mutex>
@@ -124,6 +131,22 @@ Registry<IEmbeddings, EmbeddingsConfig>& EmbedsReg() {
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const EmbeddingsConfig&, Error*) {
                     return CreateMockEmbeddings();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+            if (!r.providers.count("openai")) {
+                r.providers["openai"] = [](const EmbeddingsConfig& cfg,
+                                           Error* err) {
+                    return CreateOpenAIEmbeddings(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
+            if (!r.providers.count("llama-cpp")) {
+                r.providers["llama-cpp"] = [](const EmbeddingsConfig& cfg,
+                                              Error* err) {
+                    return CreateLlamaEmbeddings(cfg, err);
                 };
             }
 #endif
