@@ -136,6 +136,17 @@ namespace UltraCanvas {
         UltraCanvasTextInput::TextChanged();  // fires onTextChanged callback
     }
 
+    void UltraCanvasAutoComplete::RefreshSuggestions() {
+        const std::string& currentText = GetText();
+        FilterSuggestions(currentText);
+
+        if (static_cast<int>(currentText.length()) >= minCharsToTrigger && !filteredItems.empty()) {
+            OpenAutocompletePopup();
+        } else {
+            CloseAutocompletePopup();
+        }
+    }
+
     // ===== EVENT HANDLING =====
 
     bool UltraCanvasAutoComplete::OnEvent(const UCEvent& event) {
@@ -285,6 +296,22 @@ namespace UltraCanvas {
                 if (onAutocompletePopupClosed) onAutocompletePopupClosed();
             }
         };
+
+        // Omnibox mode: moving the highlight with Up/Down copies the row's text into the input so the
+        // field always reflects what will be navigated to. (Clearing selection sends an empty vector.)
+        popupListView->onSelectionChanged = [this](const std::vector<int>& sel) {
+            if (!omniboxMode || sel.empty())
+                return;
+            int row = sel.front();
+            if (row < 0 || row >= static_cast<int>(filteredItems.size()))
+                return;
+            selectedIndex = row;
+            auto prevOnTextChanged = onTextChanged;
+            onTextChanged = nullptr;
+            SetText(filteredItems[row].text);
+            SetCaretPosition(GetText().length());
+            onTextChanged = prevOnTextChanged;
+        };
     }
 
     void UltraCanvasAutoComplete::ApplyStyleToListView() {
@@ -320,6 +347,13 @@ namespace UltraCanvas {
             items.emplace_back(acItem.text);
         }
         listModel->SetItems(items);
+
+        // Omnibox mode: the list contents just changed, so drop any stale highlight/focus — the inline
+        // completion in the text field is the default, and the first Up/Down starts from the top row.
+        if (omniboxMode && popupListView) {
+            popupListView->ResetSelection();
+            selectedIndex = -1;
+        }
 
         CalculateAndSetPopupSize();
     }

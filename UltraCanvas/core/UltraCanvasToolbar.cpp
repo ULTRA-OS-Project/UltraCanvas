@@ -253,6 +253,18 @@ namespace UltraCanvas {
         return searchBox;
     }
 
+    std::shared_ptr<UltraCanvasAutoComplete> UltraCanvasToolbar::AddAutoComplete(
+            const std::string& id, const std::string& placeholder,
+            std::function<void(const std::string&)> onTextChange) {
+        auto autoComplete = std::make_shared<UltraCanvasAutoComplete>(id, 0, 0, 150, 24);
+        autoComplete->SetPlaceholder(placeholder);
+        if (onTextChange) {
+            autoComplete->onTextChanged = onTextChange;
+        }
+        RegisterWidget(id, autoComplete);
+        return autoComplete;
+    }
+
 // ===== APPEARANCE =====
 
     void UltraCanvasToolbar::ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button) {

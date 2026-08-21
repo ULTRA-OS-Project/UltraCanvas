@@ -12,6 +12,7 @@
 #include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasImageAnimation.h"
 #include "UltraCanvasUtils.h"
 #include <string>
 #include <vector>
@@ -68,6 +69,9 @@ namespace UltraCanvas {
         // Optional already-decoded icon image (e.g. a favicon built with UCImage::LoadFromMemory);
         // drawn in place of iconPath when set, so no temp file is needed.
         std::shared_ptr<UCImage> iconImage;
+        // Optional animated icon (e.g. a loading spinner GIF); when playing it overrides the
+        // static icon above and its frames advance on the app timer.
+        std::shared_ptr<UCImageAnimationController> iconAnimation;
         std::string badgeText;
         int badgeWidth = 0;
         int badgeHeight = 0;
@@ -208,7 +212,7 @@ namespace UltraCanvas {
         std::function<void(int, int)> onTabReorder;          // (fromIndex, toIndex)
         std::function<void(int, const std::string&)> onTabRename; // (tabIndex, newTitle)
         std::function<void()> onTabBarRightClick;
-        std::function<void(int)> onTabContextMenu;  // Called before context menu shown (tabIndex)
+        std::function<void(int, int, int)> onTabContextMenu;  // (tabIndex, windowX, windowY) on right-click
 
         // ===== V2.0.0: DRAG-OUT / DRAG-IN CALLBACKS =====
         /// Tab dragged out of the tab bar beyond threshold.
@@ -295,6 +299,9 @@ namespace UltraCanvas {
         void SetTabIcon(int index, const std::string& iconPath);
         // Set the tab icon from an already-decoded, in-memory image (pass nullptr to clear).
         void SetTabIconImage(int index, std::shared_ptr<UCImage> image);
+        // Set an animated tab icon (e.g. a loading spinner) from an animated image; it plays and
+        // overrides the static icon while set. Pass nullptr to stop and clear the animation.
+        void SetTabIconAnimation(int index, std::shared_ptr<UCImage> animated);
         std::string GetTabIcon(int index) const;
         void SetTabBadge(int index, const std::string & text, bool show = true);
         void SetTabBadgeColor(int index, const Color& color);

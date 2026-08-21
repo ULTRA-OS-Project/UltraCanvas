@@ -81,6 +81,9 @@ namespace UltraCanvas {
 
         void SetSelection(std::shared_ptr<IListSelection> selection);
         IListSelection* GetSelection() const;
+        // Clear the selection and reset keyboard focus to "no row" (so the next NavigateDown/Up
+        // starts from the first row). Used when the list contents change under an open popup.
+        void ResetSelection();
 
         void SetStyle(const ListViewStyle& style);
         const ListViewStyle& GetStyle() const;

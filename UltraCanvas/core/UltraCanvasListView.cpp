@@ -77,6 +77,12 @@ namespace UltraCanvas {
         return selection.get();
     }
 
+    void UltraCanvasListView::ResetSelection() {
+        focusedRow = -1;
+        if (selection) selection->Clear();
+        RequestRedraw();
+    }
+
     // ===== VIEW CONFIGURATION =====
     void UltraCanvasListView::SetStyle(const ListViewStyle& style) {
         viewStyle = style;
