@@ -86,6 +86,7 @@ namespace UltraCanvas {
     class UltraCanvasMenu;
     class UltraCanvasButton;
     class UltraCanvasTextInput;
+    struct DialogConfig;
 
     // ===== PASTE NAME CONFLICTS =====
     // What to do with a pasted entry whose name already exists in the target
@@ -1526,21 +1527,45 @@ namespace UltraCanvas {
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;   // reuse `action` for later conflicts
             bool changed = false;
+            // Failure handling: skip every failing entry / grant each one
+            // silent retry, and the per-entry state they consume.
+            bool skipFailedForAll = false;
+            bool retryFailedForAll = false;
+            bool currentRetried = false;
+            PasteConflictAction currentAction = PasteConflictAction::KeepBoth;
             std::function<void(bool changed)> onDone;
         };
         std::unique_ptr<PendingPaste> pendingPaste;
 
-        // Processes sources until a name conflict needs the dialog (which
-        // resumes it) or the queue is done (FinishPendingPaste).
+        // Processes sources until a name conflict or a failure needs a
+        // dialog (which resumes it) or the queue is done (FinishPendingPaste).
         void ContinuePendingPaste();
         void FinishPendingPaste();
         // Copy / move one source into the pending paste's folder, honoring
-        // `action` when the name is taken.
-        void PasteOneEntry(const std::string& src, PasteConflictAction action);
+        // `action` when the name is taken. False = failed, with the reason.
+        bool PasteOneEntry(const std::string& src, PasteConflictAction action,
+                          std::string& whyFailed);
+        // Pastes the entry at `next` (with the failure policy applied) and
+        // advances. False = a problem dialog was opened and resumes the queue.
+        bool PasteCurrentAndAdvance(PasteConflictAction action);
         // The "already exists" dialog: exclusive Keep both / Replace / Skip
         // switches, a "do this for all remaining conflicts" switch, and
         // Continue / Cancel buttons.
         void ShowPasteConflictDialog(const std::string& src);
+        // The paste failure dialog: Try again / Skip, like a failed delete's.
+        void ShowPasteProblemDialog(const std::string& src,
+                                    const std::string& reason);
+
+        // A two-choice problem dialog in the house style: exclusive switches
+        // for proceed (try again / delete anyway / …) vs. skip, a "do this
+        // for all" scope switch, and Continue / Cancel buttons. False = modal
+        // dialogs are unavailable and the caller must fall back.
+        bool ShowProceedSkipDialog(
+                DialogConfig& cfg,
+                const std::string& proceedLabel, const std::string& skipLabel,
+                const std::string& allLabel, bool proceedDefault,
+                std::function<void(bool proceed, bool all)> onContinue,
+                std::function<void()> onCancel);
 
         // ===== DELETE PROBLEMS =====
         // What the delete-problem dialog decides for the entry it is about:
@@ -1563,9 +1588,6 @@ namespace UltraCanvas {
             bool currentDecided = false;
             DeleteProblemAction currentAction = DeleteProblemAction::Skip;
             bool currentRetried = false;
-            // What the open dialog's switches currently say.
-            DeleteProblemAction dialogAction = DeleteProblemAction::Skip;
-            bool dialogAll = false;
             // Folders that really lost an entry, for onFolderModified.
             std::vector<std::string> modifiedFolders;
         };
@@ -1583,6 +1605,37 @@ namespace UltraCanvas {
         void ShowDeleteProblemDialog(const FilerEntry& entry,
                                      bool writeProtected,
                                      const std::string& reason);
+
+        // ===== RENAME CONFLICTS =====
+        // The actual rename plus the selection hand-over and refresh.
+        void PerformRename(const std::string& oldPath,
+                           const std::string& targetPath);
+        // Renaming onto an existing name asks: Replace / Cancel.
+        void ShowRenameReplaceDialog(const std::string& oldPath,
+                                     const std::string& targetPath);
+
+        // ===== EXTRACT CONFLICTS =====
+        // One ExtractSelection in flight: the archives not yet extracted and
+        // the choice the conflict dialog collected.
+        struct PendingExtract {
+            std::vector<FilerEntry> archives;
+            size_t next = 0;
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            bool applyToAll = false;
+            bool changed = false;
+        };
+        std::unique_ptr<PendingExtract> pendingExtract;
+
+        // Processes archives until a taken destination folder name needs the
+        // dialog (which resumes it) or the queue is done.
+        void ContinuePendingExtract();
+        void FinishPendingExtract();
+        // Extracts the archive at `next` (KeepBoth renames the destination,
+        // Replace merges into the existing folder, Skip does not extract).
+        void ExtractCurrentAndAdvance(PasteConflictAction action);
+        // The "folder already exists" dialog: Keep both / Extract into the
+        // existing folder / Skip this archive.
+        void ShowExtractConflictDialog(const FilerEntry& archive);
 
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.

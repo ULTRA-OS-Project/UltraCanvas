@@ -15833,9 +15833,11 @@ Notes:
   drag retargets the destination exactly like compressing. Both go through
   `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
-  `CompressSelection(extension)` / `ExtractSelection()` still perform the
-  immediate, dialog-free operations for programmatic use;
-  `OpenExtractDialog()` opens the extract dialog the menu uses.
+  `CompressSelection(extension)` / `ExtractSelection()` perform the immediate
+  operations for programmatic use — `ExtractSelection()` asks (Keep both /
+  Extract into the existing folder / Skip) when the destination folder name
+  is already taken; `OpenExtractDialog()` opens the extract dialog the menu
+  uses.
 - **Display > Preview** switches content previews on and off per file kind —
   see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
@@ -16035,7 +16037,8 @@ filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
-filer->ExtractSelection();           // dialog-free: sibling folders
+filer->ExtractSelection();           // into sibling folders; a taken folder
+                                     // name asks Keep both / Merge / Skip
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
@@ -16125,6 +16128,13 @@ chosen action; **Cancel** keeps what was already pasted and drops the rest.
 Copy-pasting a file alongside its original never asks — the copy simply takes
 the next free name, exactly like Duplicate.
 
+An entry that **fails** to paste (locked, in use, permissions) asks too —
+**Try again** / **Skip this file**, with a "Do this for all remaining items"
+scope switch; a stored try-again-for-all grants each later failing entry one
+silent retry before asking again. Drag & drop, inside the widget and from
+other applications, runs through the same machinery, so drops get the same
+dialogs.
+
 The same machinery is available programmatically for any target folder:
 
 ```cpp
@@ -16158,10 +16168,13 @@ presses as plain clicks.
 **Inside the widget** the drag is drawn by the widget itself: a badge with the
 entry's icon and its name (or "N items") follows the cursor, and the folder
 under the cursor is highlighted as the drop target. Dropping on it **moves**
-the files into that folder — hold **Ctrl** to drop a **copy** instead. Names
-that already exist there get a " (2)" style suffix, a folder cannot be dropped
-into itself, and a drop anywhere but on a folder simply ends the drag. Escape
-abandons the drag without moving anything.
+the files into that folder — hold **Ctrl** to drop a **copy** instead. Drops
+run through the same machinery as Paste, so a name that already exists there
+raises the [conflict dialog](#name-conflicts) and a failing entry the retry
+dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
+folder simply ends the drag. Escape abandons the drag without moving anything.
+Files dropped **into** the view from other widgets or applications are copied
+the same way, conflict dialog included.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -16250,7 +16263,10 @@ renamed while it was *not* selected — the hover icon menu acting on the entry
 under the cursor — leaves the selection where it was. Renaming to a name that
 differs only in case is allowed: the "already exists" check ignores a target
 that resolves to the entry itself, which is what a case-insensitive filesystem
-(Windows, macOS) reports for it.
+(Windows, macOS) reports for it. Renaming onto a name another entry already
+holds asks — *"A file named "X" already exists in this folder. Replacing it
+overwrites the existing file."* — with **Replace** / **Cancel** buttons;
+Cancel keeps the old name.
 
 The field is placed over the name wherever the name is drawn, which differs per
 view: beside the icon in Details / List / Size bars, over the caption band in

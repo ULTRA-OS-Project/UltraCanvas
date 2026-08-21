@@ -1,4 +1,19 @@
 #### 2026-08-21 *0.3.54*
+- **Filer widget: the remaining "ask the user" gaps.** Every operation that
+  silently invented " (2)" names or only logged an error now asks, in the
+  same exclusive-switch dialog style. Drag & drop — inside the widget and
+  drops arriving from other applications — runs through the paste
+  machinery, so taken names raise the paste conflict dialog. An entry that
+  *fails* to paste (locked, in use) asks **Try again** / **Skip** with the
+  same one-silent-retry-then-ask "for all" semantics as delete. Renaming
+  onto an existing name asks **Replace** / **Cancel** instead of refusing
+  into the status bar. `ExtractSelection()` with a taken destination
+  folder name asks **Keep both** (renamed folder) / **Extract into the
+  existing folder** (merge) / **Skip this archive**, with a
+  "do this for all remaining archives" switch. The exclusive-switch group
+  and the two-choice problem dialog are factored into shared helpers, and
+  a cut is now consumed by its own clipboard paste only — a drag-move no
+  longer clears an unrelated pending cut.
 - **Filer widget: delete problem dialog.** A delete that runs into trouble
   no longer just logs to `onError`: a write-protected (locked) entry asks
   *before* the attempt — **Delete it anyway** (lifting the protection
