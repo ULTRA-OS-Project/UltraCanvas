@@ -950,7 +950,10 @@ namespace UltraCanvas {
                 return true;
             }
             if (tabContextMenu) {
-                //tabContextMenu->ShowAtWindow(event.pointer.x, event.pointer.y, GetWindow());
+                UltraCanvas::PopupElementSettings settings;
+                settings.closeByEscapeKey = true;
+                settings.closeByClickOutside = true;
+                tabContextMenu->OpenMenu(UltraCanvas::Point2Di(event.pointerWindow.x, event.pointerWindow.y), *window, settings);
                 return true;
             }
         }
