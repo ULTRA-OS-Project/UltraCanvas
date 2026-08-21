@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasNestedAreaChart.cpp
 // Nested Proportional Area Chart - Implementation
-// Version: 1.2.0
-// Last Modified: 2026-07-29
+// Version: 1.3.0
+// Last Modified: 2026-08-20
+// V1.3.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasNestedAreaChart.h"
@@ -19,10 +20,12 @@ namespace UltraCanvas {
 // =============================================================================
 
     ChartPlotArea UltraCanvasNestedAreaChart::CalculatePlotArea() {
+        // Full content area. The legend's share is subtracted at render time
+        // via ChartLegend::RemainingArea(), which needs a render context for
+        // text measurement.
         float titleReserve = chartTitle.empty() ? 0.0f : 24.0f;
-        float legendReserve = showLegend ? legendHeight : 0.0f;
         float w = std::max(0.0f, GetWidth() - chartPadding * 2);
-        float h = std::max(0.0f, GetHeight() - chartPadding * 2 - titleReserve - legendReserve);
+        float h = std::max(0.0f, GetHeight() - chartPadding * 2 - titleReserve);
         return ChartPlotArea(chartPadding, chartPadding + titleReserve, w, h);
     }
 
@@ -194,6 +197,31 @@ namespace UltraCanvas {
     void UltraCanvasNestedAreaChart::RenderChart(IRenderContext* ctx) {
         if (!ctx) return;
 
+        // Lay the shared legend out first: it consumes its strip from the
+        // content area and the shapes get what remains — RemainingArea()
+        // replaces the old fixed legendHeight plot-area subtraction.
+        ChartPlotArea fullArea = CalculatePlotArea();
+        Rect2Dd contentArea(fullArea.x, fullArea.y, fullArea.width, fullArea.height);
+        Rect2Dd plotArea = contentArea;
+
+        legend.SetVisible(showLegend);
+        if (showLegend) {
+            RebuildLegend();
+            legend.Measure(ctx, contentArea);
+            plotArea = legend.RemainingArea(contentArea);
+        }
+
+        // Adopt the legend-adjusted plot area; re-layout shapes when it moves.
+        if (std::fabs(plotArea.x - cachedPlotArea.x) > 0.01 ||
+            std::fabs(plotArea.y - cachedPlotArea.y) > 0.01 ||
+            std::fabs(plotArea.width - cachedPlotArea.width) > 0.01 ||
+            std::fabs(plotArea.height - cachedPlotArea.height) > 0.01) {
+            cachedPlotArea = ChartPlotArea(
+                    static_cast<float>(plotArea.x), static_cast<float>(plotArea.y),
+                    static_cast<float>(plotArea.width), static_cast<float>(plotArea.height));
+            shapeCache.Invalidate();
+        }
+
         if (!shapeCache.isValid) {
             CalculateShapeCache();
         }
@@ -212,7 +240,7 @@ namespace UltraCanvas {
         }
 
         if (showLegend) {
-            RenderLegend(ctx);
+            legend.Render(ctx, contentArea);
         }
     }
 
@@ -457,54 +485,46 @@ namespace UltraCanvas {
     }
 
 // =============================================================================
-// LEGEND RENDERING
+// LEGEND (shared ChartLegend component)
 // =============================================================================
 
-    void UltraCanvasNestedAreaChart::RenderLegend(IRenderContext* ctx) {
+    // The legacy private legend was a left-aligned, wrapping horizontal strip
+    // along the bottom edge; that maps to ChartLegendPosition::BottomStart with
+    // Auto (horizontal) flow. Entries keep the chart's color machinery: the same
+    // size order (largest first) and GetColorForIndex() colors as the shapes.
+    void UltraCanvasNestedAreaChart::RebuildLegend() {
+        legend.SetPosition(ChartLegendPosition::BottomStart);
+        legend.SetOrientation(LegendOrientation::Auto);
+
+        // Map the old hand-drawn strip's look onto ChartLegendStyle.
+        ChartLegendStyle legendStyle;
+        legendStyle.fontSize = 10.0f;                     // old SetFontSize(10.0f)
+        legendStyle.textColor = Color(60, 60, 60, 255);   // old legend text color
+        legendStyle.swatchWidth = 12.0f;                  // old swatchSize
+        legendStyle.swatchHeight = 12.0f;
+        legendStyle.swatchTextGap = 6.0f;                 // old spacing
+        legendStyle.entrySpacingX = 16.0f;                // old itemSpacing
+        legendStyle.entrySpacingY = 5.0f;                 // old row advance gap
+        legendStyle.paddingX = 0.0f;                      // old strip had no box chrome
+        legendStyle.paddingY = 0.0f;
+        legendStyle.drawSwatchBorder = showBorders;       // old strip honored showBorders
+        legendStyle.swatchBorderColor = borderColor;
+        legendStyle.swatchBorderWidth = 1.0f;
+        legend.SetStyle(legendStyle);
+
         const auto& pts = nestedDataSource->GetPoints();
-        if (pts.empty()) return;
-
-        float legendX = chartPadding;
-        float legendY = GetHeight() - legendHeight + 5.0f;
-        float swatchSize = 12.0f;
-        float spacing = 6.0f;
-        float itemSpacing = 16.0f;
-
-        ctx->SetFontSize(10.0f);
-
-        float currentX = legendX;
-
-        // Legend follows size order, largest first
+        std::vector<ChartLegendEntry> entries;
+        entries.reserve(pts.size());
         for (size_t dataIdx : GetSortedIndices(true)) {
             const auto& point = pts[dataIdx];
-            Color color = GetColorForIndex(dataIdx);
-
-            std::string legendText = point.label;
+            ChartLegendEntry entry(point.label, GetColorForIndex(dataIdx),
+                                   LegendSwatch::Square);
             if (showValues) {
-                legendText += " (" + FormatNestedValue(point.value, point.unit) + ")";
+                entry.valueText = "(" + FormatNestedValue(point.value, point.unit) + ")";
             }
-            Size2Di txtSize = ctx->GetTextLineDimensions(legendText);
-
-            // Wrap to next line if this item won't fit
-            if (currentX > legendX &&
-                currentX + swatchSize + spacing + txtSize.width > GetWidth() - chartPadding) {
-                currentX = legendX;
-                legendY += swatchSize + 5;
-            }
-
-            ctx->SetFillPaint(color);
-            ctx->FillRectangle(Rect2Dd(currentX, legendY, swatchSize, swatchSize));
-            if (showBorders) {
-                ctx->SetStrokePaint(borderColor);
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRectangle(Rect2Dd(currentX, legendY, swatchSize, swatchSize));
-            }
-
-            ctx->SetTextPaint(Color(60, 60, 60, 255));
-            ctx->DrawText(legendText, Point2Dd(currentX + swatchSize + spacing, legendY));
-
-            currentX += swatchSize + spacing + txtSize.width + itemSpacing;
+            entries.push_back(entry);
         }
+        legend.SetEntries(entries);
     }
 
 // =============================================================================

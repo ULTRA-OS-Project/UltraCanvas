@@ -1,8 +1,9 @@
 // Plugins/Charts/UltraCanvasPolarChart.cpp
 // Comprehensive polar chart element: scatter, line, spline, area and column
 // series plotted on a configurable angle/radius coordinate system
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasPolarChart.h"
 
@@ -758,7 +759,45 @@ namespace UltraCanvas {
         layoutValid = false;
     }
 
-    void UltraCanvasPolarChart::EnsureLayout() {
+    // Sync the shared legend component from the chart's legacy legend fields:
+    // same labels, same palette colours, square swatches like the old renderer.
+    void UltraCanvasPolarChart::UpdateLegend() {
+        // Legacy positions map onto the shared enum; each edge keeps the old
+        // centred alignment (Top -> TopCenter, Right -> RightCenter, ...).
+        switch (legendPosition) {
+            case PolarLegendPosition::Top:
+                legend.SetPosition(ChartLegendPosition::TopCenter);    break;
+            case PolarLegendPosition::Bottom:
+                legend.SetPosition(ChartLegendPosition::BottomCenter); break;
+            case PolarLegendPosition::Left:
+                legend.SetPosition(ChartLegendPosition::LeftCenter);   break;
+            case PolarLegendPosition::Right:
+                legend.SetPosition(ChartLegendPosition::RightCenter);  break;
+            default: break;
+        }
+        legend.SetVisible(legendPosition != PolarLegendPosition::NoLegend &&
+                          !seriesList.empty());
+
+        ChartLegendStyle style;
+        style.fontFamily = legendFontFamily;
+        style.fontSize = legendFontSize;
+        style.textColor = legendTextColor;
+        // Hidden series stay listed but render dimmed, like the old legend.
+        style.disabledTextColor = legendTextColor.WithAlpha(110);
+        legend.SetStyle(style);
+
+        std::vector<ChartLegendEntry> entries;
+        entries.reserve(seriesList.size());
+        for (size_t i = 0; i < seriesList.size(); ++i) {
+            ChartLegendEntry entry(seriesList[i].name, ResolveSeriesColor(i),
+                                   LegendSwatch::Square);
+            entry.enabled = seriesList[i].visible;
+            entries.push_back(entry);
+        }
+        legend.SetEntries(entries);
+    }
+
+    void UltraCanvasPolarChart::EnsureLayout(IRenderContext* ctx) {
         // The plot area reserves room for the title, so react to a title set
         // through the base class, which cannot notify us.
         if (layoutTitleSnapshot != chartTitle) {
@@ -768,6 +807,44 @@ namespace UltraCanvas {
         if (lastLayoutWidth != GetWidth() || lastLayoutHeight != GetHeight()) {
             lastLayoutWidth = GetWidth();
             lastLayoutHeight = GetHeight();
+            InvalidateLayout();
+        }
+        // Measure the legend before the plot area is calculated: the reserved
+        // band comes straight from the measured legend box. The legend lays
+        // out in the element area below the titles, outside the label margin,
+        // exactly where the old private renderer drew it.
+        UpdateLegend();
+        double band = 0.0;
+        if (ctx && legend.IsVisible() && legend.GetEntryCount() > 0) {
+            double top = 10.0;
+            if (!chartTitle.empty()) top += 26.0;
+            if (!subtitle.empty())   top += 18.0;
+            legendContentArea = Rect2Dd(
+                10.0, top,
+                std::max(0.0, static_cast<double>(GetWidth()) - 20.0),
+                std::max(0.0, static_cast<double>(GetHeight()) - top - 10.0));
+            legend.Measure(ctx, legendContentArea);
+            Rect2Dd remaining = legend.RemainingArea(legendContentArea);
+            switch (legendPosition) {
+                case PolarLegendPosition::Top:
+                    band = remaining.y - legendContentArea.y;
+                    break;
+                case PolarLegendPosition::Bottom:
+                    band = (legendContentArea.y + legendContentArea.height)
+                         - (remaining.y + remaining.height);
+                    break;
+                case PolarLegendPosition::Left:
+                    band = remaining.x - legendContentArea.x;
+                    break;
+                case PolarLegendPosition::Right:
+                    band = (legendContentArea.x + legendContentArea.width)
+                         - (remaining.x + remaining.width);
+                    break;
+                default: break;
+            }
+        }
+        if (band != legendBandSize) {
+            legendBandSize = band;
             InvalidateLayout();
         }
         // Margins depend on the legend, the categories and the axis fonts, so
@@ -783,21 +860,9 @@ namespace UltraCanvas {
         if (!chartTitle.empty()) top += 26.0;
         if (!subtitle.empty())   top += 18.0;
 
-        // Legend band. Text is measured at render time; this reserves a band
-        // sized from the font metrics so the plot circle never overlaps it.
-        legendBandSize = 0.0;
-        if (legendPosition != PolarLegendPosition::NoLegend && !seriesList.empty()) {
-            if (legendPosition == PolarLegendPosition::Top ||
-                legendPosition == PolarLegendPosition::Bottom) {
-                legendBandSize = legendFontSize + 16.0;
-            } else {
-                size_t longest = 0;
-                for (const auto& series : seriesList) {
-                    longest = std::max(longest, series.name.size());
-                }
-                legendBandSize = std::min(180.0,
-                    28.0 + static_cast<double>(longest) * legendFontSize * 0.58);
-            }
+        // Legend band. The shared ChartLegend component measured it in
+        // EnsureLayout, so the plot circle never overlaps it.
+        if (legendBandSize > 0.0) {
             switch (legendPosition) {
                 case PolarLegendPosition::Top:    top    += legendBandSize; break;
                 case PolarLegendPosition::Bottom: bottom += legendBandSize; break;
@@ -1506,7 +1571,7 @@ namespace UltraCanvas {
     void UltraCanvasPolarChart::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         if (!ctx) return;
 
-        EnsureLayout();
+        EnsureLayout(ctx);
 
         if (showBackground) {
             ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
@@ -1517,7 +1582,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::RenderChart(IRenderContext* ctx) {
         if (!ctx) return;
-        EnsureLayout();
+        EnsureLayout(ctx);
 
         RenderPlotBackground(ctx);
         RenderRadialBands(ctx);
@@ -1540,7 +1605,9 @@ namespace UltraCanvas {
         }
         if (showRadialLabels) RenderRadialAxis(ctx);
 
-        RenderLegend(ctx);
+        if (legend.IsVisible() && legend.GetEntryCount() > 0) {
+            legend.Render(ctx, legendContentArea);
+        }
         RenderTitles(ctx);
     }
 
@@ -1933,91 +2000,6 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void UltraCanvasPolarChart::BuildLegendEntries(IRenderContext* ctx) {
-        legendEntries.clear();
-        if (legendPosition == PolarLegendPosition::NoLegend || seriesList.empty()) return;
-
-        ctx->PushState();
-        ctx->SetFontFamily(legendFontFamily);
-        ctx->SetFontSize(legendFontSize);
-
-        const double swatch = legendFontSize;
-        const double gap = 6.0;
-        const double itemGap = 16.0;
-        const double rowHeight = legendFontSize + 8.0;
-
-        std::vector<std::pair<std::string, double>> measured;
-        double totalWidth = 0.0;
-        for (const auto& series : seriesList) {
-            Size2Di ts = ctx->GetTextLineDimensions(series.name);
-            double width = swatch + gap + ts.width;
-            measured.emplace_back(series.name, width);
-            totalWidth += width + itemGap;
-        }
-        if (totalWidth > 0.0) totalWidth -= itemGap;
-        ctx->PopState();
-
-        bool horizontal = legendPosition == PolarLegendPosition::Top ||
-                          legendPosition == PolarLegendPosition::Bottom;
-
-        double startX, startY;
-        if (horizontal) {
-            startX = (GetWidth() - totalWidth) / 2.0;
-            startY = (legendPosition == PolarLegendPosition::Top)
-                   ? (chartTitle.empty() ? 8.0 : 34.0) + (subtitle.empty() ? 0.0 : 18.0)
-                   : GetHeight() - legendBandSize + 4.0;
-        } else {
-            startX = (legendPosition == PolarLegendPosition::Left)
-                   ? 10.0 : GetWidth() - legendBandSize + 6.0;
-            startY = cachedCenter.y
-                   - static_cast<double>(seriesList.size()) * rowHeight / 2.0;
-        }
-
-        double x = startX;
-        double y = startY;
-        for (size_t i = 0; i < seriesList.size(); ++i) {
-            LegendEntry entry;
-            entry.seriesIndex = i;
-            entry.color = ResolveSeriesColor(i);
-            entry.text = measured[i].first;
-            entry.bounds = Rect2Dd(x, y, measured[i].second, rowHeight);
-            legendEntries.push_back(entry);
-
-            if (horizontal) x += measured[i].second + itemGap;
-            else            y += rowHeight;
-        }
-    }
-
-    void UltraCanvasPolarChart::RenderLegend(IRenderContext* ctx) {
-        if (legendPosition == PolarLegendPosition::NoLegend) return;
-        BuildLegendEntries(ctx);
-        if (legendEntries.empty()) return;
-
-        ctx->PushState();
-        ctx->SetFontFamily(legendFontFamily);
-        ctx->SetFontSize(legendFontSize);
-
-        const double swatch = legendFontSize;
-        for (const LegendEntry& entry : legendEntries) {
-            bool visible = seriesList[entry.seriesIndex].visible;
-            Color swatchColor = visible ? entry.color
-                                        : entry.color.WithAlpha(70);
-            Color textColor = visible ? legendTextColor
-                                      : legendTextColor.WithAlpha(110);
-
-            double cy = entry.bounds.y + entry.bounds.height / 2.0;
-            ctx->DrawFilledRectangle(
-                Rect2Dd(entry.bounds.x, cy - swatch / 2.0, swatch, swatch),
-                swatchColor, 0.0f, Colors::Transparent, 2.0f);
-
-            Size2Di ts = ctx->GetTextLineDimensions(entry.text);
-            ctx->SetTextPaint(textColor);
-            ctx->DrawText(entry.text,
-                          Point2Dd(entry.bounds.x + swatch + 6.0, cy - ts.height / 2.0));
-        }
-        ctx->PopState();
-    }
-
     void UltraCanvasPolarChart::RenderTitles(IRenderContext* ctx) {
         if (chartTitle.empty() && subtitle.empty()) return;
 
@@ -2090,15 +2072,9 @@ namespace UltraCanvas {
     }
 
     size_t UltraCanvasPolarChart::HitTestLegend(const Point2Dd& localPos) const {
-        for (const LegendEntry& entry : legendEntries) {
-            if (localPos.x >= entry.bounds.x &&
-                localPos.x <= entry.bounds.x + entry.bounds.width &&
-                localPos.y >= entry.bounds.y &&
-                localPos.y <= entry.bounds.y + entry.bounds.height) {
-                return entry.seriesIndex;
-            }
-        }
-        return SIZE_MAX;
+        // One legend entry per series, in order, so the entry index returned
+        // by the shared component is the series index.
+        return legend.HitTest(localPos);
     }
 
     bool UltraCanvasPolarChart::HandleChartMouseMove(const Point2Di& mousePos) {

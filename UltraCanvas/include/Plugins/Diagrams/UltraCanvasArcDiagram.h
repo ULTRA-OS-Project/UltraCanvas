@@ -1,7 +1,7 @@
 // UltraCanvasArcDiagram.h
 // Arc diagram — nodes on a baseline, edges as cubic Bezier arcs above/below
-// Version: 1.0.2
-// Last Modified: 2026-05-17
+// Version: 1.1.0
+// Last Modified: 2026-08-20
 // Author: UltraCanvas Framework
 // Changes: P1 degree sizing, P2 vertical labels, P3 opacity weight, P4 semicircle mode,
 //          P5 axis arrow, P6 mid-arc arrowhead, P7 self-loops, P8 parallel bundles,
@@ -9,12 +9,14 @@
 //          P11 connected-edge highlight on node hover/select,
 //          P12 auto value/percentage label at arc apex (zenit),
 //          P13 focus mode — dim non-involved nodes/arcs/labels to a user-defined gray
+// V1.1.0: legend: migrated to the shared ChartLegend component
 
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -329,6 +331,12 @@ namespace UltraCanvas {
         ArcDiagramStyle style;
         bool            needsLayout     = true;
 
+        // P10 — shared legend component. Content, look and placement are synced
+        // from the (unchanged) ArcDiagramStyle legend fields by SyncLegend()
+        // each render; the old free-floating legendX/legendY placement maps to
+        // the closest floating ChartLegendPosition Inset corner.
+        ChartLegend     legend;
+
         // Layout cache
         std::vector<float>  nodePositions;  ///< Screen position along baseline per node
         float               baselinePos    = 0.0f; ///< Screen coordinate of the baseline
@@ -365,7 +373,7 @@ namespace UltraCanvas {
         void    DrawEdges(IRenderContext* ctx) const;
         void    DrawNodes(IRenderContext* ctx) const;
         void    DrawLabels(IRenderContext* ctx) const;
-        void    DrawLegend(IRenderContext* ctx) const;          ///< P10
+        void    SyncLegend();                                   ///< P10 — feed the shared ChartLegend from ArcDiagramStyle
         void    DrawTooltip(IRenderContext* ctx) const;
 
         // Edge drawing helpers

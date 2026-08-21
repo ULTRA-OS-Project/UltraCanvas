@@ -240,11 +240,18 @@ Notes:
   window holds the focus. The icon can be dragged onto any folder in
   the view to change the destination (the target folder highlights while
   dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
-  unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
-  and are available when the VirtualFS module is built
+  opens the same dialog in extract mode: the icon shows the selected archive's
+  file type with its name (or "N archives") beneath, and the editor holds the
+  destination **folder** name instead — suggested from the archive's name
+  without its suffix, with no fixed extension beside the field. Enter /
+  Extract unpacks into that folder (several selected archives each go into
+  their own subfolder of it, so their contents cannot collide), and the icon
+  drag retargets the destination exactly like compressing. Both go through
+  `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
-  `CompressSelection(extension)` still performs an immediate, dialog-free
-  compress for programmatic use.
+  `CompressSelection(extension)` / `ExtractSelection()` still perform the
+  immediate, dialog-free operations for programmatic use;
+  `OpenExtractDialog()` opens the extract dialog the menu uses.
 - **Display > Preview** switches content previews on and off per file kind —
   see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
@@ -441,7 +448,8 @@ filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
-filer->ExtractSelection();
+filer->ExtractSelection();           // dialog-free: sibling folders
+filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
 

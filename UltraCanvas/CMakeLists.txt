@@ -200,6 +200,18 @@ else()
     message(STATUS "  zbar: NOT FOUND (QR decoder disabled)")
 endif()
 
+# libsodium - cryptographic backend for UltraCrypt (optional but strongly
+# recommended). Without it UltraCrypt still builds, but every operation fails
+# with BackendUnavailable: there is deliberately no fallback that would let
+# data pass through unprotected while reporting success.
+pkg_check_modules(SODIUM libsodium)
+if(SODIUM_FOUND)
+    message(STATUS "  libsodium: ${SODIUM_VERSION} (UltraCrypt enabled)")
+else()
+    message(STATUS "  libsodium: NOT FOUND — UltraCrypt will refuse every "
+                   "operation; encryption and password features are unavailable")
+endif()
+
 # FreeType - Font Rendering
 # On Windows with vcpkg, use pkg-config since FindFreetype may not locate
 # vcpkg's install; under Emscripten the wasm sysroot is only exposed through
@@ -397,6 +409,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
@@ -1311,6 +1325,24 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
+# ===== ULTRACRYPT =====
+# Cryptographic services (Masterfile_modules.md §8). Deliberately free of any
+# UI dependency so headless consumers — UltraVault, UltraDatabase, tools — can
+# link it without pulling in the widget layer.
+add_library(UltraCrypt STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp)
+target_include_directories(UltraCrypt PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(UltraCrypt PUBLIC cxx_std_20)
+set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(SODIUM_FOUND)
+    target_compile_definitions(UltraCrypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
+    target_include_directories(UltraCrypt PRIVATE ${SODIUM_INCLUDE_DIRS})
+    target_link_directories(UltraCrypt PUBLIC ${SODIUM_LIBRARY_DIRS})
+    target_link_libraries(UltraCrypt PUBLIC ${SODIUM_LIBRARIES})
+endif()
+
 if(ULTRACANVAS_ENABLE_NET)
     find_package(Threads REQUIRED)
 

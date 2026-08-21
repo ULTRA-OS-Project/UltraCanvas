@@ -1,13 +1,15 @@
 // include/Plugins/Charts/UltraCanvasCircularProgressChart.h
 // Circular progress chart element: concentric progress rings ("activity
 // rings"), single progress ring and progress pie, all angle-encoded.
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasRenderContext.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -227,6 +229,9 @@ namespace UltraCanvas {
         std::string legendFontFamily = "Arial";
         float legendFontSize = 11.0f;
         Color legendTextColor = Color(70, 70, 70, 255);
+        // Shared legend component; content, style and position are synced from
+        // the legacy fields above on every render pass.
+        ChartLegend legend;
 
         std::function<std::string(double)> valueFormatter;
         std::function<std::string(double)> percentFormatter;
@@ -250,7 +255,6 @@ namespace UltraCanvas {
         Point2Dd cachedCenter;
         float cachedInnerRadius = 0.0f;
         float cachedOuterRadius = 0.0f;
-        double legendBandSize = 0.0;     // reserved on the legend side
 
         size_t hoveredRing = SIZE_MAX;
 
@@ -275,7 +279,7 @@ namespace UltraCanvas {
         void RenderNameLabels(IRenderContext* ctx);
         void RenderStackedStartLabels(IRenderContext* ctx);
         void RenderCenterDisc(IRenderContext* ctx);
-        void RenderLegend(IRenderContext* ctx);
+        void UpdateLegend();
         Point2Dd ArcTipPoint(const RingLayout& layout) const;
         double ScreenAngle(const RingLayout& layout, double fractionAlong) const;
 

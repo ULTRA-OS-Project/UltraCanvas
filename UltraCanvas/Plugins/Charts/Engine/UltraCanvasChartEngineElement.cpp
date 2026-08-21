@@ -1,7 +1,14 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
-// Version: 1.1.0
-// Last Modified: 2026-08-10
+// Version: 1.2.0
+// Last Modified: 2026-08-20
+// V1.2.0: Themes and palettes (Engine/UltraCanvasChartTheme.h) - SetTheme /
+//   SetPalette / the "theme" named property fill the engine's furniture
+//   colours from a ChartTheme; repaint-only, with an OnThemeChanged() hook.
+//   Also: the label solver's bounds now include the margins the content
+//   reserved in MeasureContent (SolveLabelBounds), so a bar that reaches the
+//   axis maximum keeps its value label just above the plot edge instead of
+//   having it pushed down onto the bar.
 // V1.1.0: Two fixes the first animated / transposed client exposed.
 //   - The animation driver now advances on a ~60fps application timer.
 //     RequestRedraw() from inside the paint cannot produce the next frame (the
@@ -30,6 +37,22 @@ UltraCanvasChartEngineElement::UltraCanvasChartEngineElement(
     showGrid = false;
     showValueLabels = false;
     engineProperties.Define("title", std::string());
+    engineProperties.Define("theme", std::string("Light"));
+    engineTheme = ChartThemes::Light();
+    frame.theme = &engineTheme;
+
+    // The legend is the shared component, hidden until a chart shows it.
+    // The engine box look predates the component's plainer default.
+    engineLegend.SetVisible(false);
+    engineLegend.SetPosition(ChartLegendPosition::RightStart);
+    ChartLegendStyle& legendStyle = engineLegend.GetStyle();
+    legendStyle.fontSize = axisFontSize;
+    legendStyle.textColor = legendTextColor;
+    legendStyle.backgroundColor = legendBackground;
+    legendStyle.drawBackground = true;
+    legendStyle.drawBorder = true;
+    legendStyle.borderColor = Color(190, 190, 190, 255);
+    legendStyle.cornerRadius = 4.0f;
 }
 
 UltraCanvasChartEngineElement::~UltraCanvasChartEngineElement() {
@@ -52,6 +75,48 @@ void UltraCanvasChartEngineElement::SetProjectionKind(ChartProjectionKind kind) 
 
 ChartProjectionKind UltraCanvasChartEngineElement::GetProjectionKind() const {
     return projectionKind;
+}
+
+void UltraCanvasChartEngineElement::SetTheme(const ChartTheme& theme) {
+    engineTheme = theme;
+    frame.theme = &engineTheme;
+    // The engine layers read these working copies; the base class paints the
+    // backgrounds and the grid from its own fields.
+    backgroundColor = theme.backgroundColor;
+    plotAreaColor = theme.plotAreaColor;
+    gridColor = theme.gridColor;
+    axisLineColor = theme.axisLineColor;
+    axisTickColor = theme.axisTickColor;
+    axisLabelColor = theme.axisLabelColor;
+    titleTextColor = theme.titleTextColor;
+    legendTextColor = theme.legendTextColor;
+    legendBackground = theme.legendBackground;
+    // The shared legend paints from its own style; keep it on the theme.
+    ChartLegendStyle& legendStyle = engineLegend.GetStyle();
+    legendStyle.textColor = theme.legendTextColor;
+    legendStyle.titleColor = theme.legendTextColor;
+    legendStyle.disabledTextColor = theme.axisLabelColor;
+    legendStyle.backgroundColor = theme.legendBackground;
+    legendStyle.borderColor = theme.gridColor;
+    legendStyle.swatchBorderColor = theme.axisLineColor;
+    engineProperties.Set("theme", theme.name);
+    OnThemeChanged();
+    // A theme is colours only, so nothing can move: no layout, no label
+    // re-solve (proposal §5.7) - just repaint.
+    RequestRedraw();
+}
+
+bool UltraCanvasChartEngineElement::SetTheme(const std::string& themeName) {
+    const ChartTheme* theme = ChartThemes::Find(themeName);
+    if (!theme) return false;
+    SetTheme(*theme);
+    return true;
+}
+
+void UltraCanvasChartEngineElement::SetPalette(const ChartPalette& palette) {
+    engineTheme.palette = palette;
+    OnThemeChanged();
+    RequestRedraw();
 }
 
 void UltraCanvasChartEngineElement::SetLabelPolicy(const ChartLabelPolicy& policy) {
@@ -80,13 +145,44 @@ void UltraCanvasChartEngineElement::ClearLimiters() {
     MarkEngineDirty(ChartDirty::Style);
 }
 
+size_t UltraCanvasChartEngineElement::AddHighlight(const ChartHighlight& highlight) {
+    highlights.push_back(highlight);
+    MarkEngineDirty(ChartDirty::Style);       // labels join the label plan
+    return highlights.size() - 1;
+}
+
+void UltraCanvasChartEngineElement::ClearHighlights() {
+    highlights.clear();
+    MarkEngineDirty(ChartDirty::Style);
+}
+
 void UltraCanvasChartEngineElement::SetShowLegend(bool show) {
-    showLegend = show;
+    engineLegend.SetVisible(show);
     MarkEngineDirty(ChartDirty::Geometry);    // the legend reserves margin
 }
 
 void UltraCanvasChartEngineElement::SetLegendEntries(const std::vector<ChartLegendEntry>& entries) {
-    legendEntries = entries;
+    engineLegend.SetEntries(entries);
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
+void UltraCanvasChartEngineElement::SetLegendPosition(ChartLegendPosition position) {
+    engineLegend.SetPosition(position);
+    MarkEngineDirty(ChartDirty::Geometry);    // the reserved edge moves
+}
+
+void UltraCanvasChartEngineElement::SetLegendOrientation(LegendOrientation orientation) {
+    engineLegend.SetOrientation(orientation);
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
+void UltraCanvasChartEngineElement::SetLegendTitle(const std::string& title) {
+    engineLegend.SetTitle(title);
+    MarkEngineDirty(ChartDirty::Geometry);
+}
+
+void UltraCanvasChartEngineElement::SetLegendMode(ChartLegendMode mode) {
+    engineLegend.SetMode(mode);
     MarkEngineDirty(ChartDirty::Geometry);
 }
 
@@ -203,6 +299,35 @@ UltraCanvasChartEngineElement::HitTestRegions(const Point2Dd& point) const {
 }
 
 bool UltraCanvasChartEngineElement::OnEvent(const UCEvent& event) {
+    // Legend interaction first: the legend is chrome above the plot, so a
+    // pointer over it never reaches the content's hit regions.
+    if (engineLegend.IsVisible() &&
+        (event.type == UCEventType::MouseMove ||
+         event.type == UCEventType::MouseDown)) {
+        const size_t entry =
+            engineLegend.HitTest(Point2Dd(event.pointer.x, event.pointer.y));
+        if (event.type == UCEventType::MouseMove) {
+            if (entry != engineLegend.GetHighlightedEntry()) {
+                engineLegend.SetHighlightedEntry(entry);
+                MarkEngineDirty(ChartDirty::Hover);   // repaint only
+            }
+        } else if (entry != SIZE_MAX) {
+            engineLegend.ToggleEntryEnabled(entry);
+            OnLegendEntryToggled(entry,
+                                 engineLegend.GetEntry(entry).enabled);
+            RequestRedraw();
+            return true;                              // click consumed
+        }
+        if (entry != SIZE_MAX && event.type == UCEventType::MouseMove) {
+            if (isTooltipActive) HideTooltip();
+            return true;                              // hover consumed
+        }
+    } else if (event.type == UCEventType::MouseLeave &&
+               engineLegend.GetHighlightedEntry() != SIZE_MAX) {
+        engineLegend.SetHighlightedEntry(SIZE_MAX);
+        MarkEngineDirty(ChartDirty::Hover);
+    }
+
     if (event.type == UCEventType::MouseMove) {
         const ChartHitRegion* hit =
             HitTestRegions(Point2Dd(event.pointer.x, event.pointer.y));
@@ -240,6 +365,15 @@ bool UltraCanvasChartEngineElement::OnEvent(const UCEvent& event) {
 
 bool UltraCanvasChartEngineElement::SetProperty(const std::string& key,
                                                 const UCPropertyValue& value) {
+    if (key == "theme") {
+        // Validated against the registry before it lands in the bag;
+        // SetTheme stores the canonical capitalization itself.
+        std::string themeName;
+        if (!UCPropertyAsString(value, themeName)) return false;
+        if (!SetTheme(themeName)) return false;
+        OnEnginePropertyChanged(key, engineProperties.Get(key));
+        return true;
+    }
     if (!engineProperties.Set(key, value)) return false;
     if (key == "title") {
         std::string title;
@@ -327,22 +461,32 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
         }
     }
 
-    if (showLegend && !legendEntries.empty()) {
-        double widest = 0.0;
-        for (const ChartLegendEntry& entry : legendEntries) {
-            widest = std::max(widest,
-                              static_cast<double>(ctx->GetTextLineWidth(entry.label)));
-        }
-        const double swatch = 14.0, pad = 8.0;
-        legendRect.width = swatch + 6.0 + widest + pad * 2.0;
-        legendRect.height = legendEntries.size() *
-                                (ctx->GetTextLineHeight("Ag") + 6.0) + pad * 2.0;
-        request.Reserve(ChartAxisEdge::Right, legendRect.width + 10.0);
-    } else {
-        legendRect = Rect2Dd(0, 0, 0, 0);
+    // Legend: the shared component measures itself against the element minus
+    // the exclusive title band. An outside placement's consumed edge becomes
+    // a reservation; an inset placement floats over the plot and reserves
+    // nothing (RemainingArea returns the area unchanged).
+    legendArea = Rect2Dd(0.0, titleBand,
+                         static_cast<double>(GetWidth()),
+                         std::max(0.0, static_cast<double>(GetHeight()) - titleBand));
+    engineLegend.Invalidate();               // layout inputs may have changed
+    legendBox = engineLegend.Measure(ctx, legendArea).box;
+    if (legendBox.width > 0.0 && legendBox.height > 0.0) {
+        const Rect2Dd remaining = engineLegend.RemainingArea(legendArea);
+        request.Reserve(ChartAxisEdge::Left, remaining.x - legendArea.x);
+        request.Reserve(ChartAxisEdge::Right, legendArea.Right() - remaining.Right());
+        request.Reserve(ChartAxisEdge::Top, remaining.y - legendArea.y);
+        request.Reserve(ChartAxisEdge::Bottom,
+                        legendArea.Bottom() - remaining.Bottom());
     }
 
-    MeasureContent(ctx, request);
+    // The content's own reservations are remembered separately: they are the
+    // bands its solved labels may spill into (BuildLabelPlan), so a bar that
+    // reaches the axis maximum keeps its value label - just above the plot
+    // edge instead of pushed down onto the bar.
+    ChartLayoutRequest contentRequest;
+    MeasureContent(ctx, contentRequest);
+    contentMargins = contentRequest.margins;
+    request.margins.Merge(contentMargins);
     request.margins.top += titleBand;
 
     // ---- solve --------------------------------------------------------------
@@ -350,11 +494,6 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
                             static_cast<double>(GetHeight()));
     const Rect2Dd plot = SolvePlotArea(chartArea, request.margins);
     engineProjection->SetPlotArea(plot);
-
-    if (showLegend && !legendEntries.empty()) {
-        legendRect.x = plot.Right() + 10.0;
-        legendRect.y = plot.y;
-    }
 
     frame.plotArea = plot;
     frame.axes = &engineAxes;
@@ -379,15 +518,23 @@ void UltraCanvasChartEngineElement::EnsureLabelPlan(IRenderContext* ctx) {
 
 void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
     LabelPlacementOptions options = labelOptions;
-    options.bounds = frame.plotArea;
+    // Solved labels stay within the plot area plus the bands the content
+    // reserved for itself in MeasureContent. Axis bands, the title band and
+    // the legend margin stay out of bounds (the legend additionally rides the
+    // plan as an obstacle below, so a right-spill band shared with it is
+    // steered around, not overprinted).
+    const Rect2Dd chartArea(0.0, 0.0, static_cast<double>(GetWidth()),
+                            static_cast<double>(GetHeight()));
+    options.bounds = SolveLabelBounds(frame.plotArea, contentMargins, chartArea);
 
     ChartLabelBroker broker(labelPolicy, options);
 
-    // The legend is opaque chrome: solved labels must steer around it.
-    if (showLegend && legendRect.width > 0.0) {
+    // The legend is opaque chrome: solved labels must steer around it. This
+    // matters most for inset placements, which float over the plot.
+    if (legendBox.width > 0.0) {
         ChartLabelRequest legend;
         legend.klass = ChartLabelClass::LegendEntry;
-        legend.fixedBounds = legendRect;
+        legend.fixedBounds = legendBox;
         broker.Add(legend);
     }
 
@@ -407,6 +554,45 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         caption.preferredSide = LabelSide::Top;
         caption.priority = 5;
         broker.Add(caption);
+    }
+
+    // Highlight labels ride the plan too, anchored at the group's centre.
+    for (const ChartHighlight& h : highlights) {
+        if (h.label.empty()) continue;
+        Point2Dd anchor;
+        if (h.shape == ChartHighlightShape::ValueBand) {
+            if (h.axisIndex >= engineAxes.Count()) continue;
+            const ChartAxis& axis = engineAxes.At(h.axisIndex);
+            anchor = engineProjection->ToScreen(ChartNormalizedPoint(
+                0.5, axis.Normalize((h.bandLow + h.bandHigh) / 2.0)));
+        } else if (h.members.empty()) {
+            anchor = MapHighlightPoint(
+                h, Point2Dd(h.rectValueSpace.x + h.rectValueSpace.width / 2.0,
+                            h.rectValueSpace.y + h.rectValueSpace.height / 2.0));
+        } else {
+            double mx = 0.0, my = 0.0;
+            size_t used = 0;
+            for (const Point2Dd& m : h.members) {
+                const Point2Dd p = MapHighlightPoint(h, m);
+                if (std::isnan(p.x)) continue;
+                mx += p.x;
+                my += p.y;
+                ++used;
+            }
+            if (used == 0) continue;
+            anchor = Point2Dd(mx / used, my / used);
+        }
+        if (std::isnan(anchor.x)) continue;
+
+        ChartLabelRequest request;
+        request.text = h.label;
+        request.klass = ChartLabelClass::HighlightLabel;
+        request.anchor = anchor;
+        const Size2Di size = ctx->GetTextLineDimensions(h.label);
+        request.textSize = Size2Dd(size.width, size.height);
+        request.preferredSide = LabelSide::Top;
+        request.priority = 6;
+        broker.Add(request);
     }
 
     CollectChartLabels(ctx, broker);
@@ -542,10 +728,11 @@ void UltraCanvasChartEngineElement::RenderChart(IRenderContext* ctx) {
 }
 
 void UltraCanvasChartEngineElement::RenderPhaseUnder(IRenderContext* ctx) {
-    RenderEngineBackground(ctx);   // slot 100
-    RenderEngineGrid(ctx);         // slot 300
-    RenderEngineLimiters(ctx);     // slot 400
-    RenderEngineAxes(ctx);         // slot 500 - edge axes only
+    RenderEngineBackground(ctx);        // slot 100
+    RenderEngineHighlights(ctx, 200);   // slot 200 - washes under the grid
+    RenderEngineGrid(ctx);              // slot 300
+    RenderEngineLimiters(ctx);          // slot 400
+    RenderEngineAxes(ctx);              // slot 500 - edge axes only
     RenderEngineTitle(ctx);
 }
 
@@ -553,6 +740,7 @@ void UltraCanvasChartEngineElement::RenderPhaseOver(IRenderContext* ctx) {
     // In-plot axes sit above the content: a dense chart would otherwise bury
     // its own axis rules and value labels under the data marks.
     RenderEngineInPlotAxes(ctx);
+    RenderEngineHighlights(ctx, 700);   // slot 700 - overlays above content
     RenderPlannedLabels(ctx);      // slot 800
     RenderEngineLegend(ctx);       // slot 800
     ctx->PushState();
@@ -565,6 +753,146 @@ void UltraCanvasChartEngineElement::RenderEngineBackground(IRenderContext* ctx) 
     ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
     ctx->SetFillPaint(plotAreaColor);
     ctx->FillRectangle(frame.plotArea);
+}
+
+Point2Dd UltraCanvasChartEngineElement::MapHighlightPoint(
+        const ChartHighlight& highlight, const Point2Dd& value) const {
+    if (highlight.xAxisIndex >= engineAxes.Count() ||
+        highlight.yAxisIndex >= engineAxes.Count() || !engineProjection) {
+        return Point2Dd(std::nan(""), std::nan(""));
+    }
+    const double u = engineAxes.At(highlight.xAxisIndex).Normalize(value.x);
+    const double v = engineAxes.At(highlight.yAxisIndex).Normalize(value.y);
+    return engineProjection->ToScreen(ChartNormalizedPoint(u, v));
+}
+
+void UltraCanvasChartEngineElement::RenderEngineHighlights(IRenderContext* ctx,
+                                                           int zSlot) {
+    if (highlights.empty()) return;
+    ctx->PushState();
+    ctx->ClipRect(frame.plotArea);
+
+    for (const ChartHighlight& h : highlights) {
+        if (h.zSlot != zSlot) continue;
+
+        if (h.dashed) ctx->SetLineDash(UCDashPattern({6.0, 4.0}));
+        const bool strokes = h.strokeWidth > 0.0f && h.stroke.a > 0;
+
+        switch (h.shape) {
+            case ChartHighlightShape::Rectangle:
+            case ChartHighlightShape::Ellipse: {
+                const Point2Dd a = MapHighlightPoint(
+                    h, Point2Dd(h.rectValueSpace.x, h.rectValueSpace.y));
+                const Point2Dd b = MapHighlightPoint(
+                    h, Point2Dd(h.rectValueSpace.Right(), h.rectValueSpace.Bottom()));
+                if (std::isnan(a.x) || std::isnan(b.x)) break;
+                const Rect2Dd screen(std::min(a.x, b.x), std::min(a.y, b.y),
+                                     std::abs(b.x - a.x), std::abs(b.y - a.y));
+                if (h.shape == ChartHighlightShape::Rectangle) {
+                    ctx->SetFillPaint(h.fill);
+                    ctx->FillRectangle(screen);
+                    if (strokes) {
+                        ctx->SetStrokePaint(h.stroke);
+                        ctx->SetStrokeWidth(h.strokeWidth);
+                        ctx->DrawRectangle(screen);
+                    }
+                } else {
+                    ctx->SetFillPaint(h.fill);
+                    ctx->FillEllipse(screen);
+                    if (strokes) {
+                        ctx->SetStrokePaint(h.stroke);
+                        ctx->SetStrokeWidth(h.strokeWidth);
+                        ctx->DrawEllipse(screen);
+                    }
+                }
+                break;
+            }
+            case ChartHighlightShape::ConfidenceEllipse: {
+                std::vector<Point2Dd> screen;
+                screen.reserve(h.members.size());
+                for (const Point2Dd& m : h.members) {
+                    const Point2Dd p = MapHighlightPoint(h, m);
+                    if (!std::isnan(p.x)) screen.push_back(p);
+                }
+                const ChartEllipseSpec ellipse =
+                    ComputeConfidenceEllipse(screen, h.confidence);
+                if (!ellipse.valid) break;
+                ctx->ClearPath();
+                ctx->Ellipse(ellipse.center.x, ellipse.center.y, ellipse.rx,
+                             std::max(ellipse.ry, 1.0), ellipse.rotationRadians);
+                ctx->SetFillPaint(h.fill);
+                ctx->FillPathPreserve();
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->StrokePathPreserve();
+                }
+                ctx->ClearPath();
+                if (h.showMeanMarker) {
+                    Color mean = h.stroke;
+                    mean.a = 255;
+                    ctx->SetFillPaint(mean);
+                    ctx->FillCircle(ellipse.center, 3.5);
+                }
+                break;
+            }
+            case ChartHighlightShape::Hull:
+            case ChartHighlightShape::Blob: {
+                std::vector<Point2Dd> screen;
+                screen.reserve(h.members.size());
+                for (const Point2Dd& m : h.members) {
+                    const Point2Dd p = MapHighlightPoint(h, m);
+                    if (!std::isnan(p.x)) screen.push_back(p);
+                }
+                std::vector<Point2Dd> outline =
+                    ExpandPolygon(ComputeConvexHull(std::move(screen)), h.padding);
+                if (outline.size() < 3) break;
+                if (h.shape == ChartHighlightShape::Blob) {
+                    const int iterations = std::clamp(
+                        static_cast<int>(std::lround(h.smoothing * 4.0)), 0, 4);
+                    outline = SmoothPolygonChaikin(outline, iterations);
+                }
+                ctx->SetFillPaint(h.fill);
+                ctx->FillLinePath(outline);
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->DrawLinePath(outline, true);
+                }
+                break;
+            }
+            case ChartHighlightShape::ValueBand: {
+                if (h.axisIndex >= engineAxes.Count()) break;
+                const ChartAxis& axis = engineAxes.At(h.axisIndex);
+                const double lo = axis.Normalize(std::min(h.bandLow, h.bandHigh));
+                const double hi = axis.Normalize(std::max(h.bandLow, h.bandHigh));
+                const std::vector<Point2Dd> quad = {
+                    engineProjection->ToScreen(ChartNormalizedPoint(0.0, lo)),
+                    engineProjection->ToScreen(ChartNormalizedPoint(1.0, lo)),
+                    engineProjection->ToScreen(ChartNormalizedPoint(1.0, hi)),
+                    engineProjection->ToScreen(ChartNormalizedPoint(0.0, hi))};
+                ctx->SetFillPaint(h.fill);
+                ctx->FillLinePath(quad);
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->DrawLine(quad[0], quad[1]);
+                    ctx->DrawLine(quad[3], quad[2]);
+                }
+                break;
+            }
+            case ChartHighlightShape::PointHalo: {
+                ctx->SetFillPaint(h.fill);
+                for (const Point2Dd& m : h.members) {
+                    const Point2Dd p = MapHighlightPoint(h, m);
+                    if (!std::isnan(p.x)) ctx->FillCircle(p, h.padding);
+                }
+                break;
+            }
+        }
+        if (h.dashed) ctx->SetLineDash(UCDashPattern());
+    }
+    ctx->PopState();
 }
 
 void UltraCanvasChartEngineElement::RenderEngineGrid(IRenderContext* ctx) {
@@ -751,98 +1079,9 @@ void UltraCanvasChartEngineElement::RenderPlannedLabels(IRenderContext* ctx) {
 }
 
 void UltraCanvasChartEngineElement::RenderEngineLegend(IRenderContext* ctx) {
-    if (!showLegend || legendEntries.empty() || legendRect.width <= 0.0) return;
-
-    ctx->SetFillPaint(legendBackground);
-    ctx->FillRoundedRectangle(legendRect, 4.0);
-    ctx->SetStrokePaint(Color(190, 190, 190, 255));
-    ctx->SetStrokeWidth(1.0f);
-    ctx->DrawRoundedRectangle(legendRect, 4.0);
-
-    ctx->SetFontSize(axisFontSize);
-    const double swatch = 14.0, pad = 8.0;
-    const double rowHeight = ctx->GetTextLineHeight("Ag") + 6.0;
-    double y = legendRect.y + pad;
-    for (const ChartLegendEntry& entry : legendEntries) {
-        const Rect2Dd box(legendRect.x + pad, y + 1.0, swatch, rowHeight - 8.0);
-        RenderLegendSwatch(ctx, box, entry);
-        ctx->SetTextPaint(legendTextColor);
-        ctx->DrawText(entry.label,
-                      Point2Dd(legendRect.x + pad + swatch + 6.0, y));
-        y += rowHeight;
-    }
-}
-
-void UltraCanvasChartEngineElement::RenderLegendSwatch(IRenderContext* ctx,
-                                                       const Rect2Dd& box,
-                                                       const ChartLegendEntry& entry) {
-    switch (entry.swatch) {
-    case ChartLegendSwatch::Gradient: {
-        Color light = entry.color;
-        light.r = static_cast<uint8_t>(std::min(255, light.r + 70));
-        light.g = static_cast<uint8_t>(std::min(255, light.g + 70));
-        light.b = static_cast<uint8_t>(std::min(255, light.b + 70));
-        auto gradient = ctx->CreateLinearGradientPattern(
-            box.x, box.y, box.x, box.y + box.height,
-            {GradientStop(0.0, light), GradientStop(1.0, entry.color)});
-        if (gradient) {
-            ctx->SetFillPaint(gradient);
-            ctx->FillRoundedRectangle(box, 2.0);
-        } else {
-            ctx->SetFillPaint(entry.color);
-            ctx->FillRoundedRectangle(box, 2.0);
-        }
-        break;
-    }
-    case ChartLegendSwatch::Outline: {
-        Color ghost = entry.color;
-        ghost.a = 36;
-        ctx->SetFillPaint(ghost);
-        ctx->FillRoundedRectangle(box, 2.0);
-        ctx->SetStrokePaint(entry.color);
-        ctx->SetStrokeWidth(1.5f);
-        ctx->DrawRoundedRectangle(box, 2.0);
-        break;
-    }
-    case ChartLegendSwatch::Hatched: {
-        Color background = entry.color;
-        background.r = static_cast<uint8_t>(std::min(255, background.r + 90));
-        background.g = static_cast<uint8_t>(std::min(255, background.g + 90));
-        background.b = static_cast<uint8_t>(std::min(255, background.b + 90));
-        ctx->SetFillPaint(background);
-        ctx->FillRoundedRectangle(box, 2.0);
-        ctx->PushState();
-        ctx->ClipRect(box);
-        ctx->SetStrokePaint(entry.color);
-        ctx->SetStrokeWidth(1.0f);
-        for (double offset = 0.0; offset < box.width + box.height; offset += 4.0) {
-            ctx->DrawLine(Point2Dd(box.x + offset, box.y),
-                          Point2Dd(box.x + offset - box.height, box.y + box.height));
-        }
-        ctx->PopState();
-        break;
-    }
-    case ChartLegendSwatch::Image: {
-        if (!entry.imagePath.empty()) {
-            ctx->PushState();
-            ctx->ClipRect(box);
-            ctx->DrawImage(entry.imagePath, box, ImageFitMode::Cover);
-            ctx->PopState();
-            ctx->SetStrokePaint(Color(150, 150, 150, 255));
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRoundedRectangle(box, 2.0);
-        } else {
-            ctx->SetFillPaint(entry.color);
-            ctx->FillRoundedRectangle(box, 2.0);
-        }
-        break;
-    }
-    case ChartLegendSwatch::Solid:
-    default:
-        ctx->SetFillPaint(entry.color);
-        ctx->FillRoundedRectangle(box, 2.0);
-        break;
-    }
+    // The shared component draws itself against the same area it was
+    // measured with during layout; the call is cheap when nothing changed.
+    engineLegend.Render(ctx, legendArea);
 }
 
 } // namespace UltraCanvas

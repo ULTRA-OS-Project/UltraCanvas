@@ -18,6 +18,36 @@
 # This means OpenSSL is only an explicit dependency on Linux; Windows and
 # macOS pull TLS, the certificate trust store, and the cipher policy from
 # the OS itself.
+# ===== CRYPTOGRAPHY (UltraCrypt) =====
+#
+# UltraCrypt wraps libsodium for all data-at-rest cryptography: hashing, HMAC,
+# authenticated encryption, key derivation, secure random and secure memory.
+# It is a separate concern from TLS, which stays OS-native per the networking
+# policy below (Schannel on Windows, SecureTransport on macOS).
+#
+# libsodium was chosen because it is the only candidate providing both of the
+# algorithms the framework standardised on — XChaCha20-Poly1305 and Argon2id —
+# neither of which is offered by OpenSSL 3.0 (the current LTS version),
+# Windows CNG or macOS CommonCrypto. See Docs/Modules/UltraCrypt/README.md §3.
+#
+# Absence is tolerated at build time but never silently: UltraCrypt still
+# compiles and every operation then fails with BackendUnavailable, so no data
+# is ever written unprotected while reporting success.
+cryptography:
+  core:
+    libsodium:
+      min_version: "1.0.18"           # the version on Ubuntu 24.04 LTS
+      purpose: "Cryptographic backend for UltraCrypt (Tier 1 core)"
+      required: false                 # builds without it; all crypto then fails closed
+      platforms: ["all"]
+      pkg_config: "libsodium"
+      apt: "libsodium-dev"
+      brew: "libsodium"
+      msys2: "mingw-w64-x86_64-libsodium"
+      vcpkg: "libsodium"
+      # 1.0.19+ additionally provides crypto_kdf_hkdf_*; until the floor is
+      # raised, HKDF must be built on top of the HMAC primitives.
+
 networking:
   core:
     libcurl:

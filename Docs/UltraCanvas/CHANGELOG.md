@@ -1,4 +1,124 @@
 #### 2026-08-20 *0.3.53*
+- **Chart engine: themes and palettes.** The engine grew the theming home the
+  proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles
+  the furniture colours (background, plot area, grid, axes, title, legend)
+  with a `ChartPalette` of series colours, applied with
+  `SetTheme(theme)` / `SetTheme("name")` / `SetPalette(palette)` and — for
+  by-name creators — `SetProperty("theme", "Dark")`. Fourteen built-in
+  themes, their palettes lifted from the definitions the pre-engine charts
+  each carried privately (Light/Bright, Dark, Corporate, Vibrant, Pastel,
+  Colorblind, Material, Classic, Tableau, and the Ocean/Sunset/Forest/Slate/
+  Monochrome ramps). Palettes answer `ColorAt(index)` (cycling, with wrapped
+  cycles re-tinted so long runs never repeat exactly) and
+  `ColorAt(index, count)` (ramps spread across their run when the element
+  count is known); `ChartPalette::FromColormap(Viridis, n)` samples any
+  `UltraCanvasColormap` map into a palette of the requested size. A theme
+  change is repaint-only — no layout, no label re-solve — with an
+  `OnThemeChanged()` hook for content that caches theme colours (legend
+  entries). Pastel carries soft warm-grey furniture of its own, and is the
+  Chart Engine demo's default look; the demo gained a Theme row and its bar
+  edges follow the bar colour (darkened) instead of a fixed near-black.
+  Model-layer tests cover the registry, cycling, count-aware selection and
+  colormap sampling.
+- **Chart engine: the legend is the shared ChartLegend component.** The
+  engine's private right-side-only legend is gone; `SetShowLegend` /
+  `SetLegendEntries` now drive the shared component
+  (`UltraCanvasChartLegend`), which brings the full option set:
+  `SetLegendPosition` with 12 outside placements (Top/Bottom/Left/Right ×
+  Start/Center/End, each reserving its edge in the layout negotiation) plus
+  4 inset corners that float over the plot (reserving nothing, but riding
+  the label plan as an obstacle), `SetLegendOrientation`
+  (Auto/Horizontal/Vertical with row wrapping), `SetLegendTitle`, and
+  `Legend()` for value text, interval entries, overflow capping and label
+  formatting. The shared component gained the engine's paint-mirroring
+  swatches (Outline, Hatched, Image, and a real Gradient ramp), so its
+  swatch vocabulary now spans Square, Circle, Ring, Line, DashedLine,
+  Marker, Glyph, Gradient, Outline, Hatched and Image — and the engine
+  legend follows the active chart theme. This also removes the duplicate
+  `ChartLegendEntry` type the engine declared in parallel with the shared
+  one. New `SetCustomArea(size, draw)` reserves a host-drawn panel below
+  the entries for keys richer than any swatch (an annotated
+  confidence-ellipse diagram, a bubble-size scale); the demo's Inset mode
+  keys the chart's limiter reference lines — a key describes marks the
+  chart actually draws. The engine legend is interactive: hover highlights
+  an entry, a click toggles it (dimmed) and notifies the chart via
+  `OnLegendEntryToggled` — the demo hides the series, stacks re-solving
+  without it. Tall vertical legends now wrap into further columns instead
+  of silently clipping (a `ChartLegend` fix that also benefits the
+  diagrams already using the component). The component grew the engine
+  proposal's continuous modes — `SetMode(ColorBar)` draws a colormap ramp
+  over a value range with tick labels (optionally quantized into bands),
+  `SetMode(SizeLegend)` draws sample circles keying a bubble-size scale —
+  and the legacy charts' private legends (polar, circular progress,
+  funnel, pyramid, Mekko, dumbbell, cumulative flow, population, nested
+  area, arc diagram, and the contour surfaces' colour bars) were migrated
+  onto the shared component, retiring their incompatible position enums'
+  private implementations while keeping every public API working.
+- **Chart engine: the highlight layer (proposal §8.2).** `AddHighlight` /
+  `ClearHighlights` bring group washes to slot 200 (under the grid) and
+  overlays to slot 700: explicit rectangles/ellipses in value space, value
+  bands, and the computed shapes — **confidence ellipses** (covariance eigen
+  decomposition at 50%/95% with a mean marker, the group-of-dots scatter
+  convention), padded convex hulls, Chaikin-smoothed blobs and point halos.
+  Highlight captions ride the label plan as `HighlightLabel`. The geometry
+  (`ComputeConfidenceEllipse`, hull, expand, smooth) is UI-free in
+  `Engine/UltraCanvasChartHighlights` and unit-tested. The demo gained a
+  Highlight row (Band / Ellipse / Blob); the ellipse style brings the
+  legend's 50%/95% ellipse key with it, since a key describes marks the
+  chart actually draws.
+- **Chart engine: value labels survive the axis maximum.** The label solver
+  was clamped to the plot area, so a bar reaching the axis limit had its
+  value label pushed down onto the bar. The solver's bounds now also include
+  the margins the chart content reserved for itself in `MeasureContent`
+  (`SolveLabelBounds`) - the spill band above the bars (or right of them
+  under the horizontal projection) - so the label sits just above the plot
+  edge instead. Axis bands, the title band and the legend margin remain out
+  of bounds.
+
+- **FilerWidget / UltraFiler: the context menu's Extract got the same dialog
+  as Compress.** Extract used to unpack immediately with no way to pick the
+  destination; it now opens the compress dialog's panel in extract mode: the
+  archive's file-type icon with its name (or "N archives") beneath, an
+  editable destination **folder** name — suggested from the archive's name
+  without its suffix, so `sources.tar.gz` offers `sources` — and the
+  location line. The icon can be dragged onto any folder in the view to
+  retarget the destination, Enter / Extract unpacks, Esc / Cancel dismisses,
+  and an existing folder name gets the usual " (2)" suffix instead of being
+  written into. Several selected archives each unpack into their own
+  subfolder of the named folder so their contents cannot collide. Unpacking
+  still runs through the VirtualFS bridge (`UCVFSBridge::ExtractArchive`);
+  the dialog-free `ExtractSelection()` remains for programmatic use, and the
+  new `OpenExtractDialog()` is public for hosts.
+- **Audio player: a finished track no longer restarts itself.** When a
+  non-looping source played to its end, the output device kept pulling frames
+  and the playback cursor had been reset to 0 — so the track audibly started
+  over from the beginning while the player reported *Stopped* and the
+  transport showed the Play icon. This is what made the UltraFiler preview
+  with auto-play look like "it plays but never shows the Pause icon": the
+  first pass played with the correct Pause icon, then looped forever in the
+  stopped state. `UltraCanvasAudioPlayer` now feeds silence after end of
+  stream until the next transport call, `onEnded` fires exactly once, and
+  `UltraCanvasAudioPlayerElement` stops the device when it learns the track
+  ended. `Play()` after the end still restarts from 0:00.
+- **Audio player element: UI work moved off the audio thread.** The backend
+  delivers position updates, end-of-stream and the resulting state change on
+  its audio thread, and the element used to update its label, sliders and
+  icons directly from those callbacks — racing the UI thread's layout,
+  text-measurement and dirty-rectangle bookkeeping (reproducibly crashing in
+  pango under load, and losing repaints such as the play/pause icon refresh).
+  All player callbacks are now marshalled to the UI thread
+  (`PostToUIThread`), the transport icons also re-sync from the UI-thread
+  position timer, and the element disconnects its callbacks on destruction.
+- **Audio player element: narrow hosts no longer clip the volume slider.**
+  All controls had fixed widths, so in a narrow host (the UltraFiler preview
+  pane goes down to ~260px) the flex row overflowed: the seek bar collapsed
+  to zero and the volume slider ran off the pane's right edge (the bug
+  report's screenshot). The row is now responsive — when the width cannot
+  fit everything beside a usable seek bar it hides the volume slider first,
+  then the time label; the mute button stays so the sound can still be
+  silenced, and everything returns as soon as the element is wide enough.
+
+#### 2026-08-17 *0.3.52*
 - **FilerWidget: balanced line breaks for wrapped tile captions.** A name that
   needs two or three caption lines was broken greedily — the first line took
   everything that fit and the rest became a stub, "CoderBox compiler" /
@@ -10,8 +130,6 @@
   leading-"…" last line, whose every line is full anyway. Applies to the
   thumbnail grids and the treemap in the FilerWidget and everything built on
   it (UltraFiler, file dialogs).
-
-#### 2026-08-20 *0.3.52*
 - **UltraFiler: Pin / Unpin with state flags in the context menus, and
   "Open prompt" is back.** The filer context menus' Extras submenu ends with
   an app-provided block (the FilerWidget's new `extrasMenuProvider` hook):

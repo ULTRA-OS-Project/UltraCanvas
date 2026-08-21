@@ -14,6 +14,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasSpacer.h"
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasMenu.h"
@@ -273,6 +274,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
         std::shared_ptr<UltraCanvasLabel> AddLabel(const std::string& id, const std::string& text);
         std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
+                const std::string& id, const std::string& placeholder = "Search...",
+                std::function<void(const std::string&)> onTextChange = nullptr);
+        std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
                 const std::string& id, const std::string& placeholder = "Search...",
                 std::function<void(const std::string&)> onTextChange = nullptr);
 

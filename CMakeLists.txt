@@ -808,6 +808,35 @@ if (BUILD_TESTS)
     add_test(NAME JSONTests COMMAND JSONTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD
+    # round-trip plus the mandated negative cases, KDF behaviour and secure
+    # buffer semantics. Compiles only UltraCrypt, so it runs headless.
+    add_executable(UltraCryptTests Tests/UltraCryptTests.cpp)
+    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt)
+    target_compile_features(UltraCryptTests PRIVATE cxx_std_20)
+    set_target_properties(UltraCryptTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraCryptTests COMMAND UltraCryptTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UCD document encryption envelope: round-trip, wrong password, tamper
+    # detection and associated-data binding. Regression cover for the silently
+    # broken encryption this replaced (Docs/Modules/UltraCrypt/README.md §1.1).
+    add_executable(UCDCryptoEnvelopeTests
+        Tests/UCDCryptoEnvelopeTests.cpp
+        UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
+    )
+    target_link_libraries(UCDCryptoEnvelopeTests PRIVATE UltraCrypt)
+    target_include_directories(UCDCryptoEnvelopeTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(UCDCryptoEnvelopeTests PRIVATE cxx_std_20)
+    set_target_properties(UCDCryptoEnvelopeTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UCDCryptoEnvelopeTests COMMAND UCDCryptoEnvelopeTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # Audio encode/decode roundtrip across every save-capable format the
     # build reports (WAV always; FLAC/OGG/Opus/MP3 with their codec libs).
     # Links the full library but runs headless - no window or device needed.
