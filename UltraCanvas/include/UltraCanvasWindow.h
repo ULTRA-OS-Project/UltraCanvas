@@ -145,7 +145,7 @@ namespace UltraCanvas {
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
-        NativeSurfacePtr nativeSurface;
+        NativeSurfacePtr nativeSurface = nullptr;
 
         // ===== HIDPI / DPI-AWARE SCALING =====
         // Logical→physical multiplier for the display this window is on.
@@ -448,8 +448,16 @@ namespace UltraCanvas {
     };
 } // namespace UltraCanvas
 
-#if defined(__EMSCRIPTEN__)
-// Web/WASM (checked first: Emscripten also defines __unix__)
+// __ANDROID__ must be tested before __linux__: bionic defines __linux__, so the
+// Linux/X11 branch would otherwise shadow the Android one on every NDK build.
+// (__EMSCRIPTEN__ likewise precedes the __unix__ test, which Emscripten defines.)
+#if defined(__ANDROID__)
+#include "../OS/Android/UltraCanvasAndroidWindow.h"
+namespace UltraCanvas {
+    using UltraCanvasWindow = UltraCanvasAndroidWindow;
+}
+#elif defined(__EMSCRIPTEN__)
+// Web/WASM
 #include "../OS/WASM/UltraCanvasWASMWindow.h"
 namespace UltraCanvas {
     using UltraCanvasWindow = UltraCanvasWASMWindow;
@@ -481,11 +489,6 @@ namespace UltraCanvas {
     #else
         #error "Unsupported Apple platform"
     #endif
-#elif defined(__ANDROID__)
-    #include "../OS/Android/UltraCanvasAndroidWindow.h"
-    namespace UltraCanvas {
-        using UltraCanvasWindow = UltraCanvasAndroidWindow;
-    }
 #else
 #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif

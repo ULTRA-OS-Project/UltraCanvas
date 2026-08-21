@@ -8,10 +8,14 @@
 #include "UltraCanvasElementDebug.h"
 #include "UltraCanvasRenderContext.h"
 
-// Platform-specific includes for Cairo
+// Platform-specific includes for Cairo. Android also defines __linux__ and
+// renders through Cairo, but has no X11 — so plain cairo.h stays for both
+// while cairo-xlib is desktop-Linux only.
 #ifdef __linux__
 #include <cairo/cairo.h>
+#if !defined(__ANDROID__)
 #include <cairo/cairo-xlib.h>
+#endif
 #endif
 
 #include <string>

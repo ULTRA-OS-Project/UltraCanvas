@@ -533,7 +533,13 @@ namespace UltraCanvas {
 
     std::string GetExecutableDir() {
         std::string path;
-#if defined(__linux__) || defined(__unix__)
+#if defined(__ANDROID__)
+        // Before the __linux__ arm (bionic defines both): /proc/self/exe names
+        // the zygote (app_process), not the app. The android_main glue exports
+        // the app-private files dir as HOME; use it as the anchor directory.
+        const char* home = std::getenv("HOME");
+        return (home && *home) ? std::string(home) : std::string(".");
+#elif defined(__linux__) || defined(__unix__)
         char buf[PATH_MAX];
         ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
         if (len > 0) {
@@ -578,6 +584,10 @@ namespace UltraCanvas {
         ShellExecuteW(nullptr, L"open", Utf8ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 #elif defined(__APPLE__)
         system(("open \"" + url + "\"").c_str());
+#elif defined(__ANDROID__)
+        // Needs a JNI ACTION_VIEW Intent bridge (later phase); system() and
+        // xdg-open do not exist inside an Android app sandbox.
+        debugOutput << "UltraCanvas: OpenURL not implemented on Android: " << url << std::endl;
 #else
         system(("xdg-open \"" + url + "\"").c_str());
 #endif

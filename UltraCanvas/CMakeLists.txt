@@ -48,6 +48,11 @@ option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
+# libvips is ON by default (desktop builds keep the hard requirement), but can
+# be opted out for platforms where its dependency graph is impractical
+# (Android, WASM). Without it, raster image loading/saving and PixelFX compile
+# to their HAS_LIBVIPS-guarded fallbacks; the QOI codec keeps working.
+option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -103,6 +108,22 @@ if(WIN32)
 elseif(APPLE)
     set(ULTRACANVAS_PLATFORM "MacOS")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MacOS")
+elseif(ANDROID)
+    # Must be tested before UNIX: the Android NDK toolchain satisfies UNIX (and
+    # bionic defines __linux__), so an Android build would otherwise silently
+    # select the X11/Linux backend and fail on <X11/Xlib.h>.
+    #
+    # Requires a cross-compiled dependency sysroot (cairo/pango/glib/harfbuzz/
+    # fontconfig/freetype/tinyxml2) reachable through PKG_CONFIG_LIBDIR; see
+    # Docs/UltraCanvas/AndroidPortInvestigation.md §4.
+    set(ULTRACANVAS_PLATFORM "Android")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/Android")
+    # android_native_app_glue.c (compiled into the platform sources below) is C.
+    enable_language(C)
+    # GL surfaces run on the GLES/EGL context manager
+    # (OS/Android/GLContextManagerEGL_Android.cpp); EGL and GLESv3 come from
+    # the NDK sysroot, so no pkg-config probing is needed - see the
+    # platform-dependency section below.
 elseif(EMSCRIPTEN)
     # Checked before UNIX: the Emscripten toolchain sets UNIX=1 too.
     set(ULTRACANVAS_PLATFORM "WASM")
@@ -178,8 +199,22 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-# libvips - Image processing
-pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+# libvips - Image processing. Still REQUIRED when enabled, so a missing dev
+# package stays a loud configure error rather than a silently crippled build;
+# pass -DULTRACANVAS_ENABLE_VIPS=OFF to build without it.
+if(ULTRACANVAS_ENABLE_VIPS)
+    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+endif()
+# Freeze the core-library decision now: plugin subdirectories (XAR, CDR, OCR,
+# Vectorizer) run their own pkg_check_modules(LIBVIPS ...) later, and those
+# cached results leak back into this scope after add_subdirectory. Every
+# LIBVIPS_FOUND consumer in this file (and the PARENT_SCOPE export) must use
+# this variable so a -DULTRACANVAS_ENABLE_VIPS=OFF core stays vips-free.
+if(ULTRACANVAS_ENABLE_VIPS AND LIBVIPS_FOUND)
+    set(ULTRACANVAS_HAS_VIPS TRUE)
+else()
+    set(ULTRACANVAS_HAS_VIPS FALSE)
+endif()
 
 # librsvg - parse-once SVG documents (optional). With it, SVG files are parsed
 # a single time into a retained document that every rasterization (zoom level,
@@ -266,6 +301,13 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    # EGL + GLES 3 headers/libraries ship in every NDK sysroot; the GLES
+    # context manager binds EGL_OPENGL_ES_API (ES 3 preferred, ES 2 fallback).
+    if(ULTRACANVAS_ENABLE_GL)
+        set(ULTRACANVAS_HAS_EGL TRUE)
+        message(STATUS "  EGL: NDK sysroot (OpenGL ES context backend)")
     endif()
 endif()
 
@@ -588,7 +630,9 @@ set(ULTRACANVAS_CHART_MODULE_GRANULARITY "chart" CACHE STRING
     "Runtime module packaging: chart|family (family reserved for grouped packaging)")
 
 # Platforms without dlopen fall back to compile-time selection (proposal §12.11).
-if(EMSCRIPTEN AND ULTRACANVAS_CHART_RUNTIME_MODULES)
+# Android counts too: an app is a .so loaded by the VM (no host executable to
+# resolve core symbols from) and dlopen outside the APK's lib/ dir is blocked.
+if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_CHART_RUNTIME_MODULES)
     message(STATUS "Charts: no dynamic loading on this platform - runtime modules disabled")
     set(ULTRACANVAS_CHART_RUNTIME_MODULES OFF)
 endif()
@@ -671,7 +715,7 @@ list(APPEND ULTRACANVAS_CORE_SOURCES
      ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp)
 
 # libvips-dependent sources
-if(LIBVIPS_FOUND)
+if(ULTRACANVAS_HAS_VIPS)
     list(APPEND ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
@@ -708,6 +752,22 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             LANGUAGE OBJCXX
             COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
     )
+endif()
+
+# Android compiles the NDK's android_native_app_glue (C source) into the
+# platform sources: UltraCanvasAndroidMain.cpp provides android_main() on top
+# of it, and the application/window classes consume its android_app state.
+if(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    if(NOT CMAKE_ANDROID_NDK AND ANDROID_NDK)
+        set(CMAKE_ANDROID_NDK ${ANDROID_NDK})
+    endif()
+    set(_uc_ndk_glue_dir "${CMAKE_ANDROID_NDK}/sources/android/native_app_glue")
+    if(NOT EXISTS "${_uc_ndk_glue_dir}/android_native_app_glue.c")
+        message(FATAL_ERROR "android_native_app_glue not found under "
+                            "'${_uc_ndk_glue_dir}' - is CMAKE_ANDROID_NDK set?")
+    endif()
+    list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+        ${_uc_ndk_glue_dir}/android_native_app_glue.c)
 endif()
 
 # The OS-level UltraNet back-ends (UltraNetSupport / UltraNetTlsImpl /
@@ -755,7 +815,7 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         # (in-memory thumbnail caches); separate from the file-format codec.
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/QoiPixmapCodec.cpp
 )
-if(LIBVIPS_FOUND)
+if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader for QOI — consumes the codec symbols above.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
@@ -892,6 +952,12 @@ if(ULTRACANVAS_ENABLE_GL)
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/GLContextManagerWGL_MSWindows.cpp
             )
         endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        if(ULTRACANVAS_HAS_EGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Android/GLContextManagerEGL_Android.cpp
+            )
+        endif()
     endif()
 endif()
 
@@ -1004,7 +1070,7 @@ if(NOT APPLE AND FONTCONFIG_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
-if(LIBVIPS_FOUND)
+if(ULTRACANVAS_HAS_VIPS)
     foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
     endforeach()
@@ -1043,6 +1109,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             ${GLEW_LIBRARY_DIRS}
         )
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    # <android_native_app_glue.h> for the platform sources.
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${_uc_ndk_glue_dir}
+    )
 endif()
 
 # ===== LINK LIBRARIES =====
@@ -1134,6 +1205,19 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             opengl32
         )
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+    # libandroid: ALooper/ANativeWindow/AConfiguration; liblog: __android_log_*.
+    # Bionic bundles pthread; the NDK ships no separate libpthread to link.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            android
+            log
+            dl
+            ${FONTCONFIG_LIBRARIES}
+    )
+    if(ULTRACANVAS_HAS_EGL)
+        # From the NDK sysroot; GLESv3's lib also exports the ES2 entry points.
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC EGL GLESv3)
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
@@ -1196,7 +1280,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
-        $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
+        $<$<BOOL:${ULTRACANVAS_HAS_VIPS}>:HAS_LIBVIPS=1>
         $<$<BOOL:${LIBRSVG_FOUND}>:HAS_LIBRSVG=1>
         $<$<BOOL:${ZBAR_FOUND}>:ULTRACANVAS_QRCODE_HAS_DECODER=1>
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
@@ -1417,9 +1501,10 @@ if(ULTRACANVAS_ENABLE_NET)
         set(UC_CURL_LINK CURL::libcurl)
         message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} (WebSocket: OK)")
     endif()
-    # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux. Windows and
-    # macOS use Schannel / SecureTransport (no extra dependency).
-    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux and Android
+    # (which reuses the Linux implementation). Windows and macOS use
+    # Schannel / SecureTransport (no extra dependency).
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux" OR ULTRACANVAS_PLATFORM STREQUAL "Android")
         find_package(OpenSSL REQUIRED)
     endif()
 
@@ -1467,6 +1552,21 @@ if(ULTRACANVAS_ENABLE_NET)
         if(NOT ULTRANET_HAS_CARES)
             list(APPEND ULTRANET_SOURCES
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetDnsImpl.cpp)
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # Proxy detection (pure getenv) and OpenSSL TLS are bionic-compatible
+        # as-is: reuse the Linux sources (their #ifdef __linux__ guards are
+        # satisfied - bionic defines __linux__) instead of committing copies
+        # that would drift. The Linux DNS impl is NOT portable (bionic exports
+        # no res_n* API and has no libresolv), so c-ares is mandatory here.
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetTlsImpl.cpp)
+        if(NOT ULTRANET_HAS_CARES)
+            message(FATAL_ERROR "UltraNet on Android requires c-ares (libcares "
+                "in the dependency sysroot): bionic has no res_n*/libresolv "
+                "for the per-platform DNS fallback. Install c-ares or configure "
+                "with -DULTRACANVAS_ENABLE_NET=OFF.")
         endif()
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         list(APPEND ULTRANET_SOURCES
@@ -1519,6 +1619,10 @@ if(ULTRACANVAS_ENABLE_NET)
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # No -lresolv: bionic has no separate resolver library (and the c-ares
+        # path is mandatory here anyway).
+        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
         # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;
@@ -2082,7 +2186,9 @@ endif()
 # ===== EXPORT VARIABLES TO PARENT =====
 set(ULTRACANVAS_LIBRARY ${ULTRACANVAS_LIB_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
-set(LIBVIPS_FOUND ${LIBVIPS_FOUND} PARENT_SCOPE)
+# Export the frozen core decision, not the (possibly plugin-polluted)
+# LIBVIPS_FOUND — the parent uses this to gate vips-dependent demo sources.
+set(LIBVIPS_FOUND ${ULTRACANVAS_HAS_VIPS} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -2130,8 +2236,10 @@ message(STATUS "  FreeType: ${FREETYPE_VERSION_STRING}")
 if(HARFBUZZ_FOUND)
     message(STATUS "  HarfBuzz: ${HARFBUZZ_VERSION}")
 endif()
-if(LIBVIPS_FOUND)
-    message(STATUS "  libvips: ${LIBVIPS_VERSION}")
+if(ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  libvips: ${LIBVIPS_vips_VERSION}")
+else()
+    message(STATUS "  libvips: DISABLED (raster image formats limited to built-in codecs)")
 endif()
 if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")

@@ -437,6 +437,11 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::UpdateAndRender() {
         if (!_created || !_windowVisible) return;
+        // A backend can lose its presentation surface while the window is
+        // still marked visible (Android between APP_CMD_TERM_WINDOW and the
+        // next APP_CMD_INIT_WINDOW). Dirty rects keep accumulating; the
+        // backend requests a full composite when the surface returns.
+        if (!nativeSurface) return;
         auto ctx = GetRenderContext();
         if (IsNeedsResize()) {
             DoResize();

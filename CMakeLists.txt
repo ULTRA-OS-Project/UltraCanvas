@@ -54,6 +54,42 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # alongside lib/ and share/ (see package-linux.sh).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# ===== ANDROID DEFAULTS (phase 1: core library only) =====
+# Cache defaults only (no FORCE): -D on the command line still wins, so any of
+# these can be opted back in once its dependency exists in the NDK sysroot.
+# The desktop app executables are meaningless in an APK (an Android app is a
+# shared library loaded by the activity); packaging DemoApp via Gradle is a
+# later phase (Docs/UltraCanvas/AndroidPortInvestigation.md §5, §7).
+if(ANDROID)
+    set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
+    set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
+    set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
+    set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
+    set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
+    set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
+    set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
+    # Image processing: libvips' ~10-library transitive stack is not in a
+    # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
+    set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing")
+    # Runtime-dlopen'ed plugin DSOs don't load from outside the APK on Android
+    # (investigation §4.3); miniaudio/GStreamer/MuPDF/tesseract/cargo builds are
+    # all post-phase-1.
+    set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)")
+    set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CDR plugin (requires libcdr)")
+    set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin")
+    set(ULTRACANVAS_PLUGIN_VECTOR OFF CACHE BOOL "Build Vector plugin")
+    set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin (requires MuPDF / libmupdf-dev)")
+    set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)")
+    set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)")
+    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Build audio backend")
+    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)")
+    set(ULTRACANVAS_ENABLE_DATABASE OFF CACHE BOOL "Build the UltraDatabase data-access library")
+    set(ULTRACANVAS_USE_VIRTUALFS OFF CACHE BOOL "Build the VirtualFS module and the UltraCanvas bridge to it")
+    # UltraNet works on Android (Linux TLS/proxy sources + mandatory c-ares)
+    # but needs curl/openssl/c-ares in the sysroot; opt in explicitly.
+    set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library")
+endif()
+
 # ===== BUILD OPTIONS =====
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
