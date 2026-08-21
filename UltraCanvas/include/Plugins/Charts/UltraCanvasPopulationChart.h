@@ -1,15 +1,13 @@
-// include/Plugins/Charts/UltraCanvasPopulationChart.h
+// include/UltraCanvasPopulationChart.h
 // Population pyramid chart component for demographic visualization
-// Version: 1.1.0
-// Last Modified: 2026-08-20
-// V1.1.0: legend: migrated to the shared ChartLegend component
+// Version: 1.0.0
+// Last Modified: 2025-01-19
 // Author: UltraCanvas Framework
 
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
-#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <string>
 #include <vector>
 
@@ -48,8 +46,7 @@ namespace UltraCanvas {
         }
     };
 
-// Legend item for population chart. Kept for API compatibility; the chart
-// now stores its legend content in the shared ChartLegend component.
+// Legend item for population chart
     struct PopulationLegendItem {
         std::string Label;
         Color ItemColor;
@@ -63,6 +60,7 @@ namespace UltraCanvas {
     class UltraCanvasPopulationChart : public UltraCanvasUIElement {
     private:
         std::vector<PopulationAgeGroup> ageGroups;
+        std::vector<PopulationLegendItem> legendItems;
 
         // Chart properties
         std::string chartTitle;
@@ -101,13 +99,10 @@ namespace UltraCanvas {
         float chartPaddingBottom;
         float centerX;
         float plotWidth;
-        // Padded content area minus whatever the legend consumed; resolved
-        // each Render() via legend.RemainingArea().
-        Rect2Dd plotArea;
 
-        // Legend: the shared ChartLegend component. The public string-based
-        // SetLegendPosition() API is parsed onto ChartLegendPosition.
-        ChartLegend legend;
+        // Legend
+        std::string legendPosition;
+        bool showLegend;
 
         // Interaction
         int hoveredGroupIndex;
@@ -190,11 +185,6 @@ namespace UltraCanvas {
         void SetFontSize(int size);
 
         // Legend configuration
-        // Position is stringly typed for API compatibility, case-insensitive:
-        // corner names ("top-right" — the default —, "top-left",
-        // "bottom-right", "bottom-left") float over the plot; edge names
-        // ("top", "bottom", "left", "right") reserve plot space. Unknown
-        // strings fall back to the old default, "top-right".
         void SetLegendPosition(const std::string& position);
         void EnableLegend(bool enable);
         void AddLegendItem(const std::string& label, const Color& color);
