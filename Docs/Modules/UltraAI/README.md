@@ -154,7 +154,8 @@ cmake -S UltraAI -B build \
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
 | Shared adapter infrastructure (credentials, error map, retry, transport seam) | Complete |
-| Unit tests | Complete (4 executables, all passing) |
+| Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
+| Unit tests | Complete (5 executables, all passing) |
 | Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
 | UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
 

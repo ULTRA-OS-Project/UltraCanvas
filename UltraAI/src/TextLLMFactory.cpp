@@ -12,6 +12,9 @@
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
 #include "UltraAIMockTextLLM.h"
 #endif
+#ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
+#include "UltraAIAnthropicTextLLM.h"
+#endif
 
 #include <map>
 #include <mutex>
@@ -33,6 +36,14 @@ struct Registry {
             providers["mock"] =
                 [](const TextLLMConfig&, Error*) -> std::unique_ptr<ITextLLM> {
                     return CreateMockTextLLM();
+                };
+        }
+#endif
+#ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
+        if (providers.find("anthropic") == providers.end()) {
+            providers["anthropic"] =
+                [](const TextLLMConfig& cfg, Error* err) {
+                    return CreateAnthropicTextLLM(cfg, err);
                 };
         }
 #endif

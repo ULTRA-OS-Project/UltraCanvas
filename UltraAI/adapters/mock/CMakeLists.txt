@@ -26,7 +26,8 @@ target_link_libraries(UltraAI_AdapterMock PUBLIC UltraAI)
 target_compile_features(UltraAI_AdapterMock PUBLIC cxx_std_20)
 
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.h")
+# Plain archive, no export set — see the install() note in the module's
+# top-level CMakeLists.
 install(TARGETS UltraAI_AdapterMock
-    EXPORT UltraAITargets
     ARCHIVE DESTINATION lib
 )

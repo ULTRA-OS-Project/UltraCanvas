@@ -1,8 +1,9 @@
 # UltraAI ↔ UltraNet Integration
 
 **Status:** UltraNet side implemented and probe-verified; shared adapter
-infrastructure (`adapters/_shared/`) in place; provider adapters not yet
-written.
+infrastructure (`adapters/_shared/`) in place. The Anthropic `ITextLLM`
+adapter (`adapters/anthropic/`) is the reference implementation of the
+conventions in this document.
 **Author:** UltraAI Module
 **Last Modified:** 2026-08-21
 

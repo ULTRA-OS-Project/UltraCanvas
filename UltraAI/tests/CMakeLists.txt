@@ -21,3 +21,15 @@ add_executable(ultraai_test_adapter_shared test_adapter_shared.cpp)
 target_link_libraries(ultraai_test_adapter_shared PRIVATE UltraAI_AdapterShared)
 target_compile_features(ultraai_test_adapter_shared PRIVATE cxx_std_20)
 add_test(NAME ultraai.adapter_shared COMMAND ultraai_test_adapter_shared)
+
+if(TARGET UltraAI_AdapterAnthropic)
+    add_executable(ultraai_test_anthropic_adapter test_anthropic_adapter.cpp)
+    target_link_libraries(ultraai_test_anthropic_adapter PRIVATE
+        UltraAI_Core UltraAI_AdapterAnthropic)
+    # The test inspects recorded request bodies with the same vendored
+    # nlohmann/json the adapter serializes with.
+    target_include_directories(ultraai_test_anthropic_adapter PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_anthropic_adapter PRIVATE cxx_std_20)
+    add_test(NAME ultraai.anthropic_adapter COMMAND ultraai_test_anthropic_adapter)
+endif()
