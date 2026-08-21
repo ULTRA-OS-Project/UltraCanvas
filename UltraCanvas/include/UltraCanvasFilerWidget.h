@@ -637,6 +637,14 @@ namespace UltraCanvas {
         // UltraFiler's preview, decides there instead).
         void SetActivateOpensWithDefaultApp(bool enabled) { activateOpensDefault = enabled; }
 
+        // Explorer-semantics activation of one file entry: an executable
+        // runs — a native binary (or AppImage) directly, a script through
+        // the Run / Open / Cancel dialog — and everything else opens with
+        // the OS default application. Hosts with their own onFileActivated
+        // call this for the "launch it" part of their handling. Entries
+        // inside archives (virtual paths) are ignored.
+        void OpenEntryWithOS(const FilerEntry& e);
+
         // ===== CALLBACKS =====
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
         std::function<void(const std::string&)> onPathChanged;    // after SetPath / folder entered
@@ -1605,6 +1613,9 @@ namespace UltraCanvas {
         void ShowDeleteProblemDialog(const FilerEntry& entry,
                                      bool writeProtected,
                                      const std::string& reason);
+
+        // Executable script activated: Run / Open (view it) / Cancel.
+        void ShowRunOrOpenDialog(const FilerEntry& e);
 
         // ===== RENAME CONFLICTS =====
         // The actual rename plus the selection hand-over and refresh.

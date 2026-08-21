@@ -473,6 +473,32 @@ filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
 
+### Activating files — running applications
+
+Double-click / Enter on a folder or archive navigates into it; on a file it
+fires `onFileActivated` when the host installed one, else (with
+`SetActivateOpensWithDefaultApp(true)`) Explorer semantics via
+`OpenEntryWithOS(entry)` — which hosts with their own activation handling
+(like UltraFiler's media preview) can also call directly for the "launch it"
+part:
+
+- On **Windows**, everything goes through the shell's "open" verb, which
+  runs `.exe` / `.bat` / … and opens documents with their default
+  application — Explorer behavior for free.
+- On **POSIX platforms** the MIME machinery only ever *opens* files, so
+  executables get their own path: a file with the execute permission whose
+  content is a **native binary** (ELF — AppImages included — or Mach-O) is
+  run directly, detached, with its own folder as working directory
+  (`FileAssociations::ClassifyExecutable` / `LaunchExecutable`). An
+  executable **script** (`#!` line) is as much a document as a program, so
+  it asks — *""X" is an executable script. Run it, or open it to view its
+  contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
+  execute bit is set but whose content is neither (everything on a FAT
+  mount, say) simply opens with its default application.
+
+Entries inside archives are virtual paths nothing external can read, so
+activation never tries to run or open them.
+
 ### Delete problems (locked / failing entries)
 
 A delete that runs into trouble pauses on a **problem dialog** styled like the

@@ -1,4 +1,16 @@
 #### 2026-08-21 *0.3.54*
+- **Filer widget: double-click runs applications on POSIX platforms.**
+  Activating an executable used to go through the MIME machinery, which
+  opens files but never runs them — so native binaries and AppImages did
+  nothing on Linux (Windows always worked: ShellExecute's "open" verb
+  runs executables). Now `FileAssociations::ClassifyExecutable` sniffs an
+  execute-permission file's content — ELF (AppImages included) and
+  Mach-O run directly via `LaunchExecutable` (detached, double-fork +
+  setsid, the file's folder as working directory); a `#!` script asks
+  Run / Open / Cancel first; a file whose execute bit lies (FAT mounts)
+  still just opens with its default application. The widget's new
+  `OpenEntryWithOS(entry)` bundles these Explorer semantics for hosts
+  with their own `onFileActivated`; UltraFiler routes through it.
 - **Filer widget: embedded application icons on Windows.** `.exe`, `.dll`
   and `.ico` entries now show the icon embedded in the file — what
   Explorer shows — instead of the generic EXE/DLL glyph, in every view

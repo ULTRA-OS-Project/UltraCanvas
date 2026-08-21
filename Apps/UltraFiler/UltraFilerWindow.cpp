@@ -1476,15 +1476,11 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         }
 #endif
         if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
-            // Not previewable: launch it with the OS default application
-            // (Explorer semantics). Only real files — an entry inside an
-            // archive is a virtual path no external application can read.
-            std::error_code ec;
-            if (!fs::is_regular_file(entry.path, ec) || ec) return;
-            std::string error;
-            if (!FileAssociations::OpenWithDefaultApplication({entry.path}, error)) {
-                if (statusLabel) statusLabel->SetText("Error: " + error);
-            }
+            // Not previewable: run it / open it, Explorer-style. The widget
+            // launches executables directly (scripts through its Run-or-Open
+            // dialog) and everything else with the OS default application;
+            // archive entries (virtual paths) are ignored there.
+            if (tab->filer) tab->filer->OpenEntryWithOS(entry);
             return;
         }
         // Double-click / Enter opens the file in the preview, un-hiding it

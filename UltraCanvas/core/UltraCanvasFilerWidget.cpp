@@ -7943,14 +7943,70 @@ namespace UltraCanvas {
             return;
         }
         if (activateOpensDefault) {
-            // No host callback: Explorer semantics for simple embedders —
-            // but only for a real file (archive interiors are virtual paths).
-            std::error_code ec;
-            if (!fs::is_regular_file(e.path, ec) || ec) return;
+            // No host callback: Explorer semantics for simple embedders.
+            OpenEntryWithOS(e);
+        }
+    }
+
+    void UltraCanvasFilerWidget::OpenEntryWithOS(const FilerEntry& e) {
+        // Only a real file — an entry inside an archive is a virtual path no
+        // external application (or the kernel) can read.
+        std::error_code ec;
+        if (!fs::is_regular_file(e.path, ec) || ec) return;
+        std::string error;
+        switch (FileAssociations::ClassifyExecutable(e.path)) {
+            case FileAssociations::ExecutableKind::Binary:
+                // A native program: running it IS opening it (on Windows
+                // this case never fires — ShellExecute's "open" verb below
+                // already runs executables).
+                if (!FileAssociations::LaunchExecutable(e.path, error))
+                    ReportError(error);
+                return;
+            case FileAssociations::ExecutableKind::Script:
+                // A script is as much a document as a program — ask.
+                ShowRunOrOpenDialog(e);
+                return;
+            default:
+                break;
+        }
+        if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
+            ReportError(error);
+    }
+
+    void UltraCanvasFilerWidget::ShowRunOrOpenDialog(const FilerEntry& e) {
+        DialogConfig cfg;
+        cfg.title = "Executable Script";
+        cfg.dialogType = DialogType::Question;
+        cfg.message = "\"" + e.name + "\" is an executable script.";
+        cfg.details = "Run it, or open it to view its contents?";
+        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
+        cfg.width = 520;
+        cfg.height = 200;
+
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) {   // dialogs disabled — open, the old fixed behavior
             std::string error;
             if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
                 ReportError(error);
+            return;
         }
+
+        auto self = this;
+        const std::string path = e.path;
+        dialog->AddCustomButton("Run", DialogResult::Yes, nullptr);
+        dialog->AddCustomButton("Open", DialogResult::No, nullptr);
+        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+        dialog->onResult = [self, path](DialogResult result) {
+            std::string error;
+            if (result == DialogResult::Yes) {
+                if (!FileAssociations::LaunchExecutable(path, error))
+                    self->ReportError(error);
+            } else if (result == DialogResult::No) {
+                if (!FileAssociations::OpenWithDefaultApplication({path}, error))
+                    self->ReportError(error);
+            }
+        };
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
 
     void UltraCanvasFilerWidget::OpenContextMenu(const Point2Di& localPoint) {
