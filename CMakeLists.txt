@@ -831,6 +831,21 @@ if (BUILD_TESTS)
     add_test(NAME UltraCryptTests COMMAND UltraCryptTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # Authenticator vault: confidentiality on disk, wrong-password refusal,
+    # tamper detection over the whole container, and durability of each
+    # mutation. Links only UltraCrypt, so it runs headless.
+    add_executable(UltraAuthenticatorStoreTests
+        Tests/UltraAuthenticatorStoreTests.cpp
+        Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
+    )
+    target_link_libraries(UltraAuthenticatorStoreTests PRIVATE UltraCrypt)
+    target_compile_features(UltraAuthenticatorStoreTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorStoreTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorStoreTests COMMAND UltraAuthenticatorStoreTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # HOTP/TOTP engine and otpauth:// parser: RFC 4226 App. D and RFC 6238
     # App. B vectors, plus the provisioning-URI rejection cases. Links only
     # UltraCrypt, so it runs headless.

@@ -1,8 +1,8 @@
 # UltraAuthenticator — Feasibility Investigation & Security Analysis
 
-**Status:** Partly implemented. UltraCrypt (§2.2a) and the OTP engine (§2.2d)
-are built and tested; secret storage (§2.2b), in-memory QR decode (§2.2c) and
-the app shell itself are still outstanding.
+**Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
+(§2.2b) and the OTP engine (§2.2d) are built and tested; in-memory QR decode
+(§2.2c) and the app shell itself are still outstanding.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
 **Date:** 2026-08-10 (implementation notes added 2026-08-21)
@@ -78,13 +78,29 @@ plus `UltraCrypt_Base32Decode` for seed entry.
 
 This gap is **framework-wide, not specific to this app** — see §2.3.
 
-**(b) No secret storage.** `UltraVault` — the designated credential store for
-ULTRA OS — is an *architecture recommendation only*
-(`UltraAI/Docs/UltraVault.md`: "UltraVault module does not yet exist").
-UltraDatabase has no at-rest encryption (no SQLCipher; encryption is a
-Stage 3 item in its design doc). **There is nowhere in the framework today to
-put a TOTP seed safely.** This is the single biggest blocker; see §3.1 for
-what to do about it.
+**(b) ~~No secret storage.~~ — DONE for this app; still open framework-wide.**
+`UltraVault` remains an *architecture recommendation only*
+(`UltraAI/Docs/UltraVault.md`: "UltraVault module does not yet exist"), and
+UltraDatabase still has no at-rest encryption. So the authenticator ships its
+own vault, behind an interface UltraVault can replace:
+
+- `store/ISecretStore.h` — `Put/Get/Delete/List` over `UltraCryptSecureBuffer`,
+  shaped like UltraVault's own surface so the swap is a constructor change.
+- `store/EncryptedFileStore.{h,cpp}` — one file, one XChaCha20-Poly1305 blob,
+  key derived with Argon2id from the master password, cost parameters stored
+  with the file, the header authenticated as associated data, atomic writes,
+  mode 0600.
+
+Verified by `Tests/UltraAuthenticatorStoreTests.cpp`: 81 checks including that
+neither the seed, the `otpauth://` URI, nor even the entry *key* appears in the
+file; that a wrong password and a modified file are indistinguishable; that ten
+kinds of tampering — including a downgraded Argon2id cost — are rejected; and
+that every mutation is durable without an explicit save. Clean under ASan and
+UBSan.
+
+**There is deliberately no unprotected mode.** Without a crypto backend, or
+without a password, the vault refuses to open rather than falling back to
+plaintext — the failure this whole line of work started from.
 
 **(c) No in-memory QR decode.** `ScanQRCodeFile` takes a file path. Live
 camera scanning would otherwise mean writing every preview frame to disk —
@@ -351,9 +367,9 @@ Apps/UltraAuthenticator/
     OtpAuthUri.*               — otpauth:// parse + validate (§3.3)          [DONE]
     (Base32 is UltraCrypt_Base32Decode — no local copy needed)
   store/
-    ISecretStore.h             — interface (swap point for UltraVault later)
-    EncryptedFileStore.*       — XChaCha20-Poly1305 + Argon2id envelope (§3.1)
-    SecureBuffer.h             — zeroizing secret container (§3.2)
+    ISecretStore.h             — interface (swap point for UltraVault later)  [DONE]
+    EncryptedFileStore.*       — XChaCha20-Poly1305 + Argon2id envelope (§3.1) [DONE]
+    (the zeroizing container is UltraCryptSecureBuffer — no local copy needed)
 
 UltraCanvas/{include,core}/UltraCrypt/UltraCryptCore.h/.cpp   (new module)
   — HMAC-SHA1/256/512, RandomBytes, ConstantTimeEquals, SecureZero,
@@ -374,7 +390,8 @@ Camera scan pipeline: `UltraCanvasVideoRecorder::Open()` (preview only,
    ad-hoc SHA-256 eventually).
 2. ✅ **Done** — OTP engine + URI parser, with the RFC vectors in
    `Tests/UltraOtpTests.cpp`.
-3. `EncryptedFileStore` + `SecureBuffer`.
+3. ✅ **Done** — `ISecretStore` + `EncryptedFileStore`, tested in
+   `Tests/UltraAuthenticatorStoreTests.cpp`.
 4. App shell: list + manual entry (usable v0 without any camera work).
 5. `ScanQRCodeImage` overload + camera scan flow.
 6. Optional: encrypted export/import, app lock, per-account QR display.
