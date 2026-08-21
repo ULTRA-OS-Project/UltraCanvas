@@ -831,6 +831,22 @@ if (BUILD_TESTS)
     add_test(NAME UltraCryptTests COMMAND UltraCryptTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # HOTP/TOTP engine and otpauth:// parser: RFC 4226 App. D and RFC 6238
+    # App. B vectors, plus the provisioning-URI rejection cases. Links only
+    # UltraCrypt, so it runs headless.
+    add_executable(UltraOtpTests
+        Tests/UltraOtpTests.cpp
+        Apps/UltraAuthenticator/otp/UltraOtp.cpp
+        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
+    )
+    target_link_libraries(UltraOtpTests PRIVATE UltraCrypt)
+    target_compile_features(UltraOtpTests PRIVATE cxx_std_20)
+    set_target_properties(UltraOtpTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOtpTests COMMAND UltraOtpTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UCD document encryption envelope: round-trip, wrong password, tamper
     # detection and associated-data binding. Regression cover for the silently
     # broken encryption this replaced (Docs/Modules/UltraCrypt/README.md §1.1).

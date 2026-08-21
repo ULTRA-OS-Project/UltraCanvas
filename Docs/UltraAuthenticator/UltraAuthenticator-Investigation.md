@@ -1,9 +1,11 @@
 # UltraAuthenticator — Feasibility Investigation & Security Analysis
 
-**Status:** Investigation / pre-implementation. No code exists yet.
+**Status:** Partly implemented. UltraCrypt (§2.2a) and the OTP engine (§2.2d)
+are built and tested; secret storage (§2.2b), in-memory QR decode (§2.2c) and
+the app shell itself are still outstanding.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
-**Date:** 2026-08-10
+**Date:** 2026-08-10 (implementation notes added 2026-08-21)
 
 This document answers two questions:
 
@@ -91,10 +93,26 @@ which for an authenticator would write *the secret* to disk in image form.
 `UCVideoFramePtr` overload) that feeds zbar from memory, and wire it to
 `onPreviewFrame`.
 
-**(d) No TOTP/HOTP/Base32 code.** RFC 4226/6238 engines, RFC 4648 Base32
-decoding, and an `otpauth://` URI parser must be written (small, but they
-must be test-vector-verified — RFC 4226 App. D and RFC 6238 App. B provide
-official vectors).
+**(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
+`Apps/UltraAuthenticator/otp/`:
+
+- `UltraOtp.{h,cpp}` — RFC 4226 HOTP and RFC 6238 TOTP over
+  `UltraCrypt_Hmac`, with SHA-1/256/512, 6–8 digits, and the time-step and
+  countdown helpers the UI needs.
+- `OtpAuthUri.{h,cpp}` — strict `otpauth://` parsing and building (§3.3).
+- Base32 came from UltraCrypt (`UltraCrypt_Base32Decode`), so it did not need
+  writing here.
+
+Verified by `Tests/UltraOtpTests.cpp`: 171 checks including every RFC 4226
+App. D and RFC 6238 App. B vector across all three algorithms, clean under
+ASan and UBSan. Both units depend only on UltraCrypt — no UI, no storage — so
+they compile and are tested independently, the same split that made the UCD
+envelope testable.
+
+Deliberately **not** implemented: any verification function. An authenticator
+only displays codes. A verifier needs a look-ahead window, single-use
+enforcement per time step (RFC 6238 §5.2) and a constant-time compare — a
+different security surface that should not be added speculatively.
 
 **(e) No screen-capture / screenshot protection.** UltraCanvas windows have
 no equivalent of Android's `FLAG_SECURE`; on X11 none is even possible
@@ -329,9 +347,9 @@ Apps/UltraAuthenticator/
   AccountListView.*            — container of per-account tiles (elements only)
   AddAccountFlow.*             — camera scan / image file / manual entry + confirm dialog
   otp/
-    Totp.*  Hotp.*             — RFC 6238 / RFC 4226 (uses UltraCrypt HMAC)
-    Base32.*                   — RFC 4648 decode/encode, strict
-    OtpAuthUri.*               — otpauth:// parse + validate (§3.3)
+    UltraOtp.*                 — RFC 6238 / RFC 4226 (uses UltraCrypt HMAC)  [DONE]
+    OtpAuthUri.*               — otpauth:// parse + validate (§3.3)          [DONE]
+    (Base32 is UltraCrypt_Base32Decode — no local copy needed)
   store/
     ISecretStore.h             — interface (swap point for UltraVault later)
     EncryptedFileStore.*       — XChaCha20-Poly1305 + Argon2id envelope (§3.1)
@@ -354,7 +372,8 @@ Camera scan pipeline: `UltraCanvasVideoRecorder::Open()` (preview only,
 
 1. `UltraCrypt` (unblocks everything; also retires AnchorPoint's
    ad-hoc SHA-256 eventually).
-2. OTP engine + Base32 + URI parser, with RFC test vectors in `Tests/`.
+2. ✅ **Done** — OTP engine + URI parser, with the RFC vectors in
+   `Tests/UltraOtpTests.cpp`.
 3. `EncryptedFileStore` + `SecureBuffer`.
 4. App shell: list + manual entry (usable v0 without any camera work).
 5. `ScanQRCodeImage` overload + camera scan flow.
