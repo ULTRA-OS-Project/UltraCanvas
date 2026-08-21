@@ -83,6 +83,11 @@ public:
         : config_(std::move(config)) {}
 
     ~LlamaTextLLM() override {
+        // A streaming worker holds mutex_ for the whole generation; taking
+        // it here keeps the context alive until that generation finishes.
+        // Callers must still not destroy the adapter between ChatStream()
+        // returning and the worker acquiring the lock — see the header.
+        std::lock_guard<std::mutex> lock(mutex_);
         if (ctx_)   llama_free(ctx_);
         if (model_) llama_model_free(model_);
     }

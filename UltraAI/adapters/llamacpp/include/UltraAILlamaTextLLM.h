@@ -26,6 +26,10 @@ namespace UltraAI {
 // output (ResponseFormat::JsonObject/JsonSchema enforce *valid JSON* via a
 // GBNF grammar; full schema constraint compilation is a follow-up).
 // Tool calling is not supported yet and fails with InvalidRequest.
+//
+// Lifetime: keep the adapter alive until every ChatStream has delivered
+// its terminal Done/Error event (streams generate on a worker thread that
+// uses the adapter's llama context).
 std::unique_ptr<ITextLLM> CreateLlamaTextLLM(const TextLLMConfig& config,
                                              Error* outError = nullptr);
 
