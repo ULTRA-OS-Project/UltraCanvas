@@ -11,6 +11,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -192,6 +193,41 @@ namespace UltraCanvas {
         if (!hasSelection) return "";
         auto [begin, end] = GetSelectionRange();
         return text.substr(begin, end - begin);
+    }
+
+    size_t UltraCanvasTextInput::FindPrevWordBoundary(size_t bytePos) const {
+        int cp = utf8_byte_to_cp(text, bytePos);
+        // Skip any non-word chars immediately to the left (spaces, punctuation).
+        while (cp > 0) {
+            gunichar c = utf8_get_cp(text, cp - 1);
+            if (g_unichar_isalnum(c) || c == '_') break;
+            cp--;
+        }
+        // Then skip the word itself, landing at its start.
+        while (cp > 0) {
+            gunichar c = utf8_get_cp(text, cp - 1);
+            if (!g_unichar_isalnum(c) && c != '_') break;
+            cp--;
+        }
+        return utf8_cp_to_byte(text, cp);
+    }
+
+    size_t UltraCanvasTextInput::FindNextWordBoundary(size_t bytePos) const {
+        int len = utf8_length(text);
+        int cp = utf8_byte_to_cp(text, bytePos);
+        // Skip any non-word chars immediately to the right (spaces, punctuation).
+        while (cp < len) {
+            gunichar c = utf8_get_cp(text, cp);
+            if (g_unichar_isalnum(c) || c == '_') break;
+            cp++;
+        }
+        // Then skip the word itself, landing at the start of the following gap/word.
+        while (cp < len) {
+            gunichar c = utf8_get_cp(text, cp);
+            if (!g_unichar_isalnum(c) && c != '_') break;
+            cp++;
+        }
+        return utf8_cp_to_byte(text, cp);
     }
 
     void UltraCanvasTextInput::SetCaretPosition(size_t position) {
@@ -919,31 +955,41 @@ namespace UltraCanvas {
         // ===== Non-destructive keys: navigation, selection and copy work even in
         // read-only inputs (only text mutation is blocked for read-only). =====
         switch (event.virtualKey) {
-            case UCKeys::Left:
+            case UCKeys::Left: {
+                // Ctrl jumps by word (UTF-8 aware); otherwise step one character.
+                size_t newPos = event.ctrl
+                        ? FindPrevWordBoundary(caretPosition)
+                        : (caretPosition > 0 ? caretPosition - 1 : caretPosition);
                 if (event.shift) {
                     if (!hasSelection) selectionStart = caretPosition;
-                    if (caretPosition > 0) caretPosition--;
+                    caretPosition = newPos;
                     selectionEnd = caretPosition;
                     hasSelection = true;
                 } else {
-                    if (caretPosition > 0) caretPosition--;
+                    caretPosition = newPos;
                     ClearSelection();
                 }
                 UpdateScrollOffset();
                 return true;
+            }
 
-            case UCKeys::Right:
+            case UCKeys::Right: {
+                // Ctrl jumps by word (UTF-8 aware); otherwise step one character.
+                size_t newPos = event.ctrl
+                        ? FindNextWordBoundary(caretPosition)
+                        : (caretPosition < text.length() ? caretPosition + 1 : caretPosition);
                 if (event.shift) {
                     if (!hasSelection) selectionStart = caretPosition;
-                    if (caretPosition < text.length()) caretPosition++;
+                    caretPosition = newPos;
                     selectionEnd = caretPosition;
                     hasSelection = true;
                 } else {
-                    if (caretPosition < text.length()) caretPosition++;
+                    caretPosition = newPos;
                     ClearSelection();
                 }
                 UpdateScrollOffset();
                 return true;
+            }
 
             case UCKeys::Up:
                 if (inputType == TextInputType::Multiline) {
