@@ -18,11 +18,12 @@
 #include <zlib.h>
 #endif
 
-#ifdef ULTRACANVAS_USE_OPENSSL
-#include <openssl/aes.h>
-#include <openssl/sha.h>
-#include <openssl/rand.h>
-#endif
+// Cryptography goes through UltraCrypt, never a vendored library directly.
+// UltraCrypt has no silent-passthrough fallback: built without a backend, every
+// call fails loudly rather than reporting success with the data unprotected.
+#include "UltraCrypt/UltraCryptCore.h"
+#include "Plugins/Documents/UCDCryptoEnvelope.h"
+#include <cstring>
 
 // XML/JSON parsing (assuming we have a JSON library like nlohmann/json)
 #ifdef ULTRACANVAS_USE_JSON
@@ -105,19 +106,24 @@ bool UltraCanvasDocument::LoadFromFile(const std::string& filePath, const std::s
         UCCompressionType compression = static_cast<UCCompressionType>(fileData[4]);
         UCEncryptionType encryption = static_cast<UCEncryptionType>(fileData[5]);
 
-        // Skip header (8 bytes)
+        // The 8-byte header is authenticated as associated data, so it must be
+        // handed to DecryptData exactly as it was written.
+        const std::vector<uint8_t> fileHeader(fileData.begin(), fileData.begin() + 8);
         std::vector<uint8_t> contentData(fileData.begin() + 8, fileData.end());
 
         // Decrypt if needed
         if (encryption != UCEncryptionType::None) {
-            if (password.empty()) {
-                lastError_ = "This document is password-protected; a password is required.";
+            if (encryption != UCEncryptionType::XChaCha20Poly1305) {
+                lastError_ = "This document uses an encryption type this version "
+                             "of UltraCanvas does not support.";
                 return false;
             }
-
             std::vector<uint8_t> decryptedData;
-            if (!DecryptData(contentData, decryptedData, password)) {
-                lastError_ = "Could not decrypt the document — the password may be incorrect.";
+            if (!DecryptData(contentData, decryptedData, password, fileHeader)) {
+                // DecryptData sets a specific lastError_; keep it.
+                if (lastError_.empty()) {
+                    lastError_ = "Could not decrypt the document.";
+                }
                 return false;
             }
             contentData = std::move(decryptedData);
@@ -180,37 +186,35 @@ bool UltraCanvasDocument::SaveToFile(const std::string& filePath, UCCompressionT
             contentData = std::move(compressedData);
         }
 
-        // Encrypt if password provided
-        UCEncryptionType encryption = UCEncryptionType::None;
-        if (!password.empty()) {
-            encryption = UCEncryptionType::AES256;
+        // Build the file header *before* encrypting: it is passed to
+        // EncryptData as associated data, so an edit to the compression or
+        // encryption byte invalidates the authentication tag.
+        const UCEncryptionType encryption = password.empty()
+                                                ? UCEncryptionType::None
+                                                : UCEncryptionType::XChaCha20Poly1305;
+
+        std::vector<uint8_t> fileData;
+        fileData.push_back('U');
+        fileData.push_back('C');
+        fileData.push_back('D');
+        fileData.push_back(0x01);                                   // format version
+        fileData.push_back(static_cast<uint8_t>(compression));
+        fileData.push_back(static_cast<uint8_t>(encryption));
+        fileData.push_back(0x00);                                   // reserved
+        fileData.push_back(0x00);
+
+        if (encryption != UCEncryptionType::None) {
             std::vector<uint8_t> encryptedData;
-            if (!EncryptData(contentData, encryptedData, password)) {
-                lastError_ = "Could not encrypt the document while saving.";
+            if (!EncryptData(contentData, encryptedData, password, fileData)) {
+                // EncryptData sets a specific lastError_; keep it.
+                if (lastError_.empty()) {
+                    lastError_ = "Could not encrypt the document while saving.";
+                }
                 return false;
             }
             contentData = std::move(encryptedData);
         }
-        
-        // Create file header
-        std::vector<uint8_t> fileData;
-        
-        // UCD signature (4 bytes)
-        fileData.push_back('U');
-        fileData.push_back('C');
-        fileData.push_back('D');
-        fileData.push_back(0x01); // Version
-        
-        // Compression type (1 byte)
-        fileData.push_back(static_cast<uint8_t>(compression));
-        
-        // Encryption type (1 byte)
-        fileData.push_back(static_cast<uint8_t>(encryption));
-        
-        // Reserved bytes (2 bytes)
-        fileData.push_back(0x00);
-        fileData.push_back(0x00);
-        
+
         // Append content data
         fileData.insert(fileData.end(), contentData.begin(), contentData.end());
         
@@ -739,14 +743,36 @@ std::vector<std::string> UltraCanvasDocument::GetFormValidationErrors() {
 bool UltraCanvasDocument::SetPassword(const std::string& password) {
     if (password.empty()) {
         SecuritySettings.EncryptionType = UCEncryptionType::None;
-        SecuritySettings.PasswordHash.clear();
-        SecuritySettings.Salt.clear();
+        SecuritySettings.PasswordVerifier.clear();
+        SecuritySettings.VerifierSalt.clear();
+        SecuritySettings.VerifierIterations = 0;
+        SecuritySettings.VerifierMemoryKiB = 0;
         return true;
     }
-    
-    SecuritySettings.EncryptionType = UCEncryptionType::AES256;
-    SecuritySettings.Salt = GenerateSalt();
-    SecuritySettings.PasswordHash = GeneratePasswordHash(password, SecuritySettings.Salt);
+
+    if (!UltraCrypt_IsAvailable()) {
+        lastError_ = "This build has no cryptography backend, so a password "
+                     "cannot be set.";
+        return false;
+    }
+
+    // Argon2id, not a bare hash: a password verifier must be as expensive to
+    // attack offline as the document body itself.
+    UltraCryptKdfParams kdf = UltraCrypt_RecommendedKdfParams();
+    UltraCryptSecureBuffer passwordBuffer(password.data(), password.size());
+    UltraCryptSecureBuffer verifier;
+    auto derived = UltraCrypt_DeriveKeyFromPassword(passwordBuffer, kdf, verifier);
+    if (!derived) {
+        lastError_ = "Could not set the password: " + derived.message;
+        return false;
+    }
+
+    SecuritySettings.EncryptionType = UCEncryptionType::XChaCha20Poly1305;
+    SecuritySettings.PasswordVerifier.assign(verifier.Data(),
+                                             verifier.Data() + verifier.GetSize());
+    SecuritySettings.VerifierSalt = kdf.salt;
+    SecuritySettings.VerifierIterations = kdf.iterations;
+    SecuritySettings.VerifierMemoryKiB = kdf.memoryKiB;
     return true;
 }
 
@@ -754,9 +780,30 @@ bool UltraCanvasDocument::VerifyPassword(const std::string& password) {
     if (SecuritySettings.EncryptionType == UCEncryptionType::None) {
         return password.empty();
     }
-    
-    std::string hashedPassword = GeneratePasswordHash(password, SecuritySettings.Salt);
-    return hashedPassword == SecuritySettings.PasswordHash;
+    if (SecuritySettings.PasswordVerifier.empty() ||
+        SecuritySettings.VerifierSalt.empty() || !UltraCrypt_IsAvailable()) {
+        return false;
+    }
+
+    // Re-derive with the stored parameters and compare in constant time. Note
+    // this only gates in-memory permissions: the authoritative check when
+    // loading a file is the AEAD tag, which fails closed on a wrong password.
+    UltraCryptKdfParams kdf;
+    kdf.algorithm    = UltraCryptKdfAlgorithm::Argon2id;
+    kdf.salt         = SecuritySettings.VerifierSalt;
+    kdf.iterations   = SecuritySettings.VerifierIterations;
+    kdf.memoryKiB    = SecuritySettings.VerifierMemoryKiB;
+    kdf.parallelism  = 1;
+    kdf.outputLength = SecuritySettings.PasswordVerifier.size();
+
+    UltraCryptSecureBuffer passwordBuffer(password.data(), password.size());
+    UltraCryptSecureBuffer candidate;
+    if (!UltraCrypt_DeriveKeyFromPassword(passwordBuffer, kdf, candidate)) {
+        return false;
+    }
+    return UltraCrypt_ConstantTimeEquals(candidate.Data(), candidate.GetSize(),
+                                         SecuritySettings.PasswordVerifier.data(),
+                                         SecuritySettings.PasswordVerifier.size());
 }
 
 void UltraCanvasDocument::SetMetadata(const UCDocumentMetadata& metadata) {
@@ -1268,101 +1315,32 @@ bool UltraCanvasDocument::DecompressData(const std::vector<uint8_t>& input, std:
     }
 }
 
-bool UltraCanvasDocument::EncryptData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, const std::string& password) {
-#ifdef ULTRACANVAS_USE_OPENSSL
-    // AES-256 encryption implementation using OpenSSL
-    // This is a simplified example - real implementation would be more robust
-    
-    // Generate random IV
-    std::vector<uint8_t> iv(16);
-    if (RAND_bytes(iv.data(), iv.size()) != 1) {
+// The envelope format and its cryptography live in UCDCryptoEnvelope, which
+// depends only on UltraCrypt and so can be compiled and unit-tested on its own
+// (Tests/UCDCryptoEnvelopeTests.cpp). These two methods are thin adapters.
+
+bool UltraCanvasDocument::EncryptData(const std::vector<uint8_t>& input,
+                                      std::vector<uint8_t>& output,
+                                      const std::string& password,
+                                      const std::vector<uint8_t>& associatedData) {
+    std::string error;
+    if (!UCDCrypto::Seal(input, password, associatedData, output, error)) {
+        lastError_ = error;
         return false;
     }
-    
-    // Derive key from password using PBKDF2
-    std::vector<uint8_t> key(32);
-    if (PKCS5_PBKDF2_HMAC(password.c_str(), password.length(),
-                          iv.data(), 8, // Use first 8 bytes of IV as salt
-                          10000, // iterations
-                          EVP_sha256(),
-                          key.size(), key.data()) != 1) {
+    return true;
+}
+
+bool UltraCanvasDocument::DecryptData(const std::vector<uint8_t>& input,
+                                      std::vector<uint8_t>& output,
+                                      const std::string& password,
+                                      const std::vector<uint8_t>& associatedData) {
+    std::string error;
+    if (!UCDCrypto::Open(input, password, associatedData, output, error)) {
+        lastError_ = error;
         return false;
     }
-    
-    // Encrypt data
-    // ... AES encryption implementation ...
-    
-    // Prepend IV to encrypted data
-    output.clear();
-    output.insert(output.end(), iv.begin(), iv.end());
-    // output.insert(output.end(), encrypted_data.begin(), encrypted_data.end());
-    
     return true;
-#else
-    // Fallback - no encryption
-    output = input;
-    return true;
-#endif
-}
-
-bool UltraCanvasDocument::DecryptData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, const std::string& password) {
-#ifdef ULTRACANVAS_USE_OPENSSL
-    if (input.size() < 16) return false; // Need at least IV
-    
-    // Extract IV
-    std::vector<uint8_t> iv(input.begin(), input.begin() + 16);
-    std::vector<uint8_t> encrypted_data(input.begin() + 16, input.end());
-    
-    // Derive key from password
-    std::vector<uint8_t> key(32);
-    if (PKCS5_PBKDF2_HMAC(password.c_str(), password.length(),
-                          iv.data(), 8,
-                          10000,
-                          EVP_sha256(),
-                          key.size(), key.data()) != 1) {
-        return false;
-    }
-    
-    // Decrypt data
-    // ... AES decryption implementation ...
-    
-    return true;
-#else
-    // Fallback - no decryption
-    output = input;
-    return true;
-#endif
-}
-
-std::string UltraCanvasDocument::GeneratePasswordHash(const std::string& password, const std::string& salt) {
-#ifdef ULTRACANVAS_USE_OPENSSL
-    std::string saltedPassword = password + salt;
-    
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256(reinterpret_cast<const unsigned char*>(saltedPassword.c_str()), 
-           saltedPassword.length(), hash);
-    
-    std::ostringstream oss;
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(hash[i]);
-    }
-    return oss.str();
-#else
-    // Simple fallback hash (not secure)
-    return std::to_string(std::hash<std::string>{}(password + salt));
-#endif
-}
-
-std::string UltraCanvasDocument::GenerateSalt() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 255);
-    
-    std::ostringstream oss;
-    for (int i = 0; i < 16; i++) {
-        oss << std::hex << std::setw(2) << std::setfill('0') << dis(gen);
-    }
-    return oss.str();
 }
 
 std::string UltraCanvasDocument::GetCurrentDateTime() {

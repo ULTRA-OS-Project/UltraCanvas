@@ -96,6 +96,7 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
+| libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
