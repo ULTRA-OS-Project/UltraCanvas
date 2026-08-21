@@ -15,6 +15,9 @@
 #ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
 #include "UltraAIAnthropicTextLLM.h"
 #endif
+#ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
+#include "UltraAILlamaTextLLM.h"
+#endif
 
 #include <map>
 #include <mutex>
@@ -44,6 +47,14 @@ struct Registry {
             providers["anthropic"] =
                 [](const TextLLMConfig& cfg, Error* err) {
                     return CreateAnthropicTextLLM(cfg, err);
+                };
+        }
+#endif
+#ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
+        if (providers.find("llama-cpp") == providers.end()) {
+            providers["llama-cpp"] =
+                [](const TextLLMConfig& cfg, Error* err) {
+                    return CreateLlamaTextLLM(cfg, err);
                 };
         }
 #endif

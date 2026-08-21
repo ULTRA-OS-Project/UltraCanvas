@@ -123,6 +123,10 @@ if(ULTRAAI_BUILD_ADAPTERS)
         target_link_libraries(UltraAI_Core PUBLIC UltraAI_AdapterAnthropic)
         target_compile_definitions(UltraAI_Core PRIVATE ULTRAAI_HAS_ANTHROPIC_ADAPTER=1)
     endif()
+    if(TARGET UltraAI_AdapterLlama)
+        target_link_libraries(UltraAI_Core PUBLIC UltraAI_AdapterLlama)
+        target_compile_definitions(UltraAI_Core PRIVATE ULTRAAI_HAS_LLAMACPP_ADAPTER=1)
+    endif()
 endif()
 
 # ===== Tests =====

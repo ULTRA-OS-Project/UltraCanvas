@@ -221,7 +221,9 @@ their *License* is likewise marked **—** (OS component).
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| No additional third party (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
+| Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
+| Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
+| Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
 
 ### Ultra Net module
 
