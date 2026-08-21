@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasMekkoChart.cpp
 // Mekko (Marimekko / mosaic) chart element implementation
-// Version: 1.0.0
-// Last Modified: 2026-07-28
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasMekkoChart.h"
@@ -199,20 +200,15 @@ namespace UltraCanvas {
             marginBottom += 16;
         }
 
-        switch (legendPosition) {
-            case LegendPosition::Right:
-                marginRight += legendWidth;
-                break;
-            case LegendPosition::Bottom:
-                marginBottom += 26;
-                break;
-            case LegendPosition::Top:
-                marginTop += 26;
-                break;
-            case LegendPosition::Hidden:
-            default:
-                break;
-        }
+        // Space consumed by the shared legend, measured during rendering. On the
+        // first frame (no measure yet) nothing is reserved; UpdateLegendLayout()
+        // detects the change and rebuilds this cache before anything is drawn.
+        Rect2Dd legendArea = GetLegendContentArea();
+        Rect2Dd remaining = legend.RemainingArea(legendArea);
+        marginLeft += static_cast<int>(remaining.x - legendArea.x);
+        marginTop += static_cast<int>(remaining.y - legendArea.y);
+        marginRight += static_cast<int>(legendArea.Right() - remaining.Right());
+        marginBottom += static_cast<int>(legendArea.Bottom() - remaining.Bottom());
 
         return ChartPlotArea(
                 marginLeft,
@@ -252,7 +248,6 @@ namespace UltraCanvas {
             renderCache.columnX.clear();
             renderCache.columnWidth.clear();
             renderCache.segments.clear();
-            renderCache.legendItemRects.clear();
             renderCache.grandTotal = 0.0;
             renderCache.maxColumnTotal = 0.0;
 
@@ -354,6 +349,60 @@ namespace UltraCanvas {
     }
 
 // =============================================================================
+// SHARED LEGEND
+// =============================================================================
+
+    Rect2Dd UltraCanvasMekkoChartElement::GetLegendContentArea() const {
+        // Element bounds below the title band, with a small inset all around.
+        double top = chartTitle.empty() ? 4.0 : 30.0;
+        return Rect2Dd(4.0, top,
+                       std::max(1.0, static_cast<double>(GetWidth()) - 8.0),
+                       std::max(1.0, static_cast<double>(GetHeight()) - top - 4.0));
+    }
+
+    void UltraCanvasMekkoChartElement::RefreshLegendEntries(
+            const std::shared_ptr<MekkoChartDataVector>& data) {
+        const size_t seriesCount = data ? data->GetSeriesCount() : 0;
+
+        // Rebuild only on an actual change so the legend's measure cache holds.
+        bool same = (legend.GetEntryCount() == seriesCount);
+        for (size_t i = 0; same && i < seriesCount; ++i) {
+            const ChartLegendEntry& entry = legend.GetEntry(i);
+            same = entry.label == data->GetSeries(i).name &&
+                   entry.color == GetSeriesColor(i);
+        }
+        if (same) return;
+
+        std::vector<ChartLegendEntry> entries;
+        entries.reserve(seriesCount);
+        for (size_t i = 0; i < seriesCount; ++i) {
+            entries.emplace_back(data->GetSeries(i).name, GetSeriesColor(i),
+                                 LegendSwatch::Square);
+        }
+        legend.SetEntries(entries);
+    }
+
+    void UltraCanvasMekkoChartElement::UpdateLegendLayout(IRenderContext* ctx) {
+        RefreshLegendEntries(GetMekkoDataSource());
+
+        // The legend's footprint feeds CalculatePlotArea(), so a change must
+        // invalidate the cached layout before the background and plot render.
+        Rect2Dd legendArea = GetLegendContentArea();
+        Rect2Dd reservedBefore = legend.RemainingArea(legendArea);
+        legend.Measure(ctx, legendArea);
+        if (!(legend.RemainingArea(legendArea) == reservedBefore)) {
+            InvalidateMekkoCache();
+            UpdateRenderingCache();
+        }
+    }
+
+    void UltraCanvasMekkoChartElement::RenderCommonBackground(IRenderContext* ctx) {
+        if (!ctx) return;
+        UpdateLegendLayout(ctx);
+        UltraCanvasChartElementBase::RenderCommonBackground(ctx);
+    }
+
+// =============================================================================
 // MAIN RENDERING
 // =============================================================================
 
@@ -387,7 +436,7 @@ namespace UltraCanvas {
             DrawCumulativeXAxis(ctx);
         }
         if (legendPosition != LegendPosition::Hidden) {
-            DrawLegend(ctx);
+            legend.Render(ctx, GetLegendContentArea());
         }
     }
 
@@ -646,70 +695,6 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMekkoChartElement::DrawLegend(IRenderContext* ctx) {
-        auto data = GetMekkoDataSource();
-        if (!data || data->GetSeriesCount() == 0) return;
-
-        renderCache.legendItemRects.clear();
-        ctx->SetFontSize(legendFontSize);
-
-        size_t seriesCount = data->GetSeriesCount();
-
-        if (legendPosition == LegendPosition::Right) {
-            double x = GetWidth() - legendWidth + 8;
-            double y = cachedPlotArea.y;
-            double rowHeight = legendSwatchSize + legendItemSpacing;
-
-            for (size_t i = 0; i < seriesCount; ++i) {
-                Color color = GetSeriesColor(i);
-                if (hoveredLegendSeries != SIZE_MAX && i != hoveredLegendSeries) {
-                    color.a = 70;
-                }
-                ctx->SetFillPaint(color);
-                ctx->FillRectangle(Rect2Dd(x, y, legendSwatchSize, legendSwatchSize));
-
-                ctx->SetTextPaint(labelTextColor);
-                const std::string& name = data->GetSeries(i).name;
-                Size2Di textSize = ctx->GetTextLineDimensions(name);
-                ctx->DrawText(name, {x + legendSwatchSize + 6,
-                                     y + (legendSwatchSize - textSize.height) / 2.0});
-
-                renderCache.legendItemRects.push_back(
-                        Rect2Dd(x, y, legendSwatchSize + 6 + textSize.width, legendSwatchSize));
-                y += rowHeight;
-            }
-        } else {
-            // Horizontal legend (Top or Bottom): items flow left to right
-            double y = (legendPosition == LegendPosition::Top)
-                       ? 4.0
-                       : GetHeight() - legendSwatchSize - 8.0;
-            double x = cachedPlotArea.x;
-
-            for (size_t i = 0; i < seriesCount; ++i) {
-                const std::string& name = data->GetSeries(i).name;
-                Size2Di textSize = ctx->GetTextLineDimensions(name);
-                double itemWidth = legendSwatchSize + 6 + textSize.width + 16;
-
-                if (x + itemWidth > GetWidth() - 8 && x > cachedPlotArea.x) break;
-
-                Color color = GetSeriesColor(i);
-                if (hoveredLegendSeries != SIZE_MAX && i != hoveredLegendSeries) {
-                    color.a = 70;
-                }
-                ctx->SetFillPaint(color);
-                ctx->FillRectangle(Rect2Dd(x, y, legendSwatchSize, legendSwatchSize));
-
-                ctx->SetTextPaint(labelTextColor);
-                ctx->DrawText(name, {x + legendSwatchSize + 6,
-                                     y + (legendSwatchSize - textSize.height) / 2.0});
-
-                renderCache.legendItemRects.push_back(
-                        Rect2Dd(x, y, legendSwatchSize + 6 + textSize.width, legendSwatchSize));
-                x += itemWidth;
-            }
-        }
-    }
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -789,14 +774,8 @@ namespace UltraCanvas {
     }
 
     size_t UltraCanvasMekkoChartElement::GetLegendSeriesAtPosition(const Point2Di& mousePos) const {
-        for (size_t i = 0; i < renderCache.legendItemRects.size(); ++i) {
-            const auto& rect = renderCache.legendItemRects[i];
-            if (mousePos.x >= rect.x && mousePos.x <= rect.x + rect.width &&
-                mousePos.y >= rect.y && mousePos.y <= rect.y + rect.height) {
-                return i;
-            }
-        }
-        return SIZE_MAX;
+        // Entries are added in series order, so the hit index is the series index.
+        return legend.HitTest(Point2Dd(mousePos.x, mousePos.y));
     }
 
     std::string UltraCanvasMekkoChartElement::GenerateSegmentTooltip(size_t segmentIndex) const {
@@ -826,6 +805,7 @@ namespace UltraCanvas {
         size_t legendSeries = GetLegendSeriesAtPosition(mousePos);
         if (legendSeries != hoveredLegendSeries) {
             hoveredLegendSeries = legendSeries;
+            legend.SetHighlightedEntry(hoveredLegendSeries);
             changed = true;
         }
 
@@ -873,6 +853,7 @@ namespace UltraCanvas {
                 if (hoveredSegment != SIZE_MAX || hoveredLegendSeries != SIZE_MAX) {
                     hoveredSegment = SIZE_MAX;
                     hoveredLegendSeries = SIZE_MAX;
+                    legend.SetHighlightedEntry(SIZE_MAX);
                     HideTooltip();
                     RequestRedraw();
                 }

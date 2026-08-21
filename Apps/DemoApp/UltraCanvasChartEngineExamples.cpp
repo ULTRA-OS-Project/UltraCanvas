@@ -36,12 +36,6 @@ namespace {
 // DATA
 // =============================================================================
 
-const Color kSeriesColor[3] = {
-    Color(68, 119, 170, 255),    // blue
-    Color(238, 102, 119, 255),   // red
-    Color(34, 136, 51, 255)      // green
-};
-
 struct EngineDataset {
     std::string name;
     std::string caption;                        // what it is good for
@@ -109,9 +103,10 @@ public:
     // (the framework's ChartDirty::Clean is spelled that way for the same reason).
     enum class GridSource { ValueAxis, CategoryAxis, NoGrid };
     enum class LimiterMode { NoLimiter, Average, AverageAndTarget, Thresholds };
+    enum class HighlightMode { NoHighlight, Band, Ellipse, Blob };
     enum class ValueLabelMode { All, Declutter, Off };
     // How the bars are painted. The legend swatch follows this, which is what
-    // ChartLegendSwatch is for: a series drawn with a non-solid fill must not
+    // LegendSwatch is for: a series drawn with a non-solid fill must not
     // be represented by a colour square that matches nothing.
     enum class SeriesPaint { Solid, Gradient, Outline, Hatched };
 
@@ -130,9 +125,11 @@ public:
         categoryNames = set.categories;
         seriesNames = set.seriesNames;
         seriesValues = set.values;
+        seriesDisabled.assign(seriesNames.size(), false);
         datasetName = set.name;
         ApplyTitle();                           // the title names the data
         RebuildLimiters();
+        RebuildHighlights();
         RebuildLegend();
         MarkEngineDirty(ChartDirty::Data);      // rebuilds axes, layout and plan
     }
@@ -151,6 +148,7 @@ public:
             }
         }
         RebuildLimiters();
+        RebuildHighlights();
         MarkEngineDirty(ChartDirty::Data);
     }
 
@@ -176,6 +174,11 @@ public:
 
     void SetLimiterMode(LimiterMode mode) { limiterMode = mode; RebuildLimiters(); }
 
+    void SetHighlightMode(HighlightMode mode) {
+        highlightMode = mode;
+        RebuildHighlights();
+    }
+
     void SetSeriesPaint(SeriesPaint paint) {
         seriesPaint = paint;
         RebuildLegend();                     // the swatch mirrors the paint
@@ -183,6 +186,56 @@ public:
     }
 
     void SetShowLegendPanel(bool on) { showLegendPanel = on; RebuildLegend(); }
+
+    // The engine repaints on a theme change; the legend swatch colours are
+    // cached in the legend entries, so they are re-derived here.
+    void OnThemeChanged() override { RebuildLegend(); }
+
+    // Clicking a legend entry toggles its series: the entry renders dimmed
+    // (the legend's own state) and the series drops out of the bars, the
+    // stacks and the value labels. Data dirty, so stacked arrangements
+    // re-solve without the hidden series.
+    void OnLegendEntryToggled(size_t entryIndex, bool enabled) override {
+        if (entryIndex >= seriesDisabled.size()) return;
+        seriesDisabled[entryIndex] = !enabled;
+        MarkEngineDirty(ChartDirty::Data);
+    }
+
+    bool SeriesDisabled(size_t s) const {
+        return s < seriesDisabled.size() && seriesDisabled[s];
+    }
+
+    // Legend key showcase: Items is the discrete entry list; ColorBar keys
+    // the value range through a continuous Viridis ramp; SizeLegend keys it
+    // as sample bubble sizes. Both use the chart's own number format.
+    void ShowLegendKey(ChartLegendMode legendMode) {
+        if (legendMode != ChartLegendMode::Discrete) {
+            double lo = std::numeric_limits<double>::max();
+            double hi = -std::numeric_limits<double>::max();
+            for (double v : PlottedValues()) {
+                lo = std::min(lo, v);
+                hi = std::max(hi, v);
+            }
+            if (lo > hi) { lo = 0.0; hi = 1.0; }
+            const ChartAxis datum = DatumFormatter();
+            auto format = [datum](double v) { return datum.FormatValue(v); };
+            if (legendMode == ChartLegendMode::ColorBar) {
+                LegendColorBar bar;
+                bar.colormap = HeatmapColormap::Viridis;
+                bar.minValue = lo;
+                bar.maxValue = hi;
+                bar.formatter = format;
+                Legend().SetColorBar(bar);
+            } else {
+                LegendSizeScale scale;
+                scale.minValue = lo;
+                scale.maxValue = hi;
+                scale.formatter = format;
+                Legend().SetSizeScale(scale);
+            }
+        }
+        SetLegendMode(legendMode);
+    }
 
     void SetValueLabelMode(ValueLabelMode mode) {
         valueLabelMode = mode;
@@ -272,6 +325,7 @@ public:
         const double progress = frame.animationProgress;
 
         for (const ChartBarSpan& span : Spans(value, category)) {
+            if (SeriesDisabled(span.seriesIndex)) continue;
             double v0 = span.v0, v1 = span.v1;
             ClampToPlot(v0, v1);
             v1 = v0 + (v1 - v0) * progress;     // entrance: bars grow from the base
@@ -286,11 +340,16 @@ public:
 
             const int64_t id = RegionId(span.seriesIndex, span.categoryIndex);
             const bool hovered = (HoveredRegionId() == id);
-            const Color base = kSeriesColor[span.seriesIndex % 3];
+            const Color base =
+                Palette().ColorAt(span.seriesIndex, seriesNames.size());
 
             PaintBar(ctx, outline, hovered ? Lighten(base, 45) : base);
+            // The edge is the bar's own colour darkened, not a fixed near-black:
+            // soft palettes (Pastel) keep their softness and dark themes get
+            // coloured edges instead of invisible ones.
             ctx->SetStrokePaint(seriesPaint == SeriesPaint::Outline
-                                    ? base : Color(40, 40, 40, hovered ? 255 : 120));
+                                    ? base
+                                    : base.Darken(0.35f).WithAlpha(hovered ? 255 : 170));
             ctx->SetStrokeWidth((hovered || seriesPaint == SeriesPaint::Outline)
                                     ? 2.0f : 1.0f);
             ctx->DrawLinePath(outline, true);
@@ -332,6 +391,7 @@ public:
         size_t champion = 0;
         double best = -std::numeric_limits<double>::max();
         for (size_t i = 0; i < spans.size(); ++i) {
+            if (SeriesDisabled(spans[i].seriesIndex)) continue;
             if (std::abs(spans[i].plotted) > best) {
                 best = std::abs(spans[i].plotted);
                 champion = i;
@@ -356,6 +416,7 @@ public:
 
         for (size_t i = 0; i < spans.size(); ++i) {
             const ChartBarSpan& span = spans[i];
+            if (SeriesDisabled(span.seriesIndex)) continue;
             double v0 = span.v0, v1 = span.v1;
             ClampToPlot(v0, v1);
 
@@ -382,12 +443,15 @@ private:
     std::vector<std::string> categoryNames;
     std::vector<std::string> seriesNames;
     std::vector<std::vector<double>> seriesValues;
+    std::vector<bool> seriesDisabled;           // legend click-to-toggle state
 
     ChartScale valueScale = ChartScale::Linear;
     ChartBarArrangement arrangement = ChartBarArrangement::Grouped;
     NumberFormat numberFormat = NumberFormat::CompactDollars;
     GridSource gridSource = GridSource::ValueAxis;
     LimiterMode limiterMode = LimiterMode::AverageAndTarget;
+    HighlightMode highlightMode = HighlightMode::NoHighlight;
+    bool insetKeyRequested = false;
     ValueLabelMode valueLabelMode = ValueLabelMode::Declutter;
     SeriesPaint seriesPaint = SeriesPaint::Solid;
     bool showLegendPanel = true;
@@ -429,8 +493,20 @@ private:
     }
 
     std::vector<ChartBarSpan> Spans(const ChartAxis& value, const ChartAxis& category) const {
+        if (seriesDisabled.empty() ||
+            std::none_of(seriesDisabled.begin(), seriesDisabled.end(),
+                         [](bool d) { return d; })) {
+            return BuildBarSpans(value, category, categoryNames.size(),
+                                 seriesValues, BarOptions());
+        }
+        // A toggled-off series is zeroed, not removed: indices (and with
+        // them the palette colours) stay stable, and stacks collapse over it.
+        std::vector<std::vector<double>> values = seriesValues;
+        for (size_t s = 0; s < values.size(); ++s) {
+            if (SeriesDisabled(s)) std::fill(values[s].begin(), values[s].end(), 0.0);
+        }
         return BuildBarSpans(value, category, categoryNames.size(),
-                             seriesValues, BarOptions());
+                             values, BarOptions());
     }
 
     // Data values are formatted through an axis of their own, because the value
@@ -660,25 +736,132 @@ private:
         }
     }
 
+    // One owner for the legend's custom key. A key describes marks the chart
+    // actually draws: the 50%/95% ellipse key travels with the ellipse
+    // highlight style; otherwise the Inset legend demo may request the
+    // limiter-lines key; otherwise there is none.
+public:
+    void SetLegendInsetKey(bool on) {
+        insetKeyRequested = on;
+        SyncLegendKey();
+    }
+
+private:
+    void SyncLegendKey() {
+        if (highlightMode == HighlightMode::Ellipse) {
+            Legend().SetCustomArea(
+                Size2Dd(150.0, 52.0),
+                [](IRenderContext* ctx, const Rect2Dd& r) {
+                    const Point2Dd c(r.x + 52.0, r.y + r.height / 2.0 + 4.0);
+                    ctx->SetStrokePaint(Color(150, 150, 150, 255));
+                    ctx->SetStrokeWidth(1.0f);
+                    ctx->DrawEllipse(Rect2Dd(c.x - 36, c.y - 18, 72, 36));
+                    ctx->DrawEllipse(Rect2Dd(c.x - 17, c.y - 8, 34, 16));
+                    ctx->SetFillPaint(Color(60, 60, 60, 255));
+                    ctx->FillCircle(c, 2.5);
+                    ctx->SetFontSize(9.0f);
+                    ctx->SetTextPaint(Color(120, 120, 120, 255));
+                    ctx->DrawText("95%", Point2Dd(r.x + 2.0, r.y + 1.0));
+                    ctx->DrawText("50%", Point2Dd(c.x - 10.0, c.y - 26.0));
+                    ctx->DrawText("mean", Point2Dd(c.x + 40.0, c.y - 5.0));
+                });
+        } else if (insetKeyRequested) {
+            Legend().SetCustomArea(
+                Size2Dd(150.0, 44.0),
+                [](IRenderContext* ctx, const Rect2Dd& r) {
+                    const struct {
+                        Color color;
+                        const char* label;
+                    } rows[] = {{Color(90, 90, 90, 255), "average"},
+                                {Color(200, 60, 60, 255), "target"}};
+                    ctx->SetFontSize(9.0f);
+                    double y = r.y + 8.0;
+                    for (const auto& row : rows) {
+                        ctx->SetStrokePaint(row.color);
+                        ctx->SetStrokeWidth(1.5f);
+                        ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+                        ctx->DrawLine(Point2Dd(r.x + 2.0, y),
+                                      Point2Dd(r.x + 40.0, y));
+                        ctx->SetLineDash(UCDashPattern());
+                        ctx->SetTextPaint(Color(120, 120, 120, 255));
+                        ctx->DrawText(row.label, Point2Dd(r.x + 48.0, y - 6.0));
+                        y += 18.0;
+                    }
+                });
+        } else {
+            Legend().ClearCustomArea();
+        }
+        MarkEngineDirty(ChartDirty::Geometry);
+    }
+
+    // The highlight layer, driven by the chart's own data.
+    void RebuildHighlights() {
+        ClearHighlights();
+        SyncLegendKey();
+
+        if (highlightMode == HighlightMode::Band) {
+            double sum = 0.0;
+            size_t count = 0;
+            for (double v : PlottedValues()) { sum += v; ++count; }
+            const double average = count ? sum / count : 0.0;
+            ChartHighlight band;
+            band.shape = ChartHighlightShape::ValueBand;
+            band.axisIndex = 0;                       // the value axis
+            band.bandLow = average * 0.8;
+            band.bandHigh = average * 1.2;
+            band.fill = Color(120, 140, 170, 28);
+            band.stroke = Color(120, 140, 170, 120);
+            band.dashed = true;
+            band.label = "expected range";
+            band.zSlot = 200;                         // wash under the grid
+            AddHighlight(band);
+        } else if (highlightMode == HighlightMode::Ellipse ||
+                   highlightMode == HighlightMode::Blob) {
+            // One computed group shape per series, over its bar-tip points
+            // (x = category index through the category axis, y = value).
+            for (size_t s = 0; s < seriesValues.size(); ++s) {
+                if (SeriesDisabled(s)) continue;
+                ChartHighlight group;
+                group.shape = (highlightMode == HighlightMode::Ellipse)
+                                  ? ChartHighlightShape::ConfidenceEllipse
+                                  : ChartHighlightShape::Blob;
+                group.xAxisIndex = 1;                 // category axis drives u
+                group.yAxisIndex = 0;                 // value axis drives v
+                for (size_t c = 0; c < seriesValues[s].size(); ++c) {
+                    group.members.emplace_back(static_cast<double>(c),
+                                               seriesValues[s][c]);
+                }
+                const Color base = Palette().ColorAt(s, seriesValues.size());
+                group.fill = base.WithAlpha(26);
+                group.stroke = base.WithAlpha(190);
+                group.confidence = 0.95;
+                group.padding = 16.0;
+                group.zSlot = (highlightMode == HighlightMode::Ellipse) ? 700 : 200;
+                AddHighlight(group);
+            }
+        }
+    }
+
     void RebuildLegend() {
         if (!showLegendPanel) {
             SetShowLegend(false);
             return;
         }
-        ChartLegendSwatch swatch = ChartLegendSwatch::Solid;
+        LegendSwatch swatch = LegendSwatch::Square;
         switch (seriesPaint) {
-            case SeriesPaint::Solid:    swatch = ChartLegendSwatch::Solid; break;
-            case SeriesPaint::Gradient: swatch = ChartLegendSwatch::Gradient; break;
-            case SeriesPaint::Outline:  swatch = ChartLegendSwatch::Outline; break;
-            case SeriesPaint::Hatched:  swatch = ChartLegendSwatch::Hatched; break;
+            case SeriesPaint::Solid:    swatch = LegendSwatch::Square; break;
+            case SeriesPaint::Gradient: swatch = LegendSwatch::Gradient; break;
+            case SeriesPaint::Outline:  swatch = LegendSwatch::Outline; break;
+            case SeriesPaint::Hatched:  swatch = LegendSwatch::Hatched; break;
         }
 
         std::vector<ChartLegendEntry> entries;
         for (size_t i = 0; i < seriesNames.size(); ++i) {
             ChartLegendEntry entry;
             entry.label = seriesNames[i];
-            entry.color = kSeriesColor[i % 3];
+            entry.color = Palette().ColorAt(i, seriesNames.size());
             entry.swatch = swatch;
+            entry.enabled = !SeriesDisabled(i);   // keep toggles across rebuilds
             entries.push_back(entry);
         }
         SetLegendEntries(entries);
@@ -837,6 +1020,7 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     chart->SetDataset(datasets[0]);          // also titles the chart
     chart->SetValueLabelMode(EngineFeatureChart::ValueLabelMode::Declutter);
+    chart->SetTheme("Pastel");               // the showcase's default look
     auto* chartPtr = chart.get();
     root->AddChild(chart);
 
@@ -1078,17 +1262,42 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::SeriesPaint::Hatched};
                       chartPtr->SetSeriesPaint(paints[i]);
                       say("Series paint changed — the legend swatch follows it "
-                          "(ChartLegendSwatch), so a non-solid series is never represented by a "
+                          "(LegendSwatch), so a non-solid series is never represented by a "
                           "colour square that matches nothing");
                   }, 0);
     row6->AddSpacer(20);
-    AppendLabeledButtons(row6, "engine_legend_", "Legend", 60, 48, kBtnH,
-                  {"On", "Off"},
+    AppendLabeledButtons(row6, "engine_legend_", "Legend", 60, 56, kBtnH,
+                  {"Right", "Bottom", "Inset", "Off"},
                   [chartPtr, say](int i) {
-                      chartPtr->SetShowLegendPanel(i == 0);
-                      say(i == 0 ? "Legend on — measured, reserved in the layout, and an obstacle "
-                                   "the solved labels steer around"
-                                 : "Legend off — its reserved margin returns to the plot area");
+                      const char* what[] = {
+                          "Legend at RightStart — vertical list, its edge reserved in "
+                          "the layout negotiation. The shared ChartLegend offers 12 "
+                          "outside placements plus 4 insets (SetLegendPosition)",
+                          "Legend at BottomCenter — Auto orientation flows top/bottom "
+                          "placements horizontally and wraps rows to the width",
+                          "Legend inset top-right — floats over the plot, reserves "
+                          "nothing, and rides the label plan as an obstacle the "
+                          "solved value labels steer around. The panel below the "
+                          "entries is SetCustomArea: a host-drawn key richer than "
+                          "any swatch. A key must describe marks the chart actually "
+                          "draws — here the limiter reference lines; an ellipse key "
+                          "belongs with a scatter's group-highlight ellipses",
+                          "Legend off — its reserved margin returns to the plot area"};
+                      if (i == 3) {
+                          chartPtr->SetShowLegendPanel(false);
+                      } else {
+                          // The Inset demo requests the limiter-lines key;
+                          // SyncLegendKey arbitrates (the ellipse highlight
+                          // style's own key takes precedence when active).
+                          chartPtr->SetLegendInsetKey(i == 2);
+                          const ChartLegendPosition where[] = {
+                              ChartLegendPosition::RightStart,
+                              ChartLegendPosition::BottomCenter,
+                              ChartLegendPosition::InsetTopRight};
+                          chartPtr->SetLegendPosition(where[i]);
+                          chartPtr->SetShowLegendPanel(true);
+                      }
+                      say(what[i]);
                   }, 0);
     row6->AddSpacer(20);
     AppendLabeledButtons(row6, "engine_tips_", "Tooltips", 66, 48, kBtnH,
@@ -1143,6 +1352,84 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                                  : "Background layer off (slot 100 skipped)");
                   }, 0);
     controls->AddChild(row7);
+
+    // ----- Theme / palette -----
+    auto row8 = MakeRow("engine_row_theme");
+    AppendLabeledButtons(row8, "engine_theme_", "Theme", kLabelW, 78, kBtnH,
+                  {"Light", "Dark", "Vibrant", "Pastel", "Colorblind", "Ocean"},
+                  [chartPtr, say](int i) {
+                      const char* names[] = {"Light", "Dark", "Vibrant",
+                                             "Pastel", "Colorblind", "Ocean"};
+                      chartPtr->SetTheme(names[i]);
+                      say(std::string("SetTheme(\"") + names[i] + "\") — one of the "
+                          "14 built-in ChartThemes; furniture and palette change "
+                          "together, and it is repaint-only: no layout, no label "
+                          "re-solve. Also reachable as SetProperty(\"theme\", name)");
+                  }, 3);          // Pastel - the showcase's default look
+    row8->AddSpacer(20);
+    AppendLabeledButtons(row8, "engine_palette_", "Palette", 56, 84, kBtnH,
+                  {"Theme's", "Viridis N"},
+                  [chartPtr, say](int i) {
+                      if (i == 0) {
+                          chartPtr->SetPalette(
+                              chartPtr->GetTheme().name.empty()
+                                  ? ChartThemes::Light().palette
+                                  : ChartThemes::Get(chartPtr->GetTheme().name).palette);
+                          say("Palette restored from the active theme");
+                      } else {
+                          chartPtr->SetPalette(ChartPalette::FromColormap(
+                              HeatmapColormap::Viridis, 12));
+                          say("SetPalette(ChartPalette::FromColormap(Viridis, 12)) — a "
+                              "categorical palette of any requested size sampled from a "
+                              "continuous colormap; ColorAt(i, count) spreads the three "
+                              "series across the whole ramp");
+                      }
+                  }, 0);
+    row8->AddSpacer(20);
+    AppendLabeledButtons(row8, "engine_lkey_", "Key", 34, 46, kBtnH,
+                  {"Items", "Bar", "Size"},
+                  [chartPtr, say](int i) {
+                      const ChartLegendMode modes[] = {ChartLegendMode::Discrete,
+                                                       ChartLegendMode::ColorBar,
+                                                       ChartLegendMode::SizeLegend};
+                      chartPtr->ShowLegendKey(modes[i]);
+                      const char* what[] = {
+                          "SetLegendMode(Discrete) — the classic swatch + label list",
+                          "SetLegendMode(ColorBar) — a continuous Viridis ramp over the "
+                          "value range with tick labels, the key a heatmap or contour "
+                          "surface uses (Legend().SetColorBar)",
+                          "SetLegendMode(SizeLegend) — sample circles keying a bubble-"
+                          "size scale, largest first (Legend().SetSizeScale)"};
+                      say(what[i]);
+                  }, 0);
+    controls->AddChild(row8);
+
+    // ----- Highlights (slot 200 wash / slot 700 overlay) -----
+    auto row9 = MakeRow("engine_row_highlight");
+    AppendLabeledButtons(row9, "engine_hl_", "Highlight", kLabelW, 62, kBtnH,
+                  {"Off", "Band", "Ellipse", "Blob"},
+                  [chartPtr, say](int i) {
+                      const EngineFeatureChart::HighlightMode modes[] = {
+                          EngineFeatureChart::HighlightMode::NoHighlight,
+                          EngineFeatureChart::HighlightMode::Band,
+                          EngineFeatureChart::HighlightMode::Ellipse,
+                          EngineFeatureChart::HighlightMode::Blob};
+                      chartPtr->SetHighlightMode(modes[i]);
+                      const char* what[] = {
+                          "Highlights off (AddHighlight/ClearHighlights)",
+                          "ValueBand at zSlot 200 — a dashed expected-range wash "
+                          "under the grid, its caption riding the label plan as a "
+                          "HighlightLabel",
+                          "ConfidenceEllipse per series at zSlot 700 — covariance "
+                          "ellipses (95%) with mean markers over each series' bar "
+                          "tips, in the series colours; the legend gains the "
+                          "50%/95% ellipse key, because a key describes marks the "
+                          "chart actually draws",
+                          "Blob per series at zSlot 200 — Chaikin-smoothed padded "
+                          "hulls hugging each series' points, washed under the grid"};
+                      say(what[i]);
+                  }, 0);
+    controls->AddChild(row9);
 
     root->AddChild(controls);
     return root;

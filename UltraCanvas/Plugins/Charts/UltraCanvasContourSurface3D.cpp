@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasContourSurface3D.cpp
 // Software-rendered 3D contour surface.
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend ColorBar mode.
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasContourSurface3D.h"
 #include "UltraCanvasTooltipManager.h"
@@ -433,12 +434,6 @@ namespace UltraCanvas {
                               NormalizeValue((lo + hi) * 0.5), reverseColormap);
     }
 
-    std::string UltraCanvasContourSurface3DElement::BandIntervalText(size_t band) const {
-        double lo, hi;
-        BandRange(band, lo, hi);
-        return FormatFixed3D(lo, legendDecimals) + "-" + FormatFixed3D(hi, legendDecimals);
-    }
-
     std::string UltraCanvasContourSurface3DElement::FormatTick(double v, const ValueFormatter& fn) const {
         if (fn) return fn(v);
         double mag = std::max(std::fabs(v), 1e-12);
@@ -513,28 +508,16 @@ namespace UltraCanvas {
 
         if (!chartTitle.empty()) top += lineH + 12.0;
 
-        legendReservedW = 0.0;
-        legendReservedH = 0.0;
-        if (legendMode != SurfaceLegendMode::NoLegend && fieldValid) {
-            ctx->SetFontSize(10.0);
-            int legendLineH = ctx->GetTextLineHeight("0");
-            if (legendMode == SurfaceLegendMode::Horizontal) {
-                legendReservedH = legendLineH + 12.0 + (legendTitle.empty() ? 0.0 : legendLineH + 2.0);
-                bottom += legendReservedH;
-            } else {
-                double textW = 0.0;
-                for (size_t b = 0; b < BandCount(); ++b) {
-                    textW = std::max(textW,
-                                     static_cast<double>(ctx->GetTextLineWidth(BandIntervalText(b))));
-                }
-                legendReservedW = legendSwatchSize + 8.0 + textW + 14.0;
-                right += legendReservedW;
-            }
-        }
-
         double w = std::max(1.0, static_cast<double>(GetWidth()) - left - right);
         double h = std::max(1.0, static_cast<double>(GetHeight()) - top - bottom);
-        return ChartPlotArea(left, top, w, h);
+        legendContentArea = Rect2Dd(left, top, w, h);
+
+        // The shared legend measures itself and hands back the plot area.
+        SyncLegend();
+        legend.Measure(ctx, legendContentArea);
+        Rect2Dd plot = legend.RemainingArea(legendContentArea);
+        return ChartPlotArea(plot.x, plot.y,
+                             std::max(1.0, plot.width), std::max(1.0, plot.height));
     }
 
 // =============================================================================
@@ -579,7 +562,7 @@ namespace UltraCanvas {
         RenderSurface(ctx, cam);
         ctx->PopState();
 
-        RenderLegend(ctx, area);
+        legend.Render(ctx, legendContentArea);
     }
 
     void UltraCanvasContourSurface3DElement::RenderSurface(IRenderContext* ctx, const Camera& cam) {
@@ -805,56 +788,40 @@ namespace UltraCanvas {
         (void)outwardLeft;
     }
 
-    void UltraCanvasContourSurface3DElement::RenderLegend(IRenderContext* ctx, const ChartPlotArea& area) {
-        if (legendMode == SurfaceLegendMode::NoLegend) return;
-        size_t bands = BandCount();
-        if (bands == 0) return;
+    void UltraCanvasContourSurface3DElement::SyncLegend() {
+        legend.SetVisible(legendMode != SurfaceLegendMode::NoLegend && fieldValid);
+        legend.SetMode(ChartLegendMode::ColorBar);
+        legend.SetPosition(legendMode == SurfaceLegendMode::Vertical
+                                   ? ChartLegendPosition::RightStart
+                                   : ChartLegendPosition::BottomCenter);
+        legend.SetTitle(legendTitle);
 
-        ctx->SetFontSize(10.0);
-        int lineH = ctx->GetTextLineHeight("0");
+        LegendColorBar bar;
+        bar.colormap = colormap;
+        bar.customColormap = customColormap;
+        bar.reverse = reverseColormap;
+        bar.minValue = valueMin;
+        bar.maxValue = valueMax;
+        if (colorMode == SurfaceColorMode::Banded) {
+            // Quantized bands mirror the banded surface colouring; ticks sit
+            // on the band boundaries.
+            bar.quantizeLevels = static_cast<int>(BandCount());
+            bar.tickCount = std::clamp(bar.quantizeLevels + 1, 2, 11);
+        } else {
+            bar.quantizeLevels = 0;   // continuous ramp
+            bar.tickCount = 5;
+        }
+        bar.barLength = 200.0;        // clamped to the available span by Measure()
+        int decimals = legendDecimals;
+        bar.formatter = [decimals](double v) { return FormatFixed3D(v, decimals); };
+        legend.SetColorBar(bar);
 
-        if (legendMode == SurfaceLegendMode::Horizontal) {
-            double y = area.GetBottom() + legendReservedH - lineH - 4.0;
-            std::vector<double> widths(bands);
-            double totalW = 0.0;
-            for (size_t b = 0; b < bands; ++b) {
-                widths[b] = legendSwatchSize + 4.0 + ctx->GetTextLineWidth(BandIntervalText(b)) + 12.0;
-                totalW += widths[b];
-            }
-            if (!legendTitle.empty()) {
-                Size2Di sz = ctx->GetTextLineDimensions(legendTitle);
-                ctx->SetTextPaint(axisLabelColor);
-                ctx->DrawText(legendTitle,
-                              Point2Dd(area.GetCenter().x - sz.width / 2.0, y - lineH - 2.0));
-            }
-            double x = area.GetCenter().x - totalW / 2.0;
-            for (size_t b = 0; b < bands; ++b) {
-                ctx->DrawFilledRectangle(Rect2Dd(x, y, legendSwatchSize, lineH),
-                                         BandColor(b), 1.0f, axisColor);
-                ctx->SetTextPaint(axisLabelColor);
-                ctx->DrawText(BandIntervalText(b), Point2Dd(x + legendSwatchSize + 4.0, y));
-                x += widths[b];
-            }
-            return;
-        }
-
-        double x = area.GetRight() + 12.0;
-        double y = area.y;
-        if (!legendTitle.empty()) {
-            ctx->SetTextPaint(axisLabelColor);
-            ctx->DrawText(legendTitle, Point2Dd(x, y));
-            y += lineH + 4.0;
-        }
-        double rowH = std::max<double>(legendSwatchSize, lineH) + 3.0;
-        for (size_t b = bands; b-- > 0; ) {
-            if (y + rowH > area.GetBottom()) break;
-            ctx->DrawFilledRectangle(Rect2Dd(x, y, legendSwatchSize, legendSwatchSize),
-                                     BandColor(b), 1.0f, axisColor);
-            ctx->SetTextPaint(axisLabelColor);
-            ctx->DrawText(BandIntervalText(b),
-                          Point2Dd(x + legendSwatchSize + 6.0, y + (legendSwatchSize - lineH) / 2.0));
-            y += rowH;
-        }
+        ChartLegendStyle ls;
+        ls.fontSize = 10.0f;
+        ls.textColor = axisLabelColor;
+        ls.titleFontSize = 10.0f;
+        ls.titleColor = axisLabelColor;
+        legend.SetStyle(ls);
     }
 
 // =============================================================================

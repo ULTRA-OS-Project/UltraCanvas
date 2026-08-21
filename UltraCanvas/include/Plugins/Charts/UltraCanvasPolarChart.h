@@ -1,13 +1,15 @@
 // include/Plugins/Charts/UltraCanvasPolarChart.h
 // Comprehensive polar chart element: scatter, line, spline, area and column
 // series plotted on a configurable angle/radius coordinate system
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.1.0
+// Last Modified: 2026-08-20
+// V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasRenderContext.h"
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -397,6 +399,10 @@ namespace UltraCanvas {
         float legendFontSize = 11.0f;
         Color legendTextColor = Color(70, 70, 70, 255);
         bool legendToggleEnabled = true;
+        // Shared legend component; content, style and position are synced from
+        // the legacy fields above on every layout pass.
+        ChartLegend legend;
+        Rect2Dd legendContentArea;
 
         // ----- Interaction -----
         bool hoverHighlightEnabled = true;
@@ -434,13 +440,6 @@ namespace UltraCanvas {
             Color color;
         };
 
-        struct LegendEntry {
-            size_t seriesIndex = 0;
-            Rect2Dd bounds;
-            Color color;
-            std::string text;
-        };
-
         bool layoutValid = false;
         int lastLayoutWidth = -1;
         int lastLayoutHeight = -1;
@@ -460,12 +459,11 @@ namespace UltraCanvas {
         std::vector<AngleTick> secondaryTicks;
         std::vector<PlottedPoint> plottedPoints;
         std::vector<PlottedColumn> plottedColumns;
-        std::vector<LegendEntry> legendEntries;
-        double legendBandSize = 0.0;
+        double legendBandSize = 0.0;   // measured thickness of the legend band
 
         // ----- Layout helpers -----
         void InvalidateLayout();
-        void EnsureLayout();
+        void EnsureLayout(IRenderContext* ctx);
         void RebuildLayout();
         void ComputeRadialRange();
         void ComputeRadialTicks();
@@ -474,7 +472,7 @@ namespace UltraCanvas {
                                 std::vector<AngleTick>& out) const;
         void BuildPlottedSeries();
         void BuildPlottedColumns();
-        void BuildLegendEntries(IRenderContext* ctx);
+        void UpdateLegend();
 
         size_t CategorySlotCount() const;
         double CategoryAngle(size_t index) const;
@@ -505,7 +503,6 @@ namespace UltraCanvas {
         void RenderLineSeries(IRenderContext* ctx, size_t seriesIndex);
         void RenderMarkers(IRenderContext* ctx, size_t seriesIndex);
         void RenderValueLabelsForSeries(IRenderContext* ctx, size_t seriesIndex);
-        void RenderLegend(IRenderContext* ctx);
         void RenderTitles(IRenderContext* ctx);
 
         void DrawRingPath(IRenderContext* ctx, double radiusPx, bool polygonal) const;

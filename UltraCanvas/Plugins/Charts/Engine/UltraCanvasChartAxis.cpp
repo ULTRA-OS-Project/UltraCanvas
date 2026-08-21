@@ -446,4 +446,17 @@ Rect2Dd SolvePlotArea(const Rect2Dd& chartArea, const ChartMargins& margins,
                    std::max(minHeight, chartArea.height - top - bottom));
 }
 
+Rect2Dd SolveLabelBounds(const Rect2Dd& plotArea, const ChartMargins& contentMargins,
+                         const Rect2Dd& chartArea) {
+    const double x0 = std::max(chartArea.x,
+                               plotArea.x - std::max(0.0, contentMargins.left));
+    const double y0 = std::max(chartArea.y,
+                               plotArea.y - std::max(0.0, contentMargins.top));
+    const double x1 = std::min(chartArea.Right(),
+                               plotArea.Right() + std::max(0.0, contentMargins.right));
+    const double y1 = std::min(chartArea.Bottom(),
+                               plotArea.Bottom() + std::max(0.0, contentMargins.bottom));
+    return Rect2Dd(x0, y0, std::max(0.0, x1 - x0), std::max(0.0, y1 - y0));
+}
+
 } // namespace UltraCanvas

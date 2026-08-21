@@ -1,4 +1,80 @@
 #### 2026-08-20 *0.3.52*
+- **Chart engine: themes and palettes.** The engine grew the theming home the
+  proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles
+  the furniture colours (background, plot area, grid, axes, title, legend)
+  with a `ChartPalette` of series colours, applied with
+  `SetTheme(theme)` / `SetTheme("name")` / `SetPalette(palette)` and — for
+  by-name creators — `SetProperty("theme", "Dark")`. Fourteen built-in
+  themes, their palettes lifted from the definitions the pre-engine charts
+  each carried privately (Light/Bright, Dark, Corporate, Vibrant, Pastel,
+  Colorblind, Material, Classic, Tableau, and the Ocean/Sunset/Forest/Slate/
+  Monochrome ramps). Palettes answer `ColorAt(index)` (cycling, with wrapped
+  cycles re-tinted so long runs never repeat exactly) and
+  `ColorAt(index, count)` (ramps spread across their run when the element
+  count is known); `ChartPalette::FromColormap(Viridis, n)` samples any
+  `UltraCanvasColormap` map into a palette of the requested size. A theme
+  change is repaint-only — no layout, no label re-solve — with an
+  `OnThemeChanged()` hook for content that caches theme colours (legend
+  entries). Pastel carries soft warm-grey furniture of its own, and is the
+  Chart Engine demo's default look; the demo gained a Theme row and its bar
+  edges follow the bar colour (darkened) instead of a fixed near-black.
+  Model-layer tests cover the registry, cycling, count-aware selection and
+  colormap sampling.
+- **Chart engine: the legend is the shared ChartLegend component.** The
+  engine's private right-side-only legend is gone; `SetShowLegend` /
+  `SetLegendEntries` now drive the shared component
+  (`UltraCanvasChartLegend`), which brings the full option set:
+  `SetLegendPosition` with 12 outside placements (Top/Bottom/Left/Right ×
+  Start/Center/End, each reserving its edge in the layout negotiation) plus
+  4 inset corners that float over the plot (reserving nothing, but riding
+  the label plan as an obstacle), `SetLegendOrientation`
+  (Auto/Horizontal/Vertical with row wrapping), `SetLegendTitle`, and
+  `Legend()` for value text, interval entries, overflow capping and label
+  formatting. The shared component gained the engine's paint-mirroring
+  swatches (Outline, Hatched, Image, and a real Gradient ramp), so its
+  swatch vocabulary now spans Square, Circle, Ring, Line, DashedLine,
+  Marker, Glyph, Gradient, Outline, Hatched and Image — and the engine
+  legend follows the active chart theme. This also removes the duplicate
+  `ChartLegendEntry` type the engine declared in parallel with the shared
+  one. New `SetCustomArea(size, draw)` reserves a host-drawn panel below
+  the entries for keys richer than any swatch (an annotated
+  confidence-ellipse diagram, a bubble-size scale); the demo's Inset mode
+  keys the chart's limiter reference lines — a key describes marks the
+  chart actually draws. The engine legend is interactive: hover highlights
+  an entry, a click toggles it (dimmed) and notifies the chart via
+  `OnLegendEntryToggled` — the demo hides the series, stacks re-solving
+  without it. Tall vertical legends now wrap into further columns instead
+  of silently clipping (a `ChartLegend` fix that also benefits the
+  diagrams already using the component). The component grew the engine
+  proposal's continuous modes — `SetMode(ColorBar)` draws a colormap ramp
+  over a value range with tick labels (optionally quantized into bands),
+  `SetMode(SizeLegend)` draws sample circles keying a bubble-size scale —
+  and the legacy charts' private legends (polar, circular progress,
+  funnel, pyramid, Mekko, dumbbell, cumulative flow, population, nested
+  area, arc diagram, and the contour surfaces' colour bars) were migrated
+  onto the shared component, retiring their incompatible position enums'
+  private implementations while keeping every public API working.
+- **Chart engine: the highlight layer (proposal §8.2).** `AddHighlight` /
+  `ClearHighlights` bring group washes to slot 200 (under the grid) and
+  overlays to slot 700: explicit rectangles/ellipses in value space, value
+  bands, and the computed shapes — **confidence ellipses** (covariance eigen
+  decomposition at 50%/95% with a mean marker, the group-of-dots scatter
+  convention), padded convex hulls, Chaikin-smoothed blobs and point halos.
+  Highlight captions ride the label plan as `HighlightLabel`. The geometry
+  (`ComputeConfidenceEllipse`, hull, expand, smooth) is UI-free in
+  `Engine/UltraCanvasChartHighlights` and unit-tested. The demo gained a
+  Highlight row (Band / Ellipse / Blob); the ellipse style brings the
+  legend's 50%/95% ellipse key with it, since a key describes marks the
+  chart actually draws.
+- **Chart engine: value labels survive the axis maximum.** The label solver
+  was clamped to the plot area, so a bar reaching the axis limit had its
+  value label pushed down onto the bar. The solver's bounds now also include
+  the margins the chart content reserved for itself in `MeasureContent`
+  (`SolveLabelBounds`) - the spill band above the bars (or right of them
+  under the horizontal projection) - so the label sits just above the plot
+  edge instead. Axis bands, the title band and the legend margin remain out
+  of bounds.
+
 - **FilerWidget / UltraFiler: the context menu's Extract got the same dialog
   as Compress.** Extract used to unpack immediately with no way to pick the
   destination; it now opens the compress dialog's panel in extract mode: the
