@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "UltraFiler version 1.0.0" << std::endl;
+            debugOutput << "UltraFiler version " ULTRAFILER_VERSION << std::endl;
             debugOutput << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg[0] != '-') {
