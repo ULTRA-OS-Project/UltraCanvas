@@ -19,10 +19,11 @@
 // The gear button at the right end of the navigation row opens the settings
 // window (UltraFilerSettingsDialog), which also clears the history / the
 // favorites; persisted settings load at startup and configure the preview's
-// transparent-image backdrop. Esc closes the History or Favorites view, or an
-// open media preview.
-// Version: 1.9.0
-// Last Modified: 2026-08-20
+// transparent-image backdrop and the folder tree's colours - the background
+// of the drive rows and the highlight of the selected folder. Esc closes the
+// History or Favorites view, or an open media preview.
+// Version: 1.10.0
+// Last Modified: 2026-08-22
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -505,11 +506,16 @@ void UltraFilerWindow::RefreshVisibleListing() {
 // ===== SETTINGS =====
 
 void UltraFilerWindow::ApplySettings() {
-    if (!preview) return;
-    preview->SetTransparentBackground(settings.previewCheckeredBackground
-            ? TransparentImageBackground::Checkered
-            : TransparentImageBackground::SolidColor);
-    preview->SetTransparentColor(settings.previewTransparentColor);
+    if (preview) {
+        preview->SetTransparentBackground(settings.previewCheckeredBackground
+                ? TransparentImageBackground::Checkered
+                : TransparentImageBackground::SolidColor);
+        preview->SetTransparentColor(settings.previewTransparentColor);
+    }
+    // The tree is built after the settings are loaded, so this is a no-op on
+    // the first call and does the work on every later one (BuildFolderTree
+    // applies the colours itself).
+    ApplyTreeColors();
 }
 
 void UltraFilerWindow::OpenSettingsDialog() {
@@ -1012,10 +1018,10 @@ void UltraFilerWindow::BuildFolderTree() {
     for (const std::string& drive : ListDriveRoots()) {
         std::string label = fs::path(drive).root_name().string();  // "C:"
         if (label.empty()) label = drive;
-        AddTreeFolderNode("ufl-computer", drive, label, "drive.png");
+        AddTreeDriveNode(drive, label);
     }
 #else
-    AddTreeFolderNode("ufl-computer", "/", "File System", "drive.png");
+    AddTreeDriveNode("/", "File System");
     // Removable / additional volumes.
     for (const std::string base : {std::string("/media"), std::string("/mnt")}) {
         for (const fs::path& mount : ListSubdirectories(base)) {
@@ -1023,17 +1029,16 @@ void UltraFilerWindow::BuildFolderTree() {
             if (base == "/media") {
                 auto volumes = ListSubdirectories(mount.string());
                 for (const fs::path& vol : volumes)
-                    AddTreeFolderNode("ufl-computer", vol.string(),
-                                      vol.filename().string(), "drive.png");
+                    AddTreeDriveNode(vol.string(), vol.filename().string());
             } else {
-                AddTreeFolderNode("ufl-computer", mount.string(),
-                                  mount.filename().string(), "drive.png");
+                AddTreeDriveNode(mount.string(), mount.filename().string());
             }
         }
     }
 #endif
 
     if (root) root->Expand();
+    ApplyTreeColors();
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
@@ -1060,6 +1065,30 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
     // The placeholder child that gives the node its expand button is added
     // once the background probe reports that the folder has subfolders.
     QueueSubfolderProbe(path);
+}
+
+void UltraFilerWindow::AddTreeDriveNode(const std::string& path,
+                                        const std::string& label) {
+    AddTreeFolderNode("ufl-computer", path, label, "drive.png");
+    if (folderTree->FindNode(path)) treeDriveNodeIds.push_back(path);
+}
+
+void UltraFilerWindow::ApplyTreeColors() {
+    if (!folderTree) return;
+    folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
+    // A dark drive background needs light text: the drive rows are the only
+    // ones painted with a user-chosen colour, and black on dark blue is
+    // unreadable. Colors::Black means "use the tree's default colour".
+    const Color& drive = settings.treeDriveBackgroundColor;
+    const int luminance = (drive.r * 299 + drive.g * 587 + drive.b * 114) / 1000;
+    const Color driveTextColor = luminance < 128 ? Colors::White : Colors::Black;
+    for (const std::string& nodeId : treeDriveNodeIds) {
+        if (TreeNode* node = folderTree->FindNode(nodeId)) {
+            node->data.backgroundColor = drive;
+            node->data.textColor = driveTextColor;
+        }
+    }
+    folderTree->RequestRedraw();
 }
 
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {

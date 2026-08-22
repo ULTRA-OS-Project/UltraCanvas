@@ -1,13 +1,16 @@
 // Apps/UltraFiler/UltraFilerSettingsDialog.cpp
 // UltraFiler settings window: settings-page tree on the left, the selected
-// page on the right. Pages: Media Viewer > Transparent Images (the backdrop
-// behind transparent images — checkered pattern or a preset colour chosen
-// with the colour picker), Extras > Open prompt (the command line program
-// UltraFiler opens, picked with the file dialog and stored with "Save app")
-// and History & Favorites (clearing the recently-used lists and the pinned
-// entries). Changes apply live and are saved immediately.
-// Version: 1.2.0
-// Last Modified: 2026-08-17
+// page on the right. Pages: Display > Treeview (the folder tree's drive-row
+// background and selected-folder highlight, each shown as a colour box that
+// opens the colour picker in a popup window), Media Viewer > Transparent
+// Images (the backdrop behind transparent images — checkered pattern or a
+// preset colour chosen with the colour picker), Extras > Open prompt (the
+// command line program UltraFiler opens, picked with the file dialog and
+// stored with "Save app") and History & Favorites (clearing the
+// recently-used lists and the pinned entries). Changes apply live and are
+// saved immediately.
+// Version: 1.3.0
+// Last Modified: 2026-08-22
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -39,6 +42,8 @@ namespace {
     constexpr float kFontSize = 9.0f;   // matches the main window's UI font
 
     // Page ids double as tree node ids.
+    constexpr const char* kPageDisplay = "display";
+    constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
     constexpr const char* kPageExtras = "extras";
@@ -52,6 +57,10 @@ namespace {
         std::shared_ptr<UltraCanvasTreeView>  tree;
         std::shared_ptr<UltraCanvasContainer> pageArea;
         std::map<std::string, std::shared_ptr<UltraCanvasContainer>> pages;
+
+        // Display > Treeview: the colour boxes that open the picker popup.
+        std::shared_ptr<UltraCanvasButton> driveColorBox;
+        std::shared_ptr<UltraCanvasButton> selectedColorBox;
 
         std::shared_ptr<UltraCanvasRadio>       solidRadio;
         std::shared_ptr<UltraCanvasRadio>       checkeredRadio;
@@ -134,6 +143,233 @@ namespace {
         s.accentColor     = Color(60, 140, 220, 255);
         s.markerOutline   = Color(90, 90, 96, 255);
         return s;
+    }
+
+    // ===== COLOUR BOX + PICKER POPUP =====
+
+    // The box showing a configured colour. It is a button filled with that
+    // colour, so it hovers, focuses and reports its click like any other
+    // control - clicking it opens the picker popup below.
+    std::shared_ptr<UltraCanvasButton> MakeColorBox(const std::string& id,
+                                                    const Color& color,
+                                                    const std::string& tooltip,
+                                                    std::function<void()> onClick) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 56, 24, "");
+        b->SetCornerRadius(3.0f);
+        // Same colour in every state: a colour box that changes shade under
+        // the pointer no longer shows the colour it stands for.
+        b->SetColors(color, color, color, color);
+        b->SetBorder(1.0f, Color(120, 120, 128, 255));
+        b->SetTooltip(tooltip);
+        if (onClick) b->SetOnClick(std::move(onClick));
+        b->size.width  = CSSLayout::Dimension::Px(56);
+        b->size.height = CSSLayout::Dimension::Px(24);
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        return b;
+    }
+
+    void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box,
+                          const Color& color) {
+        if (!box) return;
+        box->SetColors(color, color, color, color);
+        box->RequestRedraw();
+    }
+
+    // The open colour-picker popup (kept alive while its window is up).
+    struct ColorPopupState {
+        std::shared_ptr<UltraCanvasWindow>      window;
+        std::shared_ptr<UltraCanvasColorPicker> picker;
+        Color original;                       // restored when the popup is cancelled
+        bool  accepted = false;
+        std::function<void(const Color&)> onPreview;  // live, not persisted
+        std::function<void(const Color&)> onAccept;   // persisted
+    };
+
+    std::shared_ptr<ColorPopupState> g_colorPopup;
+
+    void CloseColorPopup(bool accepted) {
+        auto popup = g_colorPopup;
+        if (!popup) return;
+        popup->accepted = accepted;
+        if (popup->window) popup->window->Close();
+    }
+
+    // Opens the colour picker in its own small window on top of the settings
+    // dialog. The colour is previewed live while it is being picked; "Use
+    // colour" keeps it, Cancel (and closing the window) puts the previous one
+    // back.
+    void ShowColorPickerPopup(DialogState* d,
+                              const std::string& title,
+                              const Color& initial,
+                              std::function<void(const Color&)> onPreview,
+                              std::function<void(const Color&)> onAccept) {
+        // One popup at a time: a second click on a colour box raises the open
+        // one rather than stacking another window on it.
+        if (g_colorPopup && g_colorPopup->window) {
+            g_colorPopup->window->Show();
+            return;
+        }
+
+        auto popup = std::make_shared<ColorPopupState>();
+        popup->original  = initial;
+        popup->onPreview = std::move(onPreview);
+        popup->onAccept  = std::move(onAccept);
+
+        WindowConfig wc;
+        wc.title = title;
+        wc.width = 320;
+        wc.height = 470;
+        wc.resizable = false;
+        wc.type = WindowType::Dialog;
+        wc.modal = true;
+        wc.parentWindow = d->window.get();
+        popup->window = CreateWindow(wc);
+        if (!popup->window || !popup->window->IsCreated()) return;
+
+        popup->window->layout.SetFlexColumn()
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        popup->window->SetBackgroundColor(Color(249, 249, 251, 255));
+
+        popup->picker = CreateColorPicker("ufl-set-popup-picker", initial,
+                                          0, 0, 280, 380);
+        popup->picker->SetStyle(LightPickerStyle());
+        popup->picker->SetUIScale(0.85f);
+        popup->picker->SetShowAlpha(false);   // tree rows are painted opaque
+        popup->picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        auto preview = [popup](const Color& c) {
+            if (popup->onPreview) popup->onPreview(Color(c.r, c.g, c.b, 255));
+        };
+        popup->picker->onColorChanging = preview;
+        popup->picker->onColorChanged  = preview;
+        popup->window->AddChild(popup->picker);
+
+        auto buttons = std::make_shared<UltraCanvasContainer>("ufl-set-popup-buttons");
+        buttons->layout.SetFlexRow().SetFlexGap(8)
+                       .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        buttons->SetPadding(10, 12, 10, 12);
+        buttons->AddChild(MakeButton("ufl-set-popup-ok", "Use colour", 110,
+                []() { CloseColorPopup(true); }));
+        buttons->AddChild(MakeButton("ufl-set-popup-cancel", "Cancel", 90,
+                []() { CloseColorPopup(false); }));
+        popup->window->AddChild(buttons);
+
+        // Escape cancels, matching the framework's dialog convention.
+        popup->window->SetEventCallback([](const UCEvent& event) {
+            if (event.type == UCEventType::KeyUp &&
+                event.virtualKey == UCKeys::Escape) {
+                CloseColorPopup(false);
+                return true;
+            }
+            return false;
+        });
+        // Closing the window through its title bar cancels too.
+        popup->window->onWindowClosed = [popup]() {
+            const Color chosen = popup->picker ? popup->picker->GetColor()
+                                               : popup->original;
+            if (popup->accepted) {
+                if (popup->onAccept) popup->onAccept(Color(chosen.r, chosen.g,
+                                                           chosen.b, 255));
+            } else if (popup->onPreview) {
+                popup->onPreview(popup->original);
+            }
+            if (g_colorPopup == popup) g_colorPopup.reset();
+        };
+
+        g_colorPopup = popup;   // keeps the window and its widgets alive
+        popup->window->Show();
+    }
+
+    // ===== DISPLAY > TREEVIEW =====
+
+    // One "<caption>  [colour box]" row of the Treeview page.
+    std::shared_ptr<UltraCanvasContainer> MakeColorRow(
+            const std::string& id, const std::string& caption,
+            const std::shared_ptr<UltraCanvasButton>& box) {
+        auto row = std::make_shared<UltraCanvasContainer>(id);
+        row->layout.SetFlexRow().SetFlexGap(10)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.width  = CSSLayout::Dimension::Px(430);
+        row->size.height = CSSLayout::Dimension::Px(30);
+
+        auto label = MakeLabel(id + "-label", caption);
+        label->size.width  = CSSLayout::Dimension::Px(190);
+        label->size.height = CSSLayout::Dimension::Px(20);
+        row->AddChild(label);
+        row->AddChild(box);
+        return row;
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-treeview");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-tv-title", "Treeview", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-tv-caption",
+                "Colours of the folder tree on the left of the main window."));
+        page->AddChild(MakeLabel("ufl-set-tv-hint",
+                "Click a colour box to pick a colour."));
+
+        d->driveColorBox = MakeColorBox("ufl-set-tv-drive-color",
+                d->settings->treeDriveBackgroundColor,
+                "Row background of the drives in the folder tree",
+                [d]() {
+            ShowColorPickerPopup(d, "Drive background colour",
+                    d->settings->treeDriveBackgroundColor,
+                    [d](const Color& c) {       // live preview
+                d->settings->treeDriveBackgroundColor = c;
+                SetColorBoxColor(d->driveColorBox, c);
+                if (d->onChanged) d->onChanged();
+            },
+                    [d](const Color& c) {       // kept
+                d->settings->treeDriveBackgroundColor = c;
+                SetColorBoxColor(d->driveColorBox, c);
+                ApplyAndSave(d);
+            });
+        });
+        page->AddChild(MakeColorRow("ufl-set-tv-drive-row",
+                "Drive background colour:", d->driveColorBox));
+
+        d->selectedColorBox = MakeColorBox("ufl-set-tv-selected-color",
+                d->settings->treeSelectedFolderColor,
+                "Highlight of the selected folder in the folder tree",
+                [d]() {
+            ShowColorPickerPopup(d, "Selected folder colour",
+                    d->settings->treeSelectedFolderColor,
+                    [d](const Color& c) {       // live preview
+                d->settings->treeSelectedFolderColor = c;
+                SetColorBoxColor(d->selectedColorBox, c);
+                if (d->onChanged) d->onChanged();
+            },
+                    [d](const Color& c) {       // kept
+                d->settings->treeSelectedFolderColor = c;
+                SetColorBoxColor(d->selectedColorBox, c);
+                ApplyAndSave(d);
+            });
+        });
+        page->AddChild(MakeColorRow("ufl-set-tv-selected-row",
+                "Selected folder colour:", d->selectedColorBox));
+
+        page->AddChild(MakeButton("ufl-set-tv-defaults", "Restore default colours",
+                170, [d]() {
+            if (!d->settings) return;
+            d->settings->treeDriveBackgroundColor =
+                    UltraFilerSettings::kDefaultTreeDriveBackgroundColor;
+            d->settings->treeSelectedFolderColor =
+                    UltraFilerSettings::kDefaultTreeSelectedFolderColor;
+            SetColorBoxColor(d->driveColorBox,
+                             d->settings->treeDriveBackgroundColor);
+            SetColorBoxColor(d->selectedColorBox,
+                             d->settings->treeSelectedFolderColor);
+            ApplyAndSave(d);
+        }));
+
+        return page;
     }
 
     // ===== MEDIA VIEWER > TRANSPARENT IMAGES =====
@@ -462,6 +698,16 @@ namespace {
         rootData.text = "Settings";
         TreeNode* root = d->tree->SetRootNode(rootData);
 
+        TreeNodeData display;
+        display.nodeId = kPageDisplay;
+        display.text = "Display";
+        d->tree->AddNode("settings", display);
+
+        TreeNodeData treeview;
+        treeview.nodeId = kPageTreeview;
+        treeview.text = "Treeview";
+        d->tree->AddNode(kPageDisplay, treeview);
+
         TreeNodeData mediaViewer;
         mediaViewer.nodeId = kPageMediaViewer;
         mediaViewer.text = "Media Viewer";
@@ -499,6 +745,12 @@ namespace {
         content->AddChild(d->pageArea);
 
         // ----- pages -----
+        auto treeviewPage = BuildTreeviewPage(d);
+        treeviewPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageTreeview] = treeviewPage;
+        d->pageArea->AddChild(treeviewPage);
+
         auto transparentPage = BuildTransparentImagesPage(d);
         transparentPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -520,9 +772,9 @@ namespace {
         d->tree->onNodeSelected = [d](TreeNode* node) {
             if (node) ShowPage(d, node->data.nodeId);
         };
-        if (TreeNode* initial = d->tree->FindNode(kPageTransparentImages))
+        if (TreeNode* initial = d->tree->FindNode(kPageTreeview))
             d->tree->SelectNode(initial);
-        ShowPage(d, kPageTransparentImages);
+        ShowPage(d, kPageTreeview);
 
         d->window->AddChild(content);
 
@@ -550,7 +802,12 @@ namespace {
             }
             return false;
         });
-        d->window->onWindowClosed = [d]() { d->closed = true; };
+        d->window->onWindowClosed = [d]() {
+            // The popup's callbacks reach back into this dialog state, so it
+            // must not outlive the window it was opened from.
+            CloseColorPopup(false);
+            d->closed = true;
+        };
 
         (void)root;
         d->window->Show();

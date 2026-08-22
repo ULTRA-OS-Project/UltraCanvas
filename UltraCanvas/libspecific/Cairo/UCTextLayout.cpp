@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.2
-// Last Modified: 2026-08-08
+// Version: 1.1.3
+// Last Modified: 2026-08-22
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
@@ -453,7 +453,21 @@ namespace UltraCanvas {
 
     void UCTextLayout::SetMarkup(const std::string& markup) {
         extentsDirty = true;
-        pango_layout_set_markup(layout, markup.c_str(), static_cast<int>(markup.length()));
+        // Not every string handed to the markup path is markup: widgets that
+        // render plain user text through it (tree node labels, menu entries,
+        // file names) routinely contain a bare "&" or "<". Pango rejects the
+        // whole string then and leaves the layout EMPTY - the text simply
+        // disappears. Parse first, and fall back to literal text when the
+        // string turns out not to be well-formed markup.
+        GError* error = nullptr;
+        if (pango_parse_markup(markup.c_str(), static_cast<int>(markup.length()),
+                               0, nullptr, nullptr, nullptr, &error)) {
+            pango_layout_set_markup(layout, markup.c_str(),
+                                    static_cast<int>(markup.length()));
+            return;
+        }
+        if (error) g_error_free(error);
+        pango_layout_set_text(layout, markup.c_str(), static_cast<int>(markup.length()));
     }
 
     // ===== FONT =====
