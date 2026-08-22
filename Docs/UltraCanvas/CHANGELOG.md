@@ -1,4 +1,4 @@
-#### 2026-08-22 *0.3.55*
+#### 2026-08-22 *0.3.56*
 - **New application: UltraCleaner.** Finds and removes the files macOS,
   Windows and Linux leave behind — temporary files, application and browser
   caches, logs, crash reports, thumbnail databases, package-manager
@@ -45,6 +45,7 @@
     the scanner and the remover, all driven across temporary trees.
   - Documentation: `Docs/UltraCleaner/README.md`.
 
+#### 2026-08-22 *0.3.55*
 - **FilerWidget / UltraFiler: a folder of videos no longer makes a sound
   (Windows).** Opening a folder with video files in it could play a burst of
   a clip's audio, and the preview pane's "5 s clip" video mode ran with sound
@@ -67,6 +68,7 @@
   transport bar. A Media Foundation session now also reads its duration when it
   opens rather than when its topology resolves, so a poster grab asking for the
   frame "10% in" gets it instead of settling for the black first frame.
+
 #### 2026-08-21 *0.3.54*
 - **Filer widget: double-click runs applications on POSIX platforms.**
   Activating an executable used to go through the MIME machinery, which
