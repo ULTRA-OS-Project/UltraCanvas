@@ -61,10 +61,11 @@ truncation. The house rule — *"never expose a third-party type in a public
 header; never call vendored libraries directly from app code"* (AGENTS.md) —
 combined with the fact that no wrapped crypto surface exists means there is
 currently **no sanctioned way for an app to compute an HMAC**. The symptom
-already exists in the tree: `Apps/AnchorPoint/net/Sha256.h` is a hand-rolled
-SHA-256 whose own header says *"When UltraNet/UltraVault bring a vetted
+already existed in the tree: `Apps/AnchorPoint/net/Sha256.h` was a hand-rolled
+SHA-256 whose own header said *"When UltraNet/UltraVault bring a vetted
 crypto surface, this can be replaced by that."* An authenticator must not
-repeat that pattern with hand-rolled HMAC.
+repeat that pattern with hand-rolled HMAC. (That header has since been
+deleted; AnchorPoint now hashes through `UltraCrypt_HashFile`.)
 
 → **Prerequisite work item: the `UltraCrypt` module** — a sibling of UltraNet
 and UltraDatabase, now specified in
@@ -152,7 +153,7 @@ wrapped-engines rule, or stalled at design stage.
 |---|---|---|
 | **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
 | **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and the implementation is broken (see below) |
-| **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header explicitly says it is a placeholder "when UltraNet/UltraVault bring a vetted crypto surface" |
+| **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. The hand-rolled `Apps/AnchorPoint/net/Sha256.h` is deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Was design doc only; v0.1 has since shipped with Memory and File backends built on UltraCrypt. Native keyring backends still planned |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
 | **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | Blocked |

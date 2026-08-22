@@ -3,8 +3,10 @@
 // Version: 0.1.0
 // Author: AnchorPoint
 #include "Protocol.h"
-#include "Sha256.h"
 
+#include "UltraCrypt/UltraCryptCore.h"
+
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -12,6 +14,37 @@
 namespace AnchorPoint {
 
 namespace {
+
+// ---- hashing --------------------------------------------------------------
+// AnchorPoint used to carry its own SHA-256 (net/Sha256.h), whose header said
+// it stood in "when UltraNet/UltraVault bring a vetted crypto surface".
+// UltraCrypt is that surface, so the hand-rolled copy is gone and this is the
+// single hashing path.
+//
+// A failure here is reported rather than absorbed: an integrity check that
+// quietly degrades is worse than none, because the transfer still looks
+// verified. Without a crypto backend AnchorPoint refuses the transfer instead
+// of shipping the file unchecked.
+bool HashFileSha256(const std::string& path, std::array<uint8_t, 32>& out,
+                    std::string& outError) {
+    std::vector<uint8_t> digest;
+    UltraCryptResult res =
+        UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA256, path, digest);
+    if (!res) {
+        outError = "SHA-256 failed for " + path + ": " + res.message;
+        return false;
+    }
+    if (digest.size() != out.size()) {
+        outError = "unexpected SHA-256 digest size";
+        return false;
+    }
+    std::memcpy(out.data(), digest.data(), out.size());
+    return true;
+}
+
+std::string ToHex32(const std::array<uint8_t, 32>& d) {
+    return UltraCrypt_ToHex(std::vector<uint8_t>(d.begin(), d.end()));
+}
 
 // ---- big-endian encode/decode --------------------------------------------
 void PutU16(std::vector<uint8_t>& b, uint16_t v) {
@@ -87,17 +120,7 @@ TransferResult SendFile(IConnection& conn, const std::string& filePath,
     offer.fileName = BaseName(filePath);
     offer.fileSize = fileSize;
     offer.chunkSize = kDefaultChunkSize;
-    {
-        Sha256 h;
-        std::vector<char> buf(64 * 1024);
-        std::ifstream hf(filePath, std::ios::binary);
-        while (hf) {
-            hf.read(buf.data(), static_cast<std::streamsize>(buf.size()));
-            std::streamsize got = hf.gcount();
-            if (got > 0) h.Update(buf.data(), static_cast<size_t>(got));
-        }
-        offer.sha256 = h.Final();
-    }
+    if (!HashFileSha256(filePath, offer.sha256, r.error)) return r;
 
     // Hello
     {
@@ -280,26 +303,23 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
     out.flush();
     out.close();
 
-    // Verify whole-file integrity.
-    Sha256 h;
-    {
-        std::ifstream vf(outPath, std::ios::binary);
-        std::vector<char> buf(64 * 1024);
-        while (vf) {
-            vf.read(buf.data(), static_cast<std::streamsize>(buf.size()));
-            std::streamsize got = vf.gcount();
-            if (got > 0) h.Update(buf.data(), static_cast<size_t>(got));
-        }
-    }
-    auto digest = h.Final();
-    bool ok = (received == offer.fileSize) && (digest == offer.sha256);
+    // Verify whole-file integrity. A hashing failure counts as "not verified"
+    // rather than an early return: the sender is waiting on the Verified frame
+    // below, so bailing out here would hang it.
+    std::array<uint8_t, 32> digest{};
+    std::string hashError;
+    const bool hashed = HashFileSha256(outPath, digest, hashError);
+    const bool ok = hashed && (received == offer.fileSize) &&
+                    (digest == offer.sha256);
 
     std::vector<uint8_t> vr{ uint8_t(ok ? 1 : 0) };
     WriteFrame(conn, MsgType::Verified, vr);
 
     if (!ok) {
-        r.error = "integrity mismatch (expected " + Sha256::ToHex(offer.sha256) +
-                  ", got " + Sha256::ToHex(digest) + ")";
+        r.error = hashed
+            ? "integrity mismatch (expected " + ToHex32(offer.sha256) +
+              ", got " + ToHex32(digest) + ")"
+            : hashError;
         return r;
     }
     r.ok = true;
