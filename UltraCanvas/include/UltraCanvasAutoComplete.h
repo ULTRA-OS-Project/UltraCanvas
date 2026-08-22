@@ -74,6 +74,9 @@ namespace UltraCanvas {
 
         AutoCompleteStyle acStyle;
         bool popupOpen = false;
+        // The popup list has been handed to the window and sits at a known place, so a
+        // later size change may need to re-anchor it (see CalculateAndSetPopupSize).
+        bool popupPlaced = false;
         int selectedIndex = -1;
 
         int minCharsToTrigger = 1;
@@ -149,6 +152,12 @@ namespace UltraCanvas {
         void ApplyStyleToListView();
         void PopulateListFromFiltered();
         void CalculateAndSetPopupSize();
+        // Room left in the window for the popup, measured below the input and above it
+        // (the larger of the two wins). 0 when the element has no window yet.
+        int AvailablePopupHeight() const;
+        // Where the popup list goes: below the input when it fits, above when it does
+        // not, kept inside the window horizontally.
+        Point2Di CalculatePopupPosition() const;
 
         void FilterSuggestions(const std::string& query);
         bool MatchesFilter(const std::string& itemText, const std::string& query) const;
