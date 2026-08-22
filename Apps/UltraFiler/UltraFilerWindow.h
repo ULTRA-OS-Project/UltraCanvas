@@ -231,8 +231,8 @@ private:
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
-    // Window title from what is on screen (the active tab's folder, or the
-    // History view while it is shown).
+    // Window title: app name + version + what is on screen (the active
+    // tab's folder path, or the History/Favorites view while shown).
     void UpdateWindowTitle();
     // Turns the preview feature on/off (the command bar toggle; Esc while
     // the preview is shown turns it off the same way).

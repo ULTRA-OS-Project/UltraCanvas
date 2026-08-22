@@ -1,0 +1,22 @@
+// core/UltraCanvasNativeFileIcons.cpp
+// Fallback for platforms without a native file-icon extractor. The real
+// implementations live in the platform directories (currently
+// OS/MSWindows/UltraCanvasWindowsFileIcons.cpp); everywhere else these
+// stubs report "no icon" and file displays keep their generic glyphs.
+// Version: 1.0.0
+// Last Modified: 2026-08-21
+// Author: UltraCanvas Framework
+#include "UltraCanvasNativeFileIcons.h"
+
+#ifndef _WIN32
+namespace UltraCanvas {
+
+    bool NativeFileIconAvailable(const std::string&) { return false; }
+
+    std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string&,
+                                                       int) {
+        return nullptr;
+    }
+
+} // namespace UltraCanvas
+#endif // !_WIN32

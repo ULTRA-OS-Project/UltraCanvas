@@ -649,7 +649,9 @@ if (BUILD_ULTRAFILER_APP)
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraFiler PRIVATE
-            ULTRAFILER_VERSION="${PROJECT_VERSION}"
+            # UltraFiler's own version, not the framework's — keep in sync
+            # with UltraFiler.rc and UltraFiler.manifest.
+            ULTRAFILER_VERSION="0.8.0"
             UCAPP_ICON_PATH="media/appicon/UltraFiler.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )

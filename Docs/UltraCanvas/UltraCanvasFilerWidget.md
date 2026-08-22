@@ -249,9 +249,11 @@ Notes:
   drag retargets the destination exactly like compressing. Both go through
   `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
-  `CompressSelection(extension)` / `ExtractSelection()` still perform the
-  immediate, dialog-free operations for programmatic use;
-  `OpenExtractDialog()` opens the extract dialog the menu uses.
+  `CompressSelection(extension)` / `ExtractSelection()` perform the immediate
+  operations for programmatic use — `ExtractSelection()` asks (Keep both /
+  Extract into the existing folder / Skip) when the destination folder name
+  is already taken; `OpenExtractDialog()` opens the extract dialog the menu
+  uses.
 - **Display > Preview** switches content previews on and off per file kind —
   see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
@@ -313,6 +315,20 @@ Notes:
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
+
+### Native application icons (Windows)
+
+On Windows, `.exe`, `.dll` and `.ico` files show the **icon embedded in the
+file** — what Explorer shows — instead of the generic EXE/DLL glyph, in every
+view from the Details icon column up to the largest thumbnail tiles. The icon
+is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
+up to 256 px) on the same background workers as the image thumbnails, so a
+folder of executables scrolls as smoothly as one of photos; a file without an
+icon resource keeps its glyph. This is an icon, not a content preview, so the
+Display > Preview switches do not affect it. The extractor lives behind
+`UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
+`LoadNativeFileIconPixmap`); on other platforms it reports no icon and
+nothing changes.
 
 ## Selection info bar
 
@@ -441,17 +457,71 @@ All operations are also available programmatically:
 ```cpp
 filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
-filer->Paste();               // into the current folder (unique names); a
-                              // clipboard image / text becomes a new file
+filer->Paste();               // into the current folder, with the conflict
+                              // dialog on taken names; a clipboard image /
+                              // text becomes a new file
+filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
+                              // aimed at any folder (see below)
 filer->DeleteSelection();     // gated by confirmDelete when set
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
-filer->ExtractSelection();           // dialog-free: sibling folders
+filer->ExtractSelection();           // into sibling folders; a taken folder
+                                     // name asks Keep both / Merge / Skip
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Activating files — running applications
+
+Double-click / Enter on a folder or archive navigates into it; on a file it
+fires `onFileActivated` when the host installed one, else (with
+`SetActivateOpensWithDefaultApp(true)`) Explorer semantics via
+`OpenEntryWithOS(entry)` — which hosts with their own activation handling
+(like UltraFiler's media preview) can also call directly for the "launch it"
+part:
+
+- On **Windows**, everything goes through the shell's "open" verb, which
+  runs `.exe` / `.bat` / … and opens documents with their default
+  application — Explorer behavior for free.
+- On **POSIX platforms** the MIME machinery only ever *opens* files, so
+  executables get their own path: a file with the execute permission whose
+  content is a **native binary** (ELF — AppImages included — or Mach-O) is
+  run directly, detached, with its own folder as working directory
+  (`FileAssociations::ClassifyExecutable` / `LaunchExecutable`). An
+  executable **script** (`#!` line) is as much a document as a program, so
+  it asks — *""X" is an executable script. Run it, or open it to view its
+  contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
+  execute bit is set but whose content is neither (everything on a FAT
+  mount, say) simply opens with its default application.
+
+Entries inside archives are virtual paths nothing external can read, so
+activation never tries to run or open them.
+
+### Delete problems (locked / failing entries)
+
+A delete that runs into trouble pauses on a **problem dialog** styled like the
+paste conflict dialog — two exclusive switches for the action, a scope switch,
+and **Continue** / **Cancel** buttons (Cancel keeps what was already deleted
+and drops the rest):
+
+- A **write-protected (locked) entry** asks *before* the attempt —
+  `"X" is write-protected.` — with **Delete it anyway** / **Skip this file**
+  (Skip preselected) and a *"Do this for all remaining write-protected items"*
+  scope switch. Delete-anyway lifts the protection first, so it also works on
+  Windows, where a read-only file can never be removed directly.
+- A **failed delete** asks *afterwards* — `"X" could not be deleted:
+  Permission denied.` ("The file may be locked or in use by another
+  program.") — with **Try again** / **Skip this file** (Try again
+  preselected) and a *"Do this for all remaining items"* scope switch.
+  A stored try-again-for-all grants each later failing entry one silent
+  retry before asking again, so a stubborn entry can never loop forever.
+
+Entries inside archives are still deleted in one batched archive rewrite
+before the interactive queue; their failures are reported via `onError` as
+before. When modal dialogs are unavailable the delete falls back to the old
+fixed behavior (attempt everything, report failures).
 
 ### Selection after a delete
 
@@ -495,6 +565,45 @@ or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
 
+### Name conflicts
+
+When a pasted entry's name is already taken in the target folder, the paste
+pauses on the **conflict dialog** — "A file named "X" already exists in this
+folder." — with the choice set by three exclusive switches (the common
+formulations):
+
+- **Keep both** — the pasted entry takes the next free " (2)" style name
+  (the default, and what a conflict-free paste always does)
+- **Replace the existing file** — the existing entry is removed first
+- **Skip this file** — the entry is not pasted
+
+A fourth switch, **"Do this for all remaining conflicts"**, decides the scope:
+off (the default) asks again on the next conflict, on applies the same choice
+to every remaining conflict of this paste. **Continue** proceeds with the
+chosen action; **Cancel** keeps what was already pasted and drops the rest.
+Copy-pasting a file alongside its original never asks — the copy simply takes
+the next free name, exactly like Duplicate.
+
+An entry that **fails** to paste (locked, in use, permissions) asks too —
+**Try again** / **Skip this file**, with a "Do this for all remaining items"
+scope switch; a stored try-again-for-all grants each later failing entry one
+silent retry before asking again. Drag & drop, inside the widget and from
+other applications, runs through the same machinery, so drops get the same
+dialogs.
+
+The same machinery is available programmatically for any target folder:
+
+```cpp
+filer->PasteFilesInto(folder, paths, /*cut=*/false,
+                      [](bool changed) { /* refresh, history, ... */ });
+```
+
+With the `onDone` callback set the caller owns the post-paste work (refreshing
+views, recording history) and is told whether anything changed; without it the
+widget refreshes itself and reports the change to `onFolderModified`. When
+modal dialogs are unavailable the paste falls back to "keep both" for every
+conflict — the widget's previous fixed behavior.
+
 When the clipboard holds **raw data instead of files** — an image copied in a
 browser or screenshot tool, text copied in an editor — Paste creates a new
 file with that content in the current folder: `Pasted image.png` (extension
@@ -515,10 +624,13 @@ presses as plain clicks.
 **Inside the widget** the drag is drawn by the widget itself: a badge with the
 entry's icon and its name (or "N items") follows the cursor, and the folder
 under the cursor is highlighted as the drop target. Dropping on it **moves**
-the files into that folder — hold **Ctrl** to drop a **copy** instead. Names
-that already exist there get a " (2)" style suffix, a folder cannot be dropped
-into itself, and a drop anywhere but on a folder simply ends the drag. Escape
-abandons the drag without moving anything.
+the files into that folder — hold **Ctrl** to drop a **copy** instead. Drops
+run through the same machinery as Paste, so a name that already exists there
+raises the [conflict dialog](#name-conflicts) and a failing entry the retry
+dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
+folder simply ends the drag. Escape abandons the drag without moving anything.
+Files dropped **into** the view from other widgets or applications are copied
+the same way, conflict dialog included.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -607,7 +719,10 @@ renamed while it was *not* selected — the hover icon menu acting on the entry
 under the cursor — leaves the selection where it was. Renaming to a name that
 differs only in case is allowed: the "already exists" check ignores a target
 that resolves to the entry itself, which is what a case-insensitive filesystem
-(Windows, macOS) reports for it.
+(Windows, macOS) reports for it. Renaming onto a name another entry already
+holds asks — *"A file named "X" already exists in this folder. Replacing it
+overwrites the existing file."* — with **Replace** / **Cancel** buttons;
+Cancel keeps the old name.
 
 The field is placed over the name wherever the name is drawn, which differs per
 view: beside the icon in Details / List / Size bars, over the caption band in
