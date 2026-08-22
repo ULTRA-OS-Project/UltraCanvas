@@ -1,3 +1,50 @@
+#### 2026-08-22 *0.3.55*
+- **New application: UltraCleaner.** Finds and removes the files macOS,
+  Windows and Linux leave behind — temporary files, application and browser
+  caches, logs, crash reports, thumbnail databases, package-manager
+  downloads (npm/Yarn/pip/Gradle/Cargo/Go/Composer/Maven/NuGet), developer
+  leftovers (Xcode derived data, simulator and IDE caches) and the trash —
+  and shows exactly which paths it proposes to remove before touching
+  anything. `Apps/UltraCleaner` builds two targets: `UltraCleanerEngine`, a
+  headless static library, and `UltraCleaner`, the GUI on top of it.
+  - **The rule table is the whole surface.** Every location the application
+    can examine comes from a `CleanRule` in `engine/UltraCleanerRules.cpp`,
+    written with tokens (`{HOME}`, `{CACHE}`, `{LOCALAPPDATA}`, `{WINDIR}`,
+    …) rather than literal paths, so one row covers all three platforms and
+    a root that means nothing on the running system is skipped rather than
+    mis-resolved. Reviewing that one file is enough to know what the
+    application can touch per OS.
+  - **Two checks, not one.** `PathGuard` refuses anything that is not
+    strictly inside a resolved rule root, is or contains a protected
+    location (the home directory, Documents/Desktop/Downloads/Pictures,
+    `.ssh`, `.gnupg`, `.config`, `.local`, `Library`, `AppData`, the
+    cloud-sync folders, the OS roots), sits fewer than two levels below the
+    filesystem root, resolves through a symlink that escapes its root, or is
+    a socket, fifo or device node. It runs during the scan and again during
+    the removal, rebuilt from the report's own allowed roots — so a report
+    whose items changed in between still cannot reach outside them.
+  - **Nothing goes by accident.** Removal defaults to Simulate; the other
+    modes are move-to-trash (XDG `.trashinfo` records on Linux, `~/.Trash` on
+    macOS, `FOF_ALLOWUNDO` through the shell on Windows) and permanent
+    delete, which the GUI confirms and the CLI gates behind `--yes`.
+    Categories whose removal costs something unexpected — emptying the
+    trash, a Maven repository, old installers in Downloads — arrive
+    unticked.
+  - **UI.** Toolbar, a category panel of `UltraCanvasCheckbox` (three-state:
+    a category is indeterminate when only some of its paths are ticked) plus
+    `UltraCanvasBadge` sizes, and an `UltraCanvasTableView` naming every path
+    with its size, age and originating rule; double-clicking a row keeps or
+    drops that one path. Scanning and cleaning run on a worker thread and
+    marshal back through a UI-timer queue, so the window stays responsive and
+    Stop works.
+  - **Headless too:** `--scan`, `--rules`, `--clean [--trash|--delete --yes]
+    [--all]` run the same engine without a display.
+  - Engine test suite in `Tests/UltraCleaner` (target
+    `UltraCleanerEngineTests`, `-DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON`):
+    49 tests over the path helpers, the guard, the rule table's structure,
+    the scanner and the remover, all driven across temporary trees.
+  - Documentation: `Docs/UltraCleaner/README.md`.
+
 #### 2026-08-21 *0.3.54*
 - **Filer widget: double-click runs applications on POSIX platforms.**
   Activating an executable used to go through the MIME machinery, which
