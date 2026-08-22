@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -968,6 +969,20 @@ private:
 // OPTION-PANEL WIDGETRY (same radio rows as the Album example)
 // =============================================================================
 
+const int kBtnH = 24;
+const int kRowGap = 4;
+const int kTabBarH = 28;
+const int kTabPagePadV = 16;
+
+// The option panel is exactly as tall as the tab in front of it: its tab bar,
+// that page's padding, and that page's rows. Tabs carry different row counts,
+// so a fixed panel sized for the tallest one would leave dead space under
+// every other tab - and that space belongs to the chart.
+inline float OptionPanelHeight(int rows) {
+    return static_cast<float>(kTabBarH + kTabPagePadV + rows * kBtnH +
+                              (rows - 1) * kRowGap);
+}
+
 // A plain flex layout wrapper that must never scroll itself.
 std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
     auto c = std::make_shared<UltraCanvasContainer>(id);
@@ -992,13 +1007,11 @@ std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
 // One tab's page: a column of control rows, padded off the tab frame.
 std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id) {
     auto page = MakeLayoutBox(id);
-    page->layout.SetFlexColumn().SetFlexGap(4)
+    page->layout.SetFlexColumn().SetFlexGap(kRowGap)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    page->SetPadding(8, 10, 8, 10);
+    page->SetPadding(kTabPagePadV / 2, 10, kTabPagePadV / 2, 10);
     return page;
 }
-
-const int kBtnH = 24;
 
 // The active choice gets a gold border + warm fill, so the page always shows
 // which engine option is currently applied.
@@ -1129,8 +1142,8 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     const char* subtitleLines[] = {
         "The chart below is ONE bar-chart class implementing only the engine's content contract: "
         "DescribeAxes, RenderChartContent and a label collector.",
-        "Every option below switches an engine service, not a chart-type feature; the tabs group "
-        "them by the service they belong to. Hover a bar for the engine's hit-region tooltip."
+        "Every option switches an engine service, not a chart-type feature; the tabs group them "
+        "by service. Hover a bar for the engine's hit-region tooltip."
     };
     for (int i = 0; i < 2; ++i) {
         auto line = std::make_shared<UltraCanvasLabel>(
@@ -1171,14 +1184,12 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     // sits beside the rows it belongs with, and the chart gets back most of the
     // height the nine stacked rows used to take.
     // =========================================================================
-    // Four rows (the Legend tab) plus the row gaps, the page padding and the
-    // tab bar - the tallest page decides the panel's height.
-    const int kOptionRows = 4;
-    const int kTabBarH = 28;
-    const int kOptionsH = kTabBarH + 16 + kOptionRows * kBtnH + (kOptionRows - 1) * 4;
+    // Rows per tab, in the order they are added below: the panel resizes to the
+    // page in front so the chart gets every row the current tab does not need.
+    static const int kRowsPerTab[] = {2, 2, 2, 2, 4, 2};
 
     auto optionTabs = std::make_shared<UltraCanvasTabbedContainer>(
-            "EngineOptionTabs", 0, 0, 0, static_cast<float>(kOptionsH));
+            "EngineOptionTabs", 0, 0, 0, OptionPanelHeight(kRowsPerTab[0]));
     optionTabs->SetTabStyle(TabStyle::Rounded);
     optionTabs->SetTabHeight(kTabBarH);
     optionTabs->SetTabMinWidth(78);
@@ -1715,6 +1726,16 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                   }, 0);
     themePage->AddChild(rowPalette);
     optionTabs->AddTab("Theme", themePage);
+
+    auto* optionTabsPtr = optionTabs.get();
+    optionTabs->onTabChange = [optionTabsPtr](int /*oldIndex*/, int newIndex) {
+        const int tabCount = static_cast<int>(std::size(kRowsPerTab));
+        if (newIndex < 0 || newIndex >= tabCount) return;
+        // Width stays auto so the panel keeps stretching to the page.
+        optionTabsPtr->SetElementSize(
+                CSSLayout::Dimension::Auto(),
+                CSSLayout::Dimension::Px(OptionPanelHeight(kRowsPerTab[newIndex])));
+    };
 
     optionTabs->SetActiveTab(0);
     root->AddChild(optionTabs);
