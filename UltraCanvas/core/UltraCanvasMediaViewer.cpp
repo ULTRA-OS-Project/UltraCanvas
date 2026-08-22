@@ -1,8 +1,13 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// Version: 1.4.1
+// Last Modified: 2026-08-22
+// V1.4.1: The PreviewClip ("5 s clip") video preview is silent for real. The
+//   mute is applied before the source is opened (so the engine builds a muted
+//   session instead of muting one that may already be wired for sound), and the
+//   clip now stays muted when it pauses — the sound returns on the user's own
+//   resume, not at a pause the backend may still be deferring.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -1022,6 +1027,16 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         // Auto-advance to the next file when a clip ends during a slideshow.
         vp->onEnded = [this] { if (slideshowPlaying) Next(); };
+        // A finished PreviewClip is left paused *and muted*; the sound comes
+        // back the moment the user resumes it from the transport bar, which is
+        // the only point where the pipeline is certain to be playing again.
+        vp->onPlay = [this] {
+            if (!videoClipUnmutePending) return;
+            videoClipUnmutePending = false;
+            if (!videoPlayer) return;
+            auto* v = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+            if (auto p = v->GetPlayer()) p->SetMute(false);
+        };
         vp->SetVisible(false);
         videoPlayer = vp;
         AddChild(videoPlayer);
@@ -1528,6 +1543,13 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ShowView(MediaKind::Video);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+        // Decide the mute *before* the source is opened, so the engine bakes it
+        // into the session it builds. Muting only afterwards leaves a window in
+        // which a backend that has not finished wiring its audio renderer drops
+        // the request and plays the clip aloud (Media Foundation did exactly
+        // that) — the whole point of the muted preview clip.
+        if (auto p = vp->GetPlayer())
+            p->SetMute(videoPreviewMode == VideoPreviewMode::PreviewClip);
         if (!vp->LoadFromFile(path)) {
             if (infoLabel) infoLabel->SetText("Failed to open video: " + BaseName(path));
         } else {
@@ -1866,6 +1888,10 @@ void UltraCanvasMediaViewer::SetSlideshowIntervalSeconds(double sec) {
 // ===== VIDEO PREVIEW =====
 
 void UltraCanvasMediaViewer::StopVideoClipTimer() {
+    // Whoever stops the clip decides the mute state itself (a new file, a mode
+    // change, StopPlayback), so a finished clip's deferred un-mute is dropped
+    // here rather than firing into the next source.
+    videoClipUnmutePending = false;
     if (!videoClipTimer) return;
     if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(videoClipTimer);
     videoClipTimer = 0;
@@ -1900,8 +1926,12 @@ void UltraCanvasMediaViewer::ApplyVideoPreviewToCurrent() {
                     if (!videoPlayer) return;
                     auto* v = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
                     v->Pause();
-                    // Un-mute so a manual resume plays with sound again.
-                    if (auto p = v->GetPlayer()) p->SetMute(false);
+                    // Stay muted, and un-mute on the user's own resume instead
+                    // (see the onPlay hook). Un-muting here would let the sound
+                    // out whenever the pause is deferred — a backend that is
+                    // still settling a flushing seek applies the pause after
+                    // the fact, and the clip would keep playing, now audibly.
+                    videoClipUnmutePending = true;
 #endif
                 });
             }

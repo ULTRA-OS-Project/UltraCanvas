@@ -1,3 +1,27 @@
+#### 2026-08-22 *0.3.54*
+- **FilerWidget / UltraFiler: a folder of videos no longer makes a sound
+  (Windows).** Opening a folder with video files in it could play a burst of
+  a clip's audio, and the preview pane's "5 s clip" video mode ran with sound
+  instead of muted. Both came from the same hole in the Media Foundation
+  backend: `VideoDecodeOptions::disableAudio` and `SetMute` were realised
+  through the renderer's stream volume service, which only exists once the
+  Media Session has resolved its topology — so the mute a poster-frame grab
+  (the Filer's video thumbnails) or a muted preview applies at open time was
+  silently dropped and the streaming audio renderer played at full level.
+  `disableAudio` now keeps the audio stream out of the topology altogether —
+  no renderer to be heard, and the output device is never opened — matching
+  what GStreamer already did, and any volume/mute requested before the
+  renderer exists is replayed once it does (`MF_TOPOSTATUS_READY` /
+  `MESessionStarted`) instead of being lost. The media viewer also decides the
+  preview mute *before* opening the source, so the engine builds a muted
+  session rather than muting one already wired for sound, and a finished
+  preview clip now stays muted while it sits paused — un-muting at the pause
+  could let the sound out when a backend was still deferring that pause behind
+  an in-flight seek. The sound comes back on the user's own resume from the
+  transport bar. A Media Foundation session now also reads its duration when it
+  opens rather than when its topology resolves, so a poster grab asking for the
+  frame "10% in" gets it instead of settling for the black first frame.
+
 #### 2026-08-20 *0.3.53*
 - **Chart engine: themes and palettes.** The engine grew the theming home the
   proposal reserved (`Engine/UltraCanvasChartTheme.h`): a `ChartTheme` bundles

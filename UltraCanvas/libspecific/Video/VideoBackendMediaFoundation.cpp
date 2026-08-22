@@ -19,8 +19,18 @@
 // is an unused "X" channel, so frames are forced to opaque alpha on delivery (the
 // premultiplied ARGB32 pixmap would otherwise treat them as fully transparent).
 //
-// Version: 0.3.1
-// Last Modified: 2026-07-23
+// Version: 0.3.2
+// Last Modified: 2026-08-22
+// V0.3.2: Silence audio-less sessions for real. VideoDecodeOptions::disableAudio
+//   now keeps the audio stream out of the topology instead of muting the
+//   renderer afterwards, and volume/mute requested before the topology resolved
+//   is replayed once the renderer exists (MF_TOPOSTATUS_READY / MESessionStarted)
+//   instead of being silently dropped. Both dropped mutes were audible: opening
+//   a folder of videos in the Filer plays a burst of each clip's sound while its
+//   poster frame is grabbed, and the media viewer's "5 s clip" video preview ran
+//   with sound. A session also reads its duration from the presentation
+//   descriptor at open time, so a poster grab asking for "10% in" no longer
+//   reads 0 and settles for the black first frame.
 // V0.3.1: Fix camera capture on webcams that don't expose RGB32 (i.e. most — they
 //   deliver NV12/YUY2/MJPG). The capture SourceReader is now created with
 //   MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING so MF inserts the color
@@ -136,7 +146,9 @@ UCVideoFramePtr FrameFromRGB32(const uint8_t* data, int width, int height,
 
 class MFDecodeSession : public IMFAsyncCallback, public IVideoDecodeSession {
 public:
-    explicit MFDecodeSession(const std::string& source) : sourceStr(source) {}
+    explicit MFDecodeSession(const std::string& source,
+                             const VideoDecodeOptions& options = {})
+        : sourceStr(source), opts(options) {}
     ~MFDecodeSession() override { Teardown(); }
 
     // IUnknown (for the async event callback)
@@ -184,6 +196,13 @@ public:
             session->BeginGetEvent(this, nullptr);
             if (FAILED(session->SetTopology(0, topology.Get()))) return false;
         }
+
+        // Duration / frame size are readable from the presentation descriptor
+        // right now, so GetDuration() answers correctly from the moment the
+        // session opens. Waiting for the topology-ready event (or the first
+        // decoded frame) left callers that query before playing — a poster-frame
+        // grab picking "10% in" — reading 0 and grabbing the black first frame.
+        ReadDurationAndInfo();
 
         // Start the video pump (it idles until Play()).
         if (haveVideoReader) {
@@ -275,11 +294,11 @@ public:
     void SetVolume(float vol) override {
         if (vol < 0.0f) vol = 0.0f;
         streamVolume = vol;
-        if (!streamMuted) ApplyStreamVolume(vol);
+        if (!streamMuted.load()) ApplyStreamVolume(vol);
     }
     void SetMute(bool mute) override {
         streamMuted = mute;
-        ApplyStreamVolume(mute ? 0.0f : streamVolume);
+        ApplyStreamVolume(mute ? 0.0f : streamVolume.load());
     }
     void SetLoop(bool loop) override { looping = loop; }
     void SetPlaybackRate(float r) override {
@@ -308,10 +327,23 @@ public:
         } else if (met == MESessionTopologyStatus) {
             UINT32 status = 0;
             ev->GetUINT32(MF_EVENT_TOPOLOGY_STATUS, &status);
-            if (status == MF_TOPOSTATUS_READY && !loadedFired.exchange(true)) {
-                ReadDurationAndInfo();
-                if (onLoaded) onLoaded();
+            if (status == MF_TOPOSTATUS_READY) {
+                // The renderer's stream volume service only comes into
+                // existence with the resolved topology, so every SetVolume /
+                // SetMute issued before this point reached nothing. Push the
+                // requested state now — still before the session can render a
+                // sample — or a clip that was opened muted (a preview clip)
+                // comes out at full volume for as long as it takes the caller
+                // to notice.
+                ApplyRequestedVolume();
+                if (!loadedFired.exchange(true)) {
+                    ReadDurationAndInfo();
+                    if (onLoaded) onLoaded();
+                }
             }
+        } else if (met == MESessionStarted) {
+            // Belt and braces for a Start() that raced the topology resolving.
+            ApplyRequestedVolume();
         } else if (met == MEError) {
             HRESULT st = S_OK;
             ev->GetStatus(&st);
@@ -370,6 +402,16 @@ private:
                 if (w && h) { videoW = (int)w; videoH = (int)h; }
                 continue;
             } else if (major == MFMediaType_Audio) {
+                // Audio-less session (thumbnail / poster grab, hover preview):
+                // leave the stream out of the topology altogether rather than
+                // muting the renderer after the fact. The SAR's stream volume
+                // service only exists once the topology has resolved, so a mute
+                // applied at open time used to be silently dropped and the clip
+                // was briefly audible — which is exactly what a one-frame grab
+                // (the Filer's video poster frames) must never do. With no audio
+                // node the session runs on the wall clock, like a video-only
+                // file, and never opens the output device.
+                if (opts.disableAudio) continue;
                 if (FAILED(MFCreateAudioRendererActivate(&sinkActivate))) continue;
                 hasAudio = true;
             } else {
@@ -498,9 +540,16 @@ private:
         streamInfo.duration = durationSeconds;
     }
 
+    // Re-push the last requested volume / mute state. Called whenever the
+    // renderer may just have appeared (topology resolved, session started), so
+    // a level requested before it existed is never lost.
+    void ApplyRequestedVolume() {
+        ApplyStreamVolume(streamMuted.load() ? 0.0f : streamVolume.load());
+    }
+
     // Push a single level to every channel of the SAR's (non-persisted) stream
-    // volume. A no-op until the audio topology exposes the service, in which case
-    // the renderer just plays at its default full level — still audible.
+    // volume. Still a no-op while the audio topology has yet to expose the
+    // service — ApplyRequestedVolume() replays the state once it does.
     void ApplyStreamVolume(float level) {
         if (!session) return;
         ComPtr<IMFAudioStreamVolume> sv;
@@ -535,6 +584,7 @@ private:
 
     std::atomic<ULONG> ref{1};
     std::string sourceStr;
+    VideoDecodeOptions opts;
     std::wstring wsrc;
     HANDLE closeEvent = nullptr;
     ComPtr<IMFMediaSession> session;
@@ -548,9 +598,11 @@ private:
     float rate = 1.0f;
     bool hasAudio = false;
 
-    // Per-stream (non-persisted) volume state for SetVolume/SetMute.
-    float streamVolume = 1.0f;   // last requested level (restored on unmute)
-    bool  streamMuted  = false;
+    // Per-stream (non-persisted) volume state for SetVolume/SetMute. Requested
+    // on the caller's thread, replayed from the Media Session's event thread
+    // once the renderer exists, so both sides must see the same state.
+    std::atomic<float> streamVolume{1.0f};   // last requested level (restored on unmute)
+    std::atomic<bool>  streamMuted{false};
 
     // Video pump (IMFSourceReader on the video stream, paced to the clock).
     ComPtr<IMFSourceReader> videoReader;
@@ -982,10 +1034,11 @@ public:
         // single reference to the unique_ptr. Its default `delete` runs the
         // virtual destructor, whose Teardown performs the close-wait so MF holds
         // no references by the time the memory is freed.
-        auto* s = new MFDecodeSession(source);
+        auto* s = new MFDecodeSession(source, opts);
         if (!s->Build()) { s->Release(); return nullptr; }
-        // disableAudio degrades to a hard mute here (the SAR stays in the
-        // topology — dropping it needs a per-stream topology rebuild).
+        // disableAudio is honoured while the topology is built (the audio
+        // stream never gets a renderer); the mute only records the state for a
+        // session that does carry audio.
         if (opts.disableAudio) s->SetMute(true);
         return std::unique_ptr<IVideoDecodeSession>(s);
     }

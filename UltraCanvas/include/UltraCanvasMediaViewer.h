@@ -470,6 +470,9 @@ private:
     VideoPreviewMode videoPreviewMode = VideoPreviewMode::Autoplay;
     float videoPreviewClipSec = 5.0f;
     TimerId videoClipTimer = 0;        // ends the muted PreviewClip playback
+    // A finished PreviewClip stays muted while it sits paused; the sound comes
+    // back when the user resumes it themselves (the video element's onPlay).
+    bool videoClipUnmutePending = false;
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
 

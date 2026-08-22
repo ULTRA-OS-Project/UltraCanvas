@@ -106,6 +106,12 @@ viewer->SetVideoPreviewClipSeconds(5.0f);                    // PreviewClip leng
 viewer->StopPlayback();   // for hosts that hide/detach the viewer
 ```
 
+`PreviewClip` is silent end to end: the mute is decided before the source is
+opened (so the engine builds a muted session rather than muting one already
+wired for sound), and the clip stays muted while it sits paused at the end of
+the preview. The sound returns when the viewer resumes playback itself — press
+play on the transport bar and the clip continues audibly.
+
 ## Embedding as a preview pane
 
 ```cpp
