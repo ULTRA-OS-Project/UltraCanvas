@@ -1,4 +1,4 @@
-#### 2026-08-22 *0.3.57*
+#### 2026-08-22 *0.3.58*
 - **FilerWidget: resizing the folder display no longer loses the file you were
   looking at.** Every view reflows when the display area changes size — a
   thumbnail grid re-wraps into a different number of columns, the List view
@@ -15,6 +15,7 @@
   gets it without calling anything; a relayout at an unchanged size (a rescan,
   a view switch) keeps its own scroll position as before.
 
+#### 2026-08-22 *0.3.57*
 - **PDF view: the page inventory is laid out from its width, and the stray
   page badge is gone.** Every thumbnail slot in the strip used to be a fixed
   `thumbHeight` (180 px) tall whatever the page was, so a page drawn to fit the
