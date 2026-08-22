@@ -398,7 +398,7 @@ void Scanner::ScanDanglingSymlinks(const CleanRule& rule,
 void Scanner::ScanRecycleBin(const CleanRule& rule, ScanReport& report) {
 #if defined(_WIN32) || defined(_WIN64)
     SHQUERYRBINFO info{};
-    info.cbSize = sizeof(info);
+    info.cbSize = static_cast<DWORD>(sizeof(info));
     // A null root queries every drive's recycle bin at once.
     if (FAILED(SHQueryRecycleBinW(nullptr, &info))) return;
     if (info.i64NumItems == 0) return;

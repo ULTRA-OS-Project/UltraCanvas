@@ -33,6 +33,12 @@ target_include_directories(UltraCleanerEngine PUBLIC
 # separate library.
 if(WIN32)
     target_link_libraries(UltraCleanerEngine PUBLIC shell32)
+    # Same hygiene the core library applies: keep windows.h from defining
+    # min/max macros, and from dragging in headers the engine never uses.
+    # The engine does not link UltraCanvas, so it does not inherit these.
+    target_compile_definitions(UltraCleanerEngine PRIVATE
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
        CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
     target_link_libraries(UltraCleanerEngine PUBLIC stdc++fs)

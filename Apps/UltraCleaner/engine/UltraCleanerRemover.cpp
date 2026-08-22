@@ -22,8 +22,10 @@ namespace {
 
 namespace fs = std::filesystem;
 
+#if !defined(_WIN32) && !defined(_WIN64)
 // A name that does not collide with anything already in the trash. The XDG
-// spec and the Finder both expect the caller to disambiguate.
+// spec and the Finder both expect the caller to disambiguate. Windows hands
+// the whole problem to the shell instead, so none of this is built there.
 std::string UniqueTrashName(const std::string& directory,
                             const std::string& baseName) {
     std::error_code ec;
@@ -40,15 +42,12 @@ std::string UniqueTrashName(const std::string& directory,
     return baseName + ".overflow";
 }
 
+#if !defined(__APPLE__)
 // XDG local time stamp: "2026-08-22T13:57:01".
 std::string TrashInfoTimestamp() {
     const std::time_t now = std::time(nullptr);
     std::tm local{};
-#if defined(_WIN32) || defined(_WIN64)
-    localtime_s(&local, &now);
-#else
-    localtime_r(&now, &local);
-#endif
+    localtime_r(&now, &local);   // this path is POSIX-only by construction
     char buffer[32];
     std::strftime(buffer, sizeof buffer, "%Y-%m-%dT%H:%M:%S", &local);
     return buffer;
@@ -74,6 +73,7 @@ std::string PercentEncodePath(const std::string& path) {
     }
     return out;
 }
+#endif  // !__APPLE__
 
 // Rename first — it is atomic and keeps hard links — and fall back to a
 // copy+remove when the trash lives on another filesystem.
@@ -99,6 +99,7 @@ bool MoveDirectoryOrFile(const fs::path& from, const fs::path& to,
     }
     return true;
 }
+#endif  // !_WIN32
 
 #if !defined(_WIN32) && !defined(_WIN64) && !defined(__APPLE__)
 // freedesktop.org trash: the file goes to <trash>/files/<name> and a
