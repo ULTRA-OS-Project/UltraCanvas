@@ -118,6 +118,10 @@ if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLis
         set(ULTRAAI_USE_ULTRANET ON CACHE BOOL
             "Enable adapters that depend on UltraNet")
     endif()
+    if(TARGET UltraVault)
+        set(ULTRAAI_USE_ULTRAVAULT ON CACHE BOOL
+            "Enable UltraVault credential lookup")
+    endif()
     add_subdirectory(UltraAI)
 endif()
     
@@ -830,6 +834,34 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraCryptTests COMMAND UltraCryptTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
+    # persistence, and the no-oracle property (wrong passphrase and a tampered
+    # file are indistinguishable). Compiles only UltraVault + UltraCrypt.
+    add_executable(UltraVaultTests Tests/UltraVaultTests.cpp)
+    target_link_libraries(UltraVaultTests PRIVATE UltraVault)
+    target_compile_features(UltraVaultTests PRIVATE cxx_std_20)
+    set_target_properties(UltraVaultTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraVaultTests COMMAND UltraVaultTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Cross-module: UltraAI's ResolveApiKey resolving apiKeyVaultRef through
+    # UltraVault (the path enabled by ULTRAAI_USE_ULTRAVAULT).
+    if(TARGET UltraAI_AdapterShared)
+        add_executable(UltraAIVaultIntegrationTests
+            Tests/UltraAIVaultIntegrationTests.cpp)
+        target_link_libraries(UltraAIVaultIntegrationTests PRIVATE
+            UltraAI_AdapterShared UltraVault)
+        target_compile_features(UltraAIVaultIntegrationTests PRIVATE cxx_std_20)
+        set_target_properties(UltraAIVaultIntegrationTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME UltraAIVaultIntegrationTests
+                 COMMAND UltraAIVaultIntegrationTests
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     # UCD document encryption envelope: round-trip, wrong password, tamper
     # detection and associated-data binding. Regression cover for the silently

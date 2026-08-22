@@ -1343,6 +1343,18 @@ if(SODIUM_FOUND)
     target_link_libraries(UltraCrypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
 
+# Credential & secret storage (UltraAI/Docs/UltraVault.md). Memory and
+# encrypted-file backends on UltraCrypt; UI-free, so headless consumers
+# (UltraAI adapters, tools) link it without the widget layer.
+add_library(UltraVault STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp)
+target_include_directories(UltraVault PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(UltraVault PUBLIC cxx_std_20)
+set_target_properties(UltraVault PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(UltraVault PUBLIC UltraCrypt)
+
 if(ULTRACANVAS_ENABLE_NET)
     find_package(Threads REQUIRED)
 

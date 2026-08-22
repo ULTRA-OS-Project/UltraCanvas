@@ -14,11 +14,13 @@ set(ULTRAAI_LLAMACPP_SOURCE_DIR "" CACHE PATH
 set(ULTRAAI_LLAMACPP_GIT_TAG "5b6ddc9675a9c2d10c4458a510b09674a3decec1" CACHE STRING
     "llama.cpp commit to fetch when no source dir is given")
 
-# Keep the engine build lean: library only, CPU by default.
+# Keep the engine build lean: library only, CPU by default. `common` is
+# kept for its JSON-schema→GBNF compiler (structured output).
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TOOLS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON   ON  CACHE BOOL "" FORCE)
 set(LLAMA_CURL           OFF CACHE BOOL "" FORCE)
 
 if(ULTRAAI_LLAMACPP_SOURCE_DIR)
@@ -41,6 +43,7 @@ endif()
 
 add_library(UltraAI_AdapterLlama STATIC
     src/LlamaTextLLM.cpp
+    src/LlamaEmbeddings.cpp
 )
 add_library(UltraAI::AdapterLlama ALIAS UltraAI_AdapterLlama)
 
@@ -53,6 +56,25 @@ target_link_libraries(UltraAI_AdapterLlama
     PRIVATE UltraAI_AdapterShared llama
 )
 target_compile_features(UltraAI_AdapterLlama PUBLIC cxx_std_20)
+
+# llama.cpp `common` carries json_schema_to_grammar (and, PUBLIC, the
+# vendored nlohmann it needs). The target is `llama-common` at the pinned
+# commit, plain `common` in older checkouts; with neither available the
+# adapter falls back to the universal JSON grammar for structured output.
+set(_ULTRAAI_LLAMA_COMMON "")
+if(TARGET llama-common)
+    set(_ULTRAAI_LLAMA_COMMON llama-common)
+elseif(TARGET common)
+    set(_ULTRAAI_LLAMA_COMMON common)
+endif()
+if(_ULTRAAI_LLAMA_COMMON)
+    target_link_libraries(UltraAI_AdapterLlama PRIVATE ${_ULTRAAI_LLAMA_COMMON})
+    target_compile_definitions(UltraAI_AdapterLlama PRIVATE
+        ULTRAAI_LLAMA_HAS_SCHEMA_GRAMMAR=1)
+else()
+    message(STATUS "UltraAI: llama.cpp common target not available — "
+                   "JSON-schema grammars fall back to plain JSON.")
+endif()
 
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.h")
 # Plain archive, no export set — see the install() note in the module's
