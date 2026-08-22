@@ -2006,6 +2006,10 @@ namespace UltraCanvas {
                 TreeNodeData itemData(itemId, demoItem->displayName);
                 if (demoItem->id == "imageperformance") {
                     itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/clock-five.svg"), 16, 16);
+                } else if (demoItem->id == "chartengine") {
+                    // The chart engine page is a configuration console for the
+                    // engine's services rather than a single component demo.
+                    itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"), 16, 16);
                 } else {
                     itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
                 }
