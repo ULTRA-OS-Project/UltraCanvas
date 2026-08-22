@@ -197,6 +197,15 @@ endif()
 
 #   ULTRACANVAS_INCLUDE_DIRS   - All include directories
 
+# ===== ULTRAAUTHENTICATOR =====
+# TOTP/HOTP authenticator. The core (OTP engine, otpauth:// parser, encrypted
+# vault, account layer) needs only UltraCrypt and builds headless; the GUI is
+# added on top when the framework is available.
+option(BUILD_ULTRAAUTHENTICATOR "Build the UltraAuthenticator application" ON)
+if(BUILD_ULTRAAUTHENTICATOR AND TARGET UltraCrypt)
+    add_subdirectory(Apps/UltraAuthenticator)
+endif()
+
 # ===== DEMO APPLICATION =====
 if(BUILD_DEMO_APP)
     message(STATUS "")
@@ -926,6 +935,29 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraOtpTests COMMAND UltraOtpTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Account layer: the boundary the UI talks to. Covers duplicate refusal,
+    # HOTP counter durability across a reopen, type-mismatch refusal, and that
+    # no seed, URI or label reaches the disk in the clear. Links only
+    # UltraCrypt, so it runs headless.
+    add_executable(UltraAuthenticatorAccountTests
+        Tests/UltraAuthenticatorAccountTests.cpp
+        Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
+        Apps/UltraAuthenticator/otp/UltraOtp.cpp
+        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
+    )
+    target_include_directories(UltraAuthenticatorAccountTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator)
+    target_link_libraries(UltraAuthenticatorAccountTests PRIVATE UltraCrypt)
+    target_compile_features(UltraAuthenticatorAccountTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorAccountTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorAccountTests
+             COMMAND UltraAuthenticatorAccountTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
     # persistence, and the no-oracle property (wrong passphrase and a tampered
     # file are indistinguishable). Compiles only UltraVault + UltraCrypt.

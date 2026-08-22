@@ -51208,8 +51208,10 @@ FILE: Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md
 # UltraAuthenticator — Feasibility Investigation & Security Analysis
 
 **Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
-(§2.2b) and the OTP engine (§2.2d) are built and tested; in-memory QR decode
-(§2.2c) and the app shell itself are still outstanding.
+(§2.2b), the OTP engine (§2.2d) and the app shell (§4, build order step 4)
+are built and tested. In-memory QR decode (§2.2c) — and so the camera scan
+flow — is the remaining functional gap; screen-capture protection (§2.2e)
+remains impossible on X11.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
 **Date:** 2026-08-10 (implementation notes added 2026-08-21)
@@ -51363,7 +51365,7 @@ wrapped-engines rule, or stalled at design stage.
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. The hand-rolled `Apps/AnchorPoint/net/Sha256.h` is deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Was design doc only; v0.1 has since shipped with Memory and File backends built on UltraCrypt. Native keyring backends still planned |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
-| **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | Blocked |
+| **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | ✅ Unblocked and built on UltraCrypt: OTP engine, vault, account layer and app shell |
 
 **Correction (2026-08-10):** an earlier revision of this document stated that
 OpenSSL is "already linked on every platform, so the dependency is paid for".
@@ -51574,9 +51576,10 @@ Scanning is parsing attacker-controlled data through a C library:
 
 ```
 Apps/UltraAuthenticator/
-  main.cpp                     — UltraCanvasApplication bootstrap
-  AccountListView.*            — container of per-account tiles (elements only)
-  AddAccountFlow.*             — camera scan / image file / manual entry + confirm dialog
+  main.cpp                     — bootstrap + master-password unlock gate      [DONE]
+  AuthenticatorWindow.*        — account rows, live codes, 1 Hz countdown     [DONE]
+  AddAccountDialog.*           — manual entry (camera scan still outstanding)  [DONE]
+  AccountStore.*               — accounts ↔ vault entries via otpauth:// URIs [DONE]
   otp/
     UltraOtp.*                 — RFC 6238 / RFC 4226 (uses UltraCrypt HMAC)  [DONE]
     OtpAuthUri.*               — otpauth:// parse + validate (§3.3)          [DONE]
@@ -51607,11 +51610,19 @@ Camera scan pipeline: `UltraCanvasVideoRecorder::Open()` (preview only,
    `Tests/UltraOtpTests.cpp`.
 3. ✅ **Done** — `ISecretStore` + `EncryptedFileStore`, tested in
    `Tests/UltraAuthenticatorStoreTests.cpp`.
-4. App shell: list + manual entry (usable v0 without any camera work).
+4. ✅ **Done** — app shell: unlock gate, account list with live codes, and
+   manual entry. A usable v0 without any camera work, covered by
+   `Tests/UltraAuthenticatorAccountTests.cpp` and verified end to end against
+   an independent TOTP implementation.
 5. `ScanQRCodeImage` overload + camera scan flow.
 6. Optional: encrypted export/import, app lock, per-account QR display.
-7. Later, when UltraVault ships: `UltraVaultSecretStore` backend; on native
-   ULTRA OS, secure-window hint for the compositor.
+   The account list also needs a scrolling container: the window currently
+   shows the first 8 accounts and says so rather than truncating silently.
+7. UltraVault has since shipped. Moving `ISecretStore` onto it needs two
+   changes there first: a zeroizing value type (`SecretValue` hands secrets
+   back in a plain `std::vector<uint8_t>`) and per-instance vault handles
+   (the lifecycle is process-global). On native ULTRA OS, a secure-window
+   hint for the compositor.
 
 ---
 
