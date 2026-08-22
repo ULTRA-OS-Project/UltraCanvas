@@ -33,7 +33,11 @@ struct PDFViewStyle {
     Color thumbLabelColor  = Color(200, 200, 200, 255);
     // Large translucent page number drawn over each thumbnail (Overlay style).
     Color thumbOverlayNumberColor = Color(20, 20, 20, 90);
-    float thumbOverlayNumberHeight = 0.30f;   // fraction of thumb height
+    // Page-number size as a fraction of the thumbnail's own height, for the
+    // Overlay style and (clamped, see below) for the Caption style — so the
+    // number shrinks with the thumbnail instead of overwhelming a small page.
+    float thumbOverlayNumberHeight = 0.30f;
+    float thumbLabelHeight         = 0.10f;
     Color hitFill          = Color(255, 235, 59, 120);  // translucent yellow
     Color hitFillActive    = Color(255, 152, 0,   180);
     Color selectionFill    = Color(70, 130, 220, 90);   // text selection overlay
@@ -41,12 +45,16 @@ struct PDFViewStyle {
     Color scrollbarThumb   = Color(140, 140, 140, 255);
     Color toolbarText      = Color(220, 220, 220, 255);
 
-    // Requested strip width; the view caps the effective width at 1/4 of its
-    // own width so the page area always stays at least 3x the strip.
+    // The page inventory is laid out from its width: the requested strip width
+    // (capped at 1/4 of the view width so the page area always stays at least
+    // 3x the strip) minus thumbMargin on both sides gives the thumbnail width,
+    // and each thumbnail's height follows its own page's aspect ratio. A page
+    // taller than thumbMaxHeight keeps its aspect ratio by shrinking in width.
     int   thumbStripWidth   = 160;
-    int   thumbHeight       = 180;
+    int   thumbMargin       = 10;
+    int   thumbMaxHeight    = 260;
     int   thumbSpacing      = 8;
-    int   pageMargin        = 24;
+    int   pageMargin        = 12;   // gap between the page and the view's edges
     int   pageShadowSize    = 4;
     int   scrollbarWidth    = 12;
     float defaultDpi        = 96.0f;
@@ -197,6 +205,12 @@ public:
 
 private:
     // ----- internal -----
+    // One laid-out thumbnail: `y` is the slot top in strip-content coordinates
+    // (before thumbScroll_), `w`/`h` are the page image size — derived from the
+    // page's own aspect ratio, so the slot holds no unused space — and
+    // `captionH` is the label row beneath it (0 in Overlay numbering style).
+    struct ThumbSlot { int y = 0; int w = 0; int h = 0; int captionH = 0; };
+
     Rect2Di PageContentArea() const;
     Rect2Di ThumbStripArea()  const;
     // Strip is only shown when enabled AND the document has > 1 page.
@@ -204,9 +218,22 @@ private:
     // 0 when the strip is hidden; otherwise style width capped at 1/4 of the
     // view width (keeps the page area >= 3x the strip).
     int     EffectiveThumbStripWidth() const;
-    // Vertical distance from one thumbnail slot top to the next (includes the
-    // caption row only in Caption numbering style).
-    int     ThumbSlotAdvance() const;
+    // Width available to a thumbnail inside the strip (the strip width minus
+    // style_.thumbMargin on both sides).
+    int     ThumbContentWidth() const;
+    // Page-number font size for a thumbnail `thumbH` pixels tall, in the
+    // current numbering style (large overlay vs. small caption).
+    float   ThumbNumberFontSize(int thumbH) const;
+    // Page height/width ratios, cached per document so a strip resize only
+    // redoes arithmetic instead of re-querying every page from the engine.
+    void    EnsurePageAspects() const;
+    // (Re)builds thumbLayout_ when the strip width, page count or numbering
+    // style no longer match what it was built for.
+    void    EnsureThumbLayout() const;
+    void    InvalidateThumbLayout();
+    const std::vector<ThumbSlot>& ThumbLayout() const;
+    // Total height of the laid-out strip content (all slots plus spacing).
+    int     ThumbContentHeight() const;
     Rect2Df ComputePageDrawRect(int pageW, int pageH,
                                 const Rect2Di& contentArea) const;
     void   InvalidateCaches();      // page pixmaps only (zoom/viewport changes)
@@ -226,7 +253,9 @@ private:
     // widthOnly fits to width; otherwise fits the whole page.
     float  ComputeFitScale(int contentW, int contentH, bool widthOnly) const;
     std::shared_ptr<UCPixmapCairo> EnsurePageRendered(int page, float dpi);
-    std::shared_ptr<UCPixmapCairo> EnsureThumbnail(int page);
+    // maxDim is the long-side pixel size the page is rendered to; the cache is
+    // wiped when it changes (a strip resize re-sizes every thumbnail).
+    std::shared_ptr<UCPixmapCairo> EnsureThumbnail(int page, int maxDim);
     std::shared_ptr<UCPixmapCairo> MakePixmapFromRGBA(const PDFRenderedPage&);
     void   DrawThumbStrip(IRenderContext* ctx, const Rect2Di& strip);
     void   DrawPageWithOverlays(IRenderContext* ctx, const Rect2Di& contentArea);
@@ -289,6 +318,19 @@ private:
     std::unordered_map<int, std::shared_ptr<UCPixmapCairo>> pageCache_;
     std::unordered_map<int, std::shared_ptr<UCPixmapCairo>> thumbCache_;
     int     pageCacheDpiKey_ = 0;  // 0 = invalid
+    int     thumbCacheMaxDim_ = 0; // long-side size the thumbnails were rendered at
+
+    // Thumbnail strip layout, rebuilt lazily from the page sizes. The keys
+    // record what it was built for so a resize, a page insertion/removal or a
+    // numbering-style change rebuilds it by itself.
+    mutable std::vector<float>     pageAspects_;     // heightPt / widthPt per page
+    mutable int                    pageAspectsPages_ = -1;
+    mutable std::vector<ThumbSlot> thumbLayout_;
+    mutable int  thumbLayoutWidth_   = -1;
+    mutable int  thumbLayoutPages_   = -1;
+    mutable bool thumbLayoutCaption_ = false;
+    mutable int  thumbContentHeight_ = 0;
+    mutable int  thumbRenderDim_     = 0;   // long side to render thumbnails at
 
     // pan / drag-thumb state
     bool    panning_ = false;
