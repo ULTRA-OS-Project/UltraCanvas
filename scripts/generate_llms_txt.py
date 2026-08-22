@@ -23,6 +23,16 @@ RAW_BASE = "https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main"
 EXCLUDE_NAMES = {"CHANGELOG.md"}
 EXCLUDE_PATTERNS = ("Proposal", "Plan", "DesignVariants")
 
+# Per-application doc directories under Docs/ to index. Only Docs/*.md,
+# Docs/UltraCanvas/ and Docs/Modules/ are walked otherwise, so an app's docs
+# are invisible to the corpus until its directory is listed here.
+#
+# This is an allowlist rather than a glob over Docs/*/ on purpose: several
+# sibling directories (Research, Video, VideoScripts) hold material that is
+# not developer documentation, and sweeping them in would dilute the corpus.
+# Add a directory here when its contents are meant for the LLM-facing docs.
+APP_DOC_DIRS = ("UltraAuthenticator",)
+
 SUMMARY = (
     "UltraCanvas is a modular cross-platform C++20 UI and rendering framework "
     "(Windows, Linux, macOS, WebAssembly, ULTRA OS) with sibling modules for "
@@ -51,13 +61,25 @@ def extract_description(text: str, limit: int = 220) -> str:
             start = i + 1
             break
     para: list[str] = []
+    in_metadata = False
     for line in lines[start:]:
         s = line.strip()
         if not s:
+            in_metadata = False
             if para:
                 break
             continue
-        if s.startswith(("#", "```", "|", "!", "---", ">")) or METADATA_RE.match(s):
+        if METADATA_RE.match(s):
+            # A "**Field:** value" header may wrap onto the following lines.
+            # Skip the whole run up to the next blank line, so a continuation
+            # is not mistaken for the opening prose paragraph.
+            in_metadata = True
+            if para:
+                break
+            continue
+        if in_metadata:
+            continue
+        if s.startswith(("#", "```", "|", "!", "---", ">")):
             if para:
                 break
             continue
@@ -81,6 +103,7 @@ def collect() -> dict[str, list[Path]]:
         "Framework overview": [],
         "Components and subsystems": [],
         "Modules": [],
+        "Applications": [],
     }
     for name in ("README.md", "Masterfile_modules.md"):
         p = REPO_ROOT / name
@@ -95,6 +118,10 @@ def collect() -> dict[str, list[Path]]:
     for p in sorted((REPO_ROOT / "Docs" / "Modules").rglob("*.md")):
         if not is_excluded(p):
             sections["Modules"].append(p)
+    for name in APP_DOC_DIRS:
+        for p in sorted((REPO_ROOT / "Docs" / name).rglob("*.md")):
+            if not is_excluded(p):
+                sections["Applications"].append(p)
     return sections
 
 
