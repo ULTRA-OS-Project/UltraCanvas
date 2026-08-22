@@ -103,8 +103,18 @@ Under the hood the engine prefers the backend's dedicated single-frame grab
 (`IVideoBackend::GrabThumbnail` — implemented on Linux/GStreamer as a throwaway
 `uridecodebin` pipeline that prerolls to PAUSED, seeks accurately and pulls the
 preroll sample, never touching audio). Backends that don't implement it fall
-back to a generic decode-session path (open → mute → seek → capture first
-frame), so a thumbnail is produced wherever decoding works.
+back to a generic decode-session path (open with
+`VideoDecodeOptions::disableAudio` → seek → capture first frame), so a
+thumbnail is produced wherever decoding works.
+
+Either way the grab is **silent**: the audio track is left out of the decode
+session entirely rather than muted after the fact, so a folder of clips being
+thumbnailed never leaks a burst of sound. Backends honour `disableAudio` by
+not building the audio branch at all (GStreamer clears `GST_PLAY_FLAG_AUDIO`,
+Media Foundation leaves the audio stream out of the topology); on backends
+where the audio path cannot be dropped it degrades to a hard mute applied
+before playback starts. A mute requested before a renderer exists is replayed
+once it does, so it can never be lost.
 
 `SaveVideoThumbnail` picks its encoder from the output extension — `.qoi`
 writes QOI, anything else writes PNG. Both are always available (PNG via Cairo,
