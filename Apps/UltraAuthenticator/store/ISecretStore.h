@@ -2,11 +2,24 @@
 // The interface secrets are read and written through.
 //
 // This exists to be replaced. UltraVault is the designated system-wide
-// credential store for ULTRA OS but does not exist yet
-// (UltraAI/Docs/UltraVault.md), so the authenticator ships its own encrypted
-// file store in the meantime. Defining that behind an interface — and shaping
-// the interface like UltraVault's own Put/Get/Delete/List surface — means the
-// swap later is a constructor change, not a rewrite of the app.
+// credential store for ULTRA OS, and shaping this interface like its
+// Put/Get/Delete/List surface means the swap is a constructor change rather
+// than a rewrite of the app.
+//
+// UltraVault v0.1 (UltraCanvas/include/UltraVault/UltraVault.h) has since
+// landed, and its File backend rests on the same UltraCrypt primitives this
+// store does. It is not yet a drop-in for an authenticator, for two reasons
+// worth writing down rather than rediscovering:
+//
+//  - `UltraVault::SecretValue` carries a plain `std::vector<uint8_t>`, so a
+//    retrieved secret is copied into unzeroized heap memory. TOTP seeds are
+//    the second factor itself and must not leave an UltraCryptSecureBuffer.
+//  - Its lifecycle is process-global and idempotent per process. An
+//    authenticator has to lock and unlock its own vault independently of
+//    whatever another module (UltraAI resolving apiKeyVaultRef, say) has open.
+//
+// Both are addressable in UltraVault; until they are, EncryptedFileStore
+// stays the implementation behind this interface.
 //
 // Every value is an UltraCryptSecureBuffer: implementations must never take or
 // hand back a secret in a std::string.
