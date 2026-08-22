@@ -22,9 +22,11 @@ namespace UltraAI {
 //   providerOptions["n_threads"]     — decode threads (int, 0 = auto)
 //   providerOptions["n_gpu_layers"]  — layers to offload (int, default 0)
 //
-// v0.1 scope: chat + streaming + exact CountTokens + JSON-constrained
-// output (ResponseFormat::JsonObject/JsonSchema enforce *valid JSON* via a
-// GBNF grammar; full schema constraint compilation is a follow-up).
+// v0.1 scope: chat + streaming + exact CountTokens + grammar-constrained
+// output: ResponseFormat::JsonSchema compiles the request's schema to GBNF
+// via llama.cpp's json_schema_to_grammar (when the build links llama.cpp
+// `common`; otherwise, and for JsonObject or uncompilable schemas, a
+// universal valid-JSON grammar applies).
 // Tool calling is not supported yet and fails with InvalidRequest.
 //
 // Lifetime: keep the adapter alive until every ChatStream has delivered

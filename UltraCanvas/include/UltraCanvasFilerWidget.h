@@ -86,6 +86,17 @@ namespace UltraCanvas {
     class UltraCanvasMenu;
     class UltraCanvasButton;
     class UltraCanvasTextInput;
+    struct DialogConfig;
+
+    // ===== PASTE NAME CONFLICTS =====
+    // What to do with a pasted entry whose name already exists in the target
+    // folder. KeepBoth gives the pasted entry the next free "name (2)" style
+    // name — the behavior a paste without conflicts always has.
+    enum class PasteConflictAction {
+        KeepBoth,
+        Replace,
+        Skip
+    };
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -567,6 +578,16 @@ namespace UltraCanvas {
         // after a Cut); a clipboard image or text without files is written as
         // a new file ("Pasted image.png" / "Pasted text.txt" style names).
         void Paste();
+        // Paste `paths` into `folder` (copies, or moves when `cut` is set).
+        // A name that already exists in the folder raises the conflict
+        // dialog — Replace / Keep both / Skip, optionally applied to all
+        // remaining conflicts — and the paste continues with the choice.
+        // With `onDone` set the caller owns the post-paste work (refresh,
+        // history) and is told whether anything changed; without it the
+        // widget refreshes itself and reports to onFolderModified.
+        void PasteFilesInto(std::string folder, std::vector<std::string> paths,
+                            bool cut,
+                            std::function<void(bool changed)> onDone = nullptr);
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
@@ -615,6 +636,14 @@ namespace UltraCanvas {
         // is installed (a host with its own activation handling, like
         // UltraFiler's preview, decides there instead).
         void SetActivateOpensWithDefaultApp(bool enabled) { activateOpensDefault = enabled; }
+
+        // Explorer-semantics activation of one file entry: an executable
+        // runs — a native binary (or AppImage) directly, a script through
+        // the Run / Open / Cancel dialog — and everything else opens with
+        // the OS default application. Hosts with their own onFileActivated
+        // call this for the "launch it" part of their handling. Entries
+        // inside archives (virtual paths) are ignored.
+        void OpenEntryWithOS(const FilerEntry& e);
 
         // ===== CALLBACKS =====
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
@@ -1494,6 +1523,130 @@ namespace UltraCanvas {
         // Same, but in an arbitrary folder (drop target of a drag).
         static std::string UniquePathIn(const std::string& folder,
                                         const std::string& baseName);
+
+        // ===== PASTE CONFLICTS =====
+        // One paste in flight: the sources not yet processed and the choices
+        // the conflict dialog collected so far.
+        struct PendingPaste {
+            std::string folder;
+            std::vector<std::string> sources;
+            size_t next = 0;
+            bool cut = false;
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            bool applyToAll = false;   // reuse `action` for later conflicts
+            bool changed = false;
+            // Failure handling: skip every failing entry / grant each one
+            // silent retry, and the per-entry state they consume.
+            bool skipFailedForAll = false;
+            bool retryFailedForAll = false;
+            bool currentRetried = false;
+            PasteConflictAction currentAction = PasteConflictAction::KeepBoth;
+            std::function<void(bool changed)> onDone;
+        };
+        std::unique_ptr<PendingPaste> pendingPaste;
+
+        // Processes sources until a name conflict or a failure needs a
+        // dialog (which resumes it) or the queue is done (FinishPendingPaste).
+        void ContinuePendingPaste();
+        void FinishPendingPaste();
+        // Copy / move one source into the pending paste's folder, honoring
+        // `action` when the name is taken. False = failed, with the reason.
+        bool PasteOneEntry(const std::string& src, PasteConflictAction action,
+                          std::string& whyFailed);
+        // Pastes the entry at `next` (with the failure policy applied) and
+        // advances. False = a problem dialog was opened and resumes the queue.
+        bool PasteCurrentAndAdvance(PasteConflictAction action);
+        // The "already exists" dialog: exclusive Keep both / Replace / Skip
+        // switches, a "do this for all remaining conflicts" switch, and
+        // Continue / Cancel buttons.
+        void ShowPasteConflictDialog(const std::string& src);
+        // The paste failure dialog: Try again / Skip, like a failed delete's.
+        void ShowPasteProblemDialog(const std::string& src,
+                                    const std::string& reason);
+
+        // A two-choice problem dialog in the house style: exclusive switches
+        // for proceed (try again / delete anyway / …) vs. skip, a "do this
+        // for all" scope switch, and Continue / Cancel buttons. False = modal
+        // dialogs are unavailable and the caller must fall back.
+        bool ShowProceedSkipDialog(
+                DialogConfig& cfg,
+                const std::string& proceedLabel, const std::string& skipLabel,
+                const std::string& allLabel, bool proceedDefault,
+                std::function<void(bool proceed, bool all)> onContinue,
+                std::function<void()> onCancel);
+
+        // ===== DELETE PROBLEMS =====
+        // What the delete-problem dialog decides for the entry it is about:
+        // delete it after all (a write-protected entry, or another try after
+        // a failure) or leave it alone.
+        enum class DeleteProblemAction { Delete, Skip };
+
+        // One delete in flight: the real-filesystem victims not yet processed
+        // and the choices the problem dialogs collected so far.
+        struct PendingDelete {
+            std::vector<FilerEntry> victims;
+            size_t next = 0;
+            // "Do this for all" answers, kept per dialog flavor.
+            bool protectedForAll = false;          // write-protected entries…
+            DeleteProblemAction protectedAction = DeleteProblemAction::Skip;
+            bool skipFailedForAll = false;         // skip every failing entry
+            bool retryFailedForAll = false;        // one silent retry each
+            // The entry at `next`: its write-protected question, once
+            // answered, and whether its silent retry has been spent.
+            bool currentDecided = false;
+            DeleteProblemAction currentAction = DeleteProblemAction::Skip;
+            bool currentRetried = false;
+            // Folders that really lost an entry, for onFolderModified.
+            std::vector<std::string> modifiedFolders;
+        };
+        std::unique_ptr<PendingDelete> pendingDelete;
+
+        // Processes victims until a problem needs a dialog (which resumes it)
+        // or the queue is done (FinishPendingDelete).
+        void ContinuePendingDelete();
+        void FinishPendingDelete();
+        void AdvancePendingDelete();   // to the next victim, forgetting the
+                                       // per-entry decisions
+        // The problem dialog, in two flavors: a write-protected (locked)
+        // entry before the attempt ("Delete it anyway" / "Skip"), or a
+        // failed delete ("Try again" / "Skip" with the failure reason).
+        void ShowDeleteProblemDialog(const FilerEntry& entry,
+                                     bool writeProtected,
+                                     const std::string& reason);
+
+        // Executable script activated: Run / Open (view it) / Cancel.
+        void ShowRunOrOpenDialog(const FilerEntry& e);
+
+        // ===== RENAME CONFLICTS =====
+        // The actual rename plus the selection hand-over and refresh.
+        void PerformRename(const std::string& oldPath,
+                           const std::string& targetPath);
+        // Renaming onto an existing name asks: Replace / Cancel.
+        void ShowRenameReplaceDialog(const std::string& oldPath,
+                                     const std::string& targetPath);
+
+        // ===== EXTRACT CONFLICTS =====
+        // One ExtractSelection in flight: the archives not yet extracted and
+        // the choice the conflict dialog collected.
+        struct PendingExtract {
+            std::vector<FilerEntry> archives;
+            size_t next = 0;
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            bool applyToAll = false;
+            bool changed = false;
+        };
+        std::unique_ptr<PendingExtract> pendingExtract;
+
+        // Processes archives until a taken destination folder name needs the
+        // dialog (which resumes it) or the queue is done.
+        void ContinuePendingExtract();
+        void FinishPendingExtract();
+        // Extracts the archive at `next` (KeepBoth renames the destination,
+        // Replace merges into the existing folder, Skip does not extract).
+        void ExtractCurrentAndAdvance(PasteConflictAction action);
+        // The "folder already exists" dialog: Keep both / Extract into the
+        // existing folder / Skip this archive.
+        void ShowExtractConflictDialog(const FilerEntry& archive);
 
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.

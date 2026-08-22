@@ -23,6 +23,11 @@ void UltraAIServiceDialog::CreateServiceDialog() {
     cfg.buttons  = DialogButtons::NoButtons;     // we add our own footer
     cfg.position = DialogPosition::CenterParent;
     cfg.resizable = false;
+    // The form is absolutely laid out against kDialogWidth/kDialogHeight;
+    // the modal's fit-height-to-message pass would collapse the empty-message
+    // dialog to its minimum, clipping the form (same opt-out as the input
+    // and file dialogs).
+    autoSizeHeight = false;
     CreateDialog(cfg);
 
     // ===== Header: bold service name + description =====
@@ -107,6 +112,29 @@ std::shared_ptr<UltraCanvasTextInput> UltraAIServiceDialog::MakeInput(
     in->SetPlaceholder(placeholder);
     if (multiline) in->SetInputType(TextInputType::Multiline);
     return in;
+}
+
+void UltraAIServiceDialog::AddProviderPicker(
+    long& y, const std::vector<std::string>& providers) {
+    AddDialogElement(MakeLabel("svc-prov-lbl", kMargin, y, 240, 18,
+                               "Provider"));
+    y += 18 + 2;
+    providerDropdown_ = CreateDropdown("svc-provider", kMargin, y, 240, 28);
+    providerDropdown_->AddItem(kDefaultRouteLabel);
+    for (const auto& id : providers) {
+        providerDropdown_->AddItem(id);
+    }
+    providerDropdown_->SetSelectedIndex(0);
+    AddDialogElement(providerDropdown_);
+    y += 28 + 6;
+}
+
+std::string UltraAIServiceDialog::SelectedProviderId() const {
+    if (!providerDropdown_) return {};
+    if (const auto* item = providerDropdown_->GetSelectedItem()) {
+        if (item->text != kDefaultRouteLabel) return item->text;
+    }
+    return {};
 }
 
 } // namespace UltraAIApp

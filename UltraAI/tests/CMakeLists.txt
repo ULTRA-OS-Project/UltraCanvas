@@ -17,10 +17,24 @@ target_link_libraries(ultraai_test_mock_more_capabilities PRIVATE UltraAI_Core)
 target_compile_features(ultraai_test_mock_more_capabilities PRIVATE cxx_std_20)
 add_test(NAME ultraai.mock_more_capabilities COMMAND ultraai_test_mock_more_capabilities)
 
+add_executable(ultraai_test_routing test_routing.cpp)
+target_link_libraries(ultraai_test_routing PRIVATE UltraAI_Core)
+target_compile_features(ultraai_test_routing PRIVATE cxx_std_20)
+add_test(NAME ultraai.routing COMMAND ultraai_test_routing)
+
 add_executable(ultraai_test_adapter_shared test_adapter_shared.cpp)
 target_link_libraries(ultraai_test_adapter_shared PRIVATE UltraAI_AdapterShared)
 target_compile_features(ultraai_test_adapter_shared PRIVATE cxx_std_20)
 add_test(NAME ultraai.adapter_shared COMMAND ultraai_test_adapter_shared)
+
+# Cassette support exists only when the vendored nlohmann/json was found
+# (same probe as _shared/CMakeLists.txt).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party/nlohmann/json.hpp")
+    add_executable(ultraai_test_cassette test_cassette.cpp)
+    target_link_libraries(ultraai_test_cassette PRIVATE UltraAI_AdapterShared)
+    target_compile_features(ultraai_test_cassette PRIVATE cxx_std_20)
+    add_test(NAME ultraai.cassette COMMAND ultraai_test_cassette)
+endif()
 
 if(TARGET UltraAI_AdapterLlama)
     add_executable(ultraai_test_llamacpp_adapter test_llamacpp_adapter.cpp)
@@ -42,4 +56,16 @@ if(TARGET UltraAI_AdapterAnthropic)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
     target_compile_features(ultraai_test_anthropic_adapter PRIVATE cxx_std_20)
     add_test(NAME ultraai.anthropic_adapter COMMAND ultraai_test_anthropic_adapter)
+endif()
+
+if(TARGET UltraAI_AdapterOpenAI)
+    add_executable(ultraai_test_openai_adapter test_openai_adapter.cpp)
+    target_link_libraries(ultraai_test_openai_adapter PRIVATE
+        UltraAI_Core UltraAI_AdapterOpenAI)
+    # The test inspects recorded request bodies with the same vendored
+    # nlohmann/json the adapter serializes with.
+    target_include_directories(ultraai_test_openai_adapter PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_openai_adapter PRIVATE cxx_std_20)
+    add_test(NAME ultraai.openai_adapter COMMAND ultraai_test_openai_adapter)
 endif()

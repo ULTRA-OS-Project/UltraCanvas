@@ -17,7 +17,7 @@ project(UltraAI
 # ===== Build options =====
 option(ULTRAAI_BUILD_ADAPTERS    "Build provider adapter implementations" ON)
 option(ULTRAAI_ADAPTER_MOCK      "Build in-process mock adapter"          ON)
-option(ULTRAAI_ADAPTER_OPENAI    "Build OpenAI adapter"                   OFF)
+option(ULTRAAI_ADAPTER_OPENAI    "Build OpenAI adapter"                   ON)
 option(ULTRAAI_ADAPTER_ANTHROPIC "Build Anthropic adapter"                ON)
 option(ULTRAAI_ADAPTER_LLAMACPP  "Build local llama.cpp adapter"          OFF)
 option(ULTRAAI_ADAPTER_WHISPER   "Build local whisper.cpp STT adapter"    OFF)
@@ -45,6 +45,7 @@ target_compile_features(UltraAI INTERFACE cxx_std_20)
 set(ULTRAAI_PUBLIC_HEADERS
     include/UltraAI.h
     include/UltraAICommon.h
+    include/UltraAIRouting.h
     include/UltraAITextLLM.h
     include/UltraAIEmbeddings.h
     include/UltraAISpeechToText.h
@@ -63,6 +64,7 @@ set(ULTRAAI_PUBLIC_HEADERS
 add_library(UltraAI_Core STATIC
     src/TextLLMFactory.cpp
     src/CapabilityFactories.cpp
+    src/Routing.cpp
 )
 add_library(UltraAI::Core ALIAS UltraAI_Core)
 
@@ -122,6 +124,10 @@ if(ULTRAAI_BUILD_ADAPTERS)
     if(TARGET UltraAI_AdapterAnthropic)
         target_link_libraries(UltraAI_Core PUBLIC UltraAI_AdapterAnthropic)
         target_compile_definitions(UltraAI_Core PRIVATE ULTRAAI_HAS_ANTHROPIC_ADAPTER=1)
+    endif()
+    if(TARGET UltraAI_AdapterOpenAI)
+        target_link_libraries(UltraAI_Core PUBLIC UltraAI_AdapterOpenAI)
+        target_compile_definitions(UltraAI_Core PRIVATE ULTRAAI_HAS_OPENAI_ADAPTER=1)
     endif()
     if(TARGET UltraAI_AdapterLlama)
         target_link_libraries(UltraAI_Core PUBLIC UltraAI_AdapterLlama)

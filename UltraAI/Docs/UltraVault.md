@@ -1,10 +1,15 @@
 # UltraVault — Credential & Secret Storage for ULTRA OS
 
-**Status:** Architectural recommendation. UltraVault module does not yet exist.
-The cryptographic primitives its encrypted-file backend needs (Argon2id key
-derivation, XChaCha20-Poly1305 AEAD, zeroizing secure buffers) are being
-added separately as the **UltraCrypt** module — the file backend should
-build on UltraCrypt rather than calling a crypto library directly.
+**Status:** v0.1 implemented (`UltraCanvas/{include,core}/UltraVault/`,
+target `UltraVault`, header `<UltraVault/UltraVault.h>`): the memory
+backend and the encrypted-file backend, built on **UltraCrypt** (Argon2id
+key derivation with stored cost parameters, XChaCha20-Poly1305 AEAD with
+the file header as associated data). UltraAI's `ResolveApiKey` resolves
+`apiKeyVaultRef` through `UltraVault::Get` when built with
+`ULTRAAI_USE_ULTRAVAULT` (on by default in-tree). Platform-native backends
+(libsecret / Keychain / Credential Manager), `Import`, and
+`PromptUserForSecret` are still to come; the architecture below remains
+the plan for them.
 **Author:** UltraAI Module
 **Last Modified:** 2026-08-21
 

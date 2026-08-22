@@ -21,6 +21,79 @@
   transport bar. A Media Foundation session now also reads its duration when it
   opens rather than when its topology resolves, so a poster grab asking for the
   frame "10% in" gets it instead of settling for the black first frame.
+#### 2026-08-21 *0.3.54*
+- **Filer widget: double-click runs applications on POSIX platforms.**
+  Activating an executable used to go through the MIME machinery, which
+  opens files but never runs them — so native binaries and AppImages did
+  nothing on Linux (Windows always worked: ShellExecute's "open" verb
+  runs executables). Now `FileAssociations::ClassifyExecutable` sniffs an
+  execute-permission file's content — ELF (AppImages included) and
+  Mach-O run directly via `LaunchExecutable` (detached, double-fork +
+  setsid, the file's folder as working directory); a `#!` script asks
+  Run / Open / Cancel first; a file whose execute bit lies (FAT mounts)
+  still just opens with its default application. The widget's new
+  `OpenEntryWithOS(entry)` bundles these Explorer semantics for hosts
+  with their own `onFileActivated`; UltraFiler routes through it.
+- **Filer widget: embedded application icons on Windows.** `.exe`, `.dll`
+  and `.ico` entries now show the icon embedded in the file — what
+  Explorer shows — instead of the generic EXE/DLL glyph, in every view
+  from the Details icon column to the largest thumbnail tiles. Extraction
+  goes through the shell (`SHDefExtractIconW`, nearest embedded size up
+  to 256 px, alpha-masked legacy icons handled) on the existing
+  background thumbnail workers, so folders of executables stay smooth;
+  files without an icon resource keep their glyph, and the Display >
+  Preview switches are not involved — this is an icon, not a content
+  preview. New `UltraCanvasNativeFileIcons.h` platform API
+  (`NativeFileIconAvailable` / `LoadNativeFileIconPixmap`) with the
+  Windows extractor in `OS/MSWindows/UltraCanvasWindowsFileIcons.cpp`
+  and no-op stubs elsewhere, so other platforms are unchanged.
+- **Filer widget: the remaining "ask the user" gaps.** Every operation that
+  silently invented " (2)" names or only logged an error now asks, in the
+  same exclusive-switch dialog style. Drag & drop — inside the widget and
+  drops arriving from other applications — runs through the paste
+  machinery, so taken names raise the paste conflict dialog. An entry that
+  *fails* to paste (locked, in use) asks **Try again** / **Skip** with the
+  same one-silent-retry-then-ask "for all" semantics as delete. Renaming
+  onto an existing name asks **Replace** / **Cancel** instead of refusing
+  into the status bar. `ExtractSelection()` with a taken destination
+  folder name asks **Keep both** (renamed folder) / **Extract into the
+  existing folder** (merge) / **Skip this archive**, with a
+  "do this for all remaining archives" switch. The exclusive-switch group
+  and the two-choice problem dialog are factored into shared helpers, and
+  a cut is now consumed by its own clipboard paste only — a drag-move no
+  longer clears an unrelated pending cut.
+- **Filer widget: delete problem dialog.** A delete that runs into trouble
+  no longer just logs to `onError`: a write-protected (locked) entry asks
+  *before* the attempt — **Delete it anyway** (lifting the protection
+  first, so it also works on Windows) / **Skip this file**, Skip
+  preselected — and a failed delete asks *afterwards* with the failure
+  reason ("may be locked or in use by another program") — **Try again** /
+  **Skip this file**, Try again preselected. Both flavors carry a
+  "Do this for all remaining …" scope switch and Continue / Cancel
+  buttons in the same exclusive-switch style as the paste conflict
+  dialog; Cancel keeps what was already deleted. A stored
+  try-again-for-all grants each later failing entry one silent retry
+  before asking again, so nothing can loop forever. Archive-batch
+  deletions and the no-dialogs fallback keep the previous behavior, and
+  `onFolderModified` now reports only folders that really lost an entry.
+- **Filer widget: paste conflict dialog.** Pasting an entry whose name is
+  already taken in the target folder no longer silently invents a " (2)"
+  name: the paste pauses on a conflict dialog whose choice is set by three
+  exclusive switches — **Keep both** (the pasted entry takes the next free
+  " (2)" style name; the default), **Replace the existing file**, **Skip
+  this file** — plus a **"Do this for all remaining conflicts"** switch that
+  decides whether the next conflict asks again (off, the default) or reuses
+  the choice. **Continue** proceeds, **Cancel** keeps what was already
+  pasted and drops the rest. Copy-pasting a file alongside its original
+  never asks (the copy takes the next free name, like Duplicate), and with
+  dialogs unavailable every conflict falls back to keep-both — the previous
+  fixed behavior. The machinery is public as
+  `PasteFilesInto(folder, paths, cut, onDone)` so hosts can aim a paste at
+  any folder (UltraFiler's tree context menu now routes through it, gaining
+  the dialog too); with `onDone` set the caller owns the post-paste work and
+  learns whether anything changed. A folder can no longer be pasted into
+  itself from the widget either — previously only app-side paste guarded
+  against that.
 
 #### 2026-08-20 *0.3.53*
 - **Chart engine: themes and palettes.** The engine grew the theming home the

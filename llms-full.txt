@@ -480,11 +480,38 @@ second code path in every reader. AES-256-GCM is present solely for reading
 foreign data and is hardware-gated. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
-is **libsodium** (§3.5 of that document). Suggested rollout is secure
-memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
-Argon2id + HKDF (Stage 2), consumer migration (Stage 3).
+**Implementation status (this branch):** Implemented on libsodium
+(`UltraCanvas/{include,core}/UltraCrypt/`, target `UltraCrypt`): secure
+buffers, secure zero, constant-time compare, CSPRNG, SHA-1/SHA-2 (one-shot,
+streaming, file), HMAC, XChaCha20-Poly1305 AEAD, Argon2id, HKDF, and the
+RFC 4648 Base16/32/64 companions — with published-vector unit tests
+(`Tests/UltraCryptTests.cpp`). Built without libsodium every operation
+fails closed with `BackendUnavailable`. First consumers: the UCD document
+envelope and UltraVault's encrypted-file backend.
+
+### **9. UltraVault**
+
+Credential and secret storage — the single system-level home for API keys,
+tokens and passphrases, so no application or module rolls its own
+(`UltraAI/Docs/UltraVault.md` is the design document). Sources under
+`UltraCanvas/{include,core}/UltraVault/`, target `UltraVault`, header
+`<UltraVault/UltraVault.h>`, `namespace UltraVault`.
+
+Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
+`SecretAcl`, `Initialize`/`Shutdown`/`IsAvailable`/`GetBackendName`,
+`Put`/`Get`/`Delete`/`List(prefix)`, and namespaced keys
+(`<vendor>.<app>.<purpose>`, e.g. `ai.anthropic.api_key`). UltraAI resolves
+`ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
+`ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
+
+**Implementation status (this branch):** v0.1 — memory backend (CI /
+ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
+parameters, XChaCha20-Poly1305 with the header as associated data; wrong
+passphrase and file tampering are deliberately indistinguishable). Unit
+tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
+covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+backends (libsecret / Keychain / Credential Manager) and
+`Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
 component installer (winetricks wrapper) are implemented; the VM tier and
 compatibility routing are planned for Stages 2-3. See
@@ -1167,6 +1194,13 @@ their *License* is likewise marked **—** (OS component).
 | Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
+
+### UltraVault module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Memory + encrypted-file backends (crypto via the UltraCrypt sibling) | (core only) | (core only) | (core only) |
+| Planned native backends | libsecret (planned) | Keychain (planned) | Credential Manager (planned) |
 
 ### Ultra Net module
 
@@ -15839,9 +15873,11 @@ Notes:
   drag retargets the destination exactly like compressing. Both go through
   `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
-  `CompressSelection(extension)` / `ExtractSelection()` still perform the
-  immediate, dialog-free operations for programmatic use;
-  `OpenExtractDialog()` opens the extract dialog the menu uses.
+  `CompressSelection(extension)` / `ExtractSelection()` perform the immediate
+  operations for programmatic use — `ExtractSelection()` asks (Keep both /
+  Extract into the existing folder / Skip) when the destination folder name
+  is already taken; `OpenExtractDialog()` opens the extract dialog the menu
+  uses.
 - **Display > Preview** switches content previews on and off per file kind —
   see [Selective previews](#selective-previews).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
@@ -15903,6 +15939,20 @@ Notes:
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
+
+### Native application icons (Windows)
+
+On Windows, `.exe`, `.dll` and `.ico` files show the **icon embedded in the
+file** — what Explorer shows — instead of the generic EXE/DLL glyph, in every
+view from the Details icon column up to the largest thumbnail tiles. The icon
+is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
+up to 256 px) on the same background workers as the image thumbnails, so a
+folder of executables scrolls as smoothly as one of photos; a file without an
+icon resource keeps its glyph. This is an icon, not a content preview, so the
+Display > Preview switches do not affect it. The extractor lives behind
+`UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
+`LoadNativeFileIconPixmap`); on other platforms it reports no icon and
+nothing changes.
 
 ## Selection info bar
 
@@ -16031,17 +16081,71 @@ All operations are also available programmatically:
 ```cpp
 filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
-filer->Paste();               // into the current folder (unique names); a
-                              // clipboard image / text becomes a new file
+filer->Paste();               // into the current folder, with the conflict
+                              // dialog on taken names; a clipboard image /
+                              // text becomes a new file
+filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
+                              // aimed at any folder (see below)
 filer->DeleteSelection();     // gated by confirmDelete when set
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
-filer->ExtractSelection();           // dialog-free: sibling folders
+filer->ExtractSelection();           // into sibling folders; a taken folder
+                                     // name asks Keep both / Merge / Skip
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Activating files — running applications
+
+Double-click / Enter on a folder or archive navigates into it; on a file it
+fires `onFileActivated` when the host installed one, else (with
+`SetActivateOpensWithDefaultApp(true)`) Explorer semantics via
+`OpenEntryWithOS(entry)` — which hosts with their own activation handling
+(like UltraFiler's media preview) can also call directly for the "launch it"
+part:
+
+- On **Windows**, everything goes through the shell's "open" verb, which
+  runs `.exe` / `.bat` / … and opens documents with their default
+  application — Explorer behavior for free.
+- On **POSIX platforms** the MIME machinery only ever *opens* files, so
+  executables get their own path: a file with the execute permission whose
+  content is a **native binary** (ELF — AppImages included — or Mach-O) is
+  run directly, detached, with its own folder as working directory
+  (`FileAssociations::ClassifyExecutable` / `LaunchExecutable`). An
+  executable **script** (`#!` line) is as much a document as a program, so
+  it asks — *""X" is an executable script. Run it, or open it to view its
+  contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
+  execute bit is set but whose content is neither (everything on a FAT
+  mount, say) simply opens with its default application.
+
+Entries inside archives are virtual paths nothing external can read, so
+activation never tries to run or open them.
+
+### Delete problems (locked / failing entries)
+
+A delete that runs into trouble pauses on a **problem dialog** styled like the
+paste conflict dialog — two exclusive switches for the action, a scope switch,
+and **Continue** / **Cancel** buttons (Cancel keeps what was already deleted
+and drops the rest):
+
+- A **write-protected (locked) entry** asks *before* the attempt —
+  `"X" is write-protected.` — with **Delete it anyway** / **Skip this file**
+  (Skip preselected) and a *"Do this for all remaining write-protected items"*
+  scope switch. Delete-anyway lifts the protection first, so it also works on
+  Windows, where a read-only file can never be removed directly.
+- A **failed delete** asks *afterwards* — `"X" could not be deleted:
+  Permission denied.` ("The file may be locked or in use by another
+  program.") — with **Try again** / **Skip this file** (Try again
+  preselected) and a *"Do this for all remaining items"* scope switch.
+  A stored try-again-for-all grants each later failing entry one silent
+  retry before asking again, so a stubborn entry can never loop forever.
+
+Entries inside archives are still deleted in one batched archive rewrite
+before the interactive queue; their failures are reported via `onError` as
+before. When modal dialogs are unavailable the delete falls back to the old
+fixed behavior (attempt everything, report failures).
 
 ### Selection after a delete
 
@@ -16085,6 +16189,45 @@ or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
 
+### Name conflicts
+
+When a pasted entry's name is already taken in the target folder, the paste
+pauses on the **conflict dialog** — "A file named "X" already exists in this
+folder." — with the choice set by three exclusive switches (the common
+formulations):
+
+- **Keep both** — the pasted entry takes the next free " (2)" style name
+  (the default, and what a conflict-free paste always does)
+- **Replace the existing file** — the existing entry is removed first
+- **Skip this file** — the entry is not pasted
+
+A fourth switch, **"Do this for all remaining conflicts"**, decides the scope:
+off (the default) asks again on the next conflict, on applies the same choice
+to every remaining conflict of this paste. **Continue** proceeds with the
+chosen action; **Cancel** keeps what was already pasted and drops the rest.
+Copy-pasting a file alongside its original never asks — the copy simply takes
+the next free name, exactly like Duplicate.
+
+An entry that **fails** to paste (locked, in use, permissions) asks too —
+**Try again** / **Skip this file**, with a "Do this for all remaining items"
+scope switch; a stored try-again-for-all grants each later failing entry one
+silent retry before asking again. Drag & drop, inside the widget and from
+other applications, runs through the same machinery, so drops get the same
+dialogs.
+
+The same machinery is available programmatically for any target folder:
+
+```cpp
+filer->PasteFilesInto(folder, paths, /*cut=*/false,
+                      [](bool changed) { /* refresh, history, ... */ });
+```
+
+With the `onDone` callback set the caller owns the post-paste work (refreshing
+views, recording history) and is told whether anything changed; without it the
+widget refreshes itself and reports the change to `onFolderModified`. When
+modal dialogs are unavailable the paste falls back to "keep both" for every
+conflict — the widget's previous fixed behavior.
+
 When the clipboard holds **raw data instead of files** — an image copied in a
 browser or screenshot tool, text copied in an editor — Paste creates a new
 file with that content in the current folder: `Pasted image.png` (extension
@@ -16105,10 +16248,13 @@ presses as plain clicks.
 **Inside the widget** the drag is drawn by the widget itself: a badge with the
 entry's icon and its name (or "N items") follows the cursor, and the folder
 under the cursor is highlighted as the drop target. Dropping on it **moves**
-the files into that folder — hold **Ctrl** to drop a **copy** instead. Names
-that already exist there get a " (2)" style suffix, a folder cannot be dropped
-into itself, and a drop anywhere but on a folder simply ends the drag. Escape
-abandons the drag without moving anything.
+the files into that folder — hold **Ctrl** to drop a **copy** instead. Drops
+run through the same machinery as Paste, so a name that already exists there
+raises the [conflict dialog](#name-conflicts) and a failing entry the retry
+dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
+folder simply ends the drag. Escape abandons the drag without moving anything.
+Files dropped **into** the view from other widgets or applications are copied
+the same way, conflict dialog included.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -16197,7 +16343,10 @@ renamed while it was *not* selected — the hover icon menu acting on the entry
 under the cursor — leaves the selection where it was. Renaming to a name that
 differs only in case is allowed: the "already exists" check ignores a target
 that resolves to the entry itself, which is what a case-insensitive filesystem
-(Windows, macOS) reports for it.
+(Windows, macOS) reports for it. Renaming onto a name another entry already
+holds asks — *"A file named "X" already exists in this folder. Replacing it
+overwrites the existing file."* — with **Replace** / **Cancel** buttons;
+Cancel keeps the old name.
 
 The field is placed over the name wherever the name is drawn, which differs per
 view: beside the icon in Details / List / Size bars, over the caption band in
@@ -47486,8 +47635,11 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
-│   ├── _shared/                   # Credentials, error mapping, retry, transport seam
-│   └── mock/                      # In-process mocks for every capability
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam, cassettes
+│   ├── mock/                      # In-process mocks for every capability
+│   ├── anthropic/                 # Anthropic Messages API (ITextLLM)
+│   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
+│   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
 ├── tests/                         # cassert-based unit tests
 ├── Docs/
 │   ├── UltraNetIntegration.md     # how network adapters use UltraNet
@@ -47555,12 +47707,13 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Shared adapter infrastructure (credentials, error map, retry, transport seam) | Complete |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay) | Complete |
 | Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
-| llama.cpp adapter (`ITextLLM`: local chat, streaming, JSON grammar, exact token counting; opt-in) | Complete (v0.1 — no tool calls yet) |
-| Unit tests | Complete (5 executables, all passing) |
-| Real network adapters | Not yet — UltraNet is ready (HTTP sync/async, SSE, WebSocket, cancellation all probe-verified); adapters are the next milestone |
-| UltraVault credential lookup | Wired, awaits UltraVault module (`ProviderConfig::apiKey` is the interim escape hatch) |
+| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
+| Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > cloud > mock, with constructibility fallback) | Complete |
+| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
+| Unit tests | Complete (9 executables, all passing) |
+| UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
 

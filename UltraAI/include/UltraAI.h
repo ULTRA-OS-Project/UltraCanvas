@@ -7,6 +7,7 @@
 #pragma once
 
 #include "UltraAICommon.h"
+#include "UltraAIRouting.h"
 #include "UltraAITextLLM.h"
 #include "UltraAIEmbeddings.h"
 #include "UltraAISpeechToText.h"

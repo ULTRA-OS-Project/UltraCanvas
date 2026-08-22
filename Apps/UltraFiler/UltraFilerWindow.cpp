@@ -288,22 +288,6 @@ namespace {
                folder.back() == '/' || folder.back() == '\\';
     }
 
-    // First free "name", "name (2)", "name (3)", ... inside `folder` — the
-    // same naming the filer widget uses when pasting.
-    std::string UniqueNameIn(const std::string& folder, const std::string& baseName) {
-        fs::path base(baseName);
-        const std::string stem = base.stem().string();
-        const std::string ext = base.extension().string();   // includes the dot
-        const fs::path dir(folder);
-        fs::path candidate = dir / baseName;
-        std::error_code ec;
-        int n = 2;
-        while (fs::exists(candidate, ec)) {
-            candidate = dir / (stem + " (" + std::to_string(n++) + ")" + ext);
-        }
-        return candidate.string();
-    }
-
     // "12 items    |    1 item selected (3.4 MB)" for a filer's current
     // display — the status bar text of both the folder and the History views.
     std::string DescribeFilerContent(const UltraCanvasFilerWidget* f) {
@@ -332,7 +316,7 @@ UltraFilerWindow::~UltraFilerWindow() {
 
 bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     WindowConfig config;
-    config.title = "UltraFiler";
+    config.title = "UltraFiler " ULTRAFILER_VERSION;
     config.width = 1280;
     config.height = 800;
     config.resizable = true;
@@ -1340,47 +1324,19 @@ void UltraFilerWindow::PasteIntoFolder(const std::string& folder) {
     if (UltraCanvasClipboard* cb = GetClipboard()) cb->GetFiles(paths, cut);
     if (paths.empty()) return;
 
-    std::error_code ec;
-    if (!fs::is_directory(folder, ec) || ec) {
-        if (statusLabel) statusLabel->SetText("Error: paste target is not a folder: " + folder);
-        return;
-    }
-    bool changed = false;
-    for (const std::string& src : paths) {
-        const fs::path from(src);
-        if (!fs::exists(from, ec)) continue;
-        // Cut-pasting into the folder the file already lives in is a no-op,
-        // and a folder must never be pasted into itself.
-        if (cut && from.parent_path() == fs::path(folder)) continue;
-        if (fs::is_directory(from, ec) && IsPathInside(folder, src)) {
-            if (statusLabel) statusLabel->SetText("Error: cannot paste a folder into itself: " + src);
-            continue;
+    if (!filer) return;
+    // The filer widget runs the paste, so name conflicts go through its
+    // Keep both / Replace / Skip dialog exactly like a paste in the view.
+    filer->PasteFilesInto(folder, std::move(paths), cut,
+                          [this, folder](bool changed) {
+        if (!changed) return;
+        // Pasting is work done in the folder, exactly like a paste in the filer.
+        RecordFolderInHistory(folder);
+        for (auto& state : tabStates) {
+            if (state->filer && state->filer->GetPath() == folder)
+                state->filer->Refresh();
         }
-        const std::string dest = UniqueNameIn(folder, from.filename().string());
-        if (cut) {
-            fs::rename(from, dest, ec);
-            if (ec) {   // cross-device move: copy + delete
-                ec.clear();
-                fs::copy(from, dest, fs::copy_options::recursive, ec);
-                if (!ec) fs::remove_all(from, ec);
-            }
-        } else {
-            fs::copy(from, dest, fs::copy_options::recursive, ec);
-        }
-        if (ec) {
-            if (statusLabel) statusLabel->SetText("Error: paste failed for " + src + ": " + ec.message());
-            ec.clear();
-        } else {
-            changed = true;
-        }
-    }
-    if (!changed) return;
-    // Pasting is work done in the folder, exactly like a paste in the filer.
-    RecordFolderInHistory(folder);
-    for (auto& state : tabStates) {
-        if (state->filer && state->filer->GetPath() == folder)
-            state->filer->Refresh();
-    }
+    });
 }
 
 void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
@@ -1520,15 +1476,11 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         }
 #endif
         if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
-            // Not previewable: launch it with the OS default application
-            // (Explorer semantics). Only real files — an entry inside an
-            // archive is a virtual path no external application can read.
-            std::error_code ec;
-            if (!fs::is_regular_file(entry.path, ec) || ec) return;
-            std::string error;
-            if (!FileAssociations::OpenWithDefaultApplication({entry.path}, error)) {
-                if (statusLabel) statusLabel->SetText("Error: " + error);
-            }
+            // Not previewable: run it / open it, Explorer-style. The widget
+            // launches executables directly (scripts through its Run-or-Open
+            // dialog) and everything else with the OS default application;
+            // archive entries (virtual paths) are ignored there.
+            if (tab->filer) tab->filer->OpenEntryWithOS(entry);
             return;
         }
         // Double-click / Enter opens the file in the preview, un-hiding it
@@ -2134,18 +2086,15 @@ void UltraFilerWindow::UpdateStatusBar() {
 
 void UltraFilerWindow::UpdateWindowTitle() {
     if (!window) return;
+    std::string title = "UltraFiler " ULTRAFILER_VERSION;
     if (historyShown) {
-        window->SetWindowTitle("History - UltraFiler");
-        return;
+        title += " - History";
+    } else if (favoritesShown) {
+        title += " - Favorites";
+    } else if (filer && !filer->GetPath().empty()) {
+        title += " - " + filer->GetPath();
     }
-    if (favoritesShown) {
-        window->SetWindowTitle("Favorites - UltraFiler");
-        return;
-    }
-    const std::string path = filer ? filer->GetPath() : std::string();
-    if (path.empty()) return;
-    const std::string name = fs::path(path).filename().string();
-    window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
+    window->SetWindowTitle(title);
 }
 
 std::string UltraFilerWindow::PreviewablePathForSelection() const {
