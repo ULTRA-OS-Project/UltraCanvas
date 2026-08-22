@@ -31,6 +31,15 @@ namespace {
 constexpr int kScrollPageTop    = std::numeric_limits<int>::min() / 4;
 constexpr int kScrollPageBottom = std::numeric_limits<int>::max() / 4;
 
+// Thumbnail-strip layout floors. A thumbnail is sized from the strip width and
+// the page's own aspect ratio; these keep a degenerate page (or an extremely
+// narrow strip) from collapsing the slot to nothing.
+constexpr int   kMinThumbWidth     = 24;
+constexpr int   kMinThumbHeight    = 24;
+constexpr float kDefaultPageAspect = 1.4142f;   // A4 portrait, when unknown
+constexpr float kMinCaptionFont    = 8.0f;
+constexpr float kMaxCaptionFont    = 13.0f;
+
 struct ImageFormat { const char* ext; const char* desc; };
 ImageFormat FormatForMime(const std::string& mime) {
     if (mime == "image/jpeg")                return {"jpg",  "JPEG image"};
@@ -470,6 +479,7 @@ void UltraCanvasPDFView::SetThumbnailNumberStyle(ThumbnailNumberStyle s) {
 
 void UltraCanvasPDFView::SetStyle(const PDFViewStyle& s) {
     style_ = s;
+    InvalidateThumbLayout();   // strip metrics are baked into the layout
     backgroundColor = style_.background;
     InvalidateAllCaches();
     Repaint();
@@ -591,12 +601,94 @@ int UltraCanvasPDFView::EffectiveThumbStripWidth() const {
     return std::max(0, std::min(style_.thumbStripWidth, cap));
 }
 
-int UltraCanvasPDFView::ThumbSlotAdvance() const {
-    // Caption style draws a label row beneath each thumbnail; Overlay draws
-    // the number on the page itself and needs no extra row.
-    const int captionExtra =
-        (thumbNumberStyle_ == ThumbnailNumberStyle::Caption) ? 16 : 0;
-    return style_.thumbHeight + style_.thumbSpacing + captionExtra;
+int UltraCanvasPDFView::ThumbContentWidth() const {
+    const int w = EffectiveThumbStripWidth();
+    if (w <= 0) return 0;
+    return std::max(kMinThumbWidth, w - 2 * style_.thumbMargin);
+}
+
+float UltraCanvasPDFView::ThumbNumberFontSize(int thumbH) const {
+    // Both numbering styles size the number from the thumbnail it belongs to,
+    // so a small page never gets an oversized number.
+    if (thumbNumberStyle_ == ThumbnailNumberStyle::Overlay) {
+        return std::max(8.0f, thumbH * style_.thumbOverlayNumberHeight);
+    }
+    return std::clamp(thumbH * style_.thumbLabelHeight,
+                      kMinCaptionFont, kMaxCaptionFont);
+}
+
+void UltraCanvasPDFView::InvalidateThumbLayout() {
+    thumbLayoutWidth_ = -1;   // forces EnsureThumbLayout() to rebuild
+}
+
+void UltraCanvasPDFView::EnsurePageAspects() const {
+    const int pages = doc_ ? doc_->GetPageCount() : 0;
+    if (pageAspectsPages_ == pages) return;
+    pageAspectsPages_ = pages;
+    pageAspects_.clear();
+    pageAspects_.reserve(static_cast<size_t>(std::max(0, pages)));
+    for (int p = 1; p <= pages; ++p) {
+        const PDFPageInfo pi = doc_->GetPageInfo(p);
+        pageAspects_.push_back((pi.widthPt > 0.0f && pi.heightPt > 0.0f)
+                               ? pi.heightPt / pi.widthPt
+                               : kDefaultPageAspect);
+    }
+}
+
+void UltraCanvasPDFView::EnsureThumbLayout() const {
+    const int width   = ThumbContentWidth();
+    const int pages   = doc_ ? doc_->GetPageCount() : 0;
+    const bool caption = (thumbNumberStyle_ == ThumbnailNumberStyle::Caption);
+    if (thumbLayoutWidth_ == width && thumbLayoutPages_ == pages &&
+        thumbLayoutCaption_ == caption) {
+        return;
+    }
+    thumbLayoutWidth_   = width;
+    thumbLayoutPages_   = pages;
+    thumbLayoutCaption_ = caption;
+    thumbLayout_.clear();
+    thumbContentHeight_ = 0;
+    thumbRenderDim_     = 0;
+    if (width <= 0 || pages <= 0) return;
+
+    EnsurePageAspects();
+    thumbLayout_.reserve(static_cast<size_t>(pages));
+    int y = style_.thumbSpacing;
+    for (int p = 1; p <= pages; ++p) {
+        // Each thumbnail is as tall as its own page needs at the strip's
+        // width, so the inventory never pads a slot with empty space.
+        const float aspect = (p <= static_cast<int>(pageAspects_.size()))
+                             ? pageAspects_[p - 1] : kDefaultPageAspect;
+        ThumbSlot slot;
+        slot.w = width;
+        slot.h = std::max(kMinThumbHeight,
+                          static_cast<int>(width * aspect + 0.5f));
+        if (slot.h > style_.thumbMaxHeight) {
+            // A page too tall for the cap keeps its proportions by narrowing.
+            slot.h = std::max(kMinThumbHeight, style_.thumbMaxHeight);
+            slot.w = std::clamp(static_cast<int>(slot.h / aspect + 0.5f),
+                                kMinThumbWidth, width);
+        }
+        slot.captionH = caption
+            ? static_cast<int>(ThumbNumberFontSize(slot.h) + 0.5f) + 4
+            : 0;
+        slot.y = y;
+        y += slot.h + slot.captionH + style_.thumbSpacing;
+        thumbRenderDim_ = std::max(thumbRenderDim_, std::max(slot.w, slot.h));
+        thumbLayout_.push_back(slot);
+    }
+    thumbContentHeight_ = y;
+}
+
+const std::vector<UltraCanvasPDFView::ThumbSlot>&
+UltraCanvasPDFView::ThumbLayout() const {
+    EnsureThumbLayout();
+    return thumbLayout_;
+}
+
+int UltraCanvasPDFView::ThumbContentHeight() const {
+    EnsureThumbLayout();
+    return thumbContentHeight_;
 }
 
 Rect2Di UltraCanvasPDFView::ThumbStripArea() const {
@@ -652,6 +744,9 @@ void UltraCanvasPDFView::InvalidateAllCaches() {
     // the old state and must go too, or the strip keeps showing it.
     InvalidateCaches();
     thumbCache_.clear();
+    thumbCacheMaxDim_ = 0;
+    pageAspectsPages_ = -1;    // page sizes/order may have changed with it
+    InvalidateThumbLayout();
 }
 
 std::shared_ptr<UCPixmapCairo>
@@ -712,11 +807,16 @@ UltraCanvasPDFView::EnsurePageRendered(int page, float dpi) {
 }
 
 std::shared_ptr<UCPixmapCairo>
-UltraCanvasPDFView::EnsureThumbnail(int page) {
-    if (!doc_) return {};
+UltraCanvasPDFView::EnsureThumbnail(int page, int maxDim) {
+    if (!doc_ || maxDim <= 0) return {};
+    if (thumbCacheMaxDim_ != maxDim) {
+        // The strip was resized: every cached thumbnail is now the wrong size.
+        thumbCache_.clear();
+        thumbCacheMaxDim_ = maxDim;
+    }
     auto it = thumbCache_.find(page);
     if (it != thumbCache_.end()) return it->second;
-    PDFRenderedPage rp = doc_->RenderThumbnail(page, style_.thumbHeight);
+    PDFRenderedPage rp = doc_->RenderThumbnail(page, maxDim);
     auto pm = MakePixmapFromRGBA(rp);
     if (pm) thumbCache_[page] = pm;
     return pm;
@@ -750,21 +850,26 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
     ctx->FillRectangle(strip);
 
     if (!doc_) { ctx->PopState(); return; }
-    const int total = doc_->GetPageCount();
-    const int innerW = strip.width - 16;
-    const int advance = ThumbSlotAdvance();
-    int y = strip.y + style_.thumbSpacing - thumbScroll_;
+    const std::vector<ThumbSlot>& slots = ThumbLayout();
+    const int total = static_cast<int>(slots.size());
+    const int renderDim = thumbRenderDim_;
 
-    ctx->SetFontSize(11.0f);
     for (int p = 1; p <= total; ++p) {
-        Rect2Df slot(strip.x + 8, y, innerW, style_.thumbHeight);
+        const ThumbSlot& ts = slots[p - 1];
+        const int top = strip.y + ts.y - thumbScroll_;
 
         // Skip thumbs that are entirely outside the visible strip.
-        if (slot.y + advance < strip.y ||
-            slot.y > strip.y + strip.height) {
-            y += advance;
+        if (top + ts.h + ts.captionH < strip.y ||
+            top > strip.y + strip.height) {
             continue;
         }
+
+        // The slot matches the page's aspect ratio, so the page fills it: the
+        // only spare room in the strip is the margin around the thumbnail.
+        const Rect2Df slot(strip.x + (strip.width - ts.w) * 0.5f,
+                           static_cast<float>(top),
+                           static_cast<float>(ts.w),
+                           static_cast<float>(ts.h));
 
         // Slot background
         const bool active = (p == currentPage_);
@@ -772,9 +877,9 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
         ctx->FillRectangle(slot);
 
         // Page thumbnail
-        auto pm = EnsureThumbnail(p);
+        auto pm = EnsureThumbnail(p, renderDim);
         if (pm && pm->IsValid()) {
-            ctx->DrawPixmap(*pm, slot, ImageFitMode::Contain);
+            ctx->DrawPixmap(*pm, slot, ImageFitMode::Fill);
         }
 
         // Border (active or normal)
@@ -784,21 +889,22 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
         ctx->DrawRectangle(slot);
 
         // Page number — either a small caption beneath, or a large translucent
-        // number overlaid on the page.
+        // number overlaid on the page. Both are sized from this thumbnail's
+        // height, so they shrink with it.
         const std::string num = std::to_string(p);
+        const float fontPx = ThumbNumberFontSize(ts.h);
+        ctx->SetFontSize(fontPx);
         if (thumbNumberStyle_ == ThumbnailNumberStyle::Overlay) {
-            const float fontPx = std::max(
-                8.0f, style_.thumbHeight * style_.thumbOverlayNumberHeight);
-            ctx->SetFontSize(fontPx);
             ctx->SetFillPaint(style_.thumbOverlayNumberColor);
             ctx->DrawText(num, ctx->CalculateCenteredTextPosition(num, slot));
-            ctx->SetFontSize(11.0f);   // restore for the next slot's measuring
         } else {
+            // DrawText positions by the text's top-left, so the label is
+            // centered inside the row reserved for it beneath the thumbnail.
+            const Rect2Df caption(slot.x, slot.y + slot.height,
+                                  slot.width, static_cast<float>(ts.captionH));
             ctx->SetFillPaint(style_.thumbLabelColor);
-            ctx->DrawText(num, Point2Df(slot.x + 4, slot.y + slot.height + 12));
+            ctx->DrawText(num, ctx->CalculateCenteredTextPosition(num, caption));
         }
-
-        y += advance;
     }
     ctx->PopState();
 }
@@ -926,21 +1032,10 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
         }
     }
 
-    // Page number indicator, pinned to the top-right of the page content area.
-    // The pill is sized to the label and the text is centered inside it so the
-    // two always stay aligned (DrawText positions text by its top-left).
-    ctx->SetFontSize(12);
-    const std::string pageStr =
-        std::to_string(currentPage_) + " / " + std::to_string(total);
-    const Size2Di textSz = ctx->GetTextLineDimensions(pageStr);
-    const float padX = 12.0f, badgeH = 24.0f, badgeMargin = 12.0f;
-    const float badgeW = std::max(48.0f, textSz.width + 2 * padX);
-    const Rect2Df badge(area.x + area.width - badgeW - badgeMargin,
-                        area.y + badgeMargin, badgeW, badgeH);
-    ctx->SetFillPaint(Color(0, 0, 0, 160));
-    ctx->FillRoundedRectangle(badge, 4.0);
-    ctx->SetFillPaint(Color(255, 255, 255, 255));
-    ctx->DrawText(pageStr, ctx->CalculateCenteredTextPosition(pageStr, badge));
+    // No page-number badge is drawn over the page: the thumbnail strip already
+    // marks the current page, and hosts (the media viewer, UltraFiler) show
+    // "page N / M" in their own status bar, so a floating pill on the page
+    // would only be a non-interactive duplicate.
 
     ctx->PopState();
 }
@@ -951,13 +1046,13 @@ int UltraCanvasPDFView::HitTestThumb(const Point2Di& p) const {
     if (!ThumbStripVisible()) return 0;
     Rect2Di strip = ThumbStripArea();
     if (!strip.Contains(p)) return 0;
-    const int total = doc_->GetPageCount();
-    const int advance = ThumbSlotAdvance();
-    int y = strip.y + style_.thumbSpacing - thumbScroll_;
+    const std::vector<ThumbSlot>& slots = ThumbLayout();
+    const int total = static_cast<int>(slots.size());
     for (int i = 1; i <= total; ++i) {
-        Rect2Di slot(strip.x + 8, y, strip.width - 16, style_.thumbHeight);
+        const ThumbSlot& ts = slots[i - 1];
+        const Rect2Di slot(strip.x + (strip.width - ts.w) / 2,
+                           strip.y + ts.y - thumbScroll_, ts.w, ts.h);
         if (slot.Contains(p)) return i;
-        y += advance;
     }
     return 0;
 }
@@ -1006,8 +1101,7 @@ void UltraCanvasPDFView::ScrollBy(int dx, int dy) {
 
 void UltraCanvasPDFView::ScrollThumbsBy(int delta) {
     const Rect2Di strip = ThumbStripArea();
-    const int contentH = style_.thumbSpacing + GetPageCount() * ThumbSlotAdvance();
-    const int maxScroll = std::max(0, contentH - strip.height);
+    const int maxScroll = std::max(0, ThumbContentHeight() - strip.height);
     thumbScroll_ = std::clamp(thumbScroll_ + delta, 0, maxScroll);
     Repaint();
 }
@@ -1016,12 +1110,15 @@ void UltraCanvasPDFView::EnsureThumbVisible(int page) {
     if (!ThumbStripVisible()) return;
     const Rect2Di strip = ThumbStripArea();
     if (strip.height <= 0) return;
-    const int advance = ThumbSlotAdvance();
-    const int top    = style_.thumbSpacing + (page - 1) * advance - thumbScroll_;
-    const int bottom = top + advance;
+    const std::vector<ThumbSlot>& slots = ThumbLayout();
+    if (page < 1 || page > static_cast<int>(slots.size())) return;
+    const ThumbSlot& ts = slots[page - 1];
+    const int top    = ts.y - thumbScroll_;
+    const int bottom = top + ts.h + ts.captionH + style_.thumbSpacing;
     if (top < 0)                    thumbScroll_ += top;
     else if (bottom > strip.height) thumbScroll_ += bottom - strip.height;
-    if (thumbScroll_ < 0) thumbScroll_ = 0;
+    const int maxScroll = std::max(0, ThumbContentHeight() - strip.height);
+    thumbScroll_ = std::clamp(thumbScroll_, 0, maxScroll);
 }
 
 bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {

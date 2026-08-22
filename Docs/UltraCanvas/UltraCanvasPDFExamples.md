@@ -24,17 +24,22 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 
 - **Page rendering** at any DPI/zoom with antialiasing, drop shadow, and a
   white underlay; rendered pages and thumbnails are cached per DPI.
-- **Thumbnail strip** with click-to-jump and independent scrolling
-  (toggleable). It only appears for documents with more than one page, its
-  width is capped at 1/4 of the view so the page area always stays at least
-  3× the strip, and it auto-scrolls to keep the current page's thumb visible.
+- **Thumbnail strip** (the page inventory) with click-to-jump and independent
+  scrolling (toggleable). It only appears for documents with more than one
+  page, its width is capped at 1/4 of the view so the page area always stays at
+  least 3× the strip, and it auto-scrolls to keep the current page's thumb
+  visible. The strip's width drives the thumbnails: each one is the strip width
+  minus `thumbMargin` on both sides, and **as tall as its own page's aspect
+  ratio requires** — so a slot never pads a page with empty space, and pages of
+  differing sizes each get their own height. Page numbers are sized from the
+  thumbnail they belong to, so they shrink with it.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
   Ctrl+wheel to zoom; fit modes re-resolve on resize.
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
-- **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+- **Interaction**: mouse-wheel scroll, click-drag panning.
   Scrolling is hard-limited: it stops once the page edge sits `pageMargin`
   inside the viewport. From that resting point a further wheel step continues
   into the next (or previous) page — on the last (or first) page it simply
@@ -222,17 +227,26 @@ const PDFViewStyle& GetStyle() const;
 
 `ThumbnailNumberStyle::Caption` draws a small label beneath each thumbnail (the
 default); `Overlay` draws a large translucent page number centred over the page.
-The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
-(a fraction of the thumbnail height, default `0.30`) and
-`thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
+Both are sized from the thumbnail's own height —
+`PDFViewStyle::thumbOverlayNumberHeight` (default `0.30`) for the overlay and
+`thumbLabelHeight` (default `0.10`, clamped to 8–13 px) for the caption — so a
+narrow strip gets small numbers instead of oversized ones. The overlay's colour
+is `thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
 UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
-metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
-`pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
-`thumbStripWidth` is a request: the effective strip width is capped at 1/4 of
-the view width so the page area keeps at least a 3:1 ratio over the strip.
+metrics (`thumbStripWidth`, `thumbMargin`, `thumbMaxHeight`, `thumbSpacing`,
+`pageMargin`, `pageShadowSize`, `scrollbarWidth`, `defaultDpi`,
+`thumbOverlayNumberHeight`, `thumbLabelHeight`).
+
+The inventory is laid out from its width: `thumbStripWidth` is a request, and
+the effective strip width is capped at 1/4 of the view width so the page area
+keeps at least a 3:1 ratio over the strip. Subtracting `thumbMargin` on both
+sides gives the thumbnail width, and each thumbnail's height follows its own
+page's aspect ratio (`thumbMaxHeight` caps it for extreme formats — such a page
+narrows instead of stretching, keeping its proportions). There is no fixed
+thumbnail height to set.
 
 ### Editing passthroughs
 
