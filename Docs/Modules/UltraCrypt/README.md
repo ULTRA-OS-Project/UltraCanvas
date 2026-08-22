@@ -62,7 +62,7 @@ hand-rolled one, reached around the rules, or stalled at design stage:
 |---|---|---|
 | **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
 | **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Fixed** — now uses UltraCrypt through `UCDCryptoEnvelope`; see §1.1 for what it was |
-| **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header states it is a placeholder awaiting "a vetted crypto surface" |
+| **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. `Apps/AnchorPoint/net/Sha256.h` has been deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
 | **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | Blocked |
@@ -878,7 +878,7 @@ is part of the deliverable, not a follow-up:
 |---|---|
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF and Base32/64 |
-| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1). Still to do: retire `AnchorPoint/net/Sha256.h`, UCD v2 writer/reader, UltraVault file backend |
+| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | Optional additions as needed: BLAKE3-256, XChaCha20-Poly1305 at volume, public-key surface |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
