@@ -142,6 +142,18 @@ if(BUILD_ULTRASOCIAL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraSocial)
 endif()
 
+# ===== ULTRACLEANER =====
+# Removes the files macOS, Windows and Linux leave behind: temporary files,
+# application and browser caches, logs, crash reports, thumbnail databases,
+# package-manager downloads, build leftovers and the trash. Builds the
+# headless engine plus the GUI application.
+option(BUILD_ULTRACLEANER "Build the UltraCleaner application" ON)
+if(BUILD_ULTRACLEANER)
+    message(STATUS "")
+    message(STATUS "── Building UltraCleaner ──")
+    add_subdirectory(Apps/UltraCleaner)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -537,6 +549,17 @@ if(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS AND TARGET UltraSocialEngine)
     add_subdirectory(Tests/UltraSocial)
     message(STATUS "")
     message(STATUS "── UltraSocial engine test suite enabled (target: UltraSocialEngineTests) ──")
+endif()
+
+# ===== ULTRACLEANER ENGINE TESTS =====
+# Headless engine tests: the path guard, the rule table, the scanner and the
+# remover, all driven over temporary trees. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRACLEANER_TESTS "Build the UltraCleaner engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACLEANER_TESTS AND TARGET UltraCleanerEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraCleaner)
+    message(STATUS "")
+    message(STATUS "── UltraCleaner engine test suite enabled (target: UltraCleanerEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
