@@ -20,7 +20,10 @@
   the top-right of the page is removed: it was not interactive and only repeated
   what the host's status bar (media viewer, UltraFiler) already shows.
   `PDFViewStyle::thumbHeight` is gone, replaced by `thumbMargin` /
-  `thumbMaxHeight`.
+  `thumbMaxHeight`. The page's own margin to the edges of the display area
+  (`pageMargin`) is halved, 24 px to 12 px, so a fitted page uses the space it
+  is given instead of floating in it — most visible on a single-page document,
+  where there is no thumbnail strip beside it.
 #### 2026-08-22 *0.3.56*
 - **New application: UltraCleaner.** Finds and removes the files macOS,
   Windows and Linux leave behind — temporary files, application and browser

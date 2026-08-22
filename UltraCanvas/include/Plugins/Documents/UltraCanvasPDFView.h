@@ -54,7 +54,7 @@ struct PDFViewStyle {
     int   thumbMargin       = 10;
     int   thumbMaxHeight    = 260;
     int   thumbSpacing      = 8;
-    int   pageMargin        = 24;
+    int   pageMargin        = 12;   // gap between the page and the view's edges
     int   pageShadowSize    = 4;
     int   scrollbarWidth    = 12;
     float defaultDpi        = 96.0f;
