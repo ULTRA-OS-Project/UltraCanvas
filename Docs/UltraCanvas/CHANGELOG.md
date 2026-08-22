@@ -1,4 +1,4 @@
-#### 2026-08-22 *0.3.54*
+#### 2026-08-22 *0.3.55*
 - **FilerWidget / UltraFiler: a folder of videos no longer makes a sound
   (Windows).** Opening a folder with video files in it could play a burst of
   a clip's audio, and the preview pane's "5 s clip" video mode ran with sound
