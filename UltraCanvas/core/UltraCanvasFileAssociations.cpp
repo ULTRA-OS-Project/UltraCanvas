@@ -17,11 +17,18 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace UltraCanvas {
 namespace FileAssociations {
@@ -231,6 +238,83 @@ bool OpenWithApplicationPath(const std::string& applicationPath,
     return FileAssociationsBackend::LaunchWithPath(applicationPath, paths,
                                                    outError);
 }
+
+// ===== DIRECT EXECUTION =====
+// POSIX-only: on Windows ShellExecute's "open" verb already runs
+// executables through OpenWithDefaultApplication, and WebAssembly cannot
+// run anything, so both report NotExecutable and the launcher refuses.
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+
+ExecutableKind ClassifyExecutable(const std::string&) {
+    return ExecutableKind::NotExecutable;
+}
+
+bool LaunchExecutable(const std::string& path, std::string& outError) {
+    outError = "Running \"" + path + "\" directly is not supported here.";
+    return false;
+}
+
+#else
+
+ExecutableKind ClassifyExecutable(const std::string& path) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec) || ec)
+        return ExecutableKind::NotExecutable;
+    if (::access(path.c_str(), X_OK) != 0)
+        return ExecutableKind::NotExecutable;
+    // The execute bit alone is not enough (FAT mounts set it on everything):
+    // the content must actually look runnable.
+    unsigned char head[4] = {};
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return ExecutableKind::NotExecutable;
+    const size_t n = std::fread(head, 1, sizeof head, f);
+    std::fclose(f);
+    if (n >= 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' &&
+        head[3] == 'F')
+        return ExecutableKind::Binary;          // ELF (AppImages included)
+    if (n >= 4 && ((head[0] == 0xfe && head[1] == 0xed && head[2] == 0xfa) ||
+                   (head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe) ||
+                   (head[0] == 0xca && head[1] == 0xfe && head[2] == 0xba &&
+                    head[3] == 0xbe)))
+        return ExecutableKind::Binary;          // Mach-O / fat binary (macOS)
+    if (n >= 2 && head[0] == '#' && head[1] == '!')
+        return ExecutableKind::Script;
+    return ExecutableKind::NotExecutable;
+}
+
+bool LaunchExecutable(const std::string& path, std::string& outError) {
+    outError.clear();
+    if (ClassifyExecutable(path) == ExecutableKind::NotExecutable) {
+        outError = "\"" + path + "\" is not an executable.";
+        return false;
+    }
+    // Double fork + setsid: the program is re-parented to init and survives
+    // the filer closing, and no zombie is left behind.
+    const pid_t first = ::fork();
+    if (first < 0) {
+        outError = "Could not start \"" + path + "\": fork failed.";
+        return false;
+    }
+    if (first == 0) {
+        ::setsid();
+        const pid_t second = ::fork();
+        if (second != 0) ::_exit(second < 0 ? 127 : 0);
+        const std::string dir =
+                std::filesystem::path(path).parent_path().string();
+        if (!dir.empty() && ::chdir(dir.c_str()) != 0) { /* keep going */ }
+        ::execl(path.c_str(), path.c_str(), static_cast<char*>(nullptr));
+        ::_exit(127);   // exec failed; the launcher cannot see this anymore
+    }
+    int status = 0;
+    ::waitpid(first, &status, 0);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        outError = "Could not start \"" + path + "\".";
+        return false;
+    }
+    return true;
+}
+
+#endif // direct execution
 
 ApplicationFilter GetApplicationFilter() {
     return FileAssociationsBackend::GetApplicationFilter();

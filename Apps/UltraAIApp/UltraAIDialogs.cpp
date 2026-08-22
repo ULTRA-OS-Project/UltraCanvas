@@ -1,14 +1,19 @@
 // Apps/UltraAIApp/UltraAIDialogs.cpp
 // Implementation of the ten per-capability service dialogs. Each one
-// builds its own input form and calls the matching UltraAI mock
-// adapter when the user clicks "Run".
-// Version: 0.1.0
-// Last Modified: 2026-05-08
+// builds its own input form (headed by the shared provider picker) and
+// runs the selected — or default-routed — UltraAI provider on "Run".
+// Version: 0.2.0
+// Last Modified: 2026-08-21
 
 #include "UltraAIDialogs.h"
 
 #include "UltraAI.h"
+#include "UltraCanvasDropdown.h"
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+#include <UltraVault/UltraVault.h>
+#endif
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -64,10 +69,47 @@ std::string ErrorLine(const Error& e) {
 
 ChatDialog::ChatDialog()
     : UltraAIServiceDialog("Chat (LLM)",
-        "Send a prompt to the LLM and receive a single-turn reply. "
-        "Backed by the in-process Mock TextLLM adapter.") {}
+        "Send a prompt to the LLM and receive a single-turn reply. The "
+        "provider list comes from the UltraAI registry; \"(default route)\" "
+        "follows the routing policy. Cloud API keys are stored in UltraVault, "
+        "never in this window.") {}
+
+namespace {
+bool ProviderNeedsApiKey(const std::string& provider) {
+    return !provider.empty() && provider != "mock" && provider != "llama-cpp";
+}
+} // namespace
 
 long ChatDialog::BuildForm(long y) {
+    AddDialogElement(MakeLabel("prov-lbl", kMargin, y, 200, kLabelHeight,
+                               "Provider"));
+    AddDialogElement(MakeLabel("model-lbl", kMargin + 220, y,
+                               kFormWidth - 220, kLabelHeight,
+                               "Model (or GGUF path for llama-cpp; optional)"));
+    y += kLabelHeight + 2;
+    providerDropdown_ = CreateDropdown("chat-provider",
+                                       kMargin, y, 200, kRowHeight);
+    providerDropdown_->AddItem(kDefaultRouteLabel);
+    for (const auto& id : ListTextLLMProviders()) {
+        providerDropdown_->AddItem(id);
+    }
+    providerDropdown_->SetSelectedIndex(0);
+    AddDialogElement(providerDropdown_);
+    modelInput_ = MakeInput("chat-model", kMargin + 220, y,
+                            kFormWidth - 220, kRowHeight,
+                            "provider default");
+    AddDialogElement(modelInput_);
+    y += kRowHeight + kRowGap;
+
+    AddDialogElement(MakeLabel("key-lbl", kMargin, y, kFormWidth, kLabelHeight,
+                               "API key (cloud providers; saved to UltraVault "
+                               "as ai.<provider>.api_key and cleared here)"));
+    y += kLabelHeight + 2;
+    keyInput_ = MakeInput("chat-key", kMargin, y, kFormWidth, kRowHeight,
+                          "leave empty to use the stored key");
+    AddDialogElement(keyInput_);
+    y += kRowHeight + kRowGap;
+
     AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "System prompt (optional)"));
     y += kLabelHeight + 2;
@@ -79,10 +121,10 @@ long ChatDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("usr-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "User message"));
     y += kLabelHeight + 2;
-    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 80,
+    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 60,
                         "Type your prompt...", true);
     AddDialogElement(input2_);
-    y += 80 + kRowGap;
+    y += 60 + kRowGap;
     return y;
 }
 
@@ -90,8 +132,41 @@ void ChatDialog::RunCapability() {
     SetStatus("Running...");
     SetResult("");
 
-    auto llm = CreateTextLLM({.providerId = "mock"});
-    if (!llm) { SetStatus("Failed to create mock TextLLM"); return; }
+    const std::string provider = SelectedProviderId();
+
+    TextLLMConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+
+    if (ProviderNeedsApiKey(provider)) {
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+        const std::string vaultRef = "ai." + provider + ".api_key";
+        if (keyInput_ && !keyInput_->GetText().empty()) {
+            if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+            std::string typed = keyInput_->GetText();
+            auto stored = UltraVault::Put(
+                vaultRef, UltraVault::SecretValue::FromString(typed));
+            keyInput_->SetText("");   // the key lives in the vault now
+            if (!stored.IsOk()) {
+                SetStatus("Could not store the key: " + stored.message);
+                return;
+            }
+        }
+        cfg.apiKeyVaultRef = vaultRef;
+#else
+        // No vault in this build: the key stays in the widget for the call.
+        if (keyInput_) cfg.apiKey = keyInput_->GetText();
+#endif
+    }
+
+    Error createError;
+    auto llm = CreateTextLLM(cfg, &createError);
+    if (!llm) {
+        SetStatus("Failed to create TextLLM: " + createError.message);
+        return;
+    }
 
     ChatRequest req;
     if (input1_ && !input1_->GetText().empty()) {
@@ -105,7 +180,8 @@ void ChatDialog::RunCapability() {
     auto resp = llm->Chat(req);
     std::ostringstream os;
     os << ErrorLine(resp.error) << resp.text
-       << "\n\n(model=" << resp.model
+       << "\n\n(provider=" << llm->GetCapabilities().providerId
+       << "  model=" << resp.model
        << "  in=" << resp.usage.inputTokens
        << "  out=" << resp.usage.outputTokens << ")";
     SetResult(os.str());
@@ -118,9 +194,13 @@ void ChatDialog::RunCapability() {
 
 EmbeddingsDialog::EmbeddingsDialog()
     : UltraAIServiceDialog("Embeddings",
-        "Compute vector embeddings for one or more texts (one per line).") {}
+        "Compute vector embeddings for one or more texts (one per line). "
+        "\"(default route)\" follows the routing policy across the "
+        "registered providers.") {}
 
 long EmbeddingsDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListEmbeddingsProviders());
+
     AddDialogElement(MakeLabel("emb-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Inputs (one per line)"));
     y += kLabelHeight + 2;
@@ -130,9 +210,9 @@ long EmbeddingsDialog::BuildForm(long y) {
     y += 120 + kRowGap;
 
     AddDialogElement(MakeLabel("dim-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "Dimensions (optional, default 8)"));
+                               "Dimensions (optional; provider default)"));
     y += kLabelHeight + 2;
-    input2_ = MakeInput("emb-dim", kMargin, y, 120, kRowHeight, "8");
+    input2_ = MakeInput("emb-dim", kMargin, y, 120, kRowHeight, "auto");
     AddDialogElement(input2_);
     y += kRowHeight + kRowGap;
     return y;
@@ -141,8 +221,13 @@ long EmbeddingsDialog::BuildForm(long y) {
 void EmbeddingsDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto emb = CreateEmbeddings({.providerId = "mock"});
-    if (!emb) { SetStatus("Failed to create mock Embeddings"); return; }
+    Error createError;
+    auto emb = CreateEmbeddings({.providerId = SelectedProviderId()},
+                                &createError);
+    if (!emb) {
+        SetStatus("Failed to create Embeddings: " + createError.message);
+        return;
+    }
 
     EmbeddingRequest req;
     req.input = SplitLines(input1_ ? input1_->GetText() : "");
@@ -155,7 +240,8 @@ void EmbeddingsDialog::RunCapability() {
 
     auto resp = emb->Embed(req);
     std::ostringstream os;
-    os << ErrorLine(resp.error);
+    os << ErrorLine(resp.error)
+       << "(provider=" << emb->GetCapabilities().providerId << ")\n";
     for (size_t i = 0; i < resp.embeddings.size(); ++i) {
         const auto& v = resp.embeddings[i].values;
         os << "[" << i << "] dim=" << v.size() << " { ";
@@ -184,6 +270,8 @@ SpeechToTextDialog::SpeechToTextDialog()
         "placeholder transcript.") {}
 
 long SpeechToTextDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListSpeechToTextProviders());
+
     AddDialogElement(MakeLabel("stt-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Mock audio byte length"));
     y += kLabelHeight + 2;
@@ -204,8 +292,13 @@ long SpeechToTextDialog::BuildForm(long y) {
 void SpeechToTextDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto stt = CreateSpeechToText({.providerId = "mock"});
-    if (!stt) { SetStatus("Failed to create mock STT"); return; }
+    Error createError;
+    auto stt = CreateSpeechToText({.providerId = SelectedProviderId()},
+                                  &createError);
+    if (!stt) {
+        SetStatus("Failed to create STT: " + createError.message);
+        return;
+    }
 
     TranscribeRequest req;
     size_t bytes = 4096;
@@ -238,6 +331,8 @@ TextToSpeechDialog::TextToSpeechDialog()
         "audio bytes (one byte per character).") {}
 
 long TextToSpeechDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListTextToSpeechProviders());
+
     AddDialogElement(MakeLabel("tts-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Text to speak"));
     y += kLabelHeight + 2;
@@ -259,8 +354,13 @@ long TextToSpeechDialog::BuildForm(long y) {
 void TextToSpeechDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto tts = CreateTextToSpeech({.providerId = "mock"});
-    if (!tts) { SetStatus("Failed to create mock TTS"); return; }
+    Error createError;
+    auto tts = CreateTextToSpeech({.providerId = SelectedProviderId()},
+                                  &createError);
+    if (!tts) {
+        SetStatus("Failed to create TTS: " + createError.message);
+        return;
+    }
 
     SpeakRequest req;
     req.text    = input1_ ? input1_->GetText() : "";
@@ -294,6 +394,8 @@ ImageGenDialog::ImageGenDialog()
         "placeholder PNG bytes (header + width/height/index tag).") {}
 
 long ImageGenDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListImageGenProviders());
+
     AddDialogElement(MakeLabel("ig-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
@@ -317,8 +419,13 @@ long ImageGenDialog::BuildForm(long y) {
 void ImageGenDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto ig = CreateImageGen({.providerId = "mock"});
-    if (!ig) { SetStatus("Failed to create mock ImageGen"); return; }
+    Error createError;
+    auto ig = CreateImageGen({.providerId = SelectedProviderId()},
+                             &createError);
+    if (!ig) {
+        SetStatus("Failed to create ImageGen: " + createError.message);
+        return;
+    }
 
     ImageGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
@@ -361,6 +468,8 @@ VisionDialog::VisionDialog()
         "image. The mock fills exactly the fields you request.") {}
 
 long VisionDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListVisionAnalyzerProviders());
+
     AddDialogElement(MakeLabel("v-bytes-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Mock image byte length"));
@@ -383,8 +492,13 @@ long VisionDialog::BuildForm(long y) {
 void VisionDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto v = CreateVisionAnalyzer({.providerId = "mock"});
-    if (!v) { SetStatus("Failed to create mock Vision"); return; }
+    Error createError;
+    auto v = CreateVisionAnalyzer({.providerId = SelectedProviderId()},
+                                  &createError);
+    if (!v) {
+        SetStatus("Failed to create Vision: " + createError.message);
+        return;
+    }
 
     VisionAnalyzeRequest req;
     size_t bytes = 2048;
@@ -424,6 +538,8 @@ TranslatorDialog::TranslatorDialog()
         "is auto-detected when left empty.") {}
 
 long TranslatorDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListTranslatorProviders());
+
     AddDialogElement(MakeLabel("tr-text-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Texts (one per line)"));
@@ -446,8 +562,13 @@ long TranslatorDialog::BuildForm(long y) {
 void TranslatorDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto tr = CreateTranslator({.providerId = "mock"});
-    if (!tr) { SetStatus("Failed to create mock Translator"); return; }
+    Error createError;
+    auto tr = CreateTranslator({.providerId = SelectedProviderId()},
+                               &createError);
+    if (!tr) {
+        SetStatus("Failed to create Translator: " + createError.message);
+        return;
+    }
 
     TranslateRequest req;
     req.texts = SplitLines(input1_ ? input1_->GetText() : "");
@@ -478,6 +599,8 @@ VideoGenDialog::VideoGenDialog()
         "placeholder MP4 bytes and a thumbnail PNG.") {}
 
 long VideoGenDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListVideoGenProviders());
+
     AddDialogElement(MakeLabel("vg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
@@ -501,8 +624,13 @@ long VideoGenDialog::BuildForm(long y) {
 void VideoGenDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto vg = CreateVideoGen({.providerId = "mock"});
-    if (!vg) { SetStatus("Failed to create mock VideoGen"); return; }
+    Error createError;
+    auto vg = CreateVideoGen({.providerId = SelectedProviderId()},
+                             &createError);
+    if (!vg) {
+        SetStatus("Failed to create VideoGen: " + createError.message);
+        return;
+    }
 
     VideoGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
@@ -545,6 +673,8 @@ MusicGenDialog::MusicGenDialog()
         "auto-generated) lyrics.") {}
 
 long MusicGenDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListMusicGenProviders());
+
     AddDialogElement(MakeLabel("mg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Prompt (style, mood, instruments)"));
@@ -569,8 +699,13 @@ long MusicGenDialog::BuildForm(long y) {
 void MusicGenDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto mg = CreateMusicGen({.providerId = "mock"});
-    if (!mg) { SetStatus("Failed to create mock MusicGen"); return; }
+    Error createError;
+    auto mg = CreateMusicGen({.providerId = SelectedProviderId()},
+                             &createError);
+    if (!mg) {
+        SetStatus("Failed to create MusicGen: " + createError.message);
+        return;
+    }
 
     MusicGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
@@ -607,6 +742,8 @@ CodeAssistDialog::CodeAssistDialog()
         "shape-correct stubs so you can verify the wiring.") {}
 
 long CodeAssistDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListCodeAssistProviders());
+
     AddDialogElement(MakeLabel("ca-instr-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Instruction (used for Generate)"));
@@ -638,8 +775,13 @@ long CodeAssistDialog::BuildForm(long y) {
 void CodeAssistDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto ca = CreateCodeAssist({.providerId = "mock"});
-    if (!ca) { SetStatus("Failed to create mock CodeAssist"); return; }
+    Error createError;
+    auto ca = CreateCodeAssist({.providerId = SelectedProviderId()},
+                               &createError);
+    if (!ca) {
+        SetStatus("Failed to create CodeAssist: " + createError.message);
+        return;
+    }
 
     const std::string instr  = input1_ ? input1_->GetText() : "";
     const std::string lang   = input2_ ? input2_->GetText() : "python";

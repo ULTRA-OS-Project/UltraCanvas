@@ -11,9 +11,11 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasDropdown.h"
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraAIApp {
 
@@ -33,8 +35,8 @@ protected:
     virtual long BuildForm(long formTop) = 0;
 
     // Subclass hook: invoked when the user clicks "Run". Implementation
-    // calls into a UltraAI mock adapter and pushes textual output via
-    // AppendResult() / SetResult().
+    // calls into the picked (or default-routed) UltraAI provider and
+    // pushes textual output via AppendResult() / SetResult().
     virtual void RunCapability() = 0;
 
     // Helpers for subclasses.
@@ -51,6 +53,20 @@ protected:
         const std::string& id, long x, long y, long w, long h,
         const std::string& placeholder, bool multiline = false);
 
+    // Provider picker shared by every service dialog: a labeled dropdown
+    // seeded with "(default route)" plus the capability's registered
+    // providers (List<Capability>Providers()). Stores the widget in
+    // providerDropdown_ and advances y past the row.
+    void AddProviderPicker(long& y, const std::vector<std::string>& providers);
+
+    // Provider chosen in the picker; empty for "(default route)" (or when
+    // the dialog never called AddProviderPicker), which lets the UltraAI
+    // routing policy decide.
+    std::string SelectedProviderId() const;
+
+    // The picker's routing-policy entry.
+    static constexpr const char* kDefaultRouteLabel = "(default route)";
+
 public:
     // Layout constants — public so free functions in the dialog implementation
     // (e.g. kFormWidth in UltraAIDialogs.cpp) can reference them at namespace scope.
@@ -65,6 +81,7 @@ protected:
 
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> resultArea_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  providerDropdown_;
 };
 
 } // namespace UltraAIApp

@@ -59,6 +59,28 @@ namespace UltraCanvas {
                                      const std::vector<std::string>& paths,
                                      std::string& outError);
 
+        // ===== DIRECT EXECUTION (POSIX platforms) =====
+        // What double-click activation should do with an executable file.
+        // On Windows this always reports NotExecutable: ShellExecute's
+        // "open" verb already runs .exe/.bat/… through
+        // OpenWithDefaultApplication, Explorer-style. On POSIX platforms the
+        // MIME machinery opens files but never runs them, so executables
+        // need this separate path.
+        enum class ExecutableKind {
+            NotExecutable,   // no execute permission, or content is neither
+                             // a native binary nor a script
+            Binary,          // native executable (ELF / Mach-O — AppImages
+                             // included): running is the only sensible open
+            Script           // executable with a #! line: could be run or
+                             // opened for viewing — worth asking
+        };
+        ExecutableKind ClassifyExecutable(const std::string& path);
+
+        // Run the executable directly, detached, with its own folder as the
+        // working directory. Scripts run through their #! interpreter (the
+        // kernel resolves it).
+        bool LaunchExecutable(const std::string& path, std::string& outError);
+
         // File-dialog helpers for an "Other application…" picker: what an
         // application looks like on this platform, and where they live.
         struct ApplicationFilter {

@@ -226,6 +226,13 @@ their *License* is likewise marked **—** (OS component).
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
 
+### UltraVault module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Memory + encrypted-file backends (crypto via the UltraCrypt sibling) | (core only) | (core only) | (core only) |
+| Planned native backends | libsecret (planned) | Keychain (planned) | Credential Manager (planned) |
+
 ### Ultra Net module
 
 | Purpose | Linux | macOS | Windows |

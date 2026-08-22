@@ -310,11 +310,38 @@ second code path in every reader. AES-256-GCM is present solely for reading
 foreign data and is hardware-gated. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraCrypt/README.md`; backing library
-is **libsodium** (§3.5 of that document). Suggested rollout is secure
-memory + random + SHA-2 + HMAC with full test vectors (Stage 1), AEAD +
-Argon2id + HKDF (Stage 2), consumer migration (Stage 3).
+**Implementation status (this branch):** Implemented on libsodium
+(`UltraCanvas/{include,core}/UltraCrypt/`, target `UltraCrypt`): secure
+buffers, secure zero, constant-time compare, CSPRNG, SHA-1/SHA-2 (one-shot,
+streaming, file), HMAC, XChaCha20-Poly1305 AEAD, Argon2id, HKDF, and the
+RFC 4648 Base16/32/64 companions — with published-vector unit tests
+(`Tests/UltraCryptTests.cpp`). Built without libsodium every operation
+fails closed with `BackendUnavailable`. First consumers: the UCD document
+envelope and UltraVault's encrypted-file backend.
+
+### **9. UltraVault**
+
+Credential and secret storage — the single system-level home for API keys,
+tokens and passphrases, so no application or module rolls its own
+(`UltraAI/Docs/UltraVault.md` is the design document). Sources under
+`UltraCanvas/{include,core}/UltraVault/`, target `UltraVault`, header
+`<UltraVault/UltraVault.h>`, `namespace UltraVault`.
+
+Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
+`SecretAcl`, `Initialize`/`Shutdown`/`IsAvailable`/`GetBackendName`,
+`Put`/`Get`/`Delete`/`List(prefix)`, and namespaced keys
+(`<vendor>.<app>.<purpose>`, e.g. `ai.anthropic.api_key`). UltraAI resolves
+`ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
+`ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
+
+**Implementation status (this branch):** v0.1 — memory backend (CI /
+ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
+parameters, XChaCha20-Poly1305 with the header as associated data; wrong
+passphrase and file tampering are deliberately indistinguishable). Unit
+tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
+covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+backends (libsecret / Keychain / Credential Manager) and
+`Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
 component installer (winetricks wrapper) are implemented; the VM tier and
 compatibility routing are planned for Stages 2-3. See

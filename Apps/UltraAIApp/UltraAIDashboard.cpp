@@ -46,7 +46,9 @@ bool UltraAIDashboard::Create() {
 
     auto sub = std::make_shared<UltraCanvasLabel>(
         "dash-sub", 20, 38, kWindowWidth - 40, 18,
-        "All services use the in-process mock adapter (no network).");
+        "Every service routes through the provider registry — pick a "
+        "provider in the dialog (mock always; Anthropic, OpenAI, local "
+        "llama.cpp when built) or keep the default route.");
     window_->AddChild(sub);
 
     CreateButtons();
