@@ -39,15 +39,18 @@ void ChangePasswordDialog::CreateChangePasswordDialog() {
     const long fieldWidth = kDialogWidth - 2 * margin;
     long y = margin;
 
+    // Height must cover the wrapped line count: a label paints all of its text
+    // regardless of the box it is given, so a 34px box for three lines spilled
+    // past the dialog's top edge.
     auto intro = std::make_shared<UltraCanvasLabel>(
-        "cpw-intro", margin, y, fieldWidth, 34,
+        "cpw-intro", margin, y, fieldWidth, 54,
         "This re-encrypts the vault with a key derived from the new password. "
         "Copies of the old file stay readable with the old password.");
     intro->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
     intro->SetTextColor(Theme::kTextSecondary);
     intro->SetWrap(TextWrap::WrapWord);
     AddChild(intro);
-    y += 46;
+    y += 62;
 
     struct Field {
         const char* id;

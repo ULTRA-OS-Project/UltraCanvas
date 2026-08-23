@@ -175,7 +175,7 @@ StoreResult AccountStore::ChangePassword(
         StoreResult opened = probe.Open(path_, currentPassword);
         if (!opened) {
             return StoreResult::Error(StoreResultCode::AuthenticationFailed,
-                                      "the current password is not correct");
+                                      "That password is not correct.");
         }
         probe.Close();
     }
@@ -200,7 +200,7 @@ StoreResult AccountStore::Reveal(const std::string& key,
         StoreResult opened = probe.Open(path_, password);
         if (!opened) {
             return StoreResult::Error(StoreResultCode::AuthenticationFailed,
-                                      "that password is not correct");
+                                      "That password is not correct.");
         }
         probe.Close();
     }

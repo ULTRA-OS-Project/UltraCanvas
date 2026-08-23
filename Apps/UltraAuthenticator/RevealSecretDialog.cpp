@@ -72,11 +72,11 @@ void RevealSecretDialog::CreateRevealSecretDialog(const std::string& displayName
     AddChild(promptLabel_);
     y += 58;
 
-    auto caption = std::make_shared<UltraCanvasLabel>(
+    passwordCaption_ = std::make_shared<UltraCanvasLabel>(
         "rev-pw-lbl", margin, y, fieldWidth, 18, "Master password");
-    caption->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
-    caption->SetTextColor(Theme::kTextSecondary);
-    AddChild(caption);
+    passwordCaption_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    passwordCaption_->SetTextColor(Theme::kTextSecondary);
+    AddChild(passwordCaption_);
     y += 20;
 
     passwordInput_ = CreatePasswordInput("rev-pw", margin, y, fieldWidth, 28);
@@ -90,11 +90,11 @@ void RevealSecretDialog::CreateRevealSecretDialog(const std::string& displayName
     errorLabel_->SetWrap(TextWrap::WrapWord);
     AddChild(errorLabel_);
 
-    auto showBtn = std::make_shared<UltraCanvasButton>(
+    showButton_ = std::make_shared<UltraCanvasButton>(
         "rev-ok", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
-    showBtn->SetText("Show");
-    showBtn->onClick = [this]() { Attempt(); };
-    AddChild(showBtn);
+    showButton_->SetText("Show");
+    showButton_->onClick = [this]() { Attempt(); };
+    AddChild(showButton_);
 
     auto closeBtn = std::make_shared<UltraCanvasButton>(
         "rev-close", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
@@ -141,7 +141,24 @@ void RevealSecretDialog::ShowSecret(const std::string& uri) {
             "Enter this on the other device, or scan it there if you can "
             "generate a QR code from the URI below.");
     }
-    if (passwordInput_) passwordInput_->SetText("");
+    // Take the password step away rather than layering the secret over it.
+    // Leaving them in place drew "Setup key" across "Master password" and put
+    // the secret in the same box the password had been typed into.
+    if (passwordInput_) {
+        passwordInput_->SetText("");
+        RemoveChild(passwordInput_);
+        passwordInput_.reset();
+    }
+    if (passwordCaption_) {
+        RemoveChild(passwordCaption_);
+        passwordCaption_.reset();
+    }
+    // The password has already been spent; a second press could only confuse.
+    if (showButton_) {
+        RemoveChild(showButton_);
+        showButton_.reset();
+    }
+    if (errorLabel_) errorLabel_->SetText("");
 
     const long margin     = Theme::kMargin;
     const long fieldWidth = kDialogWidth - 2 * margin;

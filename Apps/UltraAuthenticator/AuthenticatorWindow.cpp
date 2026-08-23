@@ -115,8 +115,10 @@ bool AuthenticatorWindow::Create() {
     addBtn->onClick = [this]() { OpenAddAccountDialog(); };
     window_->AddChild(addBtn);
 
+    // Wide enough for the whole label — the button clips rather than shrinking
+    // its text, and "Change master p..." reads as a truncated menu item.
     auto pwBtn = std::make_shared<UltraCanvasButton>(
-        "auth-pw", margin + 140, 54, 170, 32);
+        "auth-pw", margin + 140, 54, 250, 32);
     pwBtn->SetText("Change master password");
     pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
     window_->AddChild(pwBtn);
@@ -215,14 +217,14 @@ void AuthenticatorWindow::RebuildRows() {
                                            ? account.params.accountName
                                            : account.params.issuer;
         row.issuerLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-issuer", pad, pad, cardWidth - 2 * pad - 200, 20, issuerText);
+            id + "-issuer", pad, pad, cardWidth - 2 * pad - 290, 20, issuerText);
         row.issuerLabel->SetFont(Theme::kUiFont, Theme::kSizeBody,
                                  FontWeight::Bold);
         row.issuerLabel->SetTextColor(Theme::kTextPrimary);
         row.card->AddChild(row.issuerLabel);
 
         row.accountLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-account", pad, pad + 20, cardWidth - 2 * pad - 200, 18,
+            id + "-account", pad, pad + 20, cardWidth - 2 * pad - 290, 18,
             account.params.issuer.empty() ? SubtitleFor(account.params)
                                           : SubtitleFor(account.params));
         row.accountLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
@@ -230,8 +232,10 @@ void AuthenticatorWindow::RebuildRows() {
         row.card->AddChild(row.accountLabel);
 
         // --- code ---------------------------------------------------------
+        // Bottom band, with a full card padding below it: at the previous
+        // height this label's box ended exactly on the card border.
         row.codeLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-code", pad, pad + 40, 220, 32,
+            id + "-code", pad, pad + 42, 230, 34,
             CodePlaceholder(account.params.digits));
         row.codeLabel->SetFont(Theme::kCodeFont, Theme::kSizeCode,
                                FontWeight::Bold);
@@ -239,7 +243,7 @@ void AuthenticatorWindow::RebuildRows() {
         row.card->AddChild(row.codeLabel);
 
         row.countdownLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-left", pad + 228, pad + 50, 110, 20, "");
+            id + "-left", pad + 240, pad + 50, 110, 20, "");
         row.countdownLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary,
                                     FontWeight::Bold);
         row.countdownLabel->SetTextColor(Theme::kTextMuted);
@@ -248,9 +252,9 @@ void AuthenticatorWindow::RebuildRows() {
         // --- actions ------------------------------------------------------
         // Right-aligned, laid out from the right edge inwards so the row does
         // not reflow when the HOTP-only button is absent.
-        long bx = cardWidth - pad - 84;
+        long bx = cardWidth - pad - Theme::kButtonRemove;
         row.removeButton = std::make_shared<UltraCanvasButton>(
-            id + "-del", bx, pad, 84, 28);
+            id + "-del", bx, pad, Theme::kButtonRemove, 28);
         row.removeButton->SetText("Remove");
         {
             const std::string key = account.key;
@@ -258,9 +262,9 @@ void AuthenticatorWindow::RebuildRows() {
         }
         row.card->AddChild(row.removeButton);
 
-        bx -= 90;
+        bx -= Theme::kButtonReveal + Theme::kButtonGap;
         row.revealButton = std::make_shared<UltraCanvasButton>(
-            id + "-reveal", bx, pad, 84, 28);
+            id + "-reveal", bx, pad, Theme::kButtonReveal, 28);
         row.revealButton->SetText("Show key");
         {
             const std::string key = account.key;
@@ -270,9 +274,9 @@ void AuthenticatorWindow::RebuildRows() {
         }
         row.card->AddChild(row.revealButton);
 
-        bx -= 74;
+        bx -= Theme::kButtonEdit + Theme::kButtonGap;
         row.editButton = std::make_shared<UltraCanvasButton>(
-            id + "-edit", bx, pad, 68, 28);
+            id + "-edit", bx, pad, Theme::kButtonEdit, 28);
         row.editButton->SetText("Edit");
         {
             const std::string key = account.key;
@@ -286,7 +290,8 @@ void AuthenticatorWindow::RebuildRows() {
             // A counter-based code is only produced on demand: generating one
             // spends it, so it must be an explicit action, never a timer tick.
             row.actionButton = std::make_shared<UltraCanvasButton>(
-                id + "-next", cardWidth - pad - 84, pad + 44, 84, 28);
+                id + "-next", cardWidth - pad - Theme::kButtonNext, pad + 46,
+                Theme::kButtonNext, 28);
             row.actionButton->SetText("Next code");
             const std::string key = account.key;
             row.actionButton->onClick = [this, key]() { AdvanceHotpRow(key); };

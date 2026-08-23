@@ -113,10 +113,13 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
     section2->SetFont(Theme::kUiFont, Theme::kSizeBody, FontWeight::Bold);
     section2->SetTextColor(Theme::kTextPrimary);
     AddChild(section2);
-    y += 24;
+    y += 26;
 
+    // Three wrapped lines at this width. A 34px box drew them over the heading
+    // above and clipped the last one — the label paints its full text
+    // regardless of the height it is given, so the height has to fit the wrap.
     auto warn = std::make_shared<UltraCanvasLabel>(
-        "edit-warn", margin, y, fieldWidth, 34,
+        "edit-warn", margin, y, fieldWidth, 54,
         "These must match what the service expects. Changing them does not "
         "tell the service anything — a wrong value just produces codes it "
         "will reject.");
@@ -124,7 +127,7 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
     warn->SetTextColor(Theme::kDanger);
     warn->SetWrap(TextWrap::WrapWord);
     AddChild(warn);
-    y += 42;
+    y += 62;
 
     AddChild(FieldLabel("edit-digits-lbl", margin, y, halfWidth, "Digits"));
     AddChild(FieldLabel("edit-alg-lbl", margin + halfWidth + 14, y, halfWidth,

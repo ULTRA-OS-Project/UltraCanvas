@@ -80,7 +80,19 @@ constexpr float kSizeSmall     = 11.0f;
 constexpr long kMargin      = 22;   // page gutter
 constexpr long kCardPadding = 14;
 constexpr long kCardGap     = 10;
-constexpr long kCardHeight  = 86;
+// Tall enough for three stacked bands — identity, subtitle, code — each with
+// its own padding. At 86 the code label ran flush into the bottom border and
+// the HOTP button was clipped against it.
+constexpr long kCardHeight  = 104;
+
+// Button widths. These are sized to their longest label: the catalogue button
+// clips rather than shrinking its text, so "Show key" in an 84px button
+// renders as "Show ...", which reads as a menu that opens something.
+constexpr long kButtonEdit   = 68;
+constexpr long kButtonReveal = 96;
+constexpr long kButtonRemove = 86;
+constexpr long kButtonNext   = 116;
+constexpr long kButtonGap    = 8;
 
 } // namespace Theme
 } // namespace Authenticator

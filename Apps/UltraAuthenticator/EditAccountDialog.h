@@ -68,7 +68,7 @@ private:
     std::shared_ptr<UltraCanvasLabel>     errorLabel_;
 
     static constexpr long kDialogWidth  = 480;
-    static constexpr long kDialogHeight = 470;
+    static constexpr long kDialogHeight = 500;
 };
 
 } // namespace Authenticator

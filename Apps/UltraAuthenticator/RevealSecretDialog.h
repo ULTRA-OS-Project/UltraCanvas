@@ -29,6 +29,7 @@
 #ifndef REVEALSECRETDIALOG_H
 #define REVEALSECRETDIALOG_H
 
+#include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
@@ -59,7 +60,11 @@ private:
     void ShowSecret(const std::string& uri);
     void WipeShownSecret();
 
+    // The password step's widgets. Held so the reveal step can take them away
+    // rather than drawing the secret on top of them.
+    std::shared_ptr<UltraCanvasLabel>     passwordCaption_;
     std::shared_ptr<UltraCanvasTextInput> passwordInput_;
+    std::shared_ptr<UltraCanvasButton>    showButton_;
     std::shared_ptr<UltraCanvasLabel>     errorLabel_;
     std::shared_ptr<UltraCanvasLabel>     promptLabel_;
 
