@@ -53,6 +53,10 @@
 #include <system_error>
 #include <unordered_set>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -165,6 +169,19 @@ namespace {
         });
         return dirs;
     }
+
+#ifndef _WIN32
+    // True when `path` is an actual mount point - its device differs from its
+    // parent's. Keeps unmounted placeholder folders under /media and /mnt from
+    // being shown as drives.
+    bool IsMountPoint(const std::string& path) {
+        struct stat here{}, parent{};
+        if (lstat(path.c_str(), &here) != 0) return false;
+        const std::string up = fs::path(path).parent_path().string();
+        if (up.empty() || lstat(up.c_str(), &parent) != 0) return false;
+        return here.st_dev != parent.st_dev;
+    }
+#endif
 
     // A plain flex wrapper that must never scroll itself - the filer, the tree
     // and the preview are the only scroll regions of the window.
@@ -1022,15 +1039,18 @@ void UltraFilerWindow::BuildFolderTree() {
     }
 #else
     AddTreeDriveNode("/", "File System");
-    // Removable / additional volumes.
+    // Removable / additional volumes. Only entries that are really mounted are
+    // shown - an empty placeholder folder left behind under /media or /mnt is
+    // not a drive.
     for (const std::string base : {std::string("/media"), std::string("/mnt")}) {
         for (const fs::path& mount : ListSubdirectories(base)) {
             // /media holds one folder per user with the volumes below it.
             if (base == "/media") {
                 auto volumes = ListSubdirectories(mount.string());
                 for (const fs::path& vol : volumes)
-                    AddTreeDriveNode(vol.string(), vol.filename().string());
-            } else {
+                    if (IsMountPoint(vol.string()))
+                        AddTreeDriveNode(vol.string(), vol.filename().string());
+            } else if (IsMountPoint(mount.string())) {
                 AddTreeDriveNode(mount.string(), mount.filename().string());
             }
         }
@@ -1097,27 +1117,42 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
-    // The home folder leads with its well-known folders - Desktop, Documents,
-    // Downloads, ... resolved through the platform (SHGetKnownFolderPath /
-    // xdg-user-dirs), so a redirected Documents folder is found too - each
-    // with its own icon, like the Explorer and Finder sidebars. The remaining
-    // visible folders follow alphabetically; a well-known folder that
-    // physically sits in the home folder is not listed a second time.
+    // The home folder's well-known folders - Desktop, Documents, Downloads, ...
+    // resolved through the platform (SHGetKnownFolderPath / xdg-user-dirs), so a
+    // redirected Documents folder is found too - keep their own icons, like the
+    // Explorer and Finder sidebars, but are sorted in with the ordinary
+    // subfolders alphabetically rather than pinned to the top. A well-known
+    // folder that physically sits in the home folder is not listed a second
+    // time, and the home folder itself is never listed inside itself.
+    struct TreeChild { std::string path, label, icon; };
+    std::vector<TreeChild> children;
     std::unordered_set<std::string> curated;
     if (path == UserHomeDir()) {
+        const std::string homeKey = FolderIdentityKey(path);
         for (const UserFolderInfo& f : GetWellKnownUserFolders()) {
-            AddTreeFolderNode(path, f.path, f.label, UserFolderIconFile(f.kind));
-            curated.insert(FolderIdentityKey(f.path));
+            const std::string key = FolderIdentityKey(f.path);
+            if (key == homeKey) continue;
+            curated.insert(key);
+            children.push_back({f.path, f.label, UserFolderIconFile(f.kind)});
         }
     }
-    // Add the real children before removing the placeholder: a node whose
-    // last child is removed is demoted to a leaf, which drops its expanded
-    // state and made the first expansion of a folder appear to do nothing.
     for (const fs::path& dir : ListSubdirectories(path)) {
         if (!curated.empty() && curated.count(FolderIdentityKey(dir.string())))
             continue;
-        AddTreeFolderNode(path, dir.string(), dir.filename().string(), "folder-brown.svg");
+        children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
     }
+    std::sort(children.begin(), children.end(),
+              [](const TreeChild& a, const TreeChild& b) {
+        std::string an = a.label, bn = b.label;
+        std::transform(an.begin(), an.end(), an.begin(), ::tolower);
+        std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+        return an < bn;
+    });
+    // Add the real children before removing the placeholder: a node whose
+    // last child is removed is demoted to a leaf, which drops its expanded
+    // state and made the first expansion of a folder appear to do nothing.
+    for (const TreeChild& c : children)
+        AddTreeFolderNode(path, c.path, c.label, c.icon);
     folderTree->RemoveNode(PlaceholderId(path));
 }
 

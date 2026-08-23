@@ -36,8 +36,16 @@ namespace UltraCanvas {
 
     void UltraCanvasAutoComplete::SetItems(const std::vector<AutoCompleteItem>& items) {
         allItems = items;
-        filteredItems.clear();
         selectedIndex = -1;
+        if (popupOpen) {
+            // The open popup shows rows built from filteredItems, and SelectItem()
+            // resolves a clicked row against that same vector. Clearing it here would
+            // leave a full list on screen wired to nothing: every click and Enter would
+            // be silently ignored. Re-filter instead, so list and data stay in step.
+            FilterSuggestions(GetText());
+        } else {
+            filteredItems.clear();
+        }
     }
 
     void UltraCanvasAutoComplete::ClearItems() {
@@ -65,8 +73,8 @@ namespace UltraCanvas {
             popupOpen = true;
             PopulateListFromFiltered();
 
-            Point2Di pos = MapFromLocal({0, GetHeight()});
             popupListView->SetWidth(GetWidth());
+            Point2Di pos = CalculatePopupPosition();
 
             PopupElementSettings settings;
             settings.popupOwner = shared_from_this();
@@ -79,6 +87,7 @@ namespace UltraCanvas {
 //            }
 
             GetWindow()->OpenPopup(pos, *popupListView, settings);
+            popupPlaced = true;
 
             if (autoSelectFirst && !filteredItems.empty()) {
                 UCEvent downEvent;
@@ -95,6 +104,7 @@ namespace UltraCanvas {
     void UltraCanvasAutoComplete::CloseAutocompletePopup() {
         if (popupOpen) {
             popupOpen = false;
+            popupPlaced = false;
             if (GetWindow()) {
                 GetWindow()->ClosePopup(*popupListView);
             }
@@ -200,7 +210,10 @@ namespace UltraCanvas {
     void UltraCanvasAutoComplete::SelectItem(int filteredIndex) {
         if (filteredIndex < 0 || filteredIndex >= static_cast<int>(filteredItems.size())) return;
 
-        const AutoCompleteItem& item = filteredItems[filteredIndex];
+        // A copy, not a reference: the callbacks below may replace the item list
+        // (SetItems() from an onItemSelected handler is a normal thing to do), which
+        // would leave a reference into filteredItems dangling mid-call.
+        const AutoCompleteItem item = filteredItems[filteredIndex];
         selectedIndex = filteredIndex;
 
         // Set text without triggering re-filtering
@@ -361,8 +374,17 @@ namespace UltraCanvas {
     void UltraCanvasAutoComplete::CalculateAndSetPopupSize() {
         int itemCount = static_cast<int>(filteredItems.size());
         int visibleItems = std::min(itemCount, acStyle.maxVisibleItems);
-        int listHeight = visibleItems * static_cast<int>(acStyle.itemHeight);
-        listHeight += static_cast<int>(acStyle.borderWidth) * 2;
+        int itemHeight = std::max(1, static_cast<int>(acStyle.itemHeight));
+        int borders = static_cast<int>(acStyle.borderWidth) * 2;
+        int listHeight = visibleItems * itemHeight + borders;
+
+        // The popup is composited into the window surface, so whatever does not fit in
+        // the window is simply cut off — those rows can be neither seen nor clicked.
+        // Clamp to the space actually available and let the ListView scroll the rest.
+        int availableHeight = AvailablePopupHeight();
+        if (availableHeight > 0 && listHeight > availableHeight) {
+            listHeight = std::max(availableHeight, itemHeight + borders);
+        }
 
         int listWidth = std::max(static_cast<int>(GetBounds().width), 100);
         if (acStyle.maxPopupWidth > 0) {
@@ -370,6 +392,63 @@ namespace UltraCanvas {
         }
 
         popupListView->SetElementSize(Size2Df(listWidth, listHeight));
+
+        // An open popup that was flipped above the input (or pushed left) has to be
+        // re-anchored whenever its size changes, e.g. while the user narrows the filter.
+        if (popupOpen && popupPlaced) {
+            Point2Di newPos = CalculatePopupPosition();
+            Point2Df oldPos = popupListView->GetPositionInWindow();
+            if (static_cast<int>(oldPos.x) != newPos.x || static_cast<int>(oldPos.y) != newPos.y) {
+                if (auto* win = GetWindow()) {
+                    // Repaint the strip the popup is vacating, then move it.
+                    win->AddDirtyRectangle(Rect2Di(static_cast<int>(oldPos.x),
+                                                   static_cast<int>(oldPos.y),
+                                                   static_cast<int>(popupListView->GetBounds().width),
+                                                   static_cast<int>(popupListView->GetBounds().height)));
+                    win->RequestWindowComposition();
+                }
+                popupListView->SetElementAbsolutePosition(Point2Df(newPos.x, newPos.y));
+            }
+        }
+    }
+
+    int UltraCanvasAutoComplete::AvailablePopupHeight() const {
+        auto* win = GetWindow();
+        if (!win) return 0;
+
+        float inputTop = GetPositionInWindow().y;
+        float spaceBelow = win->GetHeight() - (inputTop + GetHeight());
+        float spaceAbove = inputTop;
+        return static_cast<int>(std::max(0.0f, std::max(spaceBelow, spaceAbove)));
+    }
+
+    Point2Di UltraCanvasAutoComplete::CalculatePopupPosition() const {
+        Point2Df inputPos = GetPositionInWindow();
+        float popupWidth = popupListView->GetBounds().width;
+        float popupHeight = popupListView->GetBounds().height;
+
+        auto* win = GetWindow();
+        float windowWidth = win ? win->GetWidth() : popupWidth;
+        float windowHeight = win ? win->GetHeight() : (inputPos.y + GetHeight() + popupHeight);
+
+        float spaceBelow = windowHeight - (inputPos.y + GetHeight());
+        float spaceAbove = inputPos.y;
+
+        // Below the input is the natural place; go above only when the list does not
+        // fit below and there is genuinely more room up there.
+        float y;
+        if (popupHeight <= spaceBelow || spaceBelow >= spaceAbove) {
+            y = inputPos.y + GetHeight();
+        } else {
+            y = std::max(0.0f, inputPos.y - popupHeight);
+        }
+
+        float x = inputPos.x;
+        if (x + popupWidth > windowWidth) {
+            x = std::max(0.0f, windowWidth - popupWidth);
+        }
+
+        return Point2Di(static_cast<int>(x), static_cast<int>(y));
     }
 
 } // namespace UltraCanvas
