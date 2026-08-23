@@ -53,6 +53,16 @@ bool IsPseudoFilesystem(const std::string& type) {
     }
     return false;
 }
+
+// What to call a mount in the drive row. The root has no last path component
+// to name it by, and "/" tells a user nothing, so it is "System" — the same
+// word on every POSIX platform, since the same drive should not be labelled
+// differently depending on where the app is running.
+std::string DisplayNameForMount(const std::string& mountPoint) {
+    if (mountPoint == "/") return "System";
+    const std::string leaf = fs::path(mountPoint).filename().string();
+    return leaf.empty() ? mountPoint : leaf;
+}
 #endif
 
 } // namespace
@@ -111,8 +121,7 @@ std::vector<VolumeInfo> ListVolumes() {
         volume.mountPoint = mounts[i].f_mntonname;
         volume.filesystem = mounts[i].f_fstypename;
         if (IsPseudoFilesystem(volume.filesystem)) continue;
-        volume.name = fs::path(volume.mountPoint).filename().string();
-        if (volume.name.empty()) volume.name = volume.mountPoint;
+        volume.name = DisplayNameForMount(volume.mountPoint);
         volume.isSystemVolume = volume.mountPoint == "/";
         if (ReadCapacity(volume)) volumes.push_back(std::move(volume));
     }
@@ -139,9 +148,7 @@ std::vector<VolumeInfo> ListVolumes() {
         VolumeInfo volume;
         volume.mountPoint = mountPoint;
         volume.filesystem = type;
-        volume.name = mountPoint == "/" ? std::string("System")
-                                        : fs::path(mountPoint).filename().string();
-        if (volume.name.empty()) volume.name = mountPoint;
+        volume.name = DisplayNameForMount(mountPoint);
         volume.isSystemVolume = mountPoint == "/";
         if (ReadCapacity(volume)) volumes.push_back(std::move(volume));
     }
