@@ -271,7 +271,8 @@ jobs:
             -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_SHARED=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} \
-            -DULTRACANVAS_BUILD_NET_TESTS=ON 2>&1 | tee configure.log
+            -DULTRACANVAS_BUILD_NET_TESTS=ON \
+            -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
       # (e.g. a missing GLEW on Windows) so a green build can't hide it.
@@ -342,6 +343,24 @@ jobs:
         if: runner.os != 'Windows'
         working-directory: build
         run: ctest --output-on-failure -R UltraNet
+
+      # Everything else registered with CTest. Until now only UltraNet ran, so
+      # the crypto, authenticator, document and diagram suites — several hundred
+      # assertions, including the RFC vectors behind TOTP and the vault's
+      # tamper-detection checks — were built by nobody and run by nobody. A
+      # refactor could have broken any of them silently.
+      #
+      # Deliberately not filtered to a list of known-good suites: a new suite
+      # should be gated the moment it is added, rather than waiting for someone
+      # to remember to add it here.
+      #
+      # Linux only for now. The suites are platform-independent algorithms, so
+      # one platform gates the logic; the other runners still prove the code
+      # builds everywhere.
+      - name: Run unit tests
+        if: runner.os == 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure
 
       # Bundle all apps into the portable multi-executable tree. Reuses the
       # already-built shared `build` dir (SKIP_BUILD=1) rather than rebuilding.
