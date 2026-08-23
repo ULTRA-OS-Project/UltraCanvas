@@ -11,7 +11,9 @@
 #include <X11/Xcursor/Xcursor.h>
 #include <X11/cursorfont.h>
 #include <cairo/cairo.h>
+#ifdef HAS_LIBVIPS
 #include <vips/vips8>
+#endif
 
 #include <iostream>
 #include <vector>
@@ -20,6 +22,7 @@
 
 namespace UltraCanvas {
 
+#ifdef HAS_LIBVIPS
 // ===== IMAGE LOADING WITH LIBVIPS =====
     static vips::VImage LoadImageForCursor(const std::string & filename) {
         // Load image with libvips (supports PNG, JPEG, WebP, TIFF, etc.)
@@ -105,6 +108,17 @@ namespace UltraCanvas {
         }
         return 0;
     }
+#else
+    // Without libvips there is no image decoder for cursor files; callers fall
+    // back to the standard X cursor (SelectMouseCursorNative keeps the default
+    // shape when this returns 0).
+    Cursor UltraCanvasLinuxApplication::LoadCursorFromImage(const std::string& filename, int, int, float) {
+        if (!filename.empty()) {
+            debugOutput << "UltraCanvas Linux: custom image cursors need libvips; keeping standard cursor instead of " << filename << std::endl;
+        }
+        return 0;
+    }
+#endif // HAS_LIBVIPS
 
 
 // ===== PUBLIC API =====
