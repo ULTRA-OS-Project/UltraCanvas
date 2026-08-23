@@ -21,6 +21,21 @@
   is open, so the visible list can never come adrift from the data behind it, and
   the tabbed container leaves the list alone while it is on screen instead of
   rebuilding it (and discarding the user's filter) on every layout pass.
+- **FilerWidget: resizing the folder display no longer loses the file you were
+  looking at.** Every view reflows when the display area changes size — a
+  thumbnail grid re-wraps into a different number of columns, the List view
+  re-columns, the treemap is rebuilt — so keeping the pixel scroll offset
+  through a resize left the viewport on a completely unrelated part of a big
+  folder: dragging the tree | folder split pane, or the UltraFiler's preview
+  pane opening or closing next to it, made the selected (previewed) file jump
+  off screen. The scroll offset is now re-derived from a reference entry
+  instead of kept: the entry the viewport is anchored to is noted before the
+  relayout — the selected entry while it is on screen, otherwise the first
+  visible one — and put back at the same place in the viewport afterwards,
+  with the usual reveal in case the reflow changed its size. This runs inside
+  the layout pass for every view type, so any host that resizes the widget
+  gets it without calling anything; a relayout at an unchanged size (a rescan,
+  a view switch) keeps its own scroll position as before.
 
 #### 2026-08-22 *0.3.57*
 - **PDF view: the page inventory is laid out from its width, and the stray
