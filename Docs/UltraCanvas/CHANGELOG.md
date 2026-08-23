@@ -1,3 +1,38 @@
+#### 2026-08-23 *0.3.61*
+- **UltraFiler: dropping a file on a folder moves it, even while it is being
+  previewed.** A move is a rename, and a rename is refused while another
+  program still holds the file open — on Windows outright. The previewed file
+  was exactly that: the media preview keeps the document open (MuPDF for a PDF),
+  so dragging the previewed file onto a subfolder failed instead of moving it.
+  The Filer now drops the sources out of the selection before it starts a move,
+  which fires `onSelectionChanged` synchronously, and
+  `UltraCanvasMediaViewer::CloseFile()` makes the preview release the document
+  rather than merely stop playback — the file is free by the time the rename
+  runs. A move whose rename fails also no longer leaves the entry in two places:
+  when the copy + delete fallback cannot remove the original the copy is undone
+  and the rename's own error is what gets reported.
+- **The "cannot move / copy" dialog shows the whole failure.** It was sized for
+  its message alone, so the switches added below it squeezed the text down to a
+  sliver and the reason was unreadable — the very thing the dialog exists to
+  say. `UltraCanvasModalDialog::AutoSizeToContent()` now counts the elements
+  `AddDialogElement()` put in the message column, so every dialog with extra
+  controls (the paste conflict dialog too) grows to fit both. The Filer's
+  dialog is titled "Cannot Move" / "Cannot Copy" and spells out the operating
+  system's reason, the source path, the destination folder and the usual cause.
+  Footer buttons are now as wide as their label needs, never narrower than the
+  configured width — "Continue" used to reach the user as "Conti…".
+- **UltraFiler: Settings > Handling > Drag & Drop.** A new settings page with
+  **Drop on folder: Move files / Copy files**, persisted as
+  `handling.dragdrop.drop.on.folder` and applied live to every open tab. Ctrl
+  at the drop always copies and Shift always moves, whichever way it is set.
+  New widget API: `UltraCanvasFilerWidget::SetDropOnFolderCopies()`.
+- **UltraFiler: New > Folder, on Ctrl+F.** The file display's *New >* submenu
+  opens with **Folder**, above the document kinds and separated from them, and
+  Ctrl+F does the same from the keyboard. Both go through the new
+  `UltraCanvasFilerWidget::CreateNewFolder()`, which the command bar's "New
+  folder" button now uses as well, so all three create the folder, record it in
+  the History and open the inline rename editor identically.
+
 #### 2026-08-23 *0.3.60*
 - **UCImageRaster::GetMetadataString** reads one embedded metadata field
   (EXIF capture time, camera make/model) by its libvips name, stripping

@@ -121,6 +121,23 @@ preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 ```
 
+### Letting go of the previewed file
+
+`StopPlayback()` stops the sound; it does not release the file. A display
+backend that opens documents — the PDF engine above all — keeps the shown file
+open for as long as it holds the document, and an open handle makes a move,
+rename or delete of that file fail (on Windows it is refused outright).
+
+```cpp
+preview->CloseFile();   // show nothing, and release the file
+```
+
+`CloseFile()` stops playback, releases every backend's document and clears the
+playlist, so the file is free the moment the call returns. A host that lets the
+user act on the previewed file must call it first — the UltraFiler does exactly
+that when its preview pane folds away, which is why its folder display drops a
+file out of the selection before moving it.
+
 ## Image adjustments and saving
 
 The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`

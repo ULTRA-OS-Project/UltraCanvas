@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.15.0
-// Last Modified: 2026-08-20
+// Version: 1.16.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -2458,6 +2458,23 @@ namespace UltraCanvas {
         if (onSelectionChanged) onSelectionChanged(GetSelectedEntries());
     }
 
+    void UltraCanvasFilerWidget::DeselectPathsForModification(
+            const std::vector<std::string>& paths) {
+        if (selection.empty() || paths.empty()) return;
+        std::vector<size_t> keep;
+        keep.reserve(selection.size());
+        for (size_t idx : selection) {
+            if (idx >= entries.size()) continue;
+            if (std::find(paths.begin(), paths.end(), entries[idx].path) == paths.end())
+                keep.push_back(idx);
+        }
+        if (keep.size() == selection.size()) return;   // none of them selected
+        selection = std::move(keep);
+        // Synchronous: a host preview pane closes the file inside this call.
+        FireSelectionChanged();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::NotifyFolderModified(const std::string& folderPath) {
         if (!onFolderModified) return;
         // A file list spans many folders, so its "current folder" is not where
@@ -3012,6 +3029,11 @@ namespace UltraCanvas {
             if (onDone) onDone(false);
             return;
         }
+        // A move renames the source away, which fails while something still
+        // holds it open - the host's preview pane being the usual culprit.
+        // Letting the sources go out of the selection closes that preview
+        // before the first rename is attempted.
+        if (cut) DeselectPathsForModification(paths);
         pendingPaste = std::make_unique<PendingPaste>();
         pendingPaste->folder = std::move(folder);
         pendingPaste->sources = std::move(paths);
@@ -3101,10 +3123,31 @@ namespace UltraCanvas {
         ec.clear();
         if (pp.cut) {
             fs::rename(from, dest, ec);
-            if (ec) {   // cross-device move: copy + delete
+            if (ec) {
+                // Either the two paths are on different volumes - where a
+                // rename cannot work and copy + delete is the move - or the
+                // rename was refused outright (the usual reason: something
+                // still holds the file open). Keep the rename's own error:
+                // when the fallback fails too, that is the one that names the
+                // real cause.
+                const std::error_code renameError = ec;
+                std::error_code fallback;
+                fs::copy(from, dest, fs::copy_options::recursive, fallback);
+                if (fallback) {
+                    whyFailed = renameError.message();
+                    return false;
+                }
+                fs::remove_all(from, fallback);
+                if (fallback) {
+                    // The copy landed but the original would not go: undo the
+                    // copy, so a move that failed does not leave the entry in
+                    // both places.
+                    std::error_code cleanup;
+                    fs::remove_all(dest, cleanup);
+                    whyFailed = renameError.message();
+                    return false;
+                }
                 ec.clear();
-                fs::copy(from, dest, fs::copy_options::recursive, ec);
-                if (!ec) fs::remove_all(from, ec);
             }
         } else {
             fs::copy(from, dest, fs::copy_options::recursive, ec);
@@ -3123,14 +3166,30 @@ namespace UltraCanvas {
         const std::string name = fs::path(src).filename().string();
         const std::string kind = fs::is_directory(src, ec) ? "folder" : "file";
 
+        const bool moving = pendingPaste && pendingPaste->cut;
+        const std::string verb   = moving ? "moved" : "copied";
+        const std::string folder = pendingPaste ? pendingPaste->folder : std::string();
+
         DialogConfig cfg;
-        cfg.title = "Cannot Paste";
+        cfg.title = moving ? "Cannot Move" : "Cannot Copy";
         cfg.dialogType = DialogType::Warning;
-        cfg.message = "\"" + name + "\" could not be pasted: "
-                + (reason.empty() ? std::string("unknown error") : reason) + ".";
-        cfg.details = "The " + kind + " may be locked or in use by another program.";
-        cfg.width = 560;
-        cfg.height = 300;
+        cfg.message = "The " + kind + " \"" + name + "\" could not be " + verb + ".";
+        // The whole failure, spelled out: what was attempted, on which paths,
+        // and the operating system's own words for why it did not work. Paths
+        // go in code spans so a Windows backslash survives the Markdown pass.
+        cfg.details =
+                "**Reason:** "
+                + (reason.empty() ? std::string("unknown error") : reason) + "\n\n"
+                + "**" + (moving ? std::string("Move") : std::string("Copy")) + ":** `"
+                + src + "`\n\n"
+                + "**Into:** `"
+                + (folder.empty() ? std::string("(unknown folder)") : folder) + "`\n\n"
+                + "A " + kind + " that another program still holds open - or that is "
+                  "still being shown in a preview - cannot be " + verb + " until that "
+                  "program lets go of it. Close it and choose \"Try again\", or skip "
+                  "this " + kind + ".";
+        cfg.width = 620;
+        cfg.height = 340;
 
         auto self = this;
         const bool shown = ShowProceedSkipDialog(cfg,
@@ -3160,7 +3219,8 @@ namespace UltraCanvas {
                     self->FinishPendingPaste();
                 });
         if (!shown) {   // dialogs disabled — the old fixed behavior
-            ReportError("Paste failed for " + src + ": " + reason);
+            ReportError((moving ? std::string("Move") : std::string("Copy"))
+                        + " failed for " + src + ": " + reason);
             ++pendingPaste->next;
             pendingPaste->currentRetried = false;
             ContinuePendingPaste();
@@ -4767,6 +4827,26 @@ namespace UltraCanvas {
         Refresh();
         NotifyFolderModified();
         // Put the fresh file straight into rename mode.
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].path == dest) { StartRename(i); break; }
+        }
+    }
+
+    void UltraCanvasFilerWidget::CreateNewFolder() {
+        std::error_code ec;
+        if (!fs::is_directory(currentPath, ec)) {
+            ReportError("Cannot create a folder here: " + currentPath);
+            return;
+        }
+        const std::string dest = UniqueChildPath("New folder");
+        fs::create_directory(dest, ec);
+        if (ec) {
+            ReportError("New folder failed: " + ec.message());
+            return;
+        }
+        Refresh();
+        NotifyFolderModified();
+        // Put the fresh folder straight into rename mode, like New > <document>.
         for (size_t i = 0; i < entries.size(); ++i) {
             if (entries[i].path == dest) { StartRename(i); break; }
         }
@@ -8126,6 +8206,11 @@ namespace UltraCanvas {
         // New >
         {
             std::vector<MenuItemData> newItems;
+            // A folder first, above the document kinds and set apart from them
+            // — it is the entry this submenu is opened for most often.
+            newItems.push_back(MenuItemData::ActionWithShortcut(
+                    "Folder", "Ctrl+F", [this]() { CreateNewFolder(); }));
+            newItems.push_back(MenuItemData::Separator());
             for (const FilerNewDocumentType& t : newDocumentTypes) {
                 FilerNewDocumentType copy = t;
                 newItems.push_back(MenuItemData::Action(
@@ -8800,9 +8885,13 @@ namespace UltraCanvas {
                     return true;
                 }
                 if (draggingItems) {
-                    // Drop: Ctrl copies, a plain drop moves.
+                    // Drop: the configured default (move, unless the host set
+                    // "copy files"), with Ctrl forcing a copy and Shift a move.
+                    bool copy = dropOnFolderCopies;
+                    if (event.ctrl)       copy = true;
+                    else if (event.shift) copy = false;
                     FinishItemDrag(Point2Di(event.pointer.x, event.pointer.y),
-                                   event.ctrl);
+                                   copy);
                     pendingRenameIndex = -1;
                     return true;
                 }
@@ -8883,6 +8972,7 @@ namespace UltraCanvas {
                         case 'x': case 'X': CutSelection(); return true;
                         case 'v': case 'V': Paste(); return true;
                         case 'd': case 'D': DuplicateSelection(); return true;
+                        case 'f': case 'F': CreateNewFolder(); return true;
                         case 'p': case 'P':
                             if (onPrint) onPrint(SelectionOrAll());
                             return true;

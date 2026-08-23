@@ -69,15 +69,20 @@ components:
   without touching the folder. The pins survive restarts — they are stored
   next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
   empties them (History and Favorites are separate stores).
-- **Command bar:** New folder / New file (inline rename starts
-  automatically), Cut / Copy / Paste (system clipboard interop), Rename,
+- **Command bar:** New folder (also **Ctrl+F**, and *New > Folder* at the top
+  of the file display's context menu) / New file — inline rename starts
+  automatically — Cut / Copy / Paste (system clipboard interop), Rename,
   Delete (with confirmation), sort field + direction, view type selection,
   video preview mode, Preview toggle.
 - **File display:** everything `UltraCanvasFilerWidget` offers — sortable
   Details columns, thumbnail grids with async decoding, the size-bar and
   treemap views, hover icon menu, selection info bar, archive browsing
   (VirtualFS), compress / extract, drag & drop to and from other
-  applications.
+  applications. Dropping dragged files onto a folder shown in the view moves
+  them there; *Settings > Handling > Drag & Drop* switches that to copying.
+  Ctrl at the drop always copies and Shift always moves. A move takes the
+  dragged files out of the selection first, so the preview lets go of the file
+  before it is renamed away.
 - **Preview:** selecting a single previewable file shows it in the preview
   pane; double-click / Enter opens it there too. While nothing previewable
   is selected the pane folds away, so the folder display always gets the
@@ -128,6 +133,7 @@ running application immediately and is saved to the config file
 | Page | Setting |
 |---|---|
 | Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker` |
+| Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
 
 On the *Open prompt* page the folder button next to the path field opens the

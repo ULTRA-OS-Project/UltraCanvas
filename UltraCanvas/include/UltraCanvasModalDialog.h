@@ -1,8 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.4.0
-// Last Modified: 2026-08-03
+// Version: 3.5.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -446,6 +446,9 @@ namespace UltraCanvas {
         void CreateContentSection();
         void CreateFooterSection();
         void CreateDialogButtons();
+        // Width follows the label (never below style.buttonWidth), so a longer
+        // caption is not ellipsized away.
+        void SizeButtonToLabel(const std::shared_ptr<UltraCanvasButton>& button);
         void WireButtonCallbacks();
 
         // ===== TYPE-SPECIFIC =====

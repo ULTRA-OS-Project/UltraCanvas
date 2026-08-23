@@ -22,8 +22,8 @@
 // transparent-image backdrop and the folder tree's colours - the background
 // of the drive rows and the highlight of the selected folder. Esc closes the
 // History or Favorites view, or an open media preview.
-// Version: 1.10.0
-// Last Modified: 2026-08-22
+// Version: 1.11.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -547,6 +547,10 @@ void UltraFilerWindow::ApplySettings() {
                 : TransparentImageBackground::SolidColor);
         preview->SetTransparentColor(settings.previewTransparentColor);
     }
+    // Handling > Drag & Drop: every tab's folder display, so the choice holds
+    // for tabs that were already open when it changed.
+    for (auto& state : tabStates)
+        if (state->filer) state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
@@ -832,30 +836,18 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // The file commands work on the folder display and its selection, so each
     // of them leaves the History / Favorites views first - the change they
     // make has to be visible (an inline rename editor especially).
-    row->AddChild(MakeToolButton("ufl-new-folder", "New folder", "add-folder.svg", 0,
-            [this]() {
-        ShowBrowsingView();
-        if (!filer) return;
-        const fs::path folder(filer->GetPath());
-        fs::path candidate = folder / "New folder";
-        int n = 2;
-        std::error_code ec;
-        while (fs::exists(candidate, ec))
-            candidate = folder / ("New folder (" + std::to_string(n++) + ")");
-        fs::create_directory(candidate, ec);
-        if (ec) {
-            if (statusLabel) statusLabel->SetText("Error: cannot create folder");
-            return;
-        }
-        // The folder is created here rather than by the widget, so the
-        // History record the widget would fire has to be made here too.
-        RecordFolderInHistory(folder.string());
-        filer->Refresh();
-        const auto& entries = filer->GetEntries();
-        for (size_t i = 0; i < entries.size(); ++i) {
-            if (entries[i].path == candidate.string()) { filer->StartRename(i); break; }
-        }
-    }));
+    {
+        // Same action as the folder display's "New > Folder" (Ctrl+F): the
+        // widget creates the folder, records it through onFolderModified and
+        // opens the rename editor on it.
+        auto newFolder = MakeToolButton("ufl-new-folder", "New folder",
+                "add-folder.svg", 0, [this]() {
+            ShowBrowsingView();
+            if (filer) filer->CreateNewFolder();
+        });
+        newFolder->SetTooltip("New folder (Ctrl+F)");
+        row->AddChild(newFolder);
+    }
     row->AddChild(MakeToolButton("ufl-new-file", "New file", "add-document.svg", 0,
             [this]() {
         ShowBrowsingView();
@@ -1584,6 +1576,8 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     // With the preview up, a delete of the previewed file moves the selection
     // (and with it the preview) on to the next entry instead of emptying it.
     state->filer->SetSelectNextAfterDelete(previewEnabled);
+    // Handling > Drag & Drop: move or copy on a plain drop onto a folder.
+    state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
@@ -2325,7 +2319,10 @@ void UltraFilerWindow::UpdatePreviewPane() {
         const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
         const int prevW  = static_cast<int>(previewPane->GetWidth());
         if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
-        preview->StopPlayback();
+        // Let go of the file, not just of the playback: a document engine that
+        // still holds the previewed file open blocks moving, renaming or
+        // deleting it (on Windows an open handle refuses the rename outright).
+        preview->CloseFile();
         previewPane->RemoveChild(preview);
         split->RemovePane(previewPane.get());
         previewPane.reset();

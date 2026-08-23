@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.2.0
-// Last Modified: 2026-08-22
+// Version: 1.3.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,6 +40,12 @@ public:
     // them, and the highlight of the selected folder.
     Color treeDriveBackgroundColor = kDefaultTreeDriveBackgroundColor;
     Color treeSelectedFolderColor  = kDefaultTreeSelectedFolderColor;
+
+    // Handling > Drag & Drop: what dropping dragged files onto a folder of the
+    // file display does without a modifier - move them (the default) or copy
+    // them. Ctrl at the drop always copies and Shift always moves, whichever
+    // way this is set.
+    bool dropOnFolderCopies = false;
 
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
@@ -90,6 +96,8 @@ public:
         if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
         it = kv.find("tree.selected.folder.color");
         if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
+        it = kv.find("handling.dragdrop.drop.on.folder");
+        if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
         return true;
@@ -112,6 +120,8 @@ public:
              << FormatColor(treeDriveBackgroundColor) << "\n";
         file << "tree.selected.folder.color = "
              << FormatColor(treeSelectedFolderColor) << "\n";
+        file << "handling.dragdrop.drop.on.folder = "
+             << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
     }

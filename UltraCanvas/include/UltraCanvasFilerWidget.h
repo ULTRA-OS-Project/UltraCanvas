@@ -53,8 +53,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.15.0
-// Last Modified: 2026-08-20
+// Version: 1.16.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -446,12 +446,19 @@ namespace UltraCanvas {
         // whole selection when the pressed item is part of it — as a drag.
         // While the cursor stays inside the widget the drag is drawn in-widget
         // (badge under the cursor, drop folder highlighted) and dropping on a
-        // folder shown in the view moves the files into it (Ctrl = copy); once
-        // the cursor leaves the widget the set is handed to the native OS drag
-        // so other windows and applications can accept it. Turning this off
-        // leaves presses as plain clicks.
+        // folder shown in the view moves the files into it (see
+        // SetDropOnFolderCopies); once the cursor leaves the widget the set is
+        // handed to the native OS drag so other windows and applications can
+        // accept it. Turning this off leaves presses as plain clicks.
         void SetDragEnabled(bool enabled);
         bool IsDragEnabled() const { return dragEnabled; }
+
+        // What dropping the dragged entries onto a folder of this view does
+        // without a modifier: move them (false, the default) or copy them
+        // (true). Either way Ctrl at the drop forces a copy and Shift forces a
+        // move, so the other action is always one modifier away.
+        void SetDropOnFolderCopies(bool copies) { dropOnFolderCopies = copies; }
+        bool GetDropOnFolderCopies() const { return dropOnFolderCopies; }
 
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
@@ -618,6 +625,11 @@ namespace UltraCanvas {
         // "New >" document kinds (replaces the default seven).
         void SetNewDocumentTypes(const std::vector<FilerNewDocumentType>& types);
         void CreateNewDocument(const FilerNewDocumentType& type);
+        // Create a subfolder of the shown folder ("New folder", uniquely
+        // numbered when that name is taken) and open the inline rename editor
+        // on it, so it can be named straight away. This is what the context
+        // menu's "New > Folder" and its Ctrl+F shortcut do.
+        void CreateNewFolder();
 
         // "Open with >" applications. The submenu lists the applications the
         // OS has registered for the selected files (via
@@ -896,7 +908,9 @@ namespace UltraCanvas {
         // whole selection when the press landed inside it — is picked up:
         //   * inside the widget the drag is drawn here (a badge under the
         //     cursor, the folder below it highlighted) and a drop on a folder
-        //     of the view moves the files into it (Ctrl drops a copy);
+        //     of the view moves the files into it - or copies them, when the
+        //     host chose that default (SetDropOnFolderCopies); Ctrl at the
+        //     drop always copies, Shift always moves;
         //   * crossing the widget's border does NOT end the drag: the badge
         //     keeps following the cursor over the rest of the window (drawn
         //     through the window's drag overlay, since a widget cannot paint
@@ -913,6 +927,7 @@ namespace UltraCanvas {
         // so dragging a file does not fire onSelectionChanged and does not
         // re-target an attached preview.
         bool dragEnabled = true;
+        bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
@@ -1535,6 +1550,13 @@ namespace UltraCanvas {
         void FinishMarquee();              // release: keep the result
         void CancelMarquee();              // Escape: restore the old selection
         void FireSelectionChanged();
+        // Drop `paths` out of the selection (firing onSelectionChanged) before
+        // the widget moves them. A host that feeds a preview pane from the
+        // selection - the UltraFiler media preview - still has the file open
+        // through its document engine, and an open handle makes the move fail
+        // on Windows. The notification is synchronous, so the preview is closed
+        // by the time the move runs.
+        void DeselectPathsForModification(const std::vector<std::string>& paths);
         // Reports a user-made change to onFolderModified. An empty argument
         // means the displayed folder (skipped in file-list mode, where the
         // displayed folder is not where the change landed).
