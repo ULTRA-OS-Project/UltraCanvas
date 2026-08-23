@@ -1,4 +1,26 @@
 #### 2026-08-22 *0.3.58*
+- **TabbedContainer: the overflow tab list showed only part of the tabs, and
+  picking one did nothing.** With more tabs than fit the bar (UltraTexter with 47
+  open files), the "▼ 47" dropdown opened a list that ran off the bottom of the
+  window: `UltraCanvasAutoComplete` sized its popup as `itemCount * itemHeight`
+  with no regard for the window, so everything below the window edge was clipped
+  away — unseen, unscrollable and unclickable — and no scrollbar appeared,
+  because the ListView believed it was tall enough for all its rows. The popup is
+  now clamped to the room actually available (below the field, or above it when
+  there is more space there, and kept inside the window horizontally, as the
+  Dropdown already did), so the surplus rows are simply scrolled to and every tab
+  is reachable. `AutoCompleteStyle::maxVisibleItems` is now an upper bound rather
+  than a promise of height.
+- Clicking an entry in that list also did nothing at all. The tabbed container
+  refills the search list from `Arrange()`, and opening the popup invalidates the
+  layout — so on the very next frame `SetItems()` cleared the AutoComplete's
+  filtered vector while the ListView kept rendering its 47 rows. Every click then
+  resolved against an empty vector and was dropped on the floor by
+  `SelectItem()`'s bounds check, which is why the popup just closed and the tab
+  bar never moved. `SetItems()` now re-filters instead of clearing when the popup
+  is open, so the visible list can never come adrift from the data behind it, and
+  the tabbed container leaves the list alone while it is on screen instead of
+  rebuilding it (and discarding the user's filter) on every layout pass.
 - **FilerWidget: resizing the folder display no longer loses the file you were
   looking at.** Every view reflows when the display area changes size — a
   thumbnail grid re-wraps into a different number of columns, the List view
