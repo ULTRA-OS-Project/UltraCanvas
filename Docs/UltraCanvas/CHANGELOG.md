@@ -1,4 +1,4 @@
-#### 2026-08-22 *0.3.57*
+#### 2026-08-23 *0.3.59*
 - **UltraFiler: the folder tree's colours are settings.** The drives in the
   tree — the drive roots on Windows, "File System" and every mounted volume
   under `/media` and `/mnt` elsewhere — now carry a background colour of
@@ -22,6 +22,49 @@
   now parsed first (`pango_parse_markup`) and a string that is not markup is
   laid out as literal text instead of vanishing.
 
+#### 2026-08-22 *0.3.58*
+- **FilerWidget: resizing the folder display no longer loses the file you were
+  looking at.** Every view reflows when the display area changes size — a
+  thumbnail grid re-wraps into a different number of columns, the List view
+  re-columns, the treemap is rebuilt — so keeping the pixel scroll offset
+  through a resize left the viewport on a completely unrelated part of a big
+  folder: dragging the tree | folder split pane, or the UltraFiler's preview
+  pane opening or closing next to it, made the selected (previewed) file jump
+  off screen. The scroll offset is now re-derived from a reference entry
+  instead of kept: the entry the viewport is anchored to is noted before the
+  relayout — the selected entry while it is on screen, otherwise the first
+  visible one — and put back at the same place in the viewport afterwards,
+  with the usual reveal in case the reflow changed its size. This runs inside
+  the layout pass for every view type, so any host that resizes the widget
+  gets it without calling anything; a relayout at an unchanged size (a rescan,
+  a view switch) keeps its own scroll position as before.
+
+#### 2026-08-22 *0.3.57*
+- **PDF view: the page inventory is laid out from its width, and the stray
+  page badge is gone.** Every thumbnail slot in the strip used to be a fixed
+  `thumbHeight` (180 px) tall whatever the page was, so a page drawn to fit the
+  strip's width sat in a slot far taller than itself — bands of empty space
+  above and below each page, and only a couple of thumbs visible at a time in a
+  narrow view (the media viewer / UltraFiler preview). The strip now derives
+  everything from its width: the effective strip width (still capped at 1/4 of
+  the view) minus `PDFViewStyle::thumbMargin` on both sides is the thumbnail
+  width, and each thumbnail is as tall as *its own* page's aspect ratio
+  requires, so pages fill their slots exactly and a document mixing page sizes
+  gets a correctly-sized thumb for each. `thumbMaxHeight` caps extreme formats
+  by narrowing them rather than stretching them. Page numbers — the translucent
+  overlay and the caption alike — are sized from the thumbnail they belong to
+  (`thumbOverlayNumberHeight`, and the new `thumbLabelHeight` for captions), so
+  they shrink with it instead of dwarfing a small page. Thumbnails render at the
+  size the layout asks for and re-render when the strip is resized; the page
+  aspect ratios are cached per document, so a resize is arithmetic rather than a
+  round trip to the engine for every page. The black "N / M" pill floating over
+  the top-right of the page is removed: it was not interactive and only repeated
+  what the host's status bar (media viewer, UltraFiler) already shows.
+  `PDFViewStyle::thumbHeight` is gone, replaced by `thumbMargin` /
+  `thumbMaxHeight`. The page's own margin to the edges of the display area
+  (`pageMargin`) is halved, 24 px to 12 px, so a fitted page uses the space it
+  is given instead of floating in it — most visible on a single-page document,
+  where there is no thumbnail strip beside it.
 #### 2026-08-22 *0.3.56*
 - **New application: UltraCleaner.** Finds and removes the files macOS,
   Windows and Linux leave behind — temporary files, application and browser
