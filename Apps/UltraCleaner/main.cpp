@@ -58,6 +58,7 @@ void PrintUsage(const char* programName) {
         "Usage: %s [options]\n"
         "\n"
         "  (no options)      Open the UltraCleaner window\n"
+        "  <folder>          Open the window on that photo album\n"
         "  --scan            List what could be removed and exit\n"
         "  --clean           Act on what a scan finds (simulates by default)\n"
         "      --trash       …by moving it to the trash / recycle bin\n"
@@ -240,6 +241,7 @@ int main(int argc, char* argv[]) {
     bool confirmed = false;
     bool includeAll = false;
     std::string albumFolder;
+    bool openAlbumInWindow = false;
     UltraCleaner::SimilarityLevel level = UltraCleaner::SimilarityLevel::Moments;
     int64_t withinSeconds = 0;
 
@@ -295,6 +297,11 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             withinSeconds = std::atoll(argv[++i]);
+        } else if (!arg.empty() && arg[0] != '-') {
+            // A bare path opens the window on that album, so the app can be
+            // started from a file manager or with a folder on the command line.
+            albumFolder = arg;
+            openAlbumInWindow = true;
         } else {
             std::printf("Unknown argument: %s\nUse --help for usage.\n",
                         arg.c_str());
@@ -302,7 +309,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (!albumFolder.empty()) {
+    if (!albumFolder.empty() && !openAlbumInWindow) {
         return RunAlbum(albumFolder, level, withinSeconds);
     }
 
@@ -341,7 +348,7 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraCleaner::UltraCleanerWindow window;
-        if (!window.Initialize()) {
+        if (!window.Initialize(openAlbumInWindow ? albumFolder : std::string())) {
             debugOutput << "Failed to create the UltraCleaner window" << std::endl;
             return EXIT_FAILURE;
         }

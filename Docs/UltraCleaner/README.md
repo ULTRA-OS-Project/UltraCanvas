@@ -42,6 +42,99 @@ cmake --build . --target UltraCleanerEngineTests
 ctest -R UltraCleanerEngine
 ```
 
+## Photo albums
+
+Alongside the rule-driven system clean-up, UltraCleaner finds pictures in a
+photo album that are the same, or shots of the same moment. This half is
+content-driven rather than path-driven: it decodes what it finds and compares
+it, so it lives in its own engine (`UltraCleanerAlbum`) which — unlike the
+rule engine — links the UltraCanvas core for image decoding.
+
+### Two questions, kept apart
+
+| Kind | What it means | Certainty |
+|---|---|---|
+| Identical files | The same bytes | A fact. Removing one loses nothing. |
+| Identical images | Different files, same decoded pixels | A fact. |
+| Similar | Alike to within the chosen level | A judgement. Never pre-selected. |
+
+### How similarity is measured
+
+Each picture reduces to four signals taken from one small decode:
+
+| Signal | What it captures |
+|---|---|
+| **pHash** (64 bits) | Sign pattern of the low-frequency DCT coefficients — composition. Survives rescaling and re-encoding. |
+| **dHash** (64 bits) | Horizontal brightness gradients. Cheap, kept for reporting. |
+| **Colour grid** (4×4) | Mean colour per cell. pHash is blind to colour; a global histogram is blind to *where* the colour is. |
+| **Sharpness** | Laplacian variance, used to choose a keeper — not to compare. |
+
+**Both pHash and the colour grid must agree.** Either alone is not enough:
+measured on a 60-photograph reference album, pHash could not separate a true
+burst member from an unrelated photo of the same person — both sat 14 bits
+away — while the colour grid put them at 100% and 81%.
+
+The grid is scored as the **fraction of cells that agree**, not a summed
+distance. A burst often has a changing background behind a fixed subject —
+people walking past — which spoils three or four cells while the rest hold. A
+sum would be dominated by exactly the part that legitimately moved.
+
+### The three levels
+
+| Level | pHash | Grid | What it finds |
+|---|---|---|---|
+| **Duplicates only** | ≤ 6 | ≥ 90% | The same photo again: a copy, a rescale, a small edit |
+| **Same moment** (default) | ≤ 14 | ≥ 85% | A burst, or several tries at one picture |
+| **Same scene** | ≤ 22 | ≥ 80% | Anything of the same scene or subject |
+
+On the reference album, *Same moment* reproduced every known group with no
+false positive; *Same scene* added two plausible groups and one contaminated
+one. The window between them is narrow — a true pair sat at 88% grid
+agreement and a false one at 81% — so these numbers are a working setting
+measured on one album, not a universal constant. Re-check them against a
+larger library before trusting them to delete anything.
+
+**Changing the level costs no rescan.** Describing the pictures is the
+expensive part and does not depend on the level, so re-grouping is only the
+comparisons — the UI offers it as an instant control.
+
+### Screenshots are excluded from similarity
+
+Screenshots share their whole layout with every other capture of the same
+application and differ only in text, which these descriptors discard. On a
+real set of 73 screenshots, two unrelated bank transfers scored **8 bits
+apart** while the same transfer captured twice, one of them cropped, scored
+**36**. The ranking inverts, so no threshold helps. They are classified out —
+by filename, by the absence of any EXIF camera tag, and by lossless formats at
+exact screen widths — and matched only when byte-identical.
+
+### Known limitations
+
+- **Cropping defeats pHash.** A head-and-shoulders crop of a portrait sits
+  more than 26 bits from its original. pHash describes the whole frame;
+  catching crops needs local keypoint matching, which this does not do.
+- **Capture time cannot be relied on.** Every photograph in the reference
+  album carried either no EXIF or a zeroed `0000:00:00` timestamp. The
+  optional time gate (`--within`) therefore applies *only* where both
+  pictures know when they were taken — a missing timestamp never excludes a
+  match.
+
+### Using it
+
+```bash
+UltraCleaner --album ~/Pictures                      # list the groups
+UltraCleaner --album ~/Pictures --level duplicates   # only certain matches
+UltraCleaner --album ~/Pictures --level scenes       # cast wider
+UltraCleaner --album ~/Pictures --within 600         # …taken within 10 minutes
+UltraCleaner ~/Pictures                              # open the window on it
+```
+
+In the window, the **Photo albums** tab reviews by *group*, not by file: each
+group shows every picture in it with the suggested keeper marked, and one
+checkbox for the whole group. Nothing is ticked for you. Removal goes through
+the same Remover as the rest of the app, so it inherits the same PathGuard,
+the same trash support and the same simulate-by-default posture.
+
 ## Using it
 
 ### The window

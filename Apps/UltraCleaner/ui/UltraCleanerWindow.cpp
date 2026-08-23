@@ -8,6 +8,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasGroupBox.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 
 #include <cstring>
@@ -60,7 +61,7 @@ UltraCleanerWindow::~UltraCleanerWindow() {
     }
 }
 
-bool UltraCleanerWindow::Initialize() {
+bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     WindowConfig config;
     config.title  = "UltraCleaner";
     config.width  = static_cast<int>(kWindowWidth);
@@ -80,9 +81,51 @@ bool UltraCleanerWindow::Initialize() {
         PlatformName(CurrentPlatform()) + " · " + std::to_string(rules.size()) +
         " cleanup rules · nothing is removed until you say so"));
 
-    window_->AddChild(BuildToolbar());
+    // Two jobs, two tabs: rule-driven system junk, and photo albums, which
+    // are content-driven and reviewed as groups of thumbnails.
+    auto tabs = CreateTabbedContainer("ucTabs", 8, 44, kWindowWidth - 16,
+                                      kWindowHeight - 120);
+    tabs->AddTab("System junk", BuildRulePage());
+    tabs->AddTab("Photo albums", BuildAlbumPage());
+    if (!albumFolder.empty()) {
+        albumView_.SetFolder(albumFolder);
+        albumView_.SetStatus("Ready — press “Scan” to look through " +
+                             albumFolder + ".");
+        tabs->SetActiveTab(1);
+    } else {
+        tabs->SetActiveTab(0);
+    }
+    window_->AddChild(tabs);
 
-    auto categories = CreateGroupBox("ucCategoryBox", 12, 92, 404, 566,
+
+    // Worker threads queue their results here; this timer applies them on the
+    // UI thread.
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+        uiTimer_ = app->StartTimer(100, /*periodic=*/true,
+                                   [this](TimerId) { DrainUiQueue(); });
+    }
+    RefreshSummary();
+    return true;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildAlbumPage() {
+    auto page = albumView_.Build(kWindowWidth - 40, kWindowHeight - 170);
+    albumView_.onChooseFolder = [this]() { ChooseAlbumFolder(); };
+    albumView_.onScan         = [this]() { StartAlbumScan(); };
+    albumView_.onStop         = [this]() { albumScanner_.RequestCancel(); };
+    albumView_.onClean        = [this]() { CleanAlbumSelection(); };
+    albumView_.onLevelChanged = [this](SimilarityLevel level) { RegroupAlbum(level); };
+    albumView_.onSelectionChanged = [this]() { RefreshAlbumSummary(); };
+    return page;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRulePage() {
+    auto page = CreateContainer("ucRulePage", 0, 0, kWindowWidth - 40,
+                                kWindowHeight - 170);
+
+    page->AddChild(BuildToolbar());
+
+    auto categories = CreateGroupBox("ucCategoryBox", 12, 48, 404, 500,
                                      "What to clean");
     // A GroupBox folds its title band into its own padding, so its children
     // are laid out rather than positioned: an absolute y would put them
@@ -101,19 +144,18 @@ bool UltraCleanerWindow::Initialize() {
     categoryPanel_.onCategoryToggled = [this](CleanCategory category, bool on) {
         ApplyCategorySelection(category, on);
     };
-    window_->AddChild(categories);
+    page->AddChild(categories);
+    page->AddChild(BuildDetailPanel());
 
-    window_->AddChild(BuildDetailPanel());
-    BuildStatusBar();
+    summaryLabel_ = CreateLabel("ucSummary", 12, 556, 1000, 24,
+                                "Nothing scanned yet — press “Scan”.");
+    page->AddChild(summaryLabel_);
 
-    // Worker threads queue their results here; this timer applies them on the
-    // UI thread.
-    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
-        uiTimer_ = app->StartTimer(100, /*periodic=*/true,
-                                   [this](TimerId) { DrainUiQueue(); });
-    }
-    RefreshSummary();
-    return true;
+    statusLabel_ = CreateLabel("ucStatus", 12, 582, 1000, 40, "");
+    statusLabel_->SetWrap(TextWrap::WrapWord);
+    statusLabel_->SetFontSize(11);
+    page->AddChild(statusLabel_);
+    return page;
 }
 
 void UltraCleanerWindow::Show() {
@@ -121,7 +163,7 @@ void UltraCleanerWindow::Show() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
-    auto bar = CreateContainer("ucToolbar", 12, 48, 1032, 36);
+    auto bar = CreateContainer("ucToolbar", 12, 6, 1000, 36);
     bar->layout.SetFlexRow()
                .SetFlexGap(8)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -165,7 +207,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
-    auto box = CreateGroupBox("ucDetailBox", 428, 92, 616, 566,
+    auto box = CreateGroupBox("ucDetailBox", 428, 48, 590, 500,
                               "Exactly what would go");
     box->layout.SetFlexColumn()
                .SetFlexGap(6)
@@ -234,17 +276,6 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
     return box;
 }
 
-void UltraCleanerWindow::BuildStatusBar() {
-    summaryLabel_ = CreateLabel("ucSummary", 16, 668, 1020, 24,
-                                "Nothing scanned yet.");
-    window_->AddChild(summaryLabel_);
-
-    statusLabel_ = CreateLabel("ucStatus", 16, 694, 1020, 44, "");
-    statusLabel_->SetWrap(TextWrap::WrapWord);
-    statusLabel_->SetFontSize(11);
-    window_->AddChild(statusLabel_);
-}
-
 // ===== ACTIONS =====
 
 void UltraCleanerWindow::StartScan() {
@@ -266,6 +297,7 @@ void UltraCleanerWindow::StartScan() {
                 // Called once per item found: overwrite one slot instead of
                 // queueing a closure the UI would only throw away.
                 std::lock_guard<std::mutex> lock(progressMutex_);
+                pendingStatusIsAlbum_ = false;
                 pendingStatus_ = "Scanning " + progress.currentRuleTitle + " — " +
                                  std::to_string(progress.itemsFound) +
                                  " items, " + FormatByteSize(progress.bytesFound) +
@@ -355,6 +387,7 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
             report, options,
             [this](size_t done, size_t total, const std::string& path) {
                 std::lock_guard<std::mutex> lock(progressMutex_);
+                pendingStatusIsAlbum_ = false;
                 pendingStatus_ = "Cleaning " + std::to_string(done) + " of " +
                                  std::to_string(total) + " — " + path;
                 pendingStatusDirty_ = true;
@@ -418,6 +451,172 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
             }
         });
     }).detach();
+}
+
+// ===== ALBUM =====
+
+void UltraCleanerWindow::ChooseAlbumFolder() {
+    FileDialogOptions options;
+    options.title = "Choose a folder of photos";
+    options.parentWindow = window_.get();
+    UltraCanvasFileLoader::SelectFolderDialog(
+        options, [this](DialogResult result, const std::string& folder) {
+            if (result != DialogResult::OK || folder.empty()) return;
+            albumView_.SetFolder(folder);
+            albumView_.SetStatus("Ready — press “Scan” to look through "
+                                 + folder + ".");
+        });
+}
+
+void UltraCleanerWindow::StartAlbumScan() {
+    if (albumView_.Folder().empty()) {
+        UltraCanvasDialogManager::ShowInformation(
+            "Choose a folder of photos first.", "Nothing to scan", nullptr,
+            window_.get());
+        return;
+    }
+    if (working_.exchange(true)) return;
+
+    albumView_.SetBusy(true);
+    albumView_.SetStatus("Reading pictures…");
+    albumReport_ = AlbumScanReport{};
+    albumPictures_.clear();
+    albumView_.SetReport(albumReport_);
+
+    AlbumScanOptions options;
+    options.level = albumView_.Level();
+
+    albumScanner_.ResetCancel();
+    std::thread([this, options, folder = albumView_.Folder()]() {
+        AlbumScanReport report = albumScanner_.Scan(
+            folder, options, [this](const AlbumScanProgress& progress) {
+                std::lock_guard<std::mutex> lock(progressMutex_);
+                pendingStatus_ = "Reading " +
+                                 std::to_string(progress.filesDescribed) +
+                                 " of " + std::to_string(progress.filesSeen) +
+                                 " — " + progress.currentPath;
+                pendingStatusDirty_ = true;
+                pendingStatusIsAlbum_ = true;
+            });
+        auto pictures = albumScanner_.Described();
+
+        RunOnUiThread([this, report = std::move(report),
+                       pictures = std::move(pictures)]() mutable {
+            albumReport_ = std::move(report);
+            albumPictures_ = std::move(pictures);
+            working_ = false;
+            albumView_.SetBusy(false);
+            albumView_.SetReport(albumReport_);
+            RefreshAlbumSummary();
+        });
+    }).detach();
+}
+
+void UltraCleanerWindow::RegroupAlbum(SimilarityLevel level) {
+    if (albumPictures_.empty()) return;   // nothing scanned yet
+    // Re-levelling costs only the comparisons — the pictures are already
+    // described — so this is instant and needs no worker thread.
+    AlbumScanOptions options;
+    options.level = level;
+    albumReport_ = AlbumScanner::Regroup(albumPictures_, options);
+    albumView_.SetReport(albumReport_);
+    RefreshAlbumSummary();
+}
+
+void UltraCleanerWindow::RefreshAlbumSummary() {
+    const auto selected = albumView_.SelectedGroups();
+    uint64_t bytes = 0;
+    size_t pictures = 0;
+    for (size_t index : selected) {
+        if (index >= albumReport_.groups.size()) continue;
+        bytes += albumReport_.groups[index].RecoverableBytes();
+        pictures += albumReport_.groups[index].members.size() - 1;
+    }
+
+    std::string text =
+        std::to_string(albumReport_.picturesScanned) + " pictures (" +
+        std::to_string(albumReport_.photographs) + " photos, " +
+        std::to_string(albumReport_.screenshots) + " screenshots) · " +
+        std::to_string(albumReport_.groups.size()) + " groups";
+    if (albumReport_.screenshots > 0) {
+        text += " · screenshots are grouped only when byte-identical";
+    }
+    if (!selected.empty()) {
+        text += "  —  ticked: " + std::to_string(selected.size()) +
+                " groups, " + std::to_string(pictures) + " pictures, " +
+                FormatByteSize(bytes) + " recoverable";
+    }
+    albumView_.SetStatus(text);
+}
+
+void UltraCleanerWindow::CleanAlbumSelection() {
+    if (working_) return;
+    const auto selected = albumView_.SelectedGroups();
+    if (selected.empty()) {
+        UltraCanvasDialogManager::ShowInformation(
+            "Tick the groups you want cleaned first. One picture of each "
+            "group is always kept.",
+            "Nothing ticked", nullptr, window_.get());
+        return;
+    }
+
+    const ScanReport removal = ToRemovalReport(albumReport_, selected);
+    if (removal.items.empty()) return;
+
+    const int index = modeDropdown_ ? modeDropdown_->GetSelectedIndex() : 0;
+    const RemovalMode mode =
+        (index >= 0 && index < 3) ? kModes[index] : RemovalMode::Simulate;
+
+    const std::string what = std::to_string(removal.items.size()) +
+                             " pictures (" +
+                             FormatByteSize(removal.totalBytes) + ")";
+    if (mode == RemovalMode::Simulate) {
+        UltraCanvasDialogManager::ShowInformation(
+            "Simulation: " + what + " would go, one picture kept from each of "
+            + std::to_string(selected.size()) + " groups.\n\nNothing was "
+            "changed. Pick “Move to Trash” or “Delete permanently” on the "
+            "System junk tab to act on it.",
+            "Simulation finished", nullptr, window_.get());
+        return;
+    }
+
+    const std::string message =
+        mode == RemovalMode::MoveToTrash
+            ? "Move " + what + " to the trash?\n\nOne picture is kept from "
+              "each ticked group. They stay recoverable until the trash is "
+              "emptied."
+            : "Permanently delete " + what + "?\n\nOne picture is kept from "
+              "each ticked group. This cannot be undone.";
+
+    UltraCanvasDialogManager::ShowConfirmation(
+        message, mode == RemovalMode::MoveToTrash ? "Move to Trash"
+                                                  : "Delete permanently",
+        [this, mode, removal](bool confirmed) {
+            if (!confirmed) return;
+            if (working_.exchange(true)) return;
+            albumView_.SetBusy(true);
+
+            RemovalOptions options;
+            options.mode = mode;
+            remover_.ResetCancel();
+            std::thread([this, options, removal]() {
+                RemovalReport result = remover_.Remove(removal, options);
+                RunOnUiThread([this, result, options]() {
+                    working_ = false;
+                    albumView_.SetBusy(false);
+                    std::string done =
+                        std::to_string(result.removedItems) + " pictures " +
+                        (options.mode == RemovalMode::MoveToTrash
+                             ? "moved to the trash" : "removed") +
+                        ", " + FormatByteSize(result.freedBytes) + " freed.";
+                    albumView_.SetStatus(done);
+                    UltraCanvasDialogManager::ShowInformation(
+                        done + "\n\nRescan the folder to see what is left.",
+                        "Cleanup finished", nullptr, window_.get());
+                });
+            }).detach();
+        },
+        window_.get());
 }
 
 // ===== VIEW UPDATES =====
@@ -587,15 +786,20 @@ void UltraCleanerWindow::DrainUiQueue() {
     {
         std::string status;
         bool dirty = false;
+        bool forAlbum = false;
         {
             std::lock_guard<std::mutex> lock(progressMutex_);
             dirty = pendingStatusDirty_;
             if (dirty) {
                 status.swap(pendingStatus_);
+                forAlbum = pendingStatusIsAlbum_;
                 pendingStatusDirty_ = false;
             }
         }
-        if (dirty) SetStatus(status);
+        if (dirty) {
+            if (forAlbum) albumView_.SetStatus(status);
+            else SetStatus(status);
+        }
     }
 
     std::vector<std::function<void()>> actions;

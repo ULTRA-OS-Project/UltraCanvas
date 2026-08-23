@@ -83,6 +83,7 @@ add_executable(UltraCleaner
     main.cpp
     ui/UltraCleanerWindow.cpp
     ui/UltraCleanerCategoryPanel.cpp
+    ui/UltraCleanerAlbumView.cpp
 )
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols

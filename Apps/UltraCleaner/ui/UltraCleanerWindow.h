@@ -13,8 +13,10 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCleanerAlbumView.h"
 #include "UltraCleanerCategoryPanel.h"
 
+#include "UltraCleanerAlbumScanner.h"
 #include "UltraCleanerRemover.h"
 #include "UltraCleanerScanner.h"
 #include "UltraCleanerTypes.h"
@@ -23,6 +25,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasColumnsTreeView.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasWindow.h"
 
 #include <atomic>
@@ -38,14 +41,17 @@ class UltraCleanerWindow {
 public:
     ~UltraCleanerWindow();
 
-    bool Initialize();
+    // `albumFolder`, when given, opens the Photo albums tab on that folder
+    // so the app can be started from a file manager or the command line.
+    bool Initialize(const std::string& albumFolder = "");
     void Show();
 
 private:
     // ===== CONSTRUCTION =====
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRulePage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAlbumPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildDetailPanel();
-    void BuildStatusBar();
 
     // ===== ACTIONS =====
     void StartScan();
@@ -74,6 +80,13 @@ private:
     size_t SelectedItemCount() const;
     uint64_t SelectedBytes() const;
 
+    // ===== ALBUM =====
+    void ChooseAlbumFolder();
+    void StartAlbumScan();
+    void RegroupAlbum(SimilarityLevel level);
+    void CleanAlbumSelection();
+    void RefreshAlbumSummary();
+
     // ===== THREAD PLUMBING =====
     void RunOnUiThread(std::function<void()> action);
     void DrainUiQueue();
@@ -93,6 +106,11 @@ private:
     Scanner scanner_;
     Remover remover_;
     ScanReport report_;
+
+    AlbumView albumView_;
+    AlbumScanner albumScanner_;
+    AlbumScanReport albumReport_;
+    std::vector<ImageDescriptor> albumPictures_;
     // The category the filter dropdown is on; CategoryCount means "all".
     CleanCategory filterCategory_ = CleanCategory::CategoryCount;
     std::vector<CleanCategory> filterCategories_;
@@ -105,6 +123,8 @@ private:
     std::mutex progressMutex_;
     std::string pendingStatus_;
     bool pendingStatusDirty_ = false;
+    // Which tab's status line the pending text belongs to.
+    bool pendingStatusIsAlbum_ = false;
     std::atomic<bool> working_{false};
     UltraCanvas::TimerId uiTimer_ = 0;
 };

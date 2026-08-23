@@ -1,3 +1,49 @@
+#### 2026-08-23 *0.3.57*
+- **UltraCleaner finds duplicate and near-duplicate photographs.** A second
+  half to the app: alongside rule-driven system junk, a **Photo albums**
+  tab that groups pictures which are the same, or shots of the same
+  moment, and proposes which one of each group to keep. Reviewed as
+  groups of thumbnails rather than a file list, because deciding one by
+  one across a thousand photos is not a thing anyone finishes.
+  - **Two questions kept apart.** Byte-identical files and files whose
+    decoded pixels match are facts — removing one loses nothing. Shots
+    that merely look alike are judgements, never pre-selected.
+  - **Two signals, both required.** Each picture reduces to a DCT pHash
+    (composition, survives rescaling), a dHash, a 4×4 grid of mean
+    colours and Laplacian variance. pHash and the colour grid must both
+    agree, because either alone is not enough: on a 60-photograph
+    reference album pHash could not separate a true burst member from an
+    unrelated photo of the same person — both 14 bits away — while the
+    colour grid put them at 100% and 81%. The grid scores the *fraction*
+    of cells that agree rather than a summed distance, so a changing
+    background behind a fixed subject cannot veto a real match.
+  - **Three levels**, measured rather than guessed: Duplicates only
+    (6 bits / 90%), Same moment (14 / 85%, the default, which reproduced
+    every known group with no false positive) and Same scene (22 / 80%).
+    Re-levelling costs only the comparisons, so the control is instant
+    rather than a rescan.
+  - **Screenshots are excluded from similarity.** They share their whole
+    layout with every other capture of the same application and differ
+    only in text, which these descriptors discard: on a real set two
+    unrelated bank transfers scored 8 bits apart while the same transfer
+    captured twice, one cropped, scored 36. The ranking inverts, so no
+    threshold helps. They are matched only when byte-identical.
+  - **Keeper selection prefers resolution over sharpness.** Downscaling
+    raises Laplacian variance, so a small web copy looks "sharper" than
+    its original; ranking on sharpness first made the scanner propose
+    keeping a 479×670 copy over the 1197×1662 it came from.
+  - Removal reuses the existing Remover, inheriting the PathGuard, trash
+    support and simulate-by-default posture. CLI: `--album <folder>`
+    with `--level` and `--within`; a bare folder path opens the window on
+    that album.
+- **UCImageRaster::GetMetadataString** reads one embedded metadata field
+  (EXIF capture time, camera make/model) by its libvips name, stripping
+  the trailing annotation and returning "" when absent. Nothing in
+  UltraCanvas exposed EXIF before. Callers must treat "" as *unknown*:
+  every photograph in the reference album carried either no EXIF or a
+  zeroed timestamp, so UltraCleaner's time gate only applies where both
+  pictures actually know when they were taken.
+
 #### 2026-08-22 *0.3.58*
 - **TabbedContainer: the overflow tab list showed only part of the tabs, and
   picking one did nothing.** With more tabs than fit the bar (UltraTexter with 47
