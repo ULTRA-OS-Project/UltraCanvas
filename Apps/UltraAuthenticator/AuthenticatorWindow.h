@@ -72,6 +72,7 @@ private:
     void ClearRows();
     void RefreshCodes();
     void OpenAddAccountDialog();
+    void OpenScanAccountDialog();
     void OpenEditAccountDialog(const std::string& key);
     void OpenRevealSecretDialog(const std::string& key);
     void OpenChangePasswordDialog();

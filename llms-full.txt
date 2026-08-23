@@ -51210,9 +51210,9 @@ FILE: Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md
 **Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
 (§2.2b), the OTP engine (§2.2d), the app shell (§4, build order step 4) and
 account editing — rename, code settings, master-password rotation and gated
-seed reveal (§3.5, §3.5a) — are built and tested. In-memory QR decode (§2.2c)
-— and so the camera scan flow — is the remaining functional gap; screen-capture
-protection (§2.2e) remains impossible on X11.
+seed reveal (§3.5, §3.5a), and in-memory QR decode with the camera scan flow
+(§2.2c) — are built and tested. Screen-capture protection (§2.2e) remains
+impossible on X11.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
 **Date:** 2026-08-10 (implementation notes added 2026-08-21)
@@ -51319,12 +51319,47 @@ UBSan.
 without a password, the vault refuses to open rather than falling back to
 plaintext — the failure this whole line of work started from.
 
-**(c) No in-memory QR decode.** `ScanQRCodeFile` takes a file path. Live
-camera scanning would otherwise mean writing every preview frame to disk —
-which for an authenticator would write *the secret* to disk in image form.
-→ Work item: add `QRCodeUtils::ScanQRCodeImage(const UCImage&)` (or a
-`UCVideoFramePtr` overload) that feeds zbar from memory, and wire it to
-`onPreviewFrame`.
+**(c) ~~No in-memory QR decode.~~ — DONE.** `ScanQRCodeFile` takes a file
+path, so camera scanning through it would have meant writing every preview
+frame to disk — which for an authenticator writes *the secret* to disk in
+image form.
+
+`QRCodeUtils::ScanQRCodeImage` now decodes from pixels already in memory,
+taking a buffer plus a pixel format (Grayscale8, RGB24, RGBA32, BGRA32) and a
+stride, with a `UCVideoFrame` overload for the camera path. Both it and the
+file path share one binarize-and-scan helper, so an image cannot decode
+through one and not the other.
+
+The signature deviates from the sketch above. `ScanQRCodeImage(const UCImage&)`
+is not possible: `UCImageRaster` is declared in `libspecific/Cairo/ImageCairo.h`,
+so naming it in a public plugin header would pull a backend type into that
+surface and break the non-Cairo platforms. The primitive therefore takes raw
+pixels and the caller states their layout.
+
+Verified by `Tests/QRCodeScanImageTests.cpp` (26 checks): round trip through
+every pixel layout, padded row strides, refusal of null buffers and of a
+stride shorter than one row, and noise decoding to nothing.
+
+**The camera flow is wired** (`ScanAccountDialog`). It opens the catalogue's
+`UltraCanvasVideoRecorderElement` for preview and never calls `Start()`, so no
+frame reaches a file. Frames are pulled by the dialog's own 5 Hz timer calling
+`GetPreviewFrame()` rather than by hooking `onPreviewFrame`, whose thread is
+undocumented — a decode running on a capture thread would be touching the
+vault from somewhere the rest of the app does not expect. Scanned URIs go
+through the same `AccountStore::AddFromUri` as typed keys, so a hostile QR
+faces the same parser and gets no laxer path into the vault.
+
+Building this surfaced a defect in the recorder element: its record button was
+laid out, drawn and hit-tested unconditionally, so a preview-only consumer
+could not remove it. A scanner that promises nothing is saved must not offer a
+control that starts writing video. `VideoRecorderStyle::showRecordButton` now
+suppresses it in all three places; it defaults to true, so existing consumers
+are unchanged.
+
+Not verified end to end: this build environment has no camera, so the capture
+and poll loop are exercised only by their graceful-degradation path ("No
+camera is available"). The decode itself — the `UCVideoFrame` overload the
+dialog calls — is covered by the unit tests above.
 
 **(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
 `Apps/UltraAuthenticator/otp/`:

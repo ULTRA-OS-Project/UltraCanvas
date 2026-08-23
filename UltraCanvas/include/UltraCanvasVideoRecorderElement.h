@@ -33,6 +33,12 @@ struct VideoRecorderStyle {
     int   buttonSize = 34;
     bool  showElapsedTime = true;
     bool  showCameraSelect = true;
+    // Preview-only consumers turn the record affordance off. A QR scanner, for
+    // instance, opens the camera but must never write a file — leaving a record
+    // button on screen would offer the user the one action the feature exists
+    // to avoid. Clearing this removes the button from the layout, the drawing
+    // and the hit test, not just the paint.
+    bool  showRecordButton = true;
     int   targetFps = 30;
 };
 

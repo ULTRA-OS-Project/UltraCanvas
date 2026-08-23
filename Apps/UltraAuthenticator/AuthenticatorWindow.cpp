@@ -7,6 +7,7 @@
 #include "ChangePasswordDialog.h"
 #include "EditAccountDialog.h"
 #include "RevealSecretDialog.h"
+#include "ScanAccountDialog.h"
 #include "Theme.h"
 
 #include "UltraCanvasModalDialog.h"
@@ -109,16 +110,24 @@ bool AuthenticatorWindow::Create() {
     title->SetTextColor(Theme::kTextPrimary);
     window_->AddChild(title);
 
+    // Scanning first: it is how an account is normally added, and typing a
+    // 32-character key is the fallback, not the default.
+    auto scanBtn = std::make_shared<UltraCanvasButton>(
+        "auth-scan", margin, 54, 130, 32);
+    scanBtn->SetText("Scan QR code");
+    scanBtn->onClick = [this]() { OpenScanAccountDialog(); };
+    window_->AddChild(scanBtn);
+
     auto addBtn = std::make_shared<UltraCanvasButton>(
-        "auth-add", margin, 54, 130, 32);
-    addBtn->SetText("Add account");
+        "auth-add", margin + 140, 54, 130, 32);
+    addBtn->SetText("Enter key");
     addBtn->onClick = [this]() { OpenAddAccountDialog(); };
     window_->AddChild(addBtn);
 
     // Wide enough for the whole label — the button clips rather than shrinking
     // its text, and "Change master p..." reads as a truncated menu item.
     auto pwBtn = std::make_shared<UltraCanvasButton>(
-        "auth-pw", margin + 140, 54, 250, 32);
+        "auth-pw", margin + 280, 54, 250, 32);
     pwBtn->SetText("Change master password");
     pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
     window_->AddChild(pwBtn);
@@ -137,7 +146,7 @@ bool AuthenticatorWindow::Create() {
 
     emptyLabel_ = std::make_shared<UltraCanvasLabel>(
         "auth-empty", 0, 8, width, 40,
-        "No accounts yet — choose \"Add account\" to begin.");
+        "No accounts yet — choose \"Scan QR code\" to begin, or \"Enter key\" to type one in.");
     emptyLabel_->SetFont(Theme::kUiFont, Theme::kSizeBody);
     emptyLabel_->SetTextColor(Theme::kTextMuted);
     listContainer_->AddChild(emptyLabel_);
@@ -189,7 +198,7 @@ void AuthenticatorWindow::RebuildRows() {
     if (emptyLabel_) {
         emptyLabel_->SetText(
             accounts.empty()
-                ? "No accounts yet — choose \"Add account\" to begin."
+                ? "No accounts yet — choose \"Scan QR code\" to begin, or \"Enter key\" to type one in."
                 : "");
     }
 
@@ -389,6 +398,22 @@ void AuthenticatorWindow::OpenAddAccountDialog() {
         return std::string();
     };
     dialog->CreateAddAccountDialog();
+    dialog->ShowModal(window_.get());
+}
+
+void AuthenticatorWindow::OpenScanAccountDialog() {
+    auto dialog = std::make_shared<ScanAccountDialog>(app_);
+    // Deliberately the same handler as manual entry: a scanned URI gets no
+    // shortcut past the parser that typed keys go through.
+    dialog->onScanned = [this](const std::string& uri) -> std::string {
+        std::string key;
+        StoreResult added = store_.AddFromUri(uri, key);
+        if (!added) return added.message;
+        RebuildRows();
+        SetStatus("Added " + key + ".");
+        return std::string();
+    };
+    dialog->CreateScanAccountDialog();
     dialog->ShowModal(window_.get());
 }
 

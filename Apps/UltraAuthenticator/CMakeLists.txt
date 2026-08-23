@@ -47,6 +47,7 @@ add_executable(UltraAuthenticator
     EditAccountDialog.cpp
     ChangePasswordDialog.cpp
     RevealSecretDialog.cpp
+    ScanAccountDialog.cpp
 )
 
 target_include_directories(UltraAuthenticator PRIVATE
