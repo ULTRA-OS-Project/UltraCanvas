@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
-// Version: 1.0.1
-// Last Modified: 2026-07-25
+// Version: 1.1.0
+// Last Modified: 2026-08-23
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -822,11 +822,28 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
     
     std::filesystem::path srcPath(sourcePath);
     
+    size_t filesAdded = 0;
     auto addEntry = [&](const std::filesystem::directory_entry& dirEntry) -> VirtualFSResult {
         std::string relativePath = std::filesystem::relative(dirEntry.path(), srcPath).string();
         std::string destPath = virtualPath.empty() ? relativePath : virtualPath + "/" + relativePath;
         std::replace(destPath.begin(), destPath.end(), '\\', '/');
-        
+
+        // Report every file before it is added, so a caller packing one big
+        // folder sees the run advance instead of one callback for the folder.
+        // The provider knows this file and its size; the caller owns the
+        // running totals (it is the only one that knows the grand total).
+        if (progressCallback && dirEntry.is_regular_file()) {
+            VirtualFSProgress progress;
+            progress.currentFile = dirEntry.path().string();
+            std::error_code sizeEc;
+            progress.currentTotalBytes =
+                    std::filesystem::file_size(dirEntry.path(), sizeEc);
+            if (sizeEc) progress.currentTotalBytes = 0;
+            progress.filesProcessed = filesAdded;
+            if (!progressCallback(progress)) return VirtualFSResult::Cancelled;
+            ++filesAdded;
+        }
+
         if (dirEntry.is_directory()) {
             struct archive_entry* entry = archive_entry_new();
             archive_entry_set_pathname(entry, (destPath + "/").c_str());

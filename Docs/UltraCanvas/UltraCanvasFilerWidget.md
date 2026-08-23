@@ -588,6 +588,43 @@ and so on when the name is taken) in the shown folder, reports the change to
 filer->CreateNewFolder();   // what New > Folder and Ctrl+F do
 ```
 
+## Watching the shown folder
+
+The folder can change without the widget doing anything: another application
+saves a file into it, a download finishes, a script deletes one. The widget
+notices and rescans.
+
+```cpp
+filer->SetFolderWatchEnabled(false);      // on by default
+filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
+```
+
+A background worker re-fingerprints the folder every interval — its own
+modification time folded together with each entry's name, size and modification
+time — and raises a flag when the number moves. The scan never runs on the UI
+thread, and only a real directory is watched (an archive interior or a file list
+has no folder whose changes would mean anything).
+
+The rescan itself is held back while the user is busy: no auto-refresh
+interrupts an open rename editor, a running drag or marquee, a context menu, a
+compress dialog, or a file operation waiting on its own dialog. The flag stays
+set, so the refresh lands the moment the interaction ends. `onFolderRefreshed`
+fires as it would for any other rescan, so a host's status bar and preview
+follow along.
+
+## Compressing and extracting
+
+`CompressSelection()`, `ExtractSelection()` and the context menu's Compress /
+Extract dialogs all run the work on a background worker behind an
+[`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
+percentage, the file being handled, and Cancel. The UI stays live throughout —
+packing a few hundred megabytes no longer freezes the window.
+
+Cancel stops the backend at its next progress callback. A cancelled **pack**
+deletes the half-written archive (nobody wants that in the listing); a cancelled
+**unpack** keeps what it already wrote, because those are real files, and stops
+the remaining archives of a multi-archive run.
+
 ## Clipboard interop with other programs
 
 Copy and Cut place the selection on the **system clipboard** in the standard

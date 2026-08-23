@@ -22,7 +22,7 @@
 // transparent-image backdrop and the folder tree's colours - the background
 // of the drive rows and the highlight of the selected folder. Esc closes the
 // History or Favorites view, or an open media preview.
-// Version: 1.11.0
+// Version: 1.12.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
@@ -70,6 +70,9 @@ namespace {
     // of its bookmark children ("ufl-pin:" + folder path). The prefix keeps a
     // pinned folder's node id distinct from the same folder's regular node,
     // whose id is the bare path.
+    // The folder tree's hidden root. It only carries the two top-level
+    // sections ("Pinned" and "Computer") and is never drawn.
+    constexpr const char* kTreeRootNodeId = "ufl-tree-root";
     constexpr const char* kPinnedNodeId = "ufl-pinned";
     constexpr const char* kPinnedChildPrefix = "ufl-pin:";
     constexpr size_t kPinnedChildPrefixLen = 8;   // strlen(kPinnedChildPrefix)
@@ -407,6 +410,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     ApplySettings();
     history.Load();
     favorites.Load();
+    folderViews.Load();
 
     BuildTabbedContainer();
 
@@ -574,6 +578,9 @@ void UltraFilerWindow::OpenSettingsDialog() {
             RefreshFavoritesTabs();
             UpdateStatusBar();
         }
+    },
+            [this]() {   // Clear Folder views
+        folderViews.ClearAll();
     });
 }
 
@@ -918,13 +925,13 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sortLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(sortLbl);
 
-    sortDropdown = CreateDropdown("ufl-sort", 0, 0, 104, 26);
+    sortDropdown = CreateDropdown("ufl-sort", 0, 0, 128, 26);
     ApplyDropdownFontSize(sortDropdown.get());
     sortDropdown->AddItem("Name");
     sortDropdown->AddItem("Size");
     sortDropdown->AddItem("Type");
-    sortDropdown->AddItem("Modified");
-    sortDropdown->AddItem("Created");
+    sortDropdown->AddItem("Date modified");
+    sortDropdown->AddItem("Date created");
     sortDropdown->SetSelectedIndex(0, false);
     sortDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (syncingControls || !filer) return;
@@ -936,11 +943,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sortDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->AddChild(sortDropdown);
 
-    auto orderButton = MakeToolButton("ufl-sort-order", "", "sort-alpha-down.svg", 30,
+    // Sort direction. The icon IS the state, so it is repainted from the
+    // filer's own direction (UpdateSortOrderButton) rather than toggled here -
+    // the direction also changes from the context menu and from a folder's
+    // stored view, and the arrow has to follow all of them.
+    sortOrderButton = MakeToolButton("ufl-sort-order", "", "sort-up.svg", 30,
             [this]() {
         if (filer) filer->SetSortAscending(!filer->IsSortAscending());
     });
-    row->AddChild(orderButton);
+    row->AddChild(sortOrderButton);
+    UpdateSortOrderButton();
 
     // View type; defaults to medium thumbnails like the Explorer screenshot.
     auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
@@ -1019,18 +1031,25 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->SetLineStyle(TreeLineStyle::NoLine);
     folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
 
-    TreeNode* root = folderTree->SetRootNode(
-            MakeFolderNodeData("ufl-computer", "Computer", "computer.png"));
-    // The root's children are the roots below, not a folder listing - never
-    // let EnsureTreeChildren try to scan "ufl-computer" as a path.
-    treeChildrenLoaded.insert("ufl-computer");
+    // A hidden root carries the two top-level sections, so "Pinned" can sit
+    // ABOVE "Computer" instead of inside it. Neither the root nor the section
+    // headers are folders - never let EnsureTreeChildren scan them as paths.
+    folderTree->SetRootVisible(false);
+    folderTree->SetRootNode(MakeFolderNodeData(kTreeRootNodeId, "", ""));
+    treeChildrenLoaded.insert(kTreeRootNodeId);
 
-    // The "Pinned" section on top: bookmark entries for the folders pinned
-    // through Pin > Treeview. Its children are managed by
-    // RefreshPinnedTreeNodes, never by a folder scan.
-    folderTree->AddNode("ufl-computer",
+    // "Pinned" first: bookmark entries for the folders pinned through
+    // Pin > Treeview. Its children are managed by RefreshPinnedTreeNodes,
+    // never by a folder scan, and the whole section is hidden while nothing
+    // is pinned.
+    folderTree->AddNode(kTreeRootNodeId,
             MakeFolderNodeData(kPinnedNodeId, "Pinned", "rating-heart-on.svg"));
     treeChildrenLoaded.insert(kPinnedNodeId);
+
+    TreeNode* root = folderTree->AddNode(kTreeRootNodeId,
+            MakeFolderNodeData("ufl-computer", "Computer", "computer.png"));
+    treeChildrenLoaded.insert("ufl-computer");
+
     RefreshPinnedTreeNodes();
 
     const std::string home = UserHomeDir();
@@ -1346,7 +1365,8 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
 std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
     if (!node) return {};
     const std::string& id = node->data.nodeId;
-    if (id == "ufl-computer" || id == kPinnedNodeId) return {};
+    if (id == kTreeRootNodeId || id == "ufl-computer" || id == kPinnedNodeId)
+        return {};
     if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return id.substr(kPinnedChildPrefixLen);
     // The lazy "..." placeholder children are not folders.
@@ -1369,6 +1389,10 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
                 MakeFolderNodeData(kPinnedChildPrefix + path, label,
                                    "folder-brown.svg"));
     }
+    // An empty section is just a header over nothing: hide it entirely while
+    // nothing is pinned, and show it open — its entries are the point of it.
+    pinned->data.visible = !pinned->children.empty();
+    if (pinned->data.visible) folderTree->ExpandNode(pinned);
     folderTree->RequestRedraw();
 }
 
@@ -1640,7 +1664,10 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         else UpdatePreviewPane();
     };
     tab->filer->onSortChanged = [this, tab](FilerSortField field, bool /*ascending*/) {
-        if (!IsActiveTab(tab) || !sortDropdown) return;
+        RememberFolderView(tab);
+        if (!IsActiveTab(tab)) return;
+        UpdateSortOrderButton();
+        if (!sortDropdown) return;
         syncingControls = true;
         switch (field) {
             case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
@@ -1652,6 +1679,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         syncingControls = false;
     };
     tab->filer->onViewTypeChanged = [this, tab](FilerViewType type) {
+        RememberFolderView(tab);
         if (!IsActiveTab(tab) || !viewDropdown) return;
         syncingControls = true;
         switch (type) {
@@ -1708,6 +1736,7 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     UpdateWindowTitle();
 
     // Mirror the tab's sort / view settings into the command bar.
+    UpdateSortOrderButton();
     syncingControls = true;
     switch (filer->GetSortField()) {
         case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
@@ -2179,6 +2208,11 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     tab->searchQuery.clear();
     tab->filer->SetOpenPathMenuItemVisible(false);
 
+    // Put back how this folder was last looked at. Done for every tab, not
+    // only the active one, so a background tab is already right when it is
+    // brought forward.
+    ApplyFolderView(tab, path);
+
     if (!IsActiveTab(tab)) return;
 
     if (searchInput) searchInput->SetText("");
@@ -2193,6 +2227,43 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     // Entering a folder clears the selection - fold the preview away.
     UpdatePreviewPane();
     UpdateWindowTitle();
+}
+
+void UltraFilerWindow::ApplyFolderView(FilerTabState* tab, const std::string& path) {
+    if (!tab || !tab->filer || path.empty()) return;
+    const FilerFolderView* stored = folderViews.Find(path);
+    // A folder nobody has set up yet keeps whatever the previous one used —
+    // carrying the last view forward is what makes browsing feel continuous.
+    if (!stored) return;
+    applyingFolderView = true;
+    tab->filer->SetViewType(stored->view);
+    tab->filer->SetSort(stored->sort, stored->ascending);
+    applyingFolderView = false;
+    // SetViewType / SetSort fire onViewTypeChanged / onSortChanged themselves,
+    // so the command bar's dropdowns follow; the flag above only stops those
+    // callbacks from recording the state straight back.
+}
+
+void UltraFilerWindow::RememberFolderView(FilerTabState* tab) {
+    if (applyingFolderView || !tab || !tab->filer) return;
+    // A search-result display is not a folder: it lists entries from many of
+    // them, so how it is sorted belongs to no folder in particular.
+    if (!tab->searchQuery.empty()) return;
+    folderViews.Remember(tab->filer->GetPath(), tab->filer->GetViewType(),
+                         tab->filer->GetSortField(),
+                         tab->filer->IsSortAscending());
+}
+
+void UltraFilerWindow::UpdateSortOrderButton() {
+    if (!sortOrderButton) return;
+    const bool ascending = filer ? filer->IsSortAscending() : true;
+    sortOrderButton->SetIcon(IconPath(ascending ? "sort-up.svg" : "sort-down.svg"));
+    // The tooltip names the order that IS in effect (the icon shows it too) and
+    // says what the click does, so neither reading can be mistaken for the other.
+    sortOrderButton->SetTooltip(ascending
+            ? "Ascending (A to Z, oldest first) - click to reverse"
+            : "Descending (Z to A, newest first) - click to reverse");
+    sortOrderButton->RequestRedraw();
 }
 
 void UltraFilerWindow::UpdateNavButtons() {

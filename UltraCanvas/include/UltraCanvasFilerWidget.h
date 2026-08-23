@@ -53,7 +53,7 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.16.0
+// Version: 1.17.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
@@ -82,6 +82,9 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+    class UltraCanvasProgressDialog;   // compress / extract progress window
+
 
     class UltraCanvasMenu;
     class UltraCanvasButton;
@@ -439,6 +442,22 @@ namespace UltraCanvas {
             showOpenPathItem = visible;
             openPathItemLabel = label;
         }
+
+        // ===== WATCHING THE SHOWN FOLDER =====
+        // Pick up changes made behind the widget's back - another application
+        // saving a file into the shown folder, a download finishing, a script
+        // creating or deleting one - and rescan when they happen. On by
+        // default. The check runs on a background worker (one directory scan
+        // per interval, never on the UI thread) and the rescan itself is held
+        // back while the user is busy: no refresh interrupts an open rename
+        // editor, a running drag, a marquee or a file operation waiting on its
+        // dialog - it happens as soon as that ends.
+        void SetFolderWatchEnabled(bool enabled);
+        bool IsFolderWatchEnabled() const { return folderWatchEnabled; }
+        // How often the shown folder is re-examined, in milliseconds
+        // (default 1500; values below 250 are raised to it).
+        void SetFolderWatchIntervalMs(int ms);
+        int  GetFolderWatchIntervalMs() const { return folderWatchIntervalMs; }
 
         // ===== DRAGGING ENTRIES =====
         // Dragging files out of the view (on by default): a press on an item
@@ -926,6 +945,42 @@ namespace UltraCanvas {
         // deferred to the release (see pendingSelectIndex / dragCollapseIndex),
         // so dragging a file does not fire onSelectionChanged and does not
         // re-target an attached preview.
+        // ===== FOLDER WATCH (the shown folder, changed by other programs) =====
+        // The worker re-fingerprints the shown folder every interval and raises
+        // folderWatchDirty when the fingerprint moves; a UI timer turns that
+        // into a Refresh() at a moment that does not interrupt the user. The
+        // path, the fingerprint and the hidden-files flag are the worker's view
+        // of UI state and are only touched under folderWatchMutex.
+        void StartFolderWatchWorkerLocked();
+        void StopFolderWatchWorker();
+        void FolderWatchWorkerMain();
+        void ArmFolderWatchTimer();
+        void StopFolderWatchTimer();
+        // Point the watch at the folder the widget now shows (empty = nothing
+        // to watch: an archive interior, a file list, no folder at all).
+        void WatchFolder(const std::string& path);
+        // True while an interaction owns the view and a rescan would disturb
+        // it (an open rename editor, a drag, a file operation and its dialog).
+        bool IsBusyForAutoRefresh() const;
+        // Cheap fingerprint of a directory: its own modification time folded
+        // together with every entry's name, size and modification time. Two
+        // scans of an unchanged folder give the same number; anything created,
+        // deleted, renamed, resized or rewritten changes it.
+        static uint64_t FolderSignature(const std::string& path, bool includeHidden);
+
+        bool folderWatchEnabled = true;
+        int  folderWatchIntervalMs = 1500;
+        std::thread             folderWatchWorker;
+        mutable std::mutex      folderWatchMutex;
+        std::condition_variable folderWatchCond;
+        bool                    folderWatchShutdown = false;
+        std::string             folderWatchPath;          // "" = watching nothing
+        bool                    folderWatchIncludeHidden = false;
+        uint64_t                folderWatchSignature = 0;
+        bool                    folderWatchHaveBaseline = false;  // first scan only measures
+        std::atomic<bool>       folderWatchDirty{false};  // worker -> UI timer
+        TimerId                 folderWatchTimer = InvalidTimerId;
+
         bool dragEnabled = true;
         bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
         bool dragOutArmed = false;         // press may still become a drag
@@ -1680,13 +1735,64 @@ namespace UltraCanvas {
         };
         std::unique_ptr<PendingExtract> pendingExtract;
 
+        // ===== ARCHIVE WORKER (compress / extract with a progress window) =====
+        // Packing and unpacking are the widget's only file operations that can
+        // run for minutes, so they run on a worker while a progress window
+        // shows the ring, the percentage and the file being handled. The
+        // worker touches only the atomics and the mutex-guarded name below;
+        // everything else - the refresh, the queue, the error - happens on the
+        // UI thread when the poll timer sees the job finish.
+        struct ArchiveJob {
+            std::thread worker;
+            std::atomic<bool>     finished{false};
+            std::atomic<bool>     succeeded{false};
+            std::atomic<bool>     cancelRequested{false};
+            std::atomic<uint64_t> doneBytes{0};
+            std::atomic<uint64_t> totalBytes{0};
+            std::mutex            fileMutex;
+            std::string           currentFile;      // guarded by fileMutex
+            std::string           destination;      // archive path / target folder
+            bool                  packing = false;  // true = compress
+            TimerId               timer = InvalidTimerId;
+            std::shared_ptr<UltraCanvasProgressDialog> dialog;
+            // Runs on the UI thread when the job ends: `ok` is false for a
+            // failure AND for a cancel (cancelled tells the two apart).
+            std::function<void(bool ok, bool cancelled)> onFinished;
+        };
+        std::unique_ptr<ArchiveJob> archiveJob;
+
+        // Runs `work` on the archive worker behind a progress window titled
+        // `title` with `caption` above the ring. `work` is handed a reporter it
+        // must call as it goes; the reporter returns false once the user
+        // cancels, which the VirtualFS progress callbacks use to stop.
+        using ArchiveProgressReporter =
+                std::function<bool(uint64_t done, uint64_t total,
+                                   const std::string& file)>;
+        void StartArchiveJob(const std::string& title,
+                             const std::string& caption,
+                             const std::string& destination,
+                             bool packing,
+                             std::function<bool(const ArchiveProgressReporter&)> work,
+                             std::function<void(bool ok, bool cancelled)> onFinished);
+        void PollArchiveJob();      // UI timer: ring, detail line, completion
+        void FinishArchiveJob();    // joins the worker and closes the window
+        // Unpacks (archive -> destination folder) pairs one job at a time,
+        // each behind its own progress window, then refreshes and reports
+        // `notifyFolder` as modified. Cancelling one stops the whole run.
+        void ExtractArchivesSequentially(
+                std::vector<std::pair<std::string, std::string>> jobs,
+                size_t index, std::string notifyFolder);
+
         // Processes archives until a taken destination folder name needs the
         // dialog (which resumes it) or the queue is done.
         void ContinuePendingExtract();
         void FinishPendingExtract();
-        // Extracts the archive at `next` (KeepBoth renames the destination,
-        // Replace merges into the existing folder, Skip does not extract).
-        void ExtractCurrentAndAdvance(PasteConflictAction action);
+        // Starts the extraction of the archive at `next` (KeepBoth renames the
+        // destination, Replace merges into the existing folder, Skip does not
+        // extract). Returns true when it is already done (a skip) and the
+        // caller may go on to the next archive; false when the extraction is
+        // running on the archive worker, which resumes the queue when it ends.
+        bool ExtractCurrentAndAdvance(PasteConflictAction action);
         // The "folder already exists" dialog: Keep both / Extract into the
         // existing folder / Skip this archive.
         void ShowExtractConflictDialog(const FilerEntry& archive);

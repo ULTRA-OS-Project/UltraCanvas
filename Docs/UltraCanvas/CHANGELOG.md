@@ -1,3 +1,51 @@
+#### 2026-08-23 *0.3.63*
+- **The Filer notices changes made behind it.** The shown folder was only
+  rescanned when the widget itself changed something, so a file another program
+  saved into it, a finished download or a deleted file simply did not appear.
+  A background worker now re-fingerprints the folder every 1.5 s (its own
+  modification time folded together with every entry's name, size and
+  modification time) and the widget rescans when the number moves — never on the
+  UI thread, and never in the middle of something: an open rename editor, a
+  drag, a marquee, a context menu or a file operation waiting on its dialog all
+  hold the refresh back until they end. `SetFolderWatchEnabled()` /
+  `SetFolderWatchIntervalMs()` configure it.
+- **Compress and extract run in the background, with a progress window.** They
+  ran on the UI thread, so packing a few hundred megabytes froze the window with
+  no sign of what was happening. They now run on a worker behind the new
+  `UltraCanvasProgressDialog` — a circular ring (`UltraCanvasCircularProgressChart`
+  in SingleRing style) with the percentage in its centre, the file being handled,
+  and Cancel. Cancelling a pack deletes the half-written archive; cancelling an
+  unpack keeps what it already wrote and stops the rest of a multi-archive run.
+- **VirtualFS reports bytes while creating an archive.** `CreateArchive` fired
+  its progress callback once per top-level source and never filled in any byte
+  count, and `AddDirectory` ignored the callback it was handed — so packing one
+  folder produced exactly one progress report with nothing in it. The manager
+  now measures the sources up front for `grandTotalBytes` and forwards a
+  callback into `AddDirectory`, which reports every file before adding it. That
+  is what makes an honest percentage possible; extraction already reported bytes.
+- **UltraCanvasTreeView: `SetRootVisible(false)`** hides the root row and draws
+  its children as the top level, so a tree can show a forest of sections instead
+  of one node with everything under it. The root still owns the nodes and is
+  kept expanded; it is never drawn, hit-tested or counted as a row.
+- **UltraFiler: "Pinned" sits above "Computer"** in the folder tree, opens
+  expanded, and is hidden entirely while nothing is pinned (an empty section is
+  a header over nothing).
+- **UltraFiler: the sort-direction button shows the direction.** It carried a
+  fixed `sort-alpha-down` icon that never changed, so the only way to tell which
+  way the list was sorted was the caret in the Details header. It now paints
+  `sort-up.svg` while ascending and `sort-down.svg` while descending, repainted
+  from the filer's own state - which also covers the direction being changed
+  from the context menu, from a column header, or by a folder's stored view.
+  The Sort dropdown reads "Date modified" / "Date created" instead of the
+  ambiguous "Modified" / "Created".
+- **UltraFiler: per-folder display state.** The view type and sort order are
+  remembered per folder and restored on entry, so a picture folder can stay on
+  large thumbnails by date while a source folder stays on details by name; a
+  folder with no stored state keeps whatever the previous one used, which is
+  what makes browsing feel continuous. Stored as `folderviews.txt` (the 400 most
+  recently entered folders, least recent evicted) and cleared from
+  Settings > History & Favorites.
+
 #### 2026-08-23 *0.3.62*
 - **The PDF view no longer holds the file it is showing open.** MuPDF opens a
   document as a *stream* (`fz_open_file`) and reads pages from it on demand, so

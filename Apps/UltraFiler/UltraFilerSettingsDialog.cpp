@@ -10,7 +10,7 @@
 // stored with "Save app") and History & Favorites (clearing the
 // recently-used lists and the pinned entries). Changes apply live and are
 // saved immediately.
-// Version: 1.4.0
+// Version: 1.5.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
@@ -86,6 +86,7 @@ namespace {
         std::function<void()> onChanged;
         std::function<void()> onClearHistory;
         std::function<void()> onClearFavorites;
+        std::function<void()> onClearFolderViews;
     };
 
     std::shared_ptr<DialogState> g_dialog;
@@ -647,6 +648,9 @@ namespace {
         page->AddChild(MakeLabel("ufl-set-hf-caption",
                 "The History view lists the recently used files, folders and "
                 "applications; the Favorites view lists the pinned ones."));
+        page->AddChild(MakeLabel("ufl-set-hf-caption2",
+                "Folder views are the view type and sort order each folder was "
+                "last looked at with."));
 
         auto buttonRow = std::make_shared<UltraCanvasContainer>("ufl-set-hf-buttons");
         buttonRow->layout.SetFlexRow().SetFlexGap(8)
@@ -677,6 +681,19 @@ namespace {
         });
         clearFavorites->SetDisabled(!d->onClearFavorites);
         buttonRow->AddChild(clearFavorites);
+
+        auto clearViews = MakeButton("ufl-set-hf-clear-views",
+                "Clear Folder views", 140, [d]() {
+            if (d->onClearFolderViews) d->onClearFolderViews();
+            if (d->listsStatus) {
+                d->listsStatus->SetText(
+                        "Folder views cleared - every folder opens with the "
+                        "current view again.");
+                d->listsStatus->RequestRedraw();
+            }
+        });
+        clearViews->SetDisabled(!d->onClearFolderViews);
+        buttonRow->AddChild(clearViews);
         page->AddChild(buttonRow);
 
         d->listsStatus = MakeLabel("ufl-set-hf-status", "");
@@ -885,7 +902,8 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
                                     UltraFilerSettings* settings,
                                     std::function<void()> onChanged,
                                     std::function<void()> onClearHistory,
-                                    std::function<void()> onClearFavorites) {
+                                    std::function<void()> onClearFavorites,
+                                    std::function<void()> onClearFolderViews) {
     // Raise the already open window instead of opening a second one.
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
         g_dialog->window->Show();
@@ -897,6 +915,7 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     state->onChanged = std::move(onChanged);
     state->onClearHistory = std::move(onClearHistory);
     state->onClearFavorites = std::move(onClearFavorites);
+    state->onClearFolderViews = std::move(onClearFolderViews);
     BuildDialog(state.get(), parent);
     if (state->window) g_dialog = state;   // keeps the widgets alive
 }
