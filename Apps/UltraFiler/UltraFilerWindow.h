@@ -29,8 +29,12 @@
 // (pinned entries only). The filer context menus' Extras submenu ends with an
 // app-provided block (extrasMenuProvider): "Open prompt", then Pin / Unpin
 // submenus with the same flags, acting on the current selection.
-// Version: 1.9.0
-// Last Modified: 2026-08-20
+// The tree's drive entries (the drive roots on Windows, "File System" and the
+// mounted volumes elsewhere) are painted with the configured drive background
+// colour, and the selected folder with the configured highlight colour; both
+// come from the settings window's Display > Treeview page.
+// Version: 1.10.0
+// Last Modified: 2026-08-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -124,6 +128,14 @@ private:
     // Scans `node`'s subfolders into real child nodes (once per node) and drops
     // the placeholder that stood for them.
     void EnsureTreeChildren(TreeNode* node);
+    // Adds a drive node (a drive root on Windows, "File System" or a mounted
+    // volume elsewhere) under `parentId` and remembers it as a drive, so the
+    // configured drive background colour reaches it - now and after every
+    // change in the settings.
+    void AddTreeDriveNode(const std::string& path, const std::string& label);
+    // Pushes the configured tree colours (drive row background, selected
+    // folder highlight) into the folder tree.
+    void ApplyTreeColors();
     // Selects (expanding ancestors as needed) the tree node of `path`.
     void SyncTreeSelection(const std::string& path);
 
@@ -324,6 +336,9 @@ private:
     // Tree nodes whose real children have been scanned (EnsureTreeChildren runs
     // once per node); keyed by node id, which is the folder path.
     std::set<std::string> treeChildrenLoaded;
+    // Node ids (folder paths) of the drive entries, in the order they were
+    // added; ApplyTreeColors repaints exactly these rows.
+    std::vector<std::string> treeDriveNodeIds;
     // Background "has subfolders?" probe (see QueueSubfolderProbe).
     std::deque<std::string> probeQueue;
     std::mutex probeMutex;
