@@ -11,12 +11,24 @@ elements and ships as `Apps/UltraCleaner`, with a headless engine
 (`UltraCleanerEngine`) that the GUI, the command line and the test suite all
 share.
 
+The app opens on an **Overview** page rather than on its rule table: a
+circular chart per mounted drive, coloured by how full it is, so a user can
+see whether a clean-up is worth starting before choosing what to clean. Two
+buttons there lead into the two things it can do — system junk, and photo
+albums.
+
 The application deletes files, so the design question is not what it can
 find but what it can be talked into destroying. The answer is the rule table
 and the path guard described below: there is no code path that removes a
 path some rule did not name, and every candidate is checked twice — once
 when it is found and again when it is removed.
 
+- Version: its own, from the first line of
+  [`Docs/UltraCleaner/CHANGELOG.md`](CHANGELOG.md) — the app does not move when
+  the framework releases. `cmake/UltraCanvasVersion.cmake` reads it into
+  `ULTRACLEANER_VERSION`, which the window title, the header line and
+  `--version` print. A *framework* change the app needs still belongs in
+  `Docs/UltraCanvas/CHANGELOG.md`.
 - Sources: `Apps/UltraCleaner/{engine,ui}`, entry point `Apps/UltraCleaner/main.cpp`
 - Targets: `UltraCleanerEngine` (static, headless), `UltraCleaner` (GUI)
 - Tests: `Tests/UltraCleaner`, target `UltraCleanerEngineTests`
@@ -42,15 +54,123 @@ cmake --build . --target UltraCleanerEngineTests
 ctest -R UltraCleanerEngine
 ```
 
+## Photo albums
+
+Alongside the rule-driven system clean-up, UltraCleaner finds pictures in a
+photo album that are the same, or shots of the same moment. This half is
+content-driven rather than path-driven: it decodes what it finds and compares
+it, so it lives in its own engine (`UltraCleanerAlbum`) which — unlike the
+rule engine — links the UltraCanvas core for image decoding.
+
+### Two questions, kept apart
+
+| Kind | What it means | Certainty |
+|---|---|---|
+| Identical files | The same bytes | A fact. Removing one loses nothing. |
+| Identical images | Different files, same decoded pixels | A fact. |
+| Similar | Alike to within the chosen level | A judgement. Never pre-selected. |
+
+### How similarity is measured
+
+Each picture reduces to four signals taken from one small decode:
+
+| Signal | What it captures |
+|---|---|
+| **pHash** (64 bits) | Sign pattern of the low-frequency DCT coefficients — composition. Survives rescaling and re-encoding. |
+| **dHash** (64 bits) | Horizontal brightness gradients. Cheap, kept for reporting. |
+| **Colour grid** (4×4) | Mean colour per cell. pHash is blind to colour; a global histogram is blind to *where* the colour is. |
+| **Sharpness** | Laplacian variance, used to choose a keeper — not to compare. |
+
+**Both pHash and the colour grid must agree.** Either alone is not enough:
+measured on a 60-photograph reference album, pHash could not separate a true
+burst member from an unrelated photo of the same person — both sat 14 bits
+away — while the colour grid put them at 100% and 81%.
+
+The grid is scored as the **fraction of cells that agree**, not a summed
+distance. A burst often has a changing background behind a fixed subject —
+people walking past — which spoils three or four cells while the rest hold. A
+sum would be dominated by exactly the part that legitimately moved.
+
+### The three levels
+
+| Level | pHash | Grid | What it finds |
+|---|---|---|---|
+| **Duplicates only** | ≤ 6 | ≥ 90% | The same photo again: a copy, a rescale, a small edit |
+| **Same moment** (default) | ≤ 14 | ≥ 85% | A burst, or several tries at one picture |
+| **Same scene** | ≤ 22 | ≥ 80% | Anything of the same scene or subject |
+
+On the reference album, *Same moment* reproduced every known group with no
+false positive; *Same scene* added two plausible groups and one contaminated
+one. The window between them is narrow — a true pair sat at 88% grid
+agreement and a false one at 81% — so these numbers are a working setting
+measured on one album, not a universal constant. Re-check them against a
+larger library before trusting them to delete anything.
+
+**Changing the level costs no rescan.** Describing the pictures is the
+expensive part and does not depend on the level, so re-grouping is only the
+comparisons — the UI offers it as an instant control.
+
+### Screenshots are excluded from similarity
+
+Screenshots share their whole layout with every other capture of the same
+application and differ only in text, which these descriptors discard. On a
+real set of 73 screenshots, two unrelated bank transfers scored **8 bits
+apart** while the same transfer captured twice, one of them cropped, scored
+**36**. The ranking inverts, so no threshold helps. They are classified out —
+by filename, by the absence of any EXIF camera tag, and by lossless formats at
+exact screen widths — and matched only when byte-identical.
+
+### Known limitations
+
+- **Cropping defeats pHash.** A head-and-shoulders crop of a portrait sits
+  more than 26 bits from its original. pHash describes the whole frame;
+  catching crops needs local keypoint matching, which this does not do.
+- **Capture time cannot be relied on.** Every photograph in the reference
+  album carried either no EXIF or a zeroed `0000:00:00` timestamp. The
+  optional time gate (`--within`) therefore applies *only* where both
+  pictures know when they were taken — a missing timestamp never excludes a
+  match.
+
+### Using it
+
+```bash
+UltraCleaner --album ~/Pictures                      # list the groups
+UltraCleaner --album ~/Pictures --level duplicates   # only certain matches
+UltraCleaner --album ~/Pictures --level scenes       # cast wider
+UltraCleaner --album ~/Pictures --within 600         # …taken within 10 minutes
+UltraCleaner ~/Pictures                              # open the window on it
+```
+
+In the window, the **Photo albums** tab reviews by *group*, not by file: each
+group shows every picture in it with the suggested keeper marked, and one
+checkbox for the whole group. Nothing is ticked for you. Removal goes through
+the same Remover as the rest of the app, so it inherits the same PathGuard,
+the same trash support and the same simulate-by-default posture.
+
 ## Using it
 
 ### The window
 
-The toolbar runs a scan, chooses what should happen to what the scan found
+Three tabs: **Overview**, **System junk** and **Photo albums**.
+
+Overview is what the app opens on. It draws one
+`UltraCanvasCircularProgressChart` per mounted volume — green below 75%
+used, amber to 90%, red above — with the drive's name, how full it is, what
+is free of what, and where it is mounted. Underneath, a single line names
+the fullest drive and says whether it is worth doing anything about, and
+two buttons ("Clean system junk", "Find duplicate photos") switch to the
+tab that does it. The volume list comes from `ListVolumes()` in
+`engine/UltraCleanerVolumes.h`: `/proc/self/mounts` on Linux, `getmntinfo`
+on macOS and `GetLogicalDriveStringsW` on Windows, with capacity from
+`std::filesystem::space()` and pseudo filesystems (proc, sysfs, cgroup,
+tmpfs, snap loopbacks, …) left out. It is read once when the page is built
+and again on `HomeView::Refresh()`.
+
+On the System junk tab, the toolbar runs a scan, chooses what should happen to what the scan found
 (simulate / move to trash / delete permanently) and starts the cleanup. The
 left panel lists one row per category — an `UltraCanvasCheckbox` for
 "clean this" and an `UltraCanvasBadge` with the recoverable size. The right
-panel is an `UltraCanvasTableView` naming every path that would go, its
+panel is an `UltraCanvasColumnsTreeView` naming every path that would go, its
 size, when it last changed and which rule proposed it; double-clicking a row
 keeps or drops that single path, which puts the category checkbox into its
 indeterminate state.
@@ -234,7 +354,8 @@ RemovalReport result = remover.Remove(report, options);
 UltraCleaner paints nothing itself. Its window is
 `UltraCanvasWindow` + `UltraCanvasGroupBox` + `UltraCanvasContainer`
 (flex layout) holding `UltraCanvasButton`, `UltraCanvasDropdown`,
-`UltraCanvasCheckbox` (three-state), `UltraCanvasBadge`, `UltraCanvasLabel`
-and `UltraCanvasTableView`; confirmations and warnings go through
-`UltraCanvasDialogManager`. See
+`UltraCanvasCheckbox` (three-state), `UltraCanvasBadge`, `UltraCanvasLabel`,
+`UltraCanvasColumnsTreeView`, `UltraCanvasTabbedContainer` and the Charts
+plugin's `UltraCanvasCircularProgressChart`; confirmations and warnings go
+through `UltraCanvasDialogManager`. See
 [UltraCanvasUIElements.md](../UltraCanvas/UltraCanvasUIElements.md).

@@ -17,6 +17,7 @@ set(ULTRACLEANER_ENGINE_SOURCES
     engine/UltraCleanerSafety.cpp
     engine/UltraCleanerScanner.cpp
     engine/UltraCleanerRemover.cpp
+    engine/UltraCleanerVolumes.cpp
 )
 
 add_library(UltraCleanerEngine STATIC ${ULTRACLEANER_ENGINE_SOURCES})
@@ -46,6 +47,30 @@ endif()
 
 message(STATUS "  [✓] UltraCleaner engine - ENABLED (target: UltraCleanerEngine)")
 
+# ── UltraCleaner album engine ────────────────────────────────────────────────
+# Finding duplicate and near-duplicate photographs needs to decode images, so
+# unlike the rule engine this half links the UltraCanvas core (for
+# UCImageRaster). Kept as its own target so the headless rule engine, the CLI
+# and the rule tests stay free of that dependency.
+if(ULTRACANVAS_LIBRARY)
+    add_library(UltraCleanerAlbum STATIC
+        album/UltraCleanerImageDescriptor.cpp
+        album/UltraCleanerAlbumScanner.cpp
+    )
+    set_target_properties(UltraCleanerAlbum PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultracleaner_album")
+    target_compile_features(UltraCleanerAlbum PUBLIC cxx_std_20)
+    target_include_directories(UltraCleanerAlbum PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/album
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine)
+    target_include_directories(UltraCleanerAlbum PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(UltraCleanerAlbum PUBLIC UltraCleanerEngine ${ULTRACANVAS_LIBRARY})
+    message(STATUS "  [✓] UltraCleaner album engine - ENABLED (target: UltraCleanerAlbum)")
+else()
+    message(STATUS "  [−] UltraCleaner album engine - SKIPPED (needs the UltraCanvas core)")
+endif()
+
 # ── UltraCleaner GUI application ────────────────────────────────────────────
 # Needs the UltraCanvas UI library, built by add_subdirectory(UltraCanvas)
 # before this directory, so ${ULTRACANVAS_LIBRARY} / ${ULTRACANVAS_INCLUDE_DIRS}
@@ -59,6 +84,8 @@ add_executable(UltraCleaner
     main.cpp
     ui/UltraCleanerWindow.cpp
     ui/UltraCleanerCategoryPanel.cpp
+    ui/UltraCleanerAlbumView.cpp
+    ui/UltraCleanerHomeView.cpp
 )
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
@@ -71,16 +98,18 @@ target_include_directories(UltraCleaner PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 
 # Engine before the core on the link line: GNU ld resolves left to right.
-target_link_libraries(UltraCleaner PRIVATE UltraCleanerEngine ${ULTRACANVAS_LIBRARY})
+target_link_libraries(UltraCleaner PRIVATE
+    UltraCleanerAlbum UltraCleanerEngine ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(UltraCleaner PRIVATE fmt::fmt)
 endif()
 target_compile_features(UltraCleaner PRIVATE cxx_std_20)
 
-# The version comes from Docs/UltraCanvas/CHANGELOG.md through
+# UltraCleaner versions itself, independently of the framework: the number
+# comes from the first line of Docs/UltraCleaner/CHANGELOG.md through
 # cmake/UltraCanvasVersion.cmake — never a literal of its own.
 target_compile_definitions(UltraCleaner PRIVATE
-    ULTRACLEANER_VERSION="${ULTRACANVAS_VERSION}"
+    ULTRACLEANER_VERSION="${ULTRACLEANER_VERSION}"
     $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )
 
@@ -88,3 +117,4 @@ target_compile_definitions(UltraCleaner PRIVATE
 ultracanvas_embed_windows_manifest(UltraCleaner)
 
 message(STATUS "  [✓] UltraCleaner GUI app - ENABLED (target: UltraCleaner)")
+message(STATUS "      Version ${ULTRACLEANER_VERSION} (Docs/UltraCleaner/CHANGELOG.md)")

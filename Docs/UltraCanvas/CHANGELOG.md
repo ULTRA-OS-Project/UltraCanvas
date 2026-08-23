@@ -1,3 +1,15 @@
+#### 2026-08-23 *0.3.60*
+- **UCImageRaster::GetMetadataString** reads one embedded metadata field
+  (EXIF capture time, camera make/model) by its libvips name, stripping
+  the trailing annotation and returning "" when absent. Nothing in
+  UltraCanvas exposed EXIF before. Callers must treat "" as *unknown*:
+  every photograph in the reference album carried either no EXIF or a
+  zeroed timestamp, so UltraCleaner's time gate only applies where both
+  pictures actually know when they were taken.
+- UltraCleaner now carries its own version, read from
+  `Docs/UltraCleaner/CHANGELOG.md`; its entries move there and no longer
+  bump the framework.
+
 #### 2026-08-23 *0.3.59*
 - **UltraFiler: the folder tree's colours are settings.** The drives in the
   tree — the drive roots on Windows, "File System" and every mounted volume

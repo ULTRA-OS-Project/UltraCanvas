@@ -41,6 +41,7 @@ enum class CleanCategory {
     DeveloperJunk,      // DerivedData, build leftovers, simulator caches
     InstallerLeftovers, // downloaded installers and update payloads
     BrokenLinks,        // dangling symlinks and zero-byte leftovers
+    DuplicatePictures,  // photo-album duplicates and near-duplicates
     CategoryCount       // sentinel — never a real category
 };
 

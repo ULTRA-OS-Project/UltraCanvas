@@ -13,15 +13,18 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraCleanerWindow.h"
 
+#include "UltraCleanerAlbumScanner.h"
 #include "UltraCleanerPaths.h"
 #include "UltraCleanerRemover.h"
 #include "UltraCleanerRules.h"
 #include "UltraCleanerScanner.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasUtils.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -33,6 +36,14 @@
 #ifdef __linux__
 #include <X11/Xlib.h>
 #include <csignal>
+#endif
+
+// Defined by the build from the first line of Docs/UltraCleaner/CHANGELOG.md
+// — see cmake/UltraCanvasVersion.cmake. UltraCleaner versions itself
+// independently of the framework it is built on. The fallback only applies
+// outside CMake.
+#ifndef ULTRACLEANER_VERSION
+#define ULTRACLEANER_VERSION "0.0-dev"
 #endif
 
 using namespace UltraCanvas;
@@ -56,6 +67,7 @@ void PrintUsage(const char* programName) {
         "Usage: %s [options]\n"
         "\n"
         "  (no options)      Open the UltraCleaner window\n"
+        "  <folder>          Open the window on that photo album\n"
         "  --scan            List what could be removed and exit\n"
         "  --clean           Act on what a scan finds (simulates by default)\n"
         "      --trash       …by moving it to the trash / recycle bin\n"
@@ -64,6 +76,11 @@ void PrintUsage(const char* programName) {
         "  --all             Include the categories that are normally left\n"
         "                    unticked (trash, installers, large caches)\n"
         "  --rules           Print the rule table for this platform and exit\n"
+        "\n"
+        "  --album <folder>  Find duplicate and near-duplicate photographs\n"
+        "      --level <n>   duplicates | moments (default) | scenes\n"
+        "      --within <s>  only group shots taken within <s> seconds of each\n"
+        "                    other (ignored where a photo has no capture time)\n"
         "  -v, --version     Show version information\n"
         "  -h, --help        Show this message\n"
         "\n"
@@ -134,6 +151,58 @@ void PrintReport(const UltraCleaner::ScanReport& report, size_t itemLimit) {
     }
 }
 
+// Prints an album report: one block per group, keeper marked.
+int RunAlbum(const std::string& folder, UltraCleaner::SimilarityLevel level,
+             int64_t withinSeconds) {
+    using namespace UltraCleaner;
+
+    // Headless: no UltraCanvasApplication has started the image subsystem, and
+    // decoding is the whole job here, so start it explicitly.
+    if (!UltraCanvas::UCImage::InitializeImageSubsysterm("UltraCleaner")) {
+        std::printf("Could not start the image subsystem — is libvips present?\n");
+        return EXIT_FAILURE;
+    }
+
+    AlbumScanOptions options;
+    options.level = level;
+    options.maxSecondsApart = withinSeconds;
+
+    AlbumScanner scanner;
+    const AlbumScanReport report = scanner.Scan(folder, options);
+
+    std::printf("\n%zu pictures scanned in %s\n", report.picturesScanned,
+                folder.c_str());
+    std::printf("  %zu photographs, %zu screenshots "
+                "(screenshots are matched only when byte-identical)\n",
+                report.photographs, report.screenshots);
+    std::printf("  level: %s — %s\n", SimilarityLevelName(level),
+                SimilarityLevelDescription(level));
+    std::printf("\n%zu groups, %zu pictures grouped, %s recoverable\n\n",
+                report.groups.size(), report.GroupedPictures(),
+                FormatByteSize(report.RecoverableBytes()).c_str());
+
+    int index = 0;
+    for (const auto& group : report.groups) {
+        std::printf("group %d — %s (%zu pictures, %s recoverable)\n", ++index,
+                    GroupReasonName(group.reason), group.members.size(),
+                    FormatByteSize(group.RecoverableBytes()).c_str());
+        for (size_t i = 0; i < group.members.size(); ++i) {
+            const auto& picture = group.members[i];
+            std::printf("   %-4s %-42s %5dx%-5d %9s  %s\n",
+                        i == group.keeperIndex ? "KEEP" : "",
+                        picture.path.c_str(), picture.width, picture.height,
+                        FormatByteSize(picture.fileSize).c_str(),
+                        picture.capturedAtText.c_str());
+        }
+        std::printf("\n");
+    }
+    if (report.groups.empty()) {
+        std::printf("Nothing to review — no duplicates or near-duplicates found.\n");
+    }
+    UltraCanvas::UCImage::ShutdownImageSubsysterm();
+    return EXIT_SUCCESS;
+}
+
 int RunHeadless(bool clean, UltraCleaner::RemovalMode mode, bool includeAll) {
     using namespace UltraCleaner;
 
@@ -180,6 +249,10 @@ int main(int argc, char* argv[]) {
     bool toDelete = false;
     bool confirmed = false;
     bool includeAll = false;
+    std::string albumFolder;
+    bool openAlbumInWindow = false;
+    UltraCleaner::SimilarityLevel level = UltraCleaner::SimilarityLevel::Moments;
+    int64_t withinSeconds = 0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -187,8 +260,8 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            std::printf("UltraCleaner version %s\nUltraCanvas Framework\n",
-                        ULTRACLEANER_VERSION);
+            std::printf("UltraCleaner %s\nUltraCanvas Framework %s\n",
+                        ULTRACLEANER_VERSION, UltraCanvas::versionString);
             return EXIT_SUCCESS;
         } else if (arg == "--rules") {
             PrintRules();
@@ -205,11 +278,48 @@ int main(int argc, char* argv[]) {
             confirmed = true;
         } else if (arg == "--all") {
             includeAll = true;
+        } else if (arg == "--album") {
+            if (i + 1 >= argc) {
+                std::printf("--album needs a folder\n");
+                return EXIT_FAILURE;
+            }
+            albumFolder = argv[++i];
+        } else if (arg == "--level") {
+            if (i + 1 >= argc) {
+                std::printf("--level needs duplicates, moments or scenes\n");
+                return EXIT_FAILURE;
+            }
+            const std::string value = argv[++i];
+            if (value == "duplicates") {
+                level = UltraCleaner::SimilarityLevel::Duplicates;
+            } else if (value == "scenes") {
+                level = UltraCleaner::SimilarityLevel::Scenes;
+            } else if (value == "moments") {
+                level = UltraCleaner::SimilarityLevel::Moments;
+            } else {
+                std::printf("unknown level: %s\n", value.c_str());
+                return EXIT_FAILURE;
+            }
+        } else if (arg == "--within") {
+            if (i + 1 >= argc) {
+                std::printf("--within needs a number of seconds\n");
+                return EXIT_FAILURE;
+            }
+            withinSeconds = std::atoll(argv[++i]);
+        } else if (!arg.empty() && arg[0] != '-') {
+            // A bare path opens the window on that album, so the app can be
+            // started from a file manager or with a folder on the command line.
+            albumFolder = arg;
+            openAlbumInWindow = true;
         } else {
             std::printf("Unknown argument: %s\nUse --help for usage.\n",
                         arg.c_str());
             return EXIT_FAILURE;
         }
+    }
+
+    if (!albumFolder.empty() && !openAlbumInWindow) {
+        return RunAlbum(albumFolder, level, withinSeconds);
     }
 
     if (headlessScan || headlessClean) {
@@ -247,7 +357,7 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraCleaner::UltraCleanerWindow window;
-        if (!window.Initialize()) {
+        if (!window.Initialize(openAlbumInWindow ? albumFolder : std::string())) {
             debugOutput << "Failed to create the UltraCleaner window" << std::endl;
             return EXIT_FAILURE;
         }

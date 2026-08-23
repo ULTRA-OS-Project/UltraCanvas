@@ -187,6 +187,21 @@ namespace UltraCanvas {
         // unreasonably large — the image then displays as a still (frame 0).
         std::shared_ptr<UCImageAnimation> GetAnimation();
 
+        // ===== EMBEDDED METADATA =====
+        // Reads one metadata field the loader attached to the image, by the
+        // name libvips gives it. EXIF fields are named
+        // "exif-ifd<N>-<TagName>" — the capture time an album or a gallery
+        // sorts by is "exif-ifd2-DateTimeOriginal", and the camera that took
+        // the shot is "exif-ifd0-Make" / "exif-ifd0-Model".
+        //
+        // The raw value carries libvips' trailing " (…, ASCII, N components…)"
+        // annotation; `stripAnnotation` (the default) removes it so the caller
+        // gets just the value. Returns "" when the field is absent, the file
+        // cannot be read, or the build has no libvips — callers must treat an
+        // empty result as "unknown", never as an error.
+        std::string GetMetadataString(const std::string& key,
+                                      bool stripAnnotation = true);
+
 #ifdef HAS_LIBVIPS
         vips::VImage GetVImage();
 #endif
