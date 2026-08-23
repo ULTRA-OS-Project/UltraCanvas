@@ -42,6 +42,7 @@ const char* CategoryKey(CleanCategory category) {
         case CleanCategory::DeveloperJunk:      return "devjunk";
         case CleanCategory::InstallerLeftovers: return "installers";
         case CleanCategory::BrokenLinks:        return "brokenlinks";
+        case CleanCategory::DuplicatePictures:  return "duplicatepictures";
         default:                                return "unknown";
     }
 }
@@ -59,6 +60,7 @@ std::string CategoryTitle(CleanCategory category) {
         case CleanCategory::DeveloperJunk:      return "Developer leftovers";
         case CleanCategory::InstallerLeftovers: return "Installers and updates";
         case CleanCategory::BrokenLinks:        return "Broken shortcuts";
+        case CleanCategory::DuplicatePictures:  return "Duplicate pictures";
         default:                                return "Unknown";
     }
 }
@@ -96,6 +98,9 @@ std::string CategoryDescription(CleanCategory category) {
                    "been applied.";
         case CleanCategory::BrokenLinks:
             return "Symbolic links whose target no longer exists.";
+        case CleanCategory::DuplicatePictures:
+            return "Photos that are the same picture, or shots of the same "
+                   "moment. Reviewed as groups — one of each is kept.";
         default:
             return "";
     }
@@ -113,6 +118,7 @@ const std::vector<CleanCategory>& AllCategories() {
         CleanCategory::DeveloperJunk,
         CleanCategory::InstallerLeftovers,
         CleanCategory::BrokenLinks,
+        CleanCategory::DuplicatePictures,
         CleanCategory::TrashBin,
     };
     return categories;

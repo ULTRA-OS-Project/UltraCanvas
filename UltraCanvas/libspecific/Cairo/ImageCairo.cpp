@@ -298,6 +298,27 @@ namespace UltraCanvas {
         return result;
     }
 
+    std::string UCImageRaster::GetMetadataString(const std::string& key,
+                                                 bool stripAnnotation) {
+        try {
+            vips::VImage image = GetVImage();
+            if (!image.get_typeof(key.c_str())) return {};
+            std::string value = image.get_string(key.c_str());
+            if (stripAnnotation) {
+                // libvips appends " (<value>, <type>, <n> components, <n> bytes)".
+                const size_t annotation = value.find(" (");
+                if (annotation != std::string::npos) value.erase(annotation);
+            }
+            // EXIF ASCII fields are NUL-padded to their declared length.
+            while (!value.empty() && (value.back() == '\0' || value.back() == ' ')) {
+                value.pop_back();
+            }
+            return value;
+        } catch (vips::VError&) {
+            return {};          // absent or unreadable — "unknown", not an error
+        }
+    }
+
     vips::VImage UCImageRaster::GetVImage() {
         if (imgDataPtr) { // Create VImage from memory buffer
             return vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
@@ -355,6 +376,12 @@ namespace UltraCanvas {
         result->LoadFileToMemory(imagePath);
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
+    }
+
+    // No loader, so no metadata: "" means "unknown" to every caller.
+    std::string UCImageRaster::GetMetadataString(const std::string& key, bool) {
+        (void)key;
+        return {};
     }
 
     std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
