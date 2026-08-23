@@ -17,6 +17,7 @@ set(ULTRACLEANER_ENGINE_SOURCES
     engine/UltraCleanerSafety.cpp
     engine/UltraCleanerScanner.cpp
     engine/UltraCleanerRemover.cpp
+    engine/UltraCleanerVolumes.cpp
 )
 
 add_library(UltraCleanerEngine STATIC ${ULTRACLEANER_ENGINE_SOURCES})
@@ -84,6 +85,7 @@ add_executable(UltraCleaner
     ui/UltraCleanerWindow.cpp
     ui/UltraCleanerCategoryPanel.cpp
     ui/UltraCleanerAlbumView.cpp
+    ui/UltraCleanerHomeView.cpp
 )
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols

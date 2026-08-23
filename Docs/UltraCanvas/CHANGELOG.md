@@ -1,4 +1,17 @@
-#### 2026-08-23 *0.3.57*
+#### 2026-08-23 *0.3.59*
+- **UltraCleaner opens on a picture of your drives.** The app used to open
+  on a list of cleanup rules, which asks the user to decide what to clean
+  before telling them whether anything needs cleaning. The new **Overview**
+  tab answers that first: one `UltraCanvasCircularProgressChart` per mounted
+  volume, coloured green below 75% used, amber to 90% and red above it, so
+  the state of the machine reads before any number does. Below the drives, a
+  one-line verdict names the fullest drive and how much is left, and two
+  buttons — *Clean system junk* and *Find duplicate photos* — lead into the
+  two tabs that do the work, each with a sentence saying what it will and
+  will not remove. Volumes come from a new `ListVolumes()` (`/proc/self/mounts`
+  on Linux, `getmntinfo` on macOS, `GetLogicalDriveStringsW` on Windows;
+  capacity from `std::filesystem::space`), which skips pseudo filesystems
+  and puts the system volume first.
 - **UltraCleaner finds duplicate and near-duplicate photographs.** A second
   half to the app: alongside rule-driven system junk, a **Photo albums**
   tab that groups pictures which are the same, or shots of the same

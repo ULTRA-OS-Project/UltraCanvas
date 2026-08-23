@@ -11,6 +11,12 @@ elements and ships as `Apps/UltraCleaner`, with a headless engine
 (`UltraCleanerEngine`) that the GUI, the command line and the test suite all
 share.
 
+The app opens on an **Overview** page rather than on its rule table: a
+circular chart per mounted drive, coloured by how full it is, so a user can
+see whether a clean-up is worth starting before choosing what to clean. Two
+buttons there lead into the two things it can do — system junk, and photo
+albums.
+
 The application deletes files, so the design question is not what it can
 find but what it can be talked into destroying. The answer is the rule table
 and the path guard described below: there is no code path that removes a
@@ -139,11 +145,26 @@ the same trash support and the same simulate-by-default posture.
 
 ### The window
 
-The toolbar runs a scan, chooses what should happen to what the scan found
+Three tabs: **Overview**, **System junk** and **Photo albums**.
+
+Overview is what the app opens on. It draws one
+`UltraCanvasCircularProgressChart` per mounted volume — green below 75%
+used, amber to 90%, red above — with the drive's name, how full it is, what
+is free of what, and where it is mounted. Underneath, a single line names
+the fullest drive and says whether it is worth doing anything about, and
+two buttons ("Clean system junk", "Find duplicate photos") switch to the
+tab that does it. The volume list comes from `ListVolumes()` in
+`engine/UltraCleanerVolumes.h`: `/proc/self/mounts` on Linux, `getmntinfo`
+on macOS and `GetLogicalDriveStringsW` on Windows, with capacity from
+`std::filesystem::space()` and pseudo filesystems (proc, sysfs, cgroup,
+tmpfs, snap loopbacks, …) left out. It is read once when the page is built
+and again on `HomeView::Refresh()`.
+
+On the System junk tab, the toolbar runs a scan, chooses what should happen to what the scan found
 (simulate / move to trash / delete permanently) and starts the cleanup. The
 left panel lists one row per category — an `UltraCanvasCheckbox` for
 "clean this" and an `UltraCanvasBadge` with the recoverable size. The right
-panel is an `UltraCanvasTableView` naming every path that would go, its
+panel is an `UltraCanvasColumnsTreeView` naming every path that would go, its
 size, when it last changed and which rule proposed it; double-clicking a row
 keeps or drops that single path, which puts the category checkbox into its
 indeterminate state.
@@ -327,7 +348,8 @@ RemovalReport result = remover.Remove(report, options);
 UltraCleaner paints nothing itself. Its window is
 `UltraCanvasWindow` + `UltraCanvasGroupBox` + `UltraCanvasContainer`
 (flex layout) holding `UltraCanvasButton`, `UltraCanvasDropdown`,
-`UltraCanvasCheckbox` (three-state), `UltraCanvasBadge`, `UltraCanvasLabel`
-and `UltraCanvasTableView`; confirmations and warnings go through
-`UltraCanvasDialogManager`. See
+`UltraCanvasCheckbox` (three-state), `UltraCanvasBadge`, `UltraCanvasLabel`,
+`UltraCanvasColumnsTreeView`, `UltraCanvasTabbedContainer` and the Charts
+plugin's `UltraCanvasCircularProgressChart`; confirmations and warnings go
+through `UltraCanvasDialogManager`. See
 [UltraCanvasUIElements.md](../UltraCanvas/UltraCanvasUIElements.md).

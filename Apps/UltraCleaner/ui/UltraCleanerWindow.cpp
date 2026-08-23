@@ -26,6 +26,11 @@ constexpr const char* kItemNodePrefix = "item";
 constexpr float kWindowWidth  = 1060.0f;
 constexpr float kWindowHeight = 760.0f;
 
+// Tab order, as added below.
+constexpr int kOverviewTab = 0;
+constexpr int kRuleTab     = 1;
+constexpr int kAlbumTab    = 2;
+
 // The dropdown's order, and what each entry means to the remover.
 const RemovalMode kModes[] = {
     RemovalMode::Simulate,
@@ -81,21 +86,25 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
         PlatformName(CurrentPlatform()) + " · " + std::to_string(rules.size()) +
         " cleanup rules · nothing is removed until you say so"));
 
-    // Two jobs, two tabs: rule-driven system junk, and photo albums, which
-    // are content-driven and reviewed as groups of thumbnails.
-    auto tabs = CreateTabbedContainer("ucTabs", 8, 44, kWindowWidth - 16,
-                                      kWindowHeight - 120);
-    tabs->AddTab("System junk", BuildRulePage());
-    tabs->AddTab("Photo albums", BuildAlbumPage());
+    // The app opens on the drives, so that "does this machine need
+    // cleaning?" is answered before the user is asked to choose what to
+    // clean. Behind it, the two jobs: rule-driven system junk, and photo
+    // albums, which are content-driven and reviewed as groups of thumbnails.
+    tabs_ = CreateTabbedContainer("ucTabs", 8, 44, kWindowWidth - 16,
+                                  kWindowHeight - 120);
+    tabs_->AddTab("Overview", BuildHomePage());
+    tabs_->AddTab("System junk", BuildRulePage());
+    tabs_->AddTab("Photo albums", BuildAlbumPage());
     if (!albumFolder.empty()) {
+        // Started with a folder to look at: go straight to it.
         albumView_.SetFolder(albumFolder);
         albumView_.SetStatus("Ready — press “Scan” to look through " +
                              albumFolder + ".");
-        tabs->SetActiveTab(1);
+        tabs_->SetActiveTab(kAlbumTab);
     } else {
-        tabs->SetActiveTab(0);
+        tabs_->SetActiveTab(kOverviewTab);
     }
-    window_->AddChild(tabs);
+    window_->AddChild(tabs_);
 
 
     // Worker threads queue their results here; this timer applies them on the
@@ -106,6 +115,18 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     }
     RefreshSummary();
     return true;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildHomePage() {
+    auto page = homeView_.Build(kWindowWidth - 40, kWindowHeight - 170);
+    // The overview's two buttons are shortcuts into the tabs behind it.
+    homeView_.onCleanSystemJunk = [this]() {
+        if (tabs_) tabs_->SetActiveTab(kRuleTab);
+    };
+    homeView_.onCleanPhotos = [this]() {
+        if (tabs_) tabs_->SetActiveTab(kAlbumTab);
+    };
+    return page;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildAlbumPage() {

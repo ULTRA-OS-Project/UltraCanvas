@@ -14,6 +14,7 @@
 #pragma once
 
 #include "UltraCleanerAlbumView.h"
+#include "UltraCleanerHomeView.h"
 #include "UltraCleanerCategoryPanel.h"
 
 #include "UltraCleanerAlbumScanner.h"
@@ -48,6 +49,7 @@ public:
 
 private:
     // ===== CONSTRUCTION =====
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildHomePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRulePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAlbumPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
@@ -106,6 +108,9 @@ private:
     Scanner scanner_;
     Remover remover_;
     ScanReport report_;
+
+    HomeView homeView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs_;
 
     AlbumView albumView_;
     AlbumScanner albumScanner_;
