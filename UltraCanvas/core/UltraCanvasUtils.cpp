@@ -780,15 +780,23 @@ namespace UltraCanvas {
             {"XDG_PUBLICSHARE_DIR", UserFolderKind::Public,    "Public"},
             {"XDG_TEMPLATES_DIR",   UserFolderKind::Templates, "Templates"},
         };
-        const std::filesystem::path homeNorm =
-                std::filesystem::path(home).lexically_normal();
+        // Compare with any trailing separator stripped, so a value like
+        // "$HOME/" (which normalizes to ".../home/" and keeps the slash) still
+        // matches the home folder.
+        auto stripTrailing = [](std::string s) {
+            while (s.size() > 1 && (s.back() == '/' || s.back() == '\\'))
+                s.pop_back();
+            return s;
+        };
+        const std::string homeKey =
+                stripTrailing(std::filesystem::path(home).lexically_normal().string());
         for (const XdgEntry& x : kXdg) {
             const auto it = configured.find(x.key);
             const std::filesystem::path p = (it != configured.end())
                     ? std::filesystem::path(it->second)
                     : std::filesystem::path(home) / x.fallback;
             // An entry set to the home folder itself means "disabled".
-            if (p.lexically_normal() == homeNorm) continue;
+            if (stripTrailing(p.lexically_normal().string()) == homeKey) continue;
             add(x.kind, p);
         }
 #endif
