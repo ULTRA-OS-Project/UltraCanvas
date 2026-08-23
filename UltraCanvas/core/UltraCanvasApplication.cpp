@@ -291,7 +291,17 @@ namespace UltraCanvas {
             if (const char* home = std::getenv("HOME")) {
                 if (*home) return std::string(home) + "/.cache/UltraCanvas/fontconfig";
             }
+#if defined(__ANDROID__)
+            // No /tmp in the app sandbox. HOME/TMPDIR are exported by the
+            // android_main glue (files dir / cache dir); if neither is set
+            // there is no writable location to offer.
+            if (const char* tmp = std::getenv("TMPDIR")) {
+                if (*tmp) return std::string(tmp) + "/UltraCanvas-fontconfig";
+            }
+            return {};
+#else
             return "/tmp/UltraCanvas-fontconfig";
+#endif
 #endif
         }
 
@@ -326,6 +336,16 @@ namespace UltraCanvas {
             const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
             const char* const kSerif[] = { "Times New Roman", "Georgia" };
             const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
+#elif defined(__ANDROID__)
+            // System fonts live in fixed directories (no /etc/fonts at all,
+            // so this generated config is always the active one on Android).
+            conf << "  <dir>/system/fonts</dir>\n"
+                    "  <dir>/product/fonts</dir>\n"
+                    "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
+                    "  <cachedir>~/.fontconfig</cachedir>\n";
+            const char* const kSans[] = { "Roboto", "Noto Sans", "Droid Sans" };
+            const char* const kSerif[] = { "Noto Serif", "Droid Serif" };
+            const char* const kMono[] = { "Droid Sans Mono", "Roboto Mono", "Cutive Mono" };
 #else
             conf << "  <dir>/usr/share/fonts</dir>\n"
                     "  <dir>/usr/local/share/fonts</dir>\n"

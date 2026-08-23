@@ -437,6 +437,11 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::UpdateAndRender() {
         if (!_created || !_windowVisible) return;
+        // A backend can lose its presentation surface while the window is
+        // still marked visible (Android between APP_CMD_TERM_WINDOW and the
+        // next APP_CMD_INIT_WINDOW). Dirty rects keep accumulating; the
+        // backend requests a full composite when the surface returns.
+        if (!nativeSurface) return;
         auto ctx = GetRenderContext();
         if (IsNeedsResize()) {
             DoResize();
@@ -582,6 +587,18 @@ namespace UltraCanvas {
         dirtyRectManager.Add(clipped);
     }
 
+    namespace {
+        // An overlay renderer may antialias a pixel or two past its rect (the
+        // filer drag badge strokes a rounded border on its edge). Invalidating
+        // exactly the rect leaves that fringe behind and it smears into a trail
+        // as the overlay moves - so grow the repainted region a little.
+        constexpr int kDragOverlayInvalidateMargin = 2;
+        inline Rect2Di InflatedOverlayRect(const Rect2Di& r) {
+            const int m = kDragOverlayInvalidateMargin;
+            return Rect2Di(r.x - m, r.y - m, r.width + 2 * m, r.height + 2 * m);
+        }
+    }
+
     void UltraCanvasWindowBase::SetDragOverlay(UltraCanvasUIElement* owner,
                                                const Rect2Di& windowRect,
                                                WindowOverlayRenderer renderer) {
@@ -589,16 +606,16 @@ namespace UltraCanvas {
         // The gesture that claimed the overlay keeps it until it clears it.
         if (dragOverlayOwner && dragOverlayOwner != owner) return;
         // Repaint what the overlay is leaving behind, then what it now covers.
-        if (dragOverlayRenderer) AddDirtyRectangle(dragOverlayRect);
+        if (dragOverlayRenderer) AddDirtyRectangle(InflatedOverlayRect(dragOverlayRect));
         dragOverlayOwner = owner;
         dragOverlayRect = windowRect;
         dragOverlayRenderer = std::move(renderer);
-        AddDirtyRectangle(dragOverlayRect);
+        AddDirtyRectangle(InflatedOverlayRect(dragOverlayRect));
     }
 
     void UltraCanvasWindowBase::ClearDragOverlay(UltraCanvasUIElement* owner) {
         if (!dragOverlayRenderer || dragOverlayOwner != owner) return;
-        AddDirtyRectangle(dragOverlayRect);
+        AddDirtyRectangle(InflatedOverlayRect(dragOverlayRect));
         dragOverlayRenderer = nullptr;
         dragOverlayOwner = nullptr;
         dragOverlayRect = Rect2Di(0, 0, 0, 0);

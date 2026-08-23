@@ -691,10 +691,43 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:
                 HandleKeyDown(event);
                 break;
+            case UCEventType::DragEnter:
+            case UCEventType::DragOver:
+                return HandleDragOver(event);
+            case UCEventType::DragLeave:
+                if (dropTargetNode) { dropTargetNode = nullptr; RequestRedraw(); }
+                return false;
+            case UCEventType::Drop:
+                return HandleDrop(event);
             default:
                 break;
         }
         return false;
+    }
+
+    bool UltraCanvasTreeView::HandleDragOver(const UCEvent &event) {
+        // Highlight the row under the pointer only when a handler accepts it as
+        // a drop target, so the user sees where a drop would land.
+        TreeNode *target = GetNodeAtY(event.pointer.y);
+        TreeNode *accepted =
+                (target && onFilesDragAccept && onFilesDragAccept(target))
+                ? target : nullptr;
+        if (accepted != dropTargetNode) {
+            dropTargetNode = accepted;
+            RequestRedraw();
+        }
+        return accepted != nullptr;
+    }
+
+    bool UltraCanvasTreeView::HandleDrop(const UCEvent &event) {
+        TreeNode *target = GetNodeAtY(event.pointer.y);
+        // Clear the highlight before the handler runs: it may rebuild the tree
+        // (e.g. adding a pinned node), which would dangle dropTargetNode.
+        dropTargetNode = nullptr;
+        RequestRedraw();
+        if (event.droppedFiles.empty() || !onFilesDroppedOnNode || !target)
+            return false;
+        return onFilesDroppedOnNode(target, event.droppedFiles);
     }
 
     void UltraCanvasTreeView::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
@@ -881,7 +914,9 @@ namespace UltraCanvas {
 
         // Draw node background
         Color bgColor = backgroundColor;
-        if (node->selected) {
+        if (node == dropTargetNode) {
+            bgColor = dropTargetColor;
+        } else if (node->selected) {
             bgColor = selectionColor;
         } else if (node->hovered) {
             bgColor = hoverColor;

@@ -12,7 +12,10 @@
 #include <cstdlib>
 #include <ctime>
 
-#ifdef __linux__
+#if defined(__ANDROID__)
+// Before __linux__ (bionic defines both).
+#include "../OS/Android/UltraCanvasAndroidClipboard.h"
+#elif defined(__linux__)
 #include "../OS/Linux/UltraCanvasLinuxClipboard.h"
 #elif _WIN32
 #include "../OS/MSWindows/UltraCanvasWindowsClipboard.h"
@@ -87,7 +90,9 @@ UltraCanvasClipboard::~UltraCanvasClipboard() {
 
 bool UltraCanvasClipboard::Initialize() {
     // Create platform-specific backend
-#ifdef __linux__
+#if defined(__ANDROID__)
+    backend = std::make_unique<UltraCanvasAndroidClipboard>();
+#elif defined(__linux__)
     backend = std::make_unique<UltraCanvasLinuxClipboard>();
 #elif _WIN32
     backend = std::make_unique<UltraCanvasWindowsClipboard>();

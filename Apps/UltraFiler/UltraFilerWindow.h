@@ -224,6 +224,13 @@ private:
     // a pinned entry; "" for the Computer root, the Pinned header and the
     // lazy "..." placeholders.
     std::string TreeNodeTargetPath(const TreeNode* node) const;
+    // Drag-and-drop of files/folders onto the tree. `IsTreeDropTarget` reports
+    // whether a node accepts a drop (the Pinned section, or a folder node);
+    // `DropFilesOnTreeNode` pins onto the Pinned section or moves the files into
+    // a folder node, returning whether it handled the drop.
+    bool IsTreeDropTarget(const TreeNode* node) const;
+    bool DropFilesOnTreeNode(TreeNode* target,
+                             const std::vector<std::string>& files);
     // The tree's context menu (Copy / Delete / Paste / Pin / Unpin) at the
     // pointer.
     void ShowTreeContextMenu(TreeNode* node, const UCEvent& event);
