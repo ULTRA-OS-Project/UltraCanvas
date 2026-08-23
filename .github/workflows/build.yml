@@ -139,6 +139,12 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: recursive
+          # Full history, not the default single commit. GitRepositoryTest
+          # walks this repository's own commits, so under a shallow checkout it
+          # finds one commit with no parents and fails on every paging
+          # assertion. The cost is small — 504 commits, ~92 MB, no submodules —
+          # and the alternative is leaving that suite permanently ungated.
+          fetch-depth: 0
 
       - name: Extract version from changelog
         shell: bash
