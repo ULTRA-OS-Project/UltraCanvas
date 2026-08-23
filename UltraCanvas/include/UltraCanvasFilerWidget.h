@@ -1281,6 +1281,27 @@ namespace UltraCanvas {
         // (assumes EnsureLayout already ran).
         void ScrollEntryIntoView(size_t entryIndex);
 
+        // ===== SCROLL ANCHORING (resize / preview pane) =====
+        // Every view reflows when the display area changes width or height —
+        // a thumbnail grid re-wraps into a different number of columns, a
+        // list re-columns, a treemap is rebuilt entirely — so keeping the
+        // pixel scroll offset would land the viewport on completely different
+        // files: dragging the split pane, or opening / closing the preview
+        // pane, made the file the user was looking at jump off screen.
+        // Instead the entry the view is anchored to is remembered before the
+        // relayout and put back at the same place in the viewport afterwards.
+        // The reference is the selected entry while it is on screen (what the
+        // preview pane shows), otherwise the first entry that is visible.
+        struct ScrollAnchor {
+            bool   valid = false;
+            size_t entryIndex = 0;
+            // Distance from the viewport's leading edge to the entry's, in
+            // pixels; negative while the entry starts just above / left of it.
+            int    offset = 0;
+        };
+        ScrollAnchor CaptureScrollAnchor() const;
+        void RestoreScrollAnchor(const ScrollAnchor& anchor);
+
         // ===== DRAWING =====
         // The folder view + chrome (has several early-return branches); the
         // public Render() calls this and then paints any modal overlay on top.

@@ -39,6 +39,32 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
 
+## Scroll position across a resize
+
+Every view reflows when the display area changes size: a thumbnail grid
+re-wraps into a different number of columns, the `List` view re-columns, the
+treemap is rebuilt entirely. Keeping the pixel scroll offset through that would
+leave the viewport on a completely different part of the folder — in a big
+folder the file the user was looking at simply disappeared when the split pane
+was dragged or the host's preview pane opened or closed.
+
+The widget therefore **re-derives the scroll offset from a reference entry**
+instead of keeping it. Before the relayout it notes which entry the viewport is
+anchored to and how far down (or, in `List`, how far right) the viewport's
+leading edge it sits; after the new layout is built, the scroll offset is set so
+that entry is back at the same place on screen, and a final reveal makes sure it
+is fully visible when the reflow changed its size. The reference is
+
+1. the **selected entry while it is on screen** — that is the file the user is
+   working with, and what a host preview pane is showing; otherwise
+2. the **first entry that is visible**, so the top of the display stays put.
+
+Nothing has to be called for this: it happens inside the layout pass, for every
+view type, whenever the widget's width or height changes — a window resize, a
+split-pane drag, or a preview pane being added or removed next to it. A relayout
+at an unchanged size (a rescan, a view switch) is left alone, because those
+bring their own scroll position.
+
 ## Empty display
 
 A display with nothing to show says so instead of staying blank: an attention
@@ -428,7 +454,9 @@ view. The scroll is applied against the **next** recomputed layout, so a host
 that resizes the widget in the same frame — e.g. opening a preview pane that
 narrows the folder display (the UltraFiler does exactly that) — can call it
 right away and the entry stays visible at the new width instead of being
-corrected against the stale geometry.
+corrected against the stale geometry. A resize on its own already keeps the
+view where it was, without the host doing anything — see
+[Scroll position across a resize](#scroll-position-across-a-resize).
 
 `SelectPath(path)` makes one entry of the current display the selection and
 scrolls it into view, exactly as a click on it would (`onSelectionChanged`

@@ -4845,10 +4845,21 @@ namespace UltraCanvas {
         auto b = GetLocalBounds();
         int w = static_cast<int>(b.width), h = static_cast<int>(b.height);
         if (!layoutValid || w != lastAreaW || h != lastAreaH) {
+            // A changed display area reflows the view, so the scroll offset
+            // has to be re-derived instead of kept (see ScrollAnchor): note
+            // which entry the viewport is anchored to while the old layout is
+            // still there, and put it back once the new one is built. Only a
+            // resize does this — a relayout at an unchanged size comes from a
+            // rescan or a view switch, which bring their own scroll position.
+            const bool resized = lastAreaW >= 0 && lastAreaH >= 0
+                                 && (w != lastAreaW || h != lastAreaH);
+            ScrollAnchor anchor;
+            if (resized) anchor = CaptureScrollAnchor();
             lastAreaW = w;
             lastAreaH = h;
             RecomputeLayout();
             layoutValid = true;
+            RestoreScrollAnchor(anchor);
         }
         // A reveal requested while a resize was still in flight (see
         // EnsureSelectionVisible) is applied here, against the settled layout.
@@ -5298,6 +5309,57 @@ namespace UltraCanvas {
             }
             ClampScroll();
             break;
+        }
+    }
+
+    UltraCanvasFilerWidget::ScrollAnchor
+    UltraCanvasFilerWidget::CaptureScrollAnchor() const {
+        ScrollAnchor anchor;
+        if (items.empty()) return anchor;
+        auto b = GetLocalBounds();
+        const bool horizontal = IsHorizontal();
+        // The band a file can actually be seen in: the widget minus the info
+        // bar, and minus the Details header the rows scroll under.
+        const int viewLead = (!horizontal && viewType == FilerViewType::Details)
+                                ? detailsHeaderHeight : 0;
+        const int viewEnd  = horizontal
+                                ? static_cast<int>(b.width)
+                                : static_cast<int>(b.height) - InfoBarHeight();
+        if (viewEnd <= viewLead) return anchor;
+
+        for (const ItemLayout& it : items) {
+            const int lead = horizontal ? it.rect.x - scrollOffsetX
+                                        : it.rect.y - scrollOffsetY;
+            const int size = horizontal ? it.rect.width : it.rect.height;
+            if (lead + size <= viewLead || lead >= viewEnd) continue;  // off screen
+            const bool selected = std::find(selection.begin(), selection.end(),
+                                            it.entryIndex) != selection.end();
+            if (!anchor.valid || selected) {
+                anchor.valid = true;
+                anchor.entryIndex = it.entryIndex;
+                anchor.offset = lead;
+            }
+            // The first visible entry only holds the place until a selected
+            // one turns up on screen — that one is the reference (it is what
+            // the preview pane shows, and what the user is working with).
+            if (selected) break;
+        }
+        return anchor;
+    }
+
+    void UltraCanvasFilerWidget::RestoreScrollAnchor(const ScrollAnchor& anchor) {
+        if (!anchor.valid) return;
+        for (const ItemLayout& it : items) {
+            if (it.entryIndex != anchor.entryIndex) continue;
+            if (IsHorizontal()) scrollOffsetX = it.rect.x - anchor.offset;
+            else                scrollOffsetY = it.rect.y - anchor.offset;
+            ClampScroll();
+            // Putting it back at the same offset can leave it hanging over an
+            // edge when the reflow changed its size (a wrapped caption, a
+            // taller row) or when the clamp pulled the scroll back at the end
+            // of the content, so finish with the usual reveal.
+            ScrollEntryIntoView(anchor.entryIndex);
+            return;
         }
     }
 
