@@ -1,3 +1,24 @@
+#### 2026-08-23 *0.3.62*
+- **The PDF view no longer holds the file it is showing open.** MuPDF opens a
+  document as a *stream* (`fz_open_file`) and reads pages from it on demand, so
+  `UltraCanvasPDFView` kept an operating system handle on the PDF for as long as
+  it was displayed — which is what made moving the previewed file fail on
+  Windows, where an open handle refuses a rename. Nothing else in the media
+  viewer does this: images are rasterized into a pixmap, and text, spreadsheets,
+  3D models and e-books are parsed out of a buffer, all with the file closed
+  again. `LoadFromPath()` now reads documents up to `SetMaxInMemoryBytes()`
+  (256 MiB by default) into memory through the new
+  `IPDFDocument::OpenInMemory()`, so no handle survives the call; a file past
+  the limit still streams, because holding hundreds of megabytes of PDF in RAM
+  is the worse trade. Measured with `/proc/<pid>/fd` while previewing: the file
+  descriptor on the PDF is present when streaming and gone when loaded into
+  memory.
+- `OpenInMemory()` keeps the real path as the document's source, so `Save()` and
+  `GetInfo()` are unaffected; only `SaveIncremental()` is unavailable on a
+  memory-opened document (appending to a file needs a document backed by it) and
+  now returns `false` instead of writing a broken file. `OpenFromBytes()` no
+  longer copies its buffer twice.
+
 #### 2026-08-23 *0.3.61*
 - **UltraFiler: dropping a file on a folder moves it, even while it is being
   previewed.** A move is a rename, and a rename is refused while another

@@ -95,7 +95,19 @@ bool LoadFromPath(const std::string& path, const std::string& password = "");
 void SetDocument(std::unique_ptr<IPDFDocument> doc);
 IPDFDocument* GetDocument() const;
 bool HasDocument() const;
+
+void   SetMaxInMemoryBytes(size_t bytes);   // default 256 MiB, 0 = always stream
+size_t GetMaxInMemoryBytes() const;
 ```
+
+`LoadFromPath()` reads a file of at most `GetMaxInMemoryBytes()` **into memory**
+(`IPDFDocument::OpenInMemory`), so the view keeps **no operating system handle**
+on it: the document stays on screen while the file is moved, renamed or deleted
+— on Windows an open handle refuses those outright, so a viewer or preview pane
+that streamed the file would block the very file it is showing. A bigger file is
+streamed instead, because holding hundreds of megabytes of PDF in RAM is the
+worse trade; raise or lower the limit to move that line, or set 0 to always
+stream. `SetDocument()` takes whatever the caller opened, unchanged.
 
 ### Navigation
 
@@ -392,6 +404,7 @@ auto doc = UltraCanvas::OpenPDF("/path/to/file.pdf");   // nullptr on failure
 
 ```cpp
 bool Open(const std::string& path, const std::string& password = "");
+bool OpenInMemory(const std::string& path, const std::string& password = "");
 bool OpenFromBytes(const std::vector<uint8_t>& data, const std::string& password = "");
 bool Save(const std::string& path, const PDFSaveOptions& opts = {});
 bool SaveIncremental(const std::string& path);
@@ -402,6 +415,15 @@ PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryp
 int             GetPageCount() const;
 PDFPageInfo     GetPageInfo(int pageNumber) const;   // size in pt, rotation, label
 ```
+
+`Open()` **streams**: the engine reads pages from the file on demand and keeps it
+open for as long as the document lives. `OpenInMemory()` reads the whole file
+first and opens the document from that buffer, so nothing holds the file
+afterwards — it still reports `path` as its source and saves normally, and only
+`SaveIncremental()` is unavailable (appending to a file needs a document backed
+by it, and returns `false` on a memory-opened one). Use `OpenInMemory()` whenever
+the document is merely being displayed and the file must stay movable; use
+`Open()` for a document too big to hold in memory.
 
 `PDFSaveOptions`: `linearize` (web-optimize), `garbageCollect`, `deflateStreams`,
 `cleanContentStreams`.

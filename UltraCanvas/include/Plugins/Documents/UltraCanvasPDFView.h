@@ -1,8 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.7.0
-// Last Modified: 2026-08-13
+// Version: 1.8.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_VIEW_H
@@ -69,8 +69,18 @@ public:
     // ----- Document -----
     void SetDocument(std::unique_ptr<IPDFDocument> doc);
     IPDFDocument* GetDocument() const { return doc_.get(); }
+    // Opens `path`. A file of at most GetMaxInMemoryBytes() is read into memory
+    // (IPDFDocument::OpenInMemory), so the view holds NO operating system handle
+    // on it and the file stays movable, renamable and deletable while it is
+    // shown — what a viewer or a preview pane needs. A bigger file is streamed
+    // instead of being held in RAM, and does keep a handle.
     bool LoadFromPath(const std::string& path, const std::string& password = "");
     bool HasDocument() const { return doc_ && doc_->IsOpen(); }
+
+    // The size limit above which LoadFromPath() streams instead of reading the
+    // document into memory (default 256 MiB). Set 0 to always stream.
+    void   SetMaxInMemoryBytes(size_t bytes) { maxInMemoryBytes_ = bytes; }
+    size_t GetMaxInMemoryBytes() const { return maxInMemoryBytes_; }
 
     // ----- Navigation -----
     void GoToPage(int page);     // 1-based
@@ -275,6 +285,9 @@ private:
 
 private:
     std::unique_ptr<IPDFDocument> doc_;
+    // Documents up to this size are read into memory by LoadFromPath() so that
+    // nothing holds the file open while it is displayed; bigger ones stream.
+    size_t maxInMemoryBytes_ = 256u * 1024u * 1024u;
     PDFViewStyle style_;
 
     int      currentPage_ = 1;

@@ -123,10 +123,16 @@ preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 
 ### Letting go of the previewed file
 
-`StopPlayback()` stops the sound; it does not release the file. A display
-backend that opens documents — the PDF engine above all — keeps the shown file
-open for as long as it holds the document, and an open handle makes a move,
-rename or delete of that file fail (on Windows it is refused outright).
+Most kinds are read into memory and hold no handle on the file: images are
+rasterized into a pixmap, text, spreadsheets, 3D models and e-books are parsed
+from a buffer, and PDFs up to
+[`SetMaxInMemoryBytes()`](UltraCanvasPDFExamples.md#document) (256 MiB by
+default) are loaded whole. Those files stay movable, renamable and deletable
+while they are shown.
+
+Two cases genuinely keep the file open: **video and audio**, which the playback
+backends stream, and a **PDF past the memory limit**, which the engine streams
+page by page. `StopPlayback()` stops the sound but does not release anything.
 
 ```cpp
 preview->CloseFile();   // show nothing, and release the file
@@ -134,9 +140,9 @@ preview->CloseFile();   // show nothing, and release the file
 
 `CloseFile()` stops playback, releases every backend's document and clears the
 playlist, so the file is free the moment the call returns. A host that lets the
-user act on the previewed file must call it first — the UltraFiler does exactly
-that when its preview pane folds away, which is why its folder display drops a
-file out of the selection before moving it.
+user act on the previewed file should call it first — the UltraFiler does that
+when its preview pane folds away, which is why its folder display drops a file
+out of the selection before moving it.
 
 ## Image adjustments and saving
 

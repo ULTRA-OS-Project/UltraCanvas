@@ -636,7 +636,11 @@ the file open — on Windows it fails outright. The widget therefore drops the
 sources out of the selection before it starts a move, firing `onSelectionChanged`
 so a host that feeds a preview pane from the selection closes the file first.
 The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
-its preview release the document instead of merely stopping playback.
+its preview release the document instead of merely stopping playback. Most
+previews hold nothing open in the first place — images, text, spreadsheets,
+models, e-books and PDFs up to the PDF view's memory limit are read whole — so
+this only has work to do for a playing video or audio file and for a PDF too big
+to hold in memory.
 
 The same machinery is available programmatically for any target folder:
 
