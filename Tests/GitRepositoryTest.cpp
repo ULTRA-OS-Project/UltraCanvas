@@ -88,7 +88,14 @@ static void TestRefs(UltraCanvasGitRepository& repository) {
 
     CHECK(shasValid, "every ref points at a full sha");
     CHECK(namesValid, "every ref has a name");
-    CHECK(branches > 0, "at least one local branch");
+    // Local *or* remote: a CI checkout is a detached HEAD with only
+    // remote-tracking refs (0 branches, 41 remotes on a GitHub runner), which
+    // is a perfectly valid repository. What this is really checking is that
+    // branch refs are enumerated and classified at all, and requiring a local
+    // one made the suite fail on any clone that has none. The detached-HEAD
+    // case is already handled a few lines below, so demanding a local branch
+    // here contradicted the check that follows it.
+    CHECK(branches + remotes > 0, "at least one branch ref (local or remote)");
     CHECK(current <= 1, "at most one ref is marked current");
     std::printf("       (%zu branches, %zu remotes, %zu tags)\n", branches, remotes, tags);
 
