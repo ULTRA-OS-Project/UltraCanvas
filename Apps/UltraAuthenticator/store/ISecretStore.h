@@ -78,6 +78,20 @@ public:
 
     virtual StoreResult Delete(const std::string& key) = 0;
 
+    // Moves an entry to a new key, optionally rewriting its value, as one
+    // operation. This is on the interface rather than left to callers because
+    // the obvious composition — Put under the new key, then Delete the old —
+    // has a window in which a crash leaves the same secret under both keys.
+    // Implementations must apply both halves to a single persisted state, and
+    // must leave the store unchanged if the write fails.
+    //
+    // Renaming an account is the reason this exists: the label lives inside
+    // the stored otpauth:// URI *and* determines the key, so a rename changes
+    // both at once.
+    virtual StoreResult Replace(const std::string& oldKey,
+                                const std::string& newKey,
+                                const UltraCryptSecureBuffer& newValue) = 0;
+
     // Keys only — never values. Listing must not materialise secrets.
     virtual StoreResult List(std::vector<std::string>& outKeys) const = 0;
 

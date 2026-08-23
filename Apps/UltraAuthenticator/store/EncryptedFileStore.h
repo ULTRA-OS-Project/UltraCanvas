@@ -88,6 +88,12 @@ public:
     StoreResult Get(const std::string& key,
                     UltraCryptSecureBuffer& outValue) const override;
     StoreResult Delete(const std::string& key) override;
+
+    // Atomic because the whole vault is one blob: both halves land in the same
+    // SaveLocked(), so there is no state on disk where the secret exists under
+    // both keys, and a failed write rolls memory back to match.
+    StoreResult Replace(const std::string& oldKey, const std::string& newKey,
+                        const UltraCryptSecureBuffer& newValue) override;
     StoreResult List(std::vector<std::string>& outKeys) const override;
     size_t Count() const override { return entries_.size(); }
 

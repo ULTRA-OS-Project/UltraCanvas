@@ -26,15 +26,49 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(ANCHORPOINT_BUILD_GUI "Build the UltraCanvas GUI (needs the framework toolchain)" ON)
 
 # ===========================================================================
-# Transfer core (no external dependencies)
+# Transfer core (depends only on UltraCrypt/libsodium)
 # ===========================================================================
 # Raw-socket backend today; swappable for an UltraNet backend later. Kept as a
 # static lib so both the CLI and the GUI link the exact same code.
+#
+# The core used to have no dependencies at all, paid for with a hand-rolled
+# SHA-256 in net/Sha256.h. That is now UltraCrypt's job. UltraCrypt is itself a
+# small static lib over libsodium — deliberately not part of the UI framework —
+# so the core still builds without UltraCanvas; it just needs libsodium.
 add_library(anchorpoint_core STATIC
         net/RawSocketTransport.cpp
         net/Protocol.cpp)
 target_include_directories(anchorpoint_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/net)
 target_compile_features(anchorpoint_core PUBLIC cxx_std_20)
+
+# A parent build (the framework, or the GUI branch below) already defines the
+# UltraCrypt target; standalone we compile its one source file directly rather
+# than pulling in all of UltraCanvas for a hash.
+if(TARGET UltraCrypt)
+    target_link_libraries(anchorpoint_core PUBLIC UltraCrypt)
+else()
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/include/UltraCrypt/UltraCryptCore.h")
+        set(ANCHORPOINT_ULTRACANVAS "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas")
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/include/UltraCrypt/UltraCryptCore.h")
+        set(ANCHORPOINT_ULTRACANVAS "${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas")
+    else()
+        message(FATAL_ERROR
+                "AnchorPoint: UltraCrypt not found. The transfer core needs it for "
+                "SHA-256 integrity checks.")
+    endif()
+
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SODIUM REQUIRED libsodium)
+
+    target_sources(anchorpoint_core PRIVATE
+            ${ANCHORPOINT_ULTRACANVAS}/core/UltraCrypt/UltraCryptCore.cpp)
+    target_include_directories(anchorpoint_core PUBLIC
+            ${ANCHORPOINT_ULTRACANVAS}/include)
+    target_include_directories(anchorpoint_core PRIVATE ${SODIUM_INCLUDE_DIRS})
+    target_compile_definitions(anchorpoint_core PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
+    target_link_directories(anchorpoint_core PUBLIC ${SODIUM_LIBRARY_DIRS})
+    target_link_libraries(anchorpoint_core PUBLIC ${SODIUM_LIBRARIES})
+endif()
 
 if(WIN32)
     target_link_libraries(anchorpoint_core PUBLIC ws2_32)
