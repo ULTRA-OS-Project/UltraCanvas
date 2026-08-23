@@ -224,6 +224,10 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
+    Color dropTargetColor = Color(0x33, 0x99, 0xFF, 0x66); // drag-drop target row
+
+    // The node currently highlighted as a drag-and-drop target, if any.
+    TreeNode* dropTargetNode = nullptr;
 
     ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
@@ -251,6 +255,13 @@ public:
     std::function<void(TreeNode*)> onNodeExpanded;
     std::function<void(TreeNode*)> onNodeCollapsed;
     std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop; // dragged, target
+    // Files dragged in from elsewhere (the file list, another app) and dropped
+    // on a node. `onFilesDragAccept` decides whether a node is a valid drop
+    // target - only accepted nodes get the drop highlight. `onFilesDroppedOnNode`
+    // performs the drop and returns whether it handled it.
+    std::function<bool(TreeNode* target)> onFilesDragAccept;
+    std::function<bool(TreeNode* target,
+                       const std::vector<std::string>& files)> onFilesDroppedOnNode;
     // Right mouse button released over a node. The event is passed along so a
     // handler can open a context menu at the pointer (event.pointerWindow).
     // A right press never changes the selection — the menu acts on the node
@@ -450,6 +461,8 @@ private:
     bool HandleMouseDoubleClick(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
     void HandleKeyDown(const UCEvent& event);
+    bool HandleDragOver(const UCEvent& event);
+    bool HandleDrop(const UCEvent& event);
     
     void NavigateUp();
     void NavigateDown();

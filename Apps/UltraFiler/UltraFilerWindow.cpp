@@ -131,6 +131,24 @@ namespace {
         return key;
     }
 
+    // Would moving `src` into the folder `dest` be a no-op or copy a folder into
+    // itself? Both are resolved to canonical form first (following symlinks and
+    // "."/".."), so differently spelled paths for the same folder still match.
+    // Rejected: dropping a folder onto itself, onto the folder it already lives
+    // in, or into its own subtree (a descendant of itself).
+    bool IsInvalidMoveInto(const std::string& src, const std::string& dest) {
+        std::error_code ec;
+        fs::path s = fs::weakly_canonical(fs::path(src), ec);
+        if (ec) { s = fs::path(src).lexically_normal(); ec.clear(); }
+        fs::path d = fs::weakly_canonical(fs::path(dest), ec);
+        if (ec) d = fs::path(dest).lexically_normal();
+        if (s == d) return true;                 // onto itself
+        if (s.parent_path() == d) return true;   // already lives in dest
+        // dest is src or a descendant of src -> would nest a folder in itself.
+        fs::path rel = d.lexically_relative(s);
+        return !rel.empty() && *rel.begin() != "..";
+    }
+
     // Does `path` contain at least one visible subfolder? (Cheap check that
     // decides whether a tree node gets an expand button.)
     // "Hidden" is the platform's own notion (IsHiddenFileSystemEntry): dot
@@ -1069,6 +1087,81 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
         ShowTreeContextMenu(node, event);
     };
+    // Drag a folder from the file list onto the tree: dropping on the Pinned
+    // section pins it, dropping on a folder node moves the files into it.
+    folderTree->onFilesDragAccept = [this](TreeNode* node) {
+        return IsTreeDropTarget(node);
+    };
+    folderTree->onFilesDroppedOnNode =
+            [this](TreeNode* target, const std::vector<std::string>& files) {
+        return DropFilesOnTreeNode(target, files);
+    };
+}
+
+bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
+    if (!node) return false;
+    const std::string& id = node->data.nodeId;
+    if (id == kPinnedNodeId ||
+        id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
+        return true;
+    // A regular folder node accepts a move into the folder it stands for.
+    const std::string path = TreeNodeTargetPath(node);
+    if (path.empty()) return false;
+    std::error_code ec;
+    return fs::is_directory(path, ec) && !ec;
+}
+
+bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
+                                           const std::vector<std::string>& files) {
+    if (!target || files.empty()) return false;
+    const std::string& id = target->data.nodeId;
+    const bool pinnedSection =
+            id == kPinnedNodeId ||
+            id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0;
+
+    if (pinnedSection) {
+        bool changed = false;
+        for (const std::string& f : files) {
+            std::error_code ec;
+            if (fs::is_directory(f, ec) && !ec)
+                changed = favorites.Pin(FilerFavoriteKind::Tree, f) || changed;
+        }
+        if (changed) {
+            RefreshPinnedTreeNodes();
+            RevealPinnedTreeSection();
+        }
+        return true;
+    }
+
+    // Otherwise a move into the folder the node represents.
+    const std::string dest = TreeNodeTargetPath(target);
+    if (dest.empty()) return false;
+    std::error_code ec;
+    if (!fs::is_directory(dest, ec) || ec) return false;
+
+    // Skip sources that would be a no-op or a copy of a folder into itself: the
+    // target itself, a folder already living in the target, or a folder that
+    // contains the target (dropping it into its own subtree).
+    std::vector<std::string> sources;
+    for (const std::string& f : files) {
+        if (IsInvalidMoveInto(f, dest)) continue;
+        sources.push_back(f);
+    }
+    if (sources.empty()) return true;
+    if (!filer) return false;
+
+    // The filer widget runs the move, so name conflicts go through its
+    // Keep both / Replace / Skip dialog exactly like a paste in the view.
+    filer->PasteFilesInto(dest, std::move(sources), /*cut=*/true,
+                          [this, dest](bool changed) {
+        if (!changed) return;
+        RecordFolderInHistory(dest);
+        for (auto& state : tabStates) {
+            if (state->filer && state->filer->GetPath() == dest)
+                state->filer->Refresh();
+        }
+    });
+    return true;
 }
 
 void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
