@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.1.0
-// Last Modified: 2026-08-08
+// Version: 1.2.0
+// Last Modified: 2026-08-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -22,11 +22,24 @@ namespace UltraCanvas {
 
 class UltraFilerSettings {
 public:
+    // ===== DEFAULTS =====
+    // The tree colours ship as named constants so the settings dialog can
+    // offer "Restore defaults" without repeating the literals.
+    static inline const Color kDefaultTreeDriveBackgroundColor{226, 236, 248, 255};
+    static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
+
     // ===== THE SETTINGS =====
     // Media viewer: backdrop behind transparent images — the checkered
     // pattern used by image editors, or a preset solid colour (default white).
     bool  previewCheckeredBackground = false;
     Color previewTransparentColor    = Color(255, 255, 255, 255);
+
+    // Display > Treeview: the row background of the drive entries in the
+    // folder tree (the drive roots on Windows, "File System" and the mounted
+    // volumes elsewhere), so the drives stand out from the folders below
+    // them, and the highlight of the selected folder.
+    Color treeDriveBackgroundColor = kDefaultTreeDriveBackgroundColor;
+    Color treeSelectedFolderColor  = kDefaultTreeSelectedFolderColor;
 
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
@@ -73,6 +86,10 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("preview.transparent.color");
         if (it != kv.end()) ParseColor(it->second, previewTransparentColor);
+        it = kv.find("tree.drive.background.color");
+        if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
+        it = kv.find("tree.selected.folder.color");
+        if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
         return true;
@@ -91,6 +108,10 @@ public:
              << (previewCheckeredBackground ? "true" : "false") << "\n";
         file << "preview.transparent.color = "
              << FormatColor(previewTransparentColor) << "\n";
+        file << "tree.drive.background.color = "
+             << FormatColor(treeDriveBackgroundColor) << "\n";
+        file << "tree.selected.folder.color = "
+             << FormatColor(treeSelectedFolderColor) << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
     }

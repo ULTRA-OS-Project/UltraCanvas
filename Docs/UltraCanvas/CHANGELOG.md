@@ -1,4 +1,4 @@
-#### 2026-08-23 *0.3.59*
+#### 2026-08-23 *0.3.60*
 - **UCImageRaster::GetMetadataString** reads one embedded metadata field
   (EXIF capture time, camera make/model) by its libvips name, stripping
   the trailing annotation and returning "" when absent. Nothing in
@@ -9,6 +9,30 @@
 - UltraCleaner now carries its own version, read from
   `Docs/UltraCleaner/CHANGELOG.md`; its entries move there and no longer
   bump the framework.
+
+#### 2026-08-23 *0.3.59*
+- **UltraFiler: the folder tree's colours are settings.** The drives in the
+  tree — the drive roots on Windows, "File System" and every mounted volume
+  under `/media` and `/mnt` elsewhere — now carry a background colour of
+  their own, so they read as the section headings they are rather than as
+  four more folders. The colour, and the highlight of the selected folder,
+  are configured under **Display > Treeview** in the settings window: each
+  is a colour box showing the current value that opens the
+  `UltraCanvasColorPicker` in a popup window, with the colour previewed live
+  in the tree while it is being picked, kept by "Use colour" and put back by
+  Cancel. "Restore default colours" returns both. They persist as
+  `tree.drive.background.color` / `tree.selected.folder.color` in
+  `config.ini`. Drive rows take white text when the chosen background is
+  dark, so a deep colour stays readable.
+- **Cairo/Pango backend: plain text no longer disappears from a markup
+  layout.** `UCTextLayout::SetMarkup` handed the string straight to
+  `pango_layout_set_markup`, which rejects the whole thing when it is not
+  well-formed markup and leaves the layout EMPTY. Widgets that render user
+  text through the markup path — tree node labels among them — therefore
+  showed nothing at all for a label containing a bare `&` or `<`; UltraFiler's
+  own settings tree had an invisible "History & Favorites" row. The markup is
+  now parsed first (`pango_parse_markup`) and a string that is not markup is
+  laid out as literal text instead of vanishing.
 
 #### 2026-08-22 *0.3.58*
 - **TabbedContainer: the overflow tab list showed only part of the tabs, and
