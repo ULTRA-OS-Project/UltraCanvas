@@ -157,19 +157,27 @@ The **first line of a changelog is the single source of truth** for a version:
 |---|---|
 | `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, DemoApp, UltraFiler, UltraViewer, … |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
+| `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
 changelog — that is the whole bump. Do **not** hand-edit a version number
 anywhere else, and never introduce a new literal copy of one:
 
 - `cmake/UltraCanvasVersion.cmake` parses the first line at configure time and
-  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` (plus `_DOT4` / `_COMMA4`
-  variants for Windows resources). It feeds every `project(VERSION …)` and the
-  matching compile definitions. Editing a changelog re-triggers the configure
-  step, so existing build trees follow along.
+  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` / `ULTRACLEANER_VERSION`
+  (plus `_DOT4` / `_COMMA4` variants for Windows resources). It feeds every
+  `project(VERSION …)` and the matching compile definitions. Editing a
+  changelog re-triggers the configure step, so existing build trees follow
+  along.
 - Code that displays a version reads those defines —
   `UltraCanvas::versionString` (`UltraCanvasUtils.cpp`, shown in the demo app's
-  info window) and `UltraCanvasTextEditor::version` (shown in Texter's splash).
+  info window), `UltraCanvasTextEditor::version` (shown in Texter's splash) and
+  `ULTRACLEANER_VERSION` (UltraCleaner's window title, header line and
+  `--version`).
+- An app with its own changelog versions itself: UltraTexter and UltraCleaner
+  do not move when the framework releases, and a change to either belongs in
+  its own file. A framework change an app needs still goes in
+  `Docs/UltraCanvas/CHANGELOG.md`.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
 - Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still

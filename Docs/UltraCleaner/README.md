@@ -23,6 +23,12 @@ and the path guard described below: there is no code path that removes a
 path some rule did not name, and every candidate is checked twice — once
 when it is found and again when it is removed.
 
+- Version: its own, from the first line of
+  [`Docs/UltraCleaner/CHANGELOG.md`](CHANGELOG.md) — the app does not move when
+  the framework releases. `cmake/UltraCanvasVersion.cmake` reads it into
+  `ULTRACLEANER_VERSION`, which the window title, the header line and
+  `--version` print. A *framework* change the app needs still belongs in
+  `Docs/UltraCanvas/CHANGELOG.md`.
 - Sources: `Apps/UltraCleaner/{engine,ui}`, entry point `Apps/UltraCleaner/main.cpp`
 - Targets: `UltraCleanerEngine` (static, headless), `UltraCleaner` (GUI)
 - Tests: `Tests/UltraCleaner`, target `UltraCleanerEngineTests`

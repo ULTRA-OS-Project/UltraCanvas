@@ -24,6 +24,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasUtils.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -35,6 +36,14 @@
 #ifdef __linux__
 #include <X11/Xlib.h>
 #include <csignal>
+#endif
+
+// Defined by the build from the first line of Docs/UltraCleaner/CHANGELOG.md
+// — see cmake/UltraCanvasVersion.cmake. UltraCleaner versions itself
+// independently of the framework it is built on. The fallback only applies
+// outside CMake.
+#ifndef ULTRACLEANER_VERSION
+#define ULTRACLEANER_VERSION "0.0-dev"
 #endif
 
 using namespace UltraCanvas;
@@ -251,8 +260,8 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            std::printf("UltraCleaner version %s\nUltraCanvas Framework\n",
-                        ULTRACLEANER_VERSION);
+            std::printf("UltraCleaner %s\nUltraCanvas Framework %s\n",
+                        ULTRACLEANER_VERSION, UltraCanvas::versionString);
             return EXIT_SUCCESS;
         } else if (arg == "--rules") {
             PrintRules();

@@ -105,10 +105,11 @@ if(TARGET fmt::fmt)
 endif()
 target_compile_features(UltraCleaner PRIVATE cxx_std_20)
 
-# The version comes from Docs/UltraCanvas/CHANGELOG.md through
+# UltraCleaner versions itself, independently of the framework: the number
+# comes from the first line of Docs/UltraCleaner/CHANGELOG.md through
 # cmake/UltraCanvasVersion.cmake — never a literal of its own.
 target_compile_definitions(UltraCleaner PRIVATE
-    ULTRACLEANER_VERSION="${ULTRACANVAS_VERSION}"
+    ULTRACLEANER_VERSION="${ULTRACLEANER_VERSION}"
     $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )
 
@@ -116,3 +117,4 @@ target_compile_definitions(UltraCleaner PRIVATE
 ultracanvas_embed_windows_manifest(UltraCleaner)
 
 message(STATUS "  [✓] UltraCleaner GUI app - ENABLED (target: UltraCleaner)")
+message(STATUS "      Version ${ULTRACLEANER_VERSION} (Docs/UltraCleaner/CHANGELOG.md)")

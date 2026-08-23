@@ -2,16 +2,17 @@
 # set-version.sh — Propagate the changelog version to the Windows resource files
 #
 # The changelogs are the single source of truth for version numbers:
-#   Docs/UltraCanvas/CHANGELOG.md  ->  UltraCanvas / DemoApp / UltraFiler / ...
-#   Docs/Texter/CHANGELOG.md       ->  UltraTexter
-# in both cases the version on the first line, `#### YYYY-MM-DD *x.y.z*`.
+#   Docs/UltraCanvas/CHANGELOG.md   ->  UltraCanvas / DemoApp / UltraFiler / ...
+#   Docs/Texter/CHANGELOG.md        ->  UltraTexter
+#   Docs/UltraCleaner/CHANGELOG.md  ->  UltraCleaner
+# in every case the version on the first line, `#### YYYY-MM-DD *x.y.z*`.
 #
 # Almost nothing needs this script any more. The packaging scripts
 # (build-demoapp-appimage.sh, package-win.sh, package-macos.sh) parse the
 # changelog for artefact file names, and cmake/UltraCanvasVersion.cmake parses
 # the same line at configure time for project() versions and for the
-# ULTRACANVAS_VERSION / ULTRATEXTER_VERSION compile definitions the apps display.
-# Those can no longer drift.
+# ULTRACANVAS_VERSION / ULTRATEXTER_VERSION / ULTRACLEANER_VERSION compile
+# definitions the apps display. Those can no longer drift.
 #
 # What is left are the two Windows files that are read from disk by
 # windres/rc.exe rather than generated — UltraTexter.rc and UltraTexter.manifest.

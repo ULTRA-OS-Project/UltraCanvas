@@ -5,6 +5,12 @@
 
 #include "UltraCleanerRules.h"
 
+// The app's own version, from the first line of Docs/UltraCleaner/CHANGELOG.md
+// through cmake/UltraCanvasVersion.cmake. Independent of the framework's.
+#ifndef ULTRACLEANER_VERSION
+#define ULTRACLEANER_VERSION "0.0-dev"
+#endif
+
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasGroupBox.h"
@@ -68,7 +74,7 @@ UltraCleanerWindow::~UltraCleanerWindow() {
 
 bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     WindowConfig config;
-    config.title  = "UltraCleaner";
+    config.title  = std::string("UltraCleaner ") + ULTRACLEANER_VERSION;
     config.width  = static_cast<int>(kWindowWidth);
     config.height = static_cast<int>(kWindowHeight);
     config.minWidth  = 820;
@@ -83,6 +89,7 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     const auto rules = RulesForCurrentPlatform();
     window_->AddChild(CreateLabel(
         "ucSubtitle", 180, 14, 520, 22,
+        std::string(ULTRACLEANER_VERSION) + " · " +
         PlatformName(CurrentPlatform()) + " · " + std::to_string(rules.size()) +
         " cleanup rules · nothing is removed until you say so"));
 
