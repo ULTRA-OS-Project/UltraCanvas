@@ -213,6 +213,7 @@ namespace UltraCanvas {
         std::function<void(int, const std::string&)> onTabRename; // (tabIndex, newTitle)
         std::function<void()> onTabBarRightClick;
         std::function<void(int, int, int)> onTabContextMenu;  // (tabIndex, windowX, windowY) on right-click
+        std::function<void(int)> onTabHover;                  // (tabIndex, or -1 when no tab is hovered)
 
         // ===== V2.0.0: DRAG-OUT / DRAG-IN CALLBACKS =====
         /// Tab dragged out of the tab bar beyond threshold.

@@ -382,13 +382,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::UpdateOverflowDropdown() {
-        // Arrange() runs through here on every layout pass, and opening the popup
-        // invalidates the layout — so refilling the list while it is on screen would
-        // throw away the user's filter and the highlighted row each frame. The list
-        // is rebuilt when the popup is opened, which is when it can change anyway.
-        if (!dropdownSearchActive) {
-            PopulateSearchAutoComplete();
-        }
+        PopulateSearchAutoComplete();
         PositionOverflowDropdown();
     }
 
@@ -482,9 +476,6 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
         if (!searchAutoComplete) return;
 
-        // Set before the popup opens: from here on a layout pass must leave the live
-        // list alone (see UpdateOverflowDropdown).
-        dropdownSearchActive = true;
         PopulateSearchAutoComplete();
 
         // Position below the overflow button (container-relative coords)
@@ -507,6 +498,8 @@ namespace UltraCanvas {
         searchAutoCompletePos = overflowButton->MapFromLocal(searchAutoCompletePos, nullptr);
         window->OpenPopup(searchAutoCompletePos, *searchAutoComplete, PopupElementSettings());
         searchAutoComplete->SetFocus(true);
+
+        dropdownSearchActive = true;
     }
 
     void UltraCanvasTabbedContainer::HideSearchAutoComplete() {
@@ -1027,6 +1020,8 @@ namespace UltraCanvas {
                 hoveredTabIndex = newHoveredTab;
                 needsRepaint = true;
 
+                if (onTabHover) onTabHover(hoveredTabIndex);
+
                 // Show per-tab tooltip when hovered tab changes
                 if (hoveredTabIndex >= 0 && !tabs[hoveredTabIndex]->tooltip.empty()) {
                     UltraCanvasTooltipManager::UpdateAndShowTooltip(
@@ -1113,10 +1108,12 @@ namespace UltraCanvas {
         } else {
             // Mouse is outside tab bar
             if (hoveredTabIndex != -1 || hoveredNewTabButton) {
+                bool had_hovered_tab = hoveredTabIndex != -1;
                 hoveredTabIndex = -1;
                 hoveredCloseButtonIndex = -1;
                 hoveredNewTabButton = false;
                 UltraCanvasTooltipManager::HideTooltip();
+                if (had_hovered_tab && onTabHover) onTabHover(-1);
                 RequestRedraw();
             }
 
