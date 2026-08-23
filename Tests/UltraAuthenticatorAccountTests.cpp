@@ -290,6 +290,251 @@ static void TestClosedStore() {
     Check(!store.AdvanceHotp("Example:alice", code), "advance refused");
 }
 
+// ===========================================================================
+// Editing: rename, parameter changes, password change, reveal
+// ===========================================================================
+
+// A rename must move the account without touching the seed. The proof is that
+// the code generated at a fixed instant is identical before and after.
+static void TestRenamePreservesSeed() {
+    std::printf("Rename preserves the seed\n");
+    const std::string path = TempVaultPath("rename");
+    AccountStore store;
+    Check(store.Create(path, Buf("master-pw")), "vault created");
+
+    std::string key;
+    Check(store.AddFromUri(TotpUri("Example", "alice@example.com"), key),
+          "account added");
+
+    const int64_t at = 59;
+    std::string before;
+    uint32_t remaining = 0;
+    Check(store.GenerateTotp(key, at, before, remaining), "code before rename");
+
+    std::vector<Account> accounts;
+    Check(store.List(accounts), "listed");
+    Check(accounts.size() == 1, "one account");
+
+    Otp::Parameters renamed = accounts[0].params;
+    renamed.issuer      = "Renamed Service";
+    renamed.accountName = "bob@example.com";
+
+    std::string newKey;
+    Check(store.Update(key, renamed, newKey), "renamed");
+    Check(newKey == "Renamed Service:bob@example.com", "new key is the label");
+    Check(newKey != key, "the key actually moved");
+
+    std::string after;
+    Check(store.GenerateTotp(newKey, at, after, remaining), "code after rename");
+    Check(after == before, "the same seed still produces the same code");
+
+    // The old key must be gone, and there must be exactly one entry — a rename
+    // that left a copy behind would double the blast radius of a leak.
+    std::string stale;
+    Check(!store.GenerateTotp(key, at, stale, remaining),
+          "the old key no longer resolves");
+    Check(store.Count() == 1, "exactly one entry remains");
+
+    Check(store.List(accounts) && accounts.size() == 1 &&
+              accounts[0].key == newKey,
+          "the listing shows only the new key");
+
+    store.Close();
+    std::filesystem::remove(path);
+}
+
+// Renaming onto a name already in use would destroy that account's seed.
+static void TestRenameRefusesCollision() {
+    std::printf("Rename refuses a collision\n");
+    const std::string path = TempVaultPath("rename-collide");
+    AccountStore store;
+    Check(store.Create(path, Buf("master-pw")), "vault created");
+
+    std::string keyA, keyB;
+    Check(store.AddFromUri(TotpUri("Example", "alice@example.com"), keyA),
+          "first added");
+    Check(store.AddFromUri(TotpUri("Example", "bob@example.com"), keyB),
+          "second added");
+
+    std::vector<Account> accounts;
+    Check(store.List(accounts) && accounts.size() == 2, "two accounts");
+
+    // Aim the first account at the second's label.
+    Otp::Parameters clash = accounts[0].params;
+    clash.issuer      = "Example";
+    clash.accountName = "bob@example.com";
+
+    std::string newKey;
+    StoreResult res = store.Update(keyA, clash, newKey);
+    Check(!res, "the collision is refused");
+    Check(res.code == StoreResultCode::AlreadyExists, "reported as AlreadyExists");
+    Check(store.Count() == 2, "both accounts survive");
+
+    // And both still work: the refusal must not have half-applied.
+    std::string code;
+    uint32_t remaining = 0;
+    Check(store.GenerateTotp(keyA, 59, code, remaining), "first still generates");
+    Check(store.GenerateTotp(keyB, 59, code, remaining), "second still generates");
+
+    store.Close();
+    std::filesystem::remove(path);
+}
+
+// Digits and period are what the app computes with; changing them must take
+// effect and must survive a reopen.
+static void TestUpdateParameters() {
+    std::printf("Parameter edits\n");
+    const std::string path = TempVaultPath("params");
+    {
+        AccountStore store;
+        Check(store.Create(path, Buf("master-pw")), "vault created");
+
+        std::string key;
+        Check(store.AddFromUri(TotpUri("Example", "alice@example.com"), key),
+              "account added");
+
+        std::vector<Account> accounts;
+        Check(store.List(accounts), "listed");
+
+        Otp::Parameters edited = accounts[0].params;
+        edited.digits        = 8;
+        edited.periodSeconds = 60;
+
+        std::string newKey;
+        Check(store.Update(key, edited, newKey), "parameters updated");
+        Check(newKey == key, "an edit that keeps the label keeps the key");
+
+        std::string code;
+        uint32_t remaining = 0;
+        Check(store.GenerateTotp(newKey, 59, code, remaining), "code generated");
+        Check(code.size() == 8, "now an 8-digit code");
+        // At t=59 with a 60-second step, one second is left.
+        Check(remaining == 1, "countdown follows the new period");
+    }
+    {
+        AccountStore store;
+        Check(store.Open(path, Buf("master-pw")), "reopened");
+        std::vector<Account> accounts;
+        Check(store.List(accounts) && accounts.size() == 1, "one account");
+        Check(accounts[0].params.digits == 8, "digits persisted");
+        Check(accounts[0].params.periodSeconds == 60, "period persisted");
+        store.Close();
+    }
+    std::filesystem::remove(path);
+}
+
+// An edit that cannot be written back out must be refused before it is
+// written, leaving the account exactly as it was.
+static void TestUpdateRejectsBadParameters() {
+    std::printf("Parameter edits are validated\n");
+    const std::string path = TempVaultPath("params-bad");
+    AccountStore store;
+    Check(store.Create(path, Buf("master-pw")), "vault created");
+
+    std::string key;
+    Check(store.AddFromUri(TotpUri("Example", "alice@example.com"), key),
+          "account added");
+
+    std::vector<Account> accounts;
+    Check(store.List(accounts), "listed");
+
+    Otp::Parameters bad = accounts[0].params;
+    bad.digits = 12;                       // outside the 6..8 the RFC allows
+    std::string newKey;
+    Check(!store.Update(key, bad, newKey), "out-of-range digits refused");
+
+    Otp::Parameters noLabel = accounts[0].params;
+    noLabel.issuer.clear();
+    noLabel.accountName.clear();
+    Check(!store.Update(key, noLabel, newKey), "an empty label is refused");
+
+    // Untouched: still six digits, still under the original key.
+    std::string code;
+    uint32_t remaining = 0;
+    Check(store.GenerateTotp(key, 59, code, remaining), "account still works");
+    Check(code.size() == 6, "still the original digit count");
+    Check(store.Count() == 1, "still one account");
+
+    store.Close();
+    std::filesystem::remove(path);
+}
+
+static void TestChangePassword() {
+    std::printf("Master password change\n");
+    const std::string path = TempVaultPath("changepw");
+    std::string key;
+    {
+        AccountStore store;
+        Check(store.Create(path, Buf("old-pw")), "vault created");
+        Check(store.AddFromUri(TotpUri("Example", "alice@example.com"), key),
+              "account added");
+
+        Check(!store.ChangePassword(Buf("wrong-pw"), Buf("new-pw")),
+              "a wrong current password is refused");
+        Check(!store.ChangePassword(Buf("old-pw"), Buf("")),
+              "an empty new password is refused");
+        Check(store.ChangePassword(Buf("old-pw"), Buf("new-pw")),
+              "the change is accepted");
+        store.Close();
+    }
+    {
+        AccountStore store;
+        Check(!store.Open(path, Buf("old-pw")), "the old password no longer opens it");
+    }
+    {
+        AccountStore store;
+        Check(store.Open(path, Buf("new-pw")), "the new password opens it");
+        std::string code;
+        uint32_t remaining = 0;
+        Check(store.GenerateTotp(key, 59, code, remaining),
+              "the account survived the rekey");
+        store.Close();
+    }
+    std::filesystem::remove(path);
+}
+
+static void TestReveal() {
+    std::printf("Seed reveal\n");
+    const std::string path = TempVaultPath("reveal");
+    AccountStore store;
+    Check(store.Create(path, Buf("master-pw")), "vault created");
+
+    std::string key;
+    Check(store.AddFromUri(TotpUri("Example", "alice@example.com"), key),
+          "account added");
+
+    // Wrong password: refused, and nothing comes back.
+    UltraCryptSecureBuffer out;
+    StoreResult denied = store.Reveal(key, Buf("wrong-pw"), out);
+    Check(!denied, "a wrong password is refused");
+    Check(denied.code == StoreResultCode::AuthenticationFailed,
+          "reported as AuthenticationFailed");
+    Check(out.GetSize() == 0, "nothing is handed back on refusal");
+
+    // A wrong password must not reveal whether an account exists: asking for a
+    // key that does not exist has to fail the same way, at the same step.
+    StoreResult ghost = store.Reveal("no-such-account", Buf("wrong-pw"), out);
+    Check(!ghost, "unknown key with a wrong password is refused");
+    Check(ghost.code == StoreResultCode::AuthenticationFailed,
+          "and fails at the password, not at the lookup");
+
+    // Right password: the URI comes back and carries the seed.
+    Check(store.Reveal(key, Buf("master-pw"), out), "the reveal is allowed");
+    const std::string uri(reinterpret_cast<const char*>(out.Data()),
+                          out.GetSize());
+    Check(uri.rfind("otpauth://totp/", 0) == 0, "an otpauth:// URI comes back");
+    Check(uri.find(kSeedB32) != std::string::npos, "it carries the seed");
+
+    // The revealed URI must re-import to the same account.
+    Otp::Parameters params;
+    UltraCryptSecureBuffer secret;
+    Check(Otp::ParseOtpAuthUri(uri, params, secret), "the revealed URI parses");
+    Check(params.accountName == "alice@example.com", "same account name");
+
+    store.Close();
+    std::filesystem::remove(path);
+}
+
 int main() {
     std::printf("UltraAuthenticator account-layer tests — backend: %s\n\n",
                 UltraCrypt_IsAvailable() ? UltraCrypt_GetBackendName().c_str()
@@ -307,6 +552,12 @@ int main() {
     TestRejectsBadUris();
     TestSeedNeverOnDisk();
     TestClosedStore();
+    TestRenamePreservesSeed();
+    TestRenameRefusesCollision();
+    TestUpdateParameters();
+    TestUpdateRejectsBadParameters();
+    TestChangePassword();
+    TestReveal();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

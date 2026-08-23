@@ -45,16 +45,21 @@ std::string AccountStore::MakeKey(const Otp::Parameters& params) {
 
 StoreResult AccountStore::Create(const std::string& path,
                                  const UltraCryptSecureBuffer& password) {
-    return vault_.Create(path, password);
+    StoreResult created = vault_.Create(path, password);
+    if (created) path_ = path;
+    return created;
 }
 
 StoreResult AccountStore::Open(const std::string& path,
                                const UltraCryptSecureBuffer& password) {
-    return vault_.Open(path, password);
+    StoreResult opened = vault_.Open(path, password);
+    if (opened) path_ = path;
+    return opened;
 }
 
 void AccountStore::Close() {
     vault_.Close();
+    path_.clear();
 }
 
 StoreResult AccountStore::AddFromUri(const std::string& otpauthUri,
@@ -109,6 +114,98 @@ StoreResult AccountStore::AddFromUri(const std::string& otpauthUri,
 
 StoreResult AccountStore::Remove(const std::string& key) {
     return vault_.Delete(key);
+}
+
+StoreResult AccountStore::Update(const std::string& key,
+                                 const Otp::Parameters& newParams,
+                                 std::string& outKey) {
+    outKey.clear();
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+
+    // Load first: this both proves the account exists and yields the seed,
+    // which the rewrite has to carry across unchanged.
+    Otp::Parameters current;
+    UltraCryptSecureBuffer secret;
+    StoreResult loaded = LoadEntry(key, current, secret);
+    if (!loaded) return loaded;
+
+    const std::string newKey = MakeKey(newParams);
+    if (newKey.empty()) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "account has no label");
+    }
+
+    // BuildOtpAuthUri is the validator, exactly as on the add path: parameters
+    // that could not be written back out are parameters that would lose the
+    // account, so they are rejected before anything is written.
+    std::string canonical;
+    Otp::Result built = Otp::BuildOtpAuthUri(newParams, secret, canonical);
+    if (!built) {
+        WipeString(canonical);
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  built.message);
+    }
+
+    UltraCryptSecureBuffer value = AdoptUri(canonical);
+    StoreResult replaced = vault_.Replace(key, newKey, value);
+    if (!replaced) return replaced;
+
+    outKey = newKey;
+    return StoreResult::Ok();
+}
+
+StoreResult AccountStore::ChangePassword(
+    const UltraCryptSecureBuffer& currentPassword,
+    const UltraCryptSecureBuffer& newPassword) {
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    if (newPassword.GetSize() == 0) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the new password is empty");
+    }
+
+    // Verify the current password against the file rather than against the
+    // open session. Being unlocked says somebody knew the password at launch;
+    // it does not say the person asking for a change does.
+    {
+        EncryptedFileStore probe;
+        StoreResult opened = probe.Open(path_, currentPassword);
+        if (!opened) {
+            return StoreResult::Error(StoreResultCode::AuthenticationFailed,
+                                      "the current password is not correct");
+        }
+        probe.Close();
+    }
+
+    return vault_.ChangePassword(newPassword);
+}
+
+StoreResult AccountStore::Reveal(const std::string& key,
+                                 const UltraCryptSecureBuffer& password,
+                                 UltraCryptSecureBuffer& outUri) const {
+    outUri.Clear();
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+
+    // Same reasoning as ChangePassword: re-authenticate against the file. This
+    // is the gate that makes handing a seed back defensible at all, so it runs
+    // before the entry is even looked up — a wrong password must not be able
+    // to learn whether an account exists.
+    {
+        EncryptedFileStore probe;
+        StoreResult opened = probe.Open(path_, password);
+        if (!opened) {
+            return StoreResult::Error(StoreResultCode::AuthenticationFailed,
+                                      "that password is not correct");
+        }
+        probe.Close();
+    }
+
+    return vault_.Get(key, outUri);
 }
 
 StoreResult AccountStore::LoadEntry(const std::string& key,

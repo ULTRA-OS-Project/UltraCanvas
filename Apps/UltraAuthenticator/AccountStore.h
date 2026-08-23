@@ -12,12 +12,24 @@
 //  - One value per account means adding, removing and rewriting an account is
 //    a single Put/Delete against the vault, with no index to corrupt.
 //
-// The security point of this class: **the UI never sees a secret.** Callers
-// get accounts (issuer, label, digits, period) and generated codes. The seed
-// is read out of the vault, used, and destroyed inside a single call, so it
-// exists in memory for microseconds rather than for as long as a window is
-// open. Nothing here returns an UltraCryptSecureBuffer to the caller, and
-// nothing here puts a seed in a std::string.
+// The security point of this class: **the UI never sees a secret** — with one
+// deliberate exception, named below. Callers get accounts (issuer, label,
+// digits, period) and generated codes. The seed is read out of the vault,
+// used, and destroyed inside a single call, so it exists in memory for
+// microseconds rather than for as long as a window is open. Nothing here puts
+// a seed in a std::string.
+//
+// The exception is `Reveal`. Moving to a new phone requires reading the seed
+// back out; an authenticator that can only ever swallow secrets strands its
+// users, and they work around it by keeping the original QR code somewhere far
+// less safe. So the operation exists, and is fenced instead of forbidden:
+//
+//  - It demands the master password again, even though the vault is already
+//    open. Unlocking happened once at launch; the person now standing at the
+//    screen may not be the person who unlocked it.
+//  - It is the only method that hands back an UltraCryptSecureBuffer, so the
+//    grep for "who can see a seed" stays a one-line answer.
+//  - Nothing else in the app calls it. The reveal dialog is its sole caller.
 //
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -77,6 +89,38 @@ public:
 
     StoreResult Remove(const std::string& key);
 
+    // The single edit path. Rewrites an existing account's label *and* its OTP
+    // parameters; renaming is just the case where only the label changed. Both
+    // travel together because both live in the same stored URI and the label
+    // also determines the key, so splitting them would mean two writes where
+    // one will do.
+    //
+    // The seed is preserved untouched: it is read, carried across the rewrite,
+    // and destroyed, never leaving this call. `outKey` reports the key the
+    // account now lives under, which differs from `key` whenever the label
+    // changed. Renaming onto another existing account is refused.
+    //
+    // Changing digits, period, algorithm or type does NOT re-negotiate
+    // anything with the service — it only changes what this app computes. A
+    // caller offering these must say so; getting them wrong silently produces
+    // codes the server rejects.
+    StoreResult Update(const std::string& key, const Otp::Parameters& newParams,
+                       std::string& outKey);
+
+    // Re-derives the vault key from a new password and rewrites the file.
+    // `currentPassword` is verified first, by opening the vault file afresh:
+    // the vault being unlocked proves only that somebody knew the password at
+    // launch, which is not the same as the person asking to change it now.
+    StoreResult ChangePassword(const UltraCryptSecureBuffer& currentPassword,
+                               const UltraCryptSecureBuffer& newPassword);
+
+    // Hands back the account's otpauth:// URI, which carries the seed. Gated
+    // on `password` matching the vault's. See the exception note at the top of
+    // this file — this is the one method that lets a secret out.
+    StoreResult Reveal(const std::string& key,
+                       const UltraCryptSecureBuffer& password,
+                       UltraCryptSecureBuffer& outUri) const;
+
     // Accounts in stable (sorted-by-key) order. Never touches a seed.
     StoreResult List(std::vector<Account>& outAccounts) const;
 
@@ -105,6 +149,10 @@ private:
     // secret buffer is the caller's to keep only as long as it needs.
     StoreResult LoadEntry(const std::string& key, Otp::Parameters& outParams,
                           UltraCryptSecureBuffer& outSecret) const;
+
+    // Kept so ChangePassword and Reveal can re-open the file to verify a
+    // password, rather than trusting that the session is still the same person.
+    std::string path_;
 
     mutable EncryptedFileStore vault_;
 };

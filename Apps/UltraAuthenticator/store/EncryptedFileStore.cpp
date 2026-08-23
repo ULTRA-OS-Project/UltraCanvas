@@ -500,6 +500,52 @@ StoreResult EncryptedFileStore::Delete(const std::string& key) {
     return StoreResult::Ok();
 }
 
+StoreResult EncryptedFileStore::Replace(const std::string& oldKey,
+                                        const std::string& newKey,
+                                        const UltraCryptSecureBuffer& newValue) {
+    if (!isOpen_) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    if (newKey.empty() || newKey.size() > kMaxStoreKeyLength) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the key is empty or too long");
+    }
+    if (newValue.GetSize() > kMaxStoreValueBytes) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the value is too large");
+    }
+
+    const auto it = entries_.find(oldKey);
+    if (it == entries_.end()) {
+        return StoreResult::Error(StoreResultCode::NotFound,
+                                  "no entry under that key");
+    }
+    // Moving onto an unrelated existing entry would destroy that entry's
+    // secret, so it is refused exactly as Put refuses to clobber. Renaming an
+    // entry onto itself is not a collision, and is how a parameter-only edit
+    // arrives here.
+    if (newKey != oldKey && entries_.find(newKey) != entries_.end()) {
+        return StoreResult::Error(StoreResultCode::AlreadyExists,
+                                  "an entry named '" + newKey +
+                                      "' already exists");
+    }
+
+    UltraCryptSecureBuffer previous = std::move(it->second);
+    entries_.erase(it);
+    entries_[newKey] = newValue.Clone();
+
+    auto saved = SaveLocked();
+    if (!saved) {
+        // Put both halves back: the entry returns to its old key with its old
+        // value, so memory still matches what is on disk.
+        entries_.erase(newKey);
+        entries_[oldKey] = std::move(previous);
+        return saved;
+    }
+    previous.Clear();
+    return StoreResult::Ok();
+}
+
 StoreResult EncryptedFileStore::List(std::vector<std::string>& outKeys) const {
     outKeys.clear();
     if (!isOpen_) {

@@ -1,9 +1,13 @@
 // Apps/UltraAuthenticator/AuthenticatorWindow.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "AuthenticatorWindow.h"
 #include "AddAccountDialog.h"
+#include "ChangePasswordDialog.h"
+#include "EditAccountDialog.h"
+#include "RevealSecretDialog.h"
+#include "Theme.h"
 
 #include "UltraCanvasModalDialog.h"
 
@@ -24,13 +28,36 @@ std::string GroupCode(const std::string& code) {
     return code;
 }
 
-std::string DisplayName(const Account& account) {
-    if (account.params.issuer.empty()) return account.params.accountName;
-    return account.params.issuer + " — " + account.params.accountName;
+// The placeholder must occupy the same width as a real code, or every card
+// jumps sideways the moment the first refresh lands.
+std::string CodePlaceholder(uint32_t digits) {
+    return GroupCode(std::string(digits, '-'));
 }
 
 int64_t NowUnix() {
     return static_cast<int64_t>(std::time(nullptr));
+}
+
+// The second line of a card: the account name, plus the details worth knowing
+// at a glance. SHA-1 is the default every service uses, so naming it on every
+// card would be noise; anything else is unusual enough to show.
+std::string SubtitleFor(const Otp::Parameters& params) {
+    std::string text = params.accountName;
+    if (params.type == Otp::Type::Hotp) {
+        text += "  ·  counter " + std::to_string(params.counter);
+    }
+    if (params.algorithm != Otp::Algorithm::SHA1) {
+        text += "  ·  " + std::string(Otp::AlgorithmName(params.algorithm));
+    }
+    if (params.digits != Otp::kDefaultDigits) {
+        text += "  ·  " + std::to_string(params.digits) + " digits";
+    }
+    return text;
+}
+
+std::string DisplayName(const Otp::Parameters& params) {
+    if (params.issuer.empty()) return params.accountName;
+    return params.issuer + " — " + params.accountName;
 }
 
 } // namespace
@@ -59,6 +86,8 @@ bool AuthenticatorWindow::Create() {
     window_ = CreateWindow(cfg);
     if (!window_) return false;
 
+    window_->SetBackgroundColor(Theme::kPageBackground);
+
     window_->onWindowClosing = [this]() {
         // Drop the decrypted vault on close rather than waiting for process
         // teardown: the seeds should not outlive the window that needed them.
@@ -71,27 +100,45 @@ bool AuthenticatorWindow::Create() {
         return true;
     };
 
+    const long margin = Theme::kMargin;
+    const long width  = kWindowWidth - 2 * margin;
+
     auto title = std::make_shared<UltraCanvasLabel>(
-        "auth-title", kMargin, 18, kWindowWidth - 2 * kMargin, 24,
-        "UltraAuthenticator");
+        "auth-title", margin, 18, width, 26, "UltraAuthenticator");
+    title->SetFont(Theme::kUiFont, Theme::kSizeTitle, FontWeight::Bold);
+    title->SetTextColor(Theme::kTextPrimary);
     window_->AddChild(title);
 
     auto addBtn = std::make_shared<UltraCanvasButton>(
-        "auth-add", kMargin, 50, 140, 30);
+        "auth-add", margin, 54, 130, 32);
     addBtn->SetText("Add account");
     addBtn->onClick = [this]() { OpenAddAccountDialog(); };
     window_->AddChild(addBtn);
 
+    auto pwBtn = std::make_shared<UltraCanvasButton>(
+        "auth-pw", margin + 140, 54, 170, 32);
+    pwBtn->SetText("Change master password");
+    pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
+    window_->AddChild(pwBtn);
+
     statusLabel_ = std::make_shared<UltraCanvasLabel>(
-        "auth-status", kMargin + 156, 56,
-        kWindowWidth - 2 * kMargin - 156, 20, "");
+        "auth-status", margin, kHeaderHeight - 22, width, 18, "");
+    statusLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    statusLabel_->SetTextColor(Theme::kTextMuted);
     window_->AddChild(statusLabel_);
 
+    // The list scrolls, so the account count is not capped by window height.
+    listContainer_ = CreateScrollableContainer(
+        "auth-list", margin, kHeaderHeight, width,
+        kWindowHeight - kHeaderHeight - margin);
+    window_->AddChild(listContainer_);
+
     emptyLabel_ = std::make_shared<UltraCanvasLabel>(
-        "auth-empty", kMargin, kHeaderHeight + 8,
-        kWindowWidth - 2 * kMargin, 40,
+        "auth-empty", 0, 8, width, 40,
         "No accounts yet — choose \"Add account\" to begin.");
-    window_->AddChild(emptyLabel_);
+    emptyLabel_->SetFont(Theme::kUiFont, Theme::kSizeBody);
+    emptyLabel_->SetTextColor(Theme::kTextMuted);
+    listContainer_->AddChild(emptyLabel_);
 
     RebuildRows();
 
@@ -109,30 +156,30 @@ void AuthenticatorWindow::Show() {
     if (window_) window_->Show();
 }
 
-void AuthenticatorWindow::SetStatus(const std::string& text) {
-    if (statusLabel_) statusLabel_->SetText(text);
+void AuthenticatorWindow::SetStatus(const std::string& text, bool isError) {
+    if (!statusLabel_) return;
+    statusLabel_->SetText(text);
+    statusLabel_->SetTextColor(isError ? Theme::kDanger : Theme::kTextMuted);
 }
 
 void AuthenticatorWindow::ClearRows() {
-    if (!window_) return;
+    if (!listContainer_) return;
     for (Row& row : rows_) {
-        if (row.nameLabel)      window_->RemoveChild(row.nameLabel);
-        if (row.codeLabel)      window_->RemoveChild(row.codeLabel);
-        if (row.countdownLabel) window_->RemoveChild(row.countdownLabel);
-        if (row.actionButton)   window_->RemoveChild(row.actionButton);
-        if (row.removeButton)   window_->RemoveChild(row.removeButton);
+        // Removing the card takes its children with it; the card is the only
+        // thing the container knows about.
+        if (row.card) listContainer_->RemoveChild(row.card);
     }
     rows_.clear();
 }
 
 void AuthenticatorWindow::RebuildRows() {
-    if (!window_) return;
+    if (!window_ || !listContainer_) return;
     ClearRows();
 
     std::vector<Account> accounts;
     StoreResult listed = store_.List(accounts);
     if (!listed) {
-        SetStatus(listed.message);
+        SetStatus(listed.message, true);
         if (emptyLabel_) emptyLabel_->SetText("");
         return;
     }
@@ -144,53 +191,107 @@ void AuthenticatorWindow::RebuildRows() {
                 : "");
     }
 
-    size_t shown = accounts.size();
-    if (shown > kMaxVisibleRows) {
-        shown = kMaxVisibleRows;
-        // Say so rather than silently dropping accounts off the bottom.
-        SetStatus("Showing " + std::to_string(kMaxVisibleRows) + " of " +
-                  std::to_string(accounts.size()) +
-                  " accounts; scrolling is not implemented yet.");
-    }
+    const long cardWidth = kWindowWidth - 2 * Theme::kMargin - 18;  // scrollbar
+    const long pad       = Theme::kCardPadding;
 
-    for (size_t i = 0; i < shown; ++i) {
+    for (size_t i = 0; i < accounts.size(); ++i) {
         const Account& account = accounts[i];
-        const long y = kHeaderHeight + static_cast<long>(i) * kRowHeight;
+        const long y = static_cast<long>(i) *
+                       (Theme::kCardHeight + Theme::kCardGap);
         const std::string id = "row" + std::to_string(i);
 
         Row row;
         row.key    = account.key;
+        row.params = account.params;
         row.isHotp = (account.params.type == Otp::Type::Hotp);
 
-        row.nameLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-name", kMargin, y, 250, 20, DisplayName(account));
-        window_->AddChild(row.nameLabel);
+        row.card = std::make_shared<UltraCanvasContainer>(
+            id + "-card", 0, y, cardWidth, Theme::kCardHeight);
+        row.card->SetBackgroundColor(Theme::kCardBackground);
+        listContainer_->AddChild(row.card);
 
+        // --- identity -----------------------------------------------------
+        const std::string issuerText = account.params.issuer.empty()
+                                           ? account.params.accountName
+                                           : account.params.issuer;
+        row.issuerLabel = std::make_shared<UltraCanvasLabel>(
+            id + "-issuer", pad, pad, cardWidth - 2 * pad - 200, 20, issuerText);
+        row.issuerLabel->SetFont(Theme::kUiFont, Theme::kSizeBody,
+                                 FontWeight::Bold);
+        row.issuerLabel->SetTextColor(Theme::kTextPrimary);
+        row.card->AddChild(row.issuerLabel);
+
+        row.accountLabel = std::make_shared<UltraCanvasLabel>(
+            id + "-account", pad, pad + 20, cardWidth - 2 * pad - 200, 18,
+            account.params.issuer.empty() ? SubtitleFor(account.params)
+                                          : SubtitleFor(account.params));
+        row.accountLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+        row.accountLabel->SetTextColor(Theme::kTextSecondary);
+        row.card->AddChild(row.accountLabel);
+
+        // --- code ---------------------------------------------------------
         row.codeLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-code", kMargin, y + 20, 130, 20, "------");
-        window_->AddChild(row.codeLabel);
+            id + "-code", pad, pad + 40, 220, 32,
+            CodePlaceholder(account.params.digits));
+        row.codeLabel->SetFont(Theme::kCodeFont, Theme::kSizeCode,
+                               FontWeight::Bold);
+        row.codeLabel->SetTextColor(Theme::kTextPrimary);
+        row.card->AddChild(row.codeLabel);
 
         row.countdownLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-left", kMargin + 140, y + 20, 100, 20, "");
-        window_->AddChild(row.countdownLabel);
+            id + "-left", pad + 228, pad + 50, 110, 20, "");
+        row.countdownLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary,
+                                    FontWeight::Bold);
+        row.countdownLabel->SetTextColor(Theme::kTextMuted);
+        row.card->AddChild(row.countdownLabel);
+
+        // --- actions ------------------------------------------------------
+        // Right-aligned, laid out from the right edge inwards so the row does
+        // not reflow when the HOTP-only button is absent.
+        long bx = cardWidth - pad - 84;
+        row.removeButton = std::make_shared<UltraCanvasButton>(
+            id + "-del", bx, pad, 84, 28);
+        row.removeButton->SetText("Remove");
+        {
+            const std::string key = account.key;
+            row.removeButton->onClick = [this, key]() { RemoveAccount(key); };
+        }
+        row.card->AddChild(row.removeButton);
+
+        bx -= 90;
+        row.revealButton = std::make_shared<UltraCanvasButton>(
+            id + "-reveal", bx, pad, 84, 28);
+        row.revealButton->SetText("Show key");
+        {
+            const std::string key = account.key;
+            row.revealButton->onClick = [this, key]() {
+                OpenRevealSecretDialog(key);
+            };
+        }
+        row.card->AddChild(row.revealButton);
+
+        bx -= 74;
+        row.editButton = std::make_shared<UltraCanvasButton>(
+            id + "-edit", bx, pad, 68, 28);
+        row.editButton->SetText("Edit");
+        {
+            const std::string key = account.key;
+            row.editButton->onClick = [this, key]() {
+                OpenEditAccountDialog(key);
+            };
+        }
+        row.card->AddChild(row.editButton);
 
         if (row.isHotp) {
             // A counter-based code is only produced on demand: generating one
             // spends it, so it must be an explicit action, never a timer tick.
             row.actionButton = std::make_shared<UltraCanvasButton>(
-                id + "-next", kWindowWidth - kMargin - 190, y + 6, 80, 28);
-            row.actionButton->SetText("Next");
+                id + "-next", cardWidth - pad - 84, pad + 44, 84, 28);
+            row.actionButton->SetText("Next code");
             const std::string key = account.key;
             row.actionButton->onClick = [this, key]() { AdvanceHotpRow(key); };
-            window_->AddChild(row.actionButton);
+            row.card->AddChild(row.actionButton);
         }
-
-        row.removeButton = std::make_shared<UltraCanvasButton>(
-            id + "-del", kWindowWidth - kMargin - 100, y + 6, 90, 28);
-        row.removeButton->SetText("Remove");
-        const std::string key = account.key;
-        row.removeButton->onClick = [this, key]() { RemoveAccount(key); };
-        window_->AddChild(row.removeButton);
 
         rows_.push_back(std::move(row));
     }
@@ -204,7 +305,7 @@ void AuthenticatorWindow::RefreshCodes() {
     const int64_t now = NowUnix();
     for (Row& row : rows_) {
         if (row.isHotp) {
-            // Nothing to tick: an HOTP code changes only when "Next" is
+            // Nothing to tick: an HOTP code changes only when "Next code" is
             // pressed, and showing one until then would imply it is still
             // valid.
             continue;
@@ -213,14 +314,17 @@ void AuthenticatorWindow::RefreshCodes() {
         uint32_t remaining = 0;
         StoreResult generated = store_.GenerateTotp(row.key, now, code, remaining);
         if (!generated) {
-            if (row.codeLabel)      row.codeLabel->SetText("error");
+            if (row.codeLabel) {
+                row.codeLabel->SetText(CodePlaceholder(row.params.digits));
+            }
             if (row.countdownLabel) row.countdownLabel->SetText("");
-            SetStatus(generated.message);
+            SetStatus(generated.message, true);
             continue;
         }
-        if (row.codeLabel)      row.codeLabel->SetText(GroupCode(code));
+        if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
         if (row.countdownLabel) {
-            row.countdownLabel->SetText(std::to_string(remaining) + "s");
+            row.countdownLabel->SetText(std::to_string(remaining) + "s left");
+            row.countdownLabel->SetTextColor(Theme::CountdownColor(remaining));
         }
     }
 }
@@ -229,13 +333,21 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
     std::string code;
     StoreResult advanced = store_.AdvanceHotp(key, code);
     if (!advanced) {
-        SetStatus(advanced.message);
+        SetStatus(advanced.message, true);
         return;
     }
     for (Row& row : rows_) {
         if (row.key != key) continue;
-        if (row.codeLabel)      row.codeLabel->SetText(GroupCode(code));
-        if (row.countdownLabel) row.countdownLabel->SetText("used once");
+        if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
+        if (row.countdownLabel) {
+            row.countdownLabel->SetText("used once");
+            row.countdownLabel->SetTextColor(Theme::kTextMuted);
+        }
+        // The stored counter has moved on; keep the subtitle honest.
+        row.params.counter += 1;
+        if (row.accountLabel) {
+            row.accountLabel->SetText(SubtitleFor(row.params));
+        }
     }
     SetStatus("");
 }
@@ -252,7 +364,7 @@ void AuthenticatorWindow::RemoveAccount(const std::string& key) {
             if (!confirmed) return;
             StoreResult removed = store_.Remove(key);
             if (!removed) {
-                SetStatus(removed.message);
+                SetStatus(removed.message, true);
                 return;
             }
             SetStatus("");
@@ -272,6 +384,74 @@ void AuthenticatorWindow::OpenAddAccountDialog() {
         return std::string();
     };
     dialog->CreateAddAccountDialog();
+    dialog->ShowModal(window_.get());
+}
+
+void AuthenticatorWindow::OpenEditAccountDialog(const std::string& key) {
+    // Seed the form from what is on screen rather than re-reading the vault:
+    // the row already holds the parameters, and re-reading would decrypt an
+    // entry for no reason.
+    const Otp::Parameters* current = nullptr;
+    for (const Row& row : rows_) {
+        if (row.key == key) { current = &row.params; break; }
+    }
+    if (!current) {
+        SetStatus("That account is no longer in the list.", true);
+        return;
+    }
+
+    auto dialog = std::make_shared<EditAccountDialog>();
+    dialog->onAccept = [this, key](const Otp::Parameters& edited) -> std::string {
+        std::string newKey;
+        StoreResult updated = store_.Update(key, edited, newKey);
+        if (!updated) return updated.message;
+        RebuildRows();
+        SetStatus(newKey == key ? "Updated " + newKey + "."
+                                : "Renamed to " + newKey + ".");
+        return std::string();
+    };
+    dialog->CreateEditAccountDialog(*current);
+    dialog->ShowModal(window_.get());
+}
+
+void AuthenticatorWindow::OpenRevealSecretDialog(const std::string& key) {
+    const Otp::Parameters* current = nullptr;
+    for (const Row& row : rows_) {
+        if (row.key == key) { current = &row.params; break; }
+    }
+    if (!current) {
+        SetStatus("That account is no longer in the list.", true);
+        return;
+    }
+
+    auto dialog = std::make_shared<RevealSecretDialog>();
+    dialog->onReveal = [this, key](const std::string& password,
+                                   std::string& outUri) -> std::string {
+        // AccountStore::Reveal is the gate: it re-derives the vault key from
+        // this password before it will hand anything back.
+        UltraCryptSecureBuffer pw(password.data(), password.size());
+        UltraCryptSecureBuffer uri;
+        StoreResult revealed = store_.Reveal(key, pw, uri);
+        if (!revealed) return revealed.message;
+        outUri.assign(reinterpret_cast<const char*>(uri.Data()), uri.GetSize());
+        return std::string();
+    };
+    dialog->CreateRevealSecretDialog(DisplayName(*current));
+    dialog->ShowModal(window_.get());
+}
+
+void AuthenticatorWindow::OpenChangePasswordDialog() {
+    auto dialog = std::make_shared<ChangePasswordDialog>();
+    dialog->onAccept = [this](const std::string& current,
+                              const std::string& next) -> std::string {
+        UltraCryptSecureBuffer currentPw(current.data(), current.size());
+        UltraCryptSecureBuffer nextPw(next.data(), next.size());
+        StoreResult changed = store_.ChangePassword(currentPw, nextPw);
+        if (!changed) return changed.message;
+        SetStatus("Master password changed.");
+        return std::string();
+    };
+    dialog->CreateChangePasswordDialog();
     dialog->ShowModal(window_.get());
 }
 
