@@ -233,6 +233,11 @@ int RunHeadless(bool clean, UltraCleaner::RemovalMode mode, bool includeAll) {
         std::printf("%zu items were refused by the safety check\n",
                     result.refusedByGuard);
     }
+    if (result.skippedAlreadyInTrash > 0) {
+        std::printf("%zu items were already in the trash and were left alone"
+                    " — use --delete --yes to empty it\n",
+                    result.skippedAlreadyInTrash);
+    }
     for (const auto& failure : result.failures) {
         std::printf("  failed: %s\n    %s\n", failure.path.c_str(),
                     failure.reason.c_str());

@@ -445,6 +445,11 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
                 message += "  " + std::to_string(result.refusedByGuard) +
                            " were refused by the safety check.";
             }
+            if (result.skippedAlreadyInTrash > 0) {
+                message += "  " + std::to_string(result.skippedAlreadyInTrash) +
+                           " were already in the trash and were left alone — "
+                           "choose “Delete permanently” to empty it.";
+            }
             if (result.cancelled) message += "  Stopped early.";
             SetStatus(message);
 
