@@ -308,6 +308,16 @@ namespace UltraCanvas {
         SetBorders(1, Colors::Gray);
     }
 
+    void UltraCanvasTreeView::SetRootVisible(bool visible) {
+        if (rootVisible == visible) return;
+        rootVisible = visible;
+        // A hidden root must stay expanded: its children ARE the top level, and
+        // a collapsed root would leave the tree looking empty.
+        if (!rootVisible && rootNode) rootNode->Expand();
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
     TreeNode *UltraCanvasTreeView::SetRootNode(const TreeNodeData &rootData) {
         // Replacing the root frees the previous node graph. Drop any pointers
         // into the old graph first so selection/hover/focus can't dangle when a
@@ -316,6 +326,9 @@ namespace UltraCanvas {
         hoveredNode = nullptr;
         focusedNode = nullptr;
         rootNode = std::make_unique<TreeNode>(rootData);
+        // A hidden root never shows an expander, so it must start expanded or
+        // the whole forest below it would be invisible.
+        if (!rootVisible) rootNode->Expand();
         UpdateScrollbars();
         return rootNode.get();
     }
@@ -752,7 +765,13 @@ namespace UltraCanvas {
         if (rootNode) {
             // Rows start below the (optional) fixed header band and scroll beneath it.
             int currentY = contentRect.y + headerHeight - scrollOffsetY;
-            RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
+            if (rootVisible) {
+                RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
+            } else {
+                // Hidden root: its children are the top level, at depth 0.
+                for (auto &child: rootNode->children)
+                    RenderNode(ctx, child.get(), currentY, 0, contentRect);
+            }
         }
 
         // Draw the fixed header band last so rows scrolled up are covered by it.
@@ -817,7 +836,8 @@ namespace UltraCanvas {
 
     int UltraCanvasTreeView::GetTotalVisibleHeight() {
         if (!rootNode) return 0;
-        return (1 + rootNode->GetVisibleChildCount()) * rowHeight;
+        const int rootRow = rootVisible ? 1 : 0;   // a hidden root occupies no row
+        return (rootRow + rootNode->GetVisibleChildCount()) * rowHeight;
     }
 
     int UltraCanvasTreeView::GetNodeDisplayY(TreeNode *node) {
@@ -844,7 +864,13 @@ namespace UltraCanvas {
         };
 
         int currentY = 0;
-        findNodeY(rootNode.get(), currentY);
+        if (rootVisible) {
+            findNodeY(rootNode.get(), currentY);
+        } else {
+            for (auto &child: rootNode->children) {
+                if (child->data.visible && findNodeY(child.get(), currentY)) break;
+            }
+        }
         return y;
     }
 
@@ -879,7 +905,12 @@ namespace UltraCanvas {
             return nullptr;
         };
 
-        return findNode(rootNode.get());
+        if (rootVisible) return findNode(rootNode.get());
+        for (auto &child: rootNode->children) {
+            if (!child->data.visible) continue;
+            if (TreeNode *found = findNode(child.get())) return found;
+        }
+        return nullptr;
     }
 
     void UltraCanvasTreeView::RenderNode(IRenderContext *ctx, TreeNode *node, int &currentY, int level,

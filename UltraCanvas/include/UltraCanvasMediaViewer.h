@@ -52,8 +52,8 @@
 // solid colour (default white) or the checkered pattern familiar from image
 // editors (SetTransparentBackground / SetTransparentColor).
 //
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// Version: 1.5.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -301,6 +301,13 @@ public:
     // single file browses its folder (OpenFile); picking several sets them as
     // the playlist (SetFiles).
     void ShowOpenDialog();
+    // Show nothing and let go of the file that was showing: playback stops and
+    // every display backend releases its document, so the file can be moved,
+    // renamed or deleted right after. Hosts that keep the viewer alive as a
+    // preview pane (the UltraFiler preview) must call this before touching the
+    // previewed file - a document engine that still holds the file open makes
+    // the move fail on Windows, where an open handle blocks the rename.
+    void CloseFile();
 
     size_t GetCount() const { return playlist.size(); }
     size_t GetCurrentIndex() const { return currentIndex; }
@@ -377,6 +384,10 @@ public:
 private:
     void BuildUI(float w, float h);
     void LoadCurrent(bool animated);
+    // Drop the document each display backend is holding (PDF engine, e-book
+    // engine, text buffer, the shown bitmap). Playback is stopped separately by
+    // StopPlayback(); the video / audio backends offer no stronger release.
+    void ReleaseViewBackends();
     // Start playback of a freshly loaded (or already shown) video according
     // to videoPreviewMode; no-op when the video backend is unavailable.
     void ApplyVideoPreviewToCurrent();

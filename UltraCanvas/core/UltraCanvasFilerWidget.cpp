@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.15.0
-// Last Modified: 2026-08-20
+// Version: 1.17.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -66,6 +66,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasProgressDialog.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasContainer.h"
@@ -118,6 +119,9 @@ namespace UltraCanvas {
         // editor (Windows style). Must exceed the platform double-click
         // interval so the first click of a double-click never renames.
         constexpr unsigned int kRenameClickDelayMs = 500;
+        // How often the UI reads the archive worker's counters. Fast enough
+        // that the ring moves smoothly, slow enough to cost nothing.
+        constexpr unsigned int kArchivePollIntervalMs = 100;
 
         // ===== RESIZABLE COLUMNS =====
         // Narrowest a column can be dragged; the Name column keeps more so it
@@ -1722,8 +1726,18 @@ namespace UltraCanvas {
         HideDragOverlay();          // its renderer captures `this`
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
+        StopFolderWatchTimer();     // its callback captures `this`
+        // A pack / unpack still running: ask it to stop, then wait for it. The
+        // worker holds no widget state, but its thread must not outlive the
+        // widget whose poll timer would report it.
+        if (archiveJob) {
+            archiveJob->cancelRequested.store(true);
+            archiveJob->onFinished = nullptr;   // nothing left to refresh
+            FinishArchiveJob();
+        }
         StopFolderStatsWorker();
         StopFolderPrefetchWorker();
+        StopFolderWatchWorker();
     }
 
     // ===== FOLDER =====
@@ -2111,6 +2125,11 @@ namespace UltraCanvas {
                         {distinct.begin(), distinct.end()});
         }
 
+        // Point the folder watch at what is now on screen. Done after the scan
+        // so the fingerprint the worker takes describes the listing the user
+        // is looking at, not the one that was there a moment ago.
+        WatchFolder((fileListMode || !isRealDir) ? std::string() : currentPath);
+
         // The listing itself changed (entries added / removed / renamed) —
         // hosts use this to refresh what they show about the folder.
         if (onFolderRefreshed) onFolderRefreshed();
@@ -2456,6 +2475,23 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::FireSelectionChanged() {
         if (onSelectionChanged) onSelectionChanged(GetSelectedEntries());
+    }
+
+    void UltraCanvasFilerWidget::DeselectPathsForModification(
+            const std::vector<std::string>& paths) {
+        if (selection.empty() || paths.empty()) return;
+        std::vector<size_t> keep;
+        keep.reserve(selection.size());
+        for (size_t idx : selection) {
+            if (idx >= entries.size()) continue;
+            if (std::find(paths.begin(), paths.end(), entries[idx].path) == paths.end())
+                keep.push_back(idx);
+        }
+        if (keep.size() == selection.size()) return;   // none of them selected
+        selection = std::move(keep);
+        // Synchronous: a host preview pane closes the file inside this call.
+        FireSelectionChanged();
+        RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::NotifyFolderModified(const std::string& folderPath) {
@@ -3012,6 +3048,11 @@ namespace UltraCanvas {
             if (onDone) onDone(false);
             return;
         }
+        // A move renames the source away, which fails while something still
+        // holds it open - the host's preview pane being the usual culprit.
+        // Letting the sources go out of the selection closes that preview
+        // before the first rename is attempted.
+        if (cut) DeselectPathsForModification(paths);
         pendingPaste = std::make_unique<PendingPaste>();
         pendingPaste->folder = std::move(folder);
         pendingPaste->sources = std::move(paths);
@@ -3101,10 +3142,31 @@ namespace UltraCanvas {
         ec.clear();
         if (pp.cut) {
             fs::rename(from, dest, ec);
-            if (ec) {   // cross-device move: copy + delete
+            if (ec) {
+                // Either the two paths are on different volumes - where a
+                // rename cannot work and copy + delete is the move - or the
+                // rename was refused outright (the usual reason: something
+                // still holds the file open). Keep the rename's own error:
+                // when the fallback fails too, that is the one that names the
+                // real cause.
+                const std::error_code renameError = ec;
+                std::error_code fallback;
+                fs::copy(from, dest, fs::copy_options::recursive, fallback);
+                if (fallback) {
+                    whyFailed = renameError.message();
+                    return false;
+                }
+                fs::remove_all(from, fallback);
+                if (fallback) {
+                    // The copy landed but the original would not go: undo the
+                    // copy, so a move that failed does not leave the entry in
+                    // both places.
+                    std::error_code cleanup;
+                    fs::remove_all(dest, cleanup);
+                    whyFailed = renameError.message();
+                    return false;
+                }
                 ec.clear();
-                fs::copy(from, dest, fs::copy_options::recursive, ec);
-                if (!ec) fs::remove_all(from, ec);
             }
         } else {
             fs::copy(from, dest, fs::copy_options::recursive, ec);
@@ -3123,14 +3185,30 @@ namespace UltraCanvas {
         const std::string name = fs::path(src).filename().string();
         const std::string kind = fs::is_directory(src, ec) ? "folder" : "file";
 
+        const bool moving = pendingPaste && pendingPaste->cut;
+        const std::string verb   = moving ? "moved" : "copied";
+        const std::string folder = pendingPaste ? pendingPaste->folder : std::string();
+
         DialogConfig cfg;
-        cfg.title = "Cannot Paste";
+        cfg.title = moving ? "Cannot Move" : "Cannot Copy";
         cfg.dialogType = DialogType::Warning;
-        cfg.message = "\"" + name + "\" could not be pasted: "
-                + (reason.empty() ? std::string("unknown error") : reason) + ".";
-        cfg.details = "The " + kind + " may be locked or in use by another program.";
-        cfg.width = 560;
-        cfg.height = 300;
+        cfg.message = "The " + kind + " \"" + name + "\" could not be " + verb + ".";
+        // The whole failure, spelled out: what was attempted, on which paths,
+        // and the operating system's own words for why it did not work. Paths
+        // go in code spans so a Windows backslash survives the Markdown pass.
+        cfg.details =
+                "**Reason:** "
+                + (reason.empty() ? std::string("unknown error") : reason) + "\n\n"
+                + "**" + (moving ? std::string("Move") : std::string("Copy")) + ":** `"
+                + src + "`\n\n"
+                + "**Into:** `"
+                + (folder.empty() ? std::string("(unknown folder)") : folder) + "`\n\n"
+                + "A " + kind + " that another program still holds open - or that is "
+                  "still being shown in a preview - cannot be " + verb + " until that "
+                  "program lets go of it. Close it and choose \"Try again\", or skip "
+                  "this " + kind + ".";
+        cfg.width = 620;
+        cfg.height = 340;
 
         auto self = this;
         const bool shown = ShowProceedSkipDialog(cfg,
@@ -3160,7 +3238,8 @@ namespace UltraCanvas {
                     self->FinishPendingPaste();
                 });
         if (!shown) {   // dialogs disabled — the old fixed behavior
-            ReportError("Paste failed for " + src + ": " + reason);
+            ReportError((moving ? std::string("Move") : std::string("Copy"))
+                        + " failed for " + src + ": " + reason);
             ++pendingPaste->next;
             pendingPaste->currentRetried = false;
             ContinuePendingPaste();
@@ -3990,6 +4069,104 @@ namespace UltraCanvas {
         pendingRenameTimer = InvalidTimerId;
     }
 
+    // ===== ARCHIVE WORKER =====
+
+    void UltraCanvasFilerWidget::StartArchiveJob(
+            const std::string& title, const std::string& caption,
+            const std::string& destination, bool packing,
+            std::function<bool(const ArchiveProgressReporter&)> work,
+            std::function<void(bool ok, bool cancelled)> onFinished) {
+        if (archiveJob) return;   // one at a time
+
+        archiveJob = std::make_unique<ArchiveJob>();
+        ArchiveJob* job = archiveJob.get();
+        job->destination = destination;
+        job->packing = packing;
+        job->onFinished = std::move(onFinished);
+
+        // The window is optional: without it (dialogs disabled, no parent) the
+        // work still runs, it just runs unannounced.
+        job->dialog = UltraCanvasProgressDialog::Show(
+                GetWindow(), title, caption,
+                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); });
+
+        // The reporter is the worker's only way to talk to the UI: it stores
+        // numbers the poll timer reads, and answers whether to keep going.
+        ArchiveProgressReporter report =
+                [job](uint64_t done, uint64_t total, const std::string& file) {
+            job->doneBytes.store(done);
+            job->totalBytes.store(total);
+            if (!file.empty()) {
+                std::lock_guard<std::mutex> lk(job->fileMutex);
+                job->currentFile = file;
+            }
+            return !job->cancelRequested.load();
+        };
+
+        job->worker = std::thread([job, work = std::move(work), report]() {
+            bool ok = false;
+            try {
+                ok = work(report);
+            } catch (...) {
+                ok = false;      // a throwing backend must not take the app down
+            }
+            job->succeeded.store(ok);
+            job->finished.store(true);
+        });
+
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            job->timer = app->StartTimer(kArchivePollIntervalMs, true,
+                                         [this](TimerId) { PollArchiveJob(); });
+        }
+    }
+
+    void UltraCanvasFilerWidget::PollArchiveJob() {
+        if (!archiveJob) return;
+        ArchiveJob* job = archiveJob.get();
+
+        if (job->dialog) {
+            const uint64_t total = job->totalBytes.load();
+            const uint64_t done = job->doneBytes.load();
+            // An unknown total (a backend that only names files) shows the busy
+            // ring rather than a percentage invented from nothing.
+            job->dialog->SetProgress(total > 0
+                    ? static_cast<double>(done) / static_cast<double>(total)
+                    : -1.0);
+            std::string file;
+            {
+                std::lock_guard<std::mutex> lk(job->fileMutex);
+                file = job->currentFile;
+            }
+            job->dialog->SetDetail(fs::path(file).filename().string());
+        }
+        if (job->finished.load()) FinishArchiveJob();
+    }
+
+    void UltraCanvasFilerWidget::FinishArchiveJob() {
+        if (!archiveJob) return;
+        // Move the job out first: onFinished may start the next one (the
+        // extract queue does exactly that).
+        std::unique_ptr<ArchiveJob> job = std::move(archiveJob);
+        if (job->timer != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance())
+                app->StopTimer(job->timer);
+            job->timer = InvalidTimerId;
+        }
+        if (job->worker.joinable()) job->worker.join();
+        if (job->dialog) { job->dialog->Close(); job->dialog.reset(); }
+
+        const bool cancelled = job->cancelRequested.load();
+        const bool ok = job->succeeded.load() && !cancelled;
+        // A cancelled pack leaves a half-written archive behind; nobody wants
+        // that in the folder listing. A cancelled extraction keeps what it
+        // already wrote - those are real files the user may still want.
+        if (cancelled && job->packing && !job->destination.empty()) {
+            std::error_code ec;
+            fs::remove(job->destination, ec);
+        }
+        if (job->onFinished) job->onFinished(ok, cancelled);
+    }
+
     void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::vector<FilerEntry> targets = SelectionOrAll();
@@ -4004,12 +4181,26 @@ namespace UltraCanvas {
         std::string ext = extension.empty() ? std::string("zip") : extension;
         if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
         std::string dest = UniqueChildPath(base + "." + ext);
-        if (!UCVFSBridge::CreateArchive(dest, paths)) {
-            ReportError("Compression failed for " + dest);
-            return;
-        }
-        Refresh();
-        NotifyFolderModified(fs::path(dest).parent_path().string());
+        if (archiveJob) return;   // one pack / unpack at a time
+        // Initialize on the UI thread: the worker must not be the first caller
+        // to build the VirtualFS provider registry.
+        UCVFSBridge::Initialize();
+        const std::string archiveName = fs::path(dest).filename().string();
+        StartArchiveJob("Compressing", "Creating \"" + archiveName + "\"",
+                        dest, /*packing=*/true,
+                        [dest, paths](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, paths,
+                    UCVFSCompressionOptions::Default(),
+                    [&report](uint64_t done, uint64_t total,
+                              const std::string& file) {
+                return report(done, total, file);
+            });
+        },
+                        [this, dest](bool ok, bool cancelled) {
+            if (!ok && !cancelled) ReportError("Compression failed for " + dest);
+            Refresh();
+            if (ok) NotifyFolderModified(fs::path(dest).parent_path().string());
+        });
 #else
         (void)extension;
         ReportError("Compress requires the VirtualFS module");
@@ -4044,9 +4235,10 @@ namespace UltraCanvas {
                 ShowExtractConflictDialog(e);
                 return;
             }
-            ExtractCurrentAndAdvance(fs::exists(destDir, ec)
-                                             ? pe.action
-                                             : PasteConflictAction::KeepBoth);
+            if (!ExtractCurrentAndAdvance(fs::exists(destDir, ec)
+                                                  ? pe.action
+                                                  : PasteConflictAction::KeepBoth))
+                return;   // running on the archive worker; it resumes the queue
         }
         FinishPendingExtract();
     }
@@ -4058,26 +4250,49 @@ namespace UltraCanvas {
         if (changed) { Refresh(); NotifyFolderModified(); }
     }
 
-    void UltraCanvasFilerWidget::ExtractCurrentAndAdvance(
+    bool UltraCanvasFilerWidget::ExtractCurrentAndAdvance(
             PasteConflictAction action) {
         PendingExtract& pe = *pendingExtract;
         const FilerEntry& e = pe.archives[pe.next];
-        if (action != PasteConflictAction::Skip) {
-            const std::string baseName = fs::path(e.name).stem().string();
-            std::string destDir = (fs::path(currentPath) / baseName).string();
-            std::error_code ec;
-            // Keep both renames the destination; Replace merges the archive
-            // content into the existing folder.
-            if (action == PasteConflictAction::KeepBoth &&
-                fs::exists(destDir, ec))
-                destDir = UniqueChildPath(baseName);
-            fs::create_directories(destDir, ec);
-            if (!UCVFSBridge::ExtractArchive(e.path, destDir))
-                ReportError("Extraction failed for " + e.path);
-            else
-                pe.changed = true;
+        if (action == PasteConflictAction::Skip) {
+            ++pe.next;
+            return true;
         }
-        ++pe.next;
+        if (archiveJob) return false;   // a job is already running
+
+        const std::string baseName = fs::path(e.name).stem().string();
+        std::string destDir = (fs::path(currentPath) / baseName).string();
+        std::error_code ec;
+        // Keep both renames the destination; Replace merges the archive
+        // content into the existing folder.
+        if (action == PasteConflictAction::KeepBoth && fs::exists(destDir, ec))
+            destDir = UniqueChildPath(baseName);
+        fs::create_directories(destDir, ec);
+
+        // Initialize on the UI thread: the worker must not be the first caller
+        // to build the VirtualFS provider registry.
+        UCVFSBridge::Initialize();
+        const std::string archivePath = e.path;
+        const std::string archiveName = e.name;
+        StartArchiveJob("Extracting", "Unpacking \"" + archiveName + "\"",
+                        destDir, /*packing=*/false,
+                        [archivePath, destDir](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::ExtractArchive(archivePath, destDir,
+                    [&report](uint64_t done, uint64_t total,
+                              const std::string& file) {
+                return report(done, total, file);
+            });
+        },
+                        [this, archivePath](bool ok, bool cancelled) {
+            if (!pendingExtract) return;
+            if (ok) pendingExtract->changed = true;
+            else if (!cancelled) ReportError("Extraction failed for " + archivePath);
+            ++pendingExtract->next;
+            // Cancelling stops the whole queue, not just this archive.
+            if (cancelled) FinishPendingExtract();
+            else           ContinuePendingExtract();
+        });
+        return false;   // the queue resumes from the callback above
     }
 
     void UltraCanvasFilerWidget::ShowExtractConflictDialog(
@@ -4389,6 +4604,43 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+    void UltraCanvasFilerWidget::ExtractArchivesSequentially(
+            std::vector<std::pair<std::string, std::string>> jobs, size_t index,
+            std::string notifyFolder) {
+        if (index >= jobs.size()) {
+            Refresh();
+            if (!notifyFolder.empty()) NotifyFolderModified(notifyFolder);
+            return;
+        }
+        const std::string src = jobs[index].first;
+        const std::string dest = jobs[index].second;
+        const std::string caption = jobs.size() > 1
+                ? "Unpacking \"" + fs::path(src).filename().string() + "\" (" +
+                  std::to_string(index + 1) + " of " + std::to_string(jobs.size()) + ")"
+                : "Unpacking \"" + fs::path(src).filename().string() + "\"";
+        UCVFSBridge::Initialize();
+        StartArchiveJob("Extracting", caption, dest, /*packing=*/false,
+                        [src, dest](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::ExtractArchive(src, dest,
+                    [&report](uint64_t done, uint64_t total,
+                              const std::string& file) {
+                return report(done, total, file);
+            });
+        },
+                        [this, jobs, index, notifyFolder, src](bool ok, bool cancelled) mutable {
+            if (!ok && !cancelled) ReportError("Extraction failed for " + src);
+            // Cancelling stops the whole run, not just the archive in flight.
+            if (cancelled) {
+                Refresh();
+                if (!notifyFolder.empty()) NotifyFolderModified(notifyFolder);
+                return;
+            }
+            ExtractArchivesSequentially(std::move(jobs), index + 1, notifyFolder);
+        });
+    }
+#endif
+
     void UltraCanvasFilerWidget::CommitCompressDialog() {
         // Read the editor before closing tears it down.
         if (compressNameInput) compressDlg.nameBuffer = compressNameInput->GetText();
@@ -4425,6 +4677,7 @@ namespace UltraCanvas {
                 ReportError("Extraction failed: cannot create " + target.string());
                 return;
             }
+            std::vector<std::pair<std::string, std::string>> jobs;
             for (const std::string& src : d.sourcePaths) {
                 fs::path dest = target;
                 if (d.sourcePaths.size() > 1) {
@@ -4439,12 +4692,10 @@ namespace UltraCanvas {
                         dest = target / (stem + " (" + std::to_string(m++) + ")");
                     fs::create_directories(dest, ec);
                 }
-                if (!UCVFSBridge::ExtractArchive(src, dest.string()))
-                    ReportError("Extraction failed for " + src);
+                jobs.emplace_back(src, dest.string());
             }
-            Refresh();
             // The target can sit inside a folder the icon was dragged onto.
-            NotifyFolderModified(dir.string());
+            ExtractArchivesSequentially(std::move(jobs), 0, dir.string());
             return;
         }
 
@@ -4459,13 +4710,28 @@ namespace UltraCanvas {
         }
         std::string dest = candidate.string();
 
-        if (!UCVFSBridge::CreateArchive(dest, d.sourcePaths)) {
-            ReportError("Compression failed for " + dest);
-            return;
-        }
-        Refresh();
-        // The archive can be written into a folder the icon was dragged onto.
-        NotifyFolderModified(fs::path(dest).parent_path().string());
+        if (archiveJob) return;   // one pack / unpack at a time
+        // Initialize on the UI thread: the worker must not be the first caller
+        // to build the VirtualFS provider registry.
+        UCVFSBridge::Initialize();
+        const std::vector<std::string> sources = d.sourcePaths;
+        StartArchiveJob("Compressing",
+                        "Creating \"" + candidate.filename().string() + "\"",
+                        dest, /*packing=*/true,
+                        [dest, sources](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, sources,
+                    UCVFSCompressionOptions::Default(),
+                    [&report](uint64_t done, uint64_t total,
+                              const std::string& file) {
+                return report(done, total, file);
+            });
+        },
+                        [this, dest](bool ok, bool cancelled) {
+            if (!ok && !cancelled) ReportError("Compression failed for " + dest);
+            Refresh();
+            // The archive can be written into a folder the icon was dragged onto.
+            if (ok) NotifyFolderModified(fs::path(dest).parent_path().string());
+        });
 #else
         ReportError(std::string(d.extractMode ? "Extract" : "Compress") +
                     " requires the VirtualFS module");
@@ -4767,6 +5033,26 @@ namespace UltraCanvas {
         Refresh();
         NotifyFolderModified();
         // Put the fresh file straight into rename mode.
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].path == dest) { StartRename(i); break; }
+        }
+    }
+
+    void UltraCanvasFilerWidget::CreateNewFolder() {
+        std::error_code ec;
+        if (!fs::is_directory(currentPath, ec)) {
+            ReportError("Cannot create a folder here: " + currentPath);
+            return;
+        }
+        const std::string dest = UniqueChildPath("New folder");
+        fs::create_directory(dest, ec);
+        if (ec) {
+            ReportError("New folder failed: " + ec.message());
+            return;
+        }
+        Refresh();
+        NotifyFolderModified();
+        // Put the fresh folder straight into rename mode, like New > <document>.
         for (size_t i = 0; i < entries.size(); ++i) {
             if (entries[i].path == dest) { StartRename(i); break; }
         }
@@ -7546,6 +7832,200 @@ namespace UltraCanvas {
         return true;
     }
 
+    // ===== FOLDER WATCH =====
+    // The shown folder can change without the widget doing anything: another
+    // application saves a file into it, a download finishes, a script deletes
+    // one. A background worker re-fingerprints the folder every interval and
+    // the UI timer below turns a changed fingerprint into a Refresh().
+
+    void UltraCanvasFilerWidget::SetFolderWatchEnabled(bool enabled) {
+        if (folderWatchEnabled == enabled) return;
+        folderWatchEnabled = enabled;
+        if (enabled) {
+            WatchFolder(fileListMode ? std::string() : currentPath);
+        } else {
+            WatchFolder("");
+            StopFolderWatchTimer();
+            folderWatchDirty.store(false);
+        }
+    }
+
+    void UltraCanvasFilerWidget::SetFolderWatchIntervalMs(int ms) {
+        const int clamped = std::max(250, ms);
+        if (folderWatchIntervalMs == clamped) return;
+        folderWatchIntervalMs = clamped;
+        folderWatchCond.notify_all();   // the worker picks the new period up
+        if (folderWatchTimer != InvalidTimerId) {
+            StopFolderWatchTimer();
+            ArmFolderWatchTimer();
+        }
+    }
+
+    uint64_t UltraCanvasFilerWidget::FolderSignature(const std::string& path,
+                                                     bool includeHidden) {
+        // FNV-1a over the facts a listing shows. Order-independent per entry
+        // (each entry's own hash is mixed in with a commutative add), so the
+        // order directory_iterator happens to return does not matter.
+        auto fnv = [](uint64_t h, uint64_t v) {
+            h ^= v;
+            h *= 1099511628211ull;
+            return h;
+        };
+        uint64_t total = 0;
+        uint64_t count = 0;
+
+        // std::filesystem throughout rather than ::stat: a path is wide on
+        // Windows, where ::stat neither takes what path::c_str() returns nor
+        // reaches a name outside the local codepage.
+        std::error_code ec;
+        const auto dirTime = fs::last_write_time(path, ec);
+        if (ec) return 0;   // gone or unreadable: signature 0
+        uint64_t dirHash = fnv(1469598103934665603ull,
+                static_cast<uint64_t>(dirTime.time_since_epoch().count()));
+
+        for (fs::directory_iterator it(path, ec), end; it != end; it.increment(ec)) {
+            if (ec) break;
+            const std::string name = it->path().filename().string();
+            if (!includeHidden && !name.empty() && name[0] == '.') continue;
+            uint64_t h = 1469598103934665603ull;
+            for (unsigned char c : name) h = fnv(h, c);
+            // The directory_entry answers from what the scan already read where
+            // the platform supplies it, so these are not extra syscalls.
+            std::error_code entryEc;
+            uint64_t sizeValue = 0;
+            if (!it->is_directory(entryEc)) {
+                const auto size = it->file_size(entryEc);
+                sizeValue = entryEc ? 0ull : static_cast<uint64_t>(size);
+            }
+            h = fnv(h, sizeValue);
+            entryEc.clear();
+            const auto mtime = it->last_write_time(entryEc);
+            if (!entryEc)
+                h = fnv(h, static_cast<uint64_t>(mtime.time_since_epoch().count()));
+            total += h;
+            ++count;
+        }
+        return fnv(dirHash, total) ^ (count * 1099511628211ull);
+    }
+
+    void UltraCanvasFilerWidget::WatchFolder(const std::string& path) {
+        std::error_code ec;
+        // Only a real directory is watched: an archive interior or a file list
+        // has no folder whose changes would mean anything here.
+        const std::string target =
+                (folderWatchEnabled && !path.empty() && fs::is_directory(path, ec))
+                        ? path : std::string();
+        {
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            if (folderWatchShutdown) return;
+            const bool sameFolder = (folderWatchPath == target) &&
+                                    (folderWatchIncludeHidden == showHiddenFiles);
+            folderWatchPath = target;
+            folderWatchIncludeHidden = showHiddenFiles;
+            // A new folder (or a changed hidden-files setting) needs a fresh
+            // baseline: the worker's first fingerprint of it only measures.
+            if (!sameFolder) {
+                folderWatchHaveBaseline = false;
+                folderWatchSignature = 0;
+            }
+            if (target.empty()) return;
+            StartFolderWatchWorkerLocked();
+        }
+        folderWatchDirty.store(false);   // whatever was pending described the old folder
+        folderWatchCond.notify_all();
+        ArmFolderWatchTimer();
+    }
+
+    void UltraCanvasFilerWidget::StartFolderWatchWorkerLocked() {
+        if (folderWatchWorker.joinable() || folderWatchShutdown) return;
+        folderWatchWorker = std::thread([this]() { FolderWatchWorkerMain(); });
+    }
+
+    void UltraCanvasFilerWidget::StopFolderWatchWorker() {
+        {
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            folderWatchShutdown = true;
+            folderWatchPath.clear();
+        }
+        folderWatchCond.notify_all();
+        if (folderWatchWorker.joinable()) folderWatchWorker.join();
+    }
+
+    void UltraCanvasFilerWidget::FolderWatchWorkerMain() {
+        // The worker never touches widget state beyond the guarded fields and
+        // the atomic flag, so teardown is a plain shutdown + join.
+        for (;;) {
+            std::string path;
+            bool includeHidden = false;
+            uint64_t known = 0;
+            bool haveBaseline = false;
+            {
+                std::unique_lock<std::mutex> lk(folderWatchMutex);
+                folderWatchCond.wait_for(
+                        lk, std::chrono::milliseconds(folderWatchIntervalMs),
+                        [this]() { return folderWatchShutdown; });
+                if (folderWatchShutdown) return;
+                path = folderWatchPath;
+                includeHidden = folderWatchIncludeHidden;
+                known = folderWatchSignature;
+                haveBaseline = folderWatchHaveBaseline;
+            }
+            if (path.empty()) continue;
+
+            const uint64_t now = FolderSignature(path, includeHidden);
+
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            if (folderWatchShutdown) return;
+            // Navigated (or the setting changed) while we were scanning: that
+            // fingerprint describes a folder nobody is looking at any more.
+            if (path != folderWatchPath || includeHidden != folderWatchIncludeHidden)
+                continue;
+            folderWatchSignature = now;
+            if (!haveBaseline) {
+                folderWatchHaveBaseline = true;   // first pass only measures
+                continue;
+            }
+            if (now != known) folderWatchDirty.store(true);
+        }
+    }
+
+    bool UltraCanvasFilerWidget::IsBusyForAutoRefresh() const {
+        // A rescan rebuilds `entries` and drops the thumbnail cache: harmless
+        // on its own, disastrous in the middle of something the user is doing.
+        // The dirty flag stays set, so the refresh lands the moment they stop.
+        return renamingIndex >= 0 || pendingRenameIndex >= 0 ||
+               draggingItems || dragOutArmed || marqueeActive || marqueeArmed ||
+               compressDlg.active || activePopupMenu || archiveJob ||
+               pendingPaste || pendingDelete
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+               || pendingExtract
+#endif
+               ;
+    }
+
+    void UltraCanvasFilerWidget::ArmFolderWatchTimer() {
+        if (folderWatchTimer != InvalidTimerId) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        folderWatchTimer = app->StartTimer(folderWatchIntervalMs, true,
+                                           [this](TimerId) {
+            if (!folderWatchDirty.load()) return;
+            if (IsBusyForAutoRefresh()) return;   // try again on the next tick
+            folderWatchDirty.store(false);
+            Refresh();
+            // The listing changed under the host too: its status bar counts and
+            // any preview fed from the selection describe the folder as well.
+            if (onFolderRefreshed) onFolderRefreshed();
+        });
+    }
+
+    void UltraCanvasFilerWidget::StopFolderWatchTimer() {
+        if (folderWatchTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(folderWatchTimer);
+        folderWatchTimer = InvalidTimerId;
+    }
+
     void UltraCanvasFilerWidget::StartFolderPrefetchWorkerLocked() {
         if (prefetchWorker.joinable() || prefetchShutdown) return;
         prefetchWorker = std::thread([this]() { FolderPrefetchWorkerMain(); });
@@ -8126,6 +8606,11 @@ namespace UltraCanvas {
         // New >
         {
             std::vector<MenuItemData> newItems;
+            // A folder first, above the document kinds and set apart from them
+            // — it is the entry this submenu is opened for most often.
+            newItems.push_back(MenuItemData::ActionWithShortcut(
+                    "Folder", "Ctrl+F", [this]() { CreateNewFolder(); }));
+            newItems.push_back(MenuItemData::Separator());
             for (const FilerNewDocumentType& t : newDocumentTypes) {
                 FilerNewDocumentType copy = t;
                 newItems.push_back(MenuItemData::Action(
@@ -8800,9 +9285,13 @@ namespace UltraCanvas {
                     return true;
                 }
                 if (draggingItems) {
-                    // Drop: Ctrl copies, a plain drop moves.
+                    // Drop: the configured default (move, unless the host set
+                    // "copy files"), with Ctrl forcing a copy and Shift a move.
+                    bool copy = dropOnFolderCopies;
+                    if (event.ctrl)       copy = true;
+                    else if (event.shift) copy = false;
                     FinishItemDrag(Point2Di(event.pointer.x, event.pointer.y),
-                                   event.ctrl);
+                                   copy);
                     pendingRenameIndex = -1;
                     return true;
                 }
@@ -8883,6 +9372,7 @@ namespace UltraCanvas {
                         case 'x': case 'X': CutSelection(); return true;
                         case 'v': case 'V': Paste(); return true;
                         case 'd': case 'D': DuplicateSelection(); return true;
+                        case 'f': case 'F': CreateNewFolder(); return true;
                         case 'p': case 'P':
                             if (onPrint) onPrint(SelectionOrAll());
                             return true;

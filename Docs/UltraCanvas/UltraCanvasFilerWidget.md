@@ -578,6 +578,53 @@ and never an empty one in between.
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
 
+The **New >** submenu opens with **Folder** — above the document kinds and set
+apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
+same action programmatically: it creates `New folder` (numbered `New folder (2)`
+and so on when the name is taken) in the shown folder, reports the change to
+`onFolderModified` and opens the inline rename editor on it.
+
+```cpp
+filer->CreateNewFolder();   // what New > Folder and Ctrl+F do
+```
+
+## Watching the shown folder
+
+The folder can change without the widget doing anything: another application
+saves a file into it, a download finishes, a script deletes one. The widget
+notices and rescans.
+
+```cpp
+filer->SetFolderWatchEnabled(false);      // on by default
+filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
+```
+
+A background worker re-fingerprints the folder every interval — its own
+modification time folded together with each entry's name, size and modification
+time — and raises a flag when the number moves. The scan never runs on the UI
+thread, and only a real directory is watched (an archive interior or a file list
+has no folder whose changes would mean anything).
+
+The rescan itself is held back while the user is busy: no auto-refresh
+interrupts an open rename editor, a running drag or marquee, a context menu, a
+compress dialog, or a file operation waiting on its own dialog. The flag stays
+set, so the refresh lands the moment the interaction ends. `onFolderRefreshed`
+fires as it would for any other rescan, so a host's status bar and preview
+follow along.
+
+## Compressing and extracting
+
+`CompressSelection()`, `ExtractSelection()` and the context menu's Compress /
+Extract dialogs all run the work on a background worker behind an
+[`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
+percentage, the file being handled, and Cancel. The UI stays live throughout —
+packing a few hundred megabytes no longer freezes the window.
+
+Cancel stops the backend at its next progress callback. A cancelled **pack**
+deletes the half-written archive (nobody wants that in the listing); a cancelled
+**unpack** keeps what it already wrote, because those are real files, and stops
+the remaining archives of a multi-archive run.
+
 ## Clipboard interop with other programs
 
 Copy and Cut place the selection on the **system clipboard** in the standard
@@ -612,12 +659,25 @@ chosen action; **Cancel** keeps what was already pasted and drops the rest.
 Copy-pasting a file alongside its original never asks — the copy simply takes
 the next free name, exactly like Duplicate.
 
-An entry that **fails** to paste (locked, in use, permissions) asks too —
-**Try again** / **Skip this file**, with a "Do this for all remaining items"
-scope switch; a stored try-again-for-all grants each later failing entry one
-silent retry before asking again. Drag & drop, inside the widget and from
-other applications, runs through the same machinery, so drops get the same
-dialogs.
+An entry that **fails** to move or copy (locked, in use, permissions) asks too.
+The dialog is titled "Cannot Move" / "Cannot Copy" and spells the failure out in
+full: the operating system's own reason, the source path, the destination folder
+and what usually causes it. The choice is **Try again** / **Skip this file**,
+with a "Do this for all remaining items" scope switch; a stored
+try-again-for-all grants each later failing entry one silent retry before asking
+again. Drag & drop, inside the widget and from other applications, runs through
+the same machinery, so drops get the same dialogs.
+
+A **move** is a rename, and a rename is refused while another program still has
+the file open — on Windows it fails outright. The widget therefore drops the
+sources out of the selection before it starts a move, firing `onSelectionChanged`
+so a host that feeds a preview pane from the selection closes the file first.
+The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
+its preview release the document instead of merely stopping playback. Most
+previews hold nothing open in the first place — images, text, spreadsheets,
+models, e-books and PDFs up to the PDF view's memory limit are read whole — so
+this only has work to do for a playing video or audio file and for a PDF too big
+to hold in memory.
 
 The same machinery is available programmatically for any target folder:
 
@@ -652,8 +712,15 @@ presses as plain clicks.
 **Inside the widget** the drag is drawn by the widget itself: a badge with the
 entry's icon and its name (or "N items") follows the cursor, and the folder
 under the cursor is highlighted as the drop target. Dropping on it **moves**
-the files into that folder — hold **Ctrl** to drop a **copy** instead. Drops
-run through the same machinery as Paste, so a name that already exists there
+the files into that folder by default; `SetDropOnFolderCopies(true)` makes a
+plain drop **copy** them instead. Either way **Ctrl** at the drop always copies
+and **Shift** always moves, so the other action is one modifier away:
+
+```cpp
+filer->SetDropOnFolderCopies(true);   // plain drop on a folder copies
+```
+
+Drops run through the same machinery as Paste, so a name that already exists there
 raises the [conflict dialog](#name-conflicts) and a failing entry the retry
 dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
 folder simply ends the drag. Escape abandons the drag without moving anything.

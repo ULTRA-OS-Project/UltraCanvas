@@ -16647,6 +16647,53 @@ and never an empty one in between.
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
 
+The **New >** submenu opens with **Folder** — above the document kinds and set
+apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
+same action programmatically: it creates `New folder` (numbered `New folder (2)`
+and so on when the name is taken) in the shown folder, reports the change to
+`onFolderModified` and opens the inline rename editor on it.
+
+```cpp
+filer->CreateNewFolder();   // what New > Folder and Ctrl+F do
+```
+
+## Watching the shown folder
+
+The folder can change without the widget doing anything: another application
+saves a file into it, a download finishes, a script deletes one. The widget
+notices and rescans.
+
+```cpp
+filer->SetFolderWatchEnabled(false);      // on by default
+filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
+```
+
+A background worker re-fingerprints the folder every interval — its own
+modification time folded together with each entry's name, size and modification
+time — and raises a flag when the number moves. The scan never runs on the UI
+thread, and only a real directory is watched (an archive interior or a file list
+has no folder whose changes would mean anything).
+
+The rescan itself is held back while the user is busy: no auto-refresh
+interrupts an open rename editor, a running drag or marquee, a context menu, a
+compress dialog, or a file operation waiting on its own dialog. The flag stays
+set, so the refresh lands the moment the interaction ends. `onFolderRefreshed`
+fires as it would for any other rescan, so a host's status bar and preview
+follow along.
+
+## Compressing and extracting
+
+`CompressSelection()`, `ExtractSelection()` and the context menu's Compress /
+Extract dialogs all run the work on a background worker behind an
+[`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
+percentage, the file being handled, and Cancel. The UI stays live throughout —
+packing a few hundred megabytes no longer freezes the window.
+
+Cancel stops the backend at its next progress callback. A cancelled **pack**
+deletes the half-written archive (nobody wants that in the listing); a cancelled
+**unpack** keeps what it already wrote, because those are real files, and stops
+the remaining archives of a multi-archive run.
+
 ## Clipboard interop with other programs
 
 Copy and Cut place the selection on the **system clipboard** in the standard
@@ -16681,12 +16728,25 @@ chosen action; **Cancel** keeps what was already pasted and drops the rest.
 Copy-pasting a file alongside its original never asks — the copy simply takes
 the next free name, exactly like Duplicate.
 
-An entry that **fails** to paste (locked, in use, permissions) asks too —
-**Try again** / **Skip this file**, with a "Do this for all remaining items"
-scope switch; a stored try-again-for-all grants each later failing entry one
-silent retry before asking again. Drag & drop, inside the widget and from
-other applications, runs through the same machinery, so drops get the same
-dialogs.
+An entry that **fails** to move or copy (locked, in use, permissions) asks too.
+The dialog is titled "Cannot Move" / "Cannot Copy" and spells the failure out in
+full: the operating system's own reason, the source path, the destination folder
+and what usually causes it. The choice is **Try again** / **Skip this file**,
+with a "Do this for all remaining items" scope switch; a stored
+try-again-for-all grants each later failing entry one silent retry before asking
+again. Drag & drop, inside the widget and from other applications, runs through
+the same machinery, so drops get the same dialogs.
+
+A **move** is a rename, and a rename is refused while another program still has
+the file open — on Windows it fails outright. The widget therefore drops the
+sources out of the selection before it starts a move, firing `onSelectionChanged`
+so a host that feeds a preview pane from the selection closes the file first.
+The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
+its preview release the document instead of merely stopping playback. Most
+previews hold nothing open in the first place — images, text, spreadsheets,
+models, e-books and PDFs up to the PDF view's memory limit are read whole — so
+this only has work to do for a playing video or audio file and for a PDF too big
+to hold in memory.
 
 The same machinery is available programmatically for any target folder:
 
@@ -16721,8 +16781,15 @@ presses as plain clicks.
 **Inside the widget** the drag is drawn by the widget itself: a badge with the
 entry's icon and its name (or "N items") follows the cursor, and the folder
 under the cursor is highlighted as the drop target. Dropping on it **moves**
-the files into that folder — hold **Ctrl** to drop a **copy** instead. Drops
-run through the same machinery as Paste, so a name that already exists there
+the files into that folder by default; `SetDropOnFolderCopies(true)` makes a
+plain drop **copy** them instead. Either way **Ctrl** at the drop always copies
+and **Shift** always moves, so the other action is one modifier away:
+
+```cpp
+filer->SetDropOnFolderCopies(true);   // plain drop on a folder copies
+```
+
+Drops run through the same machinery as Paste, so a name that already exists there
 raises the [conflict dialog](#name-conflicts) and a failing entry the retry
 dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
 folder simply ends the drag. Escape abandons the drag without moving anything.
@@ -25537,6 +25604,29 @@ preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 ```
 
+### Letting go of the previewed file
+
+Most kinds are read into memory and hold no handle on the file: images are
+rasterized into a pixmap, text, spreadsheets, 3D models and e-books are parsed
+from a buffer, and PDFs up to
+[`SetMaxInMemoryBytes()`](UltraCanvasPDFExamples.md#document) (256 MiB by
+default) are loaded whole. Those files stay movable, renamable and deletable
+while they are shown.
+
+Two cases genuinely keep the file open: **video and audio**, which the playback
+backends stream, and a **PDF past the memory limit**, which the engine streams
+page by page. `StopPlayback()` stops the sound but does not release anything.
+
+```cpp
+preview->CloseFile();   // show nothing, and release the file
+```
+
+`CloseFile()` stops playback, releases every backend's document and clears the
+playlist, so the file is free the moment the call returns. A host that lets the
+user act on the previewed file should call it first — the UltraFiler does that
+when its preview pane folds away, which is why its folder display drops a file
+out of the selection before moving it.
+
 ## Image adjustments and saving
 
 The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
@@ -28155,7 +28245,19 @@ bool LoadFromPath(const std::string& path, const std::string& password = "");
 void SetDocument(std::unique_ptr<IPDFDocument> doc);
 IPDFDocument* GetDocument() const;
 bool HasDocument() const;
+
+void   SetMaxInMemoryBytes(size_t bytes);   // default 256 MiB, 0 = always stream
+size_t GetMaxInMemoryBytes() const;
 ```
+
+`LoadFromPath()` reads a file of at most `GetMaxInMemoryBytes()` **into memory**
+(`IPDFDocument::OpenInMemory`), so the view keeps **no operating system handle**
+on it: the document stays on screen while the file is moved, renamed or deleted
+— on Windows an open handle refuses those outright, so a viewer or preview pane
+that streamed the file would block the very file it is showing. A bigger file is
+streamed instead, because holding hundreds of megabytes of PDF in RAM is the
+worse trade; raise or lower the limit to move that line, or set 0 to always
+stream. `SetDocument()` takes whatever the caller opened, unchanged.
 
 ### Navigation
 
@@ -28452,6 +28554,7 @@ auto doc = UltraCanvas::OpenPDF("/path/to/file.pdf");   // nullptr on failure
 
 ```cpp
 bool Open(const std::string& path, const std::string& password = "");
+bool OpenInMemory(const std::string& path, const std::string& password = "");
 bool OpenFromBytes(const std::vector<uint8_t>& data, const std::string& password = "");
 bool Save(const std::string& path, const PDFSaveOptions& opts = {});
 bool SaveIncremental(const std::string& path);
@@ -28462,6 +28565,15 @@ PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryp
 int             GetPageCount() const;
 PDFPageInfo     GetPageInfo(int pageNumber) const;   // size in pt, rotation, label
 ```
+
+`Open()` **streams**: the engine reads pages from the file on demand and keeps it
+open for as long as the document lives. `OpenInMemory()` reads the whole file
+first and opens the document from that buffer, so nothing holds the file
+afterwards — it still reports `path` as its source and saves normally, and only
+`SaveIncremental()` is unavailable (appending to a file needs a document backed
+by it, and returns `false` on a memory-opened one). Use `OpenInMemory()` whenever
+the document is merely being displayed and the file must stay movable; use
+`Open()` for a document too big to hold in memory.
 
 `PDFSaveOptions`: `linearize` (web-optimize), `garbageCollect`, `deflateStreams`,
 `cleanContentStreams`.
@@ -30913,6 +31025,107 @@ Layout values (centerX, plot width, padding) are recomputed by `CalculateLayout(
 - [UltraCanvasPieChartExamples](UltraCanvasPieChartExamples.md) — Pie / donut / 3D chart
 - [UltraCanvasJitterPlotExamples](UltraCanvasJitterPlotExamples.md) — Categorical distribution plots
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — Line chart component
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
+==============================================================================
+
+# UltraCanvasProgressDialog
+
+A modal window for an operation that takes long enough to need reporting: a
+circular progress ring with the percentage in its centre, a caption above it, a
+line naming what is being worked on right now, and a Cancel button.
+
+```cpp
+#include "UltraCanvasProgressDialog.h"
+```
+
+The dialog **does not run the work and does not block**. The caller keeps the
+operation on its own thread (or spreads it across timer ticks) and pushes the
+numbers in from the UI thread as they arrive — which is what keeps the ring
+animating and the Cancel button responsive.
+
+```cpp
+auto dlg = UltraCanvasProgressDialog::Show(window, "Compressing",
+                                           "Creating \"photos.zip\"",
+                                           [&]() { job.cancel = true; });
+// ... on the UI thread, as the worker reports:
+dlg->SetProgress(0.42);          // 42 %
+dlg->SetDetail("DSC_0042.jpg");
+// ... when the work ends:
+dlg->Close();
+```
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Show(parent, title, caption, onCancel)` | Opens the window over `parent`. Returns `nullptr` when no dialog could be created (dialogs disabled / headless) — handle that and run without a window. |
+| `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
+| `SetCaption(text)` | The line above the ring. |
+| `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
+| `IsCancelled()` | True once the user asked to cancel. |
+| `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
+
+`onCancel` fires on the UI thread for every way out of the window — the button,
+Escape, the title bar. The dialog only *reports* the cancel; stopping the work
+is the caller's job, and so is deciding what a cancelled operation leaves
+behind.
+
+## Worked example: a background job
+
+The shape the UltraFiler uses for packing and unpacking archives. The worker
+touches only atomics; everything else happens on the UI thread when the poll
+timer sees the numbers move.
+
+```cpp
+struct Job {
+    std::atomic<bool>     finished{false}, cancelled{false};
+    std::atomic<uint64_t> done{0}, total{0};
+    std::mutex            fileMutex;
+    std::string           currentFile;
+};
+auto job = std::make_shared<Job>();
+
+auto dlg = UltraCanvasProgressDialog::Show(window, "Extracting",
+        "Unpacking \"backup.tar.gz\"",
+        [job]() { job->cancelled.store(true); });
+
+std::thread worker([job]() {
+    Unpack(archive, dest, [job](uint64_t done, uint64_t total,
+                                const std::string& file) {
+        job->done.store(done);
+        job->total.store(total);
+        { std::lock_guard<std::mutex> lk(job->fileMutex); job->currentFile = file; }
+        return !job->cancelled.load();      // false stops the backend
+    });
+    job->finished.store(true);
+});
+
+app->StartTimer(100, true, [=](TimerId id) {
+    const uint64_t total = job->total.load();
+    dlg->SetProgress(total ? double(job->done.load()) / double(total) : -1.0);
+    { std::lock_guard<std::mutex> lk(job->fileMutex); dlg->SetDetail(job->currentFile); }
+    if (!job->finished.load()) return;
+    app->StopTimer(id);
+    dlg->Close();
+    // join the worker, refresh, report the result — on the UI thread
+});
+```
+
+Two details worth copying:
+
+- **Poll, don't post.** The worker never touches the dialog. A UI timer reads
+  the atomics every 100 ms, which is smooth to the eye and costs nothing.
+- **Own the leftovers.** A cancelled *write* usually has to be undone — the
+  Filer deletes the half-written archive — while a cancelled *extraction*
+  keeps what it already wrote, because those are real files the user may want.
+
+## Where the ring comes from
+
+The ring is an `UltraCanvasCircularProgressChart` in `SingleRing` style, so it
+carries the framework's chart styling rather than a hand-drawn arc. Nothing in
+this dialog is painted directly.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPyramidChart.md
@@ -43350,6 +43563,29 @@ TreeNode* SetRootNode(const TreeNodeData& rootData)
 ```
 Sets the root node of the tree.
 
+#### `SetRootVisible`
+```cpp
+void SetRootVisible(bool visible)   // default: true
+bool IsRootVisible() const
+```
+Hides the root row and draws its children as the top level, turning the tree
+into a **forest** — several independent sections side by side instead of one
+node with everything under it. The root still owns the nodes (`SetRootNode` /
+`AddNode` are unchanged) and is kept expanded while it is hidden; it is simply
+never drawn, hit-tested or counted as a row, so indentation, scrolling and
+clicks all behave as if the children were the top of the tree.
+
+```cpp
+tree->SetRootVisible(false);
+tree->SetRootNode(MakeNode("root", ""));   // never seen
+tree->AddNode("root", MakeNode("pinned", "Pinned"));
+tree->AddNode("root", MakeNode("computer", "Computer"));
+```
+
+A section can be taken out of the tree without removing its nodes by clearing
+`node->data.visible` — the UltraFiler's folder tree hides its whole "Pinned"
+section that way while nothing is pinned.
+
 #### `AddNode`
 ```cpp
 TreeNode* AddNode(const std::string& parentId, const TreeNodeData& nodeData)
@@ -43916,6 +44152,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |

@@ -190,6 +190,29 @@ TreeNode* SetRootNode(const TreeNodeData& rootData)
 ```
 Sets the root node of the tree.
 
+#### `SetRootVisible`
+```cpp
+void SetRootVisible(bool visible)   // default: true
+bool IsRootVisible() const
+```
+Hides the root row and draws its children as the top level, turning the tree
+into a **forest** — several independent sections side by side instead of one
+node with everything under it. The root still owns the nodes (`SetRootNode` /
+`AddNode` are unchanged) and is kept expanded while it is hidden; it is simply
+never drawn, hit-tested or counted as a row, so indentation, scrolling and
+clicks all behave as if the children were the top of the tree.
+
+```cpp
+tree->SetRootVisible(false);
+tree->SetRootNode(MakeNode("root", ""));   // never seen
+tree->AddNode("root", MakeNode("pinned", "Pinned"));
+tree->AddNode("root", MakeNode("computer", "Computer"));
+```
+
+A section can be taken out of the tree without removing its nodes by clearing
+`node->data.visible` — the UltraFiler's folder tree hides its whole "Pinned"
+section that way while nothing is pinned.
+
 #### `AddNode`
 ```cpp
 TreeNode* AddNode(const std::string& parentId, const TreeNodeData& nodeData)

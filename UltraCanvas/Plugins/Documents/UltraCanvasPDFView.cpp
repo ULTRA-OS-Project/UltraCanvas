@@ -1,7 +1,7 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.7.0
-// Last Modified: 2026-08-13
+// Version: 1.8.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -15,8 +15,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <system_error>
 
 namespace UltraCanvas {
 
@@ -96,7 +98,21 @@ bool UltraCanvasPDFView::LoadFromPath(const std::string& path,
         if (onError) onError("No PDF engine available");
         return false;
     }
-    if (!d->Open(path, password)) {
+    // Read the document into memory when it fits: the engine streams pages from
+    // an Open()ed file and keeps it open for as long as the document lives,
+    // which blocks moving, renaming or deleting the very file being viewed
+    // (on Windows outright). A file too big to hold is streamed instead — the
+    // handle is the lesser cost there.
+    std::error_code ec;
+    const auto fileSize = std::filesystem::file_size(path, ec);
+    const bool inMemory = !ec && maxInMemoryBytes_ > 0 &&
+                          static_cast<uintmax_t>(fileSize) <= maxInMemoryBytes_;
+
+    bool opened = inMemory && d->OpenInMemory(path, password);
+    // Streaming is the fallback: the read may have failed on a file the engine
+    // can still open (no memory for the buffer, a racing writer).
+    if (!opened) opened = d->Open(path, password);
+    if (!opened) {
         if (onError) onError("Failed to open PDF: " + path);
         return false;
     }

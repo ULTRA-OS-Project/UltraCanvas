@@ -194,6 +194,7 @@ class UltraCanvasTreeView : public UltraCanvasUIElement {
 private:
     // ===== TREE VIEW SPECIFIC PROPERTIES =====
     std::unique_ptr<TreeNode> rootNode;
+    bool rootVisible = true;      // false: the root's children are the top level
     TreeSelectionMode selectionMode;
     TreeLineStyle lineStyle;
     std::vector<TreeNode*> selectedNodes;
@@ -281,6 +282,14 @@ public:
     TreeNode* SetRootNode(const TreeNodeData& rootData);
     
     TreeNode* GetRootNode() const { return rootNode.get(); }
+
+    // Hide the root row and draw its children as the top level, so the tree
+    // shows a forest rather than one node with everything under it. The root
+    // still owns the nodes (SetRootNode / AddNode are unchanged) and is kept
+    // expanded while it is hidden — it is simply never drawn, hit-tested or
+    // counted as a row. Default: the root is visible.
+    void SetRootVisible(bool visible);
+    bool IsRootVisible() const { return rootVisible; }
     
     TreeNode* AddNode(const std::string& parentId, const TreeNodeData& nodeData);
     void RemoveNode(const std::string& nodeId);

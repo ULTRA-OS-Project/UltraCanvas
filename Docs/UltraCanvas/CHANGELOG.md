@@ -1,3 +1,107 @@
+#### 2026-08-23 *0.3.63*
+- **The Filer notices changes made behind it.** The shown folder was only
+  rescanned when the widget itself changed something, so a file another program
+  saved into it, a finished download or a deleted file simply did not appear.
+  A background worker now re-fingerprints the folder every 1.5 s (its own
+  modification time folded together with every entry's name, size and
+  modification time) and the widget rescans when the number moves — never on the
+  UI thread, and never in the middle of something: an open rename editor, a
+  drag, a marquee, a context menu or a file operation waiting on its dialog all
+  hold the refresh back until they end. `SetFolderWatchEnabled()` /
+  `SetFolderWatchIntervalMs()` configure it.
+- **Compress and extract run in the background, with a progress window.** They
+  ran on the UI thread, so packing a few hundred megabytes froze the window with
+  no sign of what was happening. They now run on a worker behind the new
+  `UltraCanvasProgressDialog` — a circular ring (`UltraCanvasCircularProgressChart`
+  in SingleRing style) with the percentage in its centre, the file being handled,
+  and Cancel. Cancelling a pack deletes the half-written archive; cancelling an
+  unpack keeps what it already wrote and stops the rest of a multi-archive run.
+- **VirtualFS reports bytes while creating an archive.** `CreateArchive` fired
+  its progress callback once per top-level source and never filled in any byte
+  count, and `AddDirectory` ignored the callback it was handed — so packing one
+  folder produced exactly one progress report with nothing in it. The manager
+  now measures the sources up front for `grandTotalBytes` and forwards a
+  callback into `AddDirectory`, which reports every file before adding it. That
+  is what makes an honest percentage possible; extraction already reported bytes.
+- **UltraCanvasTreeView: `SetRootVisible(false)`** hides the root row and draws
+  its children as the top level, so a tree can show a forest of sections instead
+  of one node with everything under it. The root still owns the nodes and is
+  kept expanded; it is never drawn, hit-tested or counted as a row.
+- **UltraFiler: "Pinned" sits above "Computer"** in the folder tree, opens
+  expanded, and is hidden entirely while nothing is pinned (an empty section is
+  a header over nothing).
+- **UltraFiler: the sort-direction button shows the direction.** It carried a
+  fixed `sort-alpha-down` icon that never changed, so the only way to tell which
+  way the list was sorted was the caret in the Details header. It now paints
+  `sort-up.svg` while ascending and `sort-down.svg` while descending, repainted
+  from the filer's own state - which also covers the direction being changed
+  from the context menu, from a column header, or by a folder's stored view.
+  The Sort dropdown reads "Date modified" / "Date created" instead of the
+  ambiguous "Modified" / "Created".
+- **UltraFiler: per-folder display state.** The view type and sort order are
+  remembered per folder and restored on entry, so a picture folder can stay on
+  large thumbnails by date while a source folder stays on details by name; a
+  folder with no stored state keeps whatever the previous one used, which is
+  what makes browsing feel continuous. Stored as `folderviews.txt` (the 400 most
+  recently entered folders, least recent evicted) and cleared from
+  Settings > History & Favorites.
+
+#### 2026-08-23 *0.3.62*
+- **The PDF view no longer holds the file it is showing open.** MuPDF opens a
+  document as a *stream* (`fz_open_file`) and reads pages from it on demand, so
+  `UltraCanvasPDFView` kept an operating system handle on the PDF for as long as
+  it was displayed — which is what made moving the previewed file fail on
+  Windows, where an open handle refuses a rename. Nothing else in the media
+  viewer does this: images are rasterized into a pixmap, and text, spreadsheets,
+  3D models and e-books are parsed out of a buffer, all with the file closed
+  again. `LoadFromPath()` now reads documents up to `SetMaxInMemoryBytes()`
+  (256 MiB by default) into memory through the new
+  `IPDFDocument::OpenInMemory()`, so no handle survives the call; a file past
+  the limit still streams, because holding hundreds of megabytes of PDF in RAM
+  is the worse trade. Measured with `/proc/<pid>/fd` while previewing: the file
+  descriptor on the PDF is present when streaming and gone when loaded into
+  memory.
+- `OpenInMemory()` keeps the real path as the document's source, so `Save()` and
+  `GetInfo()` are unaffected; only `SaveIncremental()` is unavailable on a
+  memory-opened document (appending to a file needs a document backed by it) and
+  now returns `false` instead of writing a broken file. `OpenFromBytes()` no
+  longer copies its buffer twice.
+
+#### 2026-08-23 *0.3.61*
+- **UltraFiler: dropping a file on a folder moves it, even while it is being
+  previewed.** A move is a rename, and a rename is refused while another
+  program still holds the file open — on Windows outright. The previewed file
+  was exactly that: the media preview keeps the document open (MuPDF for a PDF),
+  so dragging the previewed file onto a subfolder failed instead of moving it.
+  The Filer now drops the sources out of the selection before it starts a move,
+  which fires `onSelectionChanged` synchronously, and
+  `UltraCanvasMediaViewer::CloseFile()` makes the preview release the document
+  rather than merely stop playback — the file is free by the time the rename
+  runs. A move whose rename fails also no longer leaves the entry in two places:
+  when the copy + delete fallback cannot remove the original the copy is undone
+  and the rename's own error is what gets reported.
+- **The "cannot move / copy" dialog shows the whole failure.** It was sized for
+  its message alone, so the switches added below it squeezed the text down to a
+  sliver and the reason was unreadable — the very thing the dialog exists to
+  say. `UltraCanvasModalDialog::AutoSizeToContent()` now counts the elements
+  `AddDialogElement()` put in the message column, so every dialog with extra
+  controls (the paste conflict dialog too) grows to fit both. The Filer's
+  dialog is titled "Cannot Move" / "Cannot Copy" and spells out the operating
+  system's reason, the source path, the destination folder and the usual cause.
+  Footer buttons are now as wide as their label needs, never narrower than the
+  configured width — "Continue" used to reach the user as "Conti…".
+- **UltraFiler: Settings > Handling > Drag & Drop.** A new settings page with
+  **Drop on folder: Move files / Copy files**, persisted as
+  `handling.dragdrop.drop.on.folder` and applied live to every open tab. Ctrl
+  at the drop always copies and Shift always moves, whichever way it is set.
+  New widget API: `UltraCanvasFilerWidget::SetDropOnFolderCopies()`.
+- **UltraFiler: New > Folder, on Ctrl+F.** The file display's *New >* submenu
+  opens with **Folder**, above the document kinds and separated from them, and
+  Ctrl+F does the same from the keyboard. Both go through the new
+  `UltraCanvasFilerWidget::CreateNewFolder()`, which the command bar's "New
+  folder" button now uses as well, so all three create the folder, record it in
+  the History and open the inline rename editor identically.
+
 #### 2026-08-23 *0.3.60*
 - **UCImageRaster::GetMetadataString** reads one embedded metadata field
   (EXIF capture time, camera make/model) by its libvips name, stripping

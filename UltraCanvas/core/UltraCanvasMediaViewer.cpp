@@ -1,8 +1,12 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.4.1
-// Last Modified: 2026-08-22
+// Version: 1.5.0
+// Last Modified: 2026-08-23
+// V1.5.0: CloseFile() shows nothing and lets go of the file - playback stops and
+//   every display backend releases its document, so a host preview pane can move,
+//   rename or delete the file it was just showing. StopPlayback() alone never
+//   released it, which made a move of the previewed file fail on Windows.
 // V1.4.1: The PreviewClip ("5 s clip") video preview is silent for real. The
 //   mute is applied before the source is opened (so the engine builds a muted
 //   session instead of muting one that may already be wired for sound), and the
@@ -1291,6 +1295,33 @@ void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
     std::string folder = p.parent_path().string();
     if (folder.empty()) folder = ".";
     OpenFolder(folder, filePath);
+}
+
+// Show nothing and let go of the file. Every backend that can keep an operating
+// system handle on the shown file is released here: on Windows a document engine
+// that still has the file open makes a move / rename of it fail, which is exactly
+// what a preview pane hosting this viewer runs into.
+void UltraCanvasMediaViewer::CloseFile() {
+    StopPlayback();
+    ReleaseViewBackends();
+    playlist.clear();
+    currentIndex = 0;
+    currentFolder.clear();
+    UpdateBreadcrumb();
+    LoadCurrent(false);   // empty playlist: clears the surface and the info bar
+}
+
+void UltraCanvasMediaViewer::ReleaseViewBackends() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    // MuPDF keeps the PDF open for as long as the document object lives.
+    if (pdfView) static_cast<UltraCanvasPDFView*>(pdfView.get())->SetDocument(nullptr);
+#endif
+    if (bookView) static_cast<UltraCanvasEBookViewer*>(bookView.get())->CloseDocument();
+    if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
+    if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+    ucdDetails.clear();
+    // Spreadsheets and 3D models are parsed into memory by their loaders, and
+    // the video / audio backends expose no release beyond Stop() (done above).
 }
 
 void UltraCanvasMediaViewer::ShowOpenDialog() {

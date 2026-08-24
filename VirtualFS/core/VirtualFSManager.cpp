@@ -1,7 +1,7 @@
 // VirtualFS/core/VirtualFSManager.cpp
 // Core manager implementation for VirtualFS
-// Version: 1.0.0
-// Last Modified: 2026-01-10
+// Version: 1.1.0
+// Last Modified: 2026-08-23
 // Author: ULTRA OS Framework
 
 #include "VirtualFSManager.h"
@@ -756,27 +756,84 @@ VirtualFSResult VirtualFSManager::CreateArchive(
     // Add files
     VirtualFSProgress progress;
     progress.totalFiles = sourcePaths.size();
-    
+
+    // The grand total is what makes a percentage possible, and only this layer
+    // can know it: the provider is handed one entry at a time. Walking the
+    // sources costs a stat per file, which is nothing against reading them all.
+    uint64_t grandTotal = 0;
+    if (progressCallback) {
+        std::error_code ec;
+        for (const auto& sourcePath : sourcePaths) {
+            if (std::filesystem::is_directory(sourcePath, ec)) {
+                for (std::filesystem::recursive_directory_iterator
+                             it(sourcePath, ec), end; it != end; it.increment(ec)) {
+                    if (ec) break;
+                    std::error_code sizeEc;
+                    if (it->is_regular_file(sizeEc))
+                        grandTotal += std::filesystem::file_size(it->path(), sizeEc);
+                }
+            } else {
+                std::error_code sizeEc;
+                grandTotal += std::filesystem::file_size(sourcePath, sizeEc);
+            }
+        }
+    }
+    progress.grandTotalBytes = grandTotal;
+
+    // Bytes finished so far, plus the size of the file currently being written.
+    // The provider reports a file BEFORE adding it, so the previous one's size
+    // is banked on the next report - the percentage only ever moves forward.
+    uint64_t doneBytes = 0;
+    uint64_t inFlightBytes = 0;
+    auto forwardProgress = [&](const VirtualFSProgress& inner) -> bool {
+        doneBytes += inFlightBytes;
+        inFlightBytes = inner.currentTotalBytes;
+        progress.currentFile = inner.currentFile;
+        progress.totalBytes = doneBytes;
+        ++progress.filesProcessed;
+        progress.UpdatePercent();
+        return progressCallback(progress);
+    };
+
     for (size_t i = 0; i < sourcePaths.size(); ++i) {
         const auto& sourcePath = sourcePaths[i];
         std::string destPath = VirtualFSPath::GetFileName(sourcePath);
-        
-        if (progressCallback) {
-            progress.currentFile = sourcePath;
-            progress.filesProcessed = i;
-            progress.UpdatePercent();
-            if (!progressCallback(progress)) {
-                provider->Close();
-                return VirtualFSResult::Cancelled;
-            }
-        }
-        
+
         if (std::filesystem::is_directory(sourcePath)) {
-            result = provider->AddDirectory(sourcePath, destPath, true, options, nullptr);
+            if (progressCallback) {
+                // Name the folder before descending into it, so the window is
+                // not blank while a big first file is written.
+                progress.currentFile = sourcePath;
+                progress.totalBytes = doneBytes;
+                progress.UpdatePercent();
+                if (!progressCallback(progress)) {
+                    provider->Close();
+                    return VirtualFSResult::Cancelled;
+                }
+            }
+            result = provider->AddDirectory(sourcePath, destPath, true, options,
+                                            progressCallback ? forwardProgress
+                                                             : VirtualFSProgressCallback());
         } else {
+            if (progressCallback) {
+                std::error_code sizeEc;
+                VirtualFSProgress inner;
+                inner.currentFile = sourcePath;
+                inner.currentTotalBytes =
+                        std::filesystem::file_size(sourcePath, sizeEc);
+                if (sizeEc) inner.currentTotalBytes = 0;
+                if (!forwardProgress(inner)) {
+                    provider->Close();
+                    return VirtualFSResult::Cancelled;
+                }
+            }
             result = provider->AddFile(sourcePath, destPath, options);
         }
-        
+
+        if (result == VirtualFSResult::Cancelled) {
+            provider->Close();
+            return result;
+        }
         if (result != VirtualFSResult::Success) {
             provider->Close();
             return result;

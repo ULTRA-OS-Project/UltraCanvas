@@ -52,6 +52,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraFilerFavorites.h"
+#include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
 
@@ -246,7 +247,15 @@ private:
     void NavigateForward();
     void NavigateUp();
     void HandlePathChanged(FilerTabState* tab, const std::string& path);
+    // Per-folder display state (UltraFilerFolderViews). Entering a folder puts
+    // back the view type and sort order it was last looked at with; changing
+    // either while a folder is shown records it against that folder.
+    void ApplyFolderView(FilerTabState* tab, const std::string& path);
+    void RememberFolderView(FilerTabState* tab);
     void UpdateNavButtons();
+    // Repaints the sort-direction button from the filer's own direction:
+    // sort-up.svg while ascending, sort-down.svg while descending.
+    void UpdateSortOrderButton();
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
@@ -323,6 +332,7 @@ private:
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;
     std::shared_ptr<UltraCanvasButton>          previewButton;
+    std::shared_ptr<UltraCanvasButton>          sortOrderButton;  // ascending / descending
     std::shared_ptr<UltraCanvasButton>          historyButton;
     std::shared_ptr<UltraCanvasButton>          favoritesButton;
     std::shared_ptr<UltraCanvasDropdown>        sortDropdown;
@@ -360,6 +370,11 @@ private:
     UltraFilerSettings settings;           // persisted application settings
     UltraFilerHistory  history;            // recently used files / folders / apps
     UltraFilerFavorites favorites;         // pinned files / folders / apps + tree pins
+    UltraFilerFolderViews folderViews;     // per-folder view type + sort order
+    // Set while a stored folder state is being pushed into a filer, so the
+    // widget's own onViewTypeChanged / onSortChanged do not record it straight
+    // back (and a folder never overwrites its own entry with what it just got).
+    bool applyingFolderView = false;
 };
 
 } // namespace UltraCanvas

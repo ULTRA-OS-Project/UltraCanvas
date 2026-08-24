@@ -4,13 +4,14 @@
 // background and selected-folder highlight, each shown as a colour box that
 // opens the colour picker in a popup window), Media Viewer > Transparent
 // Images (the backdrop behind transparent images — checkered pattern or a
-// preset colour chosen with the colour picker), Extras > Open prompt (the
+// preset colour chosen with the colour picker), Handling > Drag & Drop (what
+// a plain drop onto a folder does - move or copy), Extras > Open prompt (the
 // command line program UltraFiler opens, picked with the file dialog and
 // stored with "Save app") and History & Favorites (clearing the
 // recently-used lists and the pinned entries). Changes apply live and are
 // saved immediately.
-// Version: 1.3.0
-// Last Modified: 2026-08-22
+// Version: 1.5.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -46,6 +47,8 @@ namespace {
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
+    constexpr const char* kPageHandling = "handling";
+    constexpr const char* kPageDragDrop = "handling/drag-drop";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "history-favorites";
@@ -67,6 +70,11 @@ namespace {
         UltraCanvasRadioGroup                   backgroundGroup;
         std::shared_ptr<UltraCanvasColorPicker> colorPicker;
 
+        // Handling > Drag & Drop: what a plain drop onto a folder does.
+        std::shared_ptr<UltraCanvasRadio>       dropMoveRadio;
+        std::shared_ptr<UltraCanvasRadio>       dropCopyRadio;
+        UltraCanvasRadioGroup                   dropOnFolderGroup;
+
         // Extras > Open prompt
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
         std::shared_ptr<UltraCanvasLabel>     promptStatus;  // what will be started
@@ -78,6 +86,7 @@ namespace {
         std::function<void()> onChanged;
         std::function<void()> onClearHistory;
         std::function<void()> onClearFavorites;
+        std::function<void()> onClearFolderViews;
     };
 
     std::shared_ptr<DialogState> g_dialog;
@@ -438,6 +447,48 @@ namespace {
         return page;
     }
 
+    // ===== HANDLING > DRAG & DROP =====
+    std::shared_ptr<UltraCanvasContainer> BuildDragDropPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-dragdrop");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-dd-title", "Drag & Drop", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-dd-caption",
+                "Drop on folder - what dragging files onto a folder of the file "
+                "display does:"));
+
+        const bool copies = d->settings->dropOnFolderCopies;
+
+        d->dropMoveRadio = UltraCanvasRadio::Create(
+                "ufl-set-dd-move", -1, -1, "Move files", !copies);
+        d->dropCopyRadio = UltraCanvasRadio::Create(
+                "ufl-set-dd-copy", -1, -1, "Copy files", copies);
+        // Explicit sizes: content measuring needs a render context, which the
+        // dialog does not have while it is first laid out.
+        for (auto& radio : {d->dropMoveRadio, d->dropCopyRadio}) {
+            radio->size.width  = CSSLayout::Dimension::Px(340);
+            radio->size.height = CSSLayout::Dimension::Px(22);
+            radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        }
+        d->dropOnFolderGroup.AddRadioButton(d->dropMoveRadio);
+        d->dropOnFolderGroup.AddRadioButton(d->dropCopyRadio);
+        d->dropOnFolderGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->dropOnFolderCopies = (selected == d->dropCopyRadio);
+            ApplyAndSave(d);
+        };
+        page->AddChild(d->dropMoveRadio);
+        page->AddChild(d->dropCopyRadio);
+
+        page->AddChild(MakeLabel("ufl-set-dd-hint",
+                "Ctrl while dropping always copies, Shift always moves."));
+
+        return page;
+    }
+
     // ===== EXTRAS > OPEN PROMPT =====
 
     // Describes what "Extras > Open prompt" will start right now: the saved
@@ -597,6 +648,9 @@ namespace {
         page->AddChild(MakeLabel("ufl-set-hf-caption",
                 "The History view lists the recently used files, folders and "
                 "applications; the Favorites view lists the pinned ones."));
+        page->AddChild(MakeLabel("ufl-set-hf-caption2",
+                "Folder views are the view type and sort order each folder was "
+                "last looked at with."));
 
         auto buttonRow = std::make_shared<UltraCanvasContainer>("ufl-set-hf-buttons");
         buttonRow->layout.SetFlexRow().SetFlexGap(8)
@@ -627,6 +681,19 @@ namespace {
         });
         clearFavorites->SetDisabled(!d->onClearFavorites);
         buttonRow->AddChild(clearFavorites);
+
+        auto clearViews = MakeButton("ufl-set-hf-clear-views",
+                "Clear Folder views", 140, [d]() {
+            if (d->onClearFolderViews) d->onClearFolderViews();
+            if (d->listsStatus) {
+                d->listsStatus->SetText(
+                        "Folder views cleared - every folder opens with the "
+                        "current view again.");
+                d->listsStatus->RequestRedraw();
+            }
+        });
+        clearViews->SetDisabled(!d->onClearFolderViews);
+        buttonRow->AddChild(clearViews);
         page->AddChild(buttonRow);
 
         d->listsStatus = MakeLabel("ufl-set-hf-status", "");
@@ -718,6 +785,16 @@ namespace {
         transparent.text = "Transparent Images";
         d->tree->AddNode(kPageMediaViewer, transparent);
 
+        TreeNodeData handling;
+        handling.nodeId = kPageHandling;
+        handling.text = "Handling";
+        d->tree->AddNode("settings", handling);
+
+        TreeNodeData dragDrop;
+        dragDrop.nodeId = kPageDragDrop;
+        dragDrop.text = "Drag & Drop";
+        d->tree->AddNode(kPageHandling, dragDrop);
+
         TreeNodeData extras;
         extras.nodeId = kPageExtras;
         extras.text = "Extras";
@@ -756,6 +833,12 @@ namespace {
                                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageTransparentImages] = transparentPage;
         d->pageArea->AddChild(transparentPage);
+
+        auto dragDropPage = BuildDragDropPage(d);
+        dragDropPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageDragDrop] = dragDropPage;
+        d->pageArea->AddChild(dragDropPage);
 
         auto openPromptPage = BuildOpenPromptPage(d);
         openPromptPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -819,7 +902,8 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
                                     UltraFilerSettings* settings,
                                     std::function<void()> onChanged,
                                     std::function<void()> onClearHistory,
-                                    std::function<void()> onClearFavorites) {
+                                    std::function<void()> onClearFavorites,
+                                    std::function<void()> onClearFolderViews) {
     // Raise the already open window instead of opening a second one.
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
         g_dialog->window->Show();
@@ -831,6 +915,7 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     state->onChanged = std::move(onChanged);
     state->onClearHistory = std::move(onClearHistory);
     state->onClearFavorites = std::move(onClearFavorites);
+    state->onClearFolderViews = std::move(onClearFolderViews);
     BuildDialog(state.get(), parent);
     if (state->window) g_dialog = state;   // keeps the widgets alive
 }
