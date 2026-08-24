@@ -7874,24 +7874,34 @@ namespace UltraCanvas {
         uint64_t total = 0;
         uint64_t count = 0;
 
-        struct stat dirSt{};
-        if (::stat(path.c_str(), &dirSt) != 0) return 0;   // gone: signature 0
-        uint64_t dirHash = fnv(1469598103934665603ull,
-                               static_cast<uint64_t>(dirSt.st_mtime));
-
+        // std::filesystem throughout rather than ::stat: a path is wide on
+        // Windows, where ::stat neither takes what path::c_str() returns nor
+        // reaches a name outside the local codepage.
         std::error_code ec;
+        const auto dirTime = fs::last_write_time(path, ec);
+        if (ec) return 0;   // gone or unreadable: signature 0
+        uint64_t dirHash = fnv(1469598103934665603ull,
+                static_cast<uint64_t>(dirTime.time_since_epoch().count()));
+
         for (fs::directory_iterator it(path, ec), end; it != end; it.increment(ec)) {
             if (ec) break;
             const std::string name = it->path().filename().string();
             if (!includeHidden && !name.empty() && name[0] == '.') continue;
             uint64_t h = 1469598103934665603ull;
             for (unsigned char c : name) h = fnv(h, c);
-            std::error_code sec;
-            const auto size = it->is_directory(sec) ? 0u : fs::file_size(it->path(), sec);
-            h = fnv(h, sec ? 0ull : static_cast<uint64_t>(size));
-            struct stat st{};
-            if (::stat(it->path().c_str(), &st) == 0)
-                h = fnv(h, static_cast<uint64_t>(st.st_mtime));
+            // The directory_entry answers from what the scan already read where
+            // the platform supplies it, so these are not extra syscalls.
+            std::error_code entryEc;
+            uint64_t sizeValue = 0;
+            if (!it->is_directory(entryEc)) {
+                const auto size = it->file_size(entryEc);
+                sizeValue = entryEc ? 0ull : static_cast<uint64_t>(size);
+            }
+            h = fnv(h, sizeValue);
+            entryEc.clear();
+            const auto mtime = it->last_write_time(entryEc);
+            if (!entryEc)
+                h = fnv(h, static_cast<uint64_t>(mtime.time_since_epoch().count()));
             total += h;
             ++count;
         }
