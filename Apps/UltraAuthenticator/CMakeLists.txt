@@ -21,6 +21,14 @@ set(ULTRAAUTHENTICATOR_CORE_SOURCES
     otp/OtpAuthUri.cpp
     store/EncryptedFileStore.cpp
     AccountStore.cpp
+    AccountExport.cpp
+    # The backup file is sealed with UCDCrypto::Seal, the framework's
+    # password envelope. It is compiled here rather than linked because
+    # nothing else builds it: the source lives under Plugins/Documents but the
+    # UltraCanvas library does not link UltraCrypt, so the envelope is not part
+    # of it, and until now only test targets compiled it. Worth relocating to a
+    # shared crypto target one day; compiling one file is the smaller change.
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
 )
 
 add_library(UltraAuthenticatorCore STATIC ${ULTRAAUTHENTICATOR_CORE_SOURCES})
@@ -48,6 +56,7 @@ add_executable(UltraAuthenticator
     ChangePasswordDialog.cpp
     RevealSecretDialog.cpp
     ScanAccountDialog.cpp
+    BackupDialog.cpp
 )
 
 target_include_directories(UltraAuthenticator PRIVATE

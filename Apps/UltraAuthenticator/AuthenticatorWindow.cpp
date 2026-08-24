@@ -4,12 +4,14 @@
 
 #include "AuthenticatorWindow.h"
 #include "AddAccountDialog.h"
+#include "BackupDialog.h"
 #include "ChangePasswordDialog.h"
 #include "EditAccountDialog.h"
 #include "RevealSecretDialog.h"
 #include "ScanAccountDialog.h"
 #include "Theme.h"
 
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 
 #include <ctime>
@@ -124,13 +126,26 @@ bool AuthenticatorWindow::Create() {
     addBtn->onClick = [this]() { OpenAddAccountDialog(); };
     window_->AddChild(addBtn);
 
+    // Second row: things that act on the vault rather than on one account.
     // Wide enough for the whole label — the button clips rather than shrinking
     // its text, and "Change master p..." reads as a truncated menu item.
     auto pwBtn = std::make_shared<UltraCanvasButton>(
-        "auth-pw", margin + 280, 54, 250, 32);
+        "auth-pw", margin, 94, 250, 32);
     pwBtn->SetText("Change master password");
     pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
     window_->AddChild(pwBtn);
+
+    auto backupBtn = std::make_shared<UltraCanvasButton>(
+        "auth-backup", margin + 260, 94, 110, 32);
+    backupBtn->SetText("Back up…");
+    backupBtn->onClick = [this]() { OpenBackupDialog(); };
+    window_->AddChild(backupBtn);
+
+    auto restoreBtn = std::make_shared<UltraCanvasButton>(
+        "auth-restore", margin + 380, 94, 110, 32);
+    restoreBtn->SetText("Restore…");
+    restoreBtn->onClick = [this]() { OpenRestoreDialog(); };
+    window_->AddChild(restoreBtn);
 
     statusLabel_ = std::make_shared<UltraCanvasLabel>(
         "auth-status", margin, kHeaderHeight - 22, width, 18, "");
@@ -414,6 +429,112 @@ void AuthenticatorWindow::OpenScanAccountDialog() {
         return std::string();
     };
     dialog->CreateScanAccountDialog();
+    dialog->ShowModal(window_.get());
+}
+
+void AuthenticatorWindow::OpenBackupDialog() {
+    auto dialog = std::make_shared<BackupDialog>(BackupDialog::Mode::Export);
+    dialog->onConfirm = [this](const std::string& master,
+                               const std::string& passphrase) -> std::string {
+        // Check this here, not only in ExportAll. The authoritative refusal
+        // lives with the data, but it fires after the file picker — so relying
+        // on it alone would make the user choose a save location, watch the
+        // dialog close, and then find the rejection in the status line with
+        // the fields gone.
+        if (master == passphrase) {
+            return "The backup passphrase must be different from your master "
+                   "password.";
+        }
+
+        // Copy what the handler needs before the dialog wipes its widgets;
+        // the file picker is asynchronous and returns after this call.
+        auto masterCopy = std::make_shared<UltraCryptSecureBuffer>(
+            master.data(), master.size());
+        auto passCopy = std::make_shared<UltraCryptSecureBuffer>(
+            passphrase.data(), passphrase.size());
+
+        FileDialogOptions opts;
+        opts.title = "Save account backup";
+        opts.defaultFileName = "accounts.ucaexport";
+        opts.AddFilter("Authenticator backup", "ucaexport");
+        opts.parentWindow = window_.get();
+
+        UltraCanvasFileLoader::SaveFileDialog(
+            opts, [this, masterCopy, passCopy](DialogResult result,
+                                               const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) {
+                    masterCopy->Clear();
+                    passCopy->Clear();
+                    return;
+                }
+                size_t count = 0;
+                StoreResult exported =
+                    store_.ExportAll(*masterCopy, *passCopy, path, count);
+                masterCopy->Clear();
+                passCopy->Clear();
+                if (!exported) {
+                    SetStatus(exported.message, true);
+                    return;
+                }
+                SetStatus("Backed up " + std::to_string(count) +
+                          (count == 1 ? " account to " : " accounts to ") + path);
+            });
+        // The picker decides the outcome, so nothing to report here. Errors
+        // from the export itself land in the status line above.
+        return std::string();
+    };
+    dialog->CreateBackupDialog();
+    dialog->ShowModal(window_.get());
+}
+
+void AuthenticatorWindow::OpenRestoreDialog() {
+    auto dialog = std::make_shared<BackupDialog>(BackupDialog::Mode::Import);
+    dialog->onConfirm = [this](const std::string&,
+                               const std::string& passphrase) -> std::string {
+        auto passCopy = std::make_shared<UltraCryptSecureBuffer>(
+            passphrase.data(), passphrase.size());
+
+        FileDialogOptions opts;
+        opts.title = "Open account backup";
+        opts.AddFilter("Authenticator backup", "ucaexport");
+        opts.parentWindow = window_.get();
+
+        UltraCanvasFileLoader::OpenFileDialog(
+            opts, [this, passCopy](DialogResult result,
+                                   const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) {
+                    passCopy->Clear();
+                    return;
+                }
+                AccountStore::ImportSummary summary;
+                StoreResult imported =
+                    store_.ImportAll(*passCopy, path, summary);
+                passCopy->Clear();
+                if (!imported) {
+                    SetStatus(imported.message, true);
+                    return;
+                }
+                RebuildRows();
+
+                // Report every category. "Restored 38" while silently dropping
+                // two would be indistinguishable from restoring all forty.
+                std::string message = "Restored " +
+                                      std::to_string(summary.added);
+                if (summary.skippedExisting > 0) {
+                    message += ", kept " +
+                               std::to_string(summary.skippedExisting) +
+                               " already present";
+                }
+                if (summary.rejected > 0) {
+                    message += ", could not read " +
+                               std::to_string(summary.rejected);
+                }
+                message += ".";
+                SetStatus(message, summary.rejected > 0);
+            });
+        return std::string();
+    };
+    dialog->CreateBackupDialog();
     dialog->ShowModal(window_.get());
 }
 

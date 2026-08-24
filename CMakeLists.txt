@@ -920,6 +920,30 @@ if (BUILD_TESTS)
     add_test(NAME UltraAuthenticatorStoreTests COMMAND UltraAuthenticatorStoreTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # Encrypted backup file: round trip, refusal to reuse the master password,
+    # tamper detection, and that a restore never overwrites a live account.
+    # Links only UltraCrypt, so it runs headless.
+    add_executable(UltraAuthenticatorExportTests
+        Tests/UltraAuthenticatorExportTests.cpp
+        Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/AccountExport.cpp
+        Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
+        Apps/UltraAuthenticator/otp/UltraOtp.cpp
+        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
+        UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
+    )
+    target_include_directories(UltraAuthenticatorExportTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_link_libraries(UltraAuthenticatorExportTests PRIVATE UltraCrypt)
+    target_compile_features(UltraAuthenticatorExportTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorExportTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorExportTests
+             COMMAND UltraAuthenticatorExportTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # In-memory QR decode. Unlike the suites around it this one links the whole
     # framework, because the QR plugin is compiled into the UltraCanvas library
     # rather than standing alone. It skips itself cleanly when the library was
@@ -958,12 +982,17 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorAccountTests
         Tests/UltraAuthenticatorAccountTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        # AccountStore now exports and imports backups, so it needs the export
+        # container and the envelope underneath it.
+        Apps/UltraAuthenticator/AccountExport.cpp
+        UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
         Apps/UltraAuthenticator/otp/UltraOtp.cpp
         Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
     target_include_directories(UltraAuthenticatorAccountTests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
     target_link_libraries(UltraAuthenticatorAccountTests PRIVATE UltraCrypt)
     target_compile_features(UltraAuthenticatorAccountTests PRIVATE cxx_std_20)
     set_target_properties(UltraAuthenticatorAccountTests PROPERTIES

@@ -3,9 +3,9 @@
 **Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
 (§2.2b), the OTP engine (§2.2d), the app shell (§4, build order step 4) and
 account editing — rename, code settings, master-password rotation and gated
-seed reveal (§3.5, §3.5a), and in-memory QR decode with the camera scan flow
-(§2.2c) — are built and tested. Screen-capture protection (§2.2e) remains
-impossible on X11.
+seed reveal (§3.5, §3.5a), in-memory QR decode with the camera scan flow
+(§2.2c) and the encrypted backup file (§3.5) — are built and tested.
+Screen-capture protection (§2.2e) remains impossible on X11.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
 **Date:** 2026-08-10 (implementation notes added 2026-08-21)
@@ -352,9 +352,30 @@ Scanning is parsing attacker-controlled data through a C library:
   outlive the app in `~/Pictures`, sync folders, thumbnails caches. Either
   don't offer file export of provisioning QRs at all, or watermark the flow
   with explicit warnings and point exports at the encrypted format instead.
-- Encrypted export file: same XChaCha20-Poly1305 + Argon2id envelope as the store, with
-  its own passphrase (not the app master password), so a backup found later
-  doesn't fall to the device password.
+- ~~Encrypted export file~~ — **DONE** (`AccountExport.{h,cpp}`, `BackupDialog`).
+  One file holding every account, sealed with `UCDCrypto::Seal` — the same
+  Argon2id + XChaCha20-Poly1305 envelope used elsewhere, reused rather than
+  reinvented. A 10-byte header (magic, version) is authenticated as associated
+  data; the payload is a count followed by each account's `otpauth://` URI, so
+  a restore goes through `AddFromUri` and meets exactly the parser that guards
+  the live vault. Written atomically at mode 0600.
+
+  Its passphrase must **differ from the master password**, and this is enforced
+  rather than advised: a backup is the file most likely to reach a USB stick or
+  a cloud drive, and one that opened with the device password would make
+  finding it as good as having the machine. Export re-authenticates with the
+  master password first, since it reads every seed in the vault.
+
+  Restoring never overwrites: an account already present is kept and counted as
+  skipped, because a restore that clobbered a re-enrolled seed or a newer HOTP
+  counter would destroy a working second factor. The result is reported per
+  category — "restored 38, kept 2 already present" — since silently dropping
+  two would be indistinguishable from restoring all forty.
+
+  Verified by `Tests/UltraAuthenticatorExportTests.cpp` (56 checks) and by
+  driving the GUI: three accounts exported from one vault and restored into a
+  different vault with a different master password, HOTP counter and
+  non-default parameters intact.
 
 **What shipped (`RevealSecretDialog`, `AccountStore::Reveal`).** On-screen
 reveal only: the setup key and its `otpauth://` URI are shown as selectable
@@ -375,7 +396,7 @@ photo album or an email — strictly worse than this vault. Aegis, andOTP and
 applies in full while the dialog is open, which is why it stays on screen only
 until dismissed and warns about photographing it.
 
-The encrypted export *file* in the second bullet is still not built.
+The encrypted export *file* in the second bullet is now built; see above.
 
 ### 3.5a Editing an enrolled account (medium)
 
@@ -453,6 +474,8 @@ Apps/UltraAuthenticator/
   AddAccountDialog.*           — manual entry (camera scan still outstanding)  [DONE]
   EditAccountDialog.*          — rename + code settings (§3.5a)                [DONE]
   ChangePasswordDialog.*       — master password rotation                     [DONE]
+  AccountExport.*              — encrypted backup file (§3.5)                 [DONE]
+  BackupDialog.*               — back up / restore, own passphrase (§3.5)     [DONE]
   RevealSecretDialog.*         — gated seed export for device migration (§3.5) [DONE]
   AccountStore.*               — accounts ↔ vault entries via otpauth:// URIs [DONE]
   otp/
