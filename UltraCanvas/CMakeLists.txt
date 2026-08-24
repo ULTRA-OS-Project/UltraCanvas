@@ -347,6 +347,14 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
+        # Spell checking. The per-platform backend that defines
+        # CreateNativeSpellCheckBackend() is picked up by the
+        # ${ULTRACANVAS_PLATFORM_DIR}/*.cpp glob below - do not list it here or
+        # it lands in the build twice.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_SpellCheck.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpellChecker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckLanguageNames.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDatePicker.cpp
@@ -725,6 +733,39 @@ if(ULTRACANVAS_HAS_VIPS)
     )
 endif()
 
+# ===== SPELL CHECKING (all dependencies optional) =====
+# With none of these present the module still compiles and simply reports zero
+# dictionaries, so a missing optional dependency never breaks the build.
+pkg_check_modules(HUNSPELL QUIET hunspell)
+if(HUNSPELL_FOUND)
+    message(STATUS "  Hunspell: ${HUNSPELL_VERSION} (portable spell backend)")
+else()
+    message(STATUS "  Hunspell: NOT FOUND (portable spell backend reports no dictionaries)")
+endif()
+
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    # enchant-2 is the broker GTK, LibreOffice and Firefox use, so it sees the
+    # dictionaries the user already has installed.
+    pkg_check_modules(ENCHANT QUIET enchant-2)
+    if(ENCHANT_FOUND)
+        message(STATUS "  enchant-2: ${ENCHANT_VERSION} (native Linux spell backend)")
+    else()
+        message(STATUS "  enchant-2: NOT FOUND (falling back to the Hunspell backend)")
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    # spellcheck.h is Windows 8+; Windows 7 targets fall back to Hunspell.
+    include(CheckIncludeFileCXX)
+    check_include_file_cxx("spellcheck.h" ULTRACANVAS_HAVE_SPELLCHECK_HEADER)
+    if(ULTRACANVAS_HAVE_SPELLCHECK_HEADER)
+        message(STATUS "  ISpellChecker: available (native Windows spell backend)")
+    else()
+        message(STATUS "  ISpellChecker: NOT FOUND (falling back to the Hunspell backend)")
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    # NSSpellChecker ships with every macOS and needs no feature flag.
+    message(STATUS "  NSSpellChecker: available (native macOS spell backend)")
+endif()
+
 # Include headers (for IDE support)
 file(GLOB ULTRACANVAS_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
@@ -984,6 +1025,34 @@ if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
     add_library(${ULTRACANVAS_LIB_NAME} STATIC ${ULTRACANVAS_ALL_SOURCES})
+endif()
+
+# ===== SPELL CHECK BACKENDS =====
+# Every branch is optional; the service falls back to the next backend at
+# runtime and finally to a no-op that reports zero dictionaries.
+find_package(Threads REQUIRED)
+target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
+
+if(HUNSPELL_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_HUNSPELL)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_LIBRARIES})
+endif()
+
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ENCHANT_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_ENCHANT)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARIES})
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_HEADER)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WINSPELLCHECK)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Ole32)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+        "-framework AppKit"
+        "-framework Foundation"
+    )
 endif()
 
 # ===== CHART RUNTIME MODULES =====
