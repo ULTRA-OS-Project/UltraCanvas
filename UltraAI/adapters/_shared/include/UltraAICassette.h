@@ -11,8 +11,8 @@
 //
 // Only compiled when the vendored nlohmann/json is present
 // (ULTRAAI_HAS_CASSETTE=1, defined by the _shared CMakeLists).
-// Version: 0.1.0
-// Last Modified: 2026-08-21
+// Version: 0.2.0
+// Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
 
@@ -43,10 +43,13 @@ public:
     CancelFn SseStream(const TransportRequest& request,
                        SseEventCallback onEvent,
                        SseCompleteCallback onComplete) override;
+    CancelFn WebSocketStream(const TransportRequest& request,
+                             WsMessageCallback onMessage,
+                             WsCompleteCallback onComplete) override;
 
-    // Write everything recorded so far as a cassette file. SSE exchanges
-    // commit when their terminal callback fires; a stream still in flight
-    // is not written.
+    // Write everything recorded so far as a cassette file. SSE and
+    // WebSocket exchanges commit when their terminal callback fires; a
+    // stream still in flight is not written.
     bool Save(const std::string& path,
               std::string* outErrorMessage = nullptr) const;
 
@@ -54,9 +57,11 @@ private:
     struct Recorded {
         bool isError = false;
         bool isSse   = false;
+        bool isWs    = false;
         TransportResponse response;
         Error error;
         std::vector<TransportSseEvent> events;
+        std::vector<TransportWsMessage> wsMessages;
         int sseStatusCode = 200;
     };
 

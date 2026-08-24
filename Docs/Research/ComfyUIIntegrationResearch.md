@@ -1,7 +1,11 @@
 # ComfyUI as an UltraAI Provider — Research and Recommendation
 
 **Date:** 2026-08-24
-**Status:** Research — no implementation yet
+**Status:** Implemented — Phase A (`minimax`), Phase 0 (WebSocket transport
+seam) and Phase 1 (`comfyui` `IImageGen`) have landed, plus a `qwen` local
+adapter that was not in the original plan. See
+[`Docs/Modules/UltraAI/Adapters.md`](../Modules/UltraAI/Adapters.md) for
+what shipped; the analysis below is kept as the record of why.
 **Scope:** Whether UltraAI should support ComfyUI as a provider backend, what
 an adapter would look like against the existing capability interfaces, what
 infrastructure work it needs first, and how it relates to addressing a cloud
@@ -354,7 +358,7 @@ in UltraAI that no cloud video API fills.
 
 ## 10. Recommended plan
 
-**Phase A — `minimax` adapter (do this first).**
+**Phase A — `minimax` adapter (do this first).** *(shipped)*
 `ULTRAAI_ADAPTER_MINIMAX`, `UltraAI/adapters/minimax/`. `IVideoGen` via
 submit/poll/retrieve, `GenerateJob` driven by the poll loop, cancellation
 through `StreamHandle`, cassette tests over recorded traffic. Then
@@ -362,12 +366,12 @@ through `StreamHandle`, cassette tests over recorded traffic. Then
 credential. Needs nothing from Phase 0, and proves the job-progress plumbing
 that the ComfyUI adapter reuses.
 
-**Phase 0 — transport seam (prerequisite for ComfyUI).**
+**Phase 0 — transport seam (prerequisite for ComfyUI).** *(shipped)*
 `ITransport::WebSocketStream`, implemented in `UltraNetTransport`, scripted
 in `ScriptedTransport`, cassette support for frames; multipart helper.
 Independently useful; land it on its own merits.
 
-**Phase 1 — `comfyui` adapter, `IImageGen`.**
+**Phase 1 — `comfyui` adapter, `IImageGen`.** *(shipped)*
 `ULTRAAI_ADAPTER_COMFYUI` (default OFF, like the other local adapters),
 `UltraAI/adapters/comfyui/`. Core-node templates for txt2img, img2img,
 inpaint and upscale; binding table; `/object_info`-driven
@@ -376,12 +380,13 @@ polling fallback; cassette tests. Add `"comfyui"` to
 `KnownLocalProviders("imagegen")` in `Routing.cpp` so an empty `providerId`
 resolves to it when registered.
 
-**Phase 2 — `IVideoGen` from the ComfyUI adapter too**, plus
+**Phase 2 — `IVideoGen` from the ComfyUI adapter too** *(not yet)*, plus
 `KnownLocalProviders("videogen")` (local video ranks ahead of `minimax` only
 when a local model is actually installed). Same machinery, video templates, longer
 timeouts, `/view` for video payloads.
 
-**Phase 3 — UI and docs.** `Apps/UltraAIApp` picks the provider up for free;
+**Phase 3 — UI and docs.** *(docs shipped; the app picks the providers up
+automatically, template selection in the UI is still to do.)* `Apps/UltraAIApp` picks the provider up for free;
 what it needs is a way to choose a workflow template and point at a
 templates directory. Document the adapter in `Docs/Modules/UltraAI/` and
 the module `README.md` adapter table.

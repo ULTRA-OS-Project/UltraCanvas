@@ -36,6 +36,15 @@
 #ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
 #include "UltraAILlamaEmbeddings.h"
 #endif
+#ifdef ULTRAAI_HAS_QWEN_ADAPTER
+#include "UltraAIQwen.h"
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+#include "UltraAIMiniMax.h"
+#endif
+#ifdef ULTRAAI_HAS_COMFYUI_ADAPTER
+#include "UltraAIComfyUI.h"
+#endif
 
 #include <cmath>
 #include <map>
@@ -150,6 +159,14 @@ Registry<IEmbeddings, EmbeddingsConfig>& EmbedsReg() {
                 };
             }
 #endif
+#ifdef ULTRAAI_HAS_QWEN_ADAPTER
+            if (!r.providers.count("qwen")) {
+                r.providers["qwen"] = [](const EmbeddingsConfig& cfg,
+                                         Error* err) {
+                    return CreateQwenEmbeddings(cfg, err);
+                };
+            }
+#endif
         };
     });
     return r;
@@ -204,6 +221,22 @@ Registry<IImageGen, ImageGenConfig>& ImgReg() {
                 };
             }
 #endif
+#ifdef ULTRAAI_HAS_COMFYUI_ADAPTER
+            if (!r.providers.count("comfyui")) {
+                r.providers["comfyui"] = [](const ImageGenConfig& cfg,
+                                            Error* err) {
+                    return CreateComfyUIImageGen(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+            if (!r.providers.count("minimax")) {
+                r.providers["minimax"] = [](const ImageGenConfig& cfg,
+                                            Error* err) {
+                    return CreateMiniMaxImageGen(cfg, err);
+                };
+            }
+#endif
         };
     });
     return r;
@@ -255,6 +288,14 @@ Registry<IVideoGen, VideoGenConfig>& VidReg() {
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const VideoGenConfig&, Error*) {
                     return CreateMockVideoGen();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+            if (!r.providers.count("minimax")) {
+                r.providers["minimax"] = [](const VideoGenConfig& cfg,
+                                            Error* err) {
+                    return CreateMiniMaxVideoGen(cfg, err);
                 };
             }
 #endif
