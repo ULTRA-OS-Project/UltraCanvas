@@ -297,6 +297,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZ_FRAMEWORK QuartzCore REQUIRED)
+    # UniformTypeIdentifiers (macOS 11+) backs the "Open with" enumeration in
+    # OS/MacOS/UltraCanvasMacOSFileAssociations.mm. Not REQUIRED: an older SDK
+    # has neither the framework nor its header, and the backend compiles the
+    # enumeration out (__has_include) and reports no candidates there.
+    find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
@@ -1195,6 +1200,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             oleaut32
             uuid
             shell32
+            shlwapi        # AssocQueryStringW (OS/MSWindows file associations)
             comdlg32
             comctl32
             imm32
@@ -1227,6 +1233,10 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${CORETEXT_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
+    if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+                ${UNIFORMTYPEIDENTIFIERS_FRAMEWORK})
+    endif()
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${OPENGL_FRAMEWORK}

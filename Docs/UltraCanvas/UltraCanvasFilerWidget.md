@@ -242,9 +242,12 @@ Notes:
   `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
   "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
   preset to the platform's application filter and directory; the pick is
-  launched detached with the selected files. On platforms whose enumeration
-  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
-  section is empty but default-open and the picker already work.
+  launched detached with the selected files. Every desktop platform
+  enumerates: freedesktop `.desktop` entries on Linux/BSD, the handlers
+  Explorer lists on Windows, Launch Services on macOS 12+. Where a platform
+  cannot type a file (Windows and macOS associate by extension, so a name
+  without one has no candidates) the OS section stays empty and default-open
+  plus the picker still work.
 - `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
   file with the OS default application **when no `onFileActivated` callback
   is installed** — activation semantics for simple embedders; hosts with

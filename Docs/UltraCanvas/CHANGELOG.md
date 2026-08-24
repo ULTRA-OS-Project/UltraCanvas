@@ -1,3 +1,31 @@
+#### 2026-08-24 *0.3.64*
+- **"Open with" proposes real applications on Windows and macOS.** The submenu
+  knew only what the Linux backend could enumerate; everywhere else it offered
+  nothing but "Other application…". Both remaining desktop backends of
+  `UltraCanvasFileAssociations` are now implemented, so the menu lists what the
+  system actually registers for the selected files — with the default
+  application first and each entry's own icon.
+  - **Windows:** `SHAssocEnumHandlers(".ext", ASSOC_FILTER_RECOMMENDED)` — the
+    very list Explorer shows — with names from `IAssocHandler::GetUIName` and
+    the default marked from `AssocQueryString`. Picking one launches it through
+    `IAssocHandler::CreateInvoker`/`Invoke` on an `IDataObject` built from the
+    whole selection, the same path Explorer takes, so multi-select opens one
+    window and per-application quirks stay the shell's problem; a handler that
+    refuses the selection gets the files one at a time, and a plain executable
+    falls back to a detached `app.exe file…` launch.
+  - **macOS:** `-[NSWorkspace URLsForApplicationsToOpenContentType:]` with the
+    default from `URLForApplicationToOpenContentType:`, bundle display names,
+    and launching via `openURLs:withApplicationAtURL:` (macOS 12+; older
+    systems keep the previous default-open-only behaviour).
+  - **Application icons** are extracted once and cached as PNG files
+    (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
+    `~/Library/Caches/UltraCanvas/openwith-icons`), keyed by icon source, so a
+    menu open stays a cache read and the extraction survives restarts. The
+    Windows extraction is the shell icon path the filer already uses for
+    `.exe`/`.dll`/`.ico` files, now shared through `OS/MSWindows/UltraCanvasWindowsIcons.h`.
+  - Both platforms resolve per file extension and expire their entries after a
+    minute, so changing a default association shows up without a restart.
+
 #### 2026-08-23 *0.3.63*
 - **The Filer notices changes made behind it.** The shown folder was only
   rescanned when the widget itself changed something, so a file another program

@@ -16,12 +16,17 @@ struct. The per-platform backends are internal
 | Platform | Enumeration | Default open | Launch picked app |
 |---|---|---|---|
 | Linux / BSD | ✓ freedesktop (shared-mime-info, mimeapps.list, .desktop, mimeinfo.cache; plain text parsing, no GIO/GTK dependency) | ✓ registered handler, `xdg-open` fallback | ✓ |
-| Windows | pending (P2: `SHAssocEnumHandlers`) | ✓ ShellExecuteEx "open" | ✓ |
-| macOS | pending (P3: NSWorkspace) | ✓ `/usr/bin/open` | ✓ (`open -a` for bundles) |
+| Windows | ✓ shell association APIs (`SHAssocEnumHandlers` + `IAssocHandler`, the list Explorer's own "Open with" shows; default from `AssocQueryString`) | ✓ ShellExecuteEx "open" | ✓ `IAssocHandler::Invoke` on the selection |
+| macOS | ✓ NSWorkspace / Launch Services (`URLsForApplicationsToOpenContentType:`, default from `URLForApplicationToOpenContentType:`; needs macOS 12) | ✓ `/usr/bin/open` | ✓ `openURLs:withApplicationAtURL:` |
 | WASM | — (empty) | — (error) | — (error) |
 
 `Terminal=true` desktop entries are skipped on Linux (Explorer and Finder do
-not offer terminal programs either).
+not offer terminal programs either). Windows and macOS resolve candidates
+per file extension; a file without one (`Makefile`) has no associations
+there, while Linux still types it through its literal-name globs. On macOS
+before 12 the type-by-extension lookup does not exist, so enumeration
+reports nothing and the menu falls back to the manual entries plus the
+"Other application…" picker.
 
 ## API
 
@@ -68,7 +73,17 @@ first widget calls `PrewarmAsync()`, and every folder scan passes the
 folder's distinct extensions to `PrewarmExtensionsAsync()`. The Linux index
 re-checks its source files' mtimes (`mimeapps.list`, `mimeinfo.cache`,
 `globs2`, the applications directories) and rebuilds — dropping the
-extension cache — when anything changed.
+extension cache — when anything changed. Windows and macOS have no parseable
+database to watch, so their entries expire after a minute instead: the next
+lookup re-reads the registry / Launch Services, which is why a default
+association changed while the application runs shows up in the menu shortly
+after.
+
+Application icons on those two platforms are extracted once and kept as PNG
+files (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
+`~/Library/Caches/UltraCanvas/openwith-icons`), keyed by icon source, so the
+extraction survives both the expiry above and a restart. Linux `.desktop`
+icons already resolve to theme files and need no extraction.
 
 ## Example
 
@@ -98,5 +113,9 @@ code.
 
 ## Version
 
+- 1.1.0 (2026-08-24): P2 + P3 — Windows (`SHAssocEnumHandlers` /
+  `IAssocHandler`, icon extraction to PNG) and macOS (NSWorkspace /
+  Launch Services) enumeration backends. "Open with >" now lists real
+  applications on all three desktop platforms.
 - 1.0.0 (2026-08-16): P1 — service + Linux/BSD backend, prewarm worker,
   Windows/macOS default-open placeholders.
