@@ -1,3 +1,25 @@
+#### 2026-08-23 *0.3.61*
+- **UltraFiler: one way to pick a colour.** The Media Viewer > Transparent
+  Images page carried a full `UltraCanvasColorPicker` inline on the page,
+  while Display > Treeview showed a colour box that opens the picker in a
+  popup window. The transparent-image backdrop now uses the same box: it
+  shows the colour in use, clicking it opens the picker over the settings
+  window, the colour is previewed live in the media viewer while it is being
+  picked, "Use colour" keeps it and Cancel puts the previous one back. As
+  before, choosing a colour switches the backdrop away from the checkered
+  pattern - picking a colour means wanting it shown.
+- **Radio group: a programmatic selection now shows.**
+  `UltraCanvasRadioGroup::SelectButton()` unchecked the group's other buttons
+  but never checked the one being selected. That is invisible on the click
+  path, where `AddRadioButton` routes the button's own `onChecked` into it and
+  the button has already checked itself, but a `SelectButton()` call from code
+  left the group with no dot at all - as the settings page above did every
+  time a colour was picked while the checkered pattern was selected. It now
+  checks the target as well, assigning `selectedButton` first so the
+  re-entrant call from `onChecked` finds a consistent group and the selection
+  callback still fires exactly once, and returns early when the button is
+  already the selection.
+
 #### 2026-08-23 *0.3.60*
 - **UCImageRaster::GetMetadataString** reads one embedded metadata field
   (EXIF capture time, camera make/model) by its libvips name, stripping

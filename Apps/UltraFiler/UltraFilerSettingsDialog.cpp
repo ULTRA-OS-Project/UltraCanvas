@@ -1,16 +1,16 @@
 // Apps/UltraFiler/UltraFilerSettingsDialog.cpp
 // UltraFiler settings window: settings-page tree on the left, the selected
 // page on the right. Pages: Display > Treeview (the folder tree's drive-row
-// background and selected-folder highlight, each shown as a colour box that
-// opens the colour picker in a popup window), Media Viewer > Transparent
+// background and selected-folder highlight), Media Viewer > Transparent
 // Images (the backdrop behind transparent images — checkered pattern or a
-// preset colour chosen with the colour picker), Extras > Open prompt (the
-// command line program UltraFiler opens, picked with the file dialog and
-// stored with "Save app") and History & Favorites (clearing the
-// recently-used lists and the pinned entries). Changes apply live and are
-// saved immediately.
-// Version: 1.3.0
-// Last Modified: 2026-08-22
+// preset colour), Extras > Open prompt (the command line program UltraFiler
+// opens, picked with the file dialog and stored with "Save app") and
+// History & Favorites (clearing the recently-used lists and the pinned
+// entries). Every colour on every page is chosen the same way: a box showing
+// the current colour, which opens the colour picker in a popup window.
+// Changes apply live and are saved immediately.
+// Version: 1.4.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -62,10 +62,10 @@ namespace {
         std::shared_ptr<UltraCanvasButton> driveColorBox;
         std::shared_ptr<UltraCanvasButton> selectedColorBox;
 
-        std::shared_ptr<UltraCanvasRadio>       solidRadio;
-        std::shared_ptr<UltraCanvasRadio>       checkeredRadio;
-        UltraCanvasRadioGroup                   backgroundGroup;
-        std::shared_ptr<UltraCanvasColorPicker> colorPicker;
+        std::shared_ptr<UltraCanvasRadio>  solidRadio;
+        std::shared_ptr<UltraCanvasRadio>  checkeredRadio;
+        UltraCanvasRadioGroup              backgroundGroup;
+        std::shared_ptr<UltraCanvasButton> transparentColorBox;
 
         // Extras > Open prompt
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
@@ -386,7 +386,7 @@ namespace {
         const bool checkered = d->settings->previewCheckeredBackground;
 
         d->solidRadio = UltraCanvasRadio::Create(
-                "ufl-set-ti-solid", -1, -1, "Preset colour (picked below)", !checkered);
+                "ufl-set-ti-solid", -1, -1, "Preset colour (the box below)", !checkered);
         d->checkeredRadio = UltraCanvasRadio::Create(
                 "ufl-set-ti-checkered", -1, -1, "Checkered pattern (shows transparency)",
                 checkered);
@@ -408,32 +408,34 @@ namespace {
         page->AddChild(d->solidRadio);
         page->AddChild(d->checkeredRadio);
 
-        page->AddChild(MakeLabel("ufl-set-ti-color-lbl", "Preset colour:"));
-
-        d->colorPicker = CreateColorPicker("ufl-set-ti-picker",
-                d->settings->previewTransparentColor, 0, 0, 280, 380);
-        d->colorPicker->SetStyle(LightPickerStyle());
-        d->colorPicker->SetUIScale(0.85f);
-        d->colorPicker->SetShowAlpha(false);   // the backdrop is always opaque
-        d->colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // Live preview while dragging; the final value also selects the
-        // solid-colour mode (picking a colour means the user wants it shown)
-        // and persists.
-        d->colorPicker->onColorChanging = [d](const Color& c) {
-            if (!d->settings) return;
-            d->settings->previewTransparentColor = Color(c.r, c.g, c.b, 255);
-            if (d->onChanged) d->onChanged();
-        };
-        d->colorPicker->onColorChanged = [d](const Color& c) {
-            if (!d->settings) return;
-            d->settings->previewTransparentColor = Color(c.r, c.g, c.b, 255);
-            if (!d->settings->previewCheckeredBackground) {
-                ApplyAndSave(d);
-            } else {
-                d->backgroundGroup.SelectButton(d->solidRadio);  // applies + saves
-            }
-        };
-        page->AddChild(d->colorPicker);
+        // The colour box opens the picker in a popup, like the Treeview page -
+        // one way of choosing a colour across the whole settings window.
+        d->transparentColorBox = MakeColorBox("ufl-set-ti-color",
+                d->settings->previewTransparentColor,
+                "Backdrop shown behind transparent images", [d]() {
+            ShowColorPickerPopup(d, "Transparent image backdrop",
+                    d->settings->previewTransparentColor,
+                    [d](const Color& c) {       // live preview
+                if (!d->settings) return;
+                d->settings->previewTransparentColor = c;
+                SetColorBoxColor(d->transparentColorBox, c);
+                if (d->onChanged) d->onChanged();
+            },
+                    [d](const Color& c) {       // kept
+                if (!d->settings) return;
+                d->settings->previewTransparentColor = c;
+                SetColorBoxColor(d->transparentColorBox, c);
+                // Picking a colour means the user wants it shown, so a
+                // checkered backdrop gives way to it; SelectButton applies
+                // and saves, otherwise do that here.
+                if (d->settings->previewCheckeredBackground)
+                    d->backgroundGroup.SelectButton(d->solidRadio);
+                else
+                    ApplyAndSave(d);
+            });
+        });
+        page->AddChild(MakeColorRow("ufl-set-ti-color-row", "Preset colour:",
+                                    d->transparentColorBox));
 
         return page;
     }

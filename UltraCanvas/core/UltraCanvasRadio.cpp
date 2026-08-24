@@ -1,7 +1,7 @@
 // UltraCanvasRadio.cpp
 // Radio button rendering and exclusive-selection group.
-// Version: 1.1.0
-// Last Modified: 2026-06-02
+// Version: 1.1.1
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRadio.h"
@@ -85,11 +85,24 @@ namespace UltraCanvas {
     void UltraCanvasRadioGroup::SelectButton(std::shared_ptr<UltraCanvasRadio> button) {
         if (!button) return;
         if (std::find(radioButtons.begin(), radioButtons.end(), button) == radioButtons.end()) return;
+        // Already the selection: nothing to change, and no callback to repeat.
+        if (selectedButton == button && button->IsChecked()) return;
 
+        // Check the target too. This used to be left to the caller, which is
+        // true only of the click path (AddRadioButton routes onChecked here,
+        // so the button has already checked itself). A programmatic
+        // SelectButton() unchecked the others and checked nothing, leaving the
+        // group with no dot at all.
+        //
+        // selectedButton is assigned FIRST because SetChecked fires onChecked,
+        // which re-enters this function; by then the guard above sees a
+        // consistent group and returns, so the work below - and the
+        // notification - happen exactly once.
+        selectedButton = button;
+        button->SetChecked(true);
         for (auto& other : radioButtons) {
             if (other != button && other->IsChecked()) other->SetChecked(false);
         }
-        selectedButton = button;
         if (onSelectionChanged) onSelectionChanged(button);
     }
 
