@@ -3810,8 +3810,8 @@ namespace UltraCanvas {
         ts.backgroundColor  = style.renameFieldColor;
         ts.borderColor      = style.renameBorderColor;
         ts.focusBorderColor = style.renameBorderColor;
-        ts.textColor        = style.textColor;
-        ts.caretColor       = style.textColor;
+        ts.textColor        = style.renameTextColor;
+        ts.caretColor       = style.renameTextColor;
         ts.selectionColor   = Color(style.selectionColor.r, style.selectionColor.g,
                                     style.selectionColor.b, 170);
         ts.borderWidth = 1;
@@ -4931,7 +4931,7 @@ namespace UltraCanvas {
             case UCEventType::TextInput: {
                 if (event.virtualKey == UCKeys::Escape) { CloseCompressDialog(); return true; }
                 if (event.virtualKey == UCKeys::Return ||
-                    event.virtualKey == UCKeys::Enter) { CommitCompressDialog(); return true; }
+                    event.virtualKey == UCKeys::NumPadEnter) { CommitCompressDialog(); return true; }
                 // Everything else is text: hand it (and the keyboard) to the
                 // name editor. Reaching this point at all means the focus had
                 // drifted off the editor — anything from the click that opened
@@ -9415,6 +9415,9 @@ namespace UltraCanvas {
                     return false;
                 }
                 switch (event.virtualKey) {
+                    // Both Enters open the selected entry: the numeric
+                    // keypad's Return arrives as its own key code.
+                    case UCKeys::NumPadEnter:
                     case UCKeys::Return:
                         if (!selection.empty()) ActivateEntry(selection.front());
                         return true;

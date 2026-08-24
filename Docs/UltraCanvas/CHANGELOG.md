@@ -1,3 +1,24 @@
+#### 2026-08-24 *0.3.65*
+- **The numeric keypad's Enter finishes a text entry.** `UltraCanvasTextInput`
+  only ever looked for `UCKeys::Return`, so the keypad's Enter — reported as a
+  key code of its own (`UCKeys::NumPadEnter`) by the X11, macOS and WASM
+  backends; only Windows folds both onto one code — fell through
+  unhandled: the Filer's inline rename accepted the typed name and then did
+  nothing on Enter, leaving the file under its old name, and every other field
+  that ends on Enter behaved the same way. Both keys now commit (and both
+  insert a newline in a multi-line input). The Filer widget itself follows:
+  the keypad Enter opens the selected entry and commits the compress dialog,
+  like the main one.
+- **Selected text is no longer washed out.** The selection band was filled
+  *over* the glyphs, so a translucent `selectionColor` faded the text under it
+  — most visibly in the Filer's rename editor, which opens with the base name
+  selected and showed it in a pale gray. The band is now painted behind the
+  text.
+- **The Filer's rename editor writes in a dark gray** (`FilerStyle::renameTextColor`,
+  `Color(60, 60, 66)`), a step lighter than the near-black of a displayed name,
+  so an entry being edited reads as being edited. The caret follows the same
+  color.
+
 #### 2026-08-24 *0.3.64*
 - **"Open with" proposes real applications on Windows and macOS.** The submenu
   knew only what the Linux backend could enumerate; everywhere else it offered

@@ -1,7 +1,7 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.2
-// Last Modified: 2026-07-10
+// Version: 1.3.3
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 #pragma once
 
