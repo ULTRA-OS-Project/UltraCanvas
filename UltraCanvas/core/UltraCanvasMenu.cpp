@@ -1113,6 +1113,13 @@ namespace UltraCanvas {
         MenuItemData &item = items[index];
         if (!item.enabled) return;
 
+        // A submenu entry may carry an action of its own (the Filer's
+        // "Open with" opens the default application when clicked). Noted
+        // before the action runs: it may dismiss the menu from inside its
+        // own callback.
+        const bool submenuAction = item.type == MenuItemType::Submenu &&
+                                   static_cast<bool>(item.onClick);
+
         UltraCanvasTooltipManager::HideTooltip();
 
         // Handle different item types
@@ -1187,7 +1194,18 @@ namespace UltraCanvas {
             }
 
             case MenuItemType::Submenu:
-                OpenSubmenu(index);
+                // Activating the parent entry runs its action; hovering has
+                // already opened the child list, so both stay reachable.
+                if (submenuAction) {
+                    item.onClick();
+                    UCEvent ev;
+                    ev.type = UCEventType::MenuClick;
+                    ev.targetElement = this;
+                    ev.userDataPtr = &item;
+                    UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                } else {
+                    OpenSubmenu(index);
+                }
                 break;
 
             default:
@@ -1198,7 +1216,11 @@ namespace UltraCanvas {
             onItemSelected(index);
         }
 
-        if (item.type == MenuItemType::Action && menuType != MenuType::Menubar) {
+        // An activated submenu entry (one with its own action) closes the
+        // menu like a plain action would; one that only opened its child
+        // list leaves the tree standing.
+        if ((item.type == MenuItemType::Action || submenuAction) &&
+            menuType != MenuType::Menubar) {
             CloseMenutree();
         }
     }

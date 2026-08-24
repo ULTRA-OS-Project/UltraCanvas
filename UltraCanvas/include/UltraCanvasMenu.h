@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.7.0
-// Last Modified: 2026-05-31
+// Version: 1.8.0
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,7 +82,11 @@ namespace UltraCanvas {
         bool checked = false;
         int radioGroup = 0;
 
-        // Callbacks
+        // Callbacks. onClick on a Submenu item makes the parent entry itself
+        // actionable: hovering opens the child list as always, activating the
+        // entry runs the action and closes the menu (the Filer's "Open with"
+        // opens the default application that way). Without it, activating a
+        // submenu entry only opens its list.
         std::function<void()> onClick;
         std::function<void(bool)> onToggle;
 //        std::function<void(const std::string&)> onTextInput;

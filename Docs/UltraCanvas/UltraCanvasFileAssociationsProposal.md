@@ -227,6 +227,9 @@ Open with >   Writer            ← default app, listed first
   appear below the OS apps, so existing embedders (DemoApp, Texter) are
   unaffected.
 - **Chooser:** "Other application…" → `OpenWithChooser(selection)`.
+- **Position (as shipped):** the submenu is the *first* entry of the context
+  menu, and the entry itself is an action — clicking "Open with" opens the
+  selection with the default application, hovering opens the list.
 - **Opt-out:** `SetSystemOpenWithEnabled(bool)` (default **on**) for
   embedders that want the old manual-only behaviour.
 - **Activation fallback:** new optional behaviour

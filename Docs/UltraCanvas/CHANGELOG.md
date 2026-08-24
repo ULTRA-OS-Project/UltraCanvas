@@ -25,6 +25,17 @@
     `.exe`/`.dll`/`.ico` files, now shared through `OS/MSWindows/UltraCanvasWindowsIcons.h`.
   - Both platforms resolve per file extension and expire their entries after a
     minute, so changing a default association shows up without a restart.
+- **The Filer's context menu opens with "Open with", and clicking it opens the
+  file.** The submenu moved to the top of the menu — opening a file is what the
+  menu is opened for most often — and the entry itself is now an action: it
+  opens the whole selection with the OS default application, exactly like a
+  double-click, while hovering still opens the application list. "Display"
+  moved the other way, down next to "Settings", where the view options belong.
+- **A submenu item can carry its own action.** `MenuItemData::onClick` on a
+  `Submenu` item was ignored — activating such an entry only opened its child
+  list. It now runs the action and closes the menu, and hovering opens the
+  child list as before, which is what makes the Filer's "Open with" clickable.
+  Submenu items without an `onClick` are unaffected.
 
 #### 2026-08-23 *0.3.63*
 - **The Filer notices changes made behind it.** The shown folder was only
