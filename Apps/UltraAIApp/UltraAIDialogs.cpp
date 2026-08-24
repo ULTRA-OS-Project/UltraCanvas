@@ -14,6 +14,7 @@
 #endif
 
 #include <algorithm>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -75,40 +76,70 @@ ChatDialog::ChatDialog()
         "never in this window.") {}
 
 namespace {
-bool ProviderNeedsApiKey(const std::string& provider) {
-    return !provider.empty() && provider != "mock" && provider != "llama-cpp";
+// Read a whole text file. Used for the ComfyUI workflow field, which takes
+// a path rather than pasted JSON — an API-format workflow is thousands of
+// characters.
+bool ReadTextFile(const std::string& path, std::string& outText) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    outText = buffer.str();
+    return in.good() || in.eof();
 }
+
+bool ProviderNeedsApiKey(const std::string& provider) {
+    // Local providers run the model on this machine — llama-cpp in-process,
+    // qwen against Ollama/vLLM, comfyui against a ComfyUI the user started —
+    // and take no credential.
+    static const char* kKeyless[] = {"mock", "llama-cpp", "qwen", "comfyui"};
+    if (provider.empty()) return false;
+    for (const char* keyless : kKeyless) {
+        if (provider == keyless) return false;
+    }
+    return true;
+}
+
+// Route a typed key into UltraVault (or, in a build without it, straight
+// into the config) and point `config` at the stored reference. Shared by
+// every dialog whose providers include cloud services. Returns false with
+// *outStatus set when the key could not be stored.
+bool ApplyCredential(const std::string& provider,
+                     const std::shared_ptr<UltraCanvasTextInput>& keyInput,
+                     ProviderConfig& config, std::string* outStatus) {
+    if (!ProviderNeedsApiKey(provider)) return true;
+
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+    const std::string vaultRef = "ai." + provider + ".api_key";
+    if (keyInput && !keyInput->GetText().empty()) {
+        if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+        std::string typed = keyInput->GetText();
+        auto stored = UltraVault::Put(
+            vaultRef, UltraVault::SecretValue::FromString(typed));
+        keyInput->SetText("");   // the key lives in the vault now
+        if (!stored.IsOk()) {
+            if (outStatus) *outStatus = "Could not store the key: " +
+                                        stored.message;
+            return false;
+        }
+    }
+    config.apiKeyVaultRef = vaultRef;
+#else
+    // No vault in this build: the key stays in the widget for the call.
+    if (keyInput) config.apiKey = keyInput->GetText();
+#endif
+    return true;
+}
+
 } // namespace
 
 long ChatDialog::BuildForm(long y) {
-    AddDialogElement(MakeLabel("prov-lbl", kMargin, y, 200, kLabelHeight,
-                               "Provider"));
-    AddDialogElement(MakeLabel("model-lbl", kMargin + 220, y,
-                               kFormWidth - 220, kLabelHeight,
-                               "Model (or GGUF path for llama-cpp; optional)"));
-    y += kLabelHeight + 2;
-    providerDropdown_ = CreateDropdown("chat-provider",
-                                       kMargin, y, 200, kRowHeight);
-    providerDropdown_->AddItem(kDefaultRouteLabel);
-    for (const auto& id : ListTextLLMProviders()) {
-        providerDropdown_->AddItem(id);
-    }
-    providerDropdown_->SetSelectedIndex(0);
-    AddDialogElement(providerDropdown_);
-    modelInput_ = MakeInput("chat-model", kMargin + 220, y,
-                            kFormWidth - 220, kRowHeight,
-                            "provider default");
-    AddDialogElement(modelInput_);
-    y += kRowHeight + kRowGap;
-
-    AddDialogElement(MakeLabel("key-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "API key (cloud providers; saved to UltraVault "
-                               "as ai.<provider>.api_key and cleared here)"));
-    y += kLabelHeight + 2;
-    keyInput_ = MakeInput("chat-key", kMargin, y, kFormWidth, kRowHeight,
-                          "leave empty to use the stored key");
-    AddDialogElement(keyInput_);
-    y += kRowHeight + kRowGap;
+    AddProviderAndModelRow(y, "chat", ListTextLLMProviders(),
+                           "Model (or GGUF path for llama-cpp; optional)",
+                           "provider default", modelInput_);
+    AddLabelledInput(y, "chat-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
 
     AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "System prompt (optional)"));
@@ -129,9 +160,6 @@ long ChatDialog::BuildForm(long y) {
 }
 
 void ChatDialog::RunCapability() {
-    SetStatus("Running...");
-    SetResult("");
-
     const std::string provider = SelectedProviderId();
 
     TextLLMConfig cfg;
@@ -140,31 +168,9 @@ void ChatDialog::RunCapability() {
         cfg.defaultModel = modelInput_->GetText();
     }
 
-    if (ProviderNeedsApiKey(provider)) {
-#ifdef ULTRAAI_HAS_ULTRAVAULT
-        const std::string vaultRef = "ai." + provider + ".api_key";
-        if (keyInput_ && !keyInput_->GetText().empty()) {
-            if (!UltraVault::IsAvailable()) UltraVault::Initialize();
-            std::string typed = keyInput_->GetText();
-            auto stored = UltraVault::Put(
-                vaultRef, UltraVault::SecretValue::FromString(typed));
-            keyInput_->SetText("");   // the key lives in the vault now
-            if (!stored.IsOk()) {
-                SetStatus("Could not store the key: " + stored.message);
-                return;
-            }
-        }
-        cfg.apiKeyVaultRef = vaultRef;
-#else
-        // No vault in this build: the key stays in the widget for the call.
-        if (keyInput_) cfg.apiKey = keyInput_->GetText();
-#endif
-    }
-
-    Error createError;
-    auto llm = CreateTextLLM(cfg, &createError);
-    if (!llm) {
-        SetStatus("Failed to create TextLLM: " + createError.message);
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
         return;
     }
 
@@ -177,15 +183,26 @@ void ChatDialog::RunCapability() {
     usr.text = input2_ ? input2_->GetText() : "";
     req.messages.push_back(std::move(usr));
 
-    auto resp = llm->Chat(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error) << resp.text
-       << "\n\n(provider=" << llm->GetCapabilities().providerId
-       << "  model=" << resp.model
-       << "  in=" << resp.usage.inputTokens
-       << "  out=" << resp.usage.outputTokens << ")";
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto llm = CreateTextLLM(cfg, &createError);
+        if (!llm) {
+            outcome.status = "Failed to create TextLLM";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = llm->Chat(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error) << resp.text
+           << "\n\n(provider=" << llm->GetCapabilities().providerId
+           << "  model=" << resp.model
+           << "  in=" << resp.usage.inputTokens
+           << "  out=" << resp.usage.outputTokens << ")";
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -219,15 +236,8 @@ long EmbeddingsDialog::BuildForm(long y) {
 }
 
 void EmbeddingsDialog::RunCapability() {
-    SetStatus("Running...");
-
-    Error createError;
-    auto emb = CreateEmbeddings({.providerId = SelectedProviderId()},
-                                &createError);
-    if (!emb) {
-        SetStatus("Failed to create Embeddings: " + createError.message);
-        return;
-    }
+    EmbeddingsConfig cfg;
+    cfg.providerId = SelectedProviderId();
 
     EmbeddingRequest req;
     req.input = SplitLines(input1_ ? input1_->GetText() : "");
@@ -236,6 +246,16 @@ void EmbeddingsDialog::RunCapability() {
     }
     if (input2_ && !input2_->GetText().empty()) {
         try { req.dimensions = std::stoi(input2_->GetText()); } catch (...) {}
+    }
+
+    RunOffThread([cfg, req]() -> RunOutcome {
+    RunOutcome outcome;
+    Error createError;
+    auto emb = CreateEmbeddings(cfg, &createError);
+    if (!emb) {
+        outcome.status = "Failed to create Embeddings";
+        outcome.result = createError.message;
+        return outcome;
     }
 
     auto resp = emb->Embed(req);
@@ -255,8 +275,9 @@ void EmbeddingsDialog::RunCapability() {
                                                  resp.embeddings[1]);
         os << "\ncos(0, 1) = " << s;
     }
-    SetResult(os.str());
-    SetStatus("Done");
+    outcome.result = os.str();
+    return outcome;
+    });
 }
 
 // ===================================================================
@@ -327,11 +348,16 @@ void SpeechToTextDialog::RunCapability() {
 
 TextToSpeechDialog::TextToSpeechDialog()
     : UltraAIServiceDialog("Text to Speech",
-        "Synthesize speech from text. The mock returns placeholder "
-        "audio bytes (one byte per character).") {}
+        "Synthesize speech from text. Voice ids come from the provider — "
+        "the result lists the ones this provider offers.") {}
 
 long TextToSpeechDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListTextToSpeechProviders());
+    AddProviderAndModelRow(y, "tts", ListTextToSpeechProviders(),
+                           "Model (optional)", "e.g. speech-2.8-turbo",
+                           modelInput_);
+    AddLabelledInput(y, "tts-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
 
     AddDialogElement(MakeLabel("tts-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Text to speak"));
@@ -343,7 +369,8 @@ long TextToSpeechDialog::BuildForm(long y) {
 
     AddDialogElement(MakeLabel("tts-voice-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
-                               "Voice id (try mock-aria | mock-leo | mock-greta)"));
+                               "Voice id (mock: mock-aria | mock-leo; "
+                               "cloud: see the listing below)"));
     y += kLabelHeight + 2;
     input2_ = MakeInput("tts-voice", kMargin, y, 240, kRowHeight, "mock-aria");
     AddDialogElement(input2_);
@@ -352,36 +379,50 @@ long TextToSpeechDialog::BuildForm(long y) {
 }
 
 void TextToSpeechDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    Error createError;
-    auto tts = CreateTextToSpeech({.providerId = SelectedProviderId()},
-                                  &createError);
-    if (!tts) {
-        SetStatus("Failed to create TTS: " + createError.message);
+    TextToSpeechConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
         return;
     }
 
     SpeakRequest req;
     req.text    = input1_ ? input1_->GetText() : "";
-    req.voiceId = input2_ ? input2_->GetText() : "mock-aria";
+    req.voiceId = input2_ ? input2_->GetText() : "";
     req.format  = TtsAudioFormat::Mp3;
 
-    auto resp = tts->Speak(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error)
-       << "audio bytes : " << FormatBytes(resp.audio.bytes.size()) << "\n"
-       << "mime        : " << resp.audio.mimeType << "\n"
-       << "duration    : " << resp.durationSec << " s";
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto tts = CreateTextToSpeech(cfg, &createError);
+        if (!tts) {
+            outcome.status = "Failed to create TTS";
+            outcome.result = createError.message;
+            return outcome;
+        }
 
-    // Show available voices for the user's reference.
-    os << "\n\nAvailable voices:";
-    for (const auto& v : tts->ListVoices()) {
-        os << "\n  " << v.id << "  (" << v.displayName
-           << ", " << v.language << ")";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+        auto resp = tts->Speak(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error)
+           << "audio bytes : " << FormatBytes(resp.audio.bytes.size()) << "\n"
+           << "mime        : " << resp.audio.mimeType << "\n"
+           << "duration    : " << resp.durationSec << " s";
+
+        // Show available voices for the user's reference.
+        os << "\n\nAvailable voices:";
+        for (const auto& v : tts->ListVoices()) {
+            os << "\n  " << v.id << "  (" << v.displayName
+               << ", " << v.language << ")";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -390,11 +431,20 @@ void TextToSpeechDialog::RunCapability() {
 
 ImageGenDialog::ImageGenDialog()
     : UltraAIServiceDialog("Image Generation",
-        "Generate one or more images from a prompt. The mock returns "
-        "placeholder PNG bytes (header + width/height/index tag).") {}
+        "Model is a cloud model id or a local ComfyUI checkpoint. "
+        "Runs happen off the UI thread, so the window stays usable.") {}
 
 long ImageGenDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListImageGenProviders());
+    AddProviderAndModelRow(y, "ig", ListImageGenProviders(),
+                           "Model / checkpoint (optional)",
+                           "e.g. sd_xl_base_1.0.safetensors", modelInput_);
+    AddLabelledInput(y, "ig-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
+    AddLabelledInput(y, "ig-workflow",
+                     "ComfyUI workflow file (API format; optional)",
+                     "path to a workflow exported with Save (API format)",
+                     workflowInput_);
 
     AddDialogElement(MakeLabel("ig-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
@@ -417,18 +467,30 @@ long ImageGenDialog::BuildForm(long y) {
 }
 
 void ImageGenDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    Error createError;
-    auto ig = CreateImageGen({.providerId = SelectedProviderId()},
-                             &createError);
-    if (!ig) {
-        SetStatus("Failed to create ImageGen: " + createError.message);
+    ImageGenConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
         return;
     }
 
     ImageGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
+    if (workflowInput_ && !workflowInput_->GetText().empty()) {
+        std::string workflow;
+        if (!ReadTextFile(workflowInput_->GetText(), workflow)) {
+            SetStatus("Cannot read the workflow file: " +
+                      workflowInput_->GetText());
+            return;
+        }
+        req.options["workflow"] = workflow;
+    }
     if (input2_) {
         const auto s = input2_->GetText();
         auto x = s.find('x');
@@ -443,19 +505,30 @@ void ImageGenDialog::RunCapability() {
         try { req.count = std::stoi(input3_->GetText()); } catch (...) {}
     }
 
-    auto resp = ig->Generate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error)
-       << "model    : " << resp.model << "\n"
-       << "images   : " << resp.images.size() << "\n";
-    for (size_t i = 0; i < resp.images.size(); ++i) {
-        const auto& g = resp.images[i];
-        os << "  [" << i << "] " << FormatBytes(g.image.bytes.size())
-           << "  mime=" << g.image.mimeType
-           << "  seed=" << g.seed << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto ig = CreateImageGen(cfg, &createError);
+        if (!ig) {
+            outcome.status = "Failed to create ImageGen";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = ig->Generate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error)
+           << "model    : " << resp.model << "\n"
+           << "images   : " << resp.images.size() << "\n";
+        for (size_t i = 0; i < resp.images.size(); ++i) {
+            const auto& g = resp.images[i];
+            os << "  [" << i << "] " << FormatBytes(g.image.bytes.size())
+               << "  mime=" << g.image.mimeType
+               << "  seed=" << g.seed << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -595,11 +668,17 @@ void TranslatorDialog::RunCapability() {
 
 VideoGenDialog::VideoGenDialog()
     : UltraAIServiceDialog("Video Generation",
-        "Generate a short video from a prompt. The mock returns "
-        "placeholder MP4 bytes and a thumbnail PNG.") {}
+        "Model is a cloud model id or a local ComfyUI checkpoint. "
+        "Runs happen off the UI thread, so the window stays usable.") {}
 
 long VideoGenDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListVideoGenProviders());
+    AddProviderAndModelRow(y, "vg", ListVideoGenProviders(),
+                           "Model / checkpoint (optional)",
+                           "e.g. MiniMax-Hailuo-02 or svd_xt.safetensors",
+                           modelInput_);
+    AddLabelledInput(y, "vg-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
 
     AddDialogElement(MakeLabel("vg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
@@ -622,13 +701,16 @@ long VideoGenDialog::BuildForm(long y) {
 }
 
 void VideoGenDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    Error createError;
-    auto vg = CreateVideoGen({.providerId = SelectedProviderId()},
-                             &createError);
-    if (!vg) {
-        SetStatus("Failed to create VideoGen: " + createError.message);
+    VideoGenConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
         return;
     }
 
@@ -648,18 +730,30 @@ void VideoGenDialog::RunCapability() {
         try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}
     }
 
-    auto resp = vg->Generate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error);
-    for (size_t i = 0; i < resp.videos.size(); ++i) {
-        const auto& v = resp.videos[i];
-        os << "video      : " << v.width << "x" << v.height
-           << " @ " << v.fps << "fps, " << v.durationSec << "s\n"
-           << "video bytes: " << FormatBytes(v.video.bytes.size()) << "\n"
-           << "thumb bytes: " << FormatBytes(v.thumbnail.bytes.size()) << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto vg = CreateVideoGen(cfg, &createError);
+        if (!vg) {
+            outcome.status = "Failed to create VideoGen";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = vg->Generate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error);
+        for (size_t i = 0; i < resp.videos.size(); ++i) {
+            const auto& v = resp.videos[i];
+            os << "video      : " << v.width << "x" << v.height
+               << " @ " << v.fps << "fps, " << v.durationSec << "s\n"
+               << "video bytes: " << FormatBytes(v.video.bytes.size()) << "\n"
+               << "thumb bytes: " << FormatBytes(v.thumbnail.bytes.size())
+               << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================

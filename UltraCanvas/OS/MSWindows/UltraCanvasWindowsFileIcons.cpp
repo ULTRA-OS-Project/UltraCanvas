@@ -2,10 +2,14 @@
 // The application icon embedded in .exe / .dll / .ico files, extracted via
 // the shell (SHDefExtractIconW picks the nearest embedded size) and
 // rasterized into a UCPixmap — what Windows Explorer shows for these files.
-// Version: 1.0.0
-// Last Modified: 2026-08-21
+// The extraction itself is exposed to the rest of the Windows backend
+// through UltraCanvasWindowsIcons.h: the "Open with" service reuses it for
+// the icon locations that IAssocHandler reports.
+// Version: 1.0.1
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasWindowsIcons.h"
 
 #include <windows.h>
 #include <shlobj.h>   // SHDefExtractIconW (WIN32_LEAN_AND_MEAN keeps it
@@ -99,55 +103,69 @@ namespace UltraCanvas {
 
     } // namespace
 
+    namespace WindowsIcons {
+
+        std::shared_ptr<UCPixmap> PixmapFromIcon(HICON icon) {
+            if (!icon) return nullptr;
+            int w = 0, h = 0;
+            std::vector<uint8_t> bgra;
+            if (!IconToBGRA(icon, w, h, bgra) || w <= 0 || h <= 0)
+                return nullptr;
+
+            auto pm = std::make_shared<UCPixmap>(w, h);
+            cairo_surface_t* surf = pm->GetSurface();
+            if (!surf || !pm->IsValid()) return nullptr;
+            cairo_surface_flush(surf);
+            uint8_t* pixels = cairo_image_surface_get_data(surf);
+            const int stride = cairo_image_surface_get_stride(surf);
+
+            // Cairo ARGB32 is premultiplied, native-endian 32-bit words — on
+            // little-endian Windows that is B,G,R,A bytes, so only the alpha
+            // premultiplication separates it from the DIB rows.
+            for (int y = 0; y < h; ++y) {
+                const uint8_t* src = bgra.data() + static_cast<size_t>(y) * w * 4;
+                uint32_t* row = reinterpret_cast<uint32_t*>(
+                        pixels + static_cast<size_t>(y) * stride);
+                for (int x = 0; x < w; ++x) {
+                    const uint8_t b = src[x * 4 + 0];
+                    const uint8_t g = src[x * 4 + 1];
+                    const uint8_t r = src[x * 4 + 2];
+                    const uint8_t a = src[x * 4 + 3];
+                    row[x] = (static_cast<uint32_t>(a) << 24)
+                           | (static_cast<uint32_t>(r * a / 255) << 16)
+                           | (static_cast<uint32_t>(g * a / 255) << 8)
+                           |  static_cast<uint32_t>(b * a / 255);
+                }
+            }
+            pm->MarkDirty();
+            return pm;
+        }
+
+        std::shared_ptr<UCPixmap> LoadIconResourcePixmap(
+                const std::wstring& location, int index, int desiredSize) {
+            if (location.empty()) return nullptr;
+            // The shell serves the nearest of the file's embedded icon sizes;
+            // 256 is the format's ceiling (Vista+ PNG-compressed frames).
+            const int size = std::max(16, std::min(desiredSize, 256));
+            HICON icon = nullptr;
+            const HRESULT hr = SHDefExtractIconW(location.c_str(), index, 0,
+                                                 &icon, nullptr,
+                                                 static_cast<UINT>(size));
+            // S_FALSE = the file exists but holds no icon resource.
+            if (hr != S_OK || !icon) return nullptr;
+            std::shared_ptr<UCPixmap> pm = PixmapFromIcon(icon);
+            DestroyIcon(icon);
+            return pm;
+        }
+
+    } // namespace WindowsIcons
+
     std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string& path,
                                                        int desiredSize) {
         if (!NativeFileIconAvailable(path)) return nullptr;
-        const std::wstring wide = Utf8ToWide(path);
-        if (wide.empty()) return nullptr;
-
-        // The shell serves the nearest of the file's embedded icon sizes;
-        // 256 is the format's ceiling (Vista+ PNG-compressed frames).
-        const int size = std::max(16, std::min(desiredSize, 256));
-        HICON icon = nullptr;
-        const HRESULT hr = SHDefExtractIconW(wide.c_str(), 0, 0, &icon,
-                                             nullptr,
-                                             static_cast<UINT>(size));
-        // S_FALSE = the file exists but holds no icon resource.
-        if (hr != S_OK || !icon) return nullptr;
-
-        int w = 0, h = 0;
-        std::vector<uint8_t> bgra;
-        const bool converted = IconToBGRA(icon, w, h, bgra);
-        DestroyIcon(icon);
-        if (!converted || w <= 0 || h <= 0) return nullptr;
-
-        auto pm = std::make_shared<UCPixmap>(w, h);
-        cairo_surface_t* surf = pm->GetSurface();
-        if (!surf || !pm->IsValid()) return nullptr;
-        cairo_surface_flush(surf);
-        uint8_t* pixels = cairo_image_surface_get_data(surf);
-        const int stride = cairo_image_surface_get_stride(surf);
-
-        // Cairo ARGB32 is premultiplied, native-endian 32-bit words — on
-        // little-endian Windows that is B,G,R,A bytes, so only the alpha
-        // premultiplication separates it from the DIB rows.
-        for (int y = 0; y < h; ++y) {
-            const uint8_t* src = bgra.data() + static_cast<size_t>(y) * w * 4;
-            uint32_t* row = reinterpret_cast<uint32_t*>(
-                    pixels + static_cast<size_t>(y) * stride);
-            for (int x = 0; x < w; ++x) {
-                const uint8_t b = src[x * 4 + 0];
-                const uint8_t g = src[x * 4 + 1];
-                const uint8_t r = src[x * 4 + 2];
-                const uint8_t a = src[x * 4 + 3];
-                row[x] = (static_cast<uint32_t>(a) << 24)
-                       | (static_cast<uint32_t>(r * a / 255) << 16)
-                       | (static_cast<uint32_t>(g * a / 255) << 8)
-                       |  static_cast<uint32_t>(b * a / 255);
-            }
-        }
-        pm->MarkDirty();
-        return pm;
+        // Icon 0 is the one Explorer shows for the file itself.
+        return WindowsIcons::LoadIconResourcePixmap(Utf8ToWide(path), 0,
+                                                    desiredSize);
     }
 
 } // namespace UltraCanvas

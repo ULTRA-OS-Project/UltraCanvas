@@ -5125,6 +5125,31 @@ namespace UltraCanvas {
         });
     }
 
+    void UltraCanvasFilerWidget::OpenSelectionWithDefaultApp() {
+        const std::vector<FilerEntry> sel = GetSelectedEntries();
+        if (sel.empty()) return;
+        if (sel.size() == 1) {
+            // One entry: OpenEntryWithOS also knows what to do with an
+            // executable (run a program, ask about a script).
+            OpenEntryWithOS(sel.front());
+            return;
+        }
+        // Several files in one call, so applications that group their
+        // documents open them in one window — the service splits the
+        // selection per default handler itself.
+        std::vector<std::string> paths;
+        std::error_code ec;
+        for (const FilerEntry& e : sel) {
+            if (e.isDirectory) continue;
+            if (!fs::is_regular_file(e.path, ec) || ec) continue;
+            paths.push_back(e.path);
+        }
+        if (paths.empty()) return;
+        std::string error;
+        if (!FileAssociations::OpenWithDefaultApplication(paths, error))
+            ReportError(error);
+    }
+
     void UltraCanvasFilerWidget::AddOpenWithApp(const FilerOpenWithApp& app) {
         openWithApps.push_back(app);
     }
@@ -8608,6 +8633,89 @@ namespace UltraCanvas {
             menu.AddItem(item);
         };
 
+        // Open with > , first in the menu: opening a file is what the menu
+        // is opened for most often. The entry itself opens the selection
+        // with the OS default application — a click on "Open with" is a
+        // double-click. Its submenu lists the applications the OS registers
+        // for the selection (default application first — see
+        // UltraCanvasFileAssociations), then the host's AddOpenWithApp
+        // entries, then the file-dialog picker. Both need launchable paths:
+        // files only (no folders), really on disk (an entry inside an
+        // archive is a virtual path no external application can read).
+        {
+            bool openable = hasSel;
+            std::vector<std::string> targetPaths;
+            for (const FilerEntry& t : targets) {
+                if (t.isDirectory) { openable = false; break; }
+                targetPaths.push_back(t.path);
+            }
+            if (openable) {
+                std::error_code ec;
+                for (const std::string& p : targetPaths) {
+                    if (fs::is_regular_file(p, ec) && !ec) continue;
+                    openable = false;
+                    break;
+                }
+            }
+            // The OS-registered section is what SetSystemOpenWithEnabled
+            // switches off; the default-open click stays either way.
+            const bool launchable = systemOpenWith && openable;
+
+            std::vector<MenuItemData> openItems;
+            if (launchable) {
+                // Served from the prewarm cache (the folder scan queued this
+                // folder's extensions) — no database parse on the UI thread.
+                for (const FileAssociationApp& app :
+                     FileAssociations::GetApplicationsForFiles(targetPaths)) {
+                    auto cb = [this, app]() {
+                        std::vector<std::string> paths;
+                        for (const FilerEntry& e : GetSelectedEntries())
+                            if (!e.isDirectory) paths.push_back(e.path);
+                        if (paths.empty()) return;
+                        std::string error;
+                        if (!FileAssociations::OpenWithApplication(app, paths, error))
+                            ReportError(error);
+                    };
+                    if (!app.iconPath.empty()) {
+                        openItems.push_back(MenuItemData::Action(app.name, app.iconPath, cb));
+                    } else {
+                        openItems.push_back(MenuItemData::Action(app.name, cb));
+                    }
+                }
+            }
+            if (!openWithApps.empty() && !openItems.empty())
+                openItems.push_back(MenuItemData::Separator());
+            for (const FilerOpenWithApp& app : openWithApps) {
+                auto onOpen = app.onOpen;
+                auto cb = [this, onOpen]() {
+                    if (onOpen) onOpen(GetSelectedEntries());
+                };
+                if (!app.iconPath.empty()) {
+                    openItems.push_back(MenuItemData::Action(app.label, app.iconPath, cb));
+                } else {
+                    openItems.push_back(MenuItemData::Action(app.label, cb));
+                }
+            }
+            if (launchable) {
+                if (!openItems.empty())
+                    openItems.push_back(MenuItemData::Separator());
+                openItems.push_back(MenuItemData::Action(
+                        "Other application…",
+                        [this]() { OpenSelectionWithChooser(); }));
+            }
+            if (openItems.empty()) {
+                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
+                none.enabled = false;
+                openItems.push_back(none);
+            }
+            MenuItemData openWith = MenuItemData::Submenu("Open with", openItems);
+            if (openable) {
+                openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
+            }
+            menu.AddItem(openWith);
+        }
+        menu.AddItem(MenuItemData::Separator());
+
         // Search-result displays put "Open Path" first: the entries come from
         // different folders, so jumping to an entry's folder is the primary
         // action there.
@@ -8650,6 +8758,87 @@ namespace UltraCanvas {
             menu.AddItem(MenuItemData::Submenu("New", newItems));
         }
         menu.AddItem(MenuItemData::Separator());
+
+        // Compress > (pick the archive format)
+        {
+            bool canCompress = !entries.empty();
+            struct CompressFormat { const char* label; const char* ext; };
+            static const CompressFormat compressFormats[] = {
+                {"ZIP (.zip)",             "zip"},
+                {"7-Zip (.7z)",            "7z"},
+                {"TAR (.tar)",             "tar"},
+                {"TAR + gzip (.tar.gz)",   "tar.gz"},
+                {"TAR + bzip2 (.tar.bz2)", "tar.bz2"},
+                {"TAR + xz (.tar.xz)",     "tar.xz"},
+                {"TAR + Zstd (.tar.zst)",  "tar.zst"},
+            };
+            std::vector<MenuItemData> compressItems;
+            for (const CompressFormat& f : compressFormats) {
+                std::string ext = f.ext;
+                std::string label = f.label;
+                MenuItemData item = MenuItemData::Action(
+                        f.label,
+                        [this, ext, label]() { OpenCompressDialog(ext, label); });
+                item.enabled = canCompress;
+                compressItems.push_back(item);
+            }
+            MenuItemData compressSub = MenuItemData::Submenu("Compress", compressItems);
+            compressSub.enabled = canCompress;
+            menu.AddItem(compressSub);
+        }
+        addAction("Extract", anyArchive, [this]() { OpenExtractDialog(); });
+        menu.AddItem(MenuItemData::Separator());
+
+        addAction("Print", static_cast<bool>(onPrint), [this]() {
+            if (onPrint) onPrint(SelectionOrAll());
+        }, "Ctrl+P");
+        menu.AddItem(MenuItemData::Separator());
+
+        // Extras >
+        {
+            std::vector<MenuItemData> extraItems;
+            MenuItemData share = MenuItemData::Action("Share", [this]() {
+                if (onShare) onShare(SelectionOrAll());
+            });
+            share.enabled = static_cast<bool>(onShare);
+            extraItems.push_back(share);
+
+            MenuItemData attrs = MenuItemData::Action("Attributes", [this]() {
+                if (onAttributes) onAttributes(SelectionOrAll());
+            });
+            attrs.enabled = static_cast<bool>(onAttributes);
+            extraItems.push_back(attrs);
+
+            extraItems.push_back(MenuItemData::Action("Copy path", [this]() {
+                std::string text;
+                std::vector<FilerEntry> sel = GetSelectedEntries();
+                if (sel.empty()) text = currentPath;
+                else for (const FilerEntry& e : sel) {
+                    if (!text.empty()) text += '\n';
+                    text += e.path;
+                }
+                SetClipboardText(text);
+            }));
+
+            MenuItemData access = MenuItemData::Action("Access", [this]() {
+                if (onAccess) onAccess(SelectionOrAll());
+            });
+            access.enabled = static_cast<bool>(onAccess);
+            extraItems.push_back(access);
+
+            // The host's tail (extrasMenuProvider) — asked on every open so
+            // item flags can follow the host's state (e.g. pinned-or-not).
+            if (extrasMenuProvider) {
+                std::vector<MenuItemData> hostItems = extrasMenuProvider();
+                if (!hostItems.empty()) {
+                    extraItems.push_back(MenuItemData::Separator());
+                    for (MenuItemData& item : hostItems)
+                        extraItems.push_back(std::move(item));
+                }
+            }
+
+            menu.AddItem(MenuItemData::Submenu("Extras", extraItems));
+        }
 
         // Display > Sort / Type / Icon-Menu
         {
@@ -8736,161 +8925,6 @@ namespace UltraCanvas {
                     "Info-Bar", showSelectionInfo,
                     [this](bool on) { SetSelectionInfoVisible(on); }));
             menu.AddItem(MenuItemData::Submenu("Display", displayItems));
-        }
-        menu.AddItem(MenuItemData::Separator());
-
-        // Open with > : the applications the OS registers for the selection
-        // (default application first — see UltraCanvasFileAssociations),
-        // then the host's AddOpenWithApp entries, then the file-dialog
-        // picker. The OS section needs launchable paths: files only (no
-        // folders), really on disk (an entry inside an archive is a virtual
-        // path no external application can read).
-        {
-            bool launchable = systemOpenWith && hasSel;
-            std::vector<std::string> targetPaths;
-            for (const FilerEntry& t : targets) {
-                if (t.isDirectory) { launchable = false; break; }
-                targetPaths.push_back(t.path);
-            }
-            if (launchable) {
-                std::error_code ec;
-                for (const std::string& p : targetPaths) {
-                    if (fs::is_regular_file(p, ec) && !ec) continue;
-                    launchable = false;
-                    break;
-                }
-            }
-
-            std::vector<MenuItemData> openItems;
-            if (launchable) {
-                // Served from the prewarm cache (the folder scan queued this
-                // folder's extensions) — no database parse on the UI thread.
-                for (const FileAssociationApp& app :
-                     FileAssociations::GetApplicationsForFiles(targetPaths)) {
-                    auto cb = [this, app]() {
-                        std::vector<std::string> paths;
-                        for (const FilerEntry& e : GetSelectedEntries())
-                            if (!e.isDirectory) paths.push_back(e.path);
-                        if (paths.empty()) return;
-                        std::string error;
-                        if (!FileAssociations::OpenWithApplication(app, paths, error))
-                            ReportError(error);
-                    };
-                    if (!app.iconPath.empty()) {
-                        openItems.push_back(MenuItemData::Action(app.name, app.iconPath, cb));
-                    } else {
-                        openItems.push_back(MenuItemData::Action(app.name, cb));
-                    }
-                }
-            }
-            if (!openWithApps.empty() && !openItems.empty())
-                openItems.push_back(MenuItemData::Separator());
-            for (const FilerOpenWithApp& app : openWithApps) {
-                auto onOpen = app.onOpen;
-                auto cb = [this, onOpen]() {
-                    if (onOpen) onOpen(GetSelectedEntries());
-                };
-                if (!app.iconPath.empty()) {
-                    openItems.push_back(MenuItemData::Action(app.label, app.iconPath, cb));
-                } else {
-                    openItems.push_back(MenuItemData::Action(app.label, cb));
-                }
-            }
-            if (launchable) {
-                if (!openItems.empty())
-                    openItems.push_back(MenuItemData::Separator());
-                openItems.push_back(MenuItemData::Action(
-                        "Other application…",
-                        [this]() { OpenSelectionWithChooser(); }));
-            }
-            if (openItems.empty()) {
-                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
-                none.enabled = false;
-                openItems.push_back(none);
-            }
-            menu.AddItem(MenuItemData::Submenu("Open with", openItems));
-        }
-        menu.AddItem(MenuItemData::Separator());
-
-        // Compress > (pick the archive format)
-        {
-            bool canCompress = !entries.empty();
-            struct CompressFormat { const char* label; const char* ext; };
-            static const CompressFormat compressFormats[] = {
-                {"ZIP (.zip)",             "zip"},
-                {"7-Zip (.7z)",            "7z"},
-                {"TAR (.tar)",             "tar"},
-                {"TAR + gzip (.tar.gz)",   "tar.gz"},
-                {"TAR + bzip2 (.tar.bz2)", "tar.bz2"},
-                {"TAR + xz (.tar.xz)",     "tar.xz"},
-                {"TAR + Zstd (.tar.zst)",  "tar.zst"},
-            };
-            std::vector<MenuItemData> compressItems;
-            for (const CompressFormat& f : compressFormats) {
-                std::string ext = f.ext;
-                std::string label = f.label;
-                MenuItemData item = MenuItemData::Action(
-                        f.label,
-                        [this, ext, label]() { OpenCompressDialog(ext, label); });
-                item.enabled = canCompress;
-                compressItems.push_back(item);
-            }
-            MenuItemData compressSub = MenuItemData::Submenu("Compress", compressItems);
-            compressSub.enabled = canCompress;
-            menu.AddItem(compressSub);
-        }
-        addAction("Extract", anyArchive, [this]() { OpenExtractDialog(); });
-        menu.AddItem(MenuItemData::Separator());
-
-        addAction("Print", static_cast<bool>(onPrint), [this]() {
-            if (onPrint) onPrint(SelectionOrAll());
-        }, "Ctrl+P");
-        menu.AddItem(MenuItemData::Separator());
-
-        // Extras >
-        {
-            std::vector<MenuItemData> extraItems;
-            MenuItemData share = MenuItemData::Action("Share", [this]() {
-                if (onShare) onShare(SelectionOrAll());
-            });
-            share.enabled = static_cast<bool>(onShare);
-            extraItems.push_back(share);
-
-            MenuItemData attrs = MenuItemData::Action("Attributes", [this]() {
-                if (onAttributes) onAttributes(SelectionOrAll());
-            });
-            attrs.enabled = static_cast<bool>(onAttributes);
-            extraItems.push_back(attrs);
-
-            extraItems.push_back(MenuItemData::Action("Copy path", [this]() {
-                std::string text;
-                std::vector<FilerEntry> sel = GetSelectedEntries();
-                if (sel.empty()) text = currentPath;
-                else for (const FilerEntry& e : sel) {
-                    if (!text.empty()) text += '\n';
-                    text += e.path;
-                }
-                SetClipboardText(text);
-            }));
-
-            MenuItemData access = MenuItemData::Action("Access", [this]() {
-                if (onAccess) onAccess(SelectionOrAll());
-            });
-            access.enabled = static_cast<bool>(onAccess);
-            extraItems.push_back(access);
-
-            // The host's tail (extrasMenuProvider) — asked on every open so
-            // item flags can follow the host's state (e.g. pinned-or-not).
-            if (extrasMenuProvider) {
-                std::vector<MenuItemData> hostItems = extrasMenuProvider();
-                if (!hostItems.empty()) {
-                    extraItems.push_back(MenuItemData::Separator());
-                    for (MenuItemData& item : hostItems)
-                        extraItems.push_back(std::move(item));
-                }
-            }
-
-            menu.AddItem(MenuItemData::Submenu("Extras", extraItems));
         }
 
         addAction("Settings", static_cast<bool>(onSettings), [this]() {

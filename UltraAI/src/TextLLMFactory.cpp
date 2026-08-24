@@ -22,6 +22,9 @@
 #ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
 #include "UltraAILlamaTextLLM.h"
 #endif
+#ifdef ULTRAAI_HAS_QWEN_ADAPTER
+#include "UltraAIQwen.h"
+#endif
 
 #include <map>
 #include <mutex>
@@ -67,6 +70,14 @@ struct Registry {
             providers["llama-cpp"] =
                 [](const TextLLMConfig& cfg, Error* err) {
                     return CreateLlamaTextLLM(cfg, err);
+                };
+        }
+#endif
+#ifdef ULTRAAI_HAS_QWEN_ADAPTER
+        if (providers.find("qwen") == providers.end()) {
+            providers["qwen"] =
+                [](const TextLLMConfig& cfg, Error* err) {
+                    return CreateQwenTextLLM(cfg, err);
                 };
         }
 #endif

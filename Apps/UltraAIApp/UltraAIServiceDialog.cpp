@@ -3,11 +3,62 @@
 // Last Modified: 2026-07-12
 
 #include "UltraAIServiceDialog.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+
+#include <exception>
+#include <thread>
+#include <utility>
 
 namespace UltraAIApp {
 
 using namespace UltraCanvas;
+
+UltraAIServiceDialog::~UltraAIServiceDialog() {
+    // A run may still be in flight; cancel its delivery rather than let it
+    // call into a destroyed dialog.
+    uiAlive_->store(false);
+}
+
+void UltraAIServiceDialog::RunOffThread(std::function<RunOutcome()> work) {
+    if (running_ || !work) return;
+    running_ = true;
+    SetStatus("Running...");
+    SetResult("");
+    if (runButton_) runButton_->SetText("Running...");
+
+    std::thread worker([this, alive = uiAlive_, work = std::move(work)]() {
+        RunOutcome outcome;
+        try {
+            outcome = work();
+        } catch (const std::exception& e) {
+            outcome.status = "Failed";
+            outcome.result = std::string("Uncaught exception: ") + e.what();
+        } catch (...) {
+            outcome.status = "Failed";
+            outcome.result = "Uncaught exception";
+        }
+
+        auto deliver = [this, alive, outcome = std::move(outcome)]() {
+            if (!alive->load()) return;      // the dialog is gone
+            SetResult(outcome.result);
+            SetStatus(outcome.status);
+            if (runButton_) runButton_->SetText("Run");
+            running_ = false;
+        };
+
+        // Widgets are not thread-safe, so the delivery goes through the
+        // event loop. Without an application (headless use) there is no loop
+        // to marshal through, and nothing racing us either.
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (app) {
+            app->PostToUIThread(std::move(deliver));
+        } else {
+            deliver();
+        }
+    });
+    worker.detach();
+}
 
 UltraAIServiceDialog::UltraAIServiceDialog(std::string serviceName,
                                            std::string description)
@@ -48,11 +99,11 @@ void UltraAIServiceDialog::CreateServiceDialog() {
 
     // ===== Action row: Run + Status =====
     long actionRowY = formBottom + 8;
-    auto runBtn = std::make_shared<UltraCanvasButton>(
+    runButton_ = std::make_shared<UltraCanvasButton>(
         "svc-run", kMargin, actionRowY, 120, 30);
-    runBtn->SetText("Run");
-    runBtn->onClick = [this]() { RunCapability(); };
-    AddDialogElement(runBtn);
+    runButton_->SetText("Run");
+    runButton_->onClick = [this]() { RunCapability(); };
+    AddDialogElement(runButton_);
 
     statusLabel_ = MakeLabel("svc-status",
                              kMargin + 140, actionRowY + 6,
@@ -112,6 +163,48 @@ std::shared_ptr<UltraCanvasTextInput> UltraAIServiceDialog::MakeInput(
     in->SetPlaceholder(placeholder);
     if (multiline) in->SetInputType(TextInputType::Multiline);
     return in;
+}
+
+void UltraAIServiceDialog::AddProviderAndModelRow(
+    long& y, const std::string& idPrefix,
+    const std::vector<std::string>& providers,
+    const std::string& modelLabel, const std::string& modelPlaceholder,
+    std::shared_ptr<UltraCanvasTextInput>& outModel) {
+    constexpr long kPickerWidth = 240;
+    const long formWidth = kDialogWidth - 2 * kMargin;
+
+    AddDialogElement(MakeLabel(idPrefix + "-prov-lbl", kMargin, y,
+                               kPickerWidth, 18, "Provider"));
+    AddDialogElement(MakeLabel(idPrefix + "-model-lbl",
+                               kMargin + kPickerWidth + 20, y,
+                               formWidth - kPickerWidth - 20, 18, modelLabel));
+    y += 18 + 2;
+
+    providerDropdown_ = CreateDropdown(idPrefix + "-provider", kMargin, y,
+                                       kPickerWidth, 28);
+    providerDropdown_->AddItem(kDefaultRouteLabel);
+    for (const auto& id : providers) {
+        providerDropdown_->AddItem(id);
+    }
+    providerDropdown_->SetSelectedIndex(0);
+    AddDialogElement(providerDropdown_);
+
+    outModel = MakeInput(idPrefix + "-model", kMargin + kPickerWidth + 20, y,
+                         formWidth - kPickerWidth - 20, 28, modelPlaceholder);
+    AddDialogElement(outModel);
+    y += 28 + 6;
+}
+
+void UltraAIServiceDialog::AddLabelledInput(
+    long& y, const std::string& id, const std::string& label,
+    const std::string& placeholder,
+    std::shared_ptr<UltraCanvasTextInput>& outInput) {
+    const long formWidth = kDialogWidth - 2 * kMargin;
+    AddDialogElement(MakeLabel(id + "-lbl", kMargin, y, formWidth, 18, label));
+    y += 18 + 2;
+    outInput = MakeInput(id, kMargin, y, formWidth, 28, placeholder);
+    AddDialogElement(outInput);
+    y += 28 + 6;
 }
 
 void UltraAIServiceDialog::AddProviderPicker(
