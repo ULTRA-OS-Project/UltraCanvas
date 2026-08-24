@@ -36,6 +36,7 @@ std::vector<std::string> KnownLocalProviders(const std::string& capability) {
     if (capability == "speechtotext") return {"whisper-cpp"};
     if (capability == "texttospeech") return {"piper"};
     if (capability == "imagegen")     return {"comfyui", "stable-diffusion-cpp"};
+    if (capability == "videogen")     return {"comfyui"};
     return {};
 }
 

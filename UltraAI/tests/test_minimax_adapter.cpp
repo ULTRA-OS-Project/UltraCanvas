@@ -1,9 +1,10 @@
 // UltraAI/tests/test_minimax_adapter.cpp
-// Exercises the MiniMax video + image adapters offline through
+// Exercises the MiniMax video, image and speech adapters offline through
 // ScriptedTransport: the submit/poll/retrieve video sequence and its
 // request serialization, the base_resp envelope MiniMax returns inside
 // HTTP 200 responses, mode rejection, the url-only escape hatch, image
-// generation in both base64 and url form, and factory registration.
+// generation in both base64 and url form, speech synthesis (one-shot and
+// SSE-streamed) with its hex payloads, and factory registration.
 //
 // Uses plain asserts so the test suite has no third-party dependency
 // beyond the repo-vendored nlohmann/json (used to inspect recorded
@@ -348,6 +349,156 @@ void TestImageUrlFormatAndRejections() {
     EXPECT_EQ(quiet->Requests().size(), size_t(0));
 }
 
+void TestSpeak() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    // "666f6f" is "foo".
+    transport->ScriptResponse(JsonResponse(200, json{
+        {"data", {{"audio", "666f6f"}, {"status", 2}}},
+        {"extra_info", {{"audio_length", 1500}, {"audio_sample_rate", 32000}}},
+        {"base_resp", Ok()}}));
+
+    TextToSpeechConfig cfg;
+    cfg.providerId = "minimax";
+    cfg.apiKey     = "mm-test-key";
+    auto tts = CreateMiniMaxTextToSpeech(cfg, nullptr, transport);
+    EXPECT_TRUE(tts != nullptr);
+
+    SpeakRequest req;
+    req.text     = "gr\u00fc\u00dfe";   // 5 characters, 7 UTF-8 bytes
+    req.voiceId  = "male-qn-qingse";
+    req.language = "de";
+    req.style    = "happy";
+    req.speed    = 1.2;
+    req.pitch    = 2.4;
+    req.volume   = 0.8;
+    req.format   = TtsAudioFormat::Wav;
+    req.sampleRateHz = 24000;
+
+    SpeakResponse resp = tts->Speak(req);
+    EXPECT_TRUE(resp.error.IsOk());
+    EXPECT_EQ(std::string(resp.audio.bytes.begin(), resp.audio.bytes.end()),
+              std::string("foo"));
+    EXPECT_EQ(resp.audio.mimeType, std::string("audio/wav"));
+    EXPECT_EQ(resp.durationSec, 1.5);
+    // Billing is per character, so a multi-byte script must not be counted
+    // by its UTF-8 length.
+    EXPECT_EQ(resp.usage.units, 5);
+
+    const json body = json::parse(transport->Requests()[0].body);
+    EXPECT_EQ(transport->Requests()[0].url,
+              std::string("https://api.minimax.io/v1/t2a_v2"));
+    EXPECT_EQ(body["model"], "speech-2.8-turbo");
+    EXPECT_EQ(body["stream"], false);
+    EXPECT_EQ(body["output_format"], "hex");
+    EXPECT_EQ(body["language_boost"], "de");
+    EXPECT_EQ(body["voice_setting"]["voice_id"], "male-qn-qingse");
+    EXPECT_EQ(body["voice_setting"]["emotion"], "happy");
+    EXPECT_EQ(body["voice_setting"]["speed"], 1.2);
+    EXPECT_EQ(body["voice_setting"]["vol"], 0.8);
+    EXPECT_EQ(body["voice_setting"]["pitch"], 2);      // semitones, rounded
+    EXPECT_EQ(body["audio_setting"]["format"], "wav");
+    EXPECT_EQ(body["audio_setting"]["sample_rate"], 24000);
+}
+
+void TestSpeakRejections() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    TextToSpeechConfig cfg;
+    cfg.apiKey = "mm-test-key";
+    auto tts = CreateMiniMaxTextToSpeech(cfg, nullptr, transport);
+
+    SpeakRequest noVoice;
+    noVoice.text = "hello";
+    EXPECT_EQ(tts->Speak(noVoice).error.code, ErrorCode::InvalidRequest);
+
+    SpeakRequest ssml;
+    ssml.text    = "<speak>hello</speak>";
+    ssml.voiceId = "v";
+    ssml.ssml    = true;
+    EXPECT_EQ(tts->Speak(ssml).error.code, ErrorCode::UnsupportedFormat);
+
+    SpeakRequest opus;
+    opus.text    = "hello";
+    opus.voiceId = "v";
+    opus.format  = TtsAudioFormat::Opus;
+    EXPECT_EQ(tts->Speak(opus).error.code, ErrorCode::UnsupportedFormat);
+
+    // Cloning is refused with a pointer at the console, not half-done.
+    CloneVoiceRequest clone;
+    clone.displayName = "narrator";
+    EXPECT_EQ(tts->CloneVoice(clone).error.code, ErrorCode::UnsupportedFormat);
+
+    EXPECT_EQ(transport->Requests().size(), size_t(0));
+}
+
+void TestSpeakStream() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    // "666f6f" -> "foo", "626172" -> "bar"; the last event carries no audio.
+    TransportSseEvent first;
+    first.data = json{{"data", {{"audio", "666f6f"}, {"status", 1}}},
+                      {"base_resp", Ok()}}.dump();
+    TransportSseEvent second;
+    second.data = json{{"data", {{"audio", "626172"}, {"status", 1}}},
+                       {"base_resp", Ok()}}.dump();
+    TransportSseEvent last;
+    last.data = json{{"data", {{"status", 2}}},
+                     {"extra_info", {{"audio_length", 800}}},
+                     {"base_resp", Ok()}}.dump();
+    transport->ScriptSse({first, second, last});
+
+    TextToSpeechConfig cfg;
+    cfg.apiKey = "mm-test-key";
+    auto tts = CreateMiniMaxTextToSpeech(cfg, nullptr, transport);
+
+    SpeakRequest req;
+    req.text    = "hello";
+    req.voiceId = "male-qn-qingse";
+
+    std::string audio;
+    std::vector<TtsStreamEventKind> kinds;
+    StreamHandle handle = tts->SpeakStream(req, [&](const TtsStreamEvent& ev) {
+        kinds.push_back(ev.kind);
+        audio.append(ev.audioChunk.begin(), ev.audioChunk.end());
+    });
+
+    EXPECT_EQ(audio, std::string("foobar"));
+    EXPECT_EQ(kinds.size(), size_t(3));
+    EXPECT_EQ(kinds.back(), TtsStreamEventKind::Done);
+    EXPECT_TRUE(handle->IsDone());
+    EXPECT_EQ(json::parse(transport->Requests()[0].body)["stream"], true);
+}
+
+void TestListVoices() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    transport->ScriptResponse(JsonResponse(200, json{
+        {"system_voice", json::array({
+            json{{"voice_id", "male-qn-qingse"}, {"voice_name", "Qingse"}},
+            json{{"voice_id", "female-shaonv"},  {"voice_name", "Shaonv"}}})},
+        {"voice_cloning", json::array({json{{"voice_id", "my-clone"}}})},
+        {"base_resp", Ok()}}));
+
+    TextToSpeechConfig cfg;
+    cfg.apiKey = "mm-test-key";
+    auto tts = CreateMiniMaxTextToSpeech(cfg, nullptr, transport);
+
+    const std::vector<VoiceInfo> voices = tts->ListVoices();
+    EXPECT_EQ(voices.size(), size_t(3));
+    EXPECT_EQ(voices[0].id, std::string("male-qn-qingse"));
+    EXPECT_EQ(voices[0].displayName, std::string("Qingse"));
+    EXPECT_TRUE(!voices[0].isCloned);
+    EXPECT_TRUE(voices[2].isCloned);
+    EXPECT_EQ(transport->Requests()[0].url,
+              std::string("https://api.minimax.io/v1/get_voice"));
+
+    // No server, no voices — and no error propagated to the caller.
+    auto offline = std::make_shared<ScriptedTransport>();
+    Error refused;
+    refused.code    = ErrorCode::NetworkError;
+    refused.message = "connection refused";
+    offline->ScriptError(refused);
+    auto tts2 = CreateMiniMaxTextToSpeech(cfg, nullptr, offline);
+    EXPECT_TRUE(tts2->ListVoices("de").empty());
+}
+
 void TestFactoryRegistration() {
     const std::vector<std::string> videoProviders = ListVideoGenProviders();
     EXPECT_TRUE(std::find(videoProviders.begin(), videoProviders.end(),
@@ -356,6 +507,10 @@ void TestFactoryRegistration() {
     const std::vector<std::string> imageProviders = ListImageGenProviders();
     EXPECT_TRUE(std::find(imageProviders.begin(), imageProviders.end(),
                           "minimax") != imageProviders.end());
+
+    const std::vector<std::string> speechProviders = ListTextToSpeechProviders();
+    EXPECT_TRUE(std::find(speechProviders.begin(), speechProviders.end(),
+                          "minimax") != speechProviders.end());
 
     // Capability reporting does not need a server.
     auto transport = std::make_shared<ScriptedTransport>();
@@ -377,6 +532,10 @@ int main() {
     TestVideoJobEvents();
     TestImageGeneration();
     TestImageUrlFormatAndRejections();
+    TestSpeak();
+    TestSpeakRejections();
+    TestSpeakStream();
+    TestListVoices();
     TestFactoryRegistration();
     std::cout << "test_minimax_adapter: all checks passed" << std::endl;
     return 0;

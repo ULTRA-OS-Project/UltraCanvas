@@ -29,9 +29,12 @@ private:                                                                \
 };
 
 // Every dialog carries a provider picker (the base class helper, fed by
-// the capability's List<X>Providers). Chat additionally has an optional
-// model / GGUF-path field and an API-key field that stores into UltraVault
-// as ai.<provider>.api_key instead of living in the widget.
+// the capability's List<X>Providers). Chat, image generation and video
+// generation additionally have an optional model field and an API-key field
+// that stores into UltraVault as ai.<provider>.api_key instead of living in
+// the widget — the providers behind those three include cloud services
+// (Anthropic, OpenAI, MiniMax) and local ones (llama-cpp, qwen, comfyui)
+// whose "model" means a checkpoint file name.
 class ChatDialog : public UltraAIServiceDialog {
 public:
     ChatDialog();
@@ -48,10 +51,40 @@ private:
 ULTRAAI_DECLARE_DIALOG(EmbeddingsDialog)
 ULTRAAI_DECLARE_DIALOG(SpeechToTextDialog)
 ULTRAAI_DECLARE_DIALOG(TextToSpeechDialog)
-ULTRAAI_DECLARE_DIALOG(ImageGenDialog)
+// Image generation: prompt, size and count, plus the model (a checkpoint
+// file name for ComfyUI), a credential for cloud providers, and an optional
+// ComfyUI workflow file whose contents are passed as the "workflow" option.
+class ImageGenDialog : public UltraAIServiceDialog {
+public:
+    ImageGenDialog();
+protected:
+    long BuildForm(long formTop) override;
+    void RunCapability() override;
+private:
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input1_;   // prompt
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // size
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input3_;   // count
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  modelInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  keyInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  workflowInput_;
+};
 ULTRAAI_DECLARE_DIALOG(VisionDialog)
 ULTRAAI_DECLARE_DIALOG(TranslatorDialog)
-ULTRAAI_DECLARE_DIALOG(VideoGenDialog)
+// Video generation: prompt, size and duration, plus the model (a checkpoint
+// file name for ComfyUI) and a credential for cloud providers.
+class VideoGenDialog : public UltraAIServiceDialog {
+public:
+    VideoGenDialog();
+protected:
+    long BuildForm(long formTop) override;
+    void RunCapability() override;
+private:
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input1_;   // prompt
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // size
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input3_;   // duration
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  modelInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  keyInput_;
+};
 ULTRAAI_DECLARE_DIALOG(MusicGenDialog)
 ULTRAAI_DECLARE_DIALOG(CodeAssistDialog)
 

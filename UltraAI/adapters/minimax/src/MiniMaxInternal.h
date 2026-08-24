@@ -3,7 +3,7 @@
 // normalization, credential resolution, option pass-through with reserved
 // control keys, and the two-layer error mapping MiniMax needs — HTTP status
 // plus the base_resp envelope it returns inside otherwise-200 responses.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
@@ -16,8 +16,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <vector>
 
 namespace UltraAI {
 namespace minimax_detail {
@@ -27,6 +29,7 @@ using nlohmann::json;
 constexpr const char* kDefaultBaseUrl   = "https://api.minimax.io";
 constexpr const char* kDefaultVideoModel = "MiniMax-Hailuo-02";
 constexpr const char* kDefaultImageModel = "image-01";
+constexpr const char* kDefaultSpeechModel = "speech-2.8-turbo";
 
 inline json ParseJsonLenient(const std::string& text) {
     return json::parse(text, nullptr, /*allow_exceptions=*/false);
@@ -139,6 +142,37 @@ inline Error MapMiniMaxHttpError(int statusCode, const std::string& body) {
         return envelopeError;
     }
     return MapHttpStatus(statusCode, body.substr(0, 200));
+}
+
+// MiniMax returns synthesized audio as a hex string. Returns false when the
+// text is not an even-length run of hex digits.
+inline bool HexDecode(const std::string& text, std::vector<uint8_t>& out) {
+    if (text.size() % 2 != 0) return false;
+    out.clear();
+    out.reserve(text.size() / 2);
+    auto nibble = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    for (size_t i = 0; i < text.size(); i += 2) {
+        const int high = nibble(text[i]);
+        const int low  = nibble(text[i + 1]);
+        if (high < 0 || low < 0) { out.clear(); return false; }
+        out.push_back(static_cast<uint8_t>((high << 4) | low));
+    }
+    return true;
+}
+
+// Characters, not bytes: providers bill per character and a UTF-8 byte
+// count would overstate every non-ASCII script.
+inline int32_t CountUtf8Characters(const std::string& text) {
+    int32_t count = 0;
+    for (unsigned char c : text) {
+        if ((c & 0xC0) != 0x80) ++count;   // not a continuation byte
+    }
+    return count;
 }
 
 // MiniMax accepts a public URL or a data URL for image inputs.

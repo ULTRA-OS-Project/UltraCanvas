@@ -114,6 +114,48 @@ std::shared_ptr<UltraCanvasTextInput> UltraAIServiceDialog::MakeInput(
     return in;
 }
 
+void UltraAIServiceDialog::AddProviderAndModelRow(
+    long& y, const std::string& idPrefix,
+    const std::vector<std::string>& providers,
+    const std::string& modelLabel, const std::string& modelPlaceholder,
+    std::shared_ptr<UltraCanvasTextInput>& outModel) {
+    constexpr long kPickerWidth = 240;
+    const long formWidth = kDialogWidth - 2 * kMargin;
+
+    AddDialogElement(MakeLabel(idPrefix + "-prov-lbl", kMargin, y,
+                               kPickerWidth, 18, "Provider"));
+    AddDialogElement(MakeLabel(idPrefix + "-model-lbl",
+                               kMargin + kPickerWidth + 20, y,
+                               formWidth - kPickerWidth - 20, 18, modelLabel));
+    y += 18 + 2;
+
+    providerDropdown_ = CreateDropdown(idPrefix + "-provider", kMargin, y,
+                                       kPickerWidth, 28);
+    providerDropdown_->AddItem(kDefaultRouteLabel);
+    for (const auto& id : providers) {
+        providerDropdown_->AddItem(id);
+    }
+    providerDropdown_->SetSelectedIndex(0);
+    AddDialogElement(providerDropdown_);
+
+    outModel = MakeInput(idPrefix + "-model", kMargin + kPickerWidth + 20, y,
+                         formWidth - kPickerWidth - 20, 28, modelPlaceholder);
+    AddDialogElement(outModel);
+    y += 28 + 6;
+}
+
+void UltraAIServiceDialog::AddLabelledInput(
+    long& y, const std::string& id, const std::string& label,
+    const std::string& placeholder,
+    std::shared_ptr<UltraCanvasTextInput>& outInput) {
+    const long formWidth = kDialogWidth - 2 * kMargin;
+    AddDialogElement(MakeLabel(id + "-lbl", kMargin, y, formWidth, 18, label));
+    y += 18 + 2;
+    outInput = MakeInput(id, kMargin, y, formWidth, 28, placeholder);
+    AddDialogElement(outInput);
+    y += 28 + 6;
+}
+
 void UltraAIServiceDialog::AddProviderPicker(
     long& y, const std::vector<std::string>& providers) {
     AddDialogElement(MakeLabel("svc-prov-lbl", kMargin, y, 240, 18,

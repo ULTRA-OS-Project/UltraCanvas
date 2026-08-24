@@ -380,13 +380,14 @@ polling fallback; cassette tests. Add `"comfyui"` to
 `KnownLocalProviders("imagegen")` in `Routing.cpp` so an empty `providerId`
 resolves to it when registered.
 
-**Phase 2 — `IVideoGen` from the ComfyUI adapter too** *(not yet)*, plus
+**Phase 2 — `IVideoGen` from the ComfyUI adapter too** *(shipped)*, plus
 `KnownLocalProviders("videogen")` (local video ranks ahead of `minimax` only
 when a local model is actually installed). Same machinery, video templates, longer
 timeouts, `/view` for video payloads.
 
-**Phase 3 — UI and docs.** *(docs shipped; the app picks the providers up
-automatically, template selection in the UI is still to do.)* `Apps/UltraAIApp` picks the provider up for free;
+**Phase 3 — UI and docs.** *(shipped: the dashboard's image and video
+dialogs now carry a model/checkpoint field, a credential field and — for
+images — a ComfyUI workflow file field.)* `Apps/UltraAIApp` picks the provider up for free;
 what it needs is a way to choose a workflow template and point at a
 templates directory. Document the adapter in `Docs/Modules/UltraAI/` and
 the module `README.md` adapter table.

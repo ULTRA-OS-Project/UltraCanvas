@@ -14,13 +14,14 @@
 //   GET  /view?filename=...        the produced image bytes
 //   POST /interrupt                cancellation
 //   GET  /object_info/...          checkpoint, sampler and scheduler lists
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
 
 #include "UltraAIImageGen.h"
 #include "UltraAITransport.h"
+#include "UltraAIVideoGen.h"
 
 #include <memory>
 
@@ -81,6 +82,33 @@ namespace UltraAI {
 // otherwise construction fails with ErrorCode::NetworkError).
 std::unique_ptr<IImageGen> CreateComfyUIImageGen(
     const ImageGenConfig& config,
+    Error* outError = nullptr,
+    std::shared_ptr<ITransport> transport = nullptr);
+
+// Create a ComfyUI-backed IVideoGen. Same configuration, options, progress
+// and error handling as the image adapter above — only the workflow and the
+// response type differ.
+//
+// The one built-in template is `ImageToVideo` on Stable Video Diffusion,
+// whose nodes (ImageOnlyCheckpointLoader, SVD_img2vid_Conditioning,
+// VideoLinearCFGGuidance, SaveAnimatedWEBP) are part of core ComfyUI.
+// `defaultModel` is the SVD checkpoint file name. Text-to-video, restyling,
+// interpolation and upscaling each need model-specific loaders, so they are
+// rejected with ErrorCode::UnsupportedFormat unless a "workflow" option
+// supplies a graph — which is then bound exactly like the image adapter's.
+//
+// SVD is image-conditioned and has no text encoder, so
+// VideoGenRequest::prompt has nothing to bind to in the built-in template;
+// it is applied when a caller's workflow has an `UltraAI Positive` node.
+// `durationSec` and `fps` become the conditioning's frame count and the
+// save node's playback rate (defaults: 14 frames at 6 fps).
+//
+// The template writes an animated WebP, a format `VideoFormat` has no name
+// for: `GetCapabilities()` reports `VideoFormat::Auto` and the produced
+// blob carries the real mime type. A workflow ending in SaveWEBM produces
+// webm instead.
+std::unique_ptr<IVideoGen> CreateComfyUIVideoGen(
+    const VideoGenConfig& config,
     Error* outError = nullptr,
     std::shared_ptr<ITransport> transport = nullptr);
 

@@ -1,19 +1,21 @@
 // UltraAI/adapters/minimax/include/UltraAIMiniMax.h
 // MiniMax (Hailuo) adapters: IVideoGen over the asynchronous video API
 // (POST {baseUrl}/v1/video_generation -> GET /v1/query/video_generation ->
-// GET /v1/files/retrieve) and IImageGen over the synchronous image API
-// (POST {baseUrl}/v1/image_generation).
+// GET /v1/files/retrieve), IImageGen over the synchronous image API
+// (POST {baseUrl}/v1/image_generation), and ITextToSpeech over the speech
+// API (POST {baseUrl}/v1/t2a_v2, one-shot or SSE-streamed).
 //
 // Network I/O goes through the UltraAI transport seam: production wiring
 // uses UltraNetTransport, unit tests inject a ScriptedTransport. No
 // WebSocket is involved — MiniMax reports job progress by polling, which
 // the shared RunJobPoll loop drives.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
 
 #include "UltraAIImageGen.h"
+#include "UltraAITextToSpeech.h"
 #include "UltraAITransport.h"
 #include "UltraAIVideoGen.h"
 
@@ -76,6 +78,29 @@ std::unique_ptr<IVideoGen> CreateMiniMaxVideoGen(
 // the API has no equivalent.
 std::unique_ptr<IImageGen> CreateMiniMaxImageGen(
     const ImageGenConfig& config,
+    Error* outError = nullptr,
+    std::shared_ptr<ITransport> transport = nullptr);
+
+// Create a MiniMax-backed ITextToSpeech (POST {baseUrl}/v1/t2a_v2). Same
+// credential and baseUrl rules; defaultModel falls back to
+// "speech-2.8-turbo", and any model string the account can use works.
+//
+// SpeakRequest mapping: `voiceId` is required (MiniMax has no default
+// voice — ListVoices() reports what the account can use), `style` becomes
+// the API's `emotion`, `language` becomes `language_boost` ("auto" when
+// empty), and speed / pitch / volume map to the voice_setting fields.
+// Supported formats are Mp3, Wav, Flac and PcmS16Le; SSML is rejected with
+// ErrorCode::UnsupportedFormat, because the API takes plain text.
+//
+// SpeakStream() uses the API's SSE mode, so playback can start before
+// synthesis finishes. Cancelling the returned handle cancels the stream.
+//
+// CloneVoice() is not implemented: MiniMax clones through a file upload
+// plus a separate endpoint, and the resulting voice only becomes listable
+// after its first synthesis. It returns ErrorCode::UnsupportedFormat
+// pointing at the console instead of half-doing it.
+std::unique_ptr<ITextToSpeech> CreateMiniMaxTextToSpeech(
+    const TextToSpeechConfig& config,
     Error* outError = nullptr,
     std::shared_ptr<ITransport> transport = nullptr);
 

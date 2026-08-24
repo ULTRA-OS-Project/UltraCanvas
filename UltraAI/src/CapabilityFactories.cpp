@@ -203,6 +203,14 @@ Registry<ITextToSpeech, TextToSpeechConfig>& TtsReg() {
                 };
             }
 #endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+            if (!r.providers.count("minimax")) {
+                r.providers["minimax"] = [](const TextToSpeechConfig& cfg,
+                                            Error* err) {
+                    return CreateMiniMaxTextToSpeech(cfg, err);
+                };
+            }
+#endif
         };
     });
     return r;
@@ -288,6 +296,14 @@ Registry<IVideoGen, VideoGenConfig>& VidReg() {
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const VideoGenConfig&, Error*) {
                     return CreateMockVideoGen();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_COMFYUI_ADAPTER
+            if (!r.providers.count("comfyui")) {
+                r.providers["comfyui"] = [](const VideoGenConfig& cfg,
+                                            Error* err) {
+                    return CreateComfyUIVideoGen(cfg, err);
                 };
             }
 #endif

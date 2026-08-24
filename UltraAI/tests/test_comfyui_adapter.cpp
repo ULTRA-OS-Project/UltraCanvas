@@ -422,10 +422,134 @@ void TestCapabilitiesFromObjectInfo() {
     EXPECT_TRUE(gen2->GetCapabilities().models.empty());
 }
 
+void TestImageToVideo() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    transport->ScriptResponse(JsonResponse(200, json{{"name", "frame.png"},
+                                                     {"subfolder", ""},
+                                                     {"type", "input"}}));
+    transport->ScriptResponse(JsonResponse(200, json{{"prompt_id", "v1"}}));
+    transport->ScriptResponse(JsonResponse(200,
+        HistoryFinished("v1", "UltraAI_00001_.webp")));
+    TransportResponse webp;
+    webp.statusCode = 200;
+    webp.headers    = {{"content-type", "image/webp"}};
+    webp.body       = "WEBPBYTES";
+    transport->ScriptResponse(webp);
+
+    VideoGenConfig cfg;
+    cfg.providerId   = "comfyui";
+    cfg.defaultModel = "svd_xt.safetensors";
+    auto gen = CreateComfyUIVideoGen(cfg, nullptr, transport);
+    EXPECT_TRUE(gen != nullptr);
+
+    VideoGenRequest req;
+    req.mode        = VideoGenMode::ImageToVideo;
+    req.durationSec = 2.0;
+    req.fps         = 12;
+    req.width       = 1024;
+    req.height      = 576;
+    req.steps       = 25;
+    MediaBlob source;
+    source.bytes    = {0x89, 0x50, 0x4E, 0x47};
+    source.mimeType = "image/png";
+    req.sourceImage = source;
+    MakeFast(req.options);
+
+    VideoGenResponse resp = gen->Generate(req);
+    EXPECT_TRUE(resp.error.IsOk());
+    EXPECT_EQ(resp.videos.size(), size_t(1));
+    EXPECT_EQ(std::string(resp.videos[0].video.bytes.begin(),
+                          resp.videos[0].video.bytes.end()),
+              std::string("WEBPBYTES"));
+    EXPECT_EQ(resp.videos[0].video.mimeType, std::string("image/webp"));
+    EXPECT_EQ(resp.videos[0].fps, 12);
+    EXPECT_EQ(resp.videos[0].durationSec, 2.0);
+
+    const json graph = json::parse(transport->Requests()[1].body)["prompt"];
+    EXPECT_EQ(graph["15"]["inputs"]["ckpt_name"], "svd_xt.safetensors");
+    EXPECT_EQ(graph["10"]["inputs"]["image"], "frame.png");
+    // durationSec x fps becomes the conditioning's frame count, and fps
+    // reaches both the conditioning and the save node.
+    EXPECT_EQ(graph["12"]["inputs"]["video_frames"], 24);
+    EXPECT_EQ(graph["12"]["inputs"]["fps"], 12);
+    EXPECT_EQ(graph["9"]["inputs"]["fps"], 12);
+    EXPECT_EQ(graph["12"]["inputs"]["width"], 1024);
+    EXPECT_EQ(graph["3"]["inputs"]["steps"], 25);
+    EXPECT_TRUE(graph["3"]["inputs"]["seed"].get<int64_t>() != 0);
+}
+
+void TestVideoRejectionsAndCapabilities() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    VideoGenConfig cfg;
+    auto gen = CreateComfyUIVideoGen(cfg, nullptr, transport);
+
+    // Text-to-video has no built-in template: say so instead of submitting
+    // an image-to-video graph with no image.
+    VideoGenRequest text;
+    text.prompt = "a kettle boiling";
+    MakeFast(text.options);
+    VideoGenResponse resp = gen->Generate(text);
+    EXPECT_EQ(resp.error.code, ErrorCode::UnsupportedFormat);
+    EXPECT_TRUE(resp.error.message.find("workflow") != std::string::npos);
+
+    // ImageToVideo without a source image.
+    VideoGenRequest noSource;
+    noSource.mode = VideoGenMode::ImageToVideo;
+    MakeFast(noSource.options);
+    EXPECT_EQ(gen->Generate(noSource).error.code, ErrorCode::InvalidRequest);
+    EXPECT_EQ(transport->Requests().size(), size_t(0));
+
+    // A caller's own workflow reaches the modes without a template.
+    auto custom = std::make_shared<ScriptedTransport>();
+    custom->ScriptResponse(JsonResponse(200, json{{"prompt_id", "v2"}}));
+    custom->ScriptResponse(JsonResponse(200, HistoryFinished("v2", "out.webm")));
+    auto gen2 = CreateComfyUIVideoGen(cfg, nullptr, custom);
+
+    VideoGenRequest workflowDriven;
+    workflowDriven.prompt = "a kettle boiling";
+    MakeFast(workflowDriven.options);
+    // IVideoGen has no returnAsUrl field, so the adapter takes it as an
+    // option — here it keeps the test to two exchanges.
+    workflowDriven.options["return_url_only"] = true;
+    workflowDriven.options["workflow"] = json{
+        {"1", {{"class_type", "CLIPTextEncode"},
+               {"_meta", {{"title", "UltraAI Positive"}}},
+               {"inputs", {{"text", ""}}}}}}.dump();
+    VideoGenResponse resp2 = gen2->Generate(workflowDriven);
+    EXPECT_TRUE(resp2.error.IsOk());
+    EXPECT_EQ(json::parse(custom->Requests()[0].body)["prompt"]["1"]["inputs"]
+                  ["text"],
+              "a kettle boiling");
+    EXPECT_EQ(custom->Requests().size(), size_t(2));   // no /view download
+    EXPECT_TRUE(resp2.videos[0].video.bytes.empty());
+    EXPECT_TRUE(resp2.videos[0].video.url.find("/view?filename=out.webm") !=
+                std::string::npos);
+
+    // Capabilities come from the image-to-video checkpoint list.
+    auto caps = std::make_shared<ScriptedTransport>();
+    caps->ScriptResponse(JsonResponse(200, json{
+        {"ImageOnlyCheckpointLoader", {
+            {"input", {{"required", {{"ckpt_name", json::array({
+                json::array({"svd.safetensors", "svd_xt.safetensors"}),
+                json::object()})}}}}}}}}));
+    auto gen3 = CreateComfyUIVideoGen(cfg, nullptr, caps);
+    VideoGenProviderCapabilities capabilities = gen3->GetCapabilities();
+    EXPECT_EQ(capabilities.providerId, std::string("comfyui"));
+    EXPECT_EQ(capabilities.models.size(), size_t(2));
+    EXPECT_TRUE(capabilities.models[0].runsLocally);
+    EXPECT_EQ(caps->Requests()[0].url,
+              std::string("http://127.0.0.1:8188/object_info/"
+                          "ImageOnlyCheckpointLoader"));
+}
+
 void TestFactoryRegistration() {
     const std::vector<std::string> providers = ListImageGenProviders();
     EXPECT_TRUE(std::find(providers.begin(), providers.end(), "comfyui") !=
                 providers.end());
+
+    const std::vector<std::string> videoProviders = ListVideoGenProviders();
+    EXPECT_TRUE(std::find(videoProviders.begin(), videoProviders.end(),
+                          "comfyui") != videoProviders.end());
 }
 
 } // namespace
@@ -438,6 +562,8 @@ int main() {
     TestCustomWorkflowAndOverrides();
     TestRejectedRequests();
     TestCapabilitiesFromObjectInfo();
+    TestImageToVideo();
+    TestVideoRejectionsAndCapabilities();
     TestFactoryRegistration();
     std::cout << "test_comfyui_adapter: all checks passed" << std::endl;
     return 0;

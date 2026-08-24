@@ -3,8 +3,8 @@
 // shell — title bar, "Run" button, scrollable result area, "Close"
 // button — and lets subclasses contribute their own input form and
 // "what to do when Run is pressed" logic.
-// Version: 0.1.1
-// Last Modified: 2026-07-12
+// Version: 0.2.0
+// Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
 
@@ -59,6 +59,23 @@ protected:
     // providerDropdown_ and advances y past the row.
     void AddProviderPicker(long& y, const std::vector<std::string>& providers);
 
+    // The picker with a model field beside it, for capabilities whose
+    // providers need naming a model: a cloud model id, or a checkpoint file
+    // name for a local server. Creates the input, stores it in `outModel`,
+    // and advances y past the row.
+    void AddProviderAndModelRow(long& y,
+                                const std::string& idPrefix,
+                                const std::vector<std::string>& providers,
+                                const std::string& modelLabel,
+                                const std::string& modelPlaceholder,
+                                std::shared_ptr<UltraCanvas::UltraCanvasTextInput>& outModel);
+
+    // A single labelled full-width input row.
+    void AddLabelledInput(long& y, const std::string& id,
+                          const std::string& label,
+                          const std::string& placeholder,
+                          std::shared_ptr<UltraCanvas::UltraCanvasTextInput>& outInput);
+
     // Provider chosen in the picker; empty for "(default route)" (or when
     // the dialog never called AddProviderPicker), which lets the UltraAI
     // routing policy decide.
@@ -71,7 +88,10 @@ public:
     // Layout constants — public so free functions in the dialog implementation
     // (e.g. kFormWidth in UltraAIDialogs.cpp) can reference them at namespace scope.
     static constexpr long kDialogWidth  = 720;
-    static constexpr long kDialogHeight = 560;
+    // Tall enough that the dialogs with the most form rows (chat, image and
+    // video generation each carry a provider+model row, a credential row and
+    // their own inputs) still leave a readable result area below Run.
+    static constexpr long kDialogHeight = 640;
     static constexpr long kMargin       = 16;
     static constexpr long kFormTop      = 80;   // below the description label
 

@@ -48070,14 +48070,14 @@ and friends report what this build actually has.
 | `mock` | all ten | in-process |
 | `anthropic` | `ITextLLM` | cloud |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud or OpenAI-compatible server |
-| `minimax` | `IVideoGen`, `IImageGen` | cloud |
+| `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
-| `comfyui` | `IImageGen` | local server |
+| `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
 
 ---
 
-## `minimax` — MiniMax / Hailuo video and image generation
+## `minimax` — MiniMax / Hailuo video, image and speech
 
 Header: `UltraAIMiniMax.h`. Cloud provider; a key is required
 (`ai.minimax.api_key` is the canonical vault reference). Default base URL
@@ -48142,6 +48142,52 @@ plus `Variation` (sent as MiniMax's `subject_reference`);
 `RateLimited`, `1004` / `2049` → `AuthenticationFailed`, `1008` →
 `QuotaExceeded`, `1026` / `1027` → `ContentFiltered`, `2013` →
 `InvalidRequest`. The numeric code is kept in `Error::providerCode`.
+
+### Speech (`ITextToSpeech`)
+
+`POST /v1/t2a_v2`, one-shot or SSE-streamed. The audio comes back hex
+encoded in both modes.
+
+```cpp
+TextToSpeechConfig cfg;
+cfg.providerId     = "minimax";
+cfg.apiKeyVaultRef = "ai.minimax.api_key";
+auto tts = CreateTextToSpeech(cfg);
+
+// MiniMax has no default voice; ask which ones this account can use.
+for (const VoiceInfo& voice : tts->ListVoices()) {
+    std::cout << voice.id << "  " << voice.displayName << '\n';
+}
+
+SpeakRequest req;
+req.text    = "Der Kessel kocht.";
+req.voiceId = "male-qn-qingse";
+req.style   = "happy";        // -> the API's `emotion`
+req.format  = TtsAudioFormat::Mp3;
+
+// Streaming lets playback start before synthesis finishes.
+StreamHandle handle = tts->SpeakStream(req, [](const TtsStreamEvent& ev) {
+    if (ev.kind == TtsStreamEventKind::AudioChunk) Play(ev.audioChunk);
+});
+```
+
+| `SpeakRequest` | API field |
+|---|---|
+| `voiceId`, `speed`, `pitch`, `volume`, `style` | `voice_setting.voice_id` / `speed` / `pitch` / `vol` / `emotion` |
+| `format`, `sampleRateHz` | `audio_setting.format` / `sample_rate` |
+| `language` | `language_boost` (`"auto"` when empty) |
+
+**Limits.** `voiceId` is required. Formats are Mp3, Wav, Flac and
+PcmS16Le; Opus and Ogg are rejected. SSML is rejected — the API takes
+plain text. `CloneVoice()` returns `ErrorCode::UnsupportedFormat`: MiniMax
+clones through a file upload plus a separate endpoint, and the voice only
+becomes listable after its first synthesis, so the console does it better.
+`ListVoices()` ignores its `language` argument because MiniMax's voice
+records carry no language tag.
+
+**Not covered.** MiniMax's text (M-series) and music APIs. The text models
+are OpenAI-compatible, so `openai` with a custom `baseUrl` reaches them
+today; music was closed to new accounts in August 2026.
 
 ---
 
@@ -48300,6 +48346,49 @@ uploaded source can never replace a file the user put there.
 `SaveImage` writes PNG, so `outputFormat` is advisory. Video generation
 through ComfyUI is not implemented yet.
 
+### Video (`IVideoGen`)
+
+The same machinery with a different graph. The one built-in template is
+image-to-video on **Stable Video Diffusion**, whose nodes
+(`ImageOnlyCheckpointLoader`, `SVD_img2vid_Conditioning`,
+`VideoLinearCFGGuidance`, `SaveAnimatedWEBP`) are part of core ComfyUI.
+
+```cpp
+VideoGenConfig cfg;
+cfg.providerId   = "comfyui";
+cfg.defaultModel = "svd_xt.safetensors";
+auto video = CreateVideoGen(cfg);
+
+VideoGenRequest req;
+req.mode        = VideoGenMode::ImageToVideo;
+req.sourceImage = firstFrame;      // must carry bytes
+req.durationSec = 2.0;
+req.fps         = 12;              // -> 24 frames
+```
+
+| Request field | Node title | Node input |
+|---|---|---|
+| `model` / `defaultModel` | `UltraAI Checkpoint` | `ckpt_name` |
+| `sourceImage` | `UltraAI Source` | `image` (uploaded first) |
+| `width`, `height` | `UltraAI Video` | `width`, `height` |
+| `durationSec` × `fps` | `UltraAI Video` | `video_frames` |
+| `fps` | `UltraAI Video` and the save node | `fps` |
+| `seed`, `steps`, `guidanceScale` | `UltraAI Sampler` | `seed`, `steps`, `cfg` |
+
+SVD is image-conditioned and has **no text encoder**, so `prompt` has
+nothing to bind to in the built-in template; it is applied when a
+caller-supplied workflow has an `UltraAI Positive` node. Text-to-video,
+restyling, interpolation and upscaling each need model-specific loaders and
+are rejected with `ErrorCode::UnsupportedFormat` unless a `workflow` option
+supplies one.
+
+The template writes an animated WebP, which `VideoFormat` has no name for:
+`GetCapabilities()` reports `VideoFormat::Auto` and the produced blob
+carries the real mime type. A workflow ending in `SaveWEBM` produces webm
+instead. `IVideoGen` has no `returnAsUrl` field, so the adapter takes
+`return_url_only` (bool) as an option — worth setting when the server is
+remote and the video is large.
+
 ---
 
 ## Related documents
@@ -48365,9 +48454,9 @@ tests run without any network or external model.
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
 | `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
-| `minimax` | `IVideoGen`, `IImageGen` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
+| `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
-| `comfyui` | `IImageGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
+| `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
@@ -48424,9 +48513,9 @@ UltraAI/
 │   ├── mock/                      # In-process mocks for every capability
 │   ├── anthropic/                 # Anthropic Messages API (ITextLLM)
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
-│   ├── minimax/                   # MiniMax / Hailuo video + image generation
+│   ├── minimax/                   # MiniMax / Hailuo video, image and speech
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
-│   ├── comfyui/                   # Local ComfyUI image generation
+│   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
 ├── tests/                         # cassert-based unit tests
 ├── Docs/
@@ -48500,9 +48589,9 @@ cmake -S UltraAI -B build \
 | OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
 | Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > cloud > mock, with constructibility fallback) | Complete |
 | llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
-| MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form) | Complete (v0.1 — no text, speech or music capabilities) |
+| MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
-| ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities) | Complete (v0.1 — no `IVideoGen` yet) |
+| ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Unit tests | Complete (11 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |

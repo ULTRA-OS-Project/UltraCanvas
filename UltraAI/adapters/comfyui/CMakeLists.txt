@@ -1,5 +1,5 @@
 # UltraAI/adapters/comfyui/CMakeLists.txt
-# ComfyUI image-generation adapter. ComfyUI itself is a separate,
+# ComfyUI image- and video-generation adapter. ComfyUI itself is a separate,
 # user-installed GPL-3.0 program: nothing is vendored, fetched or linked
 # here — this target is an HTTP/WebSocket client of a server the user runs.
 # JSON handling uses the repo's vendored nlohmann/json (already licensed in
@@ -24,6 +24,8 @@ endif()
 add_library(UltraAI_AdapterComfyUI STATIC
     src/ComfyUIImageGen.cpp
     src/ComfyUIInternal.cpp
+    src/ComfyUIRun.cpp
+    src/ComfyUIVideoGen.cpp
     src/ComfyUIWorkflows.cpp
 )
 add_library(UltraAI::AdapterComfyUI ALIAS UltraAI_AdapterComfyUI)

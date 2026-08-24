@@ -12,13 +12,14 @@
 // Every template uses core nodes only: shipping templates that depend on
 // custom nodes would make the adapter fail on a stock install, and custom
 // nodes are GPL-3.0 derivative works this repository does not redistribute.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
 
 #include "UltraAICommon.h"
 #include "UltraAIImageGen.h"
+#include "UltraAIVideoGen.h"
 
 #include <nlohmann/json.hpp>
 
@@ -39,10 +40,17 @@ constexpr const char* kTitleNegative   = "UltraAI Negative";
 constexpr const char* kTitleSource     = "UltraAI Source";
 constexpr const char* kTitleMask       = "UltraAI Mask";
 constexpr const char* kTitleUpscale    = "UltraAI Upscale";
+constexpr const char* kTitleVideo      = "UltraAI Video";
 
 // The API-format graph for `mode`, or an empty object when the mode has no
 // built-in template.
 json BuiltInWorkflow(ImageGenMode mode);
+
+// The video counterpart. Only ImageToVideo has a built-in template (Stable
+// Video Diffusion, whose nodes are part of core ComfyUI); text-to-video
+// models each need their own loaders and are reached through the
+// "workflow" option.
+json BuiltInVideoWorkflow(VideoGenMode mode);
 
 // Node id whose _meta.title is `title`; when no node carries that title,
 // the first node with class `classType`. Empty when neither matches.

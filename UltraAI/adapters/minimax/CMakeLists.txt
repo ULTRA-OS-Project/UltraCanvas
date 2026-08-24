@@ -1,5 +1,5 @@
 # UltraAI/adapters/minimax/CMakeLists.txt
-# MiniMax (Hailuo) video + image adapter. JSON handling uses the repo's
+# MiniMax (Hailuo) video, image and speech adapter. JSON handling uses the repo's
 # vendored nlohmann/json (already licensed in THIRD_PARTY_LICENSES.md);
 # when the monorepo layout is not present the adapter is skipped.
 
@@ -21,6 +21,7 @@ endif()
 add_library(UltraAI_AdapterMiniMax STATIC
     src/MiniMaxVideoGen.cpp
     src/MiniMaxImageGen.cpp
+    src/MiniMaxTextToSpeech.cpp
 )
 add_library(UltraAI::AdapterMiniMax ALIAS UltraAI_AdapterMiniMax)
 

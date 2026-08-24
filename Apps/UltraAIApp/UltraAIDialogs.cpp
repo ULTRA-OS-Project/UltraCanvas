@@ -14,6 +14,7 @@
 #endif
 
 #include <algorithm>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -75,40 +76,70 @@ ChatDialog::ChatDialog()
         "never in this window.") {}
 
 namespace {
-bool ProviderNeedsApiKey(const std::string& provider) {
-    return !provider.empty() && provider != "mock" && provider != "llama-cpp";
+// Read a whole text file. Used for the ComfyUI workflow field, which takes
+// a path rather than pasted JSON — an API-format workflow is thousands of
+// characters.
+bool ReadTextFile(const std::string& path, std::string& outText) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    outText = buffer.str();
+    return in.good() || in.eof();
 }
+
+bool ProviderNeedsApiKey(const std::string& provider) {
+    // Local providers run the model on this machine — llama-cpp in-process,
+    // qwen against Ollama/vLLM, comfyui against a ComfyUI the user started —
+    // and take no credential.
+    static const char* kKeyless[] = {"mock", "llama-cpp", "qwen", "comfyui"};
+    if (provider.empty()) return false;
+    for (const char* keyless : kKeyless) {
+        if (provider == keyless) return false;
+    }
+    return true;
+}
+
+// Route a typed key into UltraVault (or, in a build without it, straight
+// into the config) and point `config` at the stored reference. Shared by
+// every dialog whose providers include cloud services. Returns false with
+// *outStatus set when the key could not be stored.
+bool ApplyCredential(const std::string& provider,
+                     const std::shared_ptr<UltraCanvasTextInput>& keyInput,
+                     ProviderConfig& config, std::string* outStatus) {
+    if (!ProviderNeedsApiKey(provider)) return true;
+
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+    const std::string vaultRef = "ai." + provider + ".api_key";
+    if (keyInput && !keyInput->GetText().empty()) {
+        if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+        std::string typed = keyInput->GetText();
+        auto stored = UltraVault::Put(
+            vaultRef, UltraVault::SecretValue::FromString(typed));
+        keyInput->SetText("");   // the key lives in the vault now
+        if (!stored.IsOk()) {
+            if (outStatus) *outStatus = "Could not store the key: " +
+                                        stored.message;
+            return false;
+        }
+    }
+    config.apiKeyVaultRef = vaultRef;
+#else
+    // No vault in this build: the key stays in the widget for the call.
+    if (keyInput) config.apiKey = keyInput->GetText();
+#endif
+    return true;
+}
+
 } // namespace
 
 long ChatDialog::BuildForm(long y) {
-    AddDialogElement(MakeLabel("prov-lbl", kMargin, y, 200, kLabelHeight,
-                               "Provider"));
-    AddDialogElement(MakeLabel("model-lbl", kMargin + 220, y,
-                               kFormWidth - 220, kLabelHeight,
-                               "Model (or GGUF path for llama-cpp; optional)"));
-    y += kLabelHeight + 2;
-    providerDropdown_ = CreateDropdown("chat-provider",
-                                       kMargin, y, 200, kRowHeight);
-    providerDropdown_->AddItem(kDefaultRouteLabel);
-    for (const auto& id : ListTextLLMProviders()) {
-        providerDropdown_->AddItem(id);
-    }
-    providerDropdown_->SetSelectedIndex(0);
-    AddDialogElement(providerDropdown_);
-    modelInput_ = MakeInput("chat-model", kMargin + 220, y,
-                            kFormWidth - 220, kRowHeight,
-                            "provider default");
-    AddDialogElement(modelInput_);
-    y += kRowHeight + kRowGap;
-
-    AddDialogElement(MakeLabel("key-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "API key (cloud providers; saved to UltraVault "
-                               "as ai.<provider>.api_key and cleared here)"));
-    y += kLabelHeight + 2;
-    keyInput_ = MakeInput("chat-key", kMargin, y, kFormWidth, kRowHeight,
-                          "leave empty to use the stored key");
-    AddDialogElement(keyInput_);
-    y += kRowHeight + kRowGap;
+    AddProviderAndModelRow(y, "chat", ListTextLLMProviders(),
+                           "Model (or GGUF path for llama-cpp; optional)",
+                           "provider default", modelInput_);
+    AddLabelledInput(y, "chat-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
 
     AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "System prompt (optional)"));
@@ -140,25 +171,10 @@ void ChatDialog::RunCapability() {
         cfg.defaultModel = modelInput_->GetText();
     }
 
-    if (ProviderNeedsApiKey(provider)) {
-#ifdef ULTRAAI_HAS_ULTRAVAULT
-        const std::string vaultRef = "ai." + provider + ".api_key";
-        if (keyInput_ && !keyInput_->GetText().empty()) {
-            if (!UltraVault::IsAvailable()) UltraVault::Initialize();
-            std::string typed = keyInput_->GetText();
-            auto stored = UltraVault::Put(
-                vaultRef, UltraVault::SecretValue::FromString(typed));
-            keyInput_->SetText("");   // the key lives in the vault now
-            if (!stored.IsOk()) {
-                SetStatus("Could not store the key: " + stored.message);
-                return;
-            }
-        }
-        cfg.apiKeyVaultRef = vaultRef;
-#else
-        // No vault in this build: the key stays in the widget for the call.
-        if (keyInput_) cfg.apiKey = keyInput_->GetText();
-#endif
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
+        return;
     }
 
     Error createError;
@@ -390,11 +406,20 @@ void TextToSpeechDialog::RunCapability() {
 
 ImageGenDialog::ImageGenDialog()
     : UltraAIServiceDialog("Image Generation",
-        "Generate one or more images from a prompt. The mock returns "
-        "placeholder PNG bytes (header + width/height/index tag).") {}
+        "Model is a cloud model id or a local ComfyUI checkpoint. "
+        "Run blocks this window until the provider answers.") {}
 
 long ImageGenDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListImageGenProviders());
+    AddProviderAndModelRow(y, "ig", ListImageGenProviders(),
+                           "Model / checkpoint (optional)",
+                           "e.g. sd_xl_base_1.0.safetensors", modelInput_);
+    AddLabelledInput(y, "ig-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
+    AddLabelledInput(y, "ig-workflow",
+                     "ComfyUI workflow file (API format; optional)",
+                     "path to a workflow exported with Save (API format)",
+                     workflowInput_);
 
     AddDialogElement(MakeLabel("ig-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
@@ -419,9 +444,21 @@ long ImageGenDialog::BuildForm(long y) {
 void ImageGenDialog::RunCapability() {
     SetStatus("Running...");
 
+    const std::string provider = SelectedProviderId();
+
+    ImageGenConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
+        return;
+    }
+
     Error createError;
-    auto ig = CreateImageGen({.providerId = SelectedProviderId()},
-                             &createError);
+    auto ig = CreateImageGen(cfg, &createError);
     if (!ig) {
         SetStatus("Failed to create ImageGen: " + createError.message);
         return;
@@ -429,6 +466,15 @@ void ImageGenDialog::RunCapability() {
 
     ImageGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
+    if (workflowInput_ && !workflowInput_->GetText().empty()) {
+        std::string workflow;
+        if (!ReadTextFile(workflowInput_->GetText(), workflow)) {
+            SetStatus("Cannot read the workflow file: " +
+                      workflowInput_->GetText());
+            return;
+        }
+        req.options["workflow"] = workflow;
+    }
     if (input2_) {
         const auto s = input2_->GetText();
         auto x = s.find('x');
@@ -595,11 +641,17 @@ void TranslatorDialog::RunCapability() {
 
 VideoGenDialog::VideoGenDialog()
     : UltraAIServiceDialog("Video Generation",
-        "Generate a short video from a prompt. The mock returns "
-        "placeholder MP4 bytes and a thumbnail PNG.") {}
+        "Model is a cloud model id or a local ComfyUI checkpoint. "
+        "Run blocks this window until the provider answers.") {}
 
 long VideoGenDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListVideoGenProviders());
+    AddProviderAndModelRow(y, "vg", ListVideoGenProviders(),
+                           "Model / checkpoint (optional)",
+                           "e.g. MiniMax-Hailuo-02 or svd_xt.safetensors",
+                           modelInput_);
+    AddLabelledInput(y, "vg-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
 
     AddDialogElement(MakeLabel("vg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
@@ -624,9 +676,21 @@ long VideoGenDialog::BuildForm(long y) {
 void VideoGenDialog::RunCapability() {
     SetStatus("Running...");
 
+    const std::string provider = SelectedProviderId();
+
+    VideoGenConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
+        return;
+    }
+
     Error createError;
-    auto vg = CreateVideoGen({.providerId = SelectedProviderId()},
-                             &createError);
+    auto vg = CreateVideoGen(cfg, &createError);
     if (!vg) {
         SetStatus("Failed to create VideoGen: " + createError.message);
         return;

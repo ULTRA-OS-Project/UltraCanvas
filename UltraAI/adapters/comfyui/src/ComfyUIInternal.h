@@ -1,7 +1,7 @@
 // UltraAI/adapters/comfyui/src/ComfyUIInternal.h
 // Shared pieces of the ComfyUI adapter: the run context, URL building,
 // option reading, and ComfyUI's node_errors validation format.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 #pragma once
@@ -29,6 +29,9 @@ constexpr const char* kOptSamplerName    = "sampler_name";
 constexpr const char* kOptJobTimeoutMs   = "job_timeout_ms";
 constexpr const char* kOptPollIntervalMs = "poll_interval_ms";
 constexpr const char* kOptUseWebSocket   = "use_websocket";
+// IVideoGen has no returnAsUrl field the way IImageGen does, so the video
+// adapter takes it as an option.
+constexpr const char* kOptReturnUrlOnly  = "return_url_only";
 
 // One produced file, as ComfyUI names it in history / executed events.
 struct OutputRef {
@@ -93,9 +96,19 @@ bool BoolOption(const OptionsMap& providerOptions,
 // request — the difference between "install this model" and "fix your code".
 Error MapPromptError(int statusCode, const std::string& body);
 
-// Collect the images an execution produced from a ComfyUI outputs object
-// ({"<node id>": {"images": [{filename, subfolder, type}, ...]}}).
+// Collect the files an execution produced from a ComfyUI outputs object
+// ({"<node id>": {"images": [{filename, subfolder, type}, ...]}}). Save
+// nodes file their results under "images" (SaveImage, SaveAnimatedWEBP,
+// SaveWEBM), and video nodes from the wider ecosystem under "gifs" or
+// "videos"; all three are collected so a caller-supplied workflow works.
 void CollectOutputs(const json& outputs, std::vector<OutputRef>& out);
+
+// Apply the caller's "node_overrides" option — a JSON object of
+// {"<node id>": {"<input>": value}} — as the last word over the bound
+// graph. Returns false with *outError when the option is not such an
+// object.
+bool ApplyNodeOverrides(json& graph, const OptionsMap& providerOptions,
+                        const OptionsMap& requestOptions, Error* outError);
 
 } // namespace comfyui_detail
 } // namespace UltraAI

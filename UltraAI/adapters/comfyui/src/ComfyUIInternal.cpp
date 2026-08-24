@@ -1,10 +1,12 @@
 // UltraAI/adapters/comfyui/src/ComfyUIInternal.cpp
 // Implementation of the ComfyUI adapter's shared pieces.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 
 #include "ComfyUIInternal.h"
+
+#include "ComfyUIWorkflows.h"
 
 #include <cctype>
 #include <sstream>
@@ -137,23 +139,47 @@ void CollectOutputs(const json& outputs, std::vector<OutputRef>& out) {
     if (!outputs.is_object()) return;
     for (const auto& [nodeId, node] : outputs.items()) {
         (void)nodeId;
-        if (!node.is_object() || !node.contains("images") ||
-            !node["images"].is_array()) {
-            continue;
-        }
-        for (const auto& image : node["images"]) {
-            if (!image.is_object()) continue;
-            OutputRef ref;
-            ref.filename  = image.value("filename", "");
-            ref.subfolder = image.value("subfolder", "");
-            ref.type      = image.value("type", "output");
-            if (ref.filename.empty()) continue;
-            // Previews are written as temp files alongside the real output;
-            // only finished images belong in the response.
-            if (ref.type == "temp") continue;
-            out.push_back(std::move(ref));
+        if (!node.is_object()) continue;
+        for (const char* key : {"images", "gifs", "videos"}) {
+            if (!node.contains(key) || !node[key].is_array()) continue;
+            for (const auto& file : node[key]) {
+                if (!file.is_object()) continue;
+                OutputRef ref;
+                ref.filename  = file.value("filename", "");
+                ref.subfolder = file.value("subfolder", "");
+                ref.type      = file.value("type", "output");
+                if (ref.filename.empty()) continue;
+                // Previews are written as temp files alongside the real
+                // output; only finished files belong in the response.
+                if (ref.type == "temp") continue;
+                out.push_back(std::move(ref));
+            }
         }
     }
+}
+
+bool ApplyNodeOverrides(json& graph, const OptionsMap& providerOptions,
+                        const OptionsMap& requestOptions, Error* outError) {
+    const std::string overrides =
+        StringOption(providerOptions, requestOptions, kOptNodeOverrides, "");
+    if (overrides.empty()) return true;
+
+    json parsed = ParseJsonLenient(overrides);
+    if (!parsed.is_object()) {
+        if (outError) {
+            outError->code    = ErrorCode::InvalidRequest;
+            outError->message = "the \"node_overrides\" option is not a JSON "
+                                "object of {node id: {input: value}}";
+        }
+        return false;
+    }
+    for (const auto& [nodeId, inputs] : parsed.items()) {
+        if (!inputs.is_object()) continue;
+        for (const auto& [field, value] : inputs.items()) {
+            SetNodeInput(graph, nodeId, field, value);
+        }
+    }
+    return true;
 }
 
 } // namespace comfyui_detail

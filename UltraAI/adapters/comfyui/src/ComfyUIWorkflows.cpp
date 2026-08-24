@@ -1,6 +1,6 @@
 // UltraAI/adapters/comfyui/src/ComfyUIWorkflows.cpp
 // The built-in templates and node-binding helpers.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-08-24
 // Author: UltraAI Module
 
@@ -104,6 +104,37 @@ constexpr const char* kUpscale = R"JSON({
                     "image": ["10", 0]}}
 })JSON";
 
+// Image to video with Stable Video Diffusion. SVD is image-conditioned and
+// has no text encoder, so VideoGenRequest::prompt has nothing to bind to
+// here — a prompt-driven video model needs its own workflow.
+constexpr const char* kImageToVideo = R"JSON({
+  "3": {"class_type": "KSampler", "_meta": {"title": "UltraAI Sampler"},
+        "inputs": {"seed": 0, "steps": 20, "cfg": 2.5,
+                   "sampler_name": "euler", "scheduler": "karras",
+                   "denoise": 1.0,
+                   "model": ["13", 0], "positive": ["12", 0],
+                   "negative": ["12", 1], "latent_image": ["12", 2]}},
+  "8": {"class_type": "VAEDecode",
+        "inputs": {"samples": ["3", 0], "vae": ["15", 2]}},
+  "9": {"class_type": "SaveAnimatedWEBP", "_meta": {"title": "UltraAI Output"},
+        "inputs": {"filename_prefix": "UltraAI", "fps": 6, "lossless": false,
+                   "quality": 85, "method": "default", "images": ["8", 0]}},
+  "10": {"class_type": "LoadImage", "_meta": {"title": "UltraAI Source"},
+         "inputs": {"image": ""}},
+  "12": {"class_type": "SVD_img2vid_Conditioning",
+         "_meta": {"title": "UltraAI Video"},
+         "inputs": {"width": 1024, "height": 576, "video_frames": 14,
+                    "motion_bucket_id": 127, "fps": 6,
+                    "augmentation_level": 0.0,
+                    "clip_vision": ["15", 1], "init_image": ["10", 0],
+                    "vae": ["15", 2]}},
+  "13": {"class_type": "VideoLinearCFGGuidance",
+         "inputs": {"min_cfg": 1.0, "model": ["15", 0]}},
+  "15": {"class_type": "ImageOnlyCheckpointLoader",
+         "_meta": {"title": "UltraAI Checkpoint"},
+         "inputs": {"ckpt_name": ""}}
+})JSON";
+
 json Parse(const char* text) {
     return json::parse(text, nullptr, /*allow_exceptions=*/false);
 }
@@ -122,6 +153,21 @@ json BuiltInWorkflow(ImageGenMode mode) {
         case ImageGenMode::Outpaint:
         case ImageGenMode::BackgroundRemoval:
         case ImageGenMode::Variation:
+        default:
+            return json::object();
+    }
+}
+
+json BuiltInVideoWorkflow(VideoGenMode mode) {
+    switch (mode) {
+        case VideoGenMode::ImageToVideo: return Parse(kImageToVideo);
+        // Text-to-video, restyling, interpolation and upscaling each need
+        // model-specific loaders (and, for most, nodes a stock install does
+        // not have). They are reachable through the "workflow" option.
+        case VideoGenMode::TextToVideo:
+        case VideoGenMode::VideoToVideo:
+        case VideoGenMode::FrameInterpolation:
+        case VideoGenMode::Upscale:
         default:
             return json::object();
     }
