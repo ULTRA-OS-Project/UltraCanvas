@@ -1,6 +1,6 @@
 // OS/MSWindows/UltraCanvasSpellCheckSupport.cpp
 // Windows native spell check backend built on the ISpellChecker COM API
-// Version: 1.0.1
+// Version: 1.0.2
 // Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 //
@@ -16,6 +16,20 @@
 // the COM objects are created in the multi-threaded apartment and every entry
 // point joins the MTA before touching them. Initialising a single apartment in
 // Initialize() would make every worker-thread call fail with RPC_E_WRONG_THREAD.
+
+// spellcheck.h gates the whole API on NTDDI_VERSION >= NTDDI_WIN8
+// (MIN_SPELLING_NTDDI), and the mingw-w64 default target is far below that -
+// without this the interfaces are forward declarations only and every use of
+// them is an incomplete type. Same reason and same shape as the bump at the top
+// of UltraCanvasWindowsFileAssociations.cpp.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0602
+#  undef _WIN32_WINNT
+#  define _WIN32_WINNT 0x0602
+#endif
+#if !defined(NTDDI_VERSION) || NTDDI_VERSION < 0x06020000
+#  undef NTDDI_VERSION
+#  define NTDDI_VERSION 0x06020000
+#endif
 
 #include "ISpellCheckBackend.h"
 

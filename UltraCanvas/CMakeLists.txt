@@ -758,13 +758,33 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         message(STATUS "  enchant-2: NOT FOUND (falling back to the Hunspell backend)")
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
-    # spellcheck.h is Windows 8+; Windows 7 targets fall back to Hunspell.
-    include(CheckIncludeFileCXX)
-    check_include_file_cxx("spellcheck.h" ULTRACANVAS_HAVE_SPELLCHECK_HEADER)
-    if(ULTRACANVAS_HAVE_SPELLCHECK_HEADER)
+    # spellcheck.h is Windows 8+. Its mere presence proves nothing: the header
+    # ships on older toolchains too but gates every interface behind
+    # NTDDI_VERSION >= NTDDI_WIN8, leaving forward declarations that fail to
+    # compile on first use. So probe by compiling the constructs the backend
+    # actually needs - a header-existence check let exactly that reach CI.
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_DEFINITIONS -D_WIN32_WINNT=0x0602 -DNTDDI_VERSION=0x06020000)
+    check_cxx_source_compiles("
+        #include <windows.h>
+        #include <spellcheck.h>
+        int main() {
+            ISpellCheckerFactory* factory = nullptr;
+            if (FAILED(CoCreateInstance(__uuidof(SpellCheckerFactory), nullptr,
+                                        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return 1;
+            ISpellChecker* checker = nullptr;
+            factory->CreateSpellChecker(L\"en-US\", &checker);
+            if (checker) checker->Release();
+            factory->Release();
+            return 0;
+        }
+    " ULTRACANVAS_HAVE_SPELLCHECK_API)
+    unset(CMAKE_REQUIRED_DEFINITIONS)
+
+    if(ULTRACANVAS_HAVE_SPELLCHECK_API)
         message(STATUS "  ISpellChecker: available (native Windows spell backend)")
     else()
-        message(STATUS "  ISpellChecker: NOT FOUND (falling back to the Hunspell backend)")
+        message(STATUS "  ISpellChecker: NOT USABLE (falling back to the Hunspell backend)")
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # NSSpellChecker ships with every macOS and needs no feature flag.
@@ -1050,7 +1070,7 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ENCHANT_FOUND)
     target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_INCLUDE_DIRS})
     target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARY_DIRS})
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARIES})
-elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_HEADER)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_API)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WINSPELLCHECK)
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Ole32)
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
