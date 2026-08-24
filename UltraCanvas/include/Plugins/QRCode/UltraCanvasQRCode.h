@@ -4,6 +4,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasVideo.h"   // UCVideoFrame, for the camera scan overload
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -145,6 +146,41 @@ namespace UltraCanvas {
 
         std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
                                                  std::string* errorMessage = nullptr);
+
+        // Layout of a pixel buffer handed to ScanQRCodeImage.
+        enum class QRPixelFormat {
+            Grayscale8,   // 1 byte per pixel
+            RGB24,        // 3 bytes, R G B
+            RGBA32,       // 4 bytes, R G B A  (what UCVideoFrame carries)
+            BGRA32        // 4 bytes, B G R A
+        };
+
+        // Decodes QR codes from pixels **already in memory**.
+        //
+        // This exists because the file-based scanner above cannot be used for
+        // camera scanning: feeding it preview frames would mean writing every
+        // frame to disk, and for an authenticator those frames contain the
+        // secret. Enrolling an account must not leave the seed sitting in a
+        // temp file or a thumbnail cache
+        // (Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md §2.2c).
+        //
+        // `stride` is the byte offset between row starts; pass 0 for tightly
+        // packed rows. Rows are top-to-bottom. The buffer is only read.
+        //
+        // Note this takes raw pixels rather than a UCImage: UCImageRaster is
+        // declared in a backend-specific header (libspecific/Cairo), so a
+        // public plugin API cannot name it without pulling a backend type into
+        // its surface and breaking the non-Cairo platforms.
+        std::vector<QRScanResult> ScanQRCodeImage(const std::uint8_t* pixels,
+                                                  int width, int height,
+                                                  int stride,
+                                                  QRPixelFormat format,
+                                                  std::string* errorMessage = nullptr);
+
+        // Convenience for the camera path: UCVideoFrame is RGBA32 with its own
+        // stride, which is exactly what the preview callback delivers.
+        std::vector<QRScanResult> ScanQRCodeImage(const UCVideoFrame& frame,
+                                                  std::string* errorMessage = nullptr);
 
         bool IsDecoderAvailable();
 

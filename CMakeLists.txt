@@ -920,6 +920,21 @@ if (BUILD_TESTS)
     add_test(NAME UltraAuthenticatorStoreTests COMMAND UltraAuthenticatorStoreTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # In-memory QR decode. Unlike the suites around it this one links the whole
+    # framework, because the QR plugin is compiled into the UltraCanvas library
+    # rather than standing alone. It skips itself cleanly when the library was
+    # built without libzbar.
+    add_executable(QRCodeScanImageTests Tests/QRCodeScanImageTests.cpp)
+    target_link_libraries(QRCodeScanImageTests PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_include_directories(QRCodeScanImageTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(QRCodeScanImageTests PRIVATE cxx_std_20)
+    set_target_properties(QRCodeScanImageTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME QRCodeScanImageTests COMMAND QRCodeScanImageTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # HOTP/TOTP engine and otpauth:// parser: RFC 4226 App. D and RFC 6238
     # App. B vectors, plus the provisioning-URI rejection cases. Links only
     # UltraCrypt, so it runs headless.
