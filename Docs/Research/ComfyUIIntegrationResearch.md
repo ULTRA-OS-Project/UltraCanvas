@@ -3,8 +3,9 @@
 **Date:** 2026-08-24
 **Status:** Research — no implementation yet
 **Scope:** Whether UltraAI should support ComfyUI as a provider backend, what
-an adapter would look like against the existing capability interfaces, and
-what infrastructure work it needs first.
+an adapter would look like against the existing capability interfaces, what
+infrastructure work it needs first, and how it relates to addressing a cloud
+video provider such as MiniMax (Hailuo) directly instead.
 
 ---
 
@@ -34,6 +35,15 @@ Three reasons carry the decision:
 The cost is real but bounded, and most of it is infrastructure UltraAI wants
 anyway: a WebSocket method on the transport seam, multipart upload, and
 binary response bodies (§6).
+
+**But it should not be built first.** ComfyUI is *not* the way to reach a
+cloud video model — MiniMax (Hailuo) and its peers are plain REST APIs that
+`ITransport::Request` can drive today, with no WebSocket, no multipart, no
+workflow templates and no external process. A `minimax` adapter is the
+cheapest route to UltraAI's first non-mock generative-media provider and
+should land ahead of the ComfyUI work (§9.5, §10). The two answer different
+questions and both are wanted: cloud reach without a GPU, and local
+generation without an account.
 
 ---
 
@@ -261,16 +271,98 @@ The adapter never ships weights and should surface the model name it used in
 | **ComfyUI over HTTP** | **Recommended.** Widest model coverage, real progress events, no license entanglement, no build cost. Costs: workflow-template machinery, external process. |
 | **AUTOMATIC1111 / Forge WebUI** | Its `/sdapi/v1/txt2img` maps to `ImageGenRequest` almost field-for-field — genuinely less adapter code. But its model coverage now lags badly, and building on the shrinking option to save a few hundred lines is the wrong trade. Reasonable *later* as a second adapter reusing the same transport work. |
 | **Embed a diffusion library (stable-diffusion.cpp)** | The true `llamacpp` analogue: in-process, no external server, permissively licensed. But it trails new architectures by months and drags GPU-backend build complexity into UltraAI's build. Not now; revisit if an in-process path becomes a hard requirement. |
-| **Cloud image APIs (OpenAI images, Stability, fal/Replicate)** | Complementary, not competing — needed for users with no GPU, and a much smaller adapter each. Should follow ComfyUI, not replace it. |
+| **Direct cloud APIs (MiniMax/Hailuo, OpenAI images, Stability, fal/Replicate)** | Complementary, not competing — needed for users with no GPU, and a far smaller adapter each. **MiniMax should be built first** (§9.5): it needs no new infrastructure at all. |
 | **SwarmUI / other ComfyUI front-ends** | They wrap ComfyUI anyway; adding a layer between UltraAI and the engine buys nothing. |
 
-The two that should actually be built are ComfyUI (local, capable) and one
-cloud image provider (zero-setup fallback) — in that order, because the
-local-first routing policy has nothing to route to today.
+The two that should actually be built are one direct cloud provider
+(zero-setup, no GPU) and ComfyUI (local, capable, offline) — in that order,
+because the cloud one is nearly free to add and the local one carries a
+prerequisite (§6).
+
+## 9.5 Addressing MiniMax (Hailuo) directly
+
+ComfyUI is not a prerequisite for reaching MiniMax, and going through it
+would be strictly worse: MiniMax's weights for its flagship models are not
+generally deployable locally (below), so a ComfyUI route would mean a custom
+node calling the same cloud API from inside a second process.
+
+**MiniMax is a plain asynchronous REST API**, and it maps onto `IVideoGen`
+with the infrastructure UltraAI already has:
+
+| Step | Call |
+|---|---|
+| Submit | `POST https://api.minimax.io/v1/video_generation` — `model`, `prompt`, `duration`, `resolution`, `first_frame_image` (image-to-video), `prompt_optimizer`; returns a `task_id` |
+| Poll | `GET /v1/query/video_generation?task_id=…` (a `/v2/query/video_generation` listing form also exists) — status runs Preparing → Queueing → Processing → Success/Fail, and carries a `file_id` on success |
+| Fetch | `GET /v1/files/retrieve?file_id=…` — returns the download URL for the finished video |
+| Auth | `Authorization: Bearer <key>` on every call |
+
+Everything there is one `ITransport::Request` per step. Compare with what
+ComfyUI needs (§6):
+
+| | `minimax` adapter | `comfyui` adapter |
+|---|---|---|
+| New transport work | **none** | WebSocket on `ITransport`, multipart, binary cassettes |
+| Progress mechanism | poll `task_id` → `VideoJobEvent` | WebSocket frames → `VideoJobEvent` |
+| Request translation | direct field mapping | workflow templates + binding table |
+| External process | none | user-installed ComfyUI |
+| Credentials | `ProviderConfig::apiKeyVaultRef` = `ai.minimax.api_key` — already implemented | none (local) |
+| Marginal cost per generation | per-second billing | zero |
+| Works offline / no account | no | yes |
+
+**One `minimax` adapter also fills four empty capability slots**, not one:
+`IVideoGen` (Hailuo), `ITextLLM` (the M-series), `ITextToSpeech` (the
+`speech-*` models) and `IImageGen` (`image-01`), with `IMusicGen`
+(`music-3.0`) as a maybe — MiniMax closed the music API to new accounts in
+August 2026, so treat it as unavailable until confirmed on the project's own
+account. That is the single largest coverage gain available to UltraAI for
+the least code.
+
+**Where the interface is wider than the provider.** `VideoGenRequest`
+carries `negativePrompt`, `steps`, `guidanceScale`, `seed`, `fps` and
+`count`; MiniMax exposes essentially prompt, duration, resolution and a
+first-frame image. Those fields are simply ignored, and `GetCapabilities()`
+must say so honestly (`runsLocally = false`, the real duration and size
+options, `count` effectively 1). That asymmetry is normal for a cloud
+adapter and is not a reason to widen the interface.
+
+**Why this does not make ComfyUI redundant.**
+
+- **Image *editing*.** `IImageGen` has seven modes — img2img, inpaint,
+  outpaint, upscale, background removal, variation, plus ControlNet-style
+  guidance. Cloud text-to-image endpoints cover a fraction of that; ComfyUI
+  covers all of it.
+- **Offline, private, zero-cost.** No account, no per-second billing, no
+  prompt or source image leaving the machine. `Routing.cpp` is explicitly
+  local-first, and ULTRA OS positioning is the reason.
+- **Model freedom.** Any checkpoint, LoRA or ControlNet the user has,
+  including models that never get a hosted API.
+- **Single-vendor risk.** A cloud-only generative-media story ties the OS to
+  one provider's pricing, availability and jurisdiction — the music API
+  closing to new users is a live example of how quickly that moves.
+- **The open-weights route is narrower than it looks.** MiniMax published H3
+  weights in August 2026, which would in principle let ComfyUI run Hailuo
+  locally; the community licence excludes local deployment in the US, EU, UK
+  and South Korea and caps output at 768p. For an EU-based project that
+  closes the local-Hailuo option specifically — read the licence text before
+  relying on any summary of it, including this one. Local generation should
+  therefore be planned on genuinely open models (SD/SDXL/Flux/WAN), with
+  MiniMax reached through its API.
+
+**So: no, we do not need ComfyUI to use MiniMax — and MiniMax should come
+first.** ComfyUI remains the answer for local image work, which is the hole
+in UltraAI that no cloud video API fills.
 
 ## 10. Recommended plan
 
-**Phase 0 — transport seam (prerequisite).**
+**Phase A — `minimax` adapter (do this first).**
+`ULTRAAI_ADAPTER_MINIMAX`, `UltraAI/adapters/minimax/`. `IVideoGen` via
+submit/poll/retrieve, `GenerateJob` driven by the poll loop, cancellation
+through `StreamHandle`, cassette tests over recorded traffic. Then
+`ITextToSpeech`, `ITextLLM` and `image-01` from the same adapter and
+credential. Needs nothing from Phase 0, and proves the job-progress plumbing
+that the ComfyUI adapter reuses.
+
+**Phase 0 — transport seam (prerequisite for ComfyUI).**
 `ITransport::WebSocketStream`, implemented in `UltraNetTransport`, scripted
 in `ScriptedTransport`, cassette support for frames; multipart helper.
 Independently useful; land it on its own merits.
@@ -284,8 +376,9 @@ polling fallback; cassette tests. Add `"comfyui"` to
 `KnownLocalProviders("imagegen")` in `Routing.cpp` so an empty `providerId`
 resolves to it when registered.
 
-**Phase 2 — `IVideoGen` from the same adapter**, plus
-`KnownLocalProviders("videogen")`. Same machinery, video templates, longer
+**Phase 2 — `IVideoGen` from the ComfyUI adapter too**, plus
+`KnownLocalProviders("videogen")` (local video ranks ahead of `minimax` only
+when a local model is actually installed). Same machinery, video templates, longer
 timeouts, `/view` for video payloads.
 
 **Phase 3 — UI and docs.** `Apps/UltraAIApp` picks the provider up for free;
@@ -316,4 +409,7 @@ rule in `AGENTS.md` — the graph stays inside the adapter, reachable only via
 - [ComfyUI server comms routes](https://docs.comfy.org/development/comfyui-server/comms_routes) · [API and programmatic usage (DeepWiki)](https://deepwiki.com/Comfy-Org/ComfyUI/7-api-and-programmatic-usage)
 - [Hosting a ComfyUI workflow via API (9elements)](https://9elements.com/blog/hosting-a-comfyui-workflow-via-api/) · [Building a production-ready ComfyUI API (ViewComfy)](https://www.viewcomfy.com/blog/building-a-production-ready-comfyui-api)
 - Licensing — [ComfyUI on GitHub (GPL-3.0)](https://github.com/comfyanonymous/ComfyUI) · [nodes and models licences and compliance](https://github.com/Comfy-Org/ComfyUI/discussions/14346) · [Which license for custom nodes?](https://github.com/comfyanonymous/ComfyUI/issues/3362)
-- In-repo: `UltraAI/README.md`, `UltraAI/include/UltraAIImageGen.h`, `UltraAI/src/Routing.cpp`, `UltraAI/adapters/_shared/include/UltraAITransport.h`, `UltraCanvas/include/UltraNet/UltraNetWebSocket.h`
+- MiniMax — [Video generation guide](https://platform.minimax.io/docs/guides/video-generation) · [Create text-to-video task](https://platform.minimax.io/docs/api-reference/video-generation-t2v) · [Image-to-video task](https://platform.minimax.io/docs/api-reference/video-generation-i2v) · [Video download](https://platform.minimax.io/docs/api-reference/video-generation-download) · [Video-01 API announcement](https://www.minimax.io/news/video-generation-api)
+- MiniMax H3 open weights and licence — [H3 explained (Hugging Face)](https://huggingface.co/blog/ResterChed/minimax-h3-hailuo-3-0) · [Open weights exclude US/EU (explainX)](https://explainx.ai/blog/minimax-h3-open-video-model-hailuo-july-2026) · [Release, weights and pricing (Segmind)](https://blog.segmind.com/minimax-h3-release-date-open-weights-and-api-pricing-explained/)
+- MiniMax model and pricing survey — [API pricing breakdown](https://developer.puter.com/tutorials/minimax-api-pricing/) · [MiniMax API setup and models](https://minimax-ai.chat/docs/api/)
+- In-repo: `UltraAI/README.md`, `UltraAI/include/UltraAIVideoGen.h`, `UltraAI/include/UltraAIImageGen.h`, `UltraAI/src/Routing.cpp`, `UltraAI/adapters/_shared/include/UltraAITransport.h`, `UltraCanvas/include/UltraNet/UltraNetWebSocket.h`
