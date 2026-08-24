@@ -23,6 +23,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <initializer_list>
 #include <string>
 
 namespace UltraAI {
@@ -69,6 +70,18 @@ bool SetNodeInput(json& graph, const std::string& nodeId,
 void SetByTitle(json& graph, const std::string& title,
                 const std::string& classType, const std::string& field,
                 json value);
+
+// Set the first of `fields` the node already declares, and only that one.
+// Video workflows are the reason this exists: the frame count is
+// `video_frames` on SVD's conditioning node, `length` on the Hunyuan and
+// Wan latent nodes, and the model is `ckpt_name` on a checkpoint loader but
+// `unet_name` on a UNETLoader. Adding a key the node does not declare would
+// make ComfyUI reject the whole graph, so a caller's workflow only ever
+// gets fields it already has. Returns false when the node is missing or
+// declares none of the fields.
+bool SetExistingInput(json& graph, const std::string& title,
+                      const std::string& classType,
+                      std::initializer_list<const char*> fields, json value);
 
 } // namespace comfyui_detail
 } // namespace UltraAI

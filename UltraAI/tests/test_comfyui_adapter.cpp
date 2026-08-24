@@ -542,6 +542,70 @@ void TestVideoRejectionsAndCapabilities() {
                           "ImageOnlyCheckpointLoader"));
 }
 
+// A caller's text-to-video workflow uses different node classes and
+// different field names than the built-in SVD template. Binding must follow
+// the titles and touch only fields the nodes already declare — inventing
+// one would make ComfyUI reject the whole graph.
+void TestVideoWorkflowFieldNames() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    transport->ScriptResponse(JsonResponse(200, json{{"prompt_id", "v3"}}));
+    transport->ScriptResponse(JsonResponse(200, HistoryFinished("v3", "t2v.webm")));
+
+    const json workflow = {
+        {"1", {{"class_type", "UNETLoader"},
+               {"_meta", {{"title", "UltraAI Checkpoint"}}},
+               {"inputs", {{"unet_name", ""}, {"weight_dtype", "default"}}}}},
+        {"2", {{"class_type", "EmptyHunyuanLatentVideo"},
+               {"_meta", {{"title", "UltraAI Video"}}},
+               {"inputs", {{"width", 848}, {"height", 480}, {"length", 73},
+                           {"batch_size", 1}}}}},
+        {"3", {{"class_type", "SamplerCustomAdvanced"},
+               {"_meta", {{"title", "UltraAI Sampler"}}},
+               {"inputs", {{"noise_seed", 0}}}}},
+        {"4", {{"class_type", "CLIPTextEncode"},
+               {"_meta", {{"title", "UltraAI Positive"}}},
+               {"inputs", {{"text", ""}}}}}};
+
+    VideoGenConfig cfg;
+    cfg.defaultModel = "wan2.2_t2v.safetensors";
+    auto gen = CreateComfyUIVideoGen(cfg, nullptr, transport);
+
+    VideoGenRequest req;
+    req.prompt        = "a kettle boiling";
+    req.width         = 1280;
+    req.height        = 720;
+    req.durationSec   = 3.0;
+    req.fps           = 16;          // -> 48 frames
+    req.steps         = 30;          // no `steps` on this sampler
+    req.guidanceScale = 5.0;         // no `cfg` either
+    MakeFast(req.options);
+    req.options["return_url_only"] = true;
+    req.options["workflow"] = workflow.dump();
+
+    VideoGenResponse resp = gen->Generate(req);
+    EXPECT_TRUE(resp.error.IsOk());
+
+    const json graph = json::parse(transport->Requests()[0].body)["prompt"];
+    // The model lands on unet_name, not an invented ckpt_name.
+    EXPECT_EQ(graph["1"]["inputs"]["unet_name"], "wan2.2_t2v.safetensors");
+    EXPECT_TRUE(!graph["1"]["inputs"].contains("ckpt_name"));
+    // The frame count lands on `length`, and video_frames is not added.
+    EXPECT_EQ(graph["2"]["inputs"]["length"], 48);
+    EXPECT_TRUE(!graph["2"]["inputs"].contains("video_frames"));
+    EXPECT_EQ(graph["2"]["inputs"]["width"], 1280);
+    EXPECT_EQ(graph["2"]["inputs"]["height"], 720);
+    // This latent node has no fps input, so none is added.
+    EXPECT_TRUE(!graph["2"]["inputs"].contains("fps"));
+    // The seed lands on noise_seed; steps and cfg have nowhere to go and are
+    // dropped rather than invented.
+    EXPECT_TRUE(graph["3"]["inputs"]["noise_seed"].get<int64_t>() != 0);
+    EXPECT_TRUE(!graph["3"]["inputs"].contains("steps"));
+    EXPECT_TRUE(!graph["3"]["inputs"].contains("cfg"));
+    // The prompt binds by title even though the class differs from the
+    // built-in template's.
+    EXPECT_EQ(graph["4"]["inputs"]["text"], "a kettle boiling");
+}
+
 void TestFactoryRegistration() {
     const std::vector<std::string> providers = ListImageGenProviders();
     EXPECT_TRUE(std::find(providers.begin(), providers.end(), "comfyui") !=
@@ -564,6 +628,7 @@ int main() {
     TestCapabilitiesFromObjectInfo();
     TestImageToVideo();
     TestVideoRejectionsAndCapabilities();
+    TestVideoWorkflowFieldNames();
     TestFactoryRegistration();
     std::cout << "test_comfyui_adapter: all checks passed" << std::endl;
     return 0;

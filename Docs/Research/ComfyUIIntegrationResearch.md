@@ -385,9 +385,10 @@ resolves to it when registered.
 when a local model is actually installed). Same machinery, video templates, longer
 timeouts, `/view` for video payloads.
 
-**Phase 3 — UI and docs.** *(shipped: the dashboard's image and video
-dialogs now carry a model/checkpoint field, a credential field and — for
-images — a ComfyUI workflow file field.)* `Apps/UltraAIApp` picks the provider up for free;
+**Phase 3 — UI and docs.** *(shipped: the dashboard's image, video, speech
+and chat dialogs carry a model/checkpoint field and a credential field —
+plus, for images, a ComfyUI workflow file field — and their provider calls
+run off the UI thread, since a real generation takes minutes.)* `Apps/UltraAIApp` picks the provider up for free;
 what it needs is a way to choose a workflow template and point at a
 templates directory. Document the adapter in `Docs/Modules/UltraAI/` and
 the module `README.md` adapter table.
@@ -401,7 +402,7 @@ rule in `AGENTS.md` — the graph stays inside the adapter, reachable only via
 
 | Risk | Mitigation |
 |---|---|
-| Templates rot as core nodes evolve | Core nodes only; validate against `/object_info` at construction and report precisely which node is missing |
+| Templates rot as core nodes evolve | Core nodes only; validate against `/object_info` at construction and report precisely which node is missing. Borne out for video: text-to-video node names differ per model and per generation, so no template ships for it — a caller's workflow binds by node title, and only into fields the node already declares |
 | Users' own workflows have unmappable topologies | Binding overrides in `OptionsMap`; document the "your workflow, our parameters" contract |
 | Long generations vs. `ProviderConfig::timeoutMs` (60 s default) | Job API is the primary path; the blocking `Generate()` uses a separate, much longer generation timeout |
 | Server on another machine → images cross the network twice | Support the save-to-websocket path in phase 2 for remote servers |

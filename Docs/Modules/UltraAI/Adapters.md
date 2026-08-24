@@ -147,9 +147,23 @@ becomes listable after its first synthesis, so the console does it better.
 `ListVoices()` ignores its `language` argument because MiniMax's voice
 records carry no language tag.
 
-**Not covered.** MiniMax's text (M-series) and music APIs. The text models
-are OpenAI-compatible, so `openai` with a custom `baseUrl` reaches them
-today; music was closed to new accounts in August 2026.
+**Text needs no adapter.** MiniMax's M-series speaks the OpenAI Chat
+Completions format, so the existing `openai` adapter reaches it with a
+`baseUrl` — there is deliberately no `minimax` `ITextLLM`:
+
+```cpp
+TextLLMConfig cfg;
+cfg.providerId     = "openai";
+cfg.baseUrl        = "https://api.minimax.io";   // -> /v1/chat/completions
+cfg.apiKeyVaultRef = "ai.minimax.api_key";
+cfg.defaultModel   = "MiniMax-M2";
+auto llm = CreateTextLLM(cfg);
+```
+
+Compatibility is not identity — verify the specific fields you rely on.
+
+**Not covered.** Music generation: MiniMax closed that API to new accounts
+in August 2026.
 
 ---
 
@@ -343,6 +357,26 @@ caller-supplied workflow has an `UltraAI Positive` node. Text-to-video,
 restyling, interpolation and upscaling each need model-specific loaders and
 are rejected with `ErrorCode::UnsupportedFormat` unless a `workflow` option
 supplies one.
+
+**Why there is no built-in text-to-video template.** Every text-to-video
+model brings its own loaders and its own field names — the frame count is
+`video_frames` on SVD's conditioning node and `length` on the Hunyuan and
+Wan latent nodes; the model is `ckpt_name` on a checkpoint loader and
+`unet_name` on a `UNETLoader`; a `SamplerCustomAdvanced` graph has no
+`steps` or `cfg` at all. A template pinned to one of those would break on
+the next model generation and fail outright on an install without those
+exact files. Bring your own workflow instead — the adapter binds into it:
+
+- Nodes are found **by `_meta.title` first**, so the classes may be
+  anything. Title them `UltraAI Positive`, `UltraAI Negative`,
+  `UltraAI Checkpoint`, `UltraAI Video`, `UltraAI Sampler`,
+  `UltraAI Source`, `UltraAI Output`.
+- Each request field is written to **the first input the node already
+  declares** — model to `ckpt_name` / `unet_name` / `model_name`, frame
+  count to `video_frames` / `length` / `num_frames`, seed to `seed` /
+  `noise_seed`. A field the node does not declare is dropped, never added:
+  an unknown input would make ComfyUI reject the whole graph.
+- Anything the interface cannot express goes through `node_overrides`.
 
 The template writes an animated WebP, which `VideoFormat` has no name for:
 `GetCapabilities()` reports `VideoFormat::Auto` and the produced blob

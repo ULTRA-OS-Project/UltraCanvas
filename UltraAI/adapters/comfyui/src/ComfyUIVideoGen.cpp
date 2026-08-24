@@ -242,29 +242,39 @@ private:
                 std::lround(request.durationSec * outFps)));
         }
 
+        // Every video binding below goes through SetExistingInput: video
+        // models disagree on what these fields are called (video_frames vs
+        // length, ckpt_name vs unet_name), and a field a node does not
+        // declare would make ComfyUI reject the graph. The built-in SVD
+        // template and a caller's Hunyuan or Wan workflow both bind through
+        // the same titles.
+
         // --- model
         const std::string checkpoint =
             !request.model.empty() ? request.model : config_.defaultModel;
         if (!checkpoint.empty()) {
-            SetByTitle(graph, kTitleCheckpoint, "ImageOnlyCheckpointLoader",
-                       "ckpt_name", checkpoint);
+            SetExistingInput(graph, kTitleCheckpoint,
+                             "ImageOnlyCheckpointLoader",
+                             {"ckpt_name", "unet_name", "model_name"},
+                             checkpoint);
         }
 
-        // --- video shape. SVD_img2vid_Conditioning owns the frame count and
+        // --- video shape. The titled video node owns the frame count and
         // the conditioning fps; the save node owns the playback fps.
         if (request.width > 0) {
-            SetByTitle(graph, kTitleVideo, "SVD_img2vid_Conditioning", "width",
-                       request.width);
+            SetExistingInput(graph, kTitleVideo, "SVD_img2vid_Conditioning",
+                             {"width"}, request.width);
         }
         if (request.height > 0) {
-            SetByTitle(graph, kTitleVideo, "SVD_img2vid_Conditioning", "height",
-                       request.height);
+            SetExistingInput(graph, kTitleVideo, "SVD_img2vid_Conditioning",
+                             {"height"}, request.height);
         }
-        SetByTitle(graph, kTitleVideo, "SVD_img2vid_Conditioning",
-                   "video_frames", outFrames);
-        SetByTitle(graph, kTitleVideo, "SVD_img2vid_Conditioning", "fps",
-                   outFps);
-        SetByTitle(graph, "UltraAI Output", "SaveAnimatedWEBP", "fps", outFps);
+        SetExistingInput(graph, kTitleVideo, "SVD_img2vid_Conditioning",
+                         {"video_frames", "length", "num_frames"}, outFrames);
+        SetExistingInput(graph, kTitleVideo, "SVD_img2vid_Conditioning",
+                         {"fps"}, outFps);
+        SetExistingInput(graph, "UltraAI Output", "SaveAnimatedWEBP",
+                         {"fps"}, outFps);
 
         // --- prompts, where the workflow has somewhere to put them. The
         // built-in SVD template has no text encoder, so these are no-ops
@@ -278,16 +288,18 @@ private:
                        request.negativePrompt);
         }
 
-        // --- sampling
-        SetByTitle(graph, kTitleSampler, "KSampler", "seed",
-                   static_cast<int64_t>(request.seed ? *request.seed
-                                                     : RandomSeed()));
+        // --- sampling. A workflow driven by SamplerCustomAdvanced has no
+        // seed/steps/cfg on its sampler node; those simply do not bind.
+        SetExistingInput(graph, kTitleSampler, "KSampler", {"seed", "noise_seed"},
+                         static_cast<int64_t>(request.seed ? *request.seed
+                                                           : RandomSeed()));
         if (request.steps) {
-            SetByTitle(graph, kTitleSampler, "KSampler", "steps", *request.steps);
+            SetExistingInput(graph, kTitleSampler, "KSampler", {"steps"},
+                             *request.steps);
         }
         if (request.guidanceScale) {
-            SetByTitle(graph, kTitleSampler, "KSampler", "cfg",
-                       *request.guidanceScale);
+            SetExistingInput(graph, kTitleSampler, "KSampler", {"cfg"},
+                             *request.guidanceScale);
         }
 
         // --- the conditioning image

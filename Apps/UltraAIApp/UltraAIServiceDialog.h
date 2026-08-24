@@ -12,7 +12,10 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasButton.h"
 
+#include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,7 +25,7 @@ namespace UltraAIApp {
 class UltraAIServiceDialog : public UltraCanvas::UltraCanvasModalDialog {
 public:
     UltraAIServiceDialog(std::string serviceName, std::string description);
-    ~UltraAIServiceDialog() override = default;
+    ~UltraAIServiceDialog() override;
 
     // Build the standard dialog shell. Calls BuildForm() so subclasses
     // can drop their own widgets between the description and the Run row.
@@ -35,9 +38,25 @@ protected:
     virtual long BuildForm(long formTop) = 0;
 
     // Subclass hook: invoked when the user clicks "Run". Implementation
-    // calls into the picked (or default-routed) UltraAI provider and
-    // pushes textual output via AppendResult() / SetResult().
+    // reads its widgets, then hands the provider call to RunOffThread().
     virtual void RunCapability() = 0;
+
+    // What one run produced: the line for the status label and the body for
+    // the result area.
+    struct RunOutcome {
+        std::string status = "Done";
+        std::string result;
+    };
+
+    // Run `work` on a worker thread and deliver its outcome back on the UI
+    // thread. Providers are real now — a ComfyUI or Hailuo generation takes
+    // minutes, and calling one from the click handler freezes the window
+    // for that whole time (no repaint, no Close button).
+    //
+    // `work` runs off the UI thread: it must not touch widgets. Read every
+    // input before calling this and capture the values by value. A second
+    // Run while one is in flight is ignored.
+    void RunOffThread(std::function<RunOutcome()> work);
 
     // Helpers for subclasses.
     void SetResult(const std::string& text);
@@ -102,6 +121,15 @@ protected:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> resultArea_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  providerDropdown_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    runButton_;
+
+    // One run at a time; the button says so while it lasts.
+    bool running_ = false;
+    // The destructor flips this so a queued delivery that outlives the
+    // dialog becomes a no-op instead of a dangling call (the pattern
+    // UltraCanvasAudioPlayerElement and UltraCanvasAlbum use).
+    std::shared_ptr<std::atomic<bool>> uiAlive_ =
+        std::make_shared<std::atomic<bool>>(true);
 };
 
 } // namespace UltraAIApp

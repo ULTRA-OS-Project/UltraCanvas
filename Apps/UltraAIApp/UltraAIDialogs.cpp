@@ -160,9 +160,6 @@ long ChatDialog::BuildForm(long y) {
 }
 
 void ChatDialog::RunCapability() {
-    SetStatus("Running...");
-    SetResult("");
-
     const std::string provider = SelectedProviderId();
 
     TextLLMConfig cfg;
@@ -177,13 +174,6 @@ void ChatDialog::RunCapability() {
         return;
     }
 
-    Error createError;
-    auto llm = CreateTextLLM(cfg, &createError);
-    if (!llm) {
-        SetStatus("Failed to create TextLLM: " + createError.message);
-        return;
-    }
-
     ChatRequest req;
     if (input1_ && !input1_->GetText().empty()) {
         Message sys; sys.role = Role::System; sys.text = input1_->GetText();
@@ -193,15 +183,26 @@ void ChatDialog::RunCapability() {
     usr.text = input2_ ? input2_->GetText() : "";
     req.messages.push_back(std::move(usr));
 
-    auto resp = llm->Chat(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error) << resp.text
-       << "\n\n(provider=" << llm->GetCapabilities().providerId
-       << "  model=" << resp.model
-       << "  in=" << resp.usage.inputTokens
-       << "  out=" << resp.usage.outputTokens << ")";
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto llm = CreateTextLLM(cfg, &createError);
+        if (!llm) {
+            outcome.status = "Failed to create TextLLM";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = llm->Chat(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error) << resp.text
+           << "\n\n(provider=" << llm->GetCapabilities().providerId
+           << "  model=" << resp.model
+           << "  in=" << resp.usage.inputTokens
+           << "  out=" << resp.usage.outputTokens << ")";
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -235,15 +236,8 @@ long EmbeddingsDialog::BuildForm(long y) {
 }
 
 void EmbeddingsDialog::RunCapability() {
-    SetStatus("Running...");
-
-    Error createError;
-    auto emb = CreateEmbeddings({.providerId = SelectedProviderId()},
-                                &createError);
-    if (!emb) {
-        SetStatus("Failed to create Embeddings: " + createError.message);
-        return;
-    }
+    EmbeddingsConfig cfg;
+    cfg.providerId = SelectedProviderId();
 
     EmbeddingRequest req;
     req.input = SplitLines(input1_ ? input1_->GetText() : "");
@@ -252,6 +246,16 @@ void EmbeddingsDialog::RunCapability() {
     }
     if (input2_ && !input2_->GetText().empty()) {
         try { req.dimensions = std::stoi(input2_->GetText()); } catch (...) {}
+    }
+
+    RunOffThread([cfg, req]() -> RunOutcome {
+    RunOutcome outcome;
+    Error createError;
+    auto emb = CreateEmbeddings(cfg, &createError);
+    if (!emb) {
+        outcome.status = "Failed to create Embeddings";
+        outcome.result = createError.message;
+        return outcome;
     }
 
     auto resp = emb->Embed(req);
@@ -271,8 +275,9 @@ void EmbeddingsDialog::RunCapability() {
                                                  resp.embeddings[1]);
         os << "\ncos(0, 1) = " << s;
     }
-    SetResult(os.str());
-    SetStatus("Done");
+    outcome.result = os.str();
+    return outcome;
+    });
 }
 
 // ===================================================================
@@ -343,11 +348,16 @@ void SpeechToTextDialog::RunCapability() {
 
 TextToSpeechDialog::TextToSpeechDialog()
     : UltraAIServiceDialog("Text to Speech",
-        "Synthesize speech from text. The mock returns placeholder "
-        "audio bytes (one byte per character).") {}
+        "Synthesize speech from text. Voice ids come from the provider — "
+        "the result lists the ones this provider offers.") {}
 
 long TextToSpeechDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListTextToSpeechProviders());
+    AddProviderAndModelRow(y, "tts", ListTextToSpeechProviders(),
+                           "Model (optional)", "e.g. speech-2.8-turbo",
+                           modelInput_);
+    AddLabelledInput(y, "tts-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
 
     AddDialogElement(MakeLabel("tts-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Text to speak"));
@@ -359,7 +369,8 @@ long TextToSpeechDialog::BuildForm(long y) {
 
     AddDialogElement(MakeLabel("tts-voice-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
-                               "Voice id (try mock-aria | mock-leo | mock-greta)"));
+                               "Voice id (mock: mock-aria | mock-leo; "
+                               "cloud: see the listing below)"));
     y += kLabelHeight + 2;
     input2_ = MakeInput("tts-voice", kMargin, y, 240, kRowHeight, "mock-aria");
     AddDialogElement(input2_);
@@ -368,36 +379,50 @@ long TextToSpeechDialog::BuildForm(long y) {
 }
 
 void TextToSpeechDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    Error createError;
-    auto tts = CreateTextToSpeech({.providerId = SelectedProviderId()},
-                                  &createError);
-    if (!tts) {
-        SetStatus("Failed to create TTS: " + createError.message);
+    TextToSpeechConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
         return;
     }
 
     SpeakRequest req;
     req.text    = input1_ ? input1_->GetText() : "";
-    req.voiceId = input2_ ? input2_->GetText() : "mock-aria";
+    req.voiceId = input2_ ? input2_->GetText() : "";
     req.format  = TtsAudioFormat::Mp3;
 
-    auto resp = tts->Speak(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error)
-       << "audio bytes : " << FormatBytes(resp.audio.bytes.size()) << "\n"
-       << "mime        : " << resp.audio.mimeType << "\n"
-       << "duration    : " << resp.durationSec << " s";
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto tts = CreateTextToSpeech(cfg, &createError);
+        if (!tts) {
+            outcome.status = "Failed to create TTS";
+            outcome.result = createError.message;
+            return outcome;
+        }
 
-    // Show available voices for the user's reference.
-    os << "\n\nAvailable voices:";
-    for (const auto& v : tts->ListVoices()) {
-        os << "\n  " << v.id << "  (" << v.displayName
-           << ", " << v.language << ")";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+        auto resp = tts->Speak(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error)
+           << "audio bytes : " << FormatBytes(resp.audio.bytes.size()) << "\n"
+           << "mime        : " << resp.audio.mimeType << "\n"
+           << "duration    : " << resp.durationSec << " s";
+
+        // Show available voices for the user's reference.
+        os << "\n\nAvailable voices:";
+        for (const auto& v : tts->ListVoices()) {
+            os << "\n  " << v.id << "  (" << v.displayName
+               << ", " << v.language << ")";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -407,7 +432,7 @@ void TextToSpeechDialog::RunCapability() {
 ImageGenDialog::ImageGenDialog()
     : UltraAIServiceDialog("Image Generation",
         "Model is a cloud model id or a local ComfyUI checkpoint. "
-        "Run blocks this window until the provider answers.") {}
+        "Runs happen off the UI thread, so the window stays usable.") {}
 
 long ImageGenDialog::BuildForm(long y) {
     AddProviderAndModelRow(y, "ig", ListImageGenProviders(),
@@ -442,8 +467,6 @@ long ImageGenDialog::BuildForm(long y) {
 }
 
 void ImageGenDialog::RunCapability() {
-    SetStatus("Running...");
-
     const std::string provider = SelectedProviderId();
 
     ImageGenConfig cfg;
@@ -454,13 +477,6 @@ void ImageGenDialog::RunCapability() {
     std::string credentialStatus;
     if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
         SetStatus(credentialStatus);
-        return;
-    }
-
-    Error createError;
-    auto ig = CreateImageGen(cfg, &createError);
-    if (!ig) {
-        SetStatus("Failed to create ImageGen: " + createError.message);
         return;
     }
 
@@ -489,19 +505,30 @@ void ImageGenDialog::RunCapability() {
         try { req.count = std::stoi(input3_->GetText()); } catch (...) {}
     }
 
-    auto resp = ig->Generate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error)
-       << "model    : " << resp.model << "\n"
-       << "images   : " << resp.images.size() << "\n";
-    for (size_t i = 0; i < resp.images.size(); ++i) {
-        const auto& g = resp.images[i];
-        os << "  [" << i << "] " << FormatBytes(g.image.bytes.size())
-           << "  mime=" << g.image.mimeType
-           << "  seed=" << g.seed << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto ig = CreateImageGen(cfg, &createError);
+        if (!ig) {
+            outcome.status = "Failed to create ImageGen";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = ig->Generate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error)
+           << "model    : " << resp.model << "\n"
+           << "images   : " << resp.images.size() << "\n";
+        for (size_t i = 0; i < resp.images.size(); ++i) {
+            const auto& g = resp.images[i];
+            os << "  [" << i << "] " << FormatBytes(g.image.bytes.size())
+               << "  mime=" << g.image.mimeType
+               << "  seed=" << g.seed << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -642,7 +669,7 @@ void TranslatorDialog::RunCapability() {
 VideoGenDialog::VideoGenDialog()
     : UltraAIServiceDialog("Video Generation",
         "Model is a cloud model id or a local ComfyUI checkpoint. "
-        "Run blocks this window until the provider answers.") {}
+        "Runs happen off the UI thread, so the window stays usable.") {}
 
 long VideoGenDialog::BuildForm(long y) {
     AddProviderAndModelRow(y, "vg", ListVideoGenProviders(),
@@ -674,8 +701,6 @@ long VideoGenDialog::BuildForm(long y) {
 }
 
 void VideoGenDialog::RunCapability() {
-    SetStatus("Running...");
-
     const std::string provider = SelectedProviderId();
 
     VideoGenConfig cfg;
@@ -686,13 +711,6 @@ void VideoGenDialog::RunCapability() {
     std::string credentialStatus;
     if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
         SetStatus(credentialStatus);
-        return;
-    }
-
-    Error createError;
-    auto vg = CreateVideoGen(cfg, &createError);
-    if (!vg) {
-        SetStatus("Failed to create VideoGen: " + createError.message);
         return;
     }
 
@@ -712,18 +730,30 @@ void VideoGenDialog::RunCapability() {
         try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}
     }
 
-    auto resp = vg->Generate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error);
-    for (size_t i = 0; i < resp.videos.size(); ++i) {
-        const auto& v = resp.videos[i];
-        os << "video      : " << v.width << "x" << v.height
-           << " @ " << v.fps << "fps, " << v.durationSec << "s\n"
-           << "video bytes: " << FormatBytes(v.video.bytes.size()) << "\n"
-           << "thumb bytes: " << FormatBytes(v.thumbnail.bytes.size()) << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto vg = CreateVideoGen(cfg, &createError);
+        if (!vg) {
+            outcome.status = "Failed to create VideoGen";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = vg->Generate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error);
+        for (size_t i = 0; i < resp.videos.size(); ++i) {
+            const auto& v = resp.videos[i];
+            os << "video      : " << v.width << "x" << v.height
+               << " @ " << v.fps << "fps, " << v.durationSec << "s\n"
+               << "video bytes: " << FormatBytes(v.video.bytes.size()) << "\n"
+               << "thumb bytes: " << FormatBytes(v.thumbnail.bytes.size())
+               << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================

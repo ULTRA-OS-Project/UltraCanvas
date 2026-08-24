@@ -50,7 +50,21 @@ private:
 
 ULTRAAI_DECLARE_DIALOG(EmbeddingsDialog)
 ULTRAAI_DECLARE_DIALOG(SpeechToTextDialog)
-ULTRAAI_DECLARE_DIALOG(TextToSpeechDialog)
+// Speech synthesis: text and voice id, plus the model and a credential —
+// the cloud providers behind this capability need both, and their voice ids
+// come from the provider rather than a fixed list.
+class TextToSpeechDialog : public UltraAIServiceDialog {
+public:
+    TextToSpeechDialog();
+protected:
+    long BuildForm(long formTop) override;
+    void RunCapability() override;
+private:
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input1_;   // text
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // voice id
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  modelInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  keyInput_;
+};
 // Image generation: prompt, size and count, plus the model (a checkpoint
 // file name for ComfyUI), a credential for cloud providers, and an optional
 // ComfyUI workflow file whose contents are passed as the "workflow" option.

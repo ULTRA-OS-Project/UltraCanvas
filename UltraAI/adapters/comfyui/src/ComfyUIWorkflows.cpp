@@ -215,5 +215,23 @@ void SetByTitle(json& graph, const std::string& title,
     SetNodeInput(graph, id, field, std::move(value));
 }
 
+bool SetExistingInput(json& graph, const std::string& title,
+                      const std::string& classType,
+                      std::initializer_list<const char*> fields, json value) {
+    const std::string id = FindNodeId(graph, title, classType);
+    if (id.empty() || !graph.contains(id)) return false;
+
+    const json& node = graph[id];
+    if (!node.is_object() || !node.contains("inputs") ||
+        !node["inputs"].is_object()) {
+        return false;
+    }
+    for (const char* field : fields) {
+        if (!node["inputs"].contains(field)) continue;
+        return SetNodeInput(graph, id, field, std::move(value));
+    }
+    return false;
+}
+
 } // namespace comfyui_detail
 } // namespace UltraAI
