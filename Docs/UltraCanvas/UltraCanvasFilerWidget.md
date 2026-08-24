@@ -192,24 +192,17 @@ icon strip — which sits over the columns to its right — describes its button
 A right-click opens the file menu:
 
 ```
+Open with      >  clicking the entry opens the selection with the OS default
+                  application; the submenu lists the applications the OS
+                  registers for the selected files (default app first), then
+                  entries added via AddOpenWithApp(), then "Other
+                  application…" (file dialog)
+──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
 Copy / Cut / Paste / Delete / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
-──────────
-Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type    >  all view types
-                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
-                             Docs / Spreadsheets / Videos  (checkboxes, all on)
-                  Dataset >  Size / Edit date / Creation date / Attributes /
-                             Length (audio/video) / Dimensions (bitmaps)
-                  Icon-Menu (checkbox: the small hover icon menu)
-                  Info-Bar (checkbox: the selection info bar)
-──────────
-Open with      >  the applications the OS registers for the selected files
-                  (default app first), then entries added via
-                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
@@ -218,6 +211,14 @@ Print
 Extras         >  Share / Attributes / Copy path / Access
                   (plus the host's items via extrasMenuProvider — in the
                   UltraFiler: Open prompt and the Pin / Unpin submenus)
+Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type    >  all view types
+                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                             Docs / Spreadsheets / Videos  (checkboxes, all on)
+                  Dataset >  Size / Edit date / Creation date / Attributes /
+                             Length (audio/video) / Dimensions (bitmaps)
+                  Icon-Menu (checkbox: the small hover icon menu)
+                  Info-Bar (checkbox: the selection info bar)
 Settings
 ```
 
@@ -229,7 +230,15 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
-- **Open with** lists the OS-registered applications through
+- **Open with** is the first entry — opening a file is what the menu is
+  opened for most often — and the entry itself is clickable: it opens the
+  whole selection with the OS default application, the same thing a
+  double-click does (a single file that is a program is run, a script asks
+  first). Hovering opens the submenu as usual, so the application list stays
+  one move away. The click is offered whenever the selection is real files on
+  disk, `SetSystemOpenWithEnabled(false)` included — that flag only removes
+  the OS-registered section of the submenu.
+- The **Open with** submenu lists the OS-registered applications through
   [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
   icon, the default application first. The lookups are prewarmed on that
   service's background worker (the first widget triggers the
@@ -242,9 +251,12 @@ Notes:
   `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
   "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
   preset to the platform's application filter and directory; the pick is
-  launched detached with the selected files. On platforms whose enumeration
-  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
-  section is empty but default-open and the picker already work.
+  launched detached with the selected files. Every desktop platform
+  enumerates: freedesktop `.desktop` entries on Linux/BSD, the handlers
+  Explorer lists on Windows, Launch Services on macOS 12+. Where a platform
+  cannot type a file (Windows and macOS associate by extension, so a name
+  without one has no candidates) the OS section stays empty and default-open
+  plus the picker still work.
 - `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
   file with the OS default application **when no `onFileActivated` callback
   is installed** — activation semantics for simple embedders; hosts with

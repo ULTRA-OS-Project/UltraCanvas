@@ -210,7 +210,9 @@ the backing implementation can be replaced without affecting callers.
   for a file, and detached launching. Core worker/cache in
   `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
   internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
-  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  (Linux/BSD: freedesktop; Windows: SHAssocEnumHandlers / IAssocHandler;
+  macOS: NSWorkspace / Launch Services — all three enumerate, launch and
+  extract application icons).
   Public surface (`namespace FileAssociations` + `FileAssociationApp`):
   - `GetApplicationsForFiles` — candidates for a selection (intersection),
     default application first, cache-served once prewarmed.
@@ -15978,12 +15980,17 @@ struct. The per-platform backends are internal
 | Platform | Enumeration | Default open | Launch picked app |
 |---|---|---|---|
 | Linux / BSD | ✓ freedesktop (shared-mime-info, mimeapps.list, .desktop, mimeinfo.cache; plain text parsing, no GIO/GTK dependency) | ✓ registered handler, `xdg-open` fallback | ✓ |
-| Windows | pending (P2: `SHAssocEnumHandlers`) | ✓ ShellExecuteEx "open" | ✓ |
-| macOS | pending (P3: NSWorkspace) | ✓ `/usr/bin/open` | ✓ (`open -a` for bundles) |
+| Windows | ✓ shell association APIs (`SHAssocEnumHandlers` + `IAssocHandler`, the list Explorer's own "Open with" shows; default from `AssocQueryString`) | ✓ ShellExecuteEx "open" | ✓ `IAssocHandler::Invoke` on the selection |
+| macOS | ✓ NSWorkspace / Launch Services (`URLsForApplicationsToOpenContentType:`, default from `URLForApplicationToOpenContentType:`; needs macOS 12) | ✓ `/usr/bin/open` | ✓ `openURLs:withApplicationAtURL:` |
 | WASM | — (empty) | — (error) | — (error) |
 
 `Terminal=true` desktop entries are skipped on Linux (Explorer and Finder do
-not offer terminal programs either).
+not offer terminal programs either). Windows and macOS resolve candidates
+per file extension; a file without one (`Makefile`) has no associations
+there, while Linux still types it through its literal-name globs. On macOS
+before 12 the type-by-extension lookup does not exist, so enumeration
+reports nothing and the menu falls back to the manual entries plus the
+"Other application…" picker.
 
 ## API
 
@@ -16030,7 +16037,17 @@ first widget calls `PrewarmAsync()`, and every folder scan passes the
 folder's distinct extensions to `PrewarmExtensionsAsync()`. The Linux index
 re-checks its source files' mtimes (`mimeapps.list`, `mimeinfo.cache`,
 `globs2`, the applications directories) and rebuilds — dropping the
-extension cache — when anything changed.
+extension cache — when anything changed. Windows and macOS have no parseable
+database to watch, so their entries expire after a minute instead: the next
+lookup re-reads the registry / Launch Services, which is why a default
+association changed while the application runs shows up in the menu shortly
+after.
+
+Application icons on those two platforms are extracted once and kept as PNG
+files (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
+`~/Library/Caches/UltraCanvas/openwith-icons`), keyed by icon source, so the
+extraction survives both the expiry above and a restart. Linux `.desktop`
+icons already resolve to theme files and need no extraction.
 
 ## Example
 
@@ -16060,6 +16077,10 @@ code.
 
 ## Version
 
+- 1.1.0 (2026-08-24): P2 + P3 — Windows (`SHAssocEnumHandlers` /
+  `IAssocHandler`, icon extraction to PNG) and macOS (NSWorkspace /
+  Launch Services) enumeration backends. "Open with >" now lists real
+  applications on all three desktop platforms.
 - 1.0.0 (2026-08-16): P1 — service + Linux/BSD backend, prewarm worker,
   Windows/macOS default-open placeholders.
 
@@ -16261,24 +16282,17 @@ icon strip — which sits over the columns to its right — describes its button
 A right-click opens the file menu:
 
 ```
+Open with      >  clicking the entry opens the selection with the OS default
+                  application; the submenu lists the applications the OS
+                  registers for the selected files (default app first), then
+                  entries added via AddOpenWithApp(), then "Other
+                  application…" (file dialog)
+──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
 Copy / Cut / Paste / Delete / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
-──────────
-Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type    >  all view types
-                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
-                             Docs / Spreadsheets / Videos  (checkboxes, all on)
-                  Dataset >  Size / Edit date / Creation date / Attributes /
-                             Length (audio/video) / Dimensions (bitmaps)
-                  Icon-Menu (checkbox: the small hover icon menu)
-                  Info-Bar (checkbox: the selection info bar)
-──────────
-Open with      >  the applications the OS registers for the selected files
-                  (default app first), then entries added via
-                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
@@ -16287,6 +16301,14 @@ Print
 Extras         >  Share / Attributes / Copy path / Access
                   (plus the host's items via extrasMenuProvider — in the
                   UltraFiler: Open prompt and the Pin / Unpin submenus)
+Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type    >  all view types
+                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                             Docs / Spreadsheets / Videos  (checkboxes, all on)
+                  Dataset >  Size / Edit date / Creation date / Attributes /
+                             Length (audio/video) / Dimensions (bitmaps)
+                  Icon-Menu (checkbox: the small hover icon menu)
+                  Info-Bar (checkbox: the selection info bar)
 Settings
 ```
 
@@ -16298,7 +16320,15 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
-- **Open with** lists the OS-registered applications through
+- **Open with** is the first entry — opening a file is what the menu is
+  opened for most often — and the entry itself is clickable: it opens the
+  whole selection with the OS default application, the same thing a
+  double-click does (a single file that is a program is run, a script asks
+  first). Hovering opens the submenu as usual, so the application list stays
+  one move away. The click is offered whenever the selection is real files on
+  disk, `SetSystemOpenWithEnabled(false)` included — that flag only removes
+  the OS-registered section of the submenu.
+- The **Open with** submenu lists the OS-registered applications through
   [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
   icon, the default application first. The lookups are prewarmed on that
   service's background worker (the first widget triggers the
@@ -16311,9 +16341,12 @@ Notes:
   `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
   "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
   preset to the platform's application filter and directory; the pick is
-  launched detached with the selected files. On platforms whose enumeration
-  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
-  section is empty but default-open and the picker already work.
+  launched detached with the selected files. Every desktop platform
+  enumerates: freedesktop `.desktop` entries on Linux/BSD, the handlers
+  Explorer lists on Windows, Launch Services on macOS 12+. Where a platform
+  cannot type a file (Windows and macOS associate by extension, so a name
+  without one has no candidates) the OS section stays empty and default-open
+  plus the picker still work.
 - `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
   file with the OS default application **when no `onFileActivated` callback
   is installed** — activation semantics for simple embedders; hosts with
@@ -26076,6 +26109,12 @@ MenuItemData::Radio(label, group, checked, toggleCallback)
 // Create submenu
 MenuItemData::Submenu(label, subItems)
 MenuItemData::Submenu(label, iconPath, subItems)
+
+// A submenu whose parent entry is itself clickable: hovering opens the child
+// list as always, activating the entry runs onClick and closes the menu.
+// (The Filer's "Open with" opens the default application this way.)
+MenuItemData openWith = MenuItemData::Submenu("Open with", appItems);
+openWith.onClick = [] { OpenWithDefaultApplication(); };
 
 // Create input field
 MenuItemData::Input(label, placeholder, inputCallback)

@@ -127,10 +127,12 @@ components:
 - **Open files:** double-click / Enter shows a previewable file in the
   preview pane and launches every other file with the application the OS
   registers for it (`UltraCanvasFileAssociations`), like a double-click in
-  Explorer. The context menu's **Open with >** lists all registered
-  applications for the selection (default first, with icons) plus **Other
-  application…**, a file-dialog picker; launches are detached, so closing
-  UltraFiler leaves the opened applications running. The application lists
+  Explorer. **Open with >** is the first entry of the context menu, and
+  clicking it does the same as a double-click — opens the selection with the
+  default application; its submenu lists all registered applications for the
+  selection (default first, with icons) plus **Other application…**, a
+  file-dialog picker. Launches are detached, so closing UltraFiler leaves the
+  opened applications running. The application lists
   are prewarmed in the background while a folder is shown, so the menu opens
   without any lookup delay.
 - **Status bar:** entry count of the folder, selection count and summed size.

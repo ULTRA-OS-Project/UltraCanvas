@@ -40,7 +40,9 @@ the backing implementation can be replaced without affecting callers.
   for a file, and detached launching. Core worker/cache in
   `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
   internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
-  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  (Linux/BSD: freedesktop; Windows: SHAssocEnumHandlers / IAssocHandler;
+  macOS: NSWorkspace / Launch Services — all three enumerate, launch and
+  extract application icons).
   Public surface (`namespace FileAssociations` + `FileAssociationApp`):
   - `GetApplicationsForFiles` — candidates for a selection (intersection),
     default application first, cache-served once prewarmed.
