@@ -8,16 +8,23 @@
 //     {"type":"error","code":"NetworkError","message":"..."},
 //     {"type":"sse","status":200,
 //      "events":[{"event":"message_start","data":"...","id":"","retryMs":0}],
+//      "error":{"code":"None","message":""}},
+//     {"type":"websocket",
+//      "messages":[{"text":"{\"type\":\"progress\"}"},
+//                  {"binary":"<base64>"}],
 //      "error":{"code":"None","message":""}}
 //   ]
 // }
 // Error codes are stored by name so cassettes stay readable and stable if
-// the ErrorCode enum is ever reordered.
-// Version: 0.1.0
-// Last Modified: 2026-08-21
+// the ErrorCode enum is ever reordered. Binary WebSocket frames are stored
+// base64-encoded because the cassette itself is JSON.
+// Version: 0.2.0
+// Last Modified: 2026-08-24
 // Author: UltraAI Module
 
 #include "UltraAICassette.h"
+
+#include "UltraAIBase64.h"
 
 #include <nlohmann/json.hpp>
 
@@ -143,6 +150,30 @@ bool LoadCassette(const std::string& path, ScriptedTransport& transport,
             if (ex.contains("error")) finalError = ErrorFromJson(ex["error"]);
             transport.ScriptSse(std::move(events), std::move(finalError),
                                 ex.value("status", 200));
+        } else if (type == "websocket") {
+            std::vector<TransportWsMessage> messages;
+            if (ex.contains("messages") && ex["messages"].is_array()) {
+                for (const auto& msgj : ex["messages"]) {
+                    TransportWsMessage msg;
+                    if (msgj.contains("binary") && msgj["binary"].is_string()) {
+                        bool ok = false;
+                        msg.binary = true;
+                        msg.bytes  = Base64Decode(msgj["binary"], &ok);
+                        if (!ok) {
+                            return Fail(outErrorMessage,
+                                        "cassette websocket frame is not "
+                                        "valid base64: " + path);
+                        }
+                    } else {
+                        msg.text = msgj.value("text", "");
+                    }
+                    messages.push_back(std::move(msg));
+                }
+            }
+            Error finalError;
+            if (ex.contains("error")) finalError = ErrorFromJson(ex["error"]);
+            transport.ScriptWebSocket(std::move(messages),
+                                      std::move(finalError));
         } else {
             return Fail(outErrorMessage,
                         "cassette exchange has unknown type '" + type +
@@ -203,6 +234,36 @@ CancelFn RecordingTransport::SseStream(const TransportRequest& request,
         });
 }
 
+CancelFn RecordingTransport::WebSocketStream(const TransportRequest& request,
+                                             WsMessageCallback onMessage,
+                                             WsCompleteCallback onComplete) {
+    auto messages = std::make_shared<std::vector<TransportWsMessage>>();
+    auto mu       = std::make_shared<std::mutex>();
+    return inner_->WebSocketStream(
+        request,
+        [messages, mu, onMessage](const TransportWsMessage& msg) {
+            {
+                std::lock_guard<std::mutex> lock(*mu);
+                messages->push_back(msg);
+            }
+            if (onMessage) onMessage(msg);
+        },
+        [this, messages, mu, onComplete](const Error& error) {
+            Recorded rec;
+            rec.isWs  = true;
+            rec.error = error;
+            {
+                std::lock_guard<std::mutex> lock(*mu);
+                rec.wsMessages = *messages;
+            }
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                exchanges_.push_back(std::move(rec));
+            }
+            if (onComplete) onComplete(error);
+        });
+}
+
 bool RecordingTransport::Save(const std::string& path,
                               std::string* outErrorMessage) const {
     json exchanges = json::array();
@@ -210,7 +271,18 @@ bool RecordingTransport::Save(const std::string& path,
         std::lock_guard<std::mutex> lock(mu_);
         for (const auto& rec : exchanges_) {
             json ex;
-            if (rec.isSse) {
+            if (rec.isWs) {
+                ex["type"] = "websocket";
+                json messages = json::array();
+                for (const auto& msg : rec.wsMessages) {
+                    json msgj;
+                    if (msg.binary) msgj["binary"] = Base64Encode(msg.bytes);
+                    else            msgj["text"]   = msg.text;
+                    messages.push_back(std::move(msgj));
+                }
+                ex["messages"] = std::move(messages);
+                if (!rec.error.IsOk()) ex["error"] = ErrorToJson(rec.error);
+            } else if (rec.isSse) {
                 ex["type"]   = "sse";
                 ex["status"] = rec.sseStatusCode;
                 json events = json::array();

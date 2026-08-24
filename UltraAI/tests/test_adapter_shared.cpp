@@ -2,16 +2,23 @@
 // Exercises the shared adapter infrastructure in adapters/_shared:
 // credential resolution order, HTTP status -> Error mapping, Retry-After
 // parsing, retry policy decisions and backoff, the stream-handle
-// cancellation contract, and the ScriptedTransport test double.
+// cancellation contract, base64, multipart bodies, the asynchronous-job
+// poll loop, and the ScriptedTransport test double (requests, SSE and
+// WebSocket).
 //
 // Uses plain asserts so the test suite has no third-party dependency.
 
+#include "UltraAIBase64.h"
 #include "UltraAICredentials.h"
 #include "UltraAIHttpError.h"
+#include "UltraAIJobPoll.h"
+#include "UltraAIMultipart.h"
 #include "UltraAIRetryPolicy.h"
 #include "UltraAIStreamHandleBase.h"
 #include "UltraAITransport.h"
 
+#include <atomic>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -232,6 +239,203 @@ void TestScriptedTransportSse() {
     EXPECT_EQ(finalStatus, 429);
 }
 
+void TestBase64() {
+    // Round-trip every padding case.
+    const std::vector<std::string> samples = {"", "a", "ab", "abc", "abcd",
+                                              std::string("\x00\x01\xfe\xff", 4)};
+    for (const std::string& sample : samples) {
+        const std::vector<uint8_t> bytes(sample.begin(), sample.end());
+        bool ok = false;
+        const std::vector<uint8_t> back = Base64Decode(Base64Encode(bytes), &ok);
+        EXPECT_TRUE(ok);
+        EXPECT_TRUE(back == bytes);
+    }
+
+    // Known vectors (RFC 4648).
+    EXPECT_EQ(Base64Encode(std::string("f")),      std::string("Zg=="));
+    EXPECT_EQ(Base64Encode(std::string("fo")),     std::string("Zm8="));
+    EXPECT_EQ(Base64Encode(std::string("foo")),    std::string("Zm9v"));
+    EXPECT_EQ(Base64Encode(std::string("foobar")), std::string("Zm9vYmFy"));
+
+    // Whitespace is ignored; junk is rejected rather than silently dropped.
+    bool ok = false;
+    EXPECT_TRUE(Base64Decode("Zm9v\nYmFy", &ok).size() == 6);
+    EXPECT_TRUE(ok);
+    Base64Decode("Zm9v*YmFy", &ok);
+    EXPECT_TRUE(!ok);
+    Base64Decode("Zg==Zg==", &ok);
+    EXPECT_TRUE(!ok);
+
+    EXPECT_EQ(Base64DataUrl("image/png", {0x66, 0x6f, 0x6f}),
+              std::string("data:image/png;base64,Zm9v"));
+}
+
+void TestMultipartBody() {
+    MultipartPart file;
+    file.name        = "image";
+    file.filename    = "shot.png";
+    file.contentType = "image/png";
+    file.value       = "\x89PNG-bytes";
+
+    MultipartPart field;
+    field.name  = "overwrite";
+    field.value = "true";
+
+    const MultipartBody body = BuildMultipartBody({file, field}, "BOUNDARY");
+    EXPECT_EQ(body.contentType,
+              std::string("multipart/form-data; boundary=BOUNDARY"));
+    EXPECT_EQ(body.body,
+              std::string("--BOUNDARY\r\n"
+                          "Content-Disposition: form-data; name=\"image\"; "
+                          "filename=\"shot.png\"\r\n"
+                          "Content-Type: image/png\r\n\r\n"
+                          "\x89PNG-bytes\r\n"
+                          "--BOUNDARY\r\n"
+                          "Content-Disposition: form-data; name=\"overwrite\""
+                          "\r\n\r\ntrue\r\n"
+                          "--BOUNDARY--\r\n"));
+
+    // A generated boundary must not occur inside the content it delimits.
+    MultipartPart adversarial;
+    adversarial.name  = "field";
+    adversarial.value = "----UltraAIFormBoundary1x0";
+    const MultipartBody generated = BuildMultipartBody({adversarial});
+    const std::string mark =
+        generated.contentType.substr(generated.contentType.find("boundary=") + 9);
+    EXPECT_TRUE(adversarial.value.find(mark) == std::string::npos);
+
+    // A quoted parameter cannot smuggle a header break.
+    MultipartPart injected;
+    injected.name     = "x";
+    injected.filename = "a\"\r\nX-Evil: 1";
+    injected.value    = "v";
+    const MultipartBody safe = BuildMultipartBody({injected}, "B");
+    EXPECT_TRUE(safe.body.find("X-Evil: 1\r\n\r\n") == std::string::npos);
+    EXPECT_TRUE(safe.body.find("filename=\"aX-Evil: 1\"") != std::string::npos);
+}
+
+void TestJobPoll() {
+    // Completes after three polls.
+    JobPollOptions options;
+    options.initialDelayMs = 0;
+    options.intervalMs     = 0;
+    options.maxIntervalMs  = 0;
+    options.timeoutMs      = 5000;
+
+    int calls = 0;
+    Error error;
+    JobPollOutcome outcome = RunJobPoll(options, nullptr, [&](Error*) {
+        return ++calls < 3 ? JobPollState::Pending : JobPollState::Completed;
+    }, &error);
+    EXPECT_EQ(outcome, JobPollOutcome::Completed);
+    EXPECT_EQ(calls, 3);
+    EXPECT_TRUE(error.IsOk());
+
+    // A poll that fails is terminal, and its error is reported verbatim.
+    outcome = RunJobPoll(options, nullptr, [](Error* e) {
+        e->code    = ErrorCode::ContentFiltered;
+        e->message = "nope";
+        return JobPollState::Failed;
+    }, &error);
+    EXPECT_EQ(outcome, JobPollOutcome::Failed);
+    EXPECT_EQ(error.code, ErrorCode::ContentFiltered);
+    EXPECT_EQ(error.message, std::string("nope"));
+
+    // Cancellation is observed before the next poll.
+    std::atomic<bool> cancelled{true};
+    calls = 0;
+    outcome = RunJobPoll(options, [&] { return cancelled.load(); },
+                         [&](Error*) { ++calls; return JobPollState::Pending; },
+                         &error);
+    EXPECT_EQ(outcome, JobPollOutcome::Cancelled);
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(error.code, ErrorCode::Cancelled);
+
+    // A never-finishing job times out, and the last transient error is kept.
+    options.timeoutMs = 1;
+    outcome = RunJobPoll(options, nullptr, [](Error* e) {
+        e->code    = ErrorCode::NetworkError;
+        e->message = "connection refused";
+        return JobPollState::Pending;
+    }, &error);
+    EXPECT_EQ(outcome, JobPollOutcome::TimedOut);
+    EXPECT_EQ(error.code, ErrorCode::Timeout);
+    EXPECT_TRUE(error.message.find("connection refused") != std::string::npos);
+}
+
+void TestScriptedTransportWebSocket() {
+    ScriptedTransport transport;
+
+    TransportWsMessage text;
+    text.text = "{\"type\":\"progress\"}";
+    TransportWsMessage binary;
+    binary.binary = true;
+    binary.bytes  = {0, 0, 0, 1, 0, 0, 0, 2, 0xAA};
+    transport.ScriptWebSocket({text, binary});
+
+    TransportRequest req;
+    req.url = "http://127.0.0.1:8188/ws?clientId=test";
+
+    std::vector<TransportWsMessage> seen;
+    bool completed = false;
+    Error final;
+    CancelFn cancel = transport.WebSocketStream(
+        req,
+        [&](const TransportWsMessage& message) { seen.push_back(message); },
+        [&](const Error& error) { completed = true; final = error; });
+
+    EXPECT_EQ(seen.size(), size_t(2));
+    EXPECT_TRUE(!seen[0].binary);
+    EXPECT_TRUE(seen[1].binary);
+    EXPECT_EQ(seen[1].bytes.size(), size_t(9));
+    EXPECT_TRUE(completed);
+    EXPECT_TRUE(final.IsOk());
+
+    // The recorded request is available for assertions, and cancelling is
+    // observable.
+    EXPECT_EQ(transport.Requests().size(), size_t(1));
+    EXPECT_TRUE(!transport.WasCancelled());
+    cancel();
+    EXPECT_TRUE(transport.WasCancelled());
+
+    // An unscripted WebSocket call fails through onComplete rather than
+    // hanging, and a scripted WebSocket is not handed to Request().
+    ScriptedTransport strict;
+    Error unscripted;
+    strict.WebSocketStream(req, nullptr,
+                           [&](const Error& error) { unscripted = error; });
+    EXPECT_EQ(unscripted.code, ErrorCode::ProviderError);
+
+    ScriptedTransport mismatched;
+    mismatched.ScriptWebSocket({});
+    Error wrongKind;
+    mismatched.Request(req, &wrongKind);
+    EXPECT_EQ(wrongKind.code, ErrorCode::ProviderError);
+}
+
+void TestDefaultTransportHasNoWebSocket() {
+    // A transport that predates the WebSocket seam still compiles and says
+    // so through onComplete instead of dropping the caller's stream.
+    struct RequestOnlyTransport : ITransport {
+        TransportResponse Request(const TransportRequest&, Error*) override {
+            return {};
+        }
+        CancelFn SseStream(const TransportRequest&, SseEventCallback,
+                           SseCompleteCallback) override {
+            return [] {};
+        }
+    } transport;
+
+    Error error;
+    bool called = false;
+    transport.WebSocketStream({}, nullptr, [&](const Error& e) {
+        called = true;
+        error  = e;
+    });
+    EXPECT_TRUE(called);
+    EXPECT_EQ(error.code, ErrorCode::UnsupportedFormat);
+}
+
 } // namespace
 
 int main() {
@@ -242,6 +446,11 @@ int main() {
     TestStreamHandleBase();
     TestScriptedTransportRequests();
     TestScriptedTransportSse();
+    TestBase64();
+    TestMultipartBody();
+    TestJobPoll();
+    TestScriptedTransportWebSocket();
+    TestDefaultTransportHasNoWebSocket();
     std::cout << "test_adapter_shared: all checks passed" << std::endl;
     return 0;
 }

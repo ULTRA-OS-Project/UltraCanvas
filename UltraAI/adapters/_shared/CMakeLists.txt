@@ -1,12 +1,16 @@
 # UltraAI/adapters/_shared/CMakeLists.txt
 # Infrastructure shared by network-using adapters: credential resolution,
-# HTTP error mapping, retry policy, stream-handle base, and the transport
-# seam (ScriptedTransport for tests; UltraNetTransport when UltraNet is in
-# the build). Not an adapter itself — always built with the adapters tree.
+# HTTP error mapping, retry policy, stream-handle base, base64, multipart
+# bodies, the asynchronous-job poll loop, and the transport seam
+# (ScriptedTransport for tests; UltraNetTransport when UltraNet is in the
+# build). Not an adapter itself — always built with the adapters tree.
 
 add_library(UltraAI_AdapterShared STATIC
+    src/Base64.cpp
     src/Credentials.cpp
     src/HttpError.cpp
+    src/JobPoll.cpp
+    src/Multipart.cpp
     src/RetryPolicy.cpp
     src/ScriptedTransport.cpp
 )

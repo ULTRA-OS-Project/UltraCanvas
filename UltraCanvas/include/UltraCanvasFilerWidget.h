@@ -803,6 +803,9 @@ namespace UltraCanvas {
         // "Open with > Other application…": file-dialog picker, then launches
         // the selection with the chosen application.
         void OpenSelectionWithChooser();
+        // Clicking "Open with" itself: the selection's OS default
+        // applications, like a double-click in Explorer / Finder.
+        void OpenSelectionWithDefaultApp();
 
         // Computed per-entry geometry (content space, before scroll offset).
         struct ItemLayout {

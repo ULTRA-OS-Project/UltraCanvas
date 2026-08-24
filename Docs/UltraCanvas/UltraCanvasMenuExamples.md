@@ -132,6 +132,12 @@ MenuItemData::Radio(label, group, checked, toggleCallback)
 MenuItemData::Submenu(label, subItems)
 MenuItemData::Submenu(label, iconPath, subItems)
 
+// A submenu whose parent entry is itself clickable: hovering opens the child
+// list as always, activating the entry runs onClick and closes the menu.
+// (The Filer's "Open with" opens the default application this way.)
+MenuItemData openWith = MenuItemData::Submenu("Open with", appItems);
+openWith.onClick = [] { OpenWithDefaultApplication(); };
+
 // Create input field
 MenuItemData::Input(label, placeholder, inputCallback)
 ```

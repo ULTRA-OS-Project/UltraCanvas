@@ -139,3 +139,25 @@ same font and is covered by the same license.
 - **Full text:** `UltraCanvas/third_party/yyjson/LICENSE-yyjson.txt`
 
 The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
+
+---
+
+## External services UltraAI talks to (no code bundled)
+
+These are separate programs or hosted APIs that UltraAI adapters
+*communicate with over HTTP*. No source, binary or model weight from any of
+them is vendored, fetched, linked or redistributed by this repository, so
+none of them imposes license obligations on UltraCanvas. They are listed
+here so the boundary is on the record.
+
+- **ComfyUI** (`ULTRAAI_ADAPTER_COMFYUI`) — https://github.com/comfyanonymous/ComfyUI,
+  GPL-3.0. A program the user installs and runs; the adapter is an ordinary
+  HTTP/WebSocket client of its API. The adapter's built-in workflow
+  templates deliberately use core nodes only: custom nodes under
+  `custom_nodes/` are GPL-3.0 derivative works and are never shipped here.
+  Model checkpoints carry their own licenses and are likewise never shipped.
+- **MiniMax / Hailuo API** (`ULTRAAI_ADAPTER_MINIMAX`) — https://platform.minimax.io,
+  a hosted service used under the user's own account and terms.
+- **Ollama, vLLM, llama.cpp server, LM Studio** (`ULTRAAI_ADAPTER_QWEN`) —
+  local OpenAI-compatible servers the user installs and runs. The adapter
+  speaks the HTTP API only.
