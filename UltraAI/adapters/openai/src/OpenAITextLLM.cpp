@@ -10,12 +10,12 @@
 #include "UltraAIOpenAI.h"
 
 #include "OpenAIInternal.h"
+#include "UltraAIBase64.h"
 #include "UltraAIStreamHandleBase.h"
 #ifdef ULTRAAI_HAS_ULTRANET
 #include "UltraAIUltraNetTransport.h"
 #endif
 
-#include <cstdint>
 #include <future>
 #include <map>
 #include <memory>
@@ -32,37 +32,6 @@ using nlohmann::json;
 using namespace openai_detail;
 
 // ---------------------------------------------------------------------
-// base64 for inline media data URLs (RFC 4648, no line breaks).
-// ---------------------------------------------------------------------
-std::string Base64Encode(const std::vector<uint8_t>& bytes) {
-    static const char* kAlphabet =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve(((bytes.size() + 2) / 3) * 4);
-    size_t i = 0;
-    for (; i + 2 < bytes.size(); i += 3) {
-        uint32_t n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
-        out += kAlphabet[(n >> 18) & 63]; out += kAlphabet[(n >> 12) & 63];
-        out += kAlphabet[(n >> 6) & 63];  out += kAlphabet[n & 63];
-    }
-    if (i + 1 == bytes.size()) {
-        uint32_t n = bytes[i] << 16;
-        out += kAlphabet[(n >> 18) & 63]; out += kAlphabet[(n >> 12) & 63];
-        out += "==";
-    } else if (i + 2 == bytes.size()) {
-        uint32_t n = (bytes[i] << 16) | (bytes[i + 1] << 8);
-        out += kAlphabet[(n >> 18) & 63]; out += kAlphabet[(n >> 12) & 63];
-        out += kAlphabet[(n >> 6) & 63];  out += '=';
-    }
-    return out;
-}
-
-std::string DataUrl(const std::string& mimeType,
-                    const std::vector<uint8_t>& bytes) {
-    return "data:" + mimeType + ";base64," + Base64Encode(bytes);
-}
-
-// ---------------------------------------------------------------------
 // Request serialization
 // ---------------------------------------------------------------------
 
@@ -72,7 +41,7 @@ json ContentPartToJson(const ContentPart& part) {
     }
     if (const auto* img = std::get_if<ImagePart>(&part)) {
         json url;
-        url["url"] = !img->bytes.empty() ? DataUrl(img->mimeType, img->bytes)
+        url["url"] = !img->bytes.empty() ? Base64DataUrl(img->mimeType, img->bytes)
                                          : img->url;
         if (!img->detail.empty()) url["detail"] = img->detail;
         return json{{"type", "image_url"}, {"image_url", std::move(url)}};
@@ -81,7 +50,7 @@ json ContentPartToJson(const ContentPart& part) {
     if (!f.bytes.empty()) {
         json file;
         file["filename"] = f.filename.empty() ? "document.pdf" : f.filename;
-        file["file_data"] = DataUrl(
+        file["file_data"] = Base64DataUrl(
             f.mimeType.empty() ? "application/pdf" : f.mimeType, f.bytes);
         return json{{"type", "file"}, {"file", std::move(file)}};
     }
