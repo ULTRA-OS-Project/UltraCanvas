@@ -1,3 +1,31 @@
+#### 2026-08-25 *0.3.66*
+- **Spell checking, and text areas that use it.** The framework had no spell
+  checker at all. `UltraCanvasSpellChecker` adds one: a service owning a
+  backend, a user dictionary, a session ignore list and a worker thread, so a
+  dictionary lookup never happens on the render thread. Backends sit behind the
+  UltraCanvas-owned `ISpellCheckBackend` and are picked at runtime — enchant-2
+  on Linux, ISpellChecker on Windows 8+, NSSpellChecker on macOS, Hunspell
+  everywhere else and as the fallback. All of it is optional: with nothing
+  installed the module compiles, reports zero dictionaries and does nothing,
+  rather than failing the build.
+  `UltraCanvasTextArea::SetSpellCheckEnabled(true)` is the whole integration for
+  an application — misspellings get a squiggle, right-click offers suggestions
+  plus Add to Dictionary and Ignore, and a chosen suggestion is applied as an
+  ordinary undoable edit. One line puts the language menu in a menu bar:
+  `UltraCanvasSpellChecker::BuildSpellCheckMenu()` lists only the dictionaries
+  actually installed, as a radio group that shows which one is active, and
+  rebuilds itself each time it opens so the host never has to.
+- **Text areas can say where a character range is on screen.** `TextArea::
+  GetCharacterRangeBounds(startByte, byteLength)` maps a byte range of the
+  document to the rectangles covering it, accounting for soft wrap, both scroll
+  offsets, the line-number gutter, sharded long lines and markdown mode (where
+  rendered runs do not match source bytes one-to-one). One rectangle per visual
+  line. Nothing equivalent existed, and it is what search-result highlighting,
+  inline diff marks, comment anchors and collaborative cursors all need.
+  `ReplaceTextRange(startByte, byteLength, text)` is its counterpart, replacing
+  a range through the selection and undo machinery so the edit behaves like a
+  typed one.
+
 #### 2026-08-24 *0.3.65*
 - **The numeric keypad's Enter finishes a text entry.** `UltraCanvasTextInput`
   only ever looked for `UCKeys::Return`, so the keypad's Enter — reported as a

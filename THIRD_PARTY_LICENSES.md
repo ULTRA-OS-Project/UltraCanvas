@@ -20,6 +20,36 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## Hunspell (portable spell checking engine)
+
+- **Used by:** the spell check service
+  (`UltraCanvas/core/SpellCheckBackendHunspell.cpp`) as the portable backend,
+  and the only one on Android and WebAssembly.
+- **Upstream:** https://github.com/hunspell/hunspell
+- **Linked, not vendored:** the system package is used (`libhunspell-dev` /
+  `brew install hunspell` / `vcpkg install hunspell`). No Hunspell source is
+  carried in this repository, and no Hunspell type appears in any UltraCanvas
+  public header - `ISpellCheckBackend` wraps it entirely. Optional: without it
+  the backend compiles to a stub that reports zero dictionaries.
+- **License:** tri-license GPL 2.0 / LGPL 2.1 / MPL 1.1 - Copyright (c)
+  2002-2025 Kevin Hendricks, Laszlo Nemeth and contributors. UltraCanvas links
+  it under the LGPL 2.1 option.
+
+---
+
+## Enchant (Linux spell checking broker)
+
+- **Used by:** the native Linux spell backend
+  (`UltraCanvas/OS/Linux/UltraCanvasSpellCheckSupport.cpp`).
+- **Upstream:** https://github.com/AbiWord/enchant
+- **Linked, not vendored:** the system package is used (`libenchant-2-dev`).
+  Optional: without it `CreateNativeSpellCheckBackend()` returns `nullptr` and
+  the service falls back to Hunspell.
+- **License:** LGPL 2.1 or later, with a linking exception for the bundled
+  provider plugins - Copyright (c) 2003-2024 Dom Lachowicz and contributors.
+
+---
+
 ## MicroTeX (LaTeX math engine)
 
 - **Used by:** the LaTeX math plugin (`ULTRACANVAS_PLUGIN_LATEX`).
