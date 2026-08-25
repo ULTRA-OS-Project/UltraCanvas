@@ -121,6 +121,42 @@ public:
                        const UltraCryptSecureBuffer& password,
                        UltraCryptSecureBuffer& outUri) const;
 
+    // Writes every account to an encrypted backup file (AccountExport.h).
+    //
+    // Gated on the master password for the same reason Reveal is, only more
+    // so: this is a complete copy of every second factor in one file, the
+    // highest-value operation the app has. The seeds never leave this class —
+    // they are read, sealed and wiped inside the call, so unlike Reveal this
+    // does not widen what the UI can see.
+    //
+    // `exportPassphrase` must differ from the master password. A backup is the
+    // file most likely to end up on a USB stick or in cloud storage, and one
+    // that opens with the device password would make finding it as good as
+    // having the machine (§3.5).
+    StoreResult ExportAll(const UltraCryptSecureBuffer& masterPassword,
+                          const UltraCryptSecureBuffer& exportPassphrase,
+                          const std::string& path, size_t& outCount) const;
+
+    // What an import did, per account. Reported rather than summarised as
+    // success/failure because "restored 38 of 40" is the interesting case and
+    // silently dropping two would be indistinguishable from restoring all.
+    struct ImportSummary {
+        size_t added = 0;
+        size_t skippedExisting = 0;   // already in the vault, left untouched
+        size_t rejected = 0;          // failed the otpauth:// parser
+    };
+
+    // Merges a backup into the open vault. Existing accounts are kept, never
+    // overwritten: a restore that clobbered a newer counter or a re-enrolled
+    // seed would destroy a working second factor, so a collision is reported
+    // and skipped.
+    //
+    // No master password here. The vault is already open and this only adds
+    // accounts — the same thing the Add and Scan paths do without a second
+    // prompt. Nothing is extracted, so the Reveal argument does not apply.
+    StoreResult ImportAll(const UltraCryptSecureBuffer& exportPassphrase,
+                          const std::string& path, ImportSummary& outSummary);
+
     // Accounts in stable (sorted-by-key) order. Never touches a seed.
     StoreResult List(std::vector<Account>& outAccounts) const;
 

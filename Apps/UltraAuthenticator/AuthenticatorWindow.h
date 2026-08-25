@@ -76,6 +76,8 @@ private:
     void OpenEditAccountDialog(const std::string& key);
     void OpenRevealSecretDialog(const std::string& key);
     void OpenChangePasswordDialog();
+    void OpenBackupDialog();
+    void OpenRestoreDialog();
     void RemoveAccount(const std::string& key);
     void AdvanceHotpRow(const std::string& key);
     void SetStatus(const std::string& text, bool isError = false);
@@ -94,7 +96,8 @@ private:
 
     static constexpr long kWindowWidth  = 720;
     static constexpr long kWindowHeight = 620;
-    static constexpr long kHeaderHeight = 108;
+    // Two button rows: account actions, then vault actions.
+    static constexpr long kHeaderHeight = 148;
 };
 
 } // namespace Authenticator
