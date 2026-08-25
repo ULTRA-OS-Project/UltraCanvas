@@ -1643,9 +1643,10 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
-        // Windows executables go to the UltraWin emulation layer, not to the
-        // host's file associations.
-        if (entry.extension == "exe") {
+        // Windows executables and installers go to the UltraWin emulation
+        // layer, not to the host's file associations (.msi runs through
+        // msiexec inside the environment).
+        if (entry.extension == "exe" || entry.extension == "msi") {
             LaunchWindowsExecutable(entry);
             return;
         }
@@ -1966,9 +1967,11 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
     if (envName.empty()) envName = "Default";
 
     const bool firstLaunch = !UltraWin_EnvironmentExists(envName);
+    const char* verb =
+        entry.extension == "msi" ? "Installing " : "Launching ";
     if (statusLabel)
         statusLabel->SetText(
-            "Launching " + entry.name +
+            verb + entry.name +
             (firstLaunch ? " — first launch prepares its Windows environment, "
                            "this can take a minute…"
                          : "…"));

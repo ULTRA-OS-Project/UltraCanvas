@@ -264,9 +264,12 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
-- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+- `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,
+  `.lnk` via `start /wait`), `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+- `UltraWin_ListPrograms` (Start-Menu shortcuts an installer created — what
+  an ULTRA OS launcher shows; entries are launchable via `UltraWin_RunApp`)
 
 **Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
 `UltraWin_VmSuspend`, `UltraWin_VmStop`,
