@@ -125,6 +125,45 @@ add_test(NAME RecentFilesTest COMMAND RecentFilesTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RecentFilesTest")
 
+# ===== FOLDER WATCHER TEST =====
+# UltraCanvasFolderWatcher is built from its own sources - the core file plus
+# this platform's backend - so the test needs no display and does not link
+# UltraCanvas. Platforms without a backend still build and run it: there every
+# Watch() fails by design and the test checks exactly that.
+message(STATUS "  Building FolderWatcherTest...")
+
+set(FOLDER_WATCHER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/FolderWatcherTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFolderWatcher.cpp
+)
+# The backend source and the define must be chosen together - the core file
+# emits its fallback only when the define is absent - so both follow the single
+# ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH decision made in the top-level CMakeLists.
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    if(WIN32)
+        list(APPEND FOLDER_WATCHER_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFolderWatcher.cpp)
+    else()
+        list(APPEND FOLDER_WATCHER_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFolderWatcher.cpp)
+    endif()
+endif()
+
+add_executable(FolderWatcherTest ${FOLDER_WATCHER_SOURCES})
+target_include_directories(FolderWatcherTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FolderWatcherTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_compile_definitions(FolderWatcherTest PRIVATE ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(FolderWatcherTest PRIVATE Threads::Threads)
+set_target_properties(FolderWatcherTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FolderWatcherTest COMMAND FolderWatcherTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FolderWatcherTest")
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.

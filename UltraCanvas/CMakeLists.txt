@@ -135,6 +135,7 @@ else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
+
 # WebAssembly builds run inside the browser sandbox: no OpenGL context
 # managers, no native audio/video frameworks, no sockets for UltraNet, and no
 # runtime-loaded plug-in modules. The remaining REQUIRED pkg-config
@@ -398,6 +399,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
@@ -1133,6 +1135,13 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
 )
+
+# Native folder watching: the define tells the core watcher that this platform
+# ships a backend under OS/<Platform>/, so it must not compile its own
+# null-returning fallback. PUBLIC so an app can ask whether watching is native.
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
 
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
