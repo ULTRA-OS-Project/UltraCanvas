@@ -608,14 +608,25 @@ notices and rescans.
 
 ```cpp
 filer->SetFolderWatchEnabled(false);      // on by default
+filer->IsFolderWatchNative();             // OS notifications, or polling?
 filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
-A background worker re-fingerprints the folder every interval — its own
+Where the operating system can report changes itself the widget uses that —
+inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+[`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
+the moment it happens, and an idle folder costs nothing at all.
+
+Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI
-thread, and only a real directory is watched (an archive interior or a file list
-has no folder whose changes would mean anything).
+thread. `IsFolderWatchNative()` reports which of the two is in force.
+
+Either way only a real directory is watched: an archive interior or a file list
+has no folder whose changes would mean anything. The interval governs detection
+only while polling; with a native watcher it bounds just how quickly the UI
+applies what the watcher already reported.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a

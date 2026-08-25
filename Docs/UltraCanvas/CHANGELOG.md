@@ -1,3 +1,34 @@
+#### 2026-08-25 *0.3.67*
+- **The Filer's folder watching is the operating system's now, not a timer.**
+  It shipped as a poll: a worker re-fingerprinted the shown folder every 1.5 s
+  by scanning it, which meant up to a second and a half of latency and a full
+  directory scan every interval whether anything happened or not - on a folder
+  with thousands of entries, forever, for nothing. The new
+  `UltraCanvasFolderWatcher` asks the system instead: inotify on Linux and BSD,
+  `ReadDirectoryChangesW` on Windows. A change is seen the moment it happens and
+  an idle folder costs nothing.
+  - The watcher is a small service of its own (`UltraCanvasFolderWatcher.h`),
+    not Filer-private: `Watch(path, onChanged)` / `Stop()`, one directory, not
+    recursive. `Stop()` joins the backend thread, so no callback can arrive
+    after it returns - which is what lets a caller's callback capture the
+    caller.
+  - Platform code lives under `OS/<Platform>/`; the core file makes no
+    operating system calls. Platforms without a backend (macOS, Android,
+    WebAssembly) return false from `Watch()` and the Filer keeps the polling
+    worker it already had, so nothing regresses there and adding a backend
+    later touches nothing above the header.
+  - `UltraCanvasFilerWidget::IsFolderWatchNative()` reports which of the two is
+    running. The watch interval now governs detection only while polling; with
+    a native watcher it bounds only how quickly the UI applies the change.
+  - Everything the poll fed into is unchanged: the refresh is still held back
+    while an open rename editor, a drag, a marquee, a context menu or a file
+    operation owns the view.
+- **`FolderWatcherTest`** covers the contract on every platform - that changes
+  are reported, that unwatchable paths are refused, that `Stop()` is final and
+  repeatable, and that a watcher can be re-pointed at another folder. It builds
+  from the watcher's own sources, so it needs no display and no library, and on
+  a platform with no backend it asserts exactly that instead of being skipped.
+
 #### 2026-08-25 *0.3.66*
 - **Spell checking, and text areas that use it.** The framework had no spell
   checker at all. `UltraCanvasSpellChecker` adds one: a service owning a
