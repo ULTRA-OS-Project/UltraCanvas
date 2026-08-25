@@ -164,6 +164,71 @@ add_test(NAME FolderWatcherTest COMMAND FolderWatcherTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FolderWatcherTest")
 
+# ===== SPELL CHECKER TEST =====
+# The spell service, tokenizer and Hunspell backend are framework-independent,
+# so the test builds straight from the sources. The WASM backend stub supplies
+# CreateNativeSpellCheckBackend(), which keeps the portable Hunspell path under
+# test on every platform rather than whatever the host OS happens to provide.
+message(STATUS "  Building SpellCheckerTest...")
+
+add_executable(SpellCheckerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpellCheckerTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSpellChecker.cpp
+    ${ULTRACANVAS_CORE_DIR}/SpellCheckLanguageNames.cpp
+    ${ULTRACANVAS_CORE_DIR}/SpellCheckBackendHunspell.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/WASM/UltraCanvasSpellCheckSupport.cpp
+)
+target_include_directories(SpellCheckerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpellCheckerTest PRIVATE cxx_std_20)
+
+find_package(Threads REQUIRED)
+target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads)
+
+# HUNSPELL_FOUND is set in the UltraCanvas subdirectory scope, so it is not
+# visible here - probe again rather than silently building the stub.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(HUNSPELL QUIET hunspell)
+endif()
+
+# Optional, exactly as in the framework build: without it the backend compiles
+# to a stub, reports zero dictionaries, and the test skips those checks.
+if(HUNSPELL_FOUND)
+    target_compile_definitions(SpellCheckerTest PRIVATE ULTRACANVAS_HAS_HUNSPELL)
+    target_include_directories(SpellCheckerTest PRIVATE ${HUNSPELL_INCLUDE_DIRS})
+    target_link_directories(SpellCheckerTest PRIVATE ${HUNSPELL_LIBRARY_DIRS})
+    target_link_libraries(SpellCheckerTest PRIVATE ${HUNSPELL_LIBRARIES})
+endif()
+
+set_target_properties(SpellCheckerTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpellCheckerTest COMMAND SpellCheckerTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpellCheckerTest")
+
+# ===== TEXTAREA SPELL CHECK RUNTIME TEST =====
+# Needs the real framework: the byte-offset to screen-rectangle mapping runs
+# through live line layouts, scroll offsets and the gutter. Skips itself when
+# no DISPLAY or no dictionary is present.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaSpellCheckTest...")
+    add_executable(TextAreaSpellCheckTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaSpellCheckTest.cpp
+    )
+    target_include_directories(TextAreaSpellCheckTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaSpellCheckTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaSpellCheckTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaSpellCheckTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaSpellCheckTest COMMAND TextAreaSpellCheckTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaSpellCheckTest")
+else()
+    message(STATUS "  TextAreaSpellCheckTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.
