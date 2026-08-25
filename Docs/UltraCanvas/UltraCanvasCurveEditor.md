@@ -180,3 +180,7 @@ list, not in the host.
   composition and serialisation. Build with `-DBUILD_TESTS=ON`.
 - See also: [UltraCanvasMediaViewer.md](UltraCanvasMediaViewer.md) (the Curves
   button and how the viewer stacks curves with its other adjustments).
+- A tone curve is a **function** `y = f(x)`, not free-form geometry. For
+  editing Bézier *paths* — anchors with tangent handles, closed shapes — see
+  [UltraCanvasBezierEditorProposal.md](UltraCanvasBezierEditorProposal.md),
+  which proposes a sibling element rather than a generalisation of this one.
