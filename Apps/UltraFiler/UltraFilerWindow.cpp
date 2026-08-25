@@ -19,11 +19,12 @@
 // The gear button at the right end of the navigation row opens the settings
 // window (UltraFilerSettingsDialog), which also clears the history / the
 // favorites; persisted settings load at startup and configure the preview's
-// transparent-image backdrop and the folder tree's colours - the background
+// transparent-image backdrop, the width of the page thumbnails in the
+// preview's PDF page inventory and the folder tree's colours - the background
 // of the drive rows and the highlight of the selected folder. Esc closes the
 // History or Favorites view, or an open media preview.
-// Version: 1.12.0
-// Last Modified: 2026-08-23
+// Version: 1.13.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -550,6 +551,13 @@ void UltraFilerWindow::ApplySettings() {
                 ? TransparentImageBackground::Checkered
                 : TransparentImageBackground::SolidColor);
         preview->SetTransparentColor(settings.previewTransparentColor);
+        // Display > PDF Inventory: the width of the page thumbnails beside a
+        // shown PDF, either fixed or a share of the preview pane's width.
+        if (settings.pdfThumbnailAbsoluteWidth)
+            preview->SetPDFThumbnailWidth(settings.pdfThumbnailWidth);
+        else
+            preview->SetPDFThumbnailWidthFraction(
+                    settings.pdfThumbnailWidthPercent / 100.0f);
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
     // for tabs that were already open when it changed.

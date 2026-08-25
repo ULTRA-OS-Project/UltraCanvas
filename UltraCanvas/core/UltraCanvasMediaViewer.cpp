@@ -963,12 +963,17 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         pv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         pv->onPageChanged = [this](int, int) { UpdateInfoBar(); };
+        // The page zooms with the wheel and the keyboard, so the info bar
+        // reports the zoom the way it does for images.
+        pv->onZoomChanged = [this](float) { UpdateInfoBar(); };
         // Page numbers drawn over the thumbnail pages (not captions beneath).
         pv->SetThumbnailNumberStyle(
             UltraCanvasPDFView::ThumbnailNumberStyle::Overlay);
         pv->SetVisible(false);
         pdfView = pv;
         AddChild(pdfView);
+        // Page-inventory width and wheel zoom as configured on the viewer.
+        ApplyPDFViewSettings();
     }
 #endif
 
@@ -1617,6 +1622,40 @@ void UltraCanvasMediaViewer::ApplyAdjustments() {
     if (surface) surface->SetAdjustments(adjustments);
 }
 
+// ===== PDF DISPLAY SETTINGS =====
+// The viewer, not the PDF view, is the host's point of contact: it remembers
+// the choice and re-applies it, so a host can set it once and every document
+// opened later follows.
+
+void UltraCanvasMediaViewer::ApplyPDFViewSettings() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!pdfView) return;
+    auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+    if (pdfThumbAbsolute) pv->SetThumbnailWidth(pdfThumbWidthPx);
+    else                  pv->SetThumbnailWidthFraction(pdfThumbWidthFraction);
+    pv->SetWheelAction(documentWheelZoom
+            ? UltraCanvasPDFView::WheelAction::Zoom
+            : UltraCanvasPDFView::WheelAction::Scroll);
+#endif
+}
+
+void UltraCanvasMediaViewer::SetPDFThumbnailWidth(int pixels) {
+    pdfThumbAbsolute = true;
+    pdfThumbWidthPx  = std::max(16, pixels);
+    ApplyPDFViewSettings();
+}
+
+void UltraCanvasMediaViewer::SetPDFThumbnailWidthFraction(float share) {
+    pdfThumbAbsolute      = false;
+    pdfThumbWidthFraction = std::clamp(share, 0.05f, 0.5f);
+    ApplyPDFViewSettings();
+}
+
+void UltraCanvasMediaViewer::SetDocumentWheelZoom(bool zoom) {
+    documentWheelZoom = zoom;
+    ApplyPDFViewSettings();
+}
+
 // ===== ZOOM ACTIONS (routed to whichever view is live) =====
 
 void UltraCanvasMediaViewer::ZoomInAction() {
@@ -1711,6 +1750,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         auto sz = fs::file_size(path, ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        if (pv->HasDocument()) {
+            char zbuf[32];
+            snprintf(zbuf, sizeof(zbuf), "%.0f%%", pv->GetZoomPercent());
+            os << "   \xC2\xB7   " << zbuf;
+        }
         infoLabel->SetText(os.str());
         return;
     }
