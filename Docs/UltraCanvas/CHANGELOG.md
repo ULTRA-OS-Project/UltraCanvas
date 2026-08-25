@@ -1,4 +1,4 @@
-#### 2026-08-24 *0.3.65*
+#### 2026-08-25 *0.3.66*
 - **Spell checking, and text areas that use it.** The framework had no spell
   checker at all. `UltraCanvasSpellChecker` adds one: a service owning a
   backend, a user dictionary, a session ignore list and a worker thread, so a
@@ -25,6 +25,8 @@
   `ReplaceTextRange(startByte, byteLength, text)` is its counterpart, replacing
   a range through the selection and undo machinery so the edit behaves like a
   typed one.
+
+#### 2026-08-24 *0.3.65*
 - **The numeric keypad's Enter finishes a text entry.** `UltraCanvasTextInput`
   only ever looked for `UCKeys::Return`, so the keypad's Enter — reported as a
   key code of its own (`UCKeys::NumPadEnter`) by the X11, macOS and WASM
