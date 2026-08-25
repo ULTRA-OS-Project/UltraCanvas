@@ -276,6 +276,8 @@ for the full search order.
 |---|---|---|---|
 | Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+| VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
+| QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully

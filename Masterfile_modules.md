@@ -271,10 +271,16 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_ListPrograms` (Start-Menu shortcuts an installer created — what
   an ULTRA OS launcher shows; entries are launchable via `UltraWin_RunApp`)
 
-**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`,
-`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
-for FreeRDP RemoteApp windows.
+- `UltraWin_VmProvision`, `UltraWin_VmStart`, `UltraWin_VmStop`,
+  `UltraWin_VmKill`, `UltraWin_VmSuspend`, `UltraWin_VmResume`,
+  `UltraWin_VmGetState`, `UltraWin_VmGetInfo` (Stage 2a machine backbone:
+  the single shared headless QEMU/KVM guest — spawned, never linked —
+  controlled over QMP; RDP port forwarded for the RemoteApp integration)
+
+**Planned (Stage 2b/2c, 3):** the `UltraCanvasRemoteAppView` element for
+FreeRDP RemoteApp windows with `UltraWin_RunApp` VM-tier routing, virtiofs
+shared folders, guest provisioning validated against real install media,
+and `UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.

@@ -64,8 +64,12 @@ enum class UltraWinResultCode {
     PermissionDenied,
     Timeout,
     IoError,
-    VmNotProvisioned,      // reserved — Stage 2
-    VmUnavailable,         // reserved — Stage 2
+    VmNotProvisioned,      // VM operations before UltraWin_VmProvision
+    VmUnavailable,         // no usable QEMU (or qemu-img) on this host
+    VmAlreadyProvisioned,  // manifest exists and sizes cannot change
+    VmAlreadyRunning,
+    VmNotRunning,
+    QmpError,              // the guest's QMP control socket misbehaved
     Unknown
 };
 
@@ -118,10 +122,15 @@ struct UltraWinCapabilities {
     bool winetricksAvailable = false; // usable winetricks script found
     std::string winetricksPath;      // absolute path of the script
     bool ntsyncAvailable = false;    // /dev/ntsync present (Linux >= 6.14)
-    bool kvmAvailable = false;       // /dev/kvm accessible (VM tier, Stage 2)
+    bool kvmAvailable = false;       // /dev/kvm accessible (VM acceleration)
+    bool qemuAvailable = false;      // qemu-system-x86_64 + qemu-img found
+    std::string qemuPath;            // absolute path of the system emulator
+    bool virtiofsdAvailable = false; // host->guest shared folders possible
     std::string hostArchitecture;    // uname machine, e.g. "x86_64", "aarch64"
     bool wineTierAvailable = false;  // == wineAvailable
-    bool vmTierAvailable = false;    // always false in Stage 1
+    // The host can run the VM tier: QEMU present and KVM usable. Whether
+    // the machine is provisioned/installed is UltraWin_VmGetInfo's business.
+    bool vmTierAvailable = false;
 };
 
 // ============================================================================
@@ -162,6 +171,26 @@ struct UltraWinConfig {
     // Seconds allowed for one UltraWin_InstallComponent call. Components
     // download from upstream mirrors; large ones (.NET) take a while.
     int componentInstallTimeoutSeconds = 1800;
+
+    // ---- VM tier (Stage 2) ----
+
+    // Absolute path of qemu-system-x86_64. Empty = search PATH.
+    std::string qemuPath;
+
+    // Machine home (manifest, qcow2 disk, control sockets). Empty = default:
+    // $XDG_DATA_HOME/ultrawin/vm (sibling of the environments root).
+    std::string vmDirectory;
+
+    // Host loopback port forwarded to the guest's RDP port 3389 (used by
+    // the RemoteApp integration). 0 = default 13389.
+    int vmRdpHostPort = 13389;
+
+    // Allow booting without KVM (TCG software emulation — an order of
+    // magnitude slower; useful for tests and diagnostics only).
+    bool vmAllowWithoutKvm = false;
+
+    // Seconds allowed for QEMU to answer on its QMP socket after spawn.
+    int vmStartTimeoutSeconds = 30;
 };
 
 // ============================================================================

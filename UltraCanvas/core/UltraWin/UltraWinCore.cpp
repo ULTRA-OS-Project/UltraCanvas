@@ -259,7 +259,14 @@ UltraWinCapabilities UltraWin_GetCapabilities() {
 
     caps.ntsyncAvailable = access("/dev/ntsync", F_OK) == 0;
     caps.kvmAvailable = access("/dev/kvm", R_OK | W_OK) == 0;
-    caps.vmTierAvailable = false;  // Stage 2
+
+    caps.qemuPath = FindQemuBinary();
+    caps.qemuAvailable =
+        !caps.qemuPath.empty() && !FindQemuImgBinary().empty();
+    caps.virtiofsdAvailable = !FindVirtiofsdBinary().empty();
+    // Host-capable: QEMU present and hardware acceleration usable. Whether
+    // the machine is provisioned/installed is UltraWin_VmGetInfo's business.
+    caps.vmTierAvailable = caps.qemuAvailable && caps.kvmAvailable;
 
     struct utsname un{};
     if (uname(&un) == 0) caps.hostArchitecture = un.machine;

@@ -609,9 +609,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
         # DataFormats section: general-purpose JSON API (UltraCanvasJSON) backed
-        # by the vendored yyjson engine
+        # by the vendored yyjson engine (built once as the uc-yyjson archive
+        # below, shared with UltraWin's QMP client)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
@@ -1045,11 +1045,30 @@ set(ULTRACANVAS_ALL_SOURCES
         include/UltraCanvasNativeHandle.h
 )
 
+# Vendored yyjson as its own small archive so the core library
+# (UltraCanvasJSON) and UltraWin (QMP client) share ONE compiled copy —
+# compiling yyjson.c into both would turn the whole-archive UltraWin link
+# into duplicate-definition errors in shared builds.
+add_library(uc-yyjson STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c)
+set_target_properties(uc-yyjson PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(uc-yyjson PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson>)
+
 # ===== BUILD CORE LIBRARY =====
 if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
     add_library(${ULTRACANVAS_LIB_NAME} STATIC ${ULTRACANVAS_ALL_SOURCES})
+endif()
+# Shared build: the engine's objects are pulled into the DSO (PRIVATE);
+# static build: consumers must link the archive themselves (PUBLIC), after
+# both libultracanvas and UltraWin on the line so single-pass linkers
+# resolve their yyjson references forward.
+if(ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE uc-yyjson)
+else()
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC uc-yyjson)
 endif()
 
 # ===== SPELL CHECK BACKENDS =====
@@ -1939,6 +1958,8 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinComponents.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinQmp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
     )
     add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
     set_target_properties(UltraWin PROPERTIES
@@ -1949,7 +1970,9 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
-    target_link_libraries(UltraWin PUBLIC Threads::Threads)
+    # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
+    # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
+    target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
 
     # Same single-host export strategy as UltraNet: a shared libultracanvas
     # re-exports the whole UltraWin API so apps import one copy of the module

@@ -259,6 +259,15 @@ windows_compatibility:
       # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
       apt: "winetricks"
 
+    qemu:
+      min_version: "8.0"
+      purpose: "VM tier (Stage 2): headless Windows guest via qemu-system-x86_64 + qemu-img, KVM-accelerated (runtime, spawned — never linked; controlled over QMP)"
+      required: false
+      priority: "medium"
+      platforms: ["linux"]
+      # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
+      apt: "qemu-system-x86 qemu-utils"
+
 # ===== TEXT PROCESSING (spell checking) =====
 #
 # Every entry here is optional and none of them can fail the build. The service

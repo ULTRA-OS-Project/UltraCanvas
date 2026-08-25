@@ -441,10 +441,16 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_ListPrograms` (Start-Menu shortcuts an installer created — what
   an ULTRA OS launcher shows; entries are launchable via `UltraWin_RunApp`)
 
-**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`,
-`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
-for FreeRDP RemoteApp windows.
+- `UltraWin_VmProvision`, `UltraWin_VmStart`, `UltraWin_VmStop`,
+  `UltraWin_VmKill`, `UltraWin_VmSuspend`, `UltraWin_VmResume`,
+  `UltraWin_VmGetState`, `UltraWin_VmGetInfo` (Stage 2a machine backbone:
+  the single shared headless QEMU/KVM guest — spawned, never linked —
+  controlled over QMP; RDP port forwarded for the RemoteApp integration)
+
+**Planned (Stage 2b/2c, 3):** the `UltraCanvasRemoteAppView` element for
+FreeRDP RemoteApp windows with `UltraWin_RunApp` VM-tier routing, virtiofs
+shared folders, guest provisioning validated against real install media,
+and `UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.
@@ -1283,6 +1289,8 @@ for the full search order.
 |---|---|---|---|
 | Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+| VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
+| QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully
@@ -51601,11 +51609,50 @@ msiexec). When Wine is missing, the status bar says how to install it.
 Available only in Linux builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other
 platforms activation behaves as before.
 
+## The VM tier (Stage 2a — machine backbone)
+
+The fallback tier for the apps Wine cannot run boots a **real Windows
+guest** under QEMU/KVM, headless — its desktop is never displayed;
+application windows will reach ULTRA OS through FreeRDP RemoteApp over the
+forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
+
+- `UltraWin_VmProvision(options)` prepares UltraWin's single shared
+  machine under `UltraWinConfig::vmDirectory`: the qcow2 system disk
+  (created via qemu-img, sparse, 64 GB cap by default), the unattended
+  Windows-setup answer file (`autounattend.xml`: RDP host + RemoteApp
+  allow-list enabled, TPM/RAM checks bypassed — **experimental until
+  validated against real media**), and the machine manifest. The Windows
+  ISO is **user-supplied** (Pro/Enterprise; a Windows license is the
+  user's) and can be added by re-provisioning later; re-provisioning never
+  recreates an existing disk.
+- `UltraWin_VmStart` boots headless with KVM (TCG only via
+  `vmAllowWithoutKvm`, for tests), virtio disk/net, the guest's RDP port
+  forwarded to loopback (`vmRdpHostPort`, default 13389), and a QMP
+  control socket in the machine directory; it returns once QMP answers.
+  While install media is configured and setup has not completed, the
+  machine boots from the ISO with the answer file attached as a virtual
+  FAT volume.
+- `UltraWin_VmSuspend` / `UltraWin_VmResume` pause the vCPUs (QMP
+  stop/cont) — the cheap way to keep the guest resident between launches;
+  `UltraWin_VmStop` is a graceful ACPI powerdown with a hard-quit
+  fallback, `UltraWin_VmKill` the virtual power cord.
+  `UltraWin_VmGetState` / `UltraWin_VmGetInfo` report
+  NotProvisioned/Stopped/Running/Suspended plus pid, disk and RDP port.
+- Engines stay wrapped: QEMU is **spawned, never linked** (same policy as
+  Wine/winetricks); QMP is spoken directly over its UNIX socket (design
+  decision: no libvirt daemon dependency), with JSON handled by the
+  vendored yyjson engine the framework already ships.
+- Capabilities: `qemuAvailable`/`qemuPath`, `virtiofsdAvailable`, and
+  `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
+  state is `UltraWin_VmGetInfo`'s business).
+
 ## Not yet implemented (later stages)
 
+- Stage 2b: the FreeRDP RemoteApp element (`UltraCanvasRemoteAppView`) and
+  `UltraWin_RunApp` routing into the VM tier; virtiofs shared folders.
+- Stage 2c: guest provisioning validated end-to-end against real install
+  media (virtio driver injection, first-boot orchestration).
 - `UltraWin_QueryCompatibility` + automatic tier routing.
-- The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
-  shared folders, `UltraCanvasRemoteAppView` RAIL element.
 
 ==============================================================================
 FILE: Docs/Modules/Vectorizer/README.md
