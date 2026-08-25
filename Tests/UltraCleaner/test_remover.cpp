@@ -10,7 +10,9 @@
 #include "UltraCleanerPaths.h"
 #include "UltraCleanerScanner.h"
 
+#include <cstdlib>
 #include <filesystem>
+#include <utility>
 
 using namespace UltraCleaner;
 using ultracleaner_test::TempTree;
@@ -182,5 +184,113 @@ TEST(XdgTrashMoveWritesATrashInfoRecord) {
     REQUIRE(movedAway);
     REQUIRE(inTrash);
     REQUIRE(hasInfo);
+}
+#endif
+
+// ===== Emptying the trash =====
+// "Move to trash" applied to something that already lives in the trash used
+// to move it beside itself: the file was renamed, a second .trashinfo was
+// written, the trash grew, and the report claimed the space back. These two
+// pin the behaviour down on both sides.
+#if !defined(_WIN32) && !defined(_WIN64)
+namespace {
+
+// Points HomeDir()/UserDataDir() — and so TrashDir() — inside a temp tree for
+// the duration of one test, then puts the environment back.
+class ScopedHome {
+public:
+    explicit ScopedHome(const std::string& home)
+        : oldHome_(Capture("HOME")), oldXdg_(Capture("XDG_DATA_HOME")) {
+        setenv("HOME", home.c_str(), 1);
+        unsetenv("XDG_DATA_HOME");        // else it wins over HOME on Linux
+    }
+    ~ScopedHome() {
+        Restore("HOME", oldHome_);
+        Restore("XDG_DATA_HOME", oldXdg_);
+    }
+    ScopedHome(const ScopedHome&) = delete;
+    ScopedHome& operator=(const ScopedHome&) = delete;
+
+private:
+    static std::pair<std::string, bool> Capture(const char* name) {
+        const char* value = std::getenv(name);
+        return { value ? value : "", value != nullptr };
+    }
+    static void Restore(const char* name, const std::pair<std::string, bool>& saved) {
+        if (saved.second) setenv(name, saved.first.c_str(), 1);
+        else              unsetenv(name);
+    }
+    std::pair<std::string, bool> oldHome_;
+    std::pair<std::string, bool> oldXdg_;
+};
+
+// A rule that clears whatever directory it is pointed at, standing in for the
+// real trash rule without depending on the platform rule table.
+CleanRule TrashContentsRule(const std::string& root) {
+    CleanRule rule = ContentsRule(root);
+    rule.id = "test.trash";
+    rule.category = CleanCategory::TrashBin;
+    rule.title = "Trash";
+    rule.roots = { root };
+    return rule;
+}
+
+} // namespace
+
+TEST(MoveToTrashLeavesWhatIsAlreadyInTheTrashAlone) {
+    TempTree tree;
+    ScopedHome home(tree.Path());
+
+    const std::string files = tree.Dir(".local/share/Trash/files");
+    tree.File(".local/share/Trash/files/already-deleted.bin", 40);
+
+    Scanner scanner;
+    ScanReport report = scanner.Scan({ TrashContentsRule(files) });
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
+    for (auto& item : report.items) item.selected = true;
+
+    RemovalOptions options;
+    options.mode = RemovalMode::MoveToTrash;
+
+    Remover remover;
+    const RemovalReport result = remover.Remove(report, options);
+
+    // Nothing moved, nothing claimed, and no second copy left behind.
+    REQUIRE_EQ(result.removedItems, static_cast<size_t>(0));
+    REQUIRE_EQ(result.freedBytes, static_cast<uint64_t>(0));
+    REQUIRE_EQ(result.skippedAlreadyInTrash, static_cast<size_t>(1));
+    REQUIRE(result.failures.empty());
+    REQUIRE(tree.Exists(".local/share/Trash/files/already-deleted.bin"));
+
+    size_t entries = 0;
+    std::error_code ec;
+    for (auto it = std::filesystem::directory_iterator(files, ec);
+         it != std::filesystem::directory_iterator(); ++it) {
+        ++entries;
+    }
+    REQUIRE_EQ(entries, static_cast<size_t>(1));
+}
+
+TEST(PermanentDeleteIsWhatActuallyEmptiesTheTrash) {
+    TempTree tree;
+    ScopedHome home(tree.Path());
+
+    const std::string files = tree.Dir(".local/share/Trash/files");
+    tree.File(".local/share/Trash/files/already-deleted.bin", 40);
+
+    Scanner scanner;
+    ScanReport report = scanner.Scan({ TrashContentsRule(files) });
+    for (auto& item : report.items) item.selected = true;
+
+    RemovalOptions options;
+    options.mode = RemovalMode::DeletePermanently;
+
+    Remover remover;
+    const RemovalReport result = remover.Remove(report, options);
+
+    REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
+    REQUIRE_EQ(result.freedBytes, static_cast<uint64_t>(40));
+    REQUIRE_EQ(result.skippedAlreadyInTrash, static_cast<size_t>(0));
+    REQUIRE(!tree.Exists(".local/share/Trash/files/already-deleted.bin"));
 }
 #endif

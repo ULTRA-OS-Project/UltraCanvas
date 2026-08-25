@@ -16823,10 +16823,14 @@ try-again-for-all grants each later failing entry one silent retry before asking
 again. Drag & drop, inside the widget and from other applications, runs through
 the same machinery, so drops get the same dialogs.
 
-A **move** is a rename, and a rename is refused while another program still has
-the file open — on Windows it fails outright. The widget therefore drops the
-sources out of the selection before it starts a move, firing `onSelectionChanged`
-so a host that feeds a preview pane from the selection closes the file first.
+A **move, a rename and a delete** all need the file to themselves: a rename is
+refused while another program still has it open — on Windows outright — and a
+delete is too. The widget therefore drops the entries out of the selection
+before each of those, firing `onSelectionChanged` so a host that feeds a preview
+pane from the selection closes the file first. A rename puts the selection back
+on the new name afterwards, and a delete hands it to the neighbour when
+`SetSelectNextAfterDelete` is on, so neither leaves the user with nothing
+selected.
 The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
 its preview release the document instead of merely stopping playback. Most
 previews hold nothing open in the first place — images, text, spreadsheets,
@@ -16931,7 +16935,8 @@ skipped.
 
 ## Keyboard
 
-Enter activates (folders / archives are entered, files fire `onFileActivated`),
+Enter activates (folders / archives are entered, files fire `onFileActivated`;
+the numeric keypad's Enter counts as Enter everywhere the widget reads it),
 Delete deletes, F2 renames, Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V select all / copy /
 cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
@@ -16955,9 +16960,12 @@ name, so editing behaves like any text field: the caret moves with the
 arrow keys / Home / End, a click puts it at that position, Shift extends a
 selection, and Ctrl+C/X/V/Z work. It opens with the base name selected (the
 extension stays, Explorer-style; folders select the whole name) in the same
-font size as the displayed name, commits on Enter, cancels on Esc — and a
-click anywhere outside the field commits too, because the field losing the
-keyboard focus ends the edit.
+font size as the displayed name, commits on Enter — the numeric keypad's Enter
+included — cancels on Esc, and a click anywhere outside the field commits too,
+because the field losing the keyboard focus ends the edit. The name is written
+in `FilerStyle::renameTextColor` (a dark gray, a step lighter than the
+near-black of a displayed name) so an entry being edited reads as being
+edited; the caret uses the same color.
 
 A committed rename **keeps the entry selected** under its new name and scrolls
 it back into view (the new name usually sorts somewhere else). The rescan that
@@ -41388,6 +41396,10 @@ std::string GetSelectedText() const
 void DeleteSelection()
 ```
 
+`TextInputStyle::selectionColor` is painted as a band **behind** the selected
+characters, so a translucent selection colour tints the background without
+washing the text out.
+
 ### Cursor Operations
 
 ```cpp
@@ -41414,7 +41426,9 @@ The control handles various keyboard inputs:
 - **Backspace/Delete**: Text deletion
 - **Arrow Keys**: Cursor movement
 - **Home/End**: Jump to beginning/end
-- **Enter**: Submit (single-line) or new line (multi-line)
+- **Enter**: Submit (single-line) or new line (multi-line). The numeric
+  keypad's Enter does the same — it arrives as its own key code
+  (`UCKeys::NumPadEnter`) and is treated exactly like `UCKeys::Return`.
 - **Escape**: Cancel editing
 - **Tab**: Focus navigation or tab character (multi-line)
 - **Ctrl+A**: Select all
@@ -52414,9 +52428,9 @@ FILE: Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md
 **Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
 (§2.2b), the OTP engine (§2.2d), the app shell (§4, build order step 4) and
 account editing — rename, code settings, master-password rotation and gated
-seed reveal (§3.5, §3.5a), and in-memory QR decode with the camera scan flow
-(§2.2c) — are built and tested. Screen-capture protection (§2.2e) remains
-impossible on X11.
+seed reveal (§3.5, §3.5a), in-memory QR decode with the camera scan flow
+(§2.2c) and the encrypted backup file (§3.5) — are built and tested.
+Screen-capture protection (§2.2e) remains impossible on X11.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
 **Date:** 2026-08-10 (implementation notes added 2026-08-21)
@@ -52763,9 +52777,30 @@ Scanning is parsing attacker-controlled data through a C library:
   outlive the app in `~/Pictures`, sync folders, thumbnails caches. Either
   don't offer file export of provisioning QRs at all, or watermark the flow
   with explicit warnings and point exports at the encrypted format instead.
-- Encrypted export file: same XChaCha20-Poly1305 + Argon2id envelope as the store, with
-  its own passphrase (not the app master password), so a backup found later
-  doesn't fall to the device password.
+- ~~Encrypted export file~~ — **DONE** (`AccountExport.{h,cpp}`, `BackupDialog`).
+  One file holding every account, sealed with `UCDCrypto::Seal` — the same
+  Argon2id + XChaCha20-Poly1305 envelope used elsewhere, reused rather than
+  reinvented. A 10-byte header (magic, version) is authenticated as associated
+  data; the payload is a count followed by each account's `otpauth://` URI, so
+  a restore goes through `AddFromUri` and meets exactly the parser that guards
+  the live vault. Written atomically at mode 0600.
+
+  Its passphrase must **differ from the master password**, and this is enforced
+  rather than advised: a backup is the file most likely to reach a USB stick or
+  a cloud drive, and one that opened with the device password would make
+  finding it as good as having the machine. Export re-authenticates with the
+  master password first, since it reads every seed in the vault.
+
+  Restoring never overwrites: an account already present is kept and counted as
+  skipped, because a restore that clobbered a re-enrolled seed or a newer HOTP
+  counter would destroy a working second factor. The result is reported per
+  category — "restored 38, kept 2 already present" — since silently dropping
+  two would be indistinguishable from restoring all forty.
+
+  Verified by `Tests/UltraAuthenticatorExportTests.cpp` (56 checks) and by
+  driving the GUI: three accounts exported from one vault and restored into a
+  different vault with a different master password, HOTP counter and
+  non-default parameters intact.
 
 **What shipped (`RevealSecretDialog`, `AccountStore::Reveal`).** On-screen
 reveal only: the setup key and its `otpauth://` URI are shown as selectable
@@ -52786,7 +52821,7 @@ photo album or an email — strictly worse than this vault. Aegis, andOTP and
 applies in full while the dialog is open, which is why it stays on screen only
 until dismissed and warns about photographing it.
 
-The encrypted export *file* in the second bullet is still not built.
+The encrypted export *file* in the second bullet is now built; see above.
 
 ### 3.5a Editing an enrolled account (medium)
 
@@ -52864,6 +52899,8 @@ Apps/UltraAuthenticator/
   AddAccountDialog.*           — manual entry (camera scan still outstanding)  [DONE]
   EditAccountDialog.*          — rename + code settings (§3.5a)                [DONE]
   ChangePasswordDialog.*       — master password rotation                     [DONE]
+  AccountExport.*              — encrypted backup file (§3.5)                 [DONE]
+  BackupDialog.*               — back up / restore, own passphrase (§3.5)     [DONE]
   RevealSecretDialog.*         — gated seed export for device migration (§3.5) [DONE]
   AccountStore.*               — accounts ↔ vault entries via otpauth:// URIs [DONE]
   otp/

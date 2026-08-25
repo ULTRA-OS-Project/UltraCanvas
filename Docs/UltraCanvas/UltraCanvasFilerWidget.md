@@ -680,10 +680,14 @@ try-again-for-all grants each later failing entry one silent retry before asking
 again. Drag & drop, inside the widget and from other applications, runs through
 the same machinery, so drops get the same dialogs.
 
-A **move** is a rename, and a rename is refused while another program still has
-the file open — on Windows it fails outright. The widget therefore drops the
-sources out of the selection before it starts a move, firing `onSelectionChanged`
-so a host that feeds a preview pane from the selection closes the file first.
+A **move, a rename and a delete** all need the file to themselves: a rename is
+refused while another program still has it open — on Windows outright — and a
+delete is too. The widget therefore drops the entries out of the selection
+before each of those, firing `onSelectionChanged` so a host that feeds a preview
+pane from the selection closes the file first. A rename puts the selection back
+on the new name afterwards, and a delete hands it to the neighbour when
+`SetSelectNextAfterDelete` is on, so neither leaves the user with nothing
+selected.
 The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
 its preview release the document instead of merely stopping playback. Most
 previews hold nothing open in the first place — images, text, spreadsheets,
@@ -788,7 +792,8 @@ skipped.
 
 ## Keyboard
 
-Enter activates (folders / archives are entered, files fire `onFileActivated`),
+Enter activates (folders / archives are entered, files fire `onFileActivated`;
+the numeric keypad's Enter counts as Enter everywhere the widget reads it),
 Delete deletes, F2 renames, Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V select all / copy /
 cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
@@ -812,9 +817,12 @@ name, so editing behaves like any text field: the caret moves with the
 arrow keys / Home / End, a click puts it at that position, Shift extends a
 selection, and Ctrl+C/X/V/Z work. It opens with the base name selected (the
 extension stays, Explorer-style; folders select the whole name) in the same
-font size as the displayed name, commits on Enter, cancels on Esc — and a
-click anywhere outside the field commits too, because the field losing the
-keyboard focus ends the edit.
+font size as the displayed name, commits on Enter — the numeric keypad's Enter
+included — cancels on Esc, and a click anywhere outside the field commits too,
+because the field losing the keyboard focus ends the edit. The name is written
+in `FilerStyle::renameTextColor` (a dark gray, a step lighter than the
+near-black of a displayed name) so an entry being edited reads as being
+edited; the caret uses the same color.
 
 A committed rename **keeps the entry selected** under its new name and scrolls
 it back into view (the new name usually sorts somewhere else). The rescan that

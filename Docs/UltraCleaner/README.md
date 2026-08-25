@@ -296,6 +296,15 @@ locations the rule table resolved; that case is covered by
 | `MoveToTrash` | XDG trash on Linux (`files/` plus a `.trashinfo` record, so the desktop's "Restore" works), `~/.Trash` on macOS, `SHFileOperationW` with `FOF_ALLOWUNDO` on Windows. Falls back to copy-then-remove when the trash is on another filesystem. |
 | `DeletePermanently` | `std::filesystem::remove_all`. |
 
+**`MoveToTrash` never empties the trash.** An item that already lives in the
+trash is left alone and counted in `RemovalReport::skippedAlreadyInTrash`,
+and the same holds for the Windows recycle bin. Moving the trash into the
+trash frees nothing — the file is renamed beside itself and gains a second
+`.trashinfo` — so the only honest options were to skip it or to escalate to a
+permanent delete the user did not ask for. Emptying the trash is what
+`DeletePermanently` is for, and the GUI and CLI both say so when the count is
+non-zero.
+
 Failures are collected rather than thrown: a report names each path that
 would not go and why, capped by `RemovalOptions::failureLimit` so a wall of
 permission errors does not bury the summary.

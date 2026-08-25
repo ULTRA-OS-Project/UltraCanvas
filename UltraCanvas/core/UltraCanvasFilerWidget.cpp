@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.17.0
-// Last Modified: 2026-08-23
+// Version: 1.18.0
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -3446,6 +3446,17 @@ namespace UltraCanvas {
                 selectAfterScanPath = NeighbourPathAfterRemoval(victims);
         }
 
+        // A delete is refused while something still holds the file open, the
+        // same way a move's rename is. Let the victims go out of the selection
+        // now that the neighbour above has been picked from the old listing, so
+        // a host preview pane closes the file before it is removed.
+        {
+            std::vector<std::string> doomedPaths;
+            doomedPaths.reserve(victims.size());
+            for (const FilerEntry& v : victims) doomedPaths.push_back(v.path);
+            DeselectPathsForModification(doomedPaths);
+        }
+
         // Folders that already lost an entry (archive deletions below) —
         // seeds the queue's onFolderModified reports.
         std::vector<std::string> archiveModified;
@@ -3810,8 +3821,8 @@ namespace UltraCanvas {
         ts.backgroundColor  = style.renameFieldColor;
         ts.borderColor      = style.renameBorderColor;
         ts.focusBorderColor = style.renameBorderColor;
-        ts.textColor        = style.textColor;
-        ts.caretColor       = style.textColor;
+        ts.textColor        = style.renameTextColor;
+        ts.caretColor       = style.renameTextColor;
         ts.selectionColor   = Color(style.selectionColor.r, style.selectionColor.g,
                                     style.selectionColor.b, 170);
         ts.borderWidth = 1;
@@ -3890,11 +3901,31 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::PerformRename(const std::string& oldPath,
                                                const std::string& targetPath) {
+        // A rename is refused while another program holds the file open, and
+        // the entry being renamed is the one most likely to be held: it stays
+        // selected for the whole time the editor is open, so a host preview
+        // pane is showing it. Only a SOLE selection can be previewed, which is
+        // also the only case the rename path ever produces (F2 and the rename
+        // click both require one selected entry; an icon-menu rename of an
+        // unselected entry leaves the selection alone), so releasing that one
+        // case covers it. The selection goes back on afterwards through
+        // selectAfterScanPath: the follow-up commands that need a single
+        // selected entry - F2 and the Rename button above all - have to keep
+        // finding one.
+        const bool wasOnlySelection =
+                selection.size() == 1 && selection.front() < entries.size() &&
+                entries[selection.front()].path == oldPath;
+        if (wasOnlySelection) DeselectPathsForModification({oldPath});
+
         std::error_code ec;
         fs::rename(oldPath, targetPath, ec);
         if (ec) {
             ReportError("Rename failed for " + oldPath + ": " + ec.message());
+            // Nothing moved: the entry keeps its old name, so put the
+            // selection back on it rather than leaving the user with none.
+            if (wasOnlySelection) selectAfterScanPath = oldPath;
         } else {
+            if (wasOnlySelection) selectAfterScanPath = targetPath;
             // The rescan restores the selection by path, and the renamed
             // entry's old path is gone — without this substitution it drops
             // out and the entry ends up unselected, which silently breaks
@@ -4931,7 +4962,7 @@ namespace UltraCanvas {
             case UCEventType::TextInput: {
                 if (event.virtualKey == UCKeys::Escape) { CloseCompressDialog(); return true; }
                 if (event.virtualKey == UCKeys::Return ||
-                    event.virtualKey == UCKeys::Enter) { CommitCompressDialog(); return true; }
+                    event.virtualKey == UCKeys::NumPadEnter) { CommitCompressDialog(); return true; }
                 // Everything else is text: hand it (and the keyboard) to the
                 // name editor. Reaching this point at all means the focus had
                 // drifted off the editor — anything from the click that opened
@@ -9415,6 +9446,9 @@ namespace UltraCanvas {
                     return false;
                 }
                 switch (event.virtualKey) {
+                    // Both Enters open the selected entry: the numeric
+                    // keypad's Return arrives as its own key code.
+                    case UCKeys::NumPadEnter:
                     case UCKeys::Return:
                         if (!selection.empty()) ActivateEntry(selection.front());
                         return true;

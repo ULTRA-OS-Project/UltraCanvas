@@ -1,3 +1,20 @@
+#### 2026-08-24 *0.51*
+- **"Move to trash" emptied nothing when what was selected was the trash.**
+  The Trash category has been in the cleaning tab since the first release,
+  but ticking it with the removal mode set to *Move to trash* moved the trash
+  into itself: each file was renamed beside itself, a second `.trashinfo` was
+  written for it (down to `olddoc.txt.trashinfo.trashinfo`), the trash ended
+  up **larger** than before, and the report claimed the space had been freed
+  — on a real run here, "3 items, 50 KB freed" against a trash that grew from
+  72 KB to 84 KB. Items already inside the trash are now left alone and
+  counted separately, and both the window and the `--clean` output name the
+  reason: emptying the trash is what *Delete permanently* is for. The Windows
+  recycle bin follows the same rule, where that mode used to reach
+  `SHEmptyRecycleBinW` and empty it for good — a permanent delete from the
+  gentlest of the three modes.
+- The Overview's "Clean system junk" card now mentions the trash, which the
+  tab behind it has always covered.
+
 #### 2026-08-23 *0.50*
 - **UltraCleaner opens on a picture of your drives.** The app used to open
   on a list of cleanup rules, which asks the user to decide what to clean

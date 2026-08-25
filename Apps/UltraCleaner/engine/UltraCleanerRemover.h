@@ -50,6 +50,9 @@ struct RemovalReport {
     uint64_t freedBytes = 0;
     size_t refusedByGuard = 0;          // failed the safety check at clean time
     size_t skippedMissing = 0;          // vanished between scan and clean
+    // Already inside the trash when the mode was "move to trash": moving them
+    // there is a no-op, so they are left alone rather than churned in place.
+    size_t skippedAlreadyInTrash = 0;
     std::vector<RemovalFailure> failures;
     bool cancelled = false;
     bool simulated = false;

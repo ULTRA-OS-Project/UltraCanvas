@@ -101,8 +101,8 @@ std::shared_ptr<UltraCanvasContainer> HomeView::Build(float width, float height)
     };
 
     makeAction("ucHomeJunk", "Clean system junk",
-               "Temporary files, caches, logs, crash reports and package "
-               "downloads. Nothing is removed until you say so.",
+               "Temporary files, caches, logs, crash reports, package "
+               "downloads and the trash. Nothing is removed until you say so.",
                &onCleanSystemJunk);
     makeAction("ucHomePhotos", "Find duplicate photos",
                "Groups pictures that are the same, or shots of the same "

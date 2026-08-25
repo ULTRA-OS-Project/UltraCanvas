@@ -288,6 +288,10 @@ std::string GetSelectedText() const
 void DeleteSelection()
 ```
 
+`TextInputStyle::selectionColor` is painted as a band **behind** the selected
+characters, so a translucent selection colour tints the background without
+washing the text out.
+
 ### Cursor Operations
 
 ```cpp
@@ -314,7 +318,9 @@ The control handles various keyboard inputs:
 - **Backspace/Delete**: Text deletion
 - **Arrow Keys**: Cursor movement
 - **Home/End**: Jump to beginning/end
-- **Enter**: Submit (single-line) or new line (multi-line)
+- **Enter**: Submit (single-line) or new line (multi-line). The numeric
+  keypad's Enter does the same — it arrives as its own key code
+  (`UCKeys::NumPadEnter`) and is treated exactly like `UCKeys::Return`.
 - **Escape**: Cancel editing
 - **Tab**: Focus navigation or tab character (multi-line)
 - **Ctrl+A**: Select all
