@@ -788,7 +788,8 @@ skipped.
 
 ## Keyboard
 
-Enter activates (folders / archives are entered, files fire `onFileActivated`),
+Enter activates (folders / archives are entered, files fire `onFileActivated`;
+the numeric keypad's Enter counts as Enter everywhere the widget reads it),
 Delete deletes, F2 renames, Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V select all / copy /
 cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
@@ -812,9 +813,12 @@ name, so editing behaves like any text field: the caret moves with the
 arrow keys / Home / End, a click puts it at that position, Shift extends a
 selection, and Ctrl+C/X/V/Z work. It opens with the base name selected (the
 extension stays, Explorer-style; folders select the whole name) in the same
-font size as the displayed name, commits on Enter, cancels on Esc — and a
-click anywhere outside the field commits too, because the field losing the
-keyboard focus ends the edit.
+font size as the displayed name, commits on Enter — the numeric keypad's Enter
+included — cancels on Esc, and a click anywhere outside the field commits too,
+because the field losing the keyboard focus ends the edit. The name is written
+in `FilerStyle::renameTextColor` (a dark gray, a step lighter than the
+near-black of a displayed name) so an entry being edited reads as being
+edited; the caret uses the same color.
 
 A committed rename **keeps the entry selected** under its new name and scrolls
 it back into view (the new name usually sorts somewhere else). The rescan that

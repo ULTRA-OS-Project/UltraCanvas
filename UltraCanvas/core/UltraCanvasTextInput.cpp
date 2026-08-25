@@ -303,16 +303,19 @@ namespace UltraCanvas {
         // Set clipping for text area ONLY
         ctx->ClipRect(textArea);
 
+        // The selection band goes *under* the text: it is a translucent fill,
+        // so painting it afterwards washed the selected characters out (the
+        // Filer's rename editor opens with the base name selected, and that
+        // name came up a pale gray instead of the field's text color).
+        if (HasSelection() && IsFocused()) {
+            RenderSelection(textArea, ctx);
+        }
+
         // Draw text content
         if (!text.empty()) {
             RenderText(textArea, textColor, ctx);
         } else if (!placeholderText.empty() && (showPlaceholderAlways || !IsFocused())) {
             RenderPlaceholder(textArea, ctx);
-        }
-
-        // Draw selection
-        if (HasSelection() && IsFocused()) {
-            RenderSelection(textArea, ctx);
         }
         ctx->PopState();
 
@@ -1099,6 +1102,13 @@ namespace UltraCanvas {
 
         // Handle special keys
         switch (event.virtualKey) {
+            // The numeric keypad's Enter is a separate key code (the platform
+            // layers report it as NumPadEnter) but means exactly what the main
+            // Return key means: finish the entry. Without this case it fell
+            // through unhandled and every field that ends on Enter — the
+            // Filer's inline rename above all — simply ignored it: the typed
+            // text stayed in the field and nothing was committed.
+            case UCKeys::NumPadEnter:
             case UCKeys::Return:
                 if (inputType == TextInputType::Multiline) {
                     SaveState();

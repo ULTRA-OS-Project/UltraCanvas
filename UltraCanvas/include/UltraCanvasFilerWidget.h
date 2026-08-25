@@ -53,8 +53,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.17.0
-// Last Modified: 2026-08-23
+// Version: 1.17.1
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -265,6 +265,10 @@ namespace UltraCanvas {
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
         Color renameBorderColor    = Color(60, 140, 220, 255);
+        // Text (and caret) of the inline rename editor. A dark gray rather
+        // than the near-black of a displayed name, so an entry being edited
+        // reads as being edited.
+        Color renameTextColor      = Color(60, 60, 66, 255);
         Color infoBarBackground    = Color(245, 245, 247, 255);
         Color infoBarTextColor     = Color(50, 50, 56, 255);
 
