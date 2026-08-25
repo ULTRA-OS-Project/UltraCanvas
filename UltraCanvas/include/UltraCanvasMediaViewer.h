@@ -61,6 +61,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageAnimation.h"
+#include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
@@ -84,6 +85,7 @@ class UltraCanvasSpreadsheet;        // ODS / CSV / TSV spreadsheets
 class UltraCanvasSTLElement;         // STL 3D models (OpenGL viewer, 2D fallback)
 class UltraCanvasTextArea;           // text / source / markdown (read-only)
 class UltraCanvasEBookViewer;        // EPUB / FB2 / MOBI e-books (engine registry)
+class UltraCanvasCurvesDialog;       // tone curve editor window (dialogs/)
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
@@ -126,11 +128,16 @@ struct MediaAdjustments {
     double blue       = 1.0;
     double sharpen    = 0.0;   // libvips sharpen sigma, 0 = off
     bool   autoOptimize = false; // histogram equalisation
+    // Tone curves (the Curves dialog): master plus per-channel mappings,
+    // applied as a lookup table before the other colour work. This is what
+    // reaches highlights, midtones and shadows separately — the sliders move
+    // the whole tone range at once.
+    ToneCurveSet curves;
 
     bool IsIdentity() const {
         return gamma == 1.0 && brightness == 1.0 &&
                red == 1.0 && green == 1.0 && blue == 1.0 &&
-               sharpen <= 0.0 && !autoOptimize;
+               sharpen <= 0.0 && !autoOptimize && curves.IsIdentity();
     }
 };
 
@@ -396,6 +403,15 @@ private:
     void UpdateInfoBar();
     void UpdateDetailedInfo();
     void ApplyAdjustments();          // push `adjustments` to the surface
+    // Put every adjustment control back to its default without firing one
+    // re-render per control (the callbacks are suppressed while they move).
+    void ResetAdjustments();
+    // Open the Curves dialog on the current image: live preview while the
+    // curve is dragged, Cancel restores the curves the viewer had.
+    void ShowCurvesDialog();
+    // Histogram of the shown image for the Curves dialog backdrop, one bin per
+    // 8-bit level per channel. Empty when there is no image (or no libvips).
+    void FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const;
     void ShowSaveDialog();
     void HandleDroppedFiles(const std::vector<std::string>& files);
     // Zoom toolbar actions route to the PDF view or the image surface depending
@@ -437,6 +453,9 @@ private:
     // The active view uses the bare arrow keys itself (spreadsheet cells), so
     // browsing needs the Alt modifier while it is showing.
     bool ActiveViewUsesArrowKeys() const { return activeKind == MediaKind::Sheet; }
+    // One labelled slider of the adjustments panel. The label carries the live
+    // value, the slider is continuous over [minV, maxV], and the control
+    // registers itself with `adjustResetters` so Reset puts it back.
     std::shared_ptr<UltraCanvasUIElement> BuildAdjustSlider(
             const std::string& id, const std::string& caption,
             float minV, float maxV, float value, std::function<void(float)> onChange);
@@ -473,6 +492,15 @@ private:
     std::string ucdDetails;
 
     MediaAdjustments adjustments;
+    // Puts each adjustment control back to the value it was built with.
+    std::vector<std::function<void()>> adjustResetters;
+    // True while ResetAdjustments() moves the controls: their callbacks must
+    // not each trigger a re-render of the image.
+    bool suppressAdjustCallbacks = false;
+    // The open Curves dialog, if any (it deletes itself when closed).
+    std::weak_ptr<UltraCanvasCurvesDialog> curvesDialog;
+    // The curves in force when the Curves dialog opened, restored on Cancel.
+    ToneCurveSet curvesBeforeDialog;
 
     bool   slideshowPlaying = false;
     double slideshowIntervalSec = 5.0;

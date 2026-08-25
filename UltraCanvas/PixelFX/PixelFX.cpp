@@ -503,6 +503,49 @@ namespace PixelFX {
             return PFXImage(result.colourspace(image.interpretation()));
         }
 
+        PFXImage MapLut(const PFXImage& image, const std::vector<std::vector<uint8_t>>& tables) {
+            if (tables.empty()) return image;
+            for (const auto& t : tables) {
+                if (t.size() != 256) {
+                    throw PixelFXException("MapLut: every lookup table must hold 256 entries");
+                }
+            }
+
+            // maplut indexes with unsigned integers, so the source is mapped as
+            // 8-bit; a wider image is cast down first.
+            vips::VImage src = image;
+            if (src.format() != VIPS_FORMAT_UCHAR) src = src.cast(VIPS_FORMAT_UCHAR);
+
+            int bands = src.bands();
+            if (bands <= 0) return image;
+            bool hasAlpha = src.has_alpha();
+            int colourBands = hasAlpha ? bands - 1 : bands;
+            if (colourBands <= 0) return image;
+
+            // One 256x1 lookup image with a band per mapped colour band.
+            std::vector<uint8_t> lutData(static_cast<size_t>(256) * colourBands);
+            for (int b = 0; b < colourBands; ++b) {
+                const std::vector<uint8_t>& table =
+                        tables[static_cast<size_t>(b) < tables.size() ? b : tables.size() - 1];
+                for (int i = 0; i < 256; ++i) {
+                    lutData[static_cast<size_t>(i) * colourBands + b] = table[i];
+                }
+            }
+            vips::VImage lut = vips::VImage::new_from_memory_copy(
+                    lutData.data(), lutData.size(), 256, 1, colourBands, VIPS_FORMAT_UCHAR);
+            lut = lut.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_HISTOGRAM));
+
+            vips::VImage colour = src.extract_band(0, vips::VImage::option()->set("n", colourBands));
+            vips::VImage mapped = colour.maplut(lut);
+            if (hasAlpha) {
+                vips::VImage alpha = src.extract_band(colourBands,
+                        vips::VImage::option()->set("n", bands - colourBands));
+                mapped = mapped.bandjoin(alpha);
+            }
+            return PFXImage(mapped.copy(
+                    vips::VImage::option()->set("interpretation", src.interpretation())));
+        }
+
         PFXImage Gamma(const PFXImage& image, double gamma) { return PFXImage(image.gamma(vips::VImage::option()->set("exponent", 1.0 / gamma))); }
         PFXImage Invert(const PFXImage& image) { return PFXImage(image.invert()); }
         PFXImage Grayscale(const PFXImage& image) { return PFXImage(image.colourspace(VIPS_INTERPRETATION_B_W)); }

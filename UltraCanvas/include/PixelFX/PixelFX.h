@@ -12,6 +12,7 @@
 #include <vips/vips8>
 
 // ===== STANDARD INCLUDES =====
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
@@ -352,6 +353,14 @@ namespace PixelFX {
         PFXImage IccImport(const PFXImage& image, const std::string& profilePath = "");
         PFXImage IccExport(const PFXImage& image, const std::string& profilePath = "");
         PFXImage IccTransform(const PFXImage& image, const std::string& outputProfile);
+
+        // Map an image through per-channel 8-bit lookup tables — how a tone
+        // curve, a levels correction or a colour grading LUT is applied.
+        // Every table holds 256 entries: pass one table to map all colour
+        // bands the same way, or one per colour band (extra tables are
+        // ignored, a missing one repeats the last). A trailing alpha band is
+        // passed through untouched, and the image is mapped as 8-bit.
+        PFXImage MapLut(const PFXImage& image, const std::vector<std::vector<uint8_t>>& tables);
 
         PFXImage Brightness(const PFXImage& image, double factor);
         PFXImage Contrast(const PFXImage& image, double factor);

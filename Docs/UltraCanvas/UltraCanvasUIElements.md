@@ -51,6 +51,7 @@ multi-byte text. Reproducing even half of that by hand is a week of bugs.
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
+| A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |
 | Step through a sequence | `UltraCanvasStepper` | `UltraCanvasStepper.h` |
 
@@ -113,6 +114,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
+| Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 
 Charts, diagrams and document views live under `UltraCanvas/Plugins/` with their

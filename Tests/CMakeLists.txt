@@ -733,6 +733,30 @@ add_test(
 )
 message(STATUS "    Test registered: LabelPlacementTest")
 
+# ===== TONE CURVE TEST =====
+# The tone curve model behind the Curves dialog: point management, monotone
+# interpolation, lookup tables and the four-curve set. Pure model code - no UI
+# stack, no image library.
+message(STATUS "  Building ToneCurveTest...")
+add_executable(ToneCurveTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ToneCurveTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasToneCurve.cpp
+)
+target_include_directories(ToneCurveTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ToneCurveTest PRIVATE cxx_std_20)
+set_target_properties(ToneCurveTest PROPERTIES
+    OUTPUT_NAME "ToneCurveTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ToneCurveTest
+    COMMAND ToneCurveTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ToneCurveTest")
+
 # ===== CHART ENGINE TEST =====
 # The engine's model layer: axis ranges and scales, tick generation and
 # formatting, layout negotiation, the vertical / horizontal / polar projections
