@@ -68,8 +68,11 @@ std::shared_ptr<UltraCanvasContainer> HomeView::Build(float width, float height)
 
     verdictLabel_ = CreateLabel("ucHomeVerdict", 0, 0, width - 40, 26, "");
     verdictLabel_->SetWrap(TextWrap::WrapWord);
+    verdictLabel_->SetElementSize(CSSLayout::Dimension::Auto(),
+                                  CSSLayout::Dimension::Auto());
     root_->AddChild(verdictLabel_);
     verdictLabel_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    verdictLabel_->layoutItem.SetFlexShrink(0);
 
     auto actionsHeading = CreateLabel("ucHomeActionsHeading", 0, 0, 600, 26,
                                       "What would you like to do?");
@@ -86,16 +89,29 @@ std::shared_ptr<UltraCanvasContainer> HomeView::Build(float width, float height)
                           const std::string& explanation,
                           std::function<void()>* slot) {
         auto card = CreateContainer(id, 0, 0, 300, 92);
-        card->layout.SetFlexColumn()
-                    .SetFlexGap(6)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        // Block, for the same reason the category list is: the explanation
+        // under the button wraps, and only the block path measures a wrapped
+        // label against a definite width. Under flex it reported one line and
+        // the rest was clipped.
+        card->layout.SetDisplay(CSSLayout::DisplayType::Block);
+        card->SetElementSize(CSSLayout::Dimension::Px(300),
+                             CSSLayout::Dimension::Auto());
+        ContainerStyle plainCard;
+        plainCard.autoShowScrollbars = false;
+        card->SetContainerStyle(plainCard);
         auto button = CreateButton(id + "Btn", 0, 0, 290, 34, title);
         button->onClick = [slot]() { if (*slot) (*slot)(); };
         card->AddChild(button);
         auto text = CreateLabel(id + "Text", 0, 0, 290, 46, explanation);
         text->SetWrap(TextWrap::WrapWord);
         text->SetFontSize(11);
+        // Height from the wrapped text, not from a guess: a taller font or a
+        // narrower card turns two lines into three, and a fixed box clips the
+        // rest.
+        text->SetElementSize(CSSLayout::Dimension::Auto(),
+                             CSSLayout::Dimension::Auto());
         card->AddChild(text);
+        text->layoutItem.SetFlexShrink(0);
         actions->AddChild(card);
         card->layoutItem.SetFlexShrink(0);
     };
