@@ -16770,10 +16770,14 @@ try-again-for-all grants each later failing entry one silent retry before asking
 again. Drag & drop, inside the widget and from other applications, runs through
 the same machinery, so drops get the same dialogs.
 
-A **move** is a rename, and a rename is refused while another program still has
-the file open — on Windows it fails outright. The widget therefore drops the
-sources out of the selection before it starts a move, firing `onSelectionChanged`
-so a host that feeds a preview pane from the selection closes the file first.
+A **move, a rename and a delete** all need the file to themselves: a rename is
+refused while another program still has it open — on Windows outright — and a
+delete is too. The widget therefore drops the entries out of the selection
+before each of those, firing `onSelectionChanged` so a host that feeds a preview
+pane from the selection closes the file first. A rename puts the selection back
+on the new name afterwards, and a delete hands it to the neighbour when
+`SetSelectNextAfterDelete` is on, so neither leaves the user with nothing
+selected.
 The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
 its preview release the document instead of merely stopping playback. Most
 previews hold nothing open in the first place — images, text, spreadsheets,

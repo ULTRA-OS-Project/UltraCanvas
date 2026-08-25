@@ -20,6 +20,20 @@
   color.
 
 #### 2026-08-24 *0.3.64*
+- **Renaming and deleting a previewed file no longer fail the way moving one
+  did.** The move path was taught to let go of its sources first (0.3.63); the
+  rename and delete paths were not, and they need the file just as much - a
+  rename is refused while another program holds it open, on Windows outright,
+  and so is a delete. Rename is the most exposed of the three: the entry stays
+  selected for as long as the editor is open, so a host preview pane is
+  certainly showing it. Both now drop the entries out of the selection first,
+  which closes that preview synchronously, and both put the selection back
+  afterwards - rename onto the new name, delete onto the neighbour when
+  `SetSelectNextAfterDelete` is on - so the commands that need a single selected
+  entry (F2 and the Rename button above all) keep finding one. Only a sole
+  selection can be previewed, which is also the only shape the rename path
+  produces, so the release is scoped to exactly that case and a multi-selection
+  delete is unaffected.
 - **"Open with" proposes real applications on Windows and macOS.** The submenu
   knew only what the Linux backend could enumerate; everywhere else it offered
   nothing but "Other application…". Both remaining desktop backends of
