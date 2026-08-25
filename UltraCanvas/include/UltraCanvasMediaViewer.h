@@ -54,9 +54,13 @@
 //
 // Transparent images draw over a configurable backdrop: either a preset
 // solid colour (default white) or the checkered pattern familiar from image
-// editors (SetTransparentBackground / SetTransparentColor).
+// editors (SetTransparentBackground / SetTransparentColor). A file that really
+// has transparency — an alpha channel that is used, or a vector document —
+// also gets a palette strip directly under the picture: greys and colours to
+// click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
+// off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.6.0
+// Version: 1.7.0
 // Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 #pragma once
@@ -88,6 +92,7 @@ class UltraCanvasSpreadsheet;        // ODS / CSV / TSV spreadsheets
 class UltraCanvasSTLElement;         // STL 3D models (OpenGL viewer, 2D fallback)
 class UltraCanvasTextArea;           // text / source / markdown (read-only)
 class UltraCanvasEBookViewer;        // EPUB / FB2 / MOBI e-books (engine registry)
+class UltraCanvasColorSwatchBar;     // backdrop palette under transparent images
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
@@ -360,6 +365,24 @@ public:
     void SetTransparentColor(const Color& c);
     Color GetTransparentColor() const;
 
+    // ===== BACKDROP PALETTE (UNDER THE PICTURE) =====
+    // A strip of colours (greys first, then colours) shown directly beneath the
+    // image whenever the shown file actually has transparency — a PNG or WebP
+    // with an alpha channel that is used, or a vector document (SVG), which
+    // paints over whatever is behind it. Clicking a colour sets the backdrop to
+    // it; the leading checkered swatch goes back to the transparency pattern.
+    // Files without transparency never show the strip, so it costs no space
+    // where it would mean nothing.
+    void SetTransparencyPaletteVisible(bool visible);
+    bool GetTransparencyPaletteVisible() const { return transparencyPaletteEnabled; }
+    // The strip itself, for hosts that want their own colours or metrics
+    // (SetColors / GetStyle). Null when the viewer has not built it yet.
+    UltraCanvasColorSwatchBar* GetTransparencyPalette() const { return backdropBar.get(); }
+    // Fired whenever the backdrop changes through the strip, so a host can
+    // remember the choice (the UltraFiler saves it to its settings).
+    std::function<void(TransparentImageBackground, const Color&)>
+            onTransparentBackgroundChanged;
+
     // ===== PDF PAGE INVENTORY (THUMBNAIL STRIP) =====
     // How wide the thumbnails of the PDF view's page inventory are. Either an
     // absolute pixel width — the same strip whatever the viewer's size, which
@@ -421,6 +444,12 @@ private:
     void ApplyVideoPreviewToCurrent();
     void StopVideoClipTimer();
     void UpdateBreadcrumb();          // rebuild the folder path strip from currentFolder
+    // Show the backdrop palette for a transparent image (and hide it for
+    // everything else), and mark the swatch the current backdrop uses.
+    void UpdateTransparencyPalette();
+    // Mark the swatch matching the backdrop the surface is using (none when it
+    // is a colour the palette does not hold).
+    void SyncBackdropSelection();
     void UpdateInfoBar();
     void UpdateDetailedInfo();
     void ApplyAdjustments();          // push `adjustments` to the surface
@@ -480,6 +509,7 @@ private:
     std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;
     std::shared_ptr<UltraCanvasMediaSurface> surface;
+    std::shared_ptr<UltraCanvasColorSwatchBar> backdropBar;   // under the picture
     std::shared_ptr<UltraCanvasContainer>    bottomBar;
     std::shared_ptr<UltraCanvasLabel>        infoLabel;
     std::shared_ptr<UltraCanvasButton>       playButton;
@@ -521,6 +551,7 @@ private:
     int   pdfThumbWidthPx      = 56;
     float pdfThumbWidthFraction = 0.25f;
     bool  documentWheelZoom    = true;   // plain wheel zooms the PDF page
+    bool  transparencyPaletteEnabled = true;  // backdrop strip under the picture
 
     bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window
     bool keyFilterInstalled = false; // window key filter is live

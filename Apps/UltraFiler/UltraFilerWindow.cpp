@@ -21,9 +21,11 @@
 // favorites; persisted settings load at startup and configure the preview's
 // transparent-image backdrop, the width of the page thumbnails in the
 // preview's PDF page inventory and the folder tree's colours - the background
-// of the drive rows and the highlight of the selected folder. Esc closes the
-// History or Favorites view, or an open media preview.
-// Version: 1.13.0
+// of the drive rows and the highlight of the selected folder. A backdrop
+// colour picked from the strip under a transparent image in the preview is
+// saved the same way. Esc closes the History or Favorites view, or an open
+// media preview.
+// Version: 1.14.0
 // Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
@@ -404,6 +406,15 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // The filer provides the navigation; the preview shows only the media
     // (no breadcrumb / toolbar rows above the image).
     preview->SetTopBarsVisible(false);
+    // Picking a backdrop colour from the strip under a transparent image is a
+    // setting like any other: it is kept, so the next preview opens with it.
+    preview->onTransparentBackgroundChanged =
+            [this](TransparentImageBackground mode, const Color& color) {
+        settings.previewCheckeredBackground =
+                (mode == TransparentImageBackground::Checkered);
+        settings.previewTransparentColor = color;
+        settings.Save();
+    };
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
     // the recently used files / folders / applications behind the clock button.

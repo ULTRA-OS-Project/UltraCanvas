@@ -48,6 +48,34 @@ pages at its edges.
 viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
 ```
 
+## Backdrop under transparent images
+
+A file that really has transparency — an alpha channel that is used, or a
+vector document (SVG), which paints over whatever is behind it — gets a strip of
+colours directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
+swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
+clicking the checkerboard goes back to the transparency pattern. Files without
+transparency never show the strip, so it costs no space where it would mean
+nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
+opaque alpha channel a PNG export routinely carries.
+
+```cpp
+viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
+// Remember what the user picked:
+viewer->onTransparentBackgroundChanged =
+        [&](TransparentImageBackground mode, const Color& color) {
+    settings.checkered = (mode == TransparentImageBackground::Checkered);
+    settings.color = color;
+};
+// Different colours, or different metrics:
+viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
+```
+
+The strip stays in step with `SetTransparentBackground()` / `SetTransparentColor()`
+however they are called: the matching swatch is marked, and a colour the palette
+does not hold (one picked in a settings dialog) simply marks none of them.
+
 ## PDF page inventory
 
 The thumbnail strip beside a PDF page takes its width one of two ways: an

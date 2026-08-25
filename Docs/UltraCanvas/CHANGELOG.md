@@ -1,3 +1,39 @@
+#### 2026-08-25 *0.3.69*
+- **Transparent images get their backdrop colours under the picture.** Until
+  now the only way to change what shows through a transparent PNG or an SVG was
+  a settings dialog in the host application - the viewer itself offered
+  nothing. A file that really has transparency now shows a strip of swatches
+  directly beneath the image: the checkered pattern first, then six greys, then
+  twelve colours. Clicking one makes it the backdrop; the checkerboard swatch
+  goes back to the transparency pattern. A file without transparency shows no
+  strip at all, so nothing is given up where it would mean nothing.
+  - `UltraCanvasMediaViewer::SetTransparencyPaletteVisible` turns the strip off
+    for hosts with their own chooser, `GetTransparencyPalette()` hands out the
+    element for different colours or metrics, and
+    `onTransparentBackgroundChanged` reports what was picked. The strip also
+    follows `SetTransparentBackground()` / `SetTransparentColor()` set from
+    anywhere else, marking the matching swatch.
+- **`UltraCanvasColorSwatchBar`** is the new element behind it (`include/`
+  + `core/`), for anywhere a full colour picker is too much furniture: a strip
+  of colours, an optional leading checkerboard entry, hover and selection
+  outlines, per-swatch hex tooltips, `onColorSelected` / `onCheckeredSelected`.
+  It **sizes its swatches to the space it is given** - growing towards the
+  preferred size, shrinking towards the minimum - so the same palette fits a
+  narrow preview pane and a full window, which a fixed row of buttons cannot
+  do. It never takes the keyboard focus, so a host keeps its own arrow keys.
+  Ready-made palettes: `GrayscalePalette()`, `ColorPalette()`,
+  `DefaultPalette()`.
+- **`UCImage::HasTransparency()`** answers whether anything behind an image can
+  show through it: an alpha channel that is actually used, or a vector document
+  (SVG), which paints over whatever is beneath it. The fully opaque alpha
+  channel a PNG export routinely carries counts as opaque - the channel's
+  minimum settles it, except on images too large to scan on the way to the
+  screen, where its presence is taken at face value. Worked out once per image
+  and kept.
+- **UltraFiler** saves a colour picked from the strip in the preview pane, so
+  the next preview opens with it - the same setting as *Settings > Media Viewer
+  > Transparent Images*.
+
 #### 2026-08-25 *0.3.68*
 - **The media viewer's PDF page zooms like a picture now.** The wheel over the
   page zooms about the pointer - the spot under the cursor stays under it - and

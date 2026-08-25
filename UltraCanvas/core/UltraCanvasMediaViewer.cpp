@@ -21,6 +21,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
@@ -1065,6 +1066,39 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     }
 #endif
 
+    // ----- BACKDROP PALETTE (directly under the picture) -----
+    // Only up for a file that really has transparency (see
+    // UpdateTransparencyPalette): the checkered swatch first, then greys and
+    // colours. The strip sizes its own swatches to the width it gets, so it
+    // fits a narrow preview pane as well as a full window.
+    backdropBar = CreateBackdropSwatchBar("MV_Backdrop", 0, 0, 0, 28);
+    {
+        ColorSwatchBarStyle bs = backdropBar->GetStyle();
+        bs.background     = Color(30, 30, 36, 255);
+        bs.border         = Color(70, 70, 78, 255);
+        bs.hoverBorder    = Color(210, 210, 218, 255);
+        bs.selectedBorder = Color(90, 160, 240, 255);
+        backdropBar->SetStyle(bs);
+    }
+    backdropBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    backdropBar->SetVisible(false);
+    backdropBar->onColorSelected = [this](const Color& c) {
+        SetTransparentBackground(TransparentImageBackground::SolidColor);
+        SetTransparentColor(c);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::SolidColor, c);
+        }
+    };
+    backdropBar->onCheckeredSelected = [this]() {
+        SetTransparentBackground(TransparentImageBackground::Checkered);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::Checkered,
+                                           GetTransparentColor());
+        }
+    };
+    AddChild(backdropBar);
+
     // ----- BOTTOM INFO BAR -----
     bottomBar = std::make_shared<UltraCanvasContainer>("MV_Bottom", 0, 0, 0, 26);
     bottomBar->SetBackgroundColor(Color(18, 18, 22, 255));
@@ -1418,6 +1452,7 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SetTransparentBackground(TransparentImageBackground mode) {
     if (surface) surface->SetTransparentBackground(mode);
+    SyncBackdropSelection();
 }
 
 TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() const {
@@ -1427,6 +1462,44 @@ TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() co
 
 void UltraCanvasMediaViewer::SetTransparentColor(const Color& c) {
     if (surface) surface->SetTransparentColor(c);
+    SyncBackdropSelection();
+}
+
+void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
+    transparencyPaletteEnabled = visible;
+    UpdateTransparencyPalette();
+}
+
+// ===== BACKDROP PALETTE =====
+// The strip is only up while it means something: the shown file is an image
+// (the PDF, sheet, text, … views paint their own background) and that image
+// really has transparency — an alpha channel that is used, or a vector
+// document. Everything else would be a row of colours changing nothing.
+
+void UltraCanvasMediaViewer::SyncBackdropSelection() {
+    if (!backdropBar || !surface) return;
+    if (surface->GetTransparentBackground() == TransparentImageBackground::Checkered) {
+        backdropBar->SelectCheckered();
+    } else {
+        // A colour the palette does not hold (one picked in a settings dialog)
+        // simply leaves no swatch marked.
+        backdropBar->SelectColor(surface->GetTransparentColor());
+    }
+}
+
+void UltraCanvasMediaViewer::UpdateTransparencyPalette() {
+    if (!backdropBar) return;
+    bool show = transparencyPaletteEnabled && activeKind == MediaKind::Image &&
+                surface != nullptr;
+    if (show) {
+        auto img = surface->GetImage();
+        show = img && img->IsValid() && img->HasTransparency();
+    }
+    if (show != backdropBar->IsVisible()) {
+        backdropBar->SetVisible(show);
+        RequestRedraw();
+    }
+    if (show) SyncBackdropSelection();
 }
 
 Color UltraCanvasMediaViewer::GetTransparentColor() const {
@@ -1465,6 +1538,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (playlist.empty()) {
         ShowView(MediaKind::Image);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        UpdateTransparencyPalette();   // nothing shown - the strip goes away
         UpdateInfoBar();
         return;
     }
@@ -1614,6 +1688,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         auto img = UCImage::Get(path);
         surface->ShowImage(img, transition, transitionDurationMs, animated);
     }
+    // The strip of backdrop colours belongs to the file just loaded: up for a
+    // transparent image, gone for everything else.
+    UpdateTransparencyPalette();
     UpdateInfoBar();
     UpdateDetailedInfo();
 }
