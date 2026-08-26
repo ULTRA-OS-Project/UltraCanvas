@@ -746,9 +746,13 @@ if (BUILD_ULTRAFILER_APP)
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraFiler PRIVATE
-            # UltraFiler's own version, not the framework's — keep in sync
-            # with UltraFiler.rc and UltraFiler.manifest.
-            ULTRAFILER_VERSION="0.8.0"
+            # UltraFiler's own version, not the framework's: the first line
+            # of Docs/UltraFiler/CHANGELOG.md, read by
+            # cmake/UltraCanvasVersion.cmake. Never a literal here again — the
+            # hand-maintained copy this replaces sat at 0.8.0 through sixteen
+            # commits of UltraFiler work. UltraFiler.rc / .manifest are written
+            # from the same line by ./set-version.sh.
+            ULTRAFILER_VERSION="${ULTRAFILER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/UltraFiler.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
@@ -782,6 +786,7 @@ if (BUILD_ULTRAFILER_APP)
     # let the duplicate through silently.
 
     message(STATUS "  UltraFiler executable: UltraFiler")
+    message(STATUS "      Version ${ULTRAFILER_VERSION} (Docs/UltraFiler/CHANGELOG.md)")
 endif()
 
 # ===== ULTRAVIEWER APPLICATION =====

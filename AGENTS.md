@@ -155,35 +155,39 @@ The **first line of a changelog is the single source of truth** for a version:
 
 | Changelog | Drives |
 |---|---|
-| `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, DemoApp, UltraFiler, UltraViewer, … |
+| `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, DemoApp, UltraViewer, … |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
+| `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
 changelog — that is the whole bump. Do **not** hand-edit a version number
 anywhere else, and never introduce a new literal copy of one:
 
 - `cmake/UltraCanvasVersion.cmake` parses the first line at configure time and
-  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` / `ULTRACLEANER_VERSION`
-  (plus `_DOT4` / `_COMMA4` variants for Windows resources). It feeds every
+  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` / `ULTRACLEANER_VERSION` /
+  `ULTRAFILER_VERSION` (plus `_DOT4` / `_COMMA4` variants for Windows
+  resources). It feeds every
   `project(VERSION …)` and the matching compile definitions. Editing a
   changelog re-triggers the configure step, so existing build trees follow
   along.
 - Code that displays a version reads those defines —
   `UltraCanvas::versionString` (`UltraCanvasUtils.cpp`, shown in the demo app's
-  info window), `UltraCanvasTextEditor::version` (shown in Texter's splash) and
+  info window), `UltraCanvasTextEditor::version` (shown in Texter's splash),
   `ULTRACLEANER_VERSION` (UltraCleaner's window title, header line and
-  `--version`).
-- An app with its own changelog versions itself: UltraTexter and UltraCleaner
-  do not move when the framework releases, and a change to either belongs in
-  its own file. A framework change an app needs still goes in
+  `--version`) and `ULTRAFILER_VERSION` (UltraFiler's window title, About
+  dialog and `--version`).
+- An app with its own changelog versions itself: UltraTexter, UltraCleaner and
+  UltraFiler do not move when the framework releases, and a change to one
+  belongs in its own file. A framework change an app needs still goes in
   `Docs/UltraCanvas/CHANGELOG.md`.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
-- Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still
-  hold literals, because windres reads them from disk. Run `./set-version.sh`
-  after bumping the UltraTexter version; a CMake configure on any platform
-  warns when they are stale.
+- Only the Windows resource files still hold literals, because windres reads
+  them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
+  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
+  bumping either app; a CMake configure on any platform warns when they are
+  stale.
 
 ## House rules for AI-generated changes
 

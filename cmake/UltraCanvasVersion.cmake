@@ -22,6 +22,9 @@
 #   ULTRACLEANER_VERSION        e.g. "0.50"    (Docs/UltraCleaner/CHANGELOG.md)
 #   ULTRACLEANER_VERSION_DOT4   e.g. "0.50.0.0"
 #   ULTRACLEANER_VERSION_COMMA4 e.g. "0,50,0,0"
+#   ULTRAFILER_VERSION          e.g. "0.9.0"   (Docs/UltraFiler/CHANGELOG.md)
+#   ULTRAFILER_VERSION_DOT4     e.g. "0.9.0.0"
+#   ULTRAFILER_VERSION_COMMA4   e.g. "0,9,0,0"
 #
 # Expected first line of a changelog: `#### YYYY-MM-DD *x.y.z*`
 
@@ -32,6 +35,7 @@ get_filename_component(_ULTRACANVAS_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABS
 set(ULTRACANVAS_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/UltraCanvas/CHANGELOG.md")
 set(ULTRATEXTER_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/Texter/CHANGELOG.md")
 set(ULTRACLEANER_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/UltraCleaner/CHANGELOG.md")
+set(ULTRAFILER_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/UltraFiler/CHANGELOG.md")
 
 # Pad a dotted version to exactly four components and emit the dotted and
 # comma-separated forms Windows resource scripts want.
@@ -71,6 +75,7 @@ endfunction()
 _ultracanvas_version_from_changelog("${ULTRACANVAS_CHANGELOG_FILE}" ULTRACANVAS_VERSION)
 _ultracanvas_version_from_changelog("${ULTRATEXTER_CHANGELOG_FILE}" ULTRATEXTER_VERSION)
 _ultracanvas_version_from_changelog("${ULTRACLEANER_CHANGELOG_FILE}" ULTRACLEANER_VERSION)
+_ultracanvas_version_from_changelog("${ULTRAFILER_CHANGELOG_FILE}" ULTRAFILER_VERSION)
 
 _ultracanvas_version_variants("${ULTRACANVAS_VERSION}"
     ULTRACANVAS_VERSION_DOT4 ULTRACANVAS_VERSION_COMMA4)
@@ -78,6 +83,8 @@ _ultracanvas_version_variants("${ULTRATEXTER_VERSION}"
     ULTRATEXTER_VERSION_DOT4 ULTRATEXTER_VERSION_COMMA4)
 _ultracanvas_version_variants("${ULTRACLEANER_VERSION}"
     ULTRACLEANER_VERSION_DOT4 ULTRACLEANER_VERSION_COMMA4)
+_ultracanvas_version_variants("${ULTRAFILER_VERSION}"
+    ULTRAFILER_VERSION_DOT4 ULTRAFILER_VERSION_COMMA4)
 
 # Re-run the configure step when a changelog gains a new entry, so an
 # already-configured build tree picks the new version up instead of baking in
@@ -92,7 +99,8 @@ set_property(DIRECTORY "${_uc_configure_depends_dir}" APPEND PROPERTY
     CMAKE_CONFIGURE_DEPENDS
         "${ULTRACANVAS_CHANGELOG_FILE}"
         "${ULTRATEXTER_CHANGELOG_FILE}"
-        "${ULTRACLEANER_CHANGELOG_FILE}")
+        "${ULTRACLEANER_CHANGELOG_FILE}"
+        "${ULTRAFILER_CHANGELOG_FILE}")
 
 # The Windows resource script and manifest still hold literal version numbers
 # (they are compiled by windres/rc.exe from files on disk, not generated), and
@@ -122,3 +130,11 @@ _ultracanvas_warn_if_version_stale(
     "${_ULTRACANVAS_REPO_ROOT}/Apps/Texter/UltraTexter.manifest"
     "^        version=\"([0-9.]+)\"" "${ULTRATEXTER_VERSION_DOT4}"
     "UltraTexter.manifest assembly version")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/UltraFiler/UltraFiler.rc"
+    "^ +FILEVERSION +([0-9,]+)" "${ULTRAFILER_VERSION_COMMA4}"
+    "UltraFiler.rc FILEVERSION")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/UltraFiler/UltraFiler.manifest"
+    "^        version=\"([0-9.]+)\"" "${ULTRAFILER_VERSION_DOT4}"
+    "UltraFiler.manifest assembly version")
