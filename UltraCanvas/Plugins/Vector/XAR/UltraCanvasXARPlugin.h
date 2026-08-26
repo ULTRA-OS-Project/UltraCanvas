@@ -748,6 +748,10 @@ namespace UltraCanvas {
     public:
         int32_t numSides = 3;
         Point2Di centre;
+        // Regular-shape axes: vectors from the centre to the middles of two
+        // adjacent edges (so a 4-sided shape with axis-aligned axes is an
+        // axis-aligned rectangle); for a circular shape they are the ellipse
+        // radii. Millipoints, before `transform`.
         Point2Di majorAxis;
         Point2Di minorAxis;
         float curvature = 0.0f;
@@ -755,6 +759,7 @@ namespace UltraCanvas {
         float stellationOffset = 0.0f;
         bool isRounded = false;
         bool isStellated = false;
+        bool isCircular = false;
         XARMatrix transform;
         XARPolygonNode() { type = XARNodeType::Polygon; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
@@ -772,7 +777,12 @@ namespace UltraCanvas {
 
     class XARTextLineNode : public XARNode {
     public:
+        // Position within the story: successive lines step down one leading.
+        // Real per-line placement records (kerning, TEXT_LINE_INFO) are not
+        // parsed yet; this is the layout approximation.
+        int lineIndex = 0;
         XARTextLineNode() { type = XARNodeType::TextLine; }
+        void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
 
     class XARTextStringNode : public XARNode {
@@ -909,9 +919,12 @@ namespace UltraCanvas {
         int32_t height = 0;
         std::vector<uint8_t> data;              // raw encoded bytes
         enum class Format { JPEG, PNG, BMP, GIF, JPEG8BPP, PNG_REAL, XPE } format = Format::PNG;
-        // Lazy render caches: the plain decode, and the contone-tinted copy
-        // (luminance mapped between the fill's start/end colours). The tint
-        // cache is keyed by the colour pair that produced it.
+        // Lazy render caches. plainPixmap: decode with the alpha channel
+        // inverted — xar-embedded bitmaps store transparency, not alpha
+        // (255 = fully transparent) — used by plain bitmap fills.
+        // fillPixmap: normal decode, the contone tint source. tintedPixmap:
+        // the contone result, keyed by the colour pair that produced it.
+        std::shared_ptr<UCPixmap> plainPixmap;
         std::shared_ptr<UCPixmap> fillPixmap;
         std::shared_ptr<UCPixmap> tintedPixmap;
         Color tintStart, tintEnd;
@@ -1033,6 +1046,7 @@ namespace UltraCanvas {
         void ParseRectangleRecord(const XARRecord& record);
         void ParseEllipseRecord(const XARRecord& record);
         void ParsePolygonRecord(const XARRecord& record);
+        void ParseRegularShapeRecord(const XARRecord& record, bool phase1);
         void ParseGroupRecord(const XARRecord& record);
         void ParseLayerRecord(const XARRecord& record);
         void ParseLayerDetailsRecord(const XARRecord& record, bool isGuide);

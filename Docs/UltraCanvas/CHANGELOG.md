@@ -29,6 +29,22 @@
   colours (dark to the second, light to the first — the orientation Xara's
   own previews use), cached per definition. Text also draws upright now
   (it was mirrored by the document's Y-flip).
+- **Regular shapes (QuickShapes) parse and render correctly.** The
+  `TAG_REGULAR_SHAPE_PHASE_1/2` records (every square mosaic in a modern
+  Xara drawing) were read with a guessed layout, producing garbage geometry
+  — one such shape painted a full-page colour slab over everything. They
+  now follow Xara LX's record layout (flags, side count, edge-midpoint
+  axes, fixed-point matrix, stellation/curvature), and the on-disk MATRIX
+  reader itself was wrong everywhere: 6 doubles instead of the spec's four
+  16.16 fixed-point values plus two millipoint integers.
+- **Embedded bitmaps keep their transparency the way Xara means it.**
+  Xar-embedded PNGs store transparency, not alpha, in the alpha channel
+  (255 = fully transparent); a standard decode premultiplies the colour of
+  exactly the pixels such a bitmap wants shown down to black.
+  `UCImageRaster::CreatePixmapAlphaInverted()` decodes with the channel
+  inverted before premultiplication, and plain bitmap fills use it.
+- **Text stories lay their lines out.** Successive `TextLine`s step down
+  one leading instead of overprinting on the story origin.
 - **`XARDocument` gained parse diagnostics** — records dispatched, unhandled
   record tags with counts, structural warnings — via `GetDiagnostics()`,
   and **`XARProbeTest`** (Tests/, needs `-DBUILD_TESTS=ON`) prints that

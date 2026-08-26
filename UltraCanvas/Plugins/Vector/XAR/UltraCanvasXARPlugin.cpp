@@ -181,13 +181,27 @@ namespace UltraCanvas {
         XARBitmapDefinition* def = fill.bitmapDef;
         if (!def || def->data.empty()) return nullptr;
 
+        if (fill.type != XARFillType::ContoneBitmap) {
+            // Plain bitmap fill: xar-embedded bitmaps store transparency in
+            // the alpha channel (255 = fully transparent), so decode with
+            // the channel inverted; images without an alpha band decode
+            // normally.
+            if (!def->plainPixmap) {
+                auto image = UCImage::GetFromMemory(def->data.data(), def->data.size());
+                if (!image || !image->IsValid()) return nullptr;
+                def->plainPixmap = image->CreatePixmapAlphaInverted();
+                if (!def->plainPixmap) def->plainPixmap = image->GetPixmap();
+            }
+            return (def->plainPixmap && def->plainPixmap->IsValid())
+                    ? def->plainPixmap.get() : nullptr;
+        }
+
         if (!def->fillPixmap) {
             auto image = UCImage::GetFromMemory(def->data.data(), def->data.size());
             if (!image || !image->IsValid()) return nullptr;
             def->fillPixmap = image->GetPixmap();
         }
         if (!def->fillPixmap || !def->fillPixmap->IsValid()) return nullptr;
-        if (fill.type != XARFillType::ContoneBitmap) return def->fillPixmap.get();
 
         auto sameColor = [](const Color& a, const Color& b) {
             return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
@@ -390,31 +404,39 @@ namespace UltraCanvas {
 // ===== POLYGON NODE =====
 
     std::vector<Point2Dd> XARPolygonNode::GeneratePolygonPoints(float scale) const {
+        // Vertices in millipoint space, then through `transform` (also
+        // millipoints), then to pixels — the caller must NOT apply the
+        // node transform again.
         std::vector<Point2Dd> pts;
-        Point2Dd c = MillipointsToPixels(centre, scale);
-        Point2Dd ma = MillipointsToPixels(majorAxis, scale);
-        Point2Dd mi = MillipointsToPixels(minorAxis, scale);
-        float rx = std::sqrt(ma.x * ma.x + ma.y * ma.y);
-        float ry = std::sqrt(mi.x * mi.x + mi.y * mi.y);
-        if (numSides < 3) return pts;
-        float angleStep = 2.0f * PI / numSides;
-        float startAngle = std::atan2(ma.y, ma.x);
+        int n = std::clamp(numSides, 3, 512);
+        const double step = 2.0 * M_PI / n;
 
-        for (int i = 0; i < numSides; ++i) {
-            float a = startAngle + i * angleStep;
-            pts.push_back(Point2Dd(c.x + rx * std::cos(a), c.y + ry * std::sin(a)));
-            if (isStellated && stellationRadius > 0) {
-                float ia = a + angleStep * 0.5f + stellationOffset;
-                float ir = stellationRadius;
-                pts.push_back(Point2Dd(c.x + rx * ir * std::cos(ia), c.y + ry * ir * std::sin(ia)));
-            }
+        // The axes run from the centre to the middles of two adjacent edges.
+        // A circle/ellipse uses them as radii directly; a polygon's vertices
+        // sit half a step off the axes, pushed out from the edge-midpoint
+        // (apothem) distance to the circumradius.
+        const bool asEllipse = isCircular;
+        const int count = asEllipse ? 64 : n;
+        const double vertexStep = asEllipse ? (2.0 * M_PI / count) : step;
+        const double k = asEllipse ? 1.0 : (1.0 / std::cos(M_PI / n));
+        const double phase = asEllipse ? 0.0 : (M_PI / n);
+
+        for (int i = 0; i < count; ++i) {
+            double phi = phase + i * vertexStep;
+            double cs = std::cos(phi) * k, sn = std::sin(phi) * k;
+            double x = centre.x + majorAxis.x * cs + minorAxis.x * sn;
+            double y = centre.y + majorAxis.y * cs + minorAxis.y * sn;
+            double tx = transform.a * x + transform.c * y + transform.e;
+            double ty = transform.b * x + transform.d * y + transform.f;
+            pts.push_back(Point2Dd(tx * XARConstants::MILLIPOINTS_TO_PIXELS * scale,
+                                   ty * XARConstants::MILLIPOINTS_TO_PIXELS * scale));
         }
         return pts;
     }
 
     void XARPolygonNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
-        if (!transform.IsIdentity()) transform.ApplyToContext(ctx);
+        // GeneratePolygonPoints already applies the node transform.
         auto pts = GeneratePolygonPoints(scale);
         if (!pts.empty()) {
             ctx->ClearPath();
@@ -447,6 +469,17 @@ namespace UltraCanvas {
         if (hasTransform) transform.ApplyToContext(ctx);
         Point2Dd p = MillipointsToPixels(position, scale);
         ctx->Translate(p.x, p.y);
+        XARNode::Render(ctx, scale);
+        ctx->PopState();
+    }
+
+    void XARTextLineNode::Render(IRenderContext* ctx, float scale) {
+        if (lineIndex == 0) { XARNode::Render(ctx, scale); return; }
+        float leading = textAttr.GetFontSizeInPixels() * 1.15f;
+        if (leading <= 0.01f) leading = 12.0f;
+        ctx->PushState();
+        // The document space is Y-up, so the next line down is negative Y.
+        ctx->Translate(0, -lineIndex * leading * scale);
         XARNode::Render(ctx, scale);
         ctx->PopState();
     }
@@ -885,9 +918,9 @@ namespace UltraCanvas {
             case XARTag::TAG_POLYGON_COMPLEX_ROUNDED_STELLATED_REFORMED:
                 ParsePolygonRecord(record); break;
             case XARTag::TAG_REGULAR_SHAPE_PHASE_1:
+                ParseRegularShapeRecord(record, true); break;
             case XARTag::TAG_REGULAR_SHAPE_PHASE_2:
-                // newer regular-shape representation; treat as polygon-like best effort
-                ParsePolygonRecord(record); break;
+                ParseRegularShapeRecord(record, false); break;
 
             // Group
             case XARTag::TAG_GROUP: ParseGroupRecord(record); break;
@@ -1484,7 +1517,7 @@ namespace UltraCanvas {
         } else {
             // Complex: Centre + Matrix(48) + halfWidth + halfHeight + opt cornerRadius
             if (off + 8 <= total) rect->centre = ReadCoord(d, off);
-            if (off + 48 <= total) rect->transform = ReadMatrix(d, off);
+            if (off + 24 <= total) rect->transform = ReadMatrix(d, off);
             if (off + 8 <= total) {
                 rect->halfWidth = ReadInt32(d, off);
                 rect->halfHeight = ReadInt32(d, off);
@@ -1516,7 +1549,7 @@ namespace UltraCanvas {
         } else {
             ell->isSimple = false;
             if (off + 8 <= total) ell->centre = ReadCoord(d, off);
-            if (off + 48 <= total) ell->transform = ReadMatrix(d, off);
+            if (off + 24 <= total) ell->transform = ReadMatrix(d, off);
             int32_t hMajor = 0, hMinor = 0;
             if (off + 8 <= total) {
                 hMajor = ReadInt32(d, off);
@@ -1550,7 +1583,7 @@ namespace UltraCanvas {
 
         if (off + 4 <= total) poly->numSides = ReadInt32(d, off);
         if (off + 8 <= total) poly->centre = ReadCoord(d, off);
-        if (off + 48 <= total) poly->transform = ReadMatrix(d, off);
+        if (off + 24 <= total) poly->transform = ReadMatrix(d, off);
         int32_t hMajor = 0, hMinor = 0;
         if (off + 8 <= total) {
             hMajor = ReadInt32(d, off);
@@ -1568,6 +1601,44 @@ namespace UltraCanvas {
             poly->stellationRadius = static_cast<float>(sr) / 65536.0f;
             poly->stellationOffset = static_cast<float>(so) / 65536.0f;
         }
+        RegisterRenderableNode(poly);
+    }
+
+    void XARDocument::ParseRegularShapeRecord(const XARRecord& record, bool phase1) {
+        // Layout per Xara LX's RegularShapeRecordHandler (rechrshp.cpp):
+        //   BYTE flags; UINT16 numSides; [COORD centre — phase 1 only];
+        //   COORD majorAxis; COORD minorAxis; MATRIX transform;
+        //   DOUBLE stellRadius, stellOffset, curvature1, curvature2;
+        //   PATH edge1, edge2 (reformed edges — not rendered yet).
+        // The axes point from the centre to the middles of two adjacent
+        // edges, so a 4-sided shape with axis-aligned axes is an
+        // axis-aligned rectangle.
+        auto poly = std::make_shared<XARPolygonNode>();
+        ApplyCurrentAttributesTo(poly);
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        size_t total = record.data.size();
+        if (off + 3 > total) { RegisterRenderableNode(poly); return; }
+
+        uint8_t flags = ReadByte(d, off);
+        poly->isCircular = (flags & 0x01) != 0;
+        poly->isStellated = (flags & 0x02) != 0;
+        poly->isRounded = (flags & 0x04) != 0;
+        poly->numSides = ReadUInt16(d, off);
+
+        if (phase1 && off + 8 <= total) poly->centre = ReadCoord(d, off);
+        if (off + 8 <= total) poly->majorAxis = ReadCoord(d, off);
+        if (off + 8 <= total) poly->minorAxis = ReadCoord(d, off);
+        if (off + 24 <= total) poly->transform = ReadMatrix(d, off);
+        if (off + 16 <= total) {
+            poly->stellationRadius = static_cast<float>(ReadDouble(d, off));
+            poly->stellationOffset = static_cast<float>(ReadDouble(d, off));
+        }
+        if (off + 16 <= total) {
+            poly->curvature = static_cast<float>(ReadDouble(d, off));
+            ReadDouble(d, off);   // secondary curvature — unused
+        }
+        // Edge paths (reformed shapes) follow; not consumed.
         RegisterRenderableNode(poly);
     }
 
@@ -1641,7 +1712,7 @@ namespace UltraCanvas {
             const uint8_t* d = record.data.data();
             size_t off = 0;
             story->position = ReadCoord(d, off);
-            if (record.data.size() >= 8 + 48) {
+            if (record.data.size() >= 8 + 24) {
                 story->transform = ReadMatrix(d, off);
                 story->hasTransform = true;
             }
@@ -1652,6 +1723,12 @@ namespace UltraCanvas {
     void XARDocument::ParseTextLineRecord(const XARRecord&) {
         auto line = std::make_shared<XARTextLineNode>();
         ApplyCurrentAttributesTo(line);
+        // Step successive lines of a story down one leading each.
+        int existing = 0;
+        for (const auto& sibling : CurrentNode()->children) {
+            if (sibling->type == XARNodeType::TextLine) ++existing;
+        }
+        line->lineIndex = existing;
         AttachNode(line);
     }
 
@@ -2462,13 +2539,16 @@ namespace UltraCanvas {
     }
 
     XARMatrix XARDocument::ReadMatrix(const uint8_t* d, size_t& o) {
+        // On-disk MATRIX per the Xar spec: a,b,c,d as signed 16.16 fixed
+        // point, e,f as INT32 millipoints — 24 bytes total (matches Xara
+        // LX's CXaraFileRecord::ReadMatrix).
         XARMatrix m;
-        m.a = ReadDouble(d, o);
-        m.b = ReadDouble(d, o);
-        m.c = ReadDouble(d, o);
-        m.d = ReadDouble(d, o);
-        m.e = ReadDouble(d, o);
-        m.f = ReadDouble(d, o);
+        m.a = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.b = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.c = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.d = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.e = static_cast<double>(ReadInt32(d, o));
+        m.f = static_cast<double>(ReadInt32(d, o));
         return m;
     }
 

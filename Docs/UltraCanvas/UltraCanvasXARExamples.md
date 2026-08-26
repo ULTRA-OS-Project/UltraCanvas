@@ -201,9 +201,12 @@ on a file that renders wrong.
 Known renderer gaps (parse succeeds, display is approximate): fractal /
 noise fills fall back to simplified paints, transparency tiling modes are
 treated as flat, brush strokes render as plain lines, and text layout is
-minimal (no kerning / tabs / indents). Bitmap and contone-bitmap fills render
-the embedded bitmap mapped onto the fill parallelogram (contone maps the
-bitmap's luminance between the fill's two colours).
+approximate (lines step by one leading; kerning / tabs / indents are not
+applied). Bitmap and contone-bitmap fills render the embedded bitmap mapped
+onto the fill parallelogram (contone maps the bitmap's luminance between the
+fill's two colours; plain fills decode with the alpha channel inverted, the
+transparency convention xar-embedded PNGs use). Regular shapes render as
+plain polygons/ellipses — stellation and rounded corners are ignored.
 
 ### XARNode
 
