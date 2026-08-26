@@ -1,4 +1,15 @@
 #### 2026-08-26 *0.3.75*
+- **Filer widget: legible spreadsheet previews.** The thumbnail preview of a
+  spreadsheet (ods / xlsx / csv / tsv) split the tile width evenly over the
+  columns, so a sheet with several columns showed one or two characters per
+  cell — a calendar previewed as a grid of first letters. Column widths now
+  follow the content: each column is as wide as its widest shown cell,
+  floored at about six characters so text stays recognizable, unless the
+  column's own content is narrower (a column of one-digit values takes only
+  what it needs). Columns that then no longer fit are clipped at the right
+  edge — a few legible columns beat many unreadable ones — and when
+  everything fits with room to spare the leftover is spread evenly so the
+  grid still fills the page.
 - **UltraFiler: clicking a folder shows its content in the detail pane.** The
   pane to the right of the folder display — which used to open only for a
   previewable file and folded away when a folder was selected — now previews

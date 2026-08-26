@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.19.0
-// Last Modified: 2026-08-25
+// Version: 1.19.1
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -6927,23 +6927,76 @@ namespace UltraCanvas {
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(inner));
         if (snippet.tabular) {
-            // Spreadsheet-shaped content: the cells of each row spread over
-            // equal columns with the grid drawn behind them.
+            // Spreadsheet-shaped content: the cells of each row over a drawn
+            // grid. The columns used to split the width evenly, which with
+            // several columns in a tile left one or two characters per cell —
+            // every cell of a calendar sheet read as its first letter. Widths
+            // are content-aware instead: a column is as wide as its widest
+            // shown cell, floored at about six characters so text stays
+            // recognizable — unless the column's own content is narrower (a
+            // column of one-digit values takes only what it needs). When that
+            // does not fit, the columns keep their floor and the surplus ones
+            // are clipped at the right edge — a few legible columns beat many
+            // unreadable ones.
+            std::vector<std::vector<std::string>> rows(maxLines);
             size_t columns = 1;
             for (size_t i = 0; i < maxLines; ++i) {
-                columns = std::max<size_t>(
-                        columns,
-                        static_cast<size_t>(std::count(snippet.lines[i].begin(),
-                                                       snippet.lines[i].end(),
-                                                       '\t')) + 1);
+                const std::string& line = snippet.lines[i];
+                size_t start = 0;
+                while (start <= line.size()) {
+                    const size_t tab = line.find('\t', start);
+                    rows[i].push_back(line.substr(
+                            start, tab == std::string::npos ? std::string::npos
+                                                            : tab - start));
+                    if (tab == std::string::npos) break;
+                    start = tab + 1;
+                }
+                columns = std::max(columns, rows[i].size());
             }
-            const double colW = static_cast<double>(inner.width) / columns;
+
+            // Natural width of every column (its widest cell plus the text
+            // inset) and the six-character floor it may not be squeezed under.
+            const double pad6 = 4.0;   // 2 px inset + 2 px before the grid line
+            const double sixCharsW =
+                    ctx->GetTextLineDimensions("000000").width + pad6;
+            std::vector<double> natural(columns, 0.0);
+            for (size_t i = 0; i < maxLines; ++i)
+                for (size_t c = 0; c < rows[i].size(); ++c)
+                    if (!rows[i][c].empty())
+                        natural[c] = std::max(
+                                natural[c],
+                                ctx->GetTextLineDimensions(rows[i][c]).width + pad6);
+
+            // Shrink the columns towards their floor until they fit; when
+            // they fit with room to spare, spread the leftover evenly so the
+            // grid still fills the page.
+            std::vector<double> colWidth(columns);
+            double naturalSum = 0.0, floorSum = 0.0;
+            for (size_t c = 0; c < columns; ++c) {
+                colWidth[c] = std::max(natural[c], pad6);
+                naturalSum += colWidth[c];
+                floorSum += std::min(colWidth[c], sixCharsW);
+            }
+            if (naturalSum > inner.width && naturalSum > floorSum) {
+                const double keep = std::max(
+                        0.0, (inner.width - floorSum) / (naturalSum - floorSum));
+                for (size_t c = 0; c < columns; ++c) {
+                    const double floorW = std::min(colWidth[c], sixCharsW);
+                    colWidth[c] = floorW + (colWidth[c] - floorW) * keep;
+                }
+            } else if (naturalSum < inner.width) {
+                const double extra = (inner.width - naturalSum) / columns;
+                for (double& w : colWidth) w += extra;
+            }
+
             ctx->SetStrokePaint(Color(0, 0, 0, 28));
             ctx->SetStrokeWidth(1.0f);
+            double gridX = inner.x;
             for (size_t c = 1; c < columns; ++c) {
-                const double x = inner.x + c * colW;
-                ctx->DrawLine(Point2Dd(x, inner.y),
-                              Point2Dd(x, inner.y + maxLines * lineH));
+                gridX += colWidth[c - 1];
+                if (gridX >= inner.x + inner.width) break;
+                ctx->DrawLine(Point2Dd(gridX, inner.y),
+                              Point2Dd(gridX, inner.y + maxLines * lineH));
             }
             for (size_t i = 1; i <= maxLines; ++i) {
                 const double y = inner.y + i * lineH;
@@ -6952,26 +7005,21 @@ namespace UltraCanvas {
                               Point2Dd(inner.x + inner.width, y));
             }
             for (size_t i = 0; i < maxLines; ++i) {
-                const std::string& row = snippet.lines[i];
-                size_t start = 0, column = 0;
-                while (start <= row.size() && column < columns) {
-                    const size_t tab = row.find('\t', start);
-                    const std::string cell = row.substr(
-                            start, tab == std::string::npos ? std::string::npos
-                                                            : tab - start);
-                    if (!cell.empty()) {
+                double cellX = inner.x;
+                for (size_t c = 0; c < rows[i].size(); ++c) {
+                    const std::string& cell = rows[i][c];
+                    if (!cell.empty() && cellX < inner.x + inner.width) {
                         ctx->SetTextPaint(i == 0 ? style.textColor
                                                  : style.secondaryTextColor);
                         // Cells are cut, not ellipsized: in a tile-sized grid
                         // the "…" would be all that is left of the value.
                         ctx->DrawText(TruncateTextToWidth(
-                                              ctx, cell, static_cast<int>(colW) - 3),
-                                      Point2Dd(inner.x + column * colW + 2,
+                                              ctx, cell,
+                                              static_cast<int>(colWidth[c]) - 3),
+                                      Point2Dd(cellX + 2,
                                                inner.y + i * lineH + 1));
                     }
-                    if (tab == std::string::npos) break;
-                    start = tab + 1;
-                    ++column;
+                    cellX += colWidth[c];
                 }
             }
         } else {
