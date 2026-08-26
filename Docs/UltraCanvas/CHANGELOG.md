@@ -1,3 +1,20 @@
+#### 2026-08-26 *0.3.75*
+- **UltraFiler: clicking a folder shows its content in the detail pane.** The
+  pane to the right of the folder display — which used to open only for a
+  previewable file and folded away when a folder was selected — now previews
+  folders too: selecting one shows its content as a small-thumbnail folder
+  listing (a second `UltraCanvasFilerWidget` sharing the pane with the media
+  viewer). The peek is live — a subfolder double-clicked in it is entered
+  right in the pane, an activated file opens with its OS default application,
+  files can be dropped into it and its context menu offers the usual file
+  commands (the hover icon menu stays off; subfolder prefetch too, the pane
+  being a peek rather than a working view). Esc, the Preview toggle, the
+  restored pane width and the selection-follows-delete behaviour all work
+  exactly as for file previews, and moving the selection between a file and a
+  folder swaps the pane's content in place instead of closing and reopening
+  the pane.
+
+
 #### 2026-08-26 *0.3.74*
 - **EPS (Encapsulated PostScript) vector graphics support.** New
   `UltraCanvasEPSPlugin` (`Plugins/Vector/EPS/`) renders `.eps`/`.epsf`/`.ps`

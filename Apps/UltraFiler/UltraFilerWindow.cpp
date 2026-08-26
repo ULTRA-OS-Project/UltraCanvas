@@ -2,7 +2,10 @@
 // UltraFiler main window: Windows Explorer style file manager built from the
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
 // (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
-// search field and the media preview (UltraCanvasMediaViewer). The toolbar's
+// search field and the detail pane: a selected media file shows in the media
+// preview (UltraCanvasMediaViewer), a selected folder shows its content
+// through the folder preview (a second UltraCanvasFilerWidget in
+// small-thumbnail mode) — the two share the pane. The toolbar's
 // clock button swaps that whole area for the History view — Files / Folders /
 // Apps tabs listing the recently used paths (UltraFilerHistory) as small
 // thumbnails; folders get there by being worked in (the filer's
@@ -25,8 +28,8 @@
 // colour picked from the strip under a transparent image in the preview is
 // saved the same way. Esc closes the History or Favorites view, or an open
 // media preview.
-// Version: 1.14.0
-// Last Modified: 2026-08-25
+// Version: 1.15.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -83,8 +86,8 @@ namespace {
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
 
-    // Split-pane minimum widths (px): the folder display and the media
-    // preview never get narrower than these.
+    // Split-pane minimum widths (px): the folder display and the detail
+    // (preview) pane never get narrower than these.
     constexpr int kFilerMinWidth   = 360;
     constexpr int kPreviewMinWidth = 260;
 
@@ -395,6 +398,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
         }
         if (!previewShown) return false;
         if (filer && filer->WantsEscapeKey()) return false;
+        // The folder preview's own interactions (a rename, a drag) keep
+        // their cancel key too.
+        if (previewShowsFolder && folderPreview && folderPreview->WantsEscapeKey())
+            return false;
         SetPreviewEnabled(false);
         return true;
     }, { UCEventType::KeyDown });
@@ -414,6 +421,34 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
                 (mode == TransparentImageBackground::Checkered);
         settings.previewTransparentColor = color;
         settings.Save();
+    };
+
+    // Folder preview: clicking a folder in the file display shows that
+    // folder's content in the same detail pane a file shows its media in —
+    // a second filer widget in small-thumbnail mode. It is for looking, so
+    // the hover icon menu stays off (the context menu still offers
+    // everything); activating a file in it opens that file with the OS
+    // default application, and a double-clicked subfolder is entered right
+    // in the pane.
+    folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
+    FilerStyle folderPreviewStyle = folderPreview->GetStyle();
+    folderPreviewStyle.fontSize = kUiFontSize;
+    folderPreviewStyle.smallFontSize = kUiFontSize;
+    folderPreviewStyle.folderIconScale = 0.7f;
+    folderPreview->SetStyle(folderPreviewStyle);
+    folderPreview->SetViewType(FilerViewType::ThumbnailsSmall);
+    folderPreview->SetHoverIconMenuEnabled(false);
+    // The pane is narrow; prefetching every subfolder of a merely previewed
+    // folder is disk work the user rarely follows up on.
+    folderPreview->SetFolderPrefetchEnabled(false);
+    folderPreview->SetActivateOpensWithDefaultApp(true);
+    // Work done through the pane's context menu (a paste, a delete, ...) is
+    // work done in that folder, exactly as in the main folder display.
+    folderPreview->onFolderModified = [this](const std::string& folder) {
+        RecordFolderInHistory(folder);
+    };
+    folderPreview->onError = [this](const std::string& message) {
+        if (statusLabel) statusLabel->SetText("Error: " + message);
     };
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
@@ -571,9 +606,12 @@ void UltraFilerWindow::ApplySettings() {
                     settings.pdfThumbnailWidthPercent / 100.0f);
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
-    // for tabs that were already open when it changed.
+    // for tabs that were already open when it changed. The folder preview
+    // accepts drops too, so it follows the same setting.
     for (auto& state : tabStates)
         if (state->filer) state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+    if (folderPreview)
+        folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
@@ -1830,8 +1868,11 @@ void UltraFilerWindow::BuildSplitLayout() {
 
     preview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    // The preview pane is added by UpdatePreviewPane once a previewable file
-    // is selected; until then the folder display uses the whole width.
+    folderPreview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The detail pane is added by UpdatePreviewPane once a previewable file
+    // or a folder is selected; until then the folder display uses the whole
+    // width.
 
     contentBox->AddChild(split);
     window->AddChild(contentBox);
@@ -2341,16 +2382,13 @@ void UltraFilerWindow::UpdateWindowTitle() {
     window->SetWindowTitle(title);
 }
 
-std::string UltraFilerWindow::PreviewablePathForSelection() const {
-    if (!filer) return {};
+const FilerEntry* UltraFilerWindow::SingleSelectedEntry() const {
+    if (!filer) return nullptr;
     const std::vector<size_t>& sel = filer->GetSelectionIndices();
-    if (sel.size() != 1) return {};
+    if (sel.size() != 1) return nullptr;
     const std::vector<FilerEntry>& entries = filer->GetEntries();
-    if (sel.front() >= entries.size()) return {};
-    const FilerEntry& e = entries[sel.front()];
-    if (e.isDirectory) return {};
-    if (!UltraCanvasMediaViewer::IsSupportedMedia(e.path)) return {};
-    return e.path;
+    if (sel.front() >= entries.size()) return nullptr;
+    return &entries[sel.front()];
 }
 
 void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
@@ -2367,10 +2405,21 @@ void UltraFilerWindow::ApplyPreviewSelectionPolicy() {
 }
 
 void UltraFilerWindow::UpdatePreviewPane() {
-    if (!split || !preview) return;
-    const std::string path = previewEnabled ? PreviewablePathForSelection()
-                                            : std::string();
-    if (!path.empty()) {
+    if (!split || !preview || !folderPreview) return;
+    // What the selection calls for: a single media file fills the pane with
+    // the media viewer, a single folder with the folder preview filer
+    // (showing that folder's content), anything else folds the pane away.
+    std::string mediaPath;
+    std::string folderPath;
+    if (previewEnabled) {
+        if (const FilerEntry* e = SingleSelectedEntry()) {
+            if (e->isDirectory) folderPath = e->path;
+            else if (UltraCanvasMediaViewer::IsSupportedMedia(e->path))
+                mediaPath = e->path;
+        }
+    }
+    const bool wantFolder = !folderPath.empty();
+    if (wantFolder || !mediaPath.empty()) {
         if (!previewShown) {
             // Pane sizing is weight-proportional, so plain AddPane would
             // shrink every pane — visibly moving the tree | filer splitter.
@@ -2380,11 +2429,13 @@ void UltraFilerWindow::UpdatePreviewPane() {
             const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
 
             previewShown = true;
+            previewShowsFolder = wantFolder;
             previewPane = split->AddPane(1.4);
             split->SetPaneMinSize(split->PaneCount() - 1, kPreviewMinWidth);
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-            previewPane->AddChild(preview);
+            if (wantFolder) previewPane->AddChild(folderPreview);
+            else            previewPane->AddChild(preview);
 
             if (treeW > 0 && filerW > 0) {
                 // The new split line takes its thickness from the filer side
@@ -2403,8 +2454,28 @@ void UltraFilerWindow::UpdatePreviewPane() {
             // The narrowed folder display may now cut off the selected file
             // (the preview covers its spot) - keep it scrolled into view.
             if (filer) filer->EnsureSelectionVisible();
+        } else if (previewShowsFolder != wantFolder) {
+            // The pane is up but holds the wrong content — the selection
+            // moved between a file and a folder. Swap the child; the pane
+            // (and the width the user dragged it to) stays.
+            if (wantFolder) {
+                preview->CloseFile();
+                previewPane->RemoveChild(preview);
+                previewPane->AddChild(folderPreview);
+            } else {
+                previewPane->RemoveChild(folderPreview);
+                previewPane->AddChild(preview);
+            }
+            previewShowsFolder = wantFolder;
         }
-        if (preview->GetCurrentPath() != path) preview->OpenFile(path);
+        if (wantFolder) {
+            // SetPath rescans unconditionally, so only a real change goes
+            // through it (the folder watch keeps an unchanged one fresh).
+            if (folderPreview->GetPath() != folderPath)
+                folderPreview->SetPath(folderPath);
+        } else {
+            if (preview->GetCurrentPath() != mediaPath) preview->OpenFile(mediaPath);
+        }
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.
         previewShown = false;
@@ -2412,11 +2483,17 @@ void UltraFilerWindow::UpdatePreviewPane() {
         const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
         const int prevW  = static_cast<int>(previewPane->GetWidth());
         if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
-        // Let go of the file, not just of the playback: a document engine that
-        // still holds the previewed file open blocks moving, renaming or
-        // deleting it (on Windows an open handle refuses the rename outright).
-        preview->CloseFile();
-        previewPane->RemoveChild(preview);
+        if (previewShowsFolder) {
+            previewPane->RemoveChild(folderPreview);
+            previewShowsFolder = false;
+        } else {
+            // Let go of the file, not just of the playback: a document engine
+            // that still holds the previewed file open blocks moving, renaming
+            // or deleting it (on Windows an open handle refuses the rename
+            // outright).
+            preview->CloseFile();
+            previewPane->RemoveChild(preview);
+        }
         split->RemovePane(previewPane.get());
         previewPane.reset();
         // Return the preview's width (and its split line) to the filer pane
