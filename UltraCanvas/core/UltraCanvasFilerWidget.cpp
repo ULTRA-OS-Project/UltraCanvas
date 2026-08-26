@@ -523,6 +523,62 @@ namespace UltraCanvas {
 #endif
         }
 
+        // ===== XAR PREVIEW (embedded thumbnail) =====
+        // Xara .xar files carry a preview bitmap (GIF, JPEG or PNG) as one of
+        // the first records of the uncompressed file head. The record grammar
+        // is trivial — 8-byte signature, then (tag:u32le, size:u32le, body) —
+        // so the bytes are extracted here directly and decoded through the
+        // image pipeline: no XAR renderer involved, and nothing to configure.
+        std::vector<uint8_t> ExtractXarPreviewBytes(const std::string& path) {
+            std::ifstream f(path, std::ios::binary);
+            if (!f.is_open()) return {};
+            static const uint8_t kSig[8] = {'X', 'A', 'R', 'A', 0xA3, 0xA3, 0x0D, 0x0A};
+            uint8_t sig[8];
+            f.read(reinterpret_cast<char*>(sig), sizeof(sig));
+            if (!f.good() || std::memcmp(sig, kSig, sizeof(kSig)) != 0) return {};
+
+            // Preview records: 61 GIF, 62 JPEG, 63 PNG. Record 30 starts the
+            // compressed body — the preview always precedes it, so stop there
+            // (and at 3, end of file). The record cap is a corrupt-file guard;
+            // real writers put the preview second, right after the header.
+            constexpr uint32_t kPreviewGif = 61, kPreviewJpeg = 62, kPreviewPng = 63;
+            constexpr uint32_t kEndOfFile = 3, kStartCompression = 30;
+            constexpr uint32_t kMaxPreviewBytes = 64u << 20;
+            for (int i = 0; i < 64; ++i) {
+                uint8_t hdr[8];
+                f.read(reinterpret_cast<char*>(hdr), sizeof(hdr));
+                if (!f.good()) return {};
+                auto u32 = [&](int o) {
+                    return static_cast<uint32_t>(hdr[o]) |
+                           (static_cast<uint32_t>(hdr[o + 1]) << 8) |
+                           (static_cast<uint32_t>(hdr[o + 2]) << 16) |
+                           (static_cast<uint32_t>(hdr[o + 3]) << 24);
+                };
+                uint32_t tag = u32(0), size = u32(4);
+                if (tag == kPreviewGif || tag == kPreviewJpeg || tag == kPreviewPng) {
+                    if (size == 0 || size > kMaxPreviewBytes) return {};
+                    std::vector<uint8_t> bytes(size);
+                    f.read(reinterpret_cast<char*>(bytes.data()), size);
+                    if (!f.good()) return {};
+                    return bytes;
+                }
+                if (tag == kEndOfFile || tag == kStartCompression) return {};
+                f.seekg(size, std::ios::cur);
+                if (!f.good()) return {};
+            }
+            return {};
+        }
+
+        std::shared_ptr<UCPixmap> RenderXarPreviewPixmap(const std::string& path,
+                                                         int w, int h,
+                                                         ImageFitMode fit, float scale) {
+            auto bytes = ExtractXarPreviewBytes(path);
+            if (bytes.empty()) return nullptr;
+            auto img = UCImage::LoadFromMemory(bytes);
+            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
+            return img->GetPixmap(w, h, fit, scale);
+        }
+
         // ===== 3D MODEL PREVIEW =====
         // A shaded three-quarter view of the mesh, rasterized in software on
         // the worker thread: the GL-backed viewer needs a window and a current
@@ -6262,9 +6318,15 @@ namespace UltraCanvas {
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::Bitmaps:
+                // The Image category is wider than what the image pipeline
+                // decodes.
+                return ImagePipelineLoadsExtension(e.extension) ? e.path
+                                                                : std::string{};
             case FilerPreviewType::VectorGraphics:
-                // The Image/Vector categories are wider than what the image
-                // pipeline decodes (cdr/xar render through graphics plugins).
+                // xar doesn't decode through the image pipeline, but carries
+                // an embedded preview bitmap the workers extract; the rest of
+                // the Vector category (cdr) still has no decode path.
+                if (e.extension == "xar") return e.path;
                 return ImagePipelineLoadsExtension(e.extension) ? e.path
                                                                 : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
@@ -6725,6 +6787,14 @@ namespace UltraCanvas {
                 case FilerPreviewType::Models3D:
                     pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
                     break;
+                case FilerPreviewType::VectorGraphics:
+                    if (LowerExtension(req.path) == "xar") {
+                        pm = RenderXarPreviewPixmap(req.path, req.w, req.h,
+                                                    req.fit, req.scale);
+                        break;
+                    }
+                    // SVG and friends decode through the image pipeline.
+                    [[fallthrough]];
                 default: {
                     auto img = UCImage::Get(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {

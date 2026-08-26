@@ -957,6 +957,28 @@ else()
     message(STATUS "  XARProbeTest skipped (UltraCanvasXARPlugin target not present)")
 endif()
 
+# Round-trips a VectorDocument through the Vector plugin's XAR writer and the
+# XAR plugin's spec-verified reader: page size, node counts, millipoint
+# placement (Y flip), colour references, text spans. Needs both plugins.
+if(TARGET UltraCanvasXARPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building XARWriterTest...")
+    add_executable(XARWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARWriterTest.cpp
+    )
+    target_include_directories(XARWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(XARWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasXARPlugin UltraCanvas)
+    set_target_properties(XARWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME XARWriterTest COMMAND XARWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: XARWriterTest")
+else()
+    message(STATUS "  XARWriterTest skipped (needs UltraCanvasXARPlugin and UltraCanvasVectorPlugin)")
+endif()
+
 # Example:
 # add_executable(AnotherTest
 #     ${CMAKE_CURRENT_SOURCE_DIR}/AnotherTest.cpp

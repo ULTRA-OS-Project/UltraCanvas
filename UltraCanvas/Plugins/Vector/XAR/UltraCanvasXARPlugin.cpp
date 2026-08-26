@@ -88,7 +88,22 @@ namespace UltraCanvas {
 
 // ===== APPLY ATTRIBUTES TO PATH RENDERING =====
 
-    static void ApplyFillToContext(IRenderContext* ctx, const XARFillAttribute& f, float scale) {
+    static void ApplyFillToContext(IRenderContext* ctx, const XARFillAttribute& f, float scale,
+                                   float alpha = 1.0f) {
+        if (alpha < 0.999f) {
+            // Fold flat transparency into the paint itself: the context's
+            // Fill*() calls re-apply the stored fill source, so a bare
+            // SetAlpha() on the cairo source would be overwritten.
+            XARFillAttribute faded = f;
+            auto fade = [alpha](Color& c) {
+                c.a = static_cast<uint8_t>(c.a * alpha);
+            };
+            fade(faded.startColor);
+            fade(faded.endColor);
+            for (auto& st : faded.stops) fade(st.color);
+            ApplyFillToContext(ctx, faded, scale, 1.0f);
+            return;
+        }
         switch (f.type) {
             case XARFillType::NoneFill:
                 ctx->SetFillPaint(Color(0, 0, 0, 0));
@@ -346,8 +361,7 @@ namespace UltraCanvas {
         EmitPath(ctx, scale);
 
         if (wantFill) {
-            ApplyFillToContext(ctx, fill, scale);
-            ctx->SetAlpha(fillAlpha);
+            ApplyFillToContext(ctx, fill, scale, fillAlpha);
             ctx->FillPathPreserve();
         }
         if (isStroked && hasLine) {
@@ -399,6 +413,10 @@ namespace UltraCanvas {
 
     void XARRectangleNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
+        float fillAlpha = 1.0f;
+        if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
+            fillAlpha = 1.0f - static_cast<float>(transparency.startTransparency) / 255.0f;
+        }
         if (!transform.IsIdentity()) transform.ApplyToContext(ctx);
         Point2Dd c = MillipointsToPixels(centre, scale);
         float hw, hh;
@@ -416,7 +434,7 @@ namespace UltraCanvas {
         float r = MPtoPx(cornerRadius, scale);
 
         if (hasFill) {
-            ApplyFillToContext(ctx, fill, scale);
+            ApplyFillToContext(ctx, fill, scale, fillAlpha);
             if (isRounded && r > 0) ctx->FillRoundedRectangle(rect, r);
             else ctx->FillRectangle(rect);
         }
@@ -433,20 +451,27 @@ namespace UltraCanvas {
 
     void XAREllipseNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
+        float fillAlpha = 1.0f;
+        if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
+            fillAlpha = 1.0f - static_cast<float>(transparency.startTransparency) / 255.0f;
+        }
         if (!transform.IsIdentity()) transform.ApplyToContext(ctx);
         Point2Dd c = MillipointsToPixels(centre, scale);
         Point2Dd ma = MillipointsToPixels(majorAxis, scale);
         Point2Dd mi = MillipointsToPixels(minorAxis, scale);
         float rx = std::sqrt(ma.x * ma.x + ma.y * ma.y);
         float ry = std::sqrt(mi.x * mi.x + mi.y * mi.y);
+        // The axes are radius vectors from the centre; Fill/DrawEllipse take
+        // the bounding box.
+        Rect2Dd box{c.x - rx, c.y - ry, 2 * rx, 2 * ry};
 
         if (hasFill) {
-            ApplyFillToContext(ctx, fill, scale);
-            ctx->FillEllipse({c.x, c.y, rx, ry});
+            ApplyFillToContext(ctx, fill, scale, fillAlpha);
+            ctx->FillEllipse(box);
         }
         if (hasLine) {
             ApplyLineToContext(ctx, line, scale);
-            ctx->DrawEllipse({c.x, c.y, rx, ry});
+            ctx->DrawEllipse(box);
         }
         ctx->PopState();
         XARNode::Render(ctx, scale);
@@ -495,7 +520,11 @@ namespace UltraCanvas {
             ctx->MoveTo(pts[0].x, pts[0].y);
             for (size_t i = 1; i < pts.size(); ++i) ctx->LineTo(pts[i].x, pts[i].y);
             ctx->ClosePath();
-            if (hasFill) { ApplyFillToContext(ctx, fill, scale); ctx->FillPathPreserve(); }
+            float fillAlpha = 1.0f;
+            if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
+                fillAlpha = 1.0f - static_cast<float>(transparency.startTransparency) / 255.0f;
+            }
+            if (hasFill) { ApplyFillToContext(ctx, fill, scale, fillAlpha); ctx->FillPathPreserve(); }
             if (hasLine) { ApplyLineToContext(ctx, line, scale); ctx->StrokePathPreserve(); }
             ctx->ClearPath();
         }

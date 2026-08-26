@@ -262,7 +262,7 @@ namespace UltraCanvas {
         Point2Dd pos = text.Position;
         for (const auto &span: text.Spans) {
             if (span.Position.has_value()) pos = span.Position.value();
-            ctx->DrawText(span.Text, pos.x, pos.y);
+            ctx->DrawText(span.Text, Point2Dd(pos.x, pos.y));
             pos.x += span.Text.length() * span.Style.FontSize * 0.6f;
         }
     }
@@ -344,7 +344,9 @@ namespace UltraCanvas {
             gr.endPoint = g.End;
         }
         gr.stops = g.Stops;
-        ctx->SetFillGradient(gr);
+        auto pattern = ctx->CreateLinearGradientPattern(
+                gr.startPoint.x, gr.startPoint.y, gr.endPoint.x, gr.endPoint.y, gr.stops);
+        if (pattern) ctx->SetFillPaint(pattern);
     }
 
     void VectorRenderer::SetupRadialGradient(const RadialGradientData &g, const Rect2Dd &b) {
@@ -359,7 +361,10 @@ namespace UltraCanvas {
         gr.endPoint = gr.startPoint;
         gr.radius2 = gr.radius1;
         gr.stops = g.Stops;
-        ctx->SetFillGradient(gr);
+        auto pattern = ctx->CreateRadialGradientPattern(
+                gr.startPoint.x, gr.startPoint.y, 0.0,
+                gr.endPoint.x, gr.endPoint.y, gr.radius2, gr.stops);
+        if (pattern) ctx->SetFillPaint(pattern);
     }
 
     void VectorRenderer::BuildPath(const PathData &pathData) {

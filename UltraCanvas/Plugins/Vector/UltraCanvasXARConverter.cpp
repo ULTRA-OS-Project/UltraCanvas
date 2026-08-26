@@ -13,6 +13,10 @@
 #include <stack>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <functional>
+#include <map>
+#include <variant>
 
 namespace UltraCanvas {
     namespace VectorConverter {
@@ -158,28 +162,6 @@ namespace UltraCanvas {
 
             // ===== PATH PARSING =====
             void ParsePathData(const std::vector<uint8_t>& data, bool relative, VectorPath& path);
-
-            // ===== WRITING HELPERS =====
-            void WriteFileHeader(std::ostream& stream, uint32_t fileSize);
-            void WriteRecord(std::ostream& stream, uint32_t tag, const std::vector<uint8_t>& data);
-            void WriteRecord(std::ostream& stream, uint32_t tag);  // Empty record
-
-            // Element writers
-            void WriteDocument(std::ostream& stream, const VectorDocument& document);
-            void WriteLayer(std::ostream& stream, const VectorLayer& layer);
-            void WriteElement(std::ostream& stream, const VectorElement& element);
-            void WriteRect(std::ostream& stream, const VectorRect& rect);
-            void WriteCircle(std::ostream& stream, const VectorCircle& circle);
-            void WriteEllipse(std::ostream& stream, const VectorEllipse& ellipse);
-            void WritePath(std::ostream& stream, const VectorPath& path);
-            void WriteText(std::ostream& stream, const VectorText& text);
-            void WriteGroup(std::ostream& stream, const VectorGroup& group);
-
-            // Attribute writers
-            void WriteStyle(std::ostream& stream, const VectorStyle& style);
-            void WriteFill(std::ostream& stream, const FillData& fill);
-            void WriteStroke(std::ostream& stream, const StrokeData& stroke);
-            void WriteTransform(std::ostream& stream, const Matrix3x3& transform);
 
             // ===== COMPRESSION =====
             std::vector<uint8_t> CompressData(const std::vector<uint8_t>& data);
@@ -1152,39 +1134,42 @@ namespace UltraCanvas {
             importState.namedColours[colourId] = FromXARColour(color);
         }
 
+// ===== ATTRIBUTE PROCESSING =====
+// The legacy import path predates the spec-verified reader in the XAR plugin
+// (which is what actually parses XAR files at runtime); its attribute
+// handlers were declared but never implemented. Kept as no-ops so imported
+// geometry still arrives, just unstyled.
+
+        void XARConverter::Impl::ProcessLineAttribute(uint32_t tag, const std::vector<uint8_t>& data) {
+            (void)tag; (void)data;
+        }
+
+        void XARConverter::Impl::ProcessFillAttribute(uint32_t tag, const std::vector<uint8_t>& data) {
+            (void)tag; (void)data;
+        }
+
+        void XARConverter::Impl::ProcessTransparency(uint32_t tag, const std::vector<uint8_t>& data) {
+            (void)tag; (void)data;
+        }
+
+        void XARConverter::Impl::ProcessTextAttribute(uint32_t tag, const std::vector<uint8_t>& data) {
+            (void)tag; (void)data;
+        }
+
 // ===== EFFECT PROCESSING =====
 
         void XARConverter::Impl::ProcessFeather(const std::vector<uint8_t>& data) {
-            if (data.size() < sizeof(XARFeatherData)) return;
-
-            XARFeatherData featherData = *reinterpret_cast<const XARFeatherData*>(data.data());
-
-            // Store feather as shadow-like effect with blur
-            float featherSize = static_cast<float>(featherData.FeatherSize) / XAR_MILLIPOINTS_PER_POINT;
-
-            importState.currentStyle.ShadowBlur = featherSize;
-            // Feather doesn't have offset or color - it's just edge blur
+            (void)data;
+            // VectorStyle has no feather/blur channel; the XAR plugin renders
+            // feather natively, so the converter just notes it.
+            LogWarning("Feather effect detected but not representable in VectorStorage - ignored");
         }
 
         void XARConverter::Impl::ProcessShadow(uint32_t tag, const std::vector<uint8_t>& data) {
-            if (data.size() < 2 * sizeof(XARCoord) + sizeof(XARColourRGB) + sizeof(int32_t)) return;
-
-            size_t offset = 0;
-
-            // Read shadow offset
-            XARCoord shadowOffset = *reinterpret_cast<const XARCoord*>(data.data() + offset);
-            offset += sizeof(XARCoord);
-
-            // Read blur amount
-            int32_t blur = *reinterpret_cast<const int32_t*>(data.data() + offset);
-            offset += sizeof(int32_t);
-
-            // Read shadow colour
-            XARColourRGB shadowColour = *reinterpret_cast<const XARColourRGB*>(data.data() + offset);
-
-            importState.currentStyle.ShadowOffset = FromXARCoord(shadowOffset);
-            importState.currentStyle.ShadowBlur = static_cast<float>(blur) / XAR_MILLIPOINTS_PER_POINT;
-            importState.currentStyle.ShadowColor = FromXARColour(shadowColour);
+            (void)tag; (void)data;
+            // VectorStyle has no shadow channel; the XAR plugin renders
+            // shadows natively, so the converter just notes it.
+            LogWarning("Shadow effect detected but not representable in VectorStorage - ignored");
         }
 
         void XARConverter::Impl::ProcessBevel(uint32_t tag, const std::vector<uint8_t>& data) {
@@ -1310,6 +1295,976 @@ namespace UltraCanvas {
         }
 
 // ===== EXPORT IMPLEMENTATION =====
+//
+// The emitter below writes the uncompressed XAR record grammar exactly as the
+// spec-verified reader in Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp consumes
+// it: 8-byte signature, then records of (TAG:UINT32, size:UINT32, body), with
+// the tree encoded as "object record, TAG_DOWN, child records, TAG_UP".
+// Attribute records are emitted as children of the object they style, and
+// colour/font definition records are referenced by their 1-based record
+// sequence number (every record counts, TAG_UP/TAG_DOWN included).
+//
+// NOTE: the legacy XARTags namespace in UltraCanvasXARConverter.h predates the
+// spec-verified reader and carries wrong tag numbers (e.g. TAG_ENDOFFILE=4,
+// TAG_DEFINERGBCOLOUR=1000). The writer therefore defines its own constants,
+// taken from the Xar Format Specification Appendix A and matching the XARTag
+// enum in UltraCanvasXARPlugin.h.
+
+        namespace {
+            namespace XarOut {
+                constexpr uint32_t Up = 0;
+                constexpr uint32_t Down = 1;
+                constexpr uint32_t FileHeader = 2;
+                constexpr uint32_t EndOfFile = 3;
+                constexpr uint32_t Document = 40;
+                constexpr uint32_t Chapter = 41;
+                constexpr uint32_t Spread = 42;
+                constexpr uint32_t Layer = 43;
+                constexpr uint32_t SpreadInformation = 45;
+                constexpr uint32_t LayerDetails = 48;
+                constexpr uint32_t DefineRGBColour = 50;
+                constexpr uint32_t Path = 100;
+                constexpr uint32_t PathFilled = 101;
+                constexpr uint32_t PathStroked = 102;
+                constexpr uint32_t PathFilledStroked = 103;
+                constexpr uint32_t Group = 104;
+                constexpr uint32_t FlatFill = 150;
+                constexpr uint32_t LineColour = 151;
+                constexpr uint32_t LineWidth = 152;
+                constexpr uint32_t LinearFill = 153;
+                constexpr uint32_t CircularFill = 154;
+                constexpr uint32_t FlatTransparentFill = 166;
+                constexpr uint32_t StartCap = 174;
+                constexpr uint32_t EndCap = 175;
+                constexpr uint32_t JoinStyle = 176;
+                constexpr uint32_t MitreLimit = 177;
+                constexpr uint32_t FlatFillNone = 190;
+                constexpr uint32_t LineColourNone = 193;
+                constexpr uint32_t EllipseSimple = 1000;
+                constexpr uint32_t RectangleSimple = 1100;
+                constexpr uint32_t RectangleSimpleRounded = 1104;
+                constexpr uint32_t FontDefTrueType = 2000;
+                constexpr uint32_t TextStorySimple = 2100;
+                constexpr uint32_t TextLine = 2200;
+                constexpr uint32_t TextString = 2201;
+                constexpr uint32_t TextEOL = 2203;
+                constexpr uint32_t TextJustificationLeft = 2902;
+                constexpr uint32_t TextJustificationCentre = 2903;
+                constexpr uint32_t TextJustificationRight = 2904;
+                constexpr uint32_t TextFontSize = 2906;
+                constexpr uint32_t TextFontTypeface = 2907;
+                constexpr uint32_t TextBoldOn = 2908;
+                constexpr uint32_t TextBoldOff = 2909;
+                constexpr uint32_t TextItalicOn = 2910;
+                constexpr uint32_t TextItalicOff = 2911;
+                constexpr uint32_t TextUnderlineOn = 2912;
+                constexpr uint32_t TextUnderlineOff = 2913;
+            }
+
+            // Little-endian record body builder.
+            struct XarBody {
+                std::vector<uint8_t> bytes;
+
+                void U8(uint8_t v) { bytes.push_back(v); }
+                void U32(uint32_t v) {
+                    bytes.push_back(static_cast<uint8_t>(v));
+                    bytes.push_back(static_cast<uint8_t>(v >> 8));
+                    bytes.push_back(static_cast<uint8_t>(v >> 16));
+                    bytes.push_back(static_cast<uint8_t>(v >> 24));
+                }
+                void I32(int32_t v) { U32(static_cast<uint32_t>(v)); }
+                void Ascii(const std::string& s) {
+                    bytes.insert(bytes.end(), s.begin(), s.end());
+                    bytes.push_back(0);
+                }
+                // UTF-8 in, UTF-16LE + 0x0000 terminator out.
+                void Utf16(const std::string& utf8) {
+                    size_t i = 0, n = utf8.size();
+                    while (i < n) {
+                        uint32_t cp = static_cast<uint8_t>(utf8[i]);
+                        size_t extra = 0;
+                        if (cp >= 0xF0) { cp &= 0x07; extra = 3; }
+                        else if (cp >= 0xE0) { cp &= 0x0F; extra = 2; }
+                        else if (cp >= 0xC0) { cp &= 0x1F; extra = 1; }
+                        if (i + extra >= n && extra > 0) break;
+                        for (size_t k = 0; k < extra; ++k) {
+                            cp = (cp << 6) | (static_cast<uint8_t>(utf8[i + 1 + k]) & 0x3F);
+                        }
+                        i += 1 + extra;
+                        if (cp >= 0x10000) {
+                            cp -= 0x10000;
+                            uint16_t hi = static_cast<uint16_t>(0xD800 | (cp >> 10));
+                            uint16_t lo = static_cast<uint16_t>(0xDC00 | (cp & 0x3FF));
+                            bytes.push_back(static_cast<uint8_t>(hi));
+                            bytes.push_back(static_cast<uint8_t>(hi >> 8));
+                            bytes.push_back(static_cast<uint8_t>(lo));
+                            bytes.push_back(static_cast<uint8_t>(lo >> 8));
+                        } else {
+                            bytes.push_back(static_cast<uint8_t>(cp));
+                            bytes.push_back(static_cast<uint8_t>(cp >> 8));
+                        }
+                    }
+                    bytes.push_back(0);
+                    bytes.push_back(0);
+                }
+            };
+
+            // A path normalised to absolute move/line/cubic segments.
+            struct XarPathSeg {
+                enum Kind { Move, Line, Cubic } kind;
+                Point2Dd p[3];
+                bool closeAfter = false;
+            };
+
+            class XarEmitter {
+            public:
+                XarEmitter(const VectorDocument& document,
+                           std::function<void(const std::string&)> warnFn)
+                        : doc(document), warn(std::move(warnFn)) {}
+
+                std::vector<uint8_t> Build() {
+                    pageW = doc.Size.width;
+                    pageH = doc.Size.height;
+                    if (pageW <= 0 || pageH <= 0) {
+                        Rect2Dd bbox = doc.GetBoundingBox();
+                        pageW = bbox.x + bbox.width;
+                        pageH = bbox.y + bbox.height;
+                        if (pageW <= 0) pageW = 595;   // A4 fallback
+                        if (pageH <= 0) pageH = 842;
+                    }
+
+                    const uint8_t signature[8] = {0x58, 0x41, 0x52, 0x41, 0xA3, 0xA3, 0x0D, 0x0A};
+                    out.assign(signature, signature + 8);
+
+                    XarBody fh;
+                    fh.bytes.push_back('C'); fh.bytes.push_back('X'); fh.bytes.push_back('N');
+                    fh.U32(0);   // file size, patched below
+                    fh.U32(0);   // web link
+                    fh.U32(0);   // refinement flags
+                    fh.Ascii("UltraCanvas");
+                    fh.Ascii("1.0");
+                    fh.Ascii("");
+                    Rec(XarOut::FileHeader, fh);
+
+                    Rec(XarOut::Document);
+                    Down();
+                    Rec(XarOut::Chapter);
+                    Down();
+                    Rec(XarOut::Spread);
+                    Down();
+
+                    XarBody si;
+                    si.I32(Mp(pageW));
+                    si.I32(Mp(pageH));
+                    si.I32(0);   // margin
+                    si.I32(0);   // bleed
+                    si.U8(0);    // flags
+                    Rec(XarOut::SpreadInformation, si);
+
+                    for (const auto& layer : doc.Layers) {
+                        if (layer) EmitLayer(*layer);
+                    }
+
+                    Up();   // spread
+                    Up();   // chapter
+                    Up();   // document
+                    Rec(XarOut::EndOfFile);
+
+                    // Patch the file-size hint inside the FILEHEADER body:
+                    // 8 signature + 4 tag + 4 size + 3 "CXN" = offset 19.
+                    uint32_t total = static_cast<uint32_t>(out.size());
+                    out[19] = static_cast<uint8_t>(total);
+                    out[20] = static_cast<uint8_t>(total >> 8);
+                    out[21] = static_cast<uint8_t>(total >> 16);
+                    out[22] = static_cast<uint8_t>(total >> 24);
+                    return out;
+                }
+
+            private:
+                const VectorDocument& doc;
+                std::function<void(const std::string&)> warn;
+                std::vector<uint8_t> out;
+                uint32_t seq = 0;
+                double pageW = 0, pageH = 0;                 // points
+                std::map<uint32_t, uint32_t> colourRefs;     // 0xRRGGBB -> record seq
+                std::map<std::string, uint32_t> fontRefs;    // family -> record seq
+
+                // ===== RECORD PRIMITIVES =====
+
+                uint32_t Rec(uint32_t tag, const XarBody& body = XarBody()) {
+                    ++seq;
+                    XarBody hdr;
+                    hdr.U32(tag);
+                    hdr.U32(static_cast<uint32_t>(body.bytes.size()));
+                    out.insert(out.end(), hdr.bytes.begin(), hdr.bytes.end());
+                    out.insert(out.end(), body.bytes.begin(), body.bytes.end());
+                    return seq;
+                }
+                void Down() { Rec(XarOut::Down); }
+                void Up() { Rec(XarOut::Up); }
+
+                // ===== COORDINATES =====
+                // Document space is points, Y down; XAR is millipoints, Y up.
+
+                static int32_t Mp(double pt) {
+                    return static_cast<int32_t>(std::lround(pt * 1000.0));
+                }
+                void Coord(XarBody& b, const Point2Dd& pPt) const {
+                    b.I32(Mp(pPt.x));
+                    b.I32(Mp(pageH - pPt.y));
+                }
+                static void Vec(XarBody& b, double dxPt, double dyPt) {
+                    b.I32(Mp(dxPt));
+                    b.I32(Mp(-dyPt));
+                }
+                static bool AxisAligned(const Matrix3x3& m) {
+                    return std::fabs(m.m[0][1]) < 1e-6 && std::fabs(m.m[1][0]) < 1e-6;
+                }
+                static double AvgScale(const Matrix3x3& m) {
+                    double det = std::fabs(static_cast<double>(m.m[0][0]) * m.m[1][1] -
+                                           static_cast<double>(m.m[0][1]) * m.m[1][0]);
+                    return det > 0 ? std::sqrt(det) : 1.0;
+                }
+
+                // ===== REFERENCED DEFINITIONS =====
+                // Definitions are emitted lazily, immediately before the first
+                // record that references them; the reader keys both colours and
+                // fonts by record sequence number, position-independent.
+
+                int32_t ColourRef(const Color& c) {
+                    uint32_t key = (static_cast<uint32_t>(c.r) << 16) |
+                                   (static_cast<uint32_t>(c.g) << 8) | c.b;
+                    auto it = colourRefs.find(key);
+                    if (it != colourRefs.end()) return static_cast<int32_t>(it->second);
+                    XarBody b;
+                    b.U8(c.r); b.U8(c.g); b.U8(c.b);
+                    uint32_t ref = Rec(XarOut::DefineRGBColour, b);
+                    colourRefs[key] = ref;
+                    return static_cast<int32_t>(ref);
+                }
+
+                int32_t FontRef(const std::string& family) {
+                    auto it = fontRefs.find(family);
+                    if (it != fontRefs.end()) return static_cast<int32_t>(it->second);
+                    XarBody b;
+                    b.Utf16(family);
+                    b.Utf16(family);
+                    for (int i = 0; i < 10; ++i) b.U8(0);   // panose
+                    uint32_t ref = Rec(XarOut::FontDefTrueType, b);
+                    fontRefs[family] = ref;
+                    return static_cast<int32_t>(ref);
+                }
+
+                // ===== TREE =====
+
+                void EmitLayer(const VectorLayer& layer) {
+                    Rec(XarOut::Layer);
+                    Down();
+                    XarBody ld;
+                    uint8_t flags = 0;
+                    if (layer.Visible) flags |= 0x1;
+                    if (layer.Locked) flags |= 0x2;
+                    flags |= 0x4;   // printable
+                    ld.U8(flags);
+                    ld.Utf16(layer.Name.empty() ? std::string("Layer 1") : layer.Name);
+                    Rec(XarOut::LayerDetails, ld);
+
+                    for (const auto& child : layer.Children) {
+                        if (child) EmitElement(*child, layer.Style, Matrix3x3::Identity());
+                    }
+                    Up();
+                }
+
+                void EmitElement(const VectorElement& e, const VectorStyle& inherited,
+                                 const Matrix3x3& parentCtm) {
+                    if (!e.Style.Visible || !e.Style.Display) return;
+
+                    VectorStyle eff = e.Style;
+                    eff.Inherit(inherited);
+                    Matrix3x3 ctm = e.Transform ? parentCtm * (*e.Transform) : parentCtm;
+
+                    switch (e.Type) {
+                        case VectorElementType::Group:
+                        case VectorElementType::Symbol: {
+                            const auto& g = static_cast<const VectorGroup&>(e);
+                            Rec(XarOut::Group);
+                            Down();
+                            for (const auto& child : g.Children) {
+                                if (child) EmitElement(*child, eff, ctm);
+                            }
+                            Up();
+                            break;
+                        }
+                        case VectorElementType::Layer: {
+                            // Nested layers degrade to groups.
+                            const auto& g = static_cast<const VectorGroup&>(e);
+                            Rec(XarOut::Group);
+                            Down();
+                            for (const auto& child : g.Children) {
+                                if (child) EmitElement(*child, eff, ctm);
+                            }
+                            Up();
+                            break;
+                        }
+                        case VectorElementType::Rectangle:
+                        case VectorElementType::RoundedRectangle:
+                            EmitRect(static_cast<const VectorRect&>(e), eff, ctm);
+                            break;
+                        case VectorElementType::Circle: {
+                            const auto& c = static_cast<const VectorCircle&>(e);
+                            EmitEllipseShape(c.Center, c.Radius, c.Radius, eff, ctm);
+                            break;
+                        }
+                        case VectorElementType::Ellipse: {
+                            const auto& el = static_cast<const VectorEllipse&>(e);
+                            EmitEllipseShape(el.Center, el.RadiusX, el.RadiusY, eff, ctm);
+                            break;
+                        }
+                        case VectorElementType::Line: {
+                            const auto& ln = static_cast<const VectorLine&>(e);
+                            std::vector<XarPathSeg> segs;
+                            segs.push_back({XarPathSeg::Move, {ln.Start}, false});
+                            segs.push_back({XarPathSeg::Line, {ln.End}, false});
+                            EmitPathRecord(segs, eff, ctm, false);
+                            break;
+                        }
+                        case VectorElementType::Polyline:
+                            EmitPolySegs(static_cast<const VectorPolyline&>(e).Points, false, eff, ctm);
+                            break;
+                        case VectorElementType::Polygon:
+                            EmitPolySegs(static_cast<const VectorPolygon&>(e).Points, true, eff, ctm);
+                            break;
+                        case VectorElementType::Path: {
+                            const auto& p = static_cast<const VectorPath&>(e);
+                            auto segs = NormalizePath(p.Path);
+                            EmitPathRecord(segs, eff, ctm, true);
+                            break;
+                        }
+                        case VectorElementType::Text:
+                            EmitText(static_cast<const VectorText&>(e), eff, ctm);
+                            break;
+                        default:
+                            warn("XAR export: element type not supported, skipped (type " +
+                                 std::to_string(static_cast<int>(e.Type)) + ")");
+                            break;
+                    }
+                }
+
+                // ===== SHAPES =====
+
+                void EmitRect(const VectorRect& r, const VectorStyle& style, const Matrix3x3& ctm) {
+                    double rx = std::min<double>(r.RadiusX, r.Bounds.width / 2);
+                    double ry = std::min<double>(r.RadiusY, r.Bounds.height / 2);
+                    if (rx <= 0 && ry > 0) rx = ry;
+                    if (ry <= 0 && rx > 0) ry = rx;
+
+                    if (!AxisAligned(ctm)) {
+                        auto segs = (rx > 0)
+                                ? RoundedRectSegs(r.Bounds, rx, ry)
+                                : RectSegs(r.Bounds);
+                        EmitPathRecord(segs, style, ctm, true);
+                        return;
+                    }
+
+                    Point2Dd p0 = ctm.Transform(Point2Dd(r.Bounds.x, r.Bounds.y));
+                    Point2Dd p1 = ctm.Transform(Point2Dd(r.Bounds.x + r.Bounds.width,
+                                                         r.Bounds.y + r.Bounds.height));
+                    Point2Dd centre((p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
+                    double halfW = std::fabs(p1.x - p0.x) / 2;
+                    double halfH = std::fabs(p1.y - p0.y) / 2;
+                    double sx = std::fabs(ctm.m[0][0]);
+                    double sy = std::fabs(ctm.m[1][1]);
+
+                    XarBody b;
+                    Coord(b, centre);
+                    Vec(b, halfW, 0);
+                    Vec(b, 0, -halfH);   // "up" in document space
+                    uint32_t tag = XarOut::RectangleSimple;
+                    if (rx > 0) {
+                        tag = XarOut::RectangleSimpleRounded;
+                        b.I32(Mp((rx * sx + ry * sy) / 2));
+                    }
+                    Rec(tag, b);
+                    EmitShapeAttributes(style, ctm);
+                }
+
+                void EmitEllipseShape(const Point2Dd& center, double radX, double radY,
+                                      const VectorStyle& style, const Matrix3x3& ctm) {
+                    if (!AxisAligned(ctm)) {
+                        EmitPathRecord(EllipseSegs(center, radX, radY), style, ctm, true);
+                        return;
+                    }
+                    Point2Dd c = ctm.Transform(center);
+                    double rx = radX * std::fabs(ctm.m[0][0]);
+                    double ry = radY * std::fabs(ctm.m[1][1]);
+                    XarBody b;
+                    Coord(b, c);
+                    Vec(b, rx, 0);
+                    Vec(b, 0, -ry);
+                    Rec(XarOut::EllipseSimple, b);
+                    EmitShapeAttributes(style, ctm);
+                }
+
+                void EmitPolySegs(const std::vector<Point2Dd>& pts, bool closed,
+                                  const VectorStyle& style, const Matrix3x3& ctm) {
+                    if (pts.size() < 2) return;
+                    std::vector<XarPathSeg> segs;
+                    segs.push_back({XarPathSeg::Move, {pts[0]}, false});
+                    for (size_t i = 1; i < pts.size(); ++i) {
+                        segs.push_back({XarPathSeg::Line, {pts[i]}, false});
+                    }
+                    if (closed) segs.back().closeAfter = true;
+                    EmitPathRecord(segs, style, ctm, true);
+                }
+
+                // ===== PATHS =====
+
+                std::vector<XarPathSeg> NormalizePath(const PathData& pd) {
+                    std::vector<XarPathSeg> segs;
+                    Point2Dd cur(0, 0), start(0, 0);
+                    Point2Dd prevCubicCtrl(0, 0), prevQuadCtrl(0, 0);
+                    bool hadCubic = false, hadQuad = false;
+                    int lastDrawIdx = -1;
+
+                    auto abs2 = [&](double x, double y, bool rel) {
+                        return rel ? Point2Dd(cur.x + x, cur.y + y) : Point2Dd(x, y);
+                    };
+
+                    for (const auto& cmd : pd.commands) {
+                        const auto& p = cmd.Parameters;
+                        bool resetCtrls = true;
+                        switch (cmd.Type) {
+                            case PathCommandType::MoveTo: {
+                                if (p.size() < 2) break;
+                                cur = abs2(p[0], p[1], cmd.Relative);
+                                start = cur;
+                                segs.push_back({XarPathSeg::Move, {cur}, false});
+                                // Extra pairs are implicit LineTo per SVG.
+                                for (size_t i = 2; i + 1 < p.size(); i += 2) {
+                                    cur = abs2(p[i], p[i + 1], cmd.Relative);
+                                    segs.push_back({XarPathSeg::Line, {cur}, false});
+                                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                                }
+                                break;
+                            }
+                            case PathCommandType::LineTo: {
+                                for (size_t i = 0; i + 1 < p.size(); i += 2) {
+                                    cur = abs2(p[i], p[i + 1], cmd.Relative);
+                                    segs.push_back({XarPathSeg::Line, {cur}, false});
+                                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                                }
+                                break;
+                            }
+                            case PathCommandType::HorizontalLineTo: {
+                                for (double v : p) {
+                                    cur = Point2Dd(cmd.Relative ? cur.x + v : v, cur.y);
+                                    segs.push_back({XarPathSeg::Line, {cur}, false});
+                                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                                }
+                                break;
+                            }
+                            case PathCommandType::VerticalLineTo: {
+                                for (double v : p) {
+                                    cur = Point2Dd(cur.x, cmd.Relative ? cur.y + v : v);
+                                    segs.push_back({XarPathSeg::Line, {cur}, false});
+                                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                                }
+                                break;
+                            }
+                            case PathCommandType::CurveTo: {
+                                for (size_t i = 0; i + 5 < p.size(); i += 6) {
+                                    Point2Dd c1 = abs2(p[i], p[i + 1], cmd.Relative);
+                                    Point2Dd c2 = abs2(p[i + 2], p[i + 3], cmd.Relative);
+                                    Point2Dd end = abs2(p[i + 4], p[i + 5], cmd.Relative);
+                                    segs.push_back({XarPathSeg::Cubic, {c1, c2, end}, false});
+                                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                                    prevCubicCtrl = c2;
+                                    hadCubic = true;
+                                    cur = end;
+                                }
+                                resetCtrls = false;
+                                break;
+                            }
+                            case PathCommandType::SmoothCurveTo: {
+                                for (size_t i = 0; i + 3 < p.size(); i += 4) {
+                                    Point2Dd c1 = hadCubic
+                                            ? Point2Dd(2 * cur.x - prevCubicCtrl.x,
+                                                       2 * cur.y - prevCubicCtrl.y)
+                                            : cur;
+                                    Point2Dd c2 = abs2(p[i], p[i + 1], cmd.Relative);
+                                    Point2Dd end = abs2(p[i + 2], p[i + 3], cmd.Relative);
+                                    segs.push_back({XarPathSeg::Cubic, {c1, c2, end}, false});
+                                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                                    prevCubicCtrl = c2;
+                                    hadCubic = true;
+                                    cur = end;
+                                }
+                                resetCtrls = false;
+                                break;
+                            }
+                            case PathCommandType::QuadraticTo: {
+                                for (size_t i = 0; i + 3 < p.size(); i += 4) {
+                                    Point2Dd q = abs2(p[i], p[i + 1], cmd.Relative);
+                                    Point2Dd end = abs2(p[i + 2], p[i + 3], cmd.Relative);
+                                    AppendQuad(segs, cur, q, end, lastDrawIdx);
+                                    prevQuadCtrl = q;
+                                    hadQuad = true;
+                                    cur = end;
+                                }
+                                resetCtrls = false;
+                                break;
+                            }
+                            case PathCommandType::SmoothQuadraticTo: {
+                                for (size_t i = 0; i + 1 < p.size(); i += 2) {
+                                    Point2Dd q = hadQuad
+                                            ? Point2Dd(2 * cur.x - prevQuadCtrl.x,
+                                                       2 * cur.y - prevQuadCtrl.y)
+                                            : cur;
+                                    Point2Dd end = abs2(p[i], p[i + 1], cmd.Relative);
+                                    AppendQuad(segs, cur, q, end, lastDrawIdx);
+                                    prevQuadCtrl = q;
+                                    hadQuad = true;
+                                    cur = end;
+                                }
+                                resetCtrls = false;
+                                break;
+                            }
+                            case PathCommandType::ArcTo: {
+                                for (size_t i = 0; i + 6 < p.size(); i += 7) {
+                                    Point2Dd end = abs2(p[i + 5], p[i + 6], cmd.Relative);
+                                    AppendArc(segs, cur, p[i], p[i + 1], p[i + 2],
+                                              p[i + 3] != 0, p[i + 4] != 0, end, lastDrawIdx);
+                                    cur = end;
+                                }
+                                break;
+                            }
+                            case PathCommandType::ClosePath: {
+                                if (lastDrawIdx >= 0) segs[lastDrawIdx].closeAfter = true;
+                                cur = start;
+                                break;
+                            }
+                        }
+                        if (resetCtrls) { hadCubic = false; hadQuad = false; }
+                    }
+
+                    if (pd.Closed && lastDrawIdx >= 0 && !segs[lastDrawIdx].closeAfter) {
+                        segs[lastDrawIdx].closeAfter = true;
+                    }
+                    return segs;
+                }
+
+                static void AppendQuad(std::vector<XarPathSeg>& segs, const Point2Dd& from,
+                                       const Point2Dd& q, const Point2Dd& end, int& lastDrawIdx) {
+                    Point2Dd c1(from.x + 2.0 / 3.0 * (q.x - from.x),
+                                from.y + 2.0 / 3.0 * (q.y - from.y));
+                    Point2Dd c2(end.x + 2.0 / 3.0 * (q.x - end.x),
+                                end.y + 2.0 / 3.0 * (q.y - end.y));
+                    segs.push_back({XarPathSeg::Cubic, {c1, c2, end}, false});
+                    lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                }
+
+                // SVG endpoint arc -> cubic segments (implementation of the
+                // conversion in SVG 1.1 appendix F.6.5).
+                static void AppendArc(std::vector<XarPathSeg>& segs, const Point2Dd& from,
+                                      double rx, double ry, double rotDeg, bool largeArc,
+                                      bool sweep, const Point2Dd& to, int& lastDrawIdx) {
+                    rx = std::fabs(rx); ry = std::fabs(ry);
+                    if (rx < 1e-9 || ry < 1e-9 ||
+                        (std::fabs(from.x - to.x) < 1e-9 && std::fabs(from.y - to.y) < 1e-9)) {
+                        segs.push_back({XarPathSeg::Line, {to}, false});
+                        lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                        return;
+                    }
+                    double phi = rotDeg * 3.14159265358979323846 / 180.0;
+                    double cosP = std::cos(phi), sinP = std::sin(phi);
+                    double dx = (from.x - to.x) / 2, dy = (from.y - to.y) / 2;
+                    double x1 = cosP * dx + sinP * dy;
+                    double y1 = -sinP * dx + cosP * dy;
+                    double lam = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
+                    if (lam > 1) { double s = std::sqrt(lam); rx *= s; ry *= s; }
+                    double num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
+                    double den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+                    double co = std::sqrt(std::max(0.0, num / den));
+                    if (largeArc == sweep) co = -co;
+                    double cxp = co * rx * y1 / ry;
+                    double cyp = -co * ry * x1 / rx;
+                    double cx = cosP * cxp - sinP * cyp + (from.x + to.x) / 2;
+                    double cy = sinP * cxp + cosP * cyp + (from.y + to.y) / 2;
+
+                    auto ang = [](double ux, double uy, double vx, double vy) {
+                        double dot = ux * vx + uy * vy;
+                        double len = std::sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy));
+                        double a = std::acos(std::max(-1.0, std::min(1.0, dot / len)));
+                        return (ux * vy - uy * vx < 0) ? -a : a;
+                    };
+                    double theta1 = ang(1, 0, (x1 - cxp) / rx, (y1 - cyp) / ry);
+                    double dTheta = ang((x1 - cxp) / rx, (y1 - cyp) / ry,
+                                        (-x1 - cxp) / rx, (-y1 - cyp) / ry);
+                    const double twoPi = 2 * 3.14159265358979323846;
+                    if (!sweep && dTheta > 0) dTheta -= twoPi;
+                    if (sweep && dTheta < 0) dTheta += twoPi;
+
+                    int nSegs = static_cast<int>(std::ceil(std::fabs(dTheta) / (twoPi / 4)));
+                    if (nSegs < 1) nSegs = 1;
+                    double delta = dTheta / nSegs;
+                    double t = 4.0 / 3.0 * std::tan(delta / 4);
+
+                    auto pointAt = [&](double theta) {
+                        double px = rx * std::cos(theta), py = ry * std::sin(theta);
+                        return Point2Dd(cosP * px - sinP * py + cx, sinP * px + cosP * py + cy);
+                    };
+                    auto derivAt = [&](double theta) {
+                        double px = -rx * std::sin(theta), py = ry * std::cos(theta);
+                        return Point2Dd(cosP * px - sinP * py, sinP * px + cosP * py);
+                    };
+
+                    double theta = theta1;
+                    Point2Dd p0 = from;
+                    for (int i = 0; i < nSegs; ++i) {
+                        double theta2 = theta + delta;
+                        Point2Dd p3 = pointAt(theta2);
+                        Point2Dd d0 = derivAt(theta);
+                        Point2Dd d3 = derivAt(theta2);
+                        Point2Dd c1(p0.x + t * d0.x, p0.y + t * d0.y);
+                        Point2Dd c2(p3.x - t * d3.x, p3.y - t * d3.y);
+                        segs.push_back({XarPathSeg::Cubic, {c1, c2, p3}, false});
+                        lastDrawIdx = static_cast<int>(segs.size()) - 1;
+                        p0 = p3;
+                        theta = theta2;
+                    }
+                }
+
+                static std::vector<XarPathSeg> RectSegs(const Rect2Dd& r) {
+                    std::vector<XarPathSeg> segs;
+                    segs.push_back({XarPathSeg::Move, {Point2Dd(r.x, r.y)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(r.x + r.width, r.y)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(r.x + r.width, r.y + r.height)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(r.x, r.y + r.height)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(r.x, r.y)}, true});
+                    return segs;
+                }
+
+                static std::vector<XarPathSeg> RoundedRectSegs(const Rect2Dd& r,
+                                                               double rx, double ry) {
+                    const double k = 0.5522847498307936;
+                    double x0 = r.x, y0 = r.y, x1 = r.x + r.width, y1 = r.y + r.height;
+                    std::vector<XarPathSeg> segs;
+                    segs.push_back({XarPathSeg::Move, {Point2Dd(x0 + rx, y0)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(x1 - rx, y0)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(x1 - rx + k * rx, y0),
+                                                        Point2Dd(x1, y0 + ry - k * ry),
+                                                        Point2Dd(x1, y0 + ry)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(x1, y1 - ry)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(x1, y1 - ry + k * ry),
+                                                        Point2Dd(x1 - rx + k * rx, y1),
+                                                        Point2Dd(x1 - rx, y1)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(x0 + rx, y1)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(x0 + rx - k * rx, y1),
+                                                        Point2Dd(x0, y1 - ry + k * ry),
+                                                        Point2Dd(x0, y1 - ry)}, false});
+                    segs.push_back({XarPathSeg::Line, {Point2Dd(x0, y0 + ry)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(x0, y0 + ry - k * ry),
+                                                        Point2Dd(x0 + rx - k * rx, y0),
+                                                        Point2Dd(x0 + rx, y0)}, true});
+                    return segs;
+                }
+
+                static std::vector<XarPathSeg> EllipseSegs(const Point2Dd& c,
+                                                           double rx, double ry) {
+                    const double k = 0.5522847498307936;
+                    std::vector<XarPathSeg> segs;
+                    segs.push_back({XarPathSeg::Move, {Point2Dd(c.x + rx, c.y)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(c.x + rx, c.y + k * ry),
+                                                        Point2Dd(c.x + k * rx, c.y + ry),
+                                                        Point2Dd(c.x, c.y + ry)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(c.x - k * rx, c.y + ry),
+                                                        Point2Dd(c.x - rx, c.y + k * ry),
+                                                        Point2Dd(c.x - rx, c.y)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(c.x - rx, c.y - k * ry),
+                                                        Point2Dd(c.x - k * rx, c.y - ry),
+                                                        Point2Dd(c.x, c.y - ry)}, false});
+                    segs.push_back({XarPathSeg::Cubic, {Point2Dd(c.x + k * rx, c.y - ry),
+                                                        Point2Dd(c.x + rx, c.y - k * ry),
+                                                        Point2Dd(c.x + rx, c.y)}, true});
+                    return segs;
+                }
+
+                void EmitPathRecord(const std::vector<XarPathSeg>& segs, const VectorStyle& style,
+                                    const Matrix3x3& ctm, bool fillable) {
+                    if (segs.empty()) return;
+
+                    bool filled = fillable && HasVisibleFill(style);
+                    bool stroked = HasVisibleStroke(style);
+                    uint32_t tag = filled && stroked ? XarOut::PathFilledStroked
+                                 : filled           ? XarOut::PathFilled
+                                 : stroked          ? XarOut::PathStroked
+                                                    : XarOut::Path;
+
+                    std::vector<uint8_t> verbs;
+                    std::vector<Point2Dd> coords;
+                    for (const auto& s : segs) {
+                        switch (s.kind) {
+                            case XarPathSeg::Move:
+                                verbs.push_back(0x06);
+                                coords.push_back(ctm.Transform(s.p[0]));
+                                break;
+                            case XarPathSeg::Line:
+                                verbs.push_back(s.closeAfter ? 0x03 : 0x02);
+                                coords.push_back(ctm.Transform(s.p[0]));
+                                break;
+                            case XarPathSeg::Cubic:
+                                verbs.push_back(0x04);
+                                verbs.push_back(0x04);
+                                verbs.push_back(s.closeAfter ? 0x05 : 0x04);
+                                coords.push_back(ctm.Transform(s.p[0]));
+                                coords.push_back(ctm.Transform(s.p[1]));
+                                coords.push_back(ctm.Transform(s.p[2]));
+                                break;
+                        }
+                    }
+
+                    XarBody b;
+                    b.U32(static_cast<uint32_t>(verbs.size()));
+                    for (uint8_t v : verbs) b.U8(v);
+                    while (b.bytes.size() % 4 != 0) b.U8(0);
+                    for (const auto& c : coords) Coord(b, c);
+                    Rec(tag, b);
+                    EmitShapeAttributes(style, ctm);
+                }
+
+                // ===== ATTRIBUTES =====
+
+                static bool HasVisibleFill(const VectorStyle& s) {
+                    return s.Fill.has_value() &&
+                           !std::holds_alternative<std::monostate>(*s.Fill);
+                }
+                static bool HasVisibleStroke(const VectorStyle& s) {
+                    return s.Stroke.has_value() && s.Stroke->Width > 0 &&
+                           !std::holds_alternative<std::monostate>(s.Stroke->Fill);
+                }
+
+                // Emits the attribute children (fill, line, transparency) of the
+                // object record written immediately before.
+                void EmitShapeAttributes(const VectorStyle& style, const Matrix3x3& ctm) {
+                    Down();
+                    uint8_t fillAlpha = 255;
+
+                    if (HasVisibleFill(style)) {
+                        const FillData& fill = *style.Fill;
+                        if (const Color* c = std::get_if<Color>(&fill)) {
+                            fillAlpha = c->a;
+                            XarBody b;
+                            b.I32(ColourRef(*c));
+                            Rec(XarOut::FlatFill, b);
+                        } else if (const GradientData* g = std::get_if<GradientData>(&fill)) {
+                            EmitGradientFill(*g, ctm);
+                        } else {
+                            warn("XAR export: pattern/reference fills are not supported, "
+                                 "filling flat black");
+                            XarBody b;
+                            b.I32(ColourRef(Color(0, 0, 0, 255)));
+                            Rec(XarOut::FlatFill, b);
+                        }
+                    } else {
+                        Rec(XarOut::FlatFillNone);
+                    }
+
+                    if (HasVisibleStroke(style)) {
+                        const StrokeData& st = *style.Stroke;
+                        Color sc(0, 0, 0, 255);
+                        if (const Color* c = std::get_if<Color>(&st.Fill)) {
+                            sc = *c;
+                        } else {
+                            warn("XAR export: non-solid stroke paint replaced with black");
+                        }
+                        XarBody lc;
+                        lc.I32(ColourRef(sc));
+                        Rec(XarOut::LineColour, lc);
+
+                        XarBody lw;
+                        lw.I32(Mp(st.Width * AvgScale(ctm)));
+                        Rec(XarOut::LineWidth, lw);
+
+                        uint8_t cap = st.LineCap == StrokeLineCap::Round ? 1
+                                    : st.LineCap == StrokeLineCap::Square ? 2 : 0;
+                        XarBody cb1; cb1.U8(cap); Rec(XarOut::StartCap, cb1);
+                        XarBody cb2; cb2.U8(cap); Rec(XarOut::EndCap, cb2);
+
+                        uint8_t join = st.LineJoin == StrokeLineJoin::Round ? 1
+                                     : st.LineJoin == StrokeLineJoin::Bevel ? 2 : 0;
+                        XarBody jb; jb.U8(join); Rec(XarOut::JoinStyle, jb);
+
+                        XarBody mb;
+                        mb.I32(static_cast<int32_t>(st.MiterLimit * 65536.0f));
+                        Rec(XarOut::MitreLimit, mb);
+
+                        if (!st.DashArray.empty()) {
+                            warn("XAR export: dash patterns are not written yet, "
+                                 "stroke exported solid");
+                        }
+                    } else {
+                        Rec(XarOut::LineColourNone);
+                    }
+
+                    float opacity = style.Opacity * style.FillOpacity *
+                                    (static_cast<float>(fillAlpha) / 255.0f);
+                    if (opacity < 0.999f) {
+                        float t = 1.0f - std::max(0.0f, std::min(1.0f, opacity));
+                        XarBody b;
+                        b.U8(static_cast<uint8_t>(std::lround(t * 255.0f)));
+                        b.U8(1);   // mix
+                        Rec(XarOut::FlatTransparentFill, b);
+                    }
+                    Up();
+                }
+
+                void EmitGradientFill(const GradientData& g, const Matrix3x3& ctm) {
+                    if (const LinearGradientData* lg = std::get_if<LinearGradientData>(&g)) {
+                        Color c0(0, 0, 0, 255), c1(255, 255, 255, 255);
+                        if (!lg->Stops.empty()) {
+                            c0 = lg->Stops.front().color;
+                            c1 = lg->Stops.back().color;
+                            if (lg->Stops.size() > 2) {
+                                warn("XAR export: only first/last gradient stops are written");
+                            }
+                        }
+                        XarBody b;
+                        Coord(b, ctm.Transform(lg->Start));
+                        Coord(b, ctm.Transform(lg->End));
+                        b.I32(ColourRef(c0));
+                        b.I32(ColourRef(c1));
+                        Rec(XarOut::LinearFill, b);
+                    } else if (const RadialGradientData* rg = std::get_if<RadialGradientData>(&g)) {
+                        Color c0(0, 0, 0, 255), c1(255, 255, 255, 255);
+                        if (!rg->Stops.empty()) {
+                            c0 = rg->Stops.front().color;
+                            c1 = rg->Stops.back().color;
+                            if (rg->Stops.size() > 2) {
+                                warn("XAR export: only first/last gradient stops are written");
+                            }
+                        }
+                        XarBody b;
+                        Coord(b, ctm.Transform(rg->Center));
+                        Coord(b, ctm.Transform(Point2Dd(rg->Center.x + rg->Radius, rg->Center.y)));
+                        b.I32(ColourRef(c0));
+                        b.I32(ColourRef(c1));
+                        Rec(XarOut::CircularFill, b);
+                    } else {
+                        warn("XAR export: conical/mesh gradients are not supported, "
+                             "filling flat with first stop");
+                        XarBody b;
+                        b.I32(ColourRef(Color(128, 128, 128, 255)));
+                        Rec(XarOut::FlatFill, b);
+                    }
+                }
+
+                // ===== TEXT =====
+
+                struct TextChunkStyle {
+                    std::string family;
+                    float size = 12.0f;
+                    bool bold = false, italic = false, underline = false;
+                };
+
+                static TextChunkStyle ResolveChunkStyle(const VectorTextStyle& s,
+                                                        const VectorTextStyle& base) {
+                    TextChunkStyle out;
+                    out.family = s.FontFamily.empty() ? base.FontFamily : s.FontFamily;
+                    out.size = s.FontSize > 0 ? s.FontSize : base.FontSize;
+                    out.bold = s.Weight == FontWeight::Bold || s.Weight == FontWeight::ExtraBold;
+                    out.italic = s.Slant != FontSlant::Normal;
+                    out.underline = s.Underline;
+                    return out;
+                }
+
+                void EmitTextStyleDelta(const TextChunkStyle& want, TextChunkStyle& have) {
+                    if (want.family != have.family && !want.family.empty()) {
+                        XarBody b;
+                        b.I32(FontRef(want.family));
+                        Rec(XarOut::TextFontTypeface, b);
+                    }
+                    if (want.size != have.size && want.size > 0) {
+                        XarBody b;
+                        b.I32(Mp(want.size));
+                        Rec(XarOut::TextFontSize, b);
+                    }
+                    if (want.bold != have.bold) Rec(want.bold ? XarOut::TextBoldOn : XarOut::TextBoldOff);
+                    if (want.italic != have.italic) Rec(want.italic ? XarOut::TextItalicOn : XarOut::TextItalicOff);
+                    if (want.underline != have.underline) {
+                        Rec(want.underline ? XarOut::TextUnderlineOn : XarOut::TextUnderlineOff);
+                    }
+                    have = want;
+                }
+
+                void EmitText(const VectorText& text, const VectorStyle& style,
+                              const Matrix3x3& ctm) {
+                    if (!AxisAligned(ctm)) {
+                        warn("XAR export: rotated/skewed text is exported without its "
+                             "rotation (story matrices are not written yet)");
+                    }
+
+                    XarBody sb;
+                    Coord(sb, ctm.Transform(text.Position));
+                    sb.U32(0);
+                    Rec(XarOut::TextStorySimple, sb);
+                    Down();
+
+                    switch (text.BaseStyle.Anchor) {
+                        case TextAnchor::Middle: Rec(XarOut::TextJustificationCentre); break;
+                        case TextAnchor::End: Rec(XarOut::TextJustificationRight); break;
+                        default: Rec(XarOut::TextJustificationLeft); break;
+                    }
+
+                    Color tc(0, 0, 0, 255);
+                    if (style.Fill.has_value()) {
+                        if (const Color* c = std::get_if<Color>(&*style.Fill)) tc = *c;
+                    }
+                    XarBody fb;
+                    fb.I32(ColourRef(tc));
+                    Rec(XarOut::FlatFill, fb);
+                    Rec(XarOut::LineColourNone);
+
+                    TextChunkStyle storyState;   // reader defaults
+                    storyState.size = 0;         // force explicit size on first delta
+                    TextChunkStyle baseState = ResolveChunkStyle(text.BaseStyle, text.BaseStyle);
+                    EmitTextStyleDelta(baseState, storyState);
+
+                    // Flatten spans into lines on '\n'.
+                    struct Chunk { std::string text; TextChunkStyle style; };
+                    std::vector<std::vector<Chunk>> lines(1);
+                    for (const auto& span : text.Spans) {
+                        TextChunkStyle cs = ResolveChunkStyle(span.Style, text.BaseStyle);
+                        std::string piece;
+                        for (char ch : span.Text) {
+                            if (ch == '\n') {
+                                if (!piece.empty()) lines.back().push_back({piece, cs});
+                                piece.clear();
+                                lines.emplace_back();
+                            } else {
+                                piece.push_back(ch);
+                            }
+                        }
+                        if (!piece.empty()) lines.back().push_back({piece, cs});
+                    }
+
+                    for (const auto& line : lines) {
+                        Rec(XarOut::TextLine);
+                        Down();
+                        TextChunkStyle lineState = storyState;
+                        for (const auto& chunk : line) {
+                            EmitTextStyleDelta(chunk.style, lineState);
+                            XarBody b;
+                            b.Utf16(chunk.text);
+                            Rec(XarOut::TextString, b);
+                        }
+                        Rec(XarOut::TextEOL);
+                        Up();
+                    }
+
+                    Up();
+                }
+            };
+        }   // anonymous namespace
 
         bool XARConverter::Impl::ExportToFile(
                 const VectorDocument& document,
@@ -1317,30 +2272,16 @@ namespace UltraCanvas {
                 const ConversionOptions& options,
                 const XARConversionOptions& xarOptions) {
 
+            auto data = ExportToMemory(document, options, xarOptions);
+            if (data.empty()) return false;
+
             std::ofstream file(filename, std::ios::binary);
             if (!file.is_open()) {
                 LogWarning("Failed to create XAR file: " + filename);
                 return false;
             }
-
-            currentOptions = options;
-            currentXarOptions = xarOptions;
-            exportState.Reset();
-
-            // Write to memory first to calculate size
-            std::ostringstream contentStream(std::ios::binary);
-            WriteDocument(contentStream, document);
-            std::string content = contentStream.str();
-
-            // Calculate total file size
-            uint32_t fileSize = sizeof(XARFileHeader) + static_cast<uint32_t>(content.size());
-
-            // Write header
-            WriteFileHeader(file, fileSize);
-
-            // Write content
-            file.write(content.data(), content.size());
-
+            file.write(reinterpret_cast<const char*>(data.data()),
+                       static_cast<std::streamsize>(data.size()));
             return file.good();
         }
 
@@ -1353,476 +2294,10 @@ namespace UltraCanvas {
             currentXarOptions = xarOptions;
             exportState.Reset();
 
-            // Write content to stream
-            std::ostringstream contentStream(std::ios::binary);
-            WriteDocument(contentStream, document);
-            std::string content = contentStream.str();
-
-            // Prepare header
-            std::ostringstream headerStream(std::ios::binary);
-            uint32_t fileSize = sizeof(XARFileHeader) + static_cast<uint32_t>(content.size());
-            WriteFileHeader(headerStream, fileSize);
-            std::string header = headerStream.str();
-
-            // Combine
-            std::vector<uint8_t> result;
-            result.reserve(header.size() + content.size());
-            result.insert(result.end(), header.begin(), header.end());
-            result.insert(result.end(), content.begin(), content.end());
-
-            return result;
-        }
-
-        void XARConverter::Impl::WriteFileHeader(std::ostream& stream, uint32_t fileSize) {
-            XARFileHeader header;
-            std::memcpy(header.Signature, XAR_SIGNATURE, sizeof(XAR_SIGNATURE));
-            header.FileSize = fileSize;
-            header.Version = 1;
-            header.BuildNumber = 1;
-            header.PreCompFlags = 0;
-            header.Checksum = 0;  // Optional - would need CRC32 implementation
-
-            stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
-        }
-
-        void XARConverter::Impl::WriteRecord(std::ostream& stream, uint32_t tag,
-                                             const std::vector<uint8_t>& data) {
-            XARRecordHeader header;
-            header.Tag = tag;
-            header.Size = static_cast<uint32_t>(data.size());
-
-            stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
-            if (!data.empty()) {
-                stream.write(reinterpret_cast<const char*>(data.data()), data.size());
-            }
-        }
-
-        void XARConverter::Impl::WriteRecord(std::ostream& stream, uint32_t tag) {
-            WriteRecord(stream, tag, std::vector<uint8_t>());
-        }
-
-        void XARConverter::Impl::WriteDocument(std::ostream& stream, const VectorDocument& document) {
-            // File header record
-            WriteRecord(stream, TAG_FILEHEADER);
-
-            // Document start
-            WriteRecord(stream, TAG_DOCUMENT);
-            WriteRecord(stream, TAG_DOWN);
-
-            // Spread information (page size)
-            {
-                std::vector<uint8_t> data(4 * sizeof(XARCoord));
-                size_t offset = 0;
-
-                XARCoord lo = ToXARCoord(Point2Dd{0, 0});
-                XARCoord hi = ToXARCoord(Point2Dd{document.Size.width, document.Size.height});
-
-                std::memcpy(data.data() + offset, &lo, sizeof(XARCoord));
-                offset += sizeof(XARCoord);
-                std::memcpy(data.data() + offset, &hi, sizeof(XARCoord));
-
-                WriteRecord(stream, TAG_SPREADINFORMATION, data);
-            }
-
-            // Write layers
-            for (const auto& layer : document.Layers) {
-                WriteLayer(stream, *layer);
-            }
-
-            // Document end
-            WriteRecord(stream, TAG_UP);
-
-            // End of file
-            WriteRecord(stream, TAG_ENDOFFILE);
-        }
-
-        void XARConverter::Impl::WriteLayer(std::ostream& stream, const VectorLayer& layer) {
-            // Layer record with name
-            std::vector<uint8_t> layerData;
-            layerData.insert(layerData.end(), layer.Name.begin(), layer.Name.end());
-            layerData.push_back(0);  // Null terminator
-
-            // Flags
-            uint32_t flags = 0;
-            if (layer.Visible) flags |= 0x01;
-            if (layer.Locked) flags |= 0x02;
-
-            size_t prevSize = layerData.size();
-            layerData.resize(prevSize + sizeof(uint32_t));
-            std::memcpy(layerData.data() + prevSize, &flags, sizeof(uint32_t));
-
-            WriteRecord(stream, TAG_LAYER, layerData);
-            WriteRecord(stream, TAG_DOWN);
-
-            // Write all children
-            for (const auto& child : layer.Children) {
-                WriteElement(stream, *child);
-            }
-
-            WriteRecord(stream, TAG_UP);
-        }
-
-        void XARConverter::Impl::WriteElement(std::ostream& stream, const VectorElement& element) {
-            // Write style attributes first
-            WriteStyle(stream, element.Style);
-
-            // Write transform if present
-            if (element.Transform.has_value()) {
-                WriteTransform(stream, element.Transform.value());
-            }
-
-            switch (element.Type) {
-                case VectorElementType::Rectangle:
-                case VectorElementType::RoundedRectangle:
-                    WriteRect(stream, static_cast<const VectorRect&>(element));
-                    break;
-
-                case VectorElementType::Circle:
-                    WriteCircle(stream, static_cast<const VectorCircle&>(element));
-                    break;
-
-                case VectorElementType::Ellipse:
-                    WriteEllipse(stream, static_cast<const VectorEllipse&>(element));
-                    break;
-
-                case VectorElementType::Path:
-                    WritePath(stream, static_cast<const VectorPath&>(element));
-                    break;
-
-                case VectorElementType::Text:
-                    WriteText(stream, static_cast<const VectorText&>(element));
-                    break;
-
-                case VectorElementType::Group:
-                case VectorElementType::Layer:
-                    WriteGroup(stream, static_cast<const VectorGroup&>(element));
-                    break;
-
-                default:
-                    // Unsupported element type - skip
-                    break;
-            }
-        }
-
-        void XARConverter::Impl::WriteRect(std::ostream& stream, const VectorRect& rect) {
-            std::vector<uint8_t> data;
-
-            XARCoord lo = ToXARCoord(Point2Dd{rect.Bounds.x, rect.Bounds.y});
-            XARCoord hi = ToXARCoord(Point2Dd{rect.Bounds.x + rect.Bounds.width,
-                                              rect.Bounds.y + rect.Bounds.height});
-
-            data.resize(2 * sizeof(XARCoord));
-            std::memcpy(data.data(), &lo, sizeof(XARCoord));
-            std::memcpy(data.data() + sizeof(XARCoord), &hi, sizeof(XARCoord));
-
-            uint32_t tag = TAG_RECTANGLE_SIMPLE;
-
-            if (rect.RadiusX > 0 || rect.RadiusY > 0) {
-                tag = TAG_RECTANGLE_SIMPLE_ROUNDED;
-                int32_t radius = static_cast<int32_t>(rect.RadiusX * XAR_MILLIPOINTS_PER_POINT);
-                data.resize(data.size() + sizeof(int32_t));
-                std::memcpy(data.data() + 2 * sizeof(XARCoord), &radius, sizeof(int32_t));
-            }
-
-            WriteRecord(stream, tag, data);
-        }
-
-        void XARConverter::Impl::WriteCircle(std::ostream& stream, const VectorCircle& circle) {
-            std::vector<uint8_t> data(3 * sizeof(XARCoord));
-
-            XARCoord centre = ToXARCoord(circle.Center);
-            XARCoord majorAxis = ToXARCoord(Point2Dd{circle.Center.x + circle.Radius, circle.Center.y});
-            XARCoord minorAxis = ToXARCoord(Point2Dd{circle.Center.x, circle.Center.y + circle.Radius});
-
-            std::memcpy(data.data(), &centre, sizeof(XARCoord));
-            std::memcpy(data.data() + sizeof(XARCoord), &majorAxis, sizeof(XARCoord));
-            std::memcpy(data.data() + 2 * sizeof(XARCoord), &minorAxis, sizeof(XARCoord));
-
-            WriteRecord(stream, TAG_ELLIPSE_SIMPLE, data);
-        }
-
-        void XARConverter::Impl::WriteEllipse(std::ostream& stream, const VectorEllipse& ellipse) {
-            std::vector<uint8_t> data(3 * sizeof(XARCoord));
-
-            XARCoord centre = ToXARCoord(ellipse.Center);
-            XARCoord majorAxis = ToXARCoord(Point2Dd{ellipse.Center.x + ellipse.RadiusX, ellipse.Center.y});
-            XARCoord minorAxis = ToXARCoord(Point2Dd{ellipse.Center.x, ellipse.Center.y + ellipse.RadiusY});
-
-            std::memcpy(data.data(), &centre, sizeof(XARCoord));
-            std::memcpy(data.data() + sizeof(XARCoord), &majorAxis, sizeof(XARCoord));
-            std::memcpy(data.data() + 2 * sizeof(XARCoord), &minorAxis, sizeof(XARCoord));
-
-            WriteRecord(stream, TAG_ELLIPSE_COMPLEX, data);
-        }
-
-        void XARConverter::Impl::WritePath(std::ostream& stream, const VectorPath& path) {
-            const PathData& pathData = path.Path;
-            if (pathData.Commands.empty()) return;
-
-            // Count elements
-            uint32_t numElements = 0;
-            for (const auto& cmd : pathData.Commands) {
-                switch (cmd.Type) {
-                    case PathCommandType::MoveTo:
-                    case PathCommandType::LineTo:
-                        numElements++;
-                        break;
-                    case PathCommandType::CurveTo:
-                        numElements += 3;  // 2 control + 1 end
-                        break;
-                    case PathCommandType::QuadraticTo:
-                        numElements += 2;  // 1 control + 1 end
-                        break;
-                    case PathCommandType::ClosePath:
-                        numElements++;
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            // Build data buffer: count + verbs + coordinates
-            std::vector<uint8_t> data;
-            data.resize(sizeof(uint32_t) + numElements + numElements * sizeof(XARCoord));
-
-            size_t offset = 0;
-            std::memcpy(data.data() + offset, &numElements, sizeof(uint32_t));
-            offset += sizeof(uint32_t);
-
-            // Write verbs
-            uint8_t* verbs = data.data() + offset;
-            offset += numElements;
-
-            // Write coordinates
-            XARCoord* coords = reinterpret_cast<XARCoord*>(data.data() + offset);
-
-            size_t verbIdx = 0;
-            size_t coordIdx = 0;
-
-            for (const auto& cmd : pathData.Commands) {
-                switch (cmd.Type) {
-                    case PathCommandType::MoveTo:
-                        verbs[verbIdx++] = VERB_MOVETO;
-                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[0], cmd.Parameters[1]});
-                        break;
-
-                    case PathCommandType::LineTo:
-                        verbs[verbIdx++] = VERB_LINETO;
-                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[0], cmd.Parameters[1]});
-                        break;
-
-                    case PathCommandType::CurveTo:
-                        verbs[verbIdx++] = VERB_CURVETO | PATHFLAG_CONTROL;
-                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[0], cmd.Parameters[1]});
-                        verbs[verbIdx++] = VERB_CURVETO | PATHFLAG_CONTROL;
-                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[2], cmd.Parameters[3]});
-                        verbs[verbIdx++] = VERB_CURVETO;
-                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[4], cmd.Parameters[5]});
-                        break;
-
-                    case PathCommandType::ClosePath:
-                        verbs[verbIdx++] = VERB_CLOSEPATH;
-                        coords[coordIdx++] = XARCoord{0, 0};  // Placeholder
-                        break;
-
-                    default:
-                        break;
-                }
-            }
-
-            // Determine path type
-            bool hasFill = path.Style.Fill.has_value();
-            bool hasStroke = path.Style.Stroke.has_value();
-
-            uint32_t tag = TAG_PATH;
-            if (hasFill && hasStroke) tag = TAG_PATH_FILLED_STROKED;
-            else if (hasFill) tag = TAG_PATH_FILLED;
-            else if (hasStroke) tag = TAG_PATH_STROKED;
-
-            WriteRecord(stream, tag, data);
-        }
-
-        void XARConverter::Impl::WriteText(std::ostream& stream, const VectorText& text) {
-            // Write font attributes
-            if (!text.BaseStyle.FontFamily.empty()) {
-                std::vector<uint8_t> fontData(text.BaseStyle.FontFamily.begin(),
-                                              text.BaseStyle.FontFamily.end());
-                fontData.push_back(0);
-                WriteRecord(stream, TAG_FONTNAME, fontData);
-            }
-
-            // Write font size
-            {
-                std::vector<uint8_t> sizeData(sizeof(int32_t));
-                int32_t size = static_cast<int32_t>(text.BaseStyle.FontSize * XAR_MILLIPOINTS_PER_POINT);
-                std::memcpy(sizeData.data(), &size, sizeof(int32_t));
-                WriteRecord(stream, TAG_FONTSIZE, sizeData);
-            }
-
-            // Write text content
-            std::string plainText = text.GetPlainText();
-            std::vector<uint8_t> textData(plainText.begin(), plainText.end());
-            textData.push_back(0);
-            WriteRecord(stream, TAG_TEXT_STRING, textData);
-        }
-
-        void XARConverter::Impl::WriteGroup(std::ostream& stream, const VectorGroup& group) {
-            WriteRecord(stream, TAG_GROUP);
-            WriteRecord(stream, TAG_DOWN);
-
-            for (const auto& child : group.Children) {
-                WriteElement(stream, *child);
-            }
-
-            WriteRecord(stream, TAG_UP);
-        }
-
-        void XARConverter::Impl::WriteStyle(std::ostream& stream, const VectorStyle& style) {
-            // Write fill
-            if (style.Fill.has_value()) {
-                WriteFill(stream, style.Fill.value());
-            }
-
-            // Write stroke
-            if (style.Stroke.has_value()) {
-                WriteStroke(stream, style.Stroke.value());
-            }
-
-            // Write opacity as flat transparency
-            if (style.Opacity < 1.0f) {
-                std::vector<uint8_t> data(1);
-                data[0] = static_cast<uint8_t>((1.0f - style.Opacity) * 255);
-                WriteRecord(stream, TAG_FLATTRANSPARENTFILL, data);
-            }
-        }
-
-        void XARConverter::Impl::WriteFill(std::ostream& stream, const FillData& fill) {
-            if (auto* color = std::get_if<Color>(&fill)) {
-                std::vector<uint8_t> data(sizeof(XARColourRGB));
-                XARColourRGB xarColor = ToXARColour(*color);
-                std::memcpy(data.data(), &xarColor, sizeof(XARColourRGB));
-                WriteRecord(stream, TAG_FLATFILL, data);
-            }
-            else if (auto* gradient = std::get_if<GradientData>(&fill)) {
-                if (auto* linear = std::get_if<LinearGradientData>(gradient)) {
-                    std::vector<uint8_t> data(sizeof(XARLinearFillData));
-                    XARLinearFillData fillData;
-                    fillData.StartPoint = ToXARCoord(linear->Start);
-                    fillData.EndPoint = ToXARCoord(linear->End);
-                    fillData.EndPoint2 = fillData.EndPoint;
-
-                    if (!linear->Stops.empty()) {
-                        fillData.StartColour = ToXARColour(linear->Stops.front().StopColor);
-                        fillData.EndColour = ToXARColour(linear->Stops.back().StopColor);
-                    }
-
-                    std::memcpy(data.data(), &fillData, sizeof(XARLinearFillData));
-                    WriteRecord(stream, TAG_LINEARFILL, data);
-                }
-                else if (auto* radial = std::get_if<RadialGradientData>(gradient)) {
-                    std::vector<uint8_t> data(sizeof(XARRadialFillData));
-                    XARRadialFillData fillData;
-                    fillData.CentrePoint = ToXARCoord(radial->Center);
-                    fillData.MajorAxes = ToXARCoord(Point2Dd{radial->Center.x + radial->Radius, radial->Center.y});
-                    fillData.MinorAxes = ToXARCoord(Point2Dd{radial->Center.x, radial->Center.y + radial->Radius});
-
-                    if (!radial->Stops.empty()) {
-                        fillData.StartColour = ToXARColour(radial->Stops.front().StopColor);
-                        fillData.EndColour = ToXARColour(radial->Stops.back().StopColor);
-                    }
-
-                    std::memcpy(data.data(), &fillData, sizeof(XARRadialFillData));
-                    WriteRecord(stream, TAG_CIRCULARFILL, data);
-                }
-                else if (auto* conical = std::get_if<ConicalGradientData>(gradient)) {
-                    std::vector<uint8_t> data(sizeof(XARConicalFillData));
-                    XARConicalFillData fillData;
-                    fillData.CentrePoint = ToXARCoord(conical->Center);
-
-                    float endX = conical->Center.x + 100 * std::cos(conical->StartAngle);
-                    float endY = conical->Center.y + 100 * std::sin(conical->StartAngle);
-                    fillData.EndPoint = ToXARCoord(Point2Dd{endX, endY});
-
-                    if (!conical->Stops.empty()) {
-                        fillData.StartColour = ToXARColour(conical->Stops.front().StopColor);
-                        fillData.EndColour = ToXARColour(conical->Stops.back().StopColor);
-                    }
-
-                    std::memcpy(data.data(), &fillData, sizeof(XARConicalFillData));
-                    WriteRecord(stream, TAG_CONICALFILL, data);
-                }
-            }
-        }
-
-        void XARConverter::Impl::WriteStroke(std::ostream& stream, const StrokeData& stroke) {
-            // Write stroke colour
-            if (auto* color = std::get_if<Color>(&stroke.Fill)) {
-                std::vector<uint8_t> data(sizeof(XARColourRGB));
-                XARColourRGB xarColor = ToXARColour(*color);
-                std::memcpy(data.data(), &xarColor, sizeof(XARColourRGB));
-                WriteRecord(stream, TAG_LINECOLOUR, data);
-            }
-
-            // Write stroke width
-            {
-                std::vector<uint8_t> data(sizeof(int32_t));
-                int32_t width = static_cast<int32_t>(stroke.Width * XAR_MILLIPOINTS_PER_POINT);
-                std::memcpy(data.data(), &width, sizeof(int32_t));
-                WriteRecord(stream, TAG_LINEWIDTH, data);
-            }
-
-            // Write line cap
-            {
-                std::vector<uint8_t> data(1);
-                switch (stroke.LineCap) {
-                    case StrokeLineCap::Butt: data[0] = 0; break;
-                    case StrokeLineCap::Round: data[0] = 1; break;
-                    case StrokeLineCap::Square: data[0] = 2; break;
-                }
-                WriteRecord(stream, TAG_STARTCAP, data);
-            }
-
-            // Write line join
-            {
-                std::vector<uint8_t> data(1);
-                switch (stroke.LineJoin) {
-                    case StrokeLineJoin::Miter: data[0] = 0; break;
-                    case StrokeLineJoin::Round: data[0] = 1; break;
-                    case StrokeLineJoin::Bevel: data[0] = 2; break;
-                    default: data[0] = 0; break;
-                }
-                WriteRecord(stream, TAG_JOINSTYLE, data);
-            }
-
-            // Write dash pattern if present
-            if (!stroke.DashArray.empty()) {
-                std::vector<uint8_t> data;
-                data.resize(sizeof(uint32_t) + stroke.DashArray.size() * sizeof(int32_t) + sizeof(int32_t));
-
-                size_t offset = 0;
-                uint32_t numDashes = static_cast<uint32_t>(stroke.DashArray.size());
-                std::memcpy(data.data() + offset, &numDashes, sizeof(uint32_t));
-                offset += sizeof(uint32_t);
-
-                for (float dash : stroke.DashArray) {
-                    int32_t dashValue = static_cast<int32_t>(dash * XAR_MILLIPOINTS_PER_POINT);
-                    std::memcpy(data.data() + offset, &dashValue, sizeof(int32_t));
-                    offset += sizeof(int32_t);
-                }
-
-                int32_t dashOffset = static_cast<int32_t>(stroke.DashOffset * XAR_MILLIPOINTS_PER_POINT);
-                std::memcpy(data.data() + offset, &dashOffset, sizeof(int32_t));
-
-                WriteRecord(stream, TAG_DASHSTYLE, data);
-            }
-        }
-
-        void XARConverter::Impl::WriteTransform(std::ostream& stream, const Matrix3x3& transform) {
-            std::vector<uint8_t> data(sizeof(XARMatrix));
-            XARMatrix xarMatrix = ToXARMatrix(transform);
-            std::memcpy(data.data(), &xarMatrix, sizeof(XARMatrix));
-            // XAR doesn't have a dedicated transform tag - transforms are applied per-object
-            // This would typically be handled by transforming coordinates directly
+            XarEmitter emitter(document, [this](const std::string& msg) { LogWarning(msg); });
+            auto data = emitter.Build();
+            ReportProgress(1.0f);
+            return data;
         }
 
     } // namespace VectorConverter

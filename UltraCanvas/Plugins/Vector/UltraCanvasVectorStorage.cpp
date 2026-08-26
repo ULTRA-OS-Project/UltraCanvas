@@ -116,8 +116,8 @@ Rect2Dd Matrix3x3::Transform(const Rect2Dd& rect) const {
         corners[i] = Transform(corners[i]);
     }
     
-    float minX = corners[0].x, maxX = corners[0].x;
-    float minY = corners[0].y, maxY = corners[0].y;
+    double minX = corners[0].x, maxX = corners[0].x;
+    double minY = corners[0].y, maxY = corners[0].y;
     
     for (int i = 1; i < 4; i++) {
         minX = std::min(minX, corners[i].x);
@@ -291,8 +291,8 @@ Rect2Dd VectorPolyline::GetBoundingBox() const {
         return Rect2Dd{0, 0, 0, 0};
     }
     
-    float minX = Points[0].x, maxX = Points[0].x;
-    float minY = Points[0].y, maxY = Points[0].y;
+    double minX = Points[0].x, maxX = Points[0].x;
+    double minY = Points[0].y, maxY = Points[0].y;
     
     for (const auto& point : Points) {
         minX = std::min(minX, point.x);
@@ -320,8 +320,8 @@ Rect2Dd VectorPolygon::GetBoundingBox() const {
         return Rect2Dd{0, 0, 0, 0};
     }
     
-    float minX = Points[0].x, maxX = Points[0].x;
-    float minY = Points[0].y, maxY = Points[0].y;
+    double minX = Points[0].x, maxX = Points[0].x;
+    double minY = Points[0].y, maxY = Points[0].y;
     
     for (const auto& point : Points) {
         minX = std::min(minX, point.x);
@@ -375,8 +375,9 @@ Rect2Dd VectorPath::GetBoundingBox() const {
         Path.cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
     }
 
+    Rect2Dd bbox = *Path.cachedBounds;
     if (Transform.has_value()) {
-        bbox = Transform->Transform(Path.cachedBounds);
+        bbox = Transform->Transform(bbox);
     }
     return bbox;
 }
@@ -458,7 +459,7 @@ float VectorPath::GetLength() const {
 }
 
 Point2Dd VectorPath::GetPointAtLength(float length) const {
-    auto points = Flatten();
+    auto points = Flatten(0.25f);
     if (points.empty()) return Point2Dd{0, 0};
     
     float currentLength = 0;
@@ -469,10 +470,8 @@ Point2Dd VectorPath::GetPointAtLength(float length) const {
         
         if (currentLength + segmentLength >= length) {
             float t = (length - currentLength) / segmentLength;
-            return Point2Dd{
-                points[i-1].x + t * dx,
-                points[i-1].y + t * dy
-            };
+            return Point2Dd(points[i-1].x + t * dx,
+                            points[i-1].y + t * dy);
         }
         currentLength += segmentLength;
     }
@@ -481,7 +480,7 @@ Point2Dd VectorPath::GetPointAtLength(float length) const {
 }
 
 float VectorPath::GetAngleAtLength(float length) const {
-    auto points = Flatten();
+    auto points = Flatten(0.25f);
     if (points.size() < 2) return 0;
     
     float currentLength = 0;
@@ -860,8 +859,8 @@ std::shared_ptr<VectorElement> VectorPattern::Clone() const {
     clone->Parent.reset();
     
     // Deep clone pattern content
-    if (Data.Content) {
-        Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
+    if (clone->Data.Content) {
+        clone->Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
     }
     
     return clone;
@@ -933,8 +932,8 @@ std::shared_ptr<VectorElement> VectorMarker::Clone() const {
     clone->Parent.reset();
     
     // Deep clone marker content
-    if (Data.Content) {
-        Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
+    if (clone->Data.Content) {
+        clone->Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
     }
     
     return clone;
@@ -1024,8 +1023,7 @@ std::vector<std::shared_ptr<VectorElement>> VectorDocument::FindElementsByClass(
     // Lambda for recursive search
     std::function<void(const std::shared_ptr<VectorElement>&)> searchElement = 
         [&](const std::shared_ptr<VectorElement>& elem) {
-            if (elem->Class == className ||
-                std::find(elem->ClassList.begin(), elem->ClassList.end(), className) != elem->ClassList.end()) {
+            if (elem->HasClass(className)) {
                 result.push_back(elem);
             }
             
@@ -1081,7 +1079,6 @@ void VectorDocument::Clear() {
     Layers.clear();
     Definitions.clear();
     NamedStyles.clear();
-    StyleSheet.clear();
 }
 
 std::shared_ptr<VectorDocument> VectorDocument::Clone() const {
@@ -1190,7 +1187,7 @@ PathData ParsePathString(const std::string& pathStr) {
                 break;
         }
         
-        result.Commands.push_back(pathCmd);
+        result.commands.push_back(pathCmd);
     }
     
     return result;
@@ -1199,7 +1196,7 @@ PathData ParsePathString(const std::string& pathStr) {
 std::string SerializePathData(const PathData& path) {
     std::ostringstream oss;
     
-    for (const auto& cmd : path.Commands) {
+    for (const auto& cmd : path.commands) {
         char cmdChar = 0;
         
         switch (cmd.Type) {
@@ -1391,7 +1388,7 @@ std::string SerializeTransform(const Matrix3x3& transform) {
            std::to_string(transform.m[1][2]) + ")";
 }
 
-Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextStyle& style) {
+Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const VectorTextStyle& style) {
     // Simplified implementation
     // In real implementation, this would use proper font metrics
     
@@ -1429,7 +1426,7 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     moveCmd.Type = PathCommandType::MoveTo;
     moveCmd.Parameters = {points[0].x, points[0].y};
     moveCmd.Relative = false;
-    result.Commands.push_back(moveCmd);
+    result.commands.push_back(moveCmd);
     
     // LineTo remaining points
     for (size_t i = 1; i < points.size(); i++) {
@@ -1437,14 +1434,14 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
         lineCmd.Type = PathCommandType::LineTo;
         lineCmd.Parameters = {points[i].x, points[i].y};
         lineCmd.Relative = false;
-        result.Commands.push_back(lineCmd);
+        result.commands.push_back(lineCmd);
     }
     
     // Close path if requested
     if (closed) {
         PathCommand closeCmd;
         closeCmd.Type = PathCommandType::ClosePath;
-        result.Commands.push_back(closeCmd);
+        result.commands.push_back(closeCmd);
         result.Closed = true;
     }
     
@@ -1615,8 +1612,8 @@ PathData CombinePaths(const PathData& path1, const PathData& path2, bool union_o
     PathData result = path1;
     
     // For now, just append path2 commands
-    for (const auto& cmd : path2.Commands) {
-        result.Commands.push_back(cmd);
+    for (const auto& cmd : path2.commands) {
+        result.commands.push_back(cmd);
     }
     
     return result;

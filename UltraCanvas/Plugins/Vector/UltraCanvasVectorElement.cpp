@@ -193,7 +193,7 @@ namespace UltraCanvas {
 
         if (state.HasError) {
             ctx->SetTextPaint(Colors::Red);
-            ctx->DrawText("Error: " + state.ErrorMessage, finalBounds.x + 10, finalBounds.y + 20);
+            ctx->DrawText("Error: " + state.ErrorMessage, Point2Dd(finalBounds.x + 10, finalBounds.y + 20));
         } else if (document) {
             RenderDocument(ctx);
         }
@@ -248,9 +248,9 @@ namespace UltraCanvas {
         ctx->FillRectangle(Rect2Dd(finalBounds.x + 5, finalBounds.y + 5, 150, 60));
         ctx->SetTextPaint(Colors::White);
         ctx->SetFontSize(10);
-        ctx->DrawText("Zoom: " + std::to_string(static_cast<int>(zoomLevel * 100)) + "%", finalBounds.x + 10, finalBounds.y + 20);
-        ctx->DrawText("Pan: " + std::to_string(static_cast<int>(panOffset.x)) + ", " + std::to_string(static_cast<int>(panOffset.y)), finalBounds.x + 10, finalBounds.y + 35);
-        if (document) ctx->DrawText("Layers: " + std::to_string(document->Layers.size()), finalBounds.x + 10, finalBounds.y + 50);
+        ctx->DrawText("Zoom: " + std::to_string(static_cast<int>(zoomLevel * 100)) + "%", Point2Dd(finalBounds.x + 10, finalBounds.y + 20));
+        ctx->DrawText("Pan: " + std::to_string(static_cast<int>(panOffset.x)) + ", " + std::to_string(static_cast<int>(panOffset.y)), Point2Dd(finalBounds.x + 10, finalBounds.y + 35));
+        if (document) ctx->DrawText("Layers: " + std::to_string(document->Layers.size()), Point2Dd(finalBounds.x + 10, finalBounds.y + 50));
     }
 
     bool UltraCanvasVectorElement::OnEvent(const UCEvent& event) {
