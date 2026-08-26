@@ -45,6 +45,14 @@
   inverted before premultiplication, and plain bitmap fills use it.
 - **Text stories lay their lines out.** Successive `TextLine`s step down
   one leading instead of overprinting on the story origin.
+- **Multi-page documents render page by page.** Every spread's coordinates
+  restart at its own origin, so a multi-spread file (a pitch deck, a
+  multi-page brochure) used to draw all its pages on top of each other.
+  `XARDocument` now exposes the spread list as pages
+  (`GetPageCount` / `GetPageWidth` / `GetPageHeight` / `RenderPage`), the
+  XAR element gets `SetCurrentPage` / `onPageChanged`, and `XARProbeTest
+  --render` writes one PNG per page. Verified on a real 13-slide Xara
+  Designer Pro X19 pitch deck: all thirteen slides render individually.
 - **`XARDocument` gained parse diagnostics** — records dispatched, unhandled
   record tags with counts, structural warnings — via `GetDiagnostics()`,
   and **`XARProbeTest`** (Tests/, needs `-DBUILD_TESTS=ON`) prints that

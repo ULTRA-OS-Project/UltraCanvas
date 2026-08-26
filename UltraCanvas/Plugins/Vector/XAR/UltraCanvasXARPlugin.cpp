@@ -1247,7 +1247,9 @@ namespace UltraCanvas {
 // ===== DOCUMENT STRUCTURE =====
 
     void XARDocument::ParseSpreadRecord(const XARRecord&) {
-        AttachNode(std::make_shared<XARSpreadNode>());
+        auto spread = std::make_shared<XARSpreadNode>();
+        AttachNode(spread);
+        spreadNodes.push_back(spread);
     }
 
     void XARDocument::ParseSpreadInfoRecord(const XARRecord& record) {
@@ -2583,12 +2585,50 @@ namespace UltraCanvas {
 // ===== RENDER =====
 
     void XARDocument::Render(IRenderContext* ctx, float scale) {
+        // Multi-spread documents render one page at a time — every spread's
+        // coordinates restart at its own origin, so drawing them all at once
+        // would overlay every page.
+        if (!spreadNodes.empty()) {
+            RenderPage(ctx, 0, scale);
+            return;
+        }
         if (!root) return;
         ctx->PushState();
         // XAR uses Y-up coordinates; flip to Y-down screen space
         ctx->Translate(0, height);
         ctx->Scale(1.0f, -1.0f);
         root->Render(ctx, scale);
+        ctx->PopState();
+    }
+
+    int XARDocument::GetPageCount() const {
+        return spreadNodes.empty() ? 1 : static_cast<int>(spreadNodes.size());
+    }
+
+    float XARDocument::GetPageWidth(int page) const {
+        if (page >= 0 && page < static_cast<int>(spreadNodes.size()) &&
+            spreadNodes[page]->width > 0) {
+            return spreadNodes[page]->GetWidthInPixels();
+        }
+        return width;
+    }
+
+    float XARDocument::GetPageHeight(int page) const {
+        if (page >= 0 && page < static_cast<int>(spreadNodes.size()) &&
+            spreadNodes[page]->height > 0) {
+            return spreadNodes[page]->GetHeightInPixels();
+        }
+        return height;
+    }
+
+    void XARDocument::RenderPage(IRenderContext* ctx, int page, float scale) {
+        if (spreadNodes.empty()) { Render(ctx, scale); return; }
+        if (page < 0 || page >= static_cast<int>(spreadNodes.size())) return;
+        ctx->PushState();
+        // XAR uses Y-up coordinates; flip against this spread's own height.
+        ctx->Translate(0, GetPageHeight(page) * scale);
+        ctx->Scale(1.0f, -1.0f);
+        spreadNodes[page]->Render(ctx, scale);
         ctx->PopState();
     }
 
@@ -2629,8 +2669,8 @@ namespace UltraCanvas {
         if (!document || !ctx) return;
         Rect2Di bounds = GetBounds();
         ctx->PushState();
-        float docW = document->GetWidth();
-        float docH = document->GetHeight();
+        float docW = document->GetPageWidth(currentPage);
+        float docH = document->GetPageHeight(currentPage);
         if (docW > 0 && docH > 0) {
             float scaleX = static_cast<float>(bounds.width) / docW;
             float scaleY = static_cast<float>(bounds.height) / docH;
@@ -2648,9 +2688,18 @@ namespace UltraCanvas {
                 ctx->Scale(scaleX * scale, scaleY * scale);
                 renderScale = 1.0f;
             }
-            document->Render(ctx, renderScale);
+            document->RenderPage(ctx, currentPage, renderScale);
         }
         ctx->PopState();
+    }
+
+    void UltraCanvasXARElement::SetCurrentPage(int page) {
+        if (!document) return;
+        int clamped = std::clamp(page, 0, document->GetPageCount() - 1);
+        if (clamped == currentPage) return;
+        currentPage = clamped;
+        RequestRedraw();
+        if (onPageChanged) onPageChanged(currentPage);
     }
 
 // ===== PLUGIN =====

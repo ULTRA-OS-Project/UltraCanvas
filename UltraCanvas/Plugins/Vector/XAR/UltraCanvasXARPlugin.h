@@ -989,6 +989,14 @@ namespace UltraCanvas {
 
         XARNodePtr GetRoot() const { return root; }
 
+        // ===== PAGES =====
+        // Each spread is one page; its coordinates restart at its own
+        // origin, so pages render individually. Render() draws page 0.
+        int GetPageCount() const;
+        float GetPageWidth(int page) const;    // pixels; falls back to GetWidth()
+        float GetPageHeight(int page) const;
+        void RenderPage(IRenderContext* ctx, int page, float scale = 1.0f);
+
         XARColorDefinition* GetColor(int32_t ref);
         XARBitmapDefinition* GetBitmap(int32_t ref);
         XARFontDefinition* GetFont(int32_t ref);
@@ -1145,6 +1153,8 @@ namespace UltraCanvas {
         bool haveSpreadInfo = false;
 
         XARNodePtr root;
+        // One entry per spread, in document order — the page list.
+        std::vector<std::shared_ptr<XARSpreadNode>> spreadNodes;
         std::stack<XARNodePtr> nodeStack;
         // Node created by the most recent record; the next TAG_DOWN descends
         // into it (its child records follow until the matching TAG_UP).
@@ -1193,13 +1203,22 @@ namespace UltraCanvas {
         void SetPreserveAspectRatio(bool preserve) { preserveAspectRatio = preserve; }
         bool GetPreserveAspectRatio() const { return preserveAspectRatio; }
 
+        // Pages (one per spread; multi-page documents render one at a time)
+        int GetPageCount() const { return document ? document->GetPageCount() : 0; }
+        int GetCurrentPage() const { return currentPage; }
+        void SetCurrentPage(int page);
+
         const XARDocument* GetDocument() const { return document.get(); }
+
+        // Fired after SetCurrentPage changes the shown page
+        std::function<void(int)> onPageChanged;
 
     private:
         std::unique_ptr<XARDocument> document;
         std::string lastError;
         float scale = 1.0f;
         bool preserveAspectRatio = true;
+        int currentPage = 0;
     };
 
 // ===== PLUGIN =====

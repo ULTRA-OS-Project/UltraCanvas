@@ -98,53 +98,60 @@ bool RenderToPng(XARDocument& doc, const std::string& srcPath, const std::string
     std::printf("  render: unavailable (built without cairo)\n");
     return false;
 #else
-    float w = doc.GetWidth(), h = doc.GetHeight();
-    if (w <= 0 || h <= 0) {
-        std::printf("  render: skipped (document has no size)\n");
-        return false;
-    }
-    const float cap = 1600.0f;
-    float s = std::min(1.0f, cap / std::max(w, h));
-    int pw = std::max(1, static_cast<int>(w * s + 0.5f));
-    int ph = std::max(1, static_cast<int>(h * s + 0.5f));
+    bool allOk = true;
+    const int pages = doc.GetPageCount();
+    for (int page = 0; page < pages; ++page) {
+        float w = doc.GetPageWidth(page), h = doc.GetPageHeight(page);
+        if (w <= 0 || h <= 0) {
+            std::printf("  render: page %d skipped (no size)\n", page + 1);
+            allOk = false;
+            continue;
+        }
+        const float cap = 1600.0f;
+        float s = std::min(1.0f, cap / std::max(w, h));
+        int pw = std::max(1, static_cast<int>(w * s + 0.5f));
+        int ph = std::max(1, static_cast<int>(h * s + 0.5f));
 
-    auto ctx = CreateRenderContext(Size2Di(pw, ph), nullptr);
-    if (!ctx) {
-        std::printf("  render: failed to create offscreen context\n");
-        return false;
-    }
+        auto ctx = CreateRenderContext(Size2Di(pw, ph), nullptr);
+        if (!ctx) {
+            std::printf("  render: failed to create offscreen context\n");
+            return false;
+        }
 
-    // White page behind the drawing, like the on-screen element
-    ctx->SetFillPaint(Color(255, 255, 255, 255));
-    ctx->FillRectangle(Rect2Di(0, 0, pw, ph));
+        // White page behind the drawing, like the on-screen element
+        ctx->SetFillPaint(Color(255, 255, 255, 255));
+        ctx->FillRectangle(Rect2Di(0, 0, pw, ph));
 
-    // Pre-scale the context and render at scale 1 so every coordinate,
-    // including the document's internal Y-flip, scales consistently.
-    ctx->PushState();
-    ctx->Scale(s, s);
-    doc.Render(ctx.get(), 1.0f);
-    ctx->PopState();
+        // Pre-scale the context and render at scale 1 so every coordinate,
+        // including the document's internal Y-flip, scales consistently.
+        ctx->PushState();
+        ctx->Scale(s, s);
+        doc.RenderPage(ctx.get(), page, 1.0f);
+        ctx->PopState();
 
-    cairo_t* cr = static_cast<cairo_t*>(ctx->GetNativeContext());
-    if (!cr) {
-        std::printf("  render: no native context\n");
-        return false;
+        cairo_t* cr = static_cast<cairo_t*>(ctx->GetNativeContext());
+        if (!cr) {
+            std::printf("  render: no native context\n");
+            return false;
+        }
+        cairo_surface_t* surface = cairo_get_target(cr);
+        cairo_surface_flush(surface);
+        if (cairo_status(cr) != CAIRO_STATUS_SUCCESS) {
+            std::printf("  render: page %d context error: %s\n", page + 1,
+                        cairo_status_to_string(cairo_status(cr)));
+        }
+        std::string outPath = outDir + "/" + FileStem(srcPath) +
+                (page == 0 ? std::string() : "-p" + std::to_string(page + 1)) + ".png";
+        cairo_status_t ws = cairo_surface_write_to_png(surface, outPath.c_str());
+        if (ws != CAIRO_STATUS_SUCCESS) {
+            std::printf("  render: failed to write %s: %s\n", outPath.c_str(),
+                        cairo_status_to_string(ws));
+            allOk = false;
+            continue;
+        }
+        std::printf("  render: %s (%dx%d)\n", outPath.c_str(), pw, ph);
     }
-    cairo_surface_t* surface = cairo_get_target(cr);
-    cairo_surface_flush(surface);
-    if (cairo_status(cr) != CAIRO_STATUS_SUCCESS) {
-        std::printf("  render: context error: %s\n",
-                    cairo_status_to_string(cairo_status(cr)));
-    }
-    std::string outPath = outDir + "/" + FileStem(srcPath) + ".png";
-    cairo_status_t ws = cairo_surface_write_to_png(surface, outPath.c_str());
-    if (ws != CAIRO_STATUS_SUCCESS) {
-        std::printf("  render: failed to write %s: %s\n", outPath.c_str(),
-                    cairo_status_to_string(ws));
-        return false;
-    }
-    std::printf("  render: %s (%dx%d)\n", outPath.c_str(), pw, ph);
-    return true;
+    return allOk;
 #endif
 }
 
