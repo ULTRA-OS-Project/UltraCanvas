@@ -1,0 +1,79 @@
+%!PS-Adobe-3.0 EPSF-3.0
+%%BoundingBox: 0 0 400 300
+%%Title: UltraCanvas EPS demo
+%%Creator: UltraCanvas Framework
+%%EndComments
+% A workout for the interpreter: procedures, loops, transforms, arcs,
+% beziers, dashes, text and a color wheel.
+
+/cm { 28.3465 mul } def
+/star {
+    gsave
+    translate
+    0 22 moveto
+    4 { 144 rotate 0 22 lineto } repeat
+    closepath
+    gsave 1 0.85 0 setrgbcolor fill grestore
+    0.55 0.35 0 setrgbcolor 1.6 setlinewidth stroke
+    grestore
+} def
+
+% background card
+0.94 0.96 1.0 setrgbcolor
+6 6 moveto 394 6 lineto 394 294 lineto 6 294 lineto closepath fill
+0.35 0.4 0.6 setrgbcolor 2 setlinewidth
+8 8 moveto 392 8 lineto 392 292 lineto 8 292 lineto closepath stroke
+
+% color wheel out of 24 wedges
+gsave
+100 190 translate
+0 1 23 {
+    /i exch def
+    gsave
+    i 15 mul rotate
+    newpath 0 0 moveto 62 0 lineto 0 0 62 0 15 arc closepath
+    i 24 div 1 1 sethsbcolor fill
+    grestore
+} for
+% white hub
+1 setgray newpath 0 0 26 0 360 arc fill
+0.2 setgray 1.2 setlinewidth newpath 0 0 26 0 360 arc stroke
+grestore
+
+% bezier leaf with a dashed stem
+gsave
+250 200 translate
+0.13 0.55 0.13 setrgbcolor
+newpath 0 0 moveto 60 40 95 10 110 -25 curveto
+25 -45 -10 -25 0 0 curveto closepath fill
+0 0.3 0 setrgbcolor 1.5 setlinewidth
+[6 4] 0 setdash
+newpath 0 0 moveto -30 -35 lineto stroke
+grestore
+
+% row of stars sized by a loop
+0.2 0.15 0.95 { /s exch def
+    gsave s 300 mul 60 add 90 translate s s scale 0 0 star grestore
+} for
+
+% caps and joins specimen
+0 setgray
+gsave
+40 40 translate
+0 1 2 {
+    /k exch def
+    k setlinecap
+    8 setlinewidth 0.45 setgray
+    newpath 0 k 14 mul moveto 70 k 14 mul lineto stroke
+} for
+grestore
+
+% text
+/Helvetica-Bold findfont 20 scalefont setfont
+0.1 0.15 0.35 setrgbcolor
+150 45 moveto (UltraCanvas EPS) show
+/Times-Italic findfont 13 scalefont setfont
+0.35 setgray
+150 26 moveto (PostScript interpreter demo) show
+showpage
+%%EOF

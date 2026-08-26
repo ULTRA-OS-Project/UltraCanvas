@@ -1,3 +1,31 @@
+#### 2026-08-26 *0.3.74*
+- **EPS (Encapsulated PostScript) vector graphics support.** New
+  `UltraCanvasEPSPlugin` (`Plugins/Vector/EPS/`) renders `.eps`/`.epsf`/`.ps`
+  drawings. EPS files are PostScript programs — real writers define their own
+  procedures in a prolog and draw through them — so the plugin embeds a
+  PostScript-subset interpreter: scanner, operand/dictionary/execution
+  stacks, procedures and control flow, the path/paint/transform/color/line
+  operators, text through mapped system fonts, and sampled images including
+  `ASCII85Decode` + `FlateDecode` data sources (zlib is the plugin's only
+  dependency beyond the core). DOS EPS binary preview headers are unwrapped,
+  `%%BoundingBox` sets the page, and `EPSDocument::GetDiagnostics()` reports
+  unknown operators and approximations for triage. Verified against
+  ghostscript renderings of the shipped samples, a cairo-generated vector
+  drawing (~43k tokens) and a 5000×7501 ASCII85+Flate fallback raster —
+  all agree to within antialiasing differences.
+- **`IRenderContext` gained `SetFillRule` (NonZero/EvenOdd).** The interface
+  default ignores the call, the Cairo backend implements it, and the EPS
+  plugin uses it for `eofill`/`eoclip`; the rule participates in the saved
+  graphics state.
+- **`UltraCanvasEPSElement`** mirrors the sibling vector elements: scale +
+  aspect-ratio viewport, `IsLoaded`/`GetLastError`, a white page behind the
+  drawing, and File Loader registration (`RegisterEPSPlugin`). The demo
+  gains an **EPS Images** page with the two new `media/eps/` samples, a
+  fullscreen viewer and zoom controls, and **`Tests/EPSProbeTest`** prints
+  the interpreter's triage for any file and rasterizes `--render` PNGs for
+  ghostscript comparison (registered as a parse regression test).
+
+
 #### 2026-08-26 *0.3.73*
 - **Sliders over a small range reach every value again.** `UltraCanvasSlider`
   defaulted to a snap increment of 1.0 whatever its range, so a fractional

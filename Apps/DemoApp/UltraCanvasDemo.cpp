@@ -962,6 +962,13 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasXARExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasXARExamples.md");
 #endif
+#ifdef ULTRACANVAS_HAS_EPS_PLUGIN
+        vectorBuilder.AddItem("epsimages", "EPS Images", "EPS (Encapsulated PostScript) display via the built-in PostScript interpreter",
+                              ImplementationStatus::PartiallyImplemented,
+                              [this]() { return CreateEPSVectorExamples(); },
+                              "DemoApp/UltraCanvasEPSExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasEPSExamples.md");
+#endif
 
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);

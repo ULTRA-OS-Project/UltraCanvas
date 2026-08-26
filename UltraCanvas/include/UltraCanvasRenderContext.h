@@ -70,6 +70,11 @@ namespace UltraCanvas {
         Bevel
     };
 
+    enum class FillRule {
+        NonZero,
+        EvenOdd
+    };
+
     // pattern interface mainly to automatically destory patters
     class IPaintPattern {
     public:
@@ -256,6 +261,11 @@ namespace UltraCanvas {
         virtual void FillPathPreserve() = 0;
         virtual void StrokePathPreserve() = 0;
         virtual Rect2Dd GetPathExtents() = 0;
+
+        // Winding rule used by path fills and clips. Default NonZero; part
+        // of the saved graphics state on backends that support it. The base
+        // implementation ignores the call so existing backends stay valid.
+        virtual void SetFillRule(FillRule rule) { (void)rule; }
 
         // === Gradient Methods ===
         virtual std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
