@@ -172,6 +172,13 @@ namespace UltraCanvas {
         std::shared_ptr<UCPixmapCairo> CreatePixmap(int width, int height,
                                                     ImageFitMode fitMode = ImageFitMode::Contain,
                                                     float scale = 1.0f);
+        // Decode at native size with the alpha band inverted BEFORE
+        // premultiplication. Some producers (Xara .xar embedded bitmaps)
+        // store transparency, not alpha, in the channel (255 = fully
+        // transparent); a normal decode zeroes the colour of exactly the
+        // pixels such a bitmap means to show. Images without an alpha band
+        // decode normally (opaque). Not cached.
+        std::shared_ptr<UCPixmapCairo> CreatePixmapAlphaInverted();
         std::string MakePixmapCacheKey(int w, int h, ImageFitMode fitMode, float scale);
 
         // Get aspect ratio

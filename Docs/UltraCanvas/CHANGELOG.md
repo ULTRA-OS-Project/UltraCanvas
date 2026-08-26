@@ -1,3 +1,120 @@
+#### 2026-08-26 *0.3.72*
+- **The XAR renderer draws real Xara files correctly now.** Files written by
+  a modern Xara (Designer Pro X19) displayed as scattered, unfilled
+  fragments; the repo's `demo.xar` now reproduces its embedded preview —
+  all four logos, correct fills, correct positions — and `backside.xar`
+  renders as a real page instead of failing outright. Four defects fixed:
+  - **The document tree was built wrong.** The Xar grammar is
+    `object record, TAG_DOWN, child records, TAG_UP` — but containers
+    pushed themselves at record time while every object's TAG_UP popped
+    once more than was pushed, unwinding the stack until most objects
+    attached to the root. TAG_DOWN now descends into the node the previous
+    record created.
+  - **Object attributes were lost.** An object's fill and line attributes
+    arrive as its child records, after the object; the parser snapshotted
+    attributes at object-record time and then reverted them at TAG_UP, so
+    almost every path rendered unfilled. The enclosing object now
+    re-snapshots the running context as its attribute children execute.
+  - **Relative path coordinates decoded with the wrong sign.** The first
+    coordinate of a relative path record is absolute; every following one
+    stores the reverse delta (previous minus current). Adding instead of
+    subtracting kept each subpath's shape but scattered the pieces —
+    verified against the renderings Xara itself embeds in the file.
+  - **One bad record could blank the whole drawing.** A singular transform
+    matrix or a zero font size put the cairo context into an unrecoverable
+    error state; both are guarded now.
+- **Bitmap and contone-bitmap fills render.** The embedded bitmap is decoded
+  through `UCImage`, mapped onto the fill parallelogram and clipped to the
+  path; a contone fill maps the bitmap's luminance between the fill's two
+  colours — luminance 0 to the first, 255 to the second — keeping the
+  bitmap's own (inverted) transparency, so the page shows through where the
+  bitmap is transparent. The orientation and the preserved alpha are both
+  verified against Xara's own renderings: the file-embedded preview of the
+  `demo.xar` cogwheel, and the author's PDF export of a logo whose soft
+  shadow is a flattened contone (which previously painted its whole
+  bounding box black). Tinted results are cached per bitmap definition.
+  Text also draws upright now (it was mirrored by the document's Y-flip).
+- **Regular shapes (QuickShapes) parse and render correctly.** The
+  `TAG_REGULAR_SHAPE_PHASE_1/2` records (every square mosaic in a modern
+  Xara drawing) were read with a guessed layout, producing garbage geometry
+  — one such shape painted a full-page colour slab over everything. They
+  now follow Xara LX's record layout (flags, side count, edge-midpoint
+  axes, fixed-point matrix, stellation/curvature), and the on-disk MATRIX
+  reader itself was wrong everywhere: 6 doubles instead of the spec's four
+  16.16 fixed-point values plus two millipoint integers.
+- **Embedded bitmaps keep their transparency the way Xara means it.**
+  Xar-embedded PNGs store transparency, not alpha, in the alpha channel
+  (255 = fully transparent); a standard decode premultiplies the colour of
+  exactly the pixels such a bitmap wants shown down to black.
+  `UCImageRaster::CreatePixmapAlphaInverted()` decodes with the channel
+  inverted before premultiplication, and plain bitmap fills use it.
+- **Text stories lay their lines out.** Successive `TextLine`s step down
+  one leading instead of overprinting on the story origin, a line's spans
+  advance horizontally instead of overprinting each other, and the
+  paragraph justification is honoured: the story origin is the anchor, so
+  centred text centres on it and right-aligned text ends at it.
+  Single-character records (`TAG_TEXT_CHAR` — dingbats, styled numerals)
+  render as one-character spans, explicit kerns (`TAG_TEXT_KERN`) adjust
+  the caret, and span boundaries are normalised against Xara's own line
+  width (`TAG_TEXT_LINE_INFO`) so substituted fonts don't push spans
+  apart. Verified page-by-page against the author's PDF export of a
+  13-slide pitch deck.
+- **Soft shadows draw as silhouettes.** `TAG_SHADOWCONTROLLER` used to be
+  skipped entirely, silently dropping every shadowed object's shadow. The
+  controller now parses its record (type, penumbra width, offset,
+  darkness) and renders its children twice: first as a flat silhouette in
+  the shadow paint — glows (type 3) as a symmetric halo, wall/floor
+  shadows displaced by the stored offset — then normally on top. The
+  penumbra is approximated with widened, fainter stroke passes around the
+  silhouette. Calibrated against a MAGIX Photo & Graphic Designer 16
+  export where every bar of a logo carries a glow shadow.
+- **Text renders WYSIWYG against Xara's own output now** — verified line by
+  line against a Designer Pro X19 text-formatting test and its author's PDF
+  export:
+  - *Measure and draw finally agree.* Spans were measured through the pango
+    layout engine but drawn through cairo's toy text API, which resolves
+    fonts differently — every caret position drifted. Spans now draw
+    through the same layouts that measure them (`DrawSpanText` /
+    `MeasureSpanText`), baseline-anchored.
+  - *Glyphs were 4/3 too large.* The render context's font size is points
+    at the text system's 96 dpi resolution while XAR page pixels are 72 dpi
+    points; `ApplyTextFont` now converts.
+  - *Xara's own line positions.* `TAG_TEXT_LINE_INFO` carries each line's
+    baseline step; accumulating it replaces the leading heuristic, fixing
+    line spacing everywhere (visible on the pitch deck's centred slides).
+  - *Full justification.* Lines of a fully-justified paragraph spread
+    their word gaps to Xara's stored line width — every line except the one
+    carrying the paragraph's `TAG_TEXT_EOL`, which stays at natural width.
+  - *Bullet and numbered lists.* The undocumented `TAG_TEXT_LIST_*`
+    records (4404/4405/4410, written by modern Xara) mark list items;
+    marker glyphs render at the marker indent, item text and wrapped
+    continuation lines at the hanging indent.
+  - *Font names parse correctly.* `TAG_FONT_DEF_TRUETYPE` starts with the
+    typeface name; the old parser read panose bytes first and only
+    recovered 5-character names ("Arial") by accident.
+- **Multi-page documents render page by page.** Every spread's coordinates
+  restart at its own origin, so a multi-spread file (a pitch deck, a
+  multi-page brochure) used to draw all its pages on top of each other.
+  `XARDocument` now exposes the spread list as pages
+  (`GetPageCount` / `GetPageWidth` / `GetPageHeight` / `RenderPage`), the
+  XAR element gets `SetCurrentPage` / `onPageChanged`, and `XARProbeTest
+  --render` writes one PNG per page. Verified on a real 13-slide Xara
+  Designer Pro X19 pitch deck: all thirteen slides render individually.
+- **The demo's XAR page is active.** It shows both shipped samples
+  (`media/xar/demo.xar`, `media/xar/backside.xar`) as clickable tiles with
+  load-failure reasons in the status line, and the fullscreen viewer gained
+  page navigation (prev/next with a page counter, via the element's new
+  page API), zoom in/out and fit-page. The page's stale CorelDRAW wording
+  is gone, and `UltraCanvasXARElement` now paints a white page behind the
+  drawing (`IsLoaded()` added), so drawings read correctly on the dark
+  fullscreen backdrop.
+- **`XARDocument` gained parse diagnostics** — records dispatched, unhandled
+  record tags with counts, structural warnings — via `GetDiagnostics()`,
+  and **`XARProbeTest`** (Tests/, needs `-DBUILD_TESTS=ON`) prints that
+  triage for any `.xar` file and rasterizes it to PNG with `--render <dir>`
+  for comparison against reference screenshots. It doubles as a parse
+  regression test over `media/xar/`.
+
 #### 2026-08-26 *0.3.71*
 - **CDR files can be saved as SVG.** The CDR plugin gains an export API:
   `UltraCanvasCDRPlugin::ExportToSVG(cdrPath, svgPath, pageIndex)` re-parses

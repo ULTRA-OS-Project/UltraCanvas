@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
-// Version: 2.0.1
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
@@ -20,6 +20,15 @@ namespace UltraCanvas {
     static inline float MPtoPx(int32_t mp, float scale = 1.0f) {
         return static_cast<float>(mp) * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
     }
+
+    // While set, path nodes render as a flat silhouette in this paint instead
+    // of their own fill/stroke — the shadow pass of a shadow controller.
+    // Rendering is single-threaded per document, so a file-scope slot is safe.
+    struct SilhouettePaint {
+        Color color;
+        int32_t penumbraMP = 0;     // soft-edge width, millipoints
+    };
+    static const SilhouettePaint* g_silhouettePaint = nullptr;
 
     static Color BlendColors(const Color& a, const Color& b, float t) {
         t = std::max(0.0f, std::min(1.0f, t));
@@ -173,18 +182,172 @@ namespace UltraCanvas {
 
 // ===== PATH NODE =====
 
+    // Decode (and for contone fills tint) a bitmap fill's image, caching the
+    // result on the definition. Contone maps the bitmap's luminance between
+    // the fill's start and end colours, keeping the bitmap's alpha; pixmap
+    // pixels are premultiplied ARGB, so the tint un-premultiplies first.
+    static UCPixmap* BitmapFillPixmap(const XARFillAttribute& fill) {
+        XARBitmapDefinition* def = fill.bitmapDef;
+        if (!def || def->data.empty()) return nullptr;
+
+        if (fill.type != XARFillType::ContoneBitmap) {
+            // Plain bitmap fill: xar-embedded bitmaps store transparency in
+            // the alpha channel (255 = fully transparent), so decode with
+            // the channel inverted; images without an alpha band decode
+            // normally.
+            if (!def->plainPixmap) {
+                auto image = UCImage::GetFromMemory(def->data.data(), def->data.size());
+                if (!image || !image->IsValid()) return nullptr;
+                def->plainPixmap = image->CreatePixmapAlphaInverted();
+                if (!def->plainPixmap) def->plainPixmap = image->GetPixmap();
+            }
+            return (def->plainPixmap && def->plainPixmap->IsValid())
+                    ? def->plainPixmap.get() : nullptr;
+        }
+
+        if (!def->fillPixmap) {
+            auto image = UCImage::GetFromMemory(def->data.data(), def->data.size());
+            if (!image || !image->IsValid()) return nullptr;
+            // Contone sources use the same inverted alpha semantics as plain
+            // bitmap fills (255 = fully transparent).
+            def->fillPixmap = image->CreatePixmapAlphaInverted();
+            if (!def->fillPixmap) def->fillPixmap = image->GetPixmap();
+        }
+        if (!def->fillPixmap || !def->fillPixmap->IsValid()) return nullptr;
+
+        auto sameColor = [](const Color& a, const Color& b) {
+            return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        };
+        if (def->tintedPixmap && sameColor(def->tintStart, fill.startColor) &&
+            sameColor(def->tintEnd, fill.endColor)) {
+            return def->tintedPixmap.get();
+        }
+
+        int w = def->fillPixmap->GetWidth();
+        int h = def->fillPixmap->GetHeight();
+        auto tinted = std::make_shared<UCPixmap>();
+        if (!tinted->Init(w, h)) return def->fillPixmap.get();
+        // Empirically verified against Xara's own renderings (the cogwheel in
+        // media/xar/demo.xar against the file's embedded preview, and a
+        // flattened soft-shadow contone against its author's PDF export):
+        // luminance 0 maps to the fill's START colour, luminance 255 to the
+        // END colour, and the bitmap's own (inverted) alpha is preserved so
+        // the page shows through transparent regions.
+        const Color& start = fill.startColor;
+        const Color& end = fill.endColor;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                uint32_t p = def->fillPixmap->GetPixel(x, y);
+                uint32_t a = p >> 24;
+                if (a == 0) { tinted->SetPixel(x, y, 0); continue; }
+                uint32_t r = ((p >> 16) & 0xFF) * 255 / a;
+                uint32_t g = ((p >> 8) & 0xFF) * 255 / a;
+                uint32_t b = (p & 0xFF) * 255 / a;
+                uint32_t lum = (r * 54 + g * 183 + b * 19) >> 8;
+                if (lum > 255) lum = 255;
+                r = start.r + (end.r - start.r) * static_cast<int>(lum) / 255;
+                g = start.g + (end.g - start.g) * static_cast<int>(lum) / 255;
+                b = start.b + (end.b - start.b) * static_cast<int>(lum) / 255;
+                // Re-premultiply against the preserved alpha
+                r = r * a / 255; g = g * a / 255; b = b * a / 255;
+                tinted->SetPixel(x, y, (a << 24) | (r << 16) | (g << 8) | b);
+            }
+        }
+        tinted->MarkDirty();
+        def->tintedPixmap = std::move(tinted);
+        def->tintStart = fill.startColor;
+        def->tintEnd = fill.endColor;
+        return def->tintedPixmap.get();
+    }
+
     void XARPathNode::Render(IRenderContext* ctx, float scale) {
         if (commands.empty()) { XARNode::Render(ctx, scale); return; }
         ctx->PushState();
         if (hasTransform) transform.ApplyToContext(ctx);
 
+        if (g_silhouettePaint) {
+            // Shadow pass: the node's own geometry in the silhouette paint.
+            // The penumbra is faked with two widened, fainter stroke passes
+            // (widest first) around the hard silhouette.
+            const SilhouettePaint& sp = *g_silhouettePaint;
+            float pen = MPtoPx(sp.penumbraMP, scale);
+            float w = (isStroked && hasLine) ? line.GetWidthInPixels() * scale
+                                             : 0.0f;
+            bool fillIt = isFilled && hasFill;
+            EmitPath(ctx, scale);
+            ctx->SetLineCap(LineCap::Round);
+            ctx->SetLineJoin(LineJoin::Round);
+            if (pen > 0.5f) {
+                Color soft = sp.color;
+                soft.a = static_cast<uint8_t>(sp.color.a / 6);
+                ctx->SetStrokePaint(soft);
+                ctx->SetStrokeWidth(w + 2.0f * pen);
+                ctx->StrokePathPreserve();
+                soft.a = static_cast<uint8_t>(sp.color.a / 3);
+                ctx->SetStrokePaint(soft);
+                ctx->SetStrokeWidth(w + pen);
+                ctx->StrokePathPreserve();
+            }
+            if (fillIt) {
+                ctx->SetFillPaint(sp.color);
+                ctx->FillPathPreserve();
+            }
+            if (w > 0.0f) {
+                ctx->SetStrokePaint(sp.color);
+                ctx->SetStrokeWidth(w);
+                ctx->SetLineCap(line.cap);
+                ctx->SetLineJoin(line.join);
+                ctx->StrokePathPreserve();
+            }
+            ctx->ClearPath();
+            ctx->PopState();
+            XARNode::Render(ctx, scale);
+            return;
+        }
+
+        float fillAlpha = 1.0f;
+        if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
+            fillAlpha = 1.0f - static_cast<float>(transparency.startTransparency) / 255.0f;
+        }
+
+        bool wantFill = isFilled && hasFill;
+        if (wantFill && (fill.type == XARFillType::Bitmap ||
+                         fill.type == XARFillType::ContoneBitmap)) {
+            Point2Dd bl = MillipointsToPixels(fill.startPoint, scale);
+            Point2Dd br = MillipointsToPixels(fill.endPoint, scale);
+            Point2Dd tl = MillipointsToPixels(fill.endPoint2, scale);
+            // A degenerate parallelogram would make the transform
+            // non-invertible and poison the whole surface — fall back to the
+            // flat approximation instead.
+            double det = (br.x - bl.x) * (bl.y - tl.y) -
+                         (br.y - bl.y) * (bl.x - tl.x);
+            UCPixmap* pixmap = (std::abs(det) > 1e-6) ? BitmapFillPixmap(fill)
+                                                      : nullptr;
+            if (pixmap) {
+                // Clip to the path and map the bitmap onto the fill
+                // parallelogram: origin at the fill's top-left so the image's
+                // top row stays at the visual top under the document's
+                // global Y-flip.
+                ctx->PushState();
+                EmitPath(ctx, scale);
+                ctx->ClipPath();
+                ctx->ClearPath();
+                ctx->SetAlpha(fillAlpha);
+                ctx->Transform(br.x - bl.x, br.y - bl.y,
+                               bl.x - tl.x, bl.y - tl.y,
+                               tl.x, tl.y);
+                ctx->DrawPixmap(*pixmap, Rect2Dd(0, 0, 1, 1), ImageFitMode::Fill);
+                ctx->PopState();
+                wantFill = false;   // painted; keep only the stroke below
+            }
+            // Decode failure falls through to the flat approximation.
+        }
+
         EmitPath(ctx, scale);
 
-        if (isFilled && hasFill) {
+        if (wantFill) {
             ApplyFillToContext(ctx, fill, scale);
-            if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
-                ctx->SetAlpha(1.0f - static_cast<float>(transparency.startTransparency) / 255.0f);
-            }
+            ctx->SetAlpha(fillAlpha);
             ctx->FillPathPreserve();
         }
         if (isStroked && hasLine) {
@@ -292,31 +455,40 @@ namespace UltraCanvas {
 // ===== POLYGON NODE =====
 
     std::vector<Point2Dd> XARPolygonNode::GeneratePolygonPoints(float scale) const {
+        // Vertices in millipoint space, then through `transform` (also
+        // millipoints), then to pixels — the caller must NOT apply the
+        // node transform again.
         std::vector<Point2Dd> pts;
-        Point2Dd c = MillipointsToPixels(centre, scale);
-        Point2Dd ma = MillipointsToPixels(majorAxis, scale);
-        Point2Dd mi = MillipointsToPixels(minorAxis, scale);
-        float rx = std::sqrt(ma.x * ma.x + ma.y * ma.y);
-        float ry = std::sqrt(mi.x * mi.x + mi.y * mi.y);
-        if (numSides < 3) return pts;
-        float angleStep = 2.0f * PI / numSides;
-        float startAngle = std::atan2(ma.y, ma.x);
+        int n = std::clamp(numSides, 3, 512);
+        const double step = 2.0 * M_PI / n;
 
-        for (int i = 0; i < numSides; ++i) {
-            float a = startAngle + i * angleStep;
-            pts.push_back(Point2Dd(c.x + rx * std::cos(a), c.y + ry * std::sin(a)));
-            if (isStellated && stellationRadius > 0) {
-                float ia = a + angleStep * 0.5f + stellationOffset;
-                float ir = stellationRadius;
-                pts.push_back(Point2Dd(c.x + rx * ir * std::cos(ia), c.y + ry * ir * std::sin(ia)));
-            }
+        // The axes are the radii of the shape's circumscribing ellipse. A
+        // circle/ellipse samples it directly; a polygon's vertices lie ON
+        // that ellipse, offset half a step from the axes — so a 4-sided
+        // shape with axis-aligned axes is an axis-aligned square whose
+        // corners sit at (±major + ±minor)/√2. Verified against the square
+        // mosaics in backside.xar (21.5pt grid pitch = the square side).
+        const bool asEllipse = isCircular;
+        const int count = asEllipse ? 64 : n;
+        const double vertexStep = asEllipse ? (2.0 * M_PI / count) : step;
+        const double phase = asEllipse ? 0.0 : (M_PI / n);
+
+        for (int i = 0; i < count; ++i) {
+            double phi = phase + i * vertexStep;
+            double cs = std::cos(phi), sn = std::sin(phi);
+            double x = centre.x + majorAxis.x * cs + minorAxis.x * sn;
+            double y = centre.y + majorAxis.y * cs + minorAxis.y * sn;
+            double tx = transform.a * x + transform.c * y + transform.e;
+            double ty = transform.b * x + transform.d * y + transform.f;
+            pts.push_back(Point2Dd(tx * XARConstants::MILLIPOINTS_TO_PIXELS * scale,
+                                   ty * XARConstants::MILLIPOINTS_TO_PIXELS * scale));
         }
         return pts;
     }
 
     void XARPolygonNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
-        if (!transform.IsIdentity()) transform.ApplyToContext(ctx);
+        // GeneratePolygonPoints already applies the node transform.
         auto pts = GeneratePolygonPoints(scale);
         if (!pts.empty()) {
             ctx->ClearPath();
@@ -353,14 +525,261 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
+    // Set a string's font on the context; returns the pixel size used.
+    static float ApplyTextFont(IRenderContext* ctx, const XARTextStringNode& s, float scale) {
+        float sizePx = s.textAttr.GetFontSizeInPixels() * scale;
+        if (sizePx <= 0.01f) sizePx = 12.0f * scale;
+        ctx->SetFontFace(s.textAttr.fontName.empty() ? "Sans" : s.textAttr.fontName,
+                         s.textAttr.bold ? FontWeight::Bold : FontWeight::Normal,
+                         s.textAttr.italic ? FontSlant::Italic : FontSlant::Normal);
+        // The context's font size is in points at the text system's 96 dpi
+        // resolution, so glyphs come out size×96/72 device pixels; XAR page
+        // pixels are 72 dpi points. Verified against a Designer Pro X19 PDF
+        // export: without the factor every glyph rendered 4/3 too large.
+        ctx->SetFontSize(sizePx * (72.0f / 96.0f));
+        return sizePx;
+    }
+
+    // Measure and draw span text through the same layout engine. FillText's
+    // toy-cairo path resolves fonts differently from the pango layouts
+    // behind GetTextLineWidth, so mixing them makes measured span widths
+    // and drawn glyphs disagree — and every caret position in the text
+    // layout depends on those two agreeing.
+    static double MeasureSpanText(IRenderContext* ctx, const std::string& text) {
+        if (text.empty()) return 0;
+        auto layout = ctx->GetOrCreateTextLayout(text, Size2Di(0, 0), false);
+        if (layout && layout->IsValid()) return layout->GetLayoutWidth();
+        return ctx->GetTextLineWidth(text);
+    }
+
+    static void DrawSpanText(IRenderContext* ctx, const std::string& text, const Color& color) {
+        if (text.empty()) return;
+        auto layout = ctx->GetOrCreateTextLayout(text, Size2Di(0, 0), false);
+        if (layout && layout->IsValid()) {
+            ctx->SetTextPaint(color);
+            // Anchor the layout so its baseline lands on y = 0, like FillText.
+            ctx->DrawTextLayout(*layout, Point2Dd(0, -layout->GetBaseline()));
+        } else {
+            ctx->SetFillPaint(color);
+            ctx->FillText(text, 0, 0);
+        }
+    }
+
+    void XARTextLineNode::Render(IRenderContext* ctx, float scale) {
+        ctx->PushState();
+        if (hasYOffset) {
+            // Xara's own baseline offset (negative = down, and the document
+            // space is Y-up, so it applies directly).
+            ctx->Translate(0, yOffsetMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale);
+        } else if (lineIndex > 0) {
+            float leading = textAttr.GetFontSizeInPixels() * 1.15f;
+            if (leading <= 0.01f) leading = 12.0f;
+            // The document space is Y-up, so the next line down is negative Y.
+            ctx->Translate(0, -lineIndex * leading * scale);
+        }
+
+        // Lay the line's spans out along the caret: strings advance by their
+        // measured width, TAG_TEXT_KERN records adjust the caret explicitly.
+        // The paragraph justification anchors the whole line on the story
+        // origin — centred text centres on it, right-aligned text ends at
+        // it — preferring Xara's own line width (TAG_TEXT_LINE_INFO) over
+        // our measurement so the anchor is exact even where fonts differ.
+        float fontEm = textAttr.GetFontSizeInPixels() * scale;
+        if (fontEm <= 0.01f) fontEm = 12.0f * scale;
+        // List geometry, calibrated against a Designer Pro X19 PDF export:
+        // marker glyphs from 0.375 em, the item text (and every wrapped
+        // continuation line) from 1.5 em.
+        const double markerIndent = isListItem ? 0.375 * fontEm : 0.0;
+        const double hangIndent = 1.5 * fontEm;
+        const bool inList = isListItem || hangingIndent;
+
+        double total = 0;
+        std::vector<double> widths;
+        for (const auto& c : children) {
+            if (c->type == XARNodeType::TextKern) {
+                auto k = std::static_pointer_cast<XARTextKernNode>(c);
+                total += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                continue;
+            }
+            if (c->type != XARNodeType::TextString) continue;
+            auto s = std::static_pointer_cast<XARTextStringNode>(c);
+            double w = 0;
+            if (!s->text.empty()) {
+                ApplyTextFont(ctx, *s, scale);
+                w = MeasureSpanText(ctx, s->text);
+            }
+            widths.push_back(w);
+            total += w;
+        }
+
+        double anchorWidth = (lineWidthMP > 0)
+                ? lineWidthMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale
+                : total;
+
+        // Full justification spreads the slack between the natural width
+        // and Xara's line width (= the column width on all but the last
+        // line of a paragraph) across the line's word gaps. The line that
+        // ends its paragraph stays at natural width, as Xara leaves it.
+        if (textAttr.justification == XARTextAttribute::Justification::Full &&
+            lineWidthMP > 0 && !inList && !endsParagraph &&
+            RenderJustified(ctx, scale, anchorWidth)) {
+            ctx->PopState();
+            return;
+        }
+
+        // Our fonts rarely match the author's exactly, so measured span
+        // widths drift from Xara's caret positions (visible as gaps after a
+        // bold span, or letter-spaced runs of single characters). Xara's own
+        // line width is authoritative: scale the measured widths so their
+        // sum lands every span boundary where Xara put it. List lines skip
+        // this — their indents make the measured and stored widths disagree
+        // by design.
+        double measuredSum = 0;
+        for (double w : widths) measuredSum += w;
+        double kernSum = total - measuredSum;
+        if (lineWidthMP > 0 && measuredSum > 0.001 && !inList) {
+            double factor = (anchorWidth - kernSum) / measuredSum;
+            if (factor > 0.01 && factor < 100.0) {
+                for (double& w : widths) w *= factor;
+            }
+        }
+
+        double x = hangingIndent ? hangIndent : markerIndent, y = 0;
+        switch (textAttr.justification) {
+            case XARTextAttribute::Justification::Centre: x = -anchorWidth / 2.0; break;
+            case XARTextAttribute::Justification::Right:  x = -anchorWidth; break;
+            default: break;
+        }
+
+        size_t wi = 0;
+        bool listTextStarted = false;
+        for (const auto& c : children) {
+            if (c->type == XARNodeType::TextString) {
+                auto s = std::static_pointer_cast<XARTextStringNode>(c);
+                // Marker-to-text transition of a list item: the item text
+                // starts at the hanging indent, or at least half an em past
+                // wherever the marker glyphs ended.
+                if (isListItem && !s->fromCharRecord && !listTextStarted) {
+                    listTextStarted = true;
+                    x = std::max(x + 0.5 * fontEm, hangIndent);
+                }
+                ctx->PushState();
+                ctx->Translate(x, y);
+                c->Render(ctx, scale);
+                ctx->PopState();
+                x += widths[wi++];
+            } else if (c->type == XARNodeType::TextKern) {
+                auto k = std::static_pointer_cast<XARTextKernNode>(c);
+                x += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                y += k->offset.y * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+            } else {
+                c->Render(ctx, scale);
+            }
+        }
+        ctx->PopState();
+    }
+
+    // Word-spread layout for fully-justified lines. Returns false when the
+    // line has nothing to spread (no word gaps, no slack, or explicit kerns
+    // take over) — the caller then falls back to the plain span layout.
+    bool XARTextLineNode::RenderJustified(IRenderContext* ctx, float scale,
+                                          double anchorWidth) {
+        struct Token {
+            XARTextStringNode* span;
+            std::string word;
+            bool gapBefore;
+            double spaceW;      // width of the gap's space, in the gap's font
+            double wordW;
+        };
+        std::vector<Token> tokens;
+        bool pendingGap = false;
+        double pendingSpaceW = 0;
+
+        // Find the last text span so its trailing spaces (Xara keeps the
+        // line-break space in the string) don't count as a gap.
+        XARTextStringNode* lastSpan = nullptr;
+        for (const auto& c : children) {
+            if (c->type == XARNodeType::TextKern) return false;
+            if (c->type == XARNodeType::TextString) {
+                lastSpan = std::static_pointer_cast<XARTextStringNode>(c).get();
+            }
+        }
+
+        double natural = 0;
+        int gaps = 0;
+        for (const auto& c : children) {
+            if (c->type != XARNodeType::TextString) continue;
+            auto s = std::static_pointer_cast<XARTextStringNode>(c);
+            std::string text = s->text;
+            if (s.get() == lastSpan) {
+                while (!text.empty() && text.back() == ' ') text.pop_back();
+            }
+            if (text.empty()) continue;
+            ApplyTextFont(ctx, *s, scale);
+            // Trailing-space-safe space width: bracket the space with ink.
+            double spaceW = MeasureSpanText(ctx, "| |") - MeasureSpanText(ctx, "||");
+            if (spaceW <= 0) spaceW = 0.25 * textAttr.GetFontSizeInPixels() * scale;
+            size_t pos = 0;
+            while (pos < text.size()) {
+                if (text[pos] == ' ') {
+                    pendingGap = true;
+                    pendingSpaceW = spaceW;
+                    ++pos;
+                    continue;
+                }
+                size_t end = text.find(' ', pos);
+                if (end == std::string::npos) end = text.size();
+                Token t;
+                t.span = s.get();
+                t.word = text.substr(pos, end - pos);
+                t.gapBefore = pendingGap;
+                t.spaceW = pendingSpaceW;
+                t.wordW = MeasureSpanText(ctx, t.word);
+                if (t.gapBefore) { natural += t.spaceW; ++gaps; }
+                natural += t.wordW;
+                tokens.push_back(std::move(t));
+                pendingGap = false;
+                pos = end;
+            }
+        }
+        if (tokens.empty() || gaps == 0) return false;
+
+        double extra = anchorWidth - natural;
+        float fontEm = textAttr.GetFontSizeInPixels() * scale;
+        if (fontEm <= 0.01f) fontEm = 12.0f * scale;
+        // A slightly negative slack just means our font measures wider than
+        // the author's — compressing the gaps keeps the right margin true.
+        // Guard against degenerate stretches either way.
+        double extraPerGap = extra / gaps;
+        if (extraPerGap > 4.0 * fontEm) return false;
+        if (extraPerGap < -0.15 * fontEm) extraPerGap = -0.15 * fontEm;
+
+        double x = 0;
+        for (const auto& t : tokens) {
+            if (t.gapBefore) x += t.spaceW + extraPerGap;
+            ctx->PushState();
+            ctx->Translate(x, 0);
+            ctx->Scale(1.0f, -1.0f);
+            ApplyTextFont(ctx, *t.span, scale);
+            DrawSpanText(ctx, t.word,
+                         t.span->hasFill ? t.span->fill.startColor : Color(0, 0, 0, 255));
+            ctx->PopState();
+            x += t.wordW;
+        }
+        return true;
+    }
+
     void XARTextStringNode::Render(IRenderContext* ctx, float scale) {
         if (text.empty()) return;
-        FontWeight weight = textAttr.bold ? FontWeight::Bold : FontWeight::Normal;
-        FontSlant slant = textAttr.italic ? FontSlant::Italic : FontSlant::Normal;
-        ctx->SetFontFace(textAttr.fontName.empty() ? "Sans" : textAttr.fontName, weight, slant);
-        ctx->SetFontSize(textAttr.GetFontSizeInPixels() * scale);
-        if (hasFill) ctx->SetFillPaint(fill.startColor);
-        ctx->FillText(text, 0, 0);
+        ctx->PushState();
+        // The document renders under a global Y-flip (Y-up file coordinates);
+        // un-flip locally around the baseline so glyphs come out upright.
+        // ApplyTextFont also guards against a zero size, which would make the
+        // cairo font matrix non-invertible and poison the whole context.
+        ctx->Scale(1.0f, -1.0f);
+        ApplyTextFont(ctx, *this, scale);
+        DrawSpanText(ctx, text, hasFill ? fill.startColor : Color(0, 0, 0, 255));
+        ctx->PopState();
     }
 
 // ===== BITMAP NODE =====
@@ -395,12 +814,23 @@ namespace UltraCanvas {
 // ===== SHADOW NODE =====
 
     void XARShadowNode::Render(IRenderContext* ctx, float scale) {
-        // Best-effort: render children at offset with reduced alpha, then normally
-        ctx->PushState();
-        ctx->Translate(MPtoPx(offsetX, scale), MPtoPx(offsetY, scale));
-        ctx->SetAlpha(static_cast<float>(shadowColor.a) / 255.0f);
-        XARNode::Render(ctx, scale);
-        ctx->PopState();
+        if (children.empty()) return;
+        // Shadow pass: the children's silhouette in the shadow paint, at the
+        // shadow offset, beneath the objects themselves. Nested shadows keep
+        // the outermost paint.
+        if (!g_silhouettePaint && shadowColor.a > 0) {
+            SilhouettePaint paint{shadowColor, blurRadius};
+            ctx->PushState();
+            // A glow (type 3) is a symmetric halo; wall/floor shadows are
+            // displaced copies (verified against a MAGIX Designer export).
+            if (shadowType != 3) {
+                ctx->Translate(MPtoPx(offsetX, scale), MPtoPx(offsetY, scale));
+            }
+            g_silhouettePaint = &paint;
+            XARNode::Render(ctx, scale);
+            g_silhouettePaint = nullptr;
+            ctx->PopState();
+        }
         XARNode::Render(ctx, scale);
     }
 
@@ -446,9 +876,16 @@ namespace UltraCanvas {
     }
 
     bool XARDocument::LoadFromMemory(const uint8_t* data, size_t size) {
-        if (!data || size < 16) return false;
+        diagnostics = XARParseDiagnostics{};
+        if (!data || size < 16) {
+            Warn("File too small to be a XAR document");
+            return false;
+        }
         StreamFrame outer{data, size, 0};
-        if (!ParseHeader(outer)) return false;
+        if (!ParseHeader(outer)) {
+            Warn("Missing XARA file signature");
+            return false;
+        }
         curData = outer.data;
         curSize = outer.size;
         curOffset = outer.offset;
@@ -505,6 +942,7 @@ namespace UltraCanvas {
             uint32_t recSize = ReadUInt32(curData, curOffset);
 
             currentSequenceNumber++;
+            diagnostics.recordCount++;
 
             if (tag == XARTag::TAG_ENDOFFILE) {
                 return true;
@@ -520,6 +958,8 @@ namespace UltraCanvas {
                 std::vector<uint8_t> inflated;
                 size_t consumed = 0;
                 if (!DecompressZlib(curData + curOffset, curSize - curOffset, inflated, consumed)) {
+                    Warn("Compressed section failed to inflate at record " +
+                         std::to_string(currentSequenceNumber));
                     return false;
                 }
                 StreamFrame outer{curData, curSize, curOffset + consumed};
@@ -551,7 +991,8 @@ namespace UltraCanvas {
             record.tag = tag;
             record.size = recSize;
             if (curOffset + recSize > curSize) {
-                // Truncated record; bail
+                Warn("Truncated record " + std::to_string(currentSequenceNumber) +
+                     " (tag " + std::to_string(static_cast<uint32_t>(tag)) + ")");
                 return false;
             }
             if (recSize > 0) {
@@ -621,9 +1062,14 @@ namespace UltraCanvas {
 
     void XARDocument::ProcessRecord(const XARRecord& record) {
         switch (record.tag) {
-            // Navigation
+            // Navigation. The Xar tree grammar is: object record, TAG_DOWN,
+            // child records (an object's attributes, a container's members),
+            // TAG_UP. So TAG_DOWN descends into the node the previous record
+            // created; attributes inside that scope belong to it.
             case XARTag::TAG_DOWN:
                 contextStack.push(currentContext);
+                nodeStack.push(lastNode ? lastNode : CurrentNode());
+                lastNode.reset();
                 break;
             case XARTag::TAG_UP:
                 if (!contextStack.empty()) {
@@ -631,6 +1077,7 @@ namespace UltraCanvas {
                     contextStack.pop();
                 }
                 PopNode();
+                lastNode.reset();
                 break;
 
             // File framework
@@ -642,11 +1089,14 @@ namespace UltraCanvas {
                 break;
 
             // Document structure
-            case XARTag::TAG_DOCUMENT:
-                PushNode(std::make_shared<XARNode>()); CurrentNode()->type = XARNodeType::Document;
+            case XARTag::TAG_DOCUMENT: {
+                auto docNode = std::make_shared<XARNode>();
+                docNode->type = XARNodeType::Document;
+                AttachNode(docNode);
                 break;
+            }
             case XARTag::TAG_CHAPTER:
-                PushNode(std::make_shared<XARChapterNode>());
+                AttachNode(std::make_shared<XARChapterNode>());
                 break;
             case XARTag::TAG_SPREAD:
             case XARTag::TAG_SPREAD_PHASE2:
@@ -758,9 +1208,9 @@ namespace UltraCanvas {
             case XARTag::TAG_POLYGON_COMPLEX_ROUNDED_STELLATED_REFORMED:
                 ParsePolygonRecord(record); break;
             case XARTag::TAG_REGULAR_SHAPE_PHASE_1:
+                ParseRegularShapeRecord(record, true); break;
             case XARTag::TAG_REGULAR_SHAPE_PHASE_2:
-                // newer regular-shape representation; treat as polygon-like best effort
-                ParsePolygonRecord(record); break;
+                ParseRegularShapeRecord(record, false); break;
 
             // Group
             case XARTag::TAG_GROUP: ParseGroupRecord(record); break;
@@ -896,11 +1346,27 @@ namespace UltraCanvas {
                 break;
             case XARTag::TAG_TEXT_LINE: ParseTextLineRecord(record); break;
             case XARTag::TAG_TEXT_STRING: ParseTextStringRecord(record); break;
-            case XARTag::TAG_TEXT_CHAR:
+            case XARTag::TAG_TEXT_CHAR: ParseTextCharRecord(record); break;
+            case XARTag::TAG_TEXT_KERN: ParseTextKernRecord(record); break;
+            case XARTag::TAG_TEXT_LINE_INFO: ParseTextLineInfoRecord(record); break;
             case XARTag::TAG_TEXT_EOL:
-            case XARTag::TAG_TEXT_KERN:
+                textListActive = false;
+                if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+                    line->endsParagraph = true;
+                }
+                break;
+            case XARTag::TAG_TEXT_LIST_BULLET:
+            case XARTag::TAG_TEXT_LIST_NUMBERED:
+                if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+                    line->isListItem = true;
+                }
+                textListActive = true;
+                break;
+            case XARTag::TAG_TEXT_LIST_SEPARATOR:
+                // Field boundary inside a list marker; the layout keys off
+                // the marker-to-text transition instead.
+                break;
             case XARTag::TAG_TEXT_CARET:
-            case XARTag::TAG_TEXT_LINE_INFO:
             case XARTag::TAG_TEXT_STRING_POS:
             case XARTag::TAG_TEXT_TAB:
             case XARTag::TAG_TEXT_LEFT_INDENT:
@@ -950,8 +1416,10 @@ namespace UltraCanvas {
                 ParseFontDefRecord(record, false); break;
 
             // Effects
-            case XARTag::TAG_SHADOW: ParseShadowRecord(record); break;
-            case XARTag::TAG_SHADOWCONTROLLER:
+            case XARTag::TAG_SHADOWCONTROLLER: ParseShadowRecord(record); break;
+            case XARTag::TAG_SHADOW:
+                // The shadow atom inside the controller; the silhouette is
+                // derived from the shadowed siblings, so nothing to keep.
                 break;
             case XARTag::TAG_BEVEL: ParseBevelRecord(record); break;
             case XARTag::TAG_BEVATTR_INDENT:
@@ -1046,8 +1514,21 @@ namespace UltraCanvas {
                 break;
 
             default:
-                // Unknown / not yet implemented; consumed safely
+                // Unknown / not yet implemented; consumed safely but counted,
+                // so a file that leans on a record type this parser skips can
+                // be triaged (see GetDiagnostics / Tests/XARProbeTest.cpp).
+                diagnostics.unhandledTags[static_cast<uint32_t>(record.tag)]++;
                 break;
+        }
+
+        // An object's attribute records arrive as its children (object,
+        // TAG_DOWN, attributes, TAG_UP) — after they run, the object owning
+        // the current scope re-snapshots the running context so those
+        // attributes actually land on it. Re-snapshotting a container or
+        // after a no-op record is harmless: the snapshot equals the scope's
+        // context either way.
+        if (!nodeStack.empty()) {
+            ApplyCurrentAttributesTo(nodeStack.top());
         }
     }
 
@@ -1073,7 +1554,9 @@ namespace UltraCanvas {
 // ===== DOCUMENT STRUCTURE =====
 
     void XARDocument::ParseSpreadRecord(const XARRecord&) {
-        PushNode(std::make_shared<XARSpreadNode>());
+        auto spread = std::make_shared<XARSpreadNode>();
+        AttachNode(spread);
+        spreadNodes.push_back(spread);
     }
 
     void XARDocument::ParseSpreadInfoRecord(const XARRecord& record) {
@@ -1096,7 +1579,7 @@ namespace UltraCanvas {
     }
 
     void XARDocument::ParseLayerRecord(const XARRecord&) {
-        PushNode(std::make_shared<XARLayerNode>());
+        AttachNode(std::make_shared<XARLayerNode>());
     }
 
     void XARDocument::ParseLayerDetailsRecord(const XARRecord& record, bool isGuide) {
@@ -1133,7 +1616,7 @@ namespace UltraCanvas {
                 sp->height = spreadHeightMP;
             }
         }
-        CurrentNode()->AddChild(page);
+        AttachNode(page);
     }
 
     void XARDocument::ParseViewportRecord(const XARRecord& record) {
@@ -1164,11 +1647,18 @@ namespace UltraCanvas {
 
         if (relative) {
             // Relative format: <verb><coord>+ where each entry is 9 bytes.
-            // Coordinates are byte-interleaved MSB-first deltas (first is delta from origin).
+            // Coordinates are byte-interleaved MSB-first (X = b0,b2,b4,b6;
+            // Y = b1,b3,b5,b7). The first coordinate is absolute; every
+            // following one stores the REVERSE delta (previous minus current),
+            // so decoding subtracts. Verified against the renderings embedded
+            // in Xara Designer Pro X19 files (see PR #317): adding instead of
+            // subtracting keeps each subpath's shape but scatters the pieces.
             Point2Di last(0, 0);
+            bool firstCoord = true;
             while (off + 9 <= total) {
                 uint8_t verb = ReadByte(d, off);
-                Point2Di p = ReadRelativeCoord(d, off, last);
+                Point2Di p = ReadRelativeCoord(d, off, last, firstCoord);
+                firstCoord = false;
                 uint8_t base = verb & 0x06;
                 bool close = (verb & 0x01) != 0;
                 if (base == 0x06) {
@@ -1184,9 +1674,9 @@ namespace UltraCanvas {
                     // Read 2 more coords for the bezier
                     if (off + 9 + 9 > total) break;
                     uint8_t v2 = ReadByte(d, off);
-                    Point2Di c2 = ReadRelativeCoord(d, off, last);
+                    Point2Di c2 = ReadRelativeCoord(d, off, last, false);
                     uint8_t v3 = ReadByte(d, off);
-                    Point2Di e = ReadRelativeCoord(d, off, last);
+                    Point2Di e = ReadRelativeCoord(d, off, last, false);
                     XARPathCommand bz(XARPathVerb::BezierTo);
                     bz.points.push_back(p);
                     bz.points.push_back(c2);
@@ -1198,10 +1688,10 @@ namespace UltraCanvas {
             }
         } else {
             // Absolute format: numCoords:UINT32, verbs[numCoords] (4-byte aligned), coords[numCoords]
-            if (off + 4 > total) { CurrentNode()->AddChild(path); return; }
+            if (off + 4 > total) { RegisterRenderableNode(path); return; }
             int32_t numCoords = ReadInt32(d, off);
             if (numCoords <= 0 || off + static_cast<size_t>(numCoords) > total) {
-                CurrentNode()->AddChild(path); return;
+                RegisterRenderableNode(path); return;
             }
             std::vector<uint8_t> verbs(numCoords);
             for (int32_t i = 0; i < numCoords; ++i) verbs[i] = ReadByte(d, off);
@@ -1337,7 +1827,7 @@ namespace UltraCanvas {
         } else {
             // Complex: Centre + Matrix(48) + halfWidth + halfHeight + opt cornerRadius
             if (off + 8 <= total) rect->centre = ReadCoord(d, off);
-            if (off + 48 <= total) rect->transform = ReadMatrix(d, off);
+            if (off + 24 <= total) rect->transform = ReadMatrix(d, off);
             if (off + 8 <= total) {
                 rect->halfWidth = ReadInt32(d, off);
                 rect->halfHeight = ReadInt32(d, off);
@@ -1369,7 +1859,7 @@ namespace UltraCanvas {
         } else {
             ell->isSimple = false;
             if (off + 8 <= total) ell->centre = ReadCoord(d, off);
-            if (off + 48 <= total) ell->transform = ReadMatrix(d, off);
+            if (off + 24 <= total) ell->transform = ReadMatrix(d, off);
             int32_t hMajor = 0, hMinor = 0;
             if (off + 8 <= total) {
                 hMajor = ReadInt32(d, off);
@@ -1403,7 +1893,7 @@ namespace UltraCanvas {
 
         if (off + 4 <= total) poly->numSides = ReadInt32(d, off);
         if (off + 8 <= total) poly->centre = ReadCoord(d, off);
-        if (off + 48 <= total) poly->transform = ReadMatrix(d, off);
+        if (off + 24 <= total) poly->transform = ReadMatrix(d, off);
         int32_t hMajor = 0, hMinor = 0;
         if (off + 8 <= total) {
             hMajor = ReadInt32(d, off);
@@ -1424,45 +1914,99 @@ namespace UltraCanvas {
         RegisterRenderableNode(poly);
     }
 
+    void XARDocument::ParseRegularShapeRecord(const XARRecord& record, bool phase1) {
+        // Layout per Xara LX's RegularShapeRecordHandler (rechrshp.cpp):
+        //   BYTE flags; UINT16 numSides; [COORD centre — phase 1 only];
+        //   COORD majorAxis; COORD minorAxis; MATRIX transform;
+        //   DOUBLE stellRadius, stellOffset, curvature1, curvature2;
+        //   PATH edge1, edge2 (reformed edges — not rendered yet).
+        // The axes point from the centre to the middles of two adjacent
+        // edges, so a 4-sided shape with axis-aligned axes is an
+        // axis-aligned rectangle.
+        auto poly = std::make_shared<XARPolygonNode>();
+        ApplyCurrentAttributesTo(poly);
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        size_t total = record.data.size();
+        if (off + 3 > total) { RegisterRenderableNode(poly); return; }
+
+        uint8_t flags = ReadByte(d, off);
+        poly->isCircular = (flags & 0x01) != 0;
+        poly->isStellated = (flags & 0x02) != 0;
+        poly->isRounded = (flags & 0x04) != 0;
+        poly->numSides = ReadUInt16(d, off);
+
+        if (phase1 && off + 8 <= total) poly->centre = ReadCoord(d, off);
+        if (off + 8 <= total) poly->majorAxis = ReadCoord(d, off);
+        if (off + 8 <= total) poly->minorAxis = ReadCoord(d, off);
+        if (off + 24 <= total) poly->transform = ReadMatrix(d, off);
+        if (off + 16 <= total) {
+            poly->stellationRadius = static_cast<float>(ReadDouble(d, off));
+            poly->stellationOffset = static_cast<float>(ReadDouble(d, off));
+        }
+        if (off + 16 <= total) {
+            poly->curvature = static_cast<float>(ReadDouble(d, off));
+            ReadDouble(d, off);   // secondary curvature — unused
+        }
+        // Edge paths (reformed shapes) follow; not consumed.
+        RegisterRenderableNode(poly);
+    }
+
 // ===== GROUPS / EFFECTS =====
 
     void XARDocument::ParseGroupRecord(const XARRecord&) {
         auto g = std::make_shared<XARGroupNode>();
         ApplyCurrentAttributesTo(g);
-        PushNode(g);
+        AttachNode(g);
     }
 
+    // TAG_SHADOWCONTROLLER: the group holding a shadowed object. Layout
+    // (verified against MAGIX Designer 16 output): BYTE type, INT32 penumbra
+    // width (mp), INT32 offsetX (mp), INT32 offsetY (mp), INT32 wall angle
+    // (microradians), INT32 darkness (percent), then scale/height fields.
     void XARDocument::ParseShadowRecord(const XARRecord& record) {
         auto sh = std::make_shared<XARShadowNode>();
-        // Best-effort: defaults, not all spec fields parsed (variable layout)
-        if (record.data.size() >= 1) sh->shadowType = record.data[0];
-        PushNode(sh);
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        if (record.data.size() >= 21) {
+            sh->shadowType = ReadByte(d, off);
+            sh->blurRadius = ReadInt32(d, off);
+            sh->offsetX = ReadInt32(d, off);
+            sh->offsetY = ReadInt32(d, off);
+            ReadInt32(d, off);                                  // wall angle
+            int32_t darkness = ReadInt32(d, off);
+            if (darkness < 0) darkness = 0;
+            if (darkness > 100) darkness = 100;
+            sh->shadowColor = Color(0, 0, 0,
+                    static_cast<uint8_t>(255 * darkness / 100));
+        }
+        AttachNode(sh);
     }
 
     void XARDocument::ParseBevelRecord(const XARRecord& record) {
         (void)record;
-        PushNode(std::make_shared<XARBevelNode>());
+        AttachNode(std::make_shared<XARBevelNode>());
     }
 
     void XARDocument::ParseContourRecord(const XARRecord& record) {
         (void)record;
-        PushNode(std::make_shared<XARContourNode>());
+        AttachNode(std::make_shared<XARContourNode>());
     }
 
     void XARDocument::ParseBlendRecord(const XARRecord& record) {
         (void)record;
-        PushNode(std::make_shared<XARBlendNode>());
+        AttachNode(std::make_shared<XARBlendNode>());
     }
 
     void XARDocument::ParseMouldRecord(const XARRecord& record, bool perspective) {
         (void)record;
         auto m = std::make_shared<XARMouldNode>();
         m->isPerspective = perspective;
-        PushNode(m);
+        AttachNode(m);
     }
 
     void XARDocument::ParseClipViewRecord(const XARRecord&) {
-        PushNode(std::make_shared<XARClipViewNode>());
+        AttachNode(std::make_shared<XARClipViewNode>());
     }
 
     void XARDocument::ParseFeatherRecord(const XARRecord& record) {
@@ -1472,21 +2016,23 @@ namespace UltraCanvas {
             size_t off = 0;
             f->featherRadius = ReadInt32(d, off);
         }
-        PushNode(f);
+        AttachNode(f);
     }
 
     void XARDocument::ParseLiveEffectRecord(const XARRecord& record) {
         (void)record;
-        PushNode(std::make_shared<XARLiveEffectNode>());
+        AttachNode(std::make_shared<XARLiveEffectNode>());
     }
 
     void XARDocument::ParseBrushRecord(const XARRecord&) {
-        PushNode(std::make_shared<XARBrushNode>());
+        AttachNode(std::make_shared<XARBrushNode>());
     }
 
 // ===== TEXT =====
 
     void XARDocument::ParseTextStoryRecord(const XARRecord& record) {
+        textListActive = false;
+        storyLineOffsetMP = 0;
         auto story = std::make_shared<XARTextStoryNode>();
         ApplyCurrentAttributesTo(story);
         // Text stories have variable layouts; try to read a position/matrix prefix
@@ -1494,18 +2040,27 @@ namespace UltraCanvas {
             const uint8_t* d = record.data.data();
             size_t off = 0;
             story->position = ReadCoord(d, off);
-            if (record.data.size() >= 8 + 48) {
+            if (record.data.size() >= 8 + 24) {
                 story->transform = ReadMatrix(d, off);
                 story->hasTransform = true;
             }
         }
-        PushNode(story);
+        AttachNode(story);
     }
 
     void XARDocument::ParseTextLineRecord(const XARRecord&) {
         auto line = std::make_shared<XARTextLineNode>();
         ApplyCurrentAttributesTo(line);
-        PushNode(line);
+        // Step successive lines of a story down one leading each.
+        int existing = 0;
+        for (const auto& sibling : CurrentNode()->children) {
+            if (sibling->type == XARNodeType::TextLine) ++existing;
+        }
+        line->lineIndex = existing;
+        // A line opened while a list item's paragraph is still running (no
+        // TAG_TEXT_EOL yet) wraps that item: it starts at the hanging indent.
+        line->hangingIndent = textListActive;
+        AttachNode(line);
     }
 
     void XARDocument::ParseTextStringRecord(const XARRecord& record) {
@@ -1516,7 +2071,60 @@ namespace UltraCanvas {
             size_t off = 0;
             str->text = ReadUTF16String(d, off, record.data.size());
         }
-        CurrentNode()->AddChild(str);
+        AttachNode(str);
+    }
+
+    void XARDocument::ParseTextCharRecord(const XARRecord& record) {
+        // A single UTF-16 code unit as its own object — used for characters
+        // whose attributes differ from their neighbours (dingbats, the big
+        // numerals in the samples). Modelled as a one-character string.
+        if (record.data.size() < 2) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        uint16_t code = ReadUInt16(d, off);
+        auto str = std::make_shared<XARTextStringNode>();
+        str->fromCharRecord = true;
+        ApplyCurrentAttributesTo(str);
+        // Encode the BMP code point as UTF-8.
+        if (code < 0x80) {
+            str->text.push_back(static_cast<char>(code));
+        } else if (code < 0x800) {
+            str->text.push_back(static_cast<char>(0xC0 | (code >> 6)));
+            str->text.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+        } else {
+            str->text.push_back(static_cast<char>(0xE0 | (code >> 12)));
+            str->text.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3F)));
+            str->text.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+        }
+        AttachNode(str);
+    }
+
+    void XARDocument::ParseTextKernRecord(const XARRecord& record) {
+        if (record.data.size() < 8) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        auto kern = std::make_shared<XARTextKernNode>();
+        kern->offset = ReadCoord(d, off);
+        AttachNode(kern);
+    }
+
+    void XARDocument::ParseTextLineInfoRecord(const XARRecord& record) {
+        // Layout: INT32 line width as Xara computed it, INT32 ascent, INT32
+        // step from the previous line's baseline (negative = down, 0 on the
+        // story's first line). Accumulating the steps gives each line's
+        // exact baseline offset, replacing the leading heuristic.
+        if (record.data.size() < 4) return;
+        if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            line->lineWidthMP = ReadInt32(d, off);
+            if (record.data.size() >= 12) {
+                ReadInt32(d, off);                          // ascent
+                storyLineOffsetMP += ReadInt32(d, off);
+                line->yOffsetMP = static_cast<int32_t>(storyLineOffsetMP);
+                line->hasYOffset = true;
+            }
+        }
     }
 
     void XARDocument::ParseTextAttrRecord(const XARRecord& record) {
@@ -1564,18 +2172,19 @@ namespace UltraCanvas {
         XARFontDefinition fd;
         fd.sequenceNumber = currentSequenceNumber;
         fd.isTrueType = isTrueType;
-        if (record.data.size() >= 12) {
+        if (record.data.size() >= 2) {
             const uint8_t* d = record.data.data();
             size_t off = 0;
-            for (int i = 0; i < 10 && off < record.data.size(); ++i) fd.panose[i] = d[off++];
-            // Skip flags + reserved bytes (variable per font flavor)
-            // Find the font name: it's a Unicode string at the end
-            // Heuristic: scan back from end looking for trailing 0x0000
-            // For best-effort, skip 2 more bytes then read string
-            if (off + 2 <= record.data.size()) off += 2;
+            // Layout (verified against Designer Pro X19 output): the typeface
+            // name as a null-terminated UTF-16 string, then the full font
+            // name, then the panose classification bytes.
             fd.fontName = ReadUTF16String(d, off, record.data.size() - off);
+            fd.familyName = ReadUTF16String(d, off, record.data.size() - off);
+            if (fd.familyName.empty()) fd.familyName = fd.fontName;
+            for (int i = 0; i < 10 && off < record.data.size(); ++i) {
+                fd.panose[i] = d[off++];
+            }
         }
-        fd.familyName = fd.fontName;
         fonts[currentSequenceNumber] = std::move(fd);
     }
 
@@ -1866,6 +2475,9 @@ namespace UltraCanvas {
             currentContext.fill.profileBias = ReadDouble(d, off);
             currentContext.fill.profileGain = ReadDouble(d, off);
         }
+        // The bitmap definition always precedes its use, so resolve the
+        // reference now; the table entry outlives every node snapshot.
+        currentContext.fill.bitmapDef = GetBitmap(currentContext.fill.bitmapRef);
         currentContext.hasFill = true;
     }
 
@@ -2204,9 +2816,9 @@ namespace UltraCanvas {
 
 // ===== NODE STACK =====
 
-    void XARDocument::PushNode(XARNodePtr node) {
+    void XARDocument::AttachNode(XARNodePtr node) {
         CurrentNode()->AddChild(node);
-        nodeStack.push(node);
+        lastNode = node;
     }
 
     void XARDocument::PopNode() {
@@ -2224,6 +2836,7 @@ namespace UltraCanvas {
             havePendingBounds = false;
         }
         CurrentNode()->AddChild(node);
+        lastNode = node;
     }
 
     void XARDocument::ApplyCurrentAttributesTo(XARNodePtr node) {
@@ -2311,13 +2924,16 @@ namespace UltraCanvas {
     }
 
     XARMatrix XARDocument::ReadMatrix(const uint8_t* d, size_t& o) {
+        // On-disk MATRIX per the Xar spec: a,b,c,d as signed 16.16 fixed
+        // point, e,f as INT32 millipoints — 24 bytes total (matches Xara
+        // LX's CXaraFileRecord::ReadMatrix).
         XARMatrix m;
-        m.a = ReadDouble(d, o);
-        m.b = ReadDouble(d, o);
-        m.c = ReadDouble(d, o);
-        m.d = ReadDouble(d, o);
-        m.e = ReadDouble(d, o);
-        m.f = ReadDouble(d, o);
+        m.a = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.b = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.c = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.d = static_cast<double>(ReadInt32(d, o)) / 65536.0;
+        m.e = static_cast<double>(ReadInt32(d, o));
+        m.f = static_cast<double>(ReadInt32(d, o));
         return m;
     }
 
@@ -2328,9 +2944,11 @@ namespace UltraCanvas {
         return Color(r, g, b, 255);
     }
 
-    Point2Di XARDocument::ReadRelativeCoord(const uint8_t* d, size_t& o, Point2Di& last) {
-        // 8 bytes, byte-interleaved MSB-first delta from `last`.
-        // (X = b0,b2,b4,b6 ; Y = b1,b3,b5,b7) each MSB-first.
+    Point2Di XARDocument::ReadRelativeCoord(const uint8_t* d, size_t& o, Point2Di& last,
+                                            bool firstCoord) {
+        // 8 bytes, byte-interleaved MSB-first (X = b0,b2,b4,b6 ;
+        // Y = b1,b3,b5,b7). The first coordinate of a record is absolute;
+        // subsequent ones store the reverse delta (previous minus current).
         uint8_t b[8];
         for (int i = 0; i < 8; ++i) b[i] = d[o + i];
         o += 8;
@@ -2338,9 +2956,10 @@ namespace UltraCanvas {
                       | (uint32_t(b[4]) << 8)  | uint32_t(b[6]);
         uint32_t yRaw = (uint32_t(b[1]) << 24) | (uint32_t(b[3]) << 16)
                       | (uint32_t(b[5]) << 8)  | uint32_t(b[7]);
-        int32_t dx = static_cast<int32_t>(xRaw);
-        int32_t dy = static_cast<int32_t>(yRaw);
-        Point2Di abs(last.x + dx, last.y + dy);
+        int32_t vx = static_cast<int32_t>(xRaw);
+        int32_t vy = static_cast<int32_t>(yRaw);
+        Point2Di abs = firstCoord ? Point2Di(vx, vy)
+                                  : Point2Di(last.x - vx, last.y - vy);
         last = abs;
         return abs;
     }
@@ -2348,12 +2967,50 @@ namespace UltraCanvas {
 // ===== RENDER =====
 
     void XARDocument::Render(IRenderContext* ctx, float scale) {
+        // Multi-spread documents render one page at a time — every spread's
+        // coordinates restart at its own origin, so drawing them all at once
+        // would overlay every page.
+        if (!spreadNodes.empty()) {
+            RenderPage(ctx, 0, scale);
+            return;
+        }
         if (!root) return;
         ctx->PushState();
         // XAR uses Y-up coordinates; flip to Y-down screen space
         ctx->Translate(0, height);
         ctx->Scale(1.0f, -1.0f);
         root->Render(ctx, scale);
+        ctx->PopState();
+    }
+
+    int XARDocument::GetPageCount() const {
+        return spreadNodes.empty() ? 1 : static_cast<int>(spreadNodes.size());
+    }
+
+    float XARDocument::GetPageWidth(int page) const {
+        if (page >= 0 && page < static_cast<int>(spreadNodes.size()) &&
+            spreadNodes[page]->width > 0) {
+            return spreadNodes[page]->GetWidthInPixels();
+        }
+        return width;
+    }
+
+    float XARDocument::GetPageHeight(int page) const {
+        if (page >= 0 && page < static_cast<int>(spreadNodes.size()) &&
+            spreadNodes[page]->height > 0) {
+            return spreadNodes[page]->GetHeightInPixels();
+        }
+        return height;
+    }
+
+    void XARDocument::RenderPage(IRenderContext* ctx, int page, float scale) {
+        if (spreadNodes.empty()) { Render(ctx, scale); return; }
+        if (page < 0 || page >= static_cast<int>(spreadNodes.size())) return;
+        ctx->PushState();
+        // XAR uses Y-up coordinates; flip against this spread's own height.
+        ctx->Translate(0, GetPageHeight(page) * scale);
+        ctx->Scale(1.0f, -1.0f);
+        spreadNodes[page]->Render(ctx, scale);
         ctx->PopState();
     }
 
@@ -2394,8 +3051,8 @@ namespace UltraCanvas {
         if (!document || !ctx) return;
         Rect2Di bounds = GetBounds();
         ctx->PushState();
-        float docW = document->GetWidth();
-        float docH = document->GetHeight();
+        float docW = document->GetPageWidth(currentPage);
+        float docH = document->GetPageHeight(currentPage);
         if (docW > 0 && docH > 0) {
             float scaleX = static_cast<float>(bounds.width) / docW;
             float scaleY = static_cast<float>(bounds.height) / docH;
@@ -2413,9 +3070,22 @@ namespace UltraCanvas {
                 ctx->Scale(scaleX * scale, scaleY * scale);
                 renderScale = 1.0f;
             }
-            document->Render(ctx, renderScale);
+            // White page behind the drawing, like Xara's own canvas — the
+            // host surface (e.g. the fullscreen viewer) may be dark.
+            ctx->SetFillPaint(Color(255, 255, 255, 255));
+            ctx->FillRectangle(Rect2Dd(0, 0, docW * renderScale, docH * renderScale));
+            document->RenderPage(ctx, currentPage, renderScale);
         }
         ctx->PopState();
+    }
+
+    void UltraCanvasXARElement::SetCurrentPage(int page) {
+        if (!document) return;
+        int clamped = std::clamp(page, 0, document->GetPageCount() - 1);
+        if (clamped == currentPage) return;
+        currentPage = clamped;
+        RequestRedraw();
+        if (onPageChanged) onPageChanged(currentPage);
     }
 
 // ===== PLUGIN =====
