@@ -1,4 +1,4 @@
-#### 2026-08-26 *0.3.70*
+#### 2026-08-26 *0.3.72*
 - **The XAR renderer draws real Xara files correctly now.** Files written by
   a modern Xara (Designer Pro X19) displayed as scattered, unfilled
   fragments; the repo's `demo.xar` now reproduces its embedded preview —
@@ -52,6 +52,51 @@
   for comparison against reference screenshots. It doubles as a parse
   regression test over `media/xar/`.
 
+#### 2026-08-26 *0.3.71*
+- **CDR files can be saved as SVG.** The CDR plugin gains an export API:
+  `UltraCanvasCDRPlugin::ExportToSVG(cdrPath, svgPath, pageIndex)` re-parses
+  the CorelDRAW/CMX source through librevenge's `RVNGSVGDrawingGenerator`, so
+  everything libcdr understands — paths, shapes, gradients, text, embedded
+  bitmaps — is preserved in the SVG. `pageIndex` selects one page; `-1`
+  exports every page (page N ≥ 2 to `<stem>-p<N>.svg`, since SVG has no
+  multi-page form). No new dependency: the generator ships in core
+  librevenge. `ExportToXAR` exists as API but reports "not implemented yet"
+  with the reason (the XAR writer exports only from the `VectorStorage`
+  model, which nothing imports CDR into yet) instead of writing a broken
+  file; results come back as `CDRExportResult{success, error, writtenFiles}`.
+- **The demo's CDR page shows its samples again, each with a "Save as…"
+  button.** The `demo1.cdr` and `detailed.cdr` (zoom demo) tiles were
+  commented out — re-enabled against the samples that ship in `media/cdr/`,
+  alongside `demo.cdr` and the multi-page `logo.cdr`. Every tile gets a
+  "Save as…" button: native save dialog offering SVG and XAR (marked "not
+  finished yet"), exporting the page currently shown; the outcome — files
+  written or the exact error — lands in the page's status label. The CMX
+  tile stays disabled until a `.cmx` sample ships.
+
+#### 2026-08-26 *0.3.70*
+- **The CDR and XAR graphics plugins are actually registered now, so the File
+  Loader can see them.** Both plugins compiled, and the demo displayed them by
+  constructing the elements directly — but the one `RegisterCDRPlugin()` call
+  had been commented out, so `UltraCanvasGraphicsPluginRegistry` stayed empty:
+  the File Loader's supported-format inventory never listed `cdr`/`cmx`/`ccx`/
+  `cdt` (or `xar`), and extension-based dispatch (`LoadGraphicsFile`) returned
+  null for files both plugins could parse. The demo now registers each plugin
+  at startup under its `ULTRACANVAS_HAS_*_PLUGIN` guard, exactly as the docs'
+  integration checklist prescribes. Verified end-to-end: with registration,
+  `UltraCanvasFileLoader::GetSupportedFormats(Vector)` reports all four CDR
+  extensions with the plugin as provider, and `LoadGraphicsFile()` parses every
+  sample under `media/cdr/` into a loaded multi-page element.
+- **CDR plugin build cleanup.** The plugin's CMakeLists demanded libvips,
+  vips-cpp and glib-2.0 as `REQUIRED` although the plugin never uses any of
+  them (parsing is libcdr + librevenge; images decode through `UCImage`) —
+  a stray hard dependency that broke the build on systems without libvips
+  headers. Removed, along with the unused include paths. The plugin now builds
+  against exactly what it links: libcdr, librevenge, and the UltraCanvas core.
+- Elements the CDR plugin creates for the registry are now named from a
+  monotonic counter instead of `rand()`, so identifiers cannot collide.
+- Fixed the vector storage plugin's target name typo:
+  `UltraCanvasVectorlugin` → `UltraCanvasVectorPlugin` (referenced only
+  through exported variables, so nothing else moves).
 #### 2026-08-25 *0.3.69*
 - **Transparent images get their backdrop colours under the picture.** Until
   now the only way to change what shows through a transparent PNG or an SVG was
