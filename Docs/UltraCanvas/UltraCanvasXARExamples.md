@@ -168,8 +168,40 @@ public:
     const std::string& GetProducerVersion() const;
     const std::string& GetProducerBuild() const;
     const std::string& GetFileType() const;
+
+    // Parse diagnostics — filled during LoadFromFile / LoadFromMemory
+    struct XARParseDiagnostics {
+        size_t recordCount;                                 // records dispatched
+        std::unordered_map<uint32_t, size_t> unhandledTags; // tag value -> occurrences
+        std::vector<std::string> warnings;                  // structural problems
+    };
+    const XARParseDiagnostics& GetDiagnostics() const;
 };
 ```
+
+#### Parse Diagnostics & Triage
+
+XAR support is **not feature-complete**: some files display partially or
+incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
+(successful or not):
+
+- `unhandledTags` — record types the parser consumed without acting on. A
+  file that leans on one of these needs the matching record handler
+  implemented; tag values are the Xar Format Specification, Appendix A.
+- `warnings` — structural parse problems (bad signature, truncated record,
+  failed decompression). These are parser defects or corrupt files.
+- `recordCount` — how much of the file was walked before parsing stopped.
+
+`Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
+target exists) runs this triage from the command line: it prints the node
+tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
+samples or for any `.xar` files passed as arguments — the first thing to run
+on a file that renders wrong.
+
+Known renderer gaps (parse succeeds, display is approximate): bitmap /
+fractal / noise fills fall back to flat or simplified paints, transparency
+tiling modes are treated as flat, brush strokes render as plain lines, and
+text layout is minimal (no kerning / tabs / indents).
 
 ### XARNode
 

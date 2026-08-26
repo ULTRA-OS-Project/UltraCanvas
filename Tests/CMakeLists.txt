@@ -921,6 +921,32 @@ message(STATUS "    Test registered: ElementPluginTest")
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
+# ===== XAR PROBE TEST =====
+# Parses the repo's XAR samples through the XAR plugin's XARDocument and
+# reports node-tree statistics, unhandled record tags and parse warnings —
+# the triage tool for XAR files that display wrong. Needs the plugin (and
+# through it the framework), so it only builds when the plugin does.
+if(TARGET UltraCanvasXARPlugin)
+    message(STATUS "  Building XARProbeTest...")
+    add_executable(XARProbeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARProbeTest.cpp
+    )
+    target_include_directories(XARProbeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARProbeTest PRIVATE cxx_std_20)
+    target_link_libraries(XARProbeTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
+    target_compile_definitions(XARProbeTest PRIVATE
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/xar"
+    )
+    set_target_properties(XARProbeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME XARProbeTest COMMAND XARProbeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: XARProbeTest")
+else()
+    message(STATUS "  XARProbeTest skipped (UltraCanvasXARPlugin target not present)")
+endif()
+
 # Example:
 # add_executable(AnotherTest
 #     ${CMAKE_CURRENT_SOURCE_DIR}/AnotherTest.cpp

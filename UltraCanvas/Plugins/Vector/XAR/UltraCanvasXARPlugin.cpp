@@ -446,9 +446,16 @@ namespace UltraCanvas {
     }
 
     bool XARDocument::LoadFromMemory(const uint8_t* data, size_t size) {
-        if (!data || size < 16) return false;
+        diagnostics = XARParseDiagnostics{};
+        if (!data || size < 16) {
+            Warn("File too small to be a XAR document");
+            return false;
+        }
         StreamFrame outer{data, size, 0};
-        if (!ParseHeader(outer)) return false;
+        if (!ParseHeader(outer)) {
+            Warn("Missing XARA file signature");
+            return false;
+        }
         curData = outer.data;
         curSize = outer.size;
         curOffset = outer.offset;
@@ -505,6 +512,7 @@ namespace UltraCanvas {
             uint32_t recSize = ReadUInt32(curData, curOffset);
 
             currentSequenceNumber++;
+            diagnostics.recordCount++;
 
             if (tag == XARTag::TAG_ENDOFFILE) {
                 return true;
@@ -520,6 +528,8 @@ namespace UltraCanvas {
                 std::vector<uint8_t> inflated;
                 size_t consumed = 0;
                 if (!DecompressZlib(curData + curOffset, curSize - curOffset, inflated, consumed)) {
+                    Warn("Compressed section failed to inflate at record " +
+                         std::to_string(currentSequenceNumber));
                     return false;
                 }
                 StreamFrame outer{curData, curSize, curOffset + consumed};
@@ -551,7 +561,8 @@ namespace UltraCanvas {
             record.tag = tag;
             record.size = recSize;
             if (curOffset + recSize > curSize) {
-                // Truncated record; bail
+                Warn("Truncated record " + std::to_string(currentSequenceNumber) +
+                     " (tag " + std::to_string(static_cast<uint32_t>(tag)) + ")");
                 return false;
             }
             if (recSize > 0) {
@@ -1046,7 +1057,10 @@ namespace UltraCanvas {
                 break;
 
             default:
-                // Unknown / not yet implemented; consumed safely
+                // Unknown / not yet implemented; consumed safely but counted,
+                // so a file that leans on a record type this parser skips can
+                // be triaged (see GetDiagnostics / Tests/XARProbeTest.cpp).
+                diagnostics.unhandledTags[static_cast<uint32_t>(record.tag)]++;
                 break;
         }
     }

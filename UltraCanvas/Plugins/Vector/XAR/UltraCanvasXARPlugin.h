@@ -975,7 +975,24 @@ namespace UltraCanvas {
         const std::string& GetProducerBuild() const { return producerBuild; }
         const std::string& GetFileType() const { return fileType; }
 
+        // ===== PARSE DIAGNOSTICS =====
+        // Filled during LoadFromFile / LoadFromMemory: how many records were
+        // dispatched, which record tags the parser consumed without handling,
+        // and what went structurally wrong. The XAR renderer is not
+        // feature-complete yet — this is how a file that displays wrong is
+        // triaged (see Tests/XARProbeTest.cpp): an unhandled tag a file leans
+        // on is a feature to implement, a warning is a parse defect.
+        struct XARParseDiagnostics {
+            size_t recordCount = 0;                            // records dispatched
+            std::unordered_map<uint32_t, size_t> unhandledTags; // tag value -> occurrences
+            std::vector<std::string> warnings;                  // structural problems
+        };
+        const XARParseDiagnostics& GetDiagnostics() const { return diagnostics; }
+
     private:
+        XARParseDiagnostics diagnostics;
+        void Warn(const std::string& message) { diagnostics.warnings.push_back(message); }
+
         // Stream reader: switches between outer (raw) and inflated streams
         struct StreamFrame {
             const uint8_t* data;
