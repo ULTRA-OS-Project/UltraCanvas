@@ -411,19 +411,20 @@ namespace UltraCanvas {
         int n = std::clamp(numSides, 3, 512);
         const double step = 2.0 * M_PI / n;
 
-        // The axes run from the centre to the middles of two adjacent edges.
-        // A circle/ellipse uses them as radii directly; a polygon's vertices
-        // sit half a step off the axes, pushed out from the edge-midpoint
-        // (apothem) distance to the circumradius.
+        // The axes are the radii of the shape's circumscribing ellipse. A
+        // circle/ellipse samples it directly; a polygon's vertices lie ON
+        // that ellipse, offset half a step from the axes — so a 4-sided
+        // shape with axis-aligned axes is an axis-aligned square whose
+        // corners sit at (±major + ±minor)/√2. Verified against the square
+        // mosaics in backside.xar (21.5pt grid pitch = the square side).
         const bool asEllipse = isCircular;
         const int count = asEllipse ? 64 : n;
         const double vertexStep = asEllipse ? (2.0 * M_PI / count) : step;
-        const double k = asEllipse ? 1.0 : (1.0 / std::cos(M_PI / n));
         const double phase = asEllipse ? 0.0 : (M_PI / n);
 
         for (int i = 0; i < count; ++i) {
             double phi = phase + i * vertexStep;
-            double cs = std::cos(phi) * k, sn = std::sin(phi) * k;
+            double cs = std::cos(phi), sn = std::sin(phi);
             double x = centre.x + majorAxis.x * cs + minorAxis.x * sn;
             double y = centre.y + majorAxis.y * cs + minorAxis.y * sn;
             double tx = transform.a * x + transform.c * y + transform.e;
