@@ -978,6 +978,40 @@ if(TARGET UltraCanvasEPSPlugin)
     message(STATUS "    Test registered: EPSProbeTest")
 endif()
 
+# Round-trips a VectorDocument through the Vector plugin's EPS writer and the
+# EPS plugin's PostScript interpreter: DSC header, every operator understood,
+# no interpreter warnings, and (with cairo) pixel placement. Needs both
+# plugins.
+if(TARGET UltraCanvasEPSPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building EPSWriterTest...")
+    add_executable(EPSWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EPSWriterTest.cpp
+    )
+    target_include_directories(EPSWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EPSWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(EPSWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasEPSPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(EPSWRITER_CAIRO cairo)
+            if(EPSWRITER_CAIRO_FOUND)
+                target_compile_definitions(EPSWriterTest PRIVATE EPSWRITER_HAVE_CAIRO=1)
+                target_include_directories(EPSWriterTest PRIVATE ${EPSWRITER_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(EPSWriterTest PRIVATE ${EPSWRITER_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(EPSWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EPSWriterTest COMMAND EPSWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EPSWriterTest")
+else()
+    message(STATUS "  EPSWriterTest skipped (needs UltraCanvasEPSPlugin and UltraCanvasVectorPlugin)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

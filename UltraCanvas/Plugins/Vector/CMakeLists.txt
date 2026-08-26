@@ -23,6 +23,7 @@ set(VECTOR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorRenderer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorStorage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasXARConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEPSConverter.cpp
 )
 
 set(VECTOR_PLUGIN_HEADERS

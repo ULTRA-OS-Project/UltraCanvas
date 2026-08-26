@@ -1,4 +1,29 @@
 #### 2026-08-26 *0.3.75*
+- **EPS files can be written now.** New `VectorConverter::EPSConverter`
+  (`Plugins/Vector/UltraCanvasEPSConverter.{h,cpp}`) serializes a
+  `VectorStorage::VectorDocument` as an EPSF-3.0 PostScript program:
+  DSC header with `%%BoundingBox`, shapes and paths as move/line/curve
+  operators (sharing the writers' path normalisation, see below), solid
+  fills, stroke width/caps/joins/mitre/dash, and text via
+  `selectfont`/`show` with per-span fonts, centre/right anchoring done in
+  PostScript with `stringwidth`, and proper string escaping. Transforms are
+  baked into the coordinates with the Y-axis flip. PostScript has no
+  transparency and the plain operator set has no gradients, so opacity
+  flattens toward the white page and gradients fall back to the blend of
+  their end stops — each reported through the warning callback. The writer
+  emits only operators the EPS plugin's interpreter knows:
+  `Tests/EPSWriterTest.cpp` round-trips a document through the writer and
+  that interpreter (header fields, zero unknown operators, zero warnings,
+  pixel placement), and ghostscript renders the same output identically.
+  The converter is export-only — reading EPS stays with the EPS plugin.
+- The `%%Title`/`%%Creator` DSC values now unwrap a parenthesized
+  PostScript string (`%%Title: (name.ai)`), the form Adobe Illustrator
+  writes.
+- The path normalisation shared by the format writers (every
+  `PathCommandType` down to absolute move/line/cubic segments, SVG arcs
+  via endpoint-to-centre conversion, and the rounded-rect/ellipse
+  builders) moved from the XAR writer into
+  `Plugins/Vector/UltraCanvasVectorPathOps.h`, used by both converters.
 - **XAR files can be written now.** `VectorConverter::XARConverter::Export`
   (and `ExportToString`/`ExportToStream`) serializes a
   `VectorStorage::VectorDocument` into the XAR record grammar the

@@ -2421,6 +2421,11 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
                 size_t b = v.find_first_not_of(": \t");
                 v = (b == std::string::npos) ? "" : v.substr(b);
                 if (v.find("(atend)") != std::string::npos) { at = ve; continue; }
+                // Some producers (Adobe Illustrator among them) write the
+                // value as a parenthesized PostScript string.
+                if (v.size() >= 2 && v.front() == '(' && v.back() == ')') {
+                    v = v.substr(1, v.size() - 2);
+                }
                 out = v;
                 return true;
             }
