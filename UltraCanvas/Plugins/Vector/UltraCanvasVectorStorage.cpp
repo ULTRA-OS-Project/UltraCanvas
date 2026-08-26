@@ -1349,8 +1349,11 @@ Matrix3x3 ParseTransformString(const std::string& transformStr) {
         } else if (func == "skewY" && values.size() >= 1) {
             result = result * Matrix3x3::SkewY(values[0] * M_PI / 180.0f);
         } else if (func == "matrix" && values.size() >= 6) {
+            // SVG matrix(a,b,c,d,e,f) is column-major: x' = a*x + c*y + e.
+            // FromValues(A,B,...) is row-major (x' = A*x + B*y + e), so b and
+            // c swap places.  SerializeTransform writes the mirror image.
             result = result * Matrix3x3::FromValues(
-                values[0], values[1], values[2], 
+                values[0], values[2], values[1],
                 values[3], values[4], values[5]
             );
         }

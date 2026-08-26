@@ -1,4 +1,39 @@
 #### 2026-08-26 *0.3.76*
+- **SVG can be read and written now — the declared `SVGConverter` exists.**
+  `VectorConverter::SVGConverter` was declared in
+  `UltraCanvasVectorConverter.h` but had no implementation anywhere; the new
+  `UltraCanvasSVGConverter.cpp` implements both directions, and it is the
+  one converter with lossless fidelity because the `VectorStorage` model is
+  essentially SVG-shaped. Export keeps groups/layers as `<g>`, transforms as
+  `matrix()` attributes, gradients with every stop in `<defs>`, patterns
+  with their content, multi-span text with `xml:space="preserve"`, dashes,
+  opacity and `<use>`/`<symbol>`/`<image>`. Import (tinyxml2) covers all
+  basic shapes, paths, groups, presentation attributes and inline
+  `style=""`, `url(#id)` gradient resolution with one level of `href`
+  inheritance, tspans, entities and CSS-unit conversion; a document whose
+  top level is all `<g>` elements imports them as layers. Round-trip
+  coverage in `Tests/SVGConverterTest.cpp` includes rasterizing the export
+  through the framework's real SVG pipeline (librsvg) with pixel checks —
+  an independent renderer accepts the output.
+- **Vector PDF can be written now — the declared `PDFVectorConverter`
+  exists.** Also previously declaration-only vapor. Writes a
+  self-contained, hand-assembled PDF 1.4: catalog/pages/page objects, a
+  content stream of path and text operators (transforms baked through the
+  shared `PathOps` walk, Y axis flipped to PDF's page space), base-14
+  Type1 fonts mapped from font families (bold/italic variants included),
+  ExtGState entries for opacity, dash patterns, and a correct xref table.
+  Gradients fall back to the blend of their end stops and centre/right
+  text anchoring is approximated from an average glyph width — each
+  warned. Export-only: reading PDF stays with the MuPDF plugin, and the
+  converter's `CanImport()` now says so honestly. Validated in
+  `Tests/PDFVectorWriterTest.cpp`: structural checks including xref
+  offsets that really point at their objects, plus a ghostscript
+  rasterization with pixel checks.
+- **SVG `matrix(a,b,c,d,e,f)` transforms parse correctly now.**
+  `ParseTransformString` fed SVG's column-major b and c straight into the
+  row-major `Matrix3x3::FromValues`, transposing every skew and rotation
+  it imported; the two values now swap places, matching what
+  `SerializeTransform` (which was already correct) writes.
 - **CDR files can be written now.** New `VectorConverter::CDRConverter`
   (`Plugins/Vector/UltraCanvasCDRConverter.{h,cpp}`) serializes a
   `VectorStorage::VectorDocument` as a version-7 RIFF CDR file. CorelDRAW's

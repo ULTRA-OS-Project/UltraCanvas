@@ -16,6 +16,7 @@ message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 pkg_check_modules(LIBZLIB REQUIRED zlib)
+pkg_check_modules(LIBTINYXML2 REQUIRED tinyxml2)
 
 # ===== SOURCE FILES =====
 set(VECTOR_PLUGIN_SOURCES
@@ -25,6 +26,8 @@ set(VECTOR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasXARConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEPSConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasCDRConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasSVGConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasPDFVectorConverter.cpp
 )
 
 set(VECTOR_PLUGIN_HEADERS
@@ -52,11 +55,13 @@ target_include_directories(${PLUGIN_NAME}
     PRIVATE
         ${LIBVIPS_INCLUDE_DIRS}
         ${LIBZLIB_INCLUDE_DIRS}
+        ${LIBTINYXML2_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PLUGIN_NAME}
         PUBLIC
         ${LIBZLIB_LIBRARIES}
+        ${LIBTINYXML2_LIBRARIES}
         PRIVATE
         UltraCanvas   # core: declares the link edge so the static plugin's core
                       # symbol references resolve at final link (GNU/MinGW ld order).

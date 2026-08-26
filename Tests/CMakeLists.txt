@@ -1045,6 +1045,49 @@ else()
     message(STATUS "  CDRWriterTest skipped (needs UltraCanvasCDRPlugin and UltraCanvasVectorPlugin)")
 endif()
 
+# Round-trips a VectorDocument through the Vector plugin's SVG converter in
+# both directions (export -> import, structural comparison), rasterizes the
+# export through the framework's real SVG pipeline, and parses a hand-written
+# snippet for importer robustness.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building SVGConverterTest...")
+    add_executable(SVGConverterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SVGConverterTest.cpp
+    )
+    target_include_directories(SVGConverterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SVGConverterTest PRIVATE cxx_std_20)
+    target_link_libraries(SVGConverterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(SVGConverterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SVGConverterTest COMMAND SVGConverterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SVGConverterTest")
+else()
+    message(STATUS "  SVGConverterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's PDF writer: structural checks (an xref table
+# whose offsets really point at their objects, resources, operators) plus a
+# ghostscript rasterization with pixel checks when gs is installed.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building PDFVectorWriterTest...")
+    add_executable(PDFVectorWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PDFVectorWriterTest.cpp
+    )
+    target_include_directories(PDFVectorWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PDFVectorWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(PDFVectorWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(PDFVectorWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PDFVectorWriterTest COMMAND PDFVectorWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PDFVectorWriterTest")
+else()
+    message(STATUS "  PDFVectorWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
