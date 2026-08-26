@@ -138,6 +138,17 @@ if(BUILD_DEMO_APP)
         "Selectable charts linked into the library: 'all', empty, or a ;-list of keys")
 endif()
 
+# Which platforms ship a native folder-watch backend (UltraCanvasFolderWatcher:
+# inotify / ReadDirectoryChangesW). Decided HERE, above every add_subdirectory,
+# because the library and Tests/ are sibling scopes and both must agree: the
+# core file compiles a null-returning fallback unless this is set, so a
+# disagreement is either a duplicate symbol or a missing one at link time.
+# Adding a platform means dropping its backend under OS/<Platform>/ and adding
+# it to the condition below.
+if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
+endif()
+
 add_subdirectory(UltraCanvas)
 
 # ===== BUILD ULTRAAI MODULE =====
@@ -550,6 +561,18 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     add_subdirectory(Tests/UltraNet)
     message(STATUS "")
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
+endif()
+
+# ===== ULTRAWIN SETUP CLI =====
+# ultrawin-setup: the console driver for the VM tier's real-hardware
+# validation (provision from install media, boot, watch, launch). Plain
+# CLI over the UltraWin API — built wherever UltraWin is.
+option(BUILD_ULTRAWIN_SETUP "Build the ultrawin-setup CLI tool" ON)
+if(BUILD_ULTRAWIN_SETUP AND TARGET UltraWin)
+    add_executable(ultrawin-setup Apps/UltraWinSetup/main.cpp)
+    target_compile_features(ultrawin-setup PRIVATE cxx_std_20)
+    target_link_libraries(ultrawin-setup PRIVATE UltraWin)
+    message(STATUS "  [✓] ultrawin-setup CLI - ENABLED")
 endif()
 
 # ===== ULTRAWIN TESTS =====

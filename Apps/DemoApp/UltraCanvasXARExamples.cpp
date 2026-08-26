@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasXARExamples.cpp
-// xar vector graphics demo examples for UltraCanvas Framework
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Xara (.xar) vector graphics demo examples for UltraCanvas Framework
+// Version: 1.1.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -10,8 +10,8 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
 #include "../Plugins/Vector/XAR/UltraCanvasXARPlugin.h"
-#include <iostream>
 #include <memory>
+#include <string>
 
 namespace UltraCanvas {
 
@@ -46,16 +46,47 @@ namespace UltraCanvas {
             fullscreenWindow = CreateWindow(config);
             fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
 
-            // Create fullscreen XAR element
             auto fullscreenXAR = std::make_shared<UltraCanvasXARElement>(
                     "FullscreenXAR", 0, 50, screenWidth, screenHeight - 100);
-            //fullscreenXAR->CenterDocument();
-
             if (!xarFilePath.empty()) {
                 fullscreenXAR->LoadFromFile(xarFilePath);
             }
-
             fullscreenWindow->AddChild(fullscreenXAR);
+
+            // Page navigation (multi-page documents render one spread at a time)
+            auto btnPrev = std::make_shared<UltraCanvasButton>("BtnPrev", 10, 10, 80, 30);
+            btnPrev->SetText("◀ Prev");
+            btnPrev->SetColors(Color(60, 60, 65, 255));
+            btnPrev->SetTextColors(Colors::White);
+            btnPrev->onClick = [fullscreenXAR]() {
+                if (fullscreenXAR->IsLoaded()) {
+                    fullscreenXAR->SetCurrentPage(fullscreenXAR->GetCurrentPage() - 1);
+                }
+            };
+            fullscreenWindow->AddChild(btnPrev);
+
+            auto btnNext = std::make_shared<UltraCanvasButton>("BtnNext", 100, 10, 80, 30);
+            btnNext->SetText("Next ▶");
+            btnNext->SetColors(Color(60, 60, 65, 255));
+            btnNext->SetTextColors(Colors::White);
+            btnNext->onClick = [fullscreenXAR]() {
+                if (fullscreenXAR->IsLoaded()) {
+                    fullscreenXAR->SetCurrentPage(fullscreenXAR->GetCurrentPage() + 1);
+                }
+            };
+            fullscreenWindow->AddChild(btnNext);
+
+            auto pageLabel = std::make_shared<UltraCanvasLabel>("PageLabel", 200, 10, 150, 30);
+            pageLabel->SetTextColor(Colors::White);
+            if (fullscreenXAR->IsLoaded()) {
+                pageLabel->SetText("Page 1/" + std::to_string(fullscreenXAR->GetPageCount()));
+            }
+            fullscreenWindow->AddChild(pageLabel);
+
+            fullscreenXAR->onPageChanged = [pageLabel, fullscreenXAR](int page) {
+                pageLabel->SetText("Page " + std::to_string(page + 1) + "/" +
+                                   std::to_string(fullscreenXAR->GetPageCount()));
+            };
 
             // Zoom buttons
             auto btnZoomOut = std::make_shared<UltraCanvasButton>("BtnZoomOut", 400, 10, 40, 30);
@@ -81,6 +112,7 @@ namespace UltraCanvas {
             btnFitPage->SetColors(Color(60, 60, 65, 255));
             btnFitPage->SetTextColors(Colors::White);
             btnFitPage->onClick = [fullscreenXAR]() {
+                fullscreenXAR->SetScale(1.0f);
                 fullscreenXAR->SetPreserveAspectRatio(true);
             };
             fullscreenWindow->AddChild(btnFitPage);
@@ -115,14 +147,14 @@ namespace UltraCanvas {
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("XARTitle", 10, 10, 600, 30);
-        title->SetText("CorelDRAW XAR Graphics Demo - Click to View Fullscreen");
+        title->SetText("Xara (.xar) Graphics Demo - Click to View Fullscreen");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("XARDescription", 10, 45, 700, 40);
-        description->SetText("Click on XAR images to open in fullscreen mode. Use navigation buttons for multi-page files.\nPress ESC to close fullscreen view. Supports XAR, CMX, CCX, CDT formats.");
+        description->SetText("Click a drawing to open it in fullscreen; use the page buttons for multi-page documents\nand the zoom buttons to inspect details. Press ESC to close the fullscreen view.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
@@ -135,253 +167,54 @@ namespace UltraCanvas {
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         container->AddChild(statusLabel);
 
-        // ===== XAR FILE 1 =====
-        auto xarContainer1 = std::make_shared<UltraCanvasContainer>("XARContainer1", 20, 100, 300, 280);
-        xarContainer1->SetBackgroundColor(Colors::White);
-        xarContainer1->SetBorders(2, Color(180, 180, 180, 255));
+        // One tile per sample drawing in media/xar/
+        auto makeTile = [&](const std::string& id, int x, int y,
+                            const std::string& fileName) {
+            auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 280);
+            tile->SetBackgroundColor(Colors::White);
+            tile->SetBorders(2, Color(180, 180, 180, 255));
 
-        auto xarElement1 = std::make_shared<UltraCanvasXARElement>("XAR1", 10, 10, 280, 220);
-        //xarElement1->SetFitMode(XARFitMode::FitPage);
-
-        std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/xar/demo.xar");
-        if (xarElement1->LoadFromFile(xarFile1)) {
-            statusLabel->SetText("Loaded: " + xarFile1);
-        }
-
-        auto xarLabel1 = std::make_shared<UltraCanvasLabel>("XARLabel1", 10, 240, 280, 30);
-        xarLabel1->SetText("demo.xar");
-        xarLabel1->SetAlignment(TextAlignment::Center);
-        xarLabel1->SetFontSize(11);
-        xarContainer1->AddChild(xarLabel1);
-
-        auto demoHandler1 = std::make_shared<XARDemoHandler>(xarFile1);
-        xarElement1->SetEventCallback([demoHandler1, xarContainer1, statusLabel, xarFile1](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler1->OnXARClick();
-                    statusLabel->SetText("Opened fullscreen: " + xarFile1);
-                    return true;
-                case UCEventType::MouseEnter:
-                    xarContainer1->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    xarContainer1->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
+            auto element = std::make_shared<UltraCanvasXARElement>(id + "El", 10, 10, 280, 220);
+            std::string path = NormalizePath(GetResourcesDir() + "media/xar/" + fileName);
+            if (element->LoadFromFile(path)) {
+                statusLabel->SetText("Loaded: " + path);
+            } else {
+                statusLabel->SetText("Failed to load " + path + ": " + element->GetLastError());
             }
-        });
 
-        xarContainer1->AddChild(xarElement1);
-        container->AddChild(xarContainer1);
-/*
-        // ===== XAR FILE 2 =====
-        auto xarContainer2 = std::make_shared<UltraCanvasContainer>("XARContainer2", 340, 100, 300, 280);
-        xarContainer2->SetBackgroundColor(Colors::White);
-        xarContainer2->SetBorders(2, Color(180, 180, 180, 255));
+            auto label = std::make_shared<UltraCanvasLabel>(id + "Label", 10, 240, 280, 30);
+            label->SetText(fileName);
+            label->SetAlignment(TextAlignment::Center);
+            label->SetFontSize(11);
+            tile->AddChild(label);
 
-        auto xarElement2 = std::make_shared<UltraCanvasXARElement>("XAR2", 10, 10, 280, 220);
-        xarElement2->SetFitMode(XARFitMode::FitPage);
+            auto handler = std::make_shared<XARDemoHandler>(path);
+            element->SetEventCallback([handler, tile, statusLabel, path](const UCEvent& event) {
+                switch (event.type) {
+                    case UCEventType::MouseUp:
+                        handler->OnXARClick();
+                        statusLabel->SetText("Opened fullscreen: " + path);
+                        return true;
+                    case UCEventType::MouseEnter:
+                        tile->SetBordersColor(Color(0, 122, 204, 255));
+                        return true;
+                    case UCEventType::MouseLeave:
+                        tile->SetBordersColor(Color(180, 180, 180, 255));
+                        return true;
+                    default:
+                        return false;
+                }
+            });
 
-        std::string xarFile2 = NormalizePath(GetResourcesDir() + "media/xar/logo.xar");
-        xarElement2->LoadFromFile(xarFile2);
-
-        auto xarLabel2 = std::make_shared<UltraCanvasLabel>("XARLabel2", 10, 240, 280, 30);
-        xarLabel2->SetText("logo.xar");
-        xarLabel2->SetAlignment(TextAlignment::Center);
-        xarLabel2->SetFontSize(11);
-        xarContainer2->AddChild(xarLabel2);
-
-        auto demoHandler2 = std::make_shared<XARDemoHandler>(xarFile2);
-        xarElement2->SetEventCallback([demoHandler2, xarContainer2, statusLabel, xarFile2](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler2->OnXARClick();
-                    statusLabel->SetText("Opened fullscreen: " + xarFile2);
-                    return true;
-                case UCEventType::MouseEnter:
-                    xarContainer2->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    xarContainer2->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
-            }
-        });
-
-        xarContainer2->AddChild(xarElement2);
-        container->AddChild(xarContainer2);
-*/
-        // ===== XAR FILE 3 (CMX format) =====
-//        auto xarContainer3 = std::make_shared<UltraCanvasContainer>("XARContainer3", 660, 100, 300, 280);
-//        xarContainer3->SetBackgroundColor(Colors::White);
-//        xarContainer3->SetBorders(2, Color(180, 180, 180, 255));
-//
-//        auto xarElement3 = std::make_shared<UltraCanvasXARElement>("XAR3", 10, 10, 280, 220);
-//        xarElement3->SetFitMode(XARFitMode::FitPage);
-//
-//        std::string xarFile3 = NormalizePath(GetResourcesDir() + "media/xar/artwork.cmx");
-//        xarElement3->LoadFromFile(xarFile3);
-//
-//        auto xarLabel3 = std::make_shared<UltraCanvasLabel>("XARLabel3", 10, 240, 280, 30);
-//        xarLabel3->SetText("artwork.cmx");
-//        xarLabel3->SetAlignment(TextAlignment::Center);
-//        xarLabel3->SetFontSize(11);
-//        xarContainer3->AddChild(xarLabel3);
-//
-//        auto demoHandler3 = std::make_shared<XARDemoHandler>(xarFile3);
-//        xarElement3->SetEventCallback([demoHandler3, xarContainer3, statusLabel, xarFile3](const UCEvent& event) {
-//            switch (event.type) {
-//                case UCEventType::MouseUp:
-//                    demoHandler3->OnXARClick();
-//                    statusLabel->SetText("Opened fullscreen: " + xarFile3);
-//                    return true;
-//                case UCEventType::MouseEnter:
-//                    xarContainer3->SetBordersColor(Color(0, 122, 204, 255));
-//                    return true;
-//                case UCEventType::MouseLeave:
-//                    xarContainer3->SetBordersColor(Color(180, 180, 180, 255));
-//                    return true;
-//                default:
-//                    return false;
-//            }
-//        });
-//
-//        xarContainer3->AddChild(xarElement3);
-//        container->AddChild(xarContainer3);
-
-        // ===== SECOND ROW =====
-/*
-        // ===== XAR FILE 4 =====
-        auto xarContainer4 = std::make_shared<UltraCanvasContainer>("XARContainer4", 20, 400, 300, 280);
-        xarContainer4->SetBackgroundColor(Colors::White);
-        xarContainer4->SetBorders(2, Color(180, 180, 180, 255));
-
-        auto xarElement4 = std::make_shared<UltraCanvasXARElement>("XAR4", 10, 10, 280, 220);
-        //xarElement4->SetFitMode(XARFitMode::FitPage);
-
-        std::string xarFile4 = NormalizePath(GetResourcesDir() + "media/xar/logo.xar");
-        xarElement4->LoadFromFile(xarFile4);
-
-        // Page navigation for multi-page document
-        auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 60, 25);
-        prevBtn4->SetText("◀");
-        prevBtn4->SetFontSize(10);
-        prevBtn4->onClick = [xarElement4]() {
-            if (xarElement4->IsLoaded() && xarElement4->GetCurrentPage() > 0) {
-                xarElement4->SetCurrentPage(xarElement4->GetCurrentPage() - 1);
-            }
-        };
-        xarContainer4->AddChild(prevBtn4);
-
-        auto pageLabel4 = std::make_shared<UltraCanvasLabel>("PageLabel4", 80, 240, 140, 25);
-        pageLabel4->SetText("brochure.xar");
-        pageLabel4->SetAlignment(TextAlignment::Center);
-        pageLabel4->SetFontSize(10);
-        xarContainer4->AddChild(pageLabel4);
-
-        xarElement4->onPageChanged = [pageLabel4, xarElement4](int page) {
-            pageLabel4->SetText("Page " + std::to_string(page + 1) + "/" +
-                                std::to_string(xarElement4->GetPageCount()));
+            tile->AddChild(element);
+            container->AddChild(tile);
         };
 
-        auto nextBtn4 = std::make_shared<UltraCanvasButton>("Next4", 230, 240, 60, 25);
-        nextBtn4->SetText("▶");
-        nextBtn4->SetFontSize(10);
-        nextBtn4->onClick = [xarElement4]() {
-            if (xarElement4->IsLoaded() &&
-                xarElement4->GetCurrentPage() < xarElement4->GetPageCount() - 1) {
-                xarElement4->SetCurrentPage(xarElement4->GetCurrentPage() + 1);
-            }
-        };
-        xarContainer4->AddChild(nextBtn4);
+        makeTile("XARContainer1", 20, 100, "demo.xar");
+        makeTile("XARContainer2", 340, 100, "backside.xar");
 
-        auto demoHandler4 = std::make_shared<XARDemoHandler>(xarFile4);
-        xarElement4->SetEventCallback([demoHandler4, xarContainer4, statusLabel, xarFile4](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler4->OnXARClick();
-                    statusLabel->SetText("Opened fullscreen: " + xarFile4);
-                    return true;
-                case UCEventType::MouseEnter:
-                    xarContainer4->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    xarContainer4->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
-            }
-        });
-
-        xarContainer4->AddChild(xarElement4);
-        container->AddChild(xarContainer4);
-
-        // ===== ZOOM DEMO (XAR FILE 5) =====
-        auto xarContainer5 = std::make_shared<UltraCanvasContainer>("XARContainer5", 340, 400, 300, 280);
-        xarContainer5->SetBackgroundColor(Colors::White);
-        xarContainer5->SetBorders(2, Color(180, 180, 180, 255));
-
-        auto xarElement5 = std::make_shared<UltraCanvasXARElement>("XAR5", 10, 10, 280, 220);
-        xarElement5->SetFitMode(XARFitMode::FitPage);
-
-        std::string xarFile5 = NormalizePath(GetResourcesDir() + "media/xar/detailed.xar");
-        xarElement5->LoadFromFile(xarFile5);
-
-        // Zoom controls
-        auto zoomOutBtn5 = std::make_shared<UltraCanvasButton>("ZoomOut5", 10, 240, 50, 25);
-        zoomOutBtn5->SetText("−");
-        zoomOutBtn5->onClick = [xarElement5]() {
-            xarElement5->SetFitMode(XARFitMode::FitNone);
-            xarElement5->SetZoom(xarElement5->GetZoom() / 1.25f);
-        };
-        xarContainer5->AddChild(zoomOutBtn5);
-
-        auto zoomLabel5 = std::make_shared<UltraCanvasLabel>("ZoomLabel5", 70, 240, 100, 25);
-        zoomLabel5->SetText("Zoom Demo");
-        zoomLabel5->SetAlignment(TextAlignment::Center);
-        zoomLabel5->SetFontSize(10);
-        xarContainer5->AddChild(zoomLabel5);
-
-        auto zoomInBtn5 = std::make_shared<UltraCanvasButton>("ZoomIn5", 180, 240, 50, 25);
-        zoomInBtn5->SetText("+");
-        zoomInBtn5->onClick = [xarElement5]() {
-            xarElement5->SetFitMode(XARFitMode::FitNone);
-            xarElement5->SetZoom(xarElement5->GetZoom() * 1.25f);
-        };
-        xarContainer5->AddChild(zoomInBtn5);
-
-        auto fitBtn5 = std::make_shared<UltraCanvasButton>("Fit5", 240, 240, 50, 25);
-        fitBtn5->SetText("Fit");
-        fitBtn5->onClick = [xarElement5]() {
-            xarElement5->SetFitMode(XARFitMode::FitPage);
-        };
-        xarContainer5->AddChild(fitBtn5);
-
-        auto demoHandler5 = std::make_shared<XARDemoHandler>(xarFile5);
-        xarElement5->SetEventCallback([demoHandler5, xarContainer5, statusLabel, xarFile5](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler5->OnXARClick();
-                    statusLabel->SetText("Opened fullscreen: " + xarFile5);
-                    return true;
-                case UCEventType::MouseEnter:
-                    xarContainer5->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    xarContainer5->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
-            }
-        });
-
-        xarContainer5->AddChild(xarElement5);
-        container->AddChild(xarContainer5);
-*/
         // ===== INFO PANEL =====
-        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 660, 400, 300, 280);
+        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 660, 100, 300, 280);
         infoContainer->SetBackgroundColor(Color(240, 248, 255, 255));
         infoContainer->SetBorders(2, Color(100, 149, 237, 255));
 
@@ -393,14 +226,14 @@ namespace UltraCanvas {
 
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 280, 200);
         infoText->SetText(
-                "✓ XAR format\n"
-                "✓ Vector paths and shapes\n"
-                "✓ Text with styling\n"
-                "✓ Transformations (rotate, scale)\n"
-                "✓ Groups and layers\n"
-                "✓ Stroke and fill styles\n"
-                "✓ Zoom and pan controls\n"
-                "✓ Fit modes (page, width, height)\n"
+                "✓ Xara .xar drawings (compressed too)\n"
+                "✓ Paths, QuickShapes, groups, layers\n"
+                "✓ Flat, gradient and bitmap fills\n"
+                "✓ Contone fills and soft shadows\n"
+                "✓ Text: fonts, justification, lists\n"
+                "✓ Embedded bitmaps with transparency\n"
+                "✓ Multi-page documents (spreads)\n"
+                "✓ Zoom and fullscreen viewing\n"
         );
         infoText->SetFontSize(11);
         infoText->SetTextColor(Color(50, 50, 50, 255));

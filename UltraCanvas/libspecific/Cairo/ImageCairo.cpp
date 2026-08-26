@@ -298,6 +298,45 @@ namespace UltraCanvas {
         return result;
     }
 
+    bool UCImageRaster::HasTransparency() {
+        if (transparency >= 0) return transparency == 1;
+        transparency = 0;
+#ifdef HAS_LIBRSVG
+        // A vector document has no background of its own: whatever the page
+        // does not paint shows what is behind it.
+        if (UCSvgDocument::IsSvgPath(fileName)) {
+            transparency = 1;
+            return true;
+        }
+#endif
+        try {
+            vips::VImage image = GetVImage();
+            if (!image.has_alpha()) return false;
+            // An alpha channel is not transparency: exported PNGs routinely
+            // carry a fully opaque one. The channel's minimum settles it - but
+            // that decodes the whole image, so the scan is budgeted: up to
+            // 16 megapixels (a 4K frame is 8) is worth one decode on the way
+            // to the screen, and anything bigger is taken at its word. Images
+            // with no alpha channel never get here, so photographs (JPEG,
+            // HEIC) cost nothing either way.
+            constexpr double kMaxScanPixels = 16.0 * 1024.0 * 1024.0;
+            const double pixels = static_cast<double>(image.width()) * image.height();
+            const VipsBandFormat format = static_cast<VipsBandFormat>(image.format());
+            double opaque = 0.0;
+            if (format == VIPS_FORMAT_UCHAR)       opaque = 255.0;
+            else if (format == VIPS_FORMAT_USHORT) opaque = 65535.0;
+            if (opaque <= 0.0 || pixels > kMaxScanPixels) {
+                transparency = 1;    // alpha present, not worth (or able) to scan
+                return true;
+            }
+            vips::VImage alpha = image.extract_band(image.bands() - 1);
+            transparency = (alpha.min() < opaque) ? 1 : 0;
+            return transparency == 1;
+        } catch (vips::VError&) {
+            return false;            // unreadable - "no", never an error
+        }
+    }
+
     std::string UCImageRaster::GetMetadataString(const std::string& key,
                                                  bool stripAnnotation) {
         try {
@@ -376,6 +415,13 @@ namespace UltraCanvas {
         result->LoadFileToMemory(imagePath);
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
+    }
+
+    // No loader, so nothing can be said about the pixels: "opaque" is the
+    // answer that leaves a backdrop chooser out of the way.
+    bool UCImageRaster::HasTransparency() {
+        transparency = 0;
+        return false;
     }
 
     // No loader, so no metadata: "" means "unknown" to every caller.
@@ -653,8 +699,33 @@ namespace UltraCanvas {
 
         return std::make_shared<UCPixmapCairo>(surface);
     }
+
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
+        if (!imgDataPtr && !LoadFileToMemory(fileName)) return nullptr;
+        try {
+            vips::VImage vimg = vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
+            const int nb = vimg.bands();
+            if (nb == 2 || nb >= 4) {
+                // Invert the alpha band BEFORE premultiplication — a normal
+                // decode zeroes the colour of fully transparent pixels, which
+                // destroys exactly the pixels an inverted-alpha producer
+                // (Xara .xar embedded bitmaps: 255 = fully transparent)
+                // means to show.
+                vips::VImage rgb = vimg.extract_band(0, vips::VImage::option()->set("n", nb - 1));
+                vips::VImage alpha = vimg.extract_band(nb - 1);
+                vimg = rgb.bandjoin(alpha.invert());
+            }
+            return CreatePixmapFromVImage(vimg);
+        } catch (vips::VError& err) {
+            errorMessage = std::string("Failed to decode alpha-inverted: ") + err.what();
+        }
+        return nullptr;
+    }
 #else
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode, float) {
+        return nullptr;
+    }
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
         return nullptr;
     }
 #endif

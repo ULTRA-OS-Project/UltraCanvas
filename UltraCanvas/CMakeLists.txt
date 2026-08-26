@@ -135,6 +135,7 @@ else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
+
 # WebAssembly builds run inside the browser sandbox: no OpenGL context
 # managers, no native audio/video frameworks, no sockets for UltraNet, and no
 # runtime-loaded plug-in modules. The remaining REQUIRED pkg-config
@@ -352,6 +353,14 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
+        # Spell checking. The per-platform backend that defines
+        # CreateNativeSpellCheckBackend() is picked up by the
+        # ${ULTRACANVAS_PLATFORM_DIR}/*.cpp glob below - do not list it here or
+        # it lands in the build twice.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_SpellCheck.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpellChecker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckLanguageNames.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDatePicker.cpp
@@ -394,6 +403,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
@@ -402,6 +412,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
@@ -605,9 +616,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
         # DataFormats section: general-purpose JSON API (UltraCanvasJSON) backed
-        # by the vendored yyjson engine
+        # by the vendored yyjson engine (built once as the uc-yyjson archive
+        # below, shared with UltraWin's QMP client)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
@@ -732,6 +743,59 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
     )
+endif()
+
+# ===== SPELL CHECKING (all dependencies optional) =====
+# With none of these present the module still compiles and simply reports zero
+# dictionaries, so a missing optional dependency never breaks the build.
+pkg_check_modules(HUNSPELL QUIET hunspell)
+if(HUNSPELL_FOUND)
+    message(STATUS "  Hunspell: ${HUNSPELL_VERSION} (portable spell backend)")
+else()
+    message(STATUS "  Hunspell: NOT FOUND (portable spell backend reports no dictionaries)")
+endif()
+
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    # enchant-2 is the broker GTK, LibreOffice and Firefox use, so it sees the
+    # dictionaries the user already has installed.
+    pkg_check_modules(ENCHANT QUIET enchant-2)
+    if(ENCHANT_FOUND)
+        message(STATUS "  enchant-2: ${ENCHANT_VERSION} (native Linux spell backend)")
+    else()
+        message(STATUS "  enchant-2: NOT FOUND (falling back to the Hunspell backend)")
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    # spellcheck.h is Windows 8+. Its mere presence proves nothing: the header
+    # ships on older toolchains too but gates every interface behind
+    # NTDDI_VERSION >= NTDDI_WIN8, leaving forward declarations that fail to
+    # compile on first use. So probe by compiling the constructs the backend
+    # actually needs - a header-existence check let exactly that reach CI.
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_DEFINITIONS -D_WIN32_WINNT=0x0602 -DNTDDI_VERSION=0x06020000)
+    check_cxx_source_compiles("
+        #include <windows.h>
+        #include <spellcheck.h>
+        int main() {
+            ISpellCheckerFactory* factory = nullptr;
+            if (FAILED(CoCreateInstance(__uuidof(SpellCheckerFactory), nullptr,
+                                        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return 1;
+            ISpellChecker* checker = nullptr;
+            factory->CreateSpellChecker(L\"en-US\", &checker);
+            if (checker) checker->Release();
+            factory->Release();
+            return 0;
+        }
+    " ULTRACANVAS_HAVE_SPELLCHECK_API)
+    unset(CMAKE_REQUIRED_DEFINITIONS)
+
+    if(ULTRACANVAS_HAVE_SPELLCHECK_API)
+        message(STATUS "  ISpellChecker: available (native Windows spell backend)")
+    else()
+        message(STATUS "  ISpellChecker: NOT USABLE (falling back to the Hunspell backend)")
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    # NSSpellChecker ships with every macOS and needs no feature flag.
+    message(STATUS "  NSSpellChecker: available (native macOS spell backend)")
 endif()
 
 # Include headers (for IDE support)
@@ -988,11 +1052,58 @@ set(ULTRACANVAS_ALL_SOURCES
         include/UltraCanvasNativeHandle.h
 )
 
+# Vendored yyjson as its own small archive so the core library
+# (UltraCanvasJSON) and UltraWin (QMP client) share ONE compiled copy —
+# compiling yyjson.c into both would turn the whole-archive UltraWin link
+# into duplicate-definition errors in shared builds.
+add_library(uc-yyjson STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c)
+set_target_properties(uc-yyjson PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(uc-yyjson PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson>)
+
 # ===== BUILD CORE LIBRARY =====
 if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
     add_library(${ULTRACANVAS_LIB_NAME} STATIC ${ULTRACANVAS_ALL_SOURCES})
+endif()
+# Shared build: the engine's objects are pulled into the DSO (PRIVATE);
+# static build: consumers must link the archive themselves (PUBLIC), after
+# both libultracanvas and UltraWin on the line so single-pass linkers
+# resolve their yyjson references forward.
+if(ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE uc-yyjson)
+else()
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC uc-yyjson)
+endif()
+
+# ===== SPELL CHECK BACKENDS =====
+# Every branch is optional; the service falls back to the next backend at
+# runtime and finally to a no-op that reports zero dictionaries.
+find_package(Threads REQUIRED)
+target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
+
+if(HUNSPELL_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_HUNSPELL)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_LIBRARIES})
+endif()
+
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ENCHANT_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_ENCHANT)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARIES})
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_API)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WINSPELLCHECK)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Ole32)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+        "-framework AppKit"
+        "-framework Foundation"
+    )
 endif()
 
 # ===== CHART RUNTIME MODULES =====
@@ -1137,6 +1248,13 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
 )
+
+# Native folder watching: the define tells the core watcher that this platform
+# ships a backend under OS/<Platform>/, so it must not compile its own
+# null-returning fallback. PUBLIC so an app can ask whether watching is native.
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
 
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
@@ -1849,11 +1967,32 @@ endif()
 # Docs/Modules/UltraWin/README.md.
 if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
     find_package(Threads REQUIRED)
+    # FreeRDP: the VM tier's RemoteApp client — the one UltraWin engine that
+    # IS linked (Apache-2.0). Optional: without it the module builds with
+    # the VM tier's RunApp routing reporting NotSupported
+    # (UltraWinCapabilities::remoteAppSupported = false). FreeRDP 3 is
+    # preferred (Ubuntu 24.04+ ships its channels built in); FreeRDP 2 is
+    # the fallback for hosts where 3 is not packaged (Ubuntu 22.04).
+    pkg_check_modules(ULTRAWIN_FREERDP freerdp3 winpr3 freerdp-client3)
+    if(ULTRAWIN_FREERDP_FOUND)
+        set(ULTRAWIN_FREERDP_MAJOR 3)
+        set(ULTRAWIN_FREERDP_VERSION ${ULTRAWIN_FREERDP_freerdp3_VERSION})
+    else()
+        pkg_check_modules(ULTRAWIN_FREERDP freerdp2 winpr2 freerdp-client2)
+        if(ULTRAWIN_FREERDP_FOUND)
+            set(ULTRAWIN_FREERDP_MAJOR 2)
+            set(ULTRAWIN_FREERDP_VERSION ${ULTRAWIN_FREERDP_freerdp2_VERSION})
+        endif()
+    endif()
+
     set(ULTRAWIN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinComponents.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinQmp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinRdp.cpp
     )
     add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
     set_target_properties(UltraWin PROPERTIES
@@ -1864,7 +2003,24 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
-    target_link_libraries(UltraWin PUBLIC Threads::Threads)
+    # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
+    # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
+    target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
+    if(ULTRAWIN_FREERDP_FOUND)
+        target_compile_definitions(UltraWin PRIVATE
+            ULTRAWIN_HAS_FREERDP=${ULTRAWIN_FREERDP_MAJOR})
+        target_include_directories(UltraWin PRIVATE
+            ${ULTRAWIN_FREERDP_INCLUDE_DIRS})
+        target_link_directories(UltraWin PUBLIC
+            ${ULTRAWIN_FREERDP_LIBRARY_DIRS})
+        # freerdp-clientN carries freerdp_client_load_addins (the channel
+        # loader the RemoteApp session uses); freerdpN/winprN the core.
+        target_link_libraries(UltraWin PUBLIC
+            ${ULTRAWIN_FREERDP_LIBRARIES})
+        message(STATUS "  [✓] UltraWin RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
+    else()
+        message(STATUS "  [−] UltraWin RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
+    endif()
 
     # Same single-host export strategy as UltraNet: a shared libultracanvas
     # re-exports the whole UltraWin API so apps import one copy of the module

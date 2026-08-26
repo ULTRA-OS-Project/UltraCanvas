@@ -55,6 +55,39 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
+  spell checking. A singleton service owning one backend, the user dictionary,
+  a session ignore list and a worker thread, so checking never runs on the
+  render thread. Backends are wrapped behind the UltraCanvas-owned
+  `ISpellCheckBackend` (`ISpellCheckBackend.h`), never exposed: enchant-2 on
+  Linux, ISpellChecker on Windows 8+, NSSpellChecker on macOS, each in
+  `OS/<Platform>/UltraCanvasSpellCheckSupport.*`, with Hunspell
+  (`core/SpellCheckBackendHunspell.cpp`) as the portable fallback and the only
+  backend on Android and WASM. Every dependency is optional — the service falls
+  back native → Hunspell → a no-op reporting zero dictionaries, so a missing
+  one never fails a build. Public surface:
+  - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
+    `SetBackend`, `GetBackendName`.
+  - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
+    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`).
+  - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
+    asynchronous `QueueCheckText` / `TryTakeResult` / `CancelContext` /
+    `SetContextNotifier` pair-with-drain used by text elements.
+  - Dictionary: `AddToUserDictionary` / `RemoveFromUserDictionary` /
+    `IgnoreWord` / `ClearIgnoredWords` / `RequestRecheck`, with
+    `SetUserDictionaryPath` / `Load` / `Save`.
+  - Menus: `BuildSpellCheckMenu` (a lambda-provided submenu that shows live
+    state), `BuildSpellCheckMenuItems`, `BuildLanguageMenuItems` (radio group),
+    `BuildSuggestionMenuItems` (right-click list).
+  - `namespace SpellCheckText` — UTF-8 tokenizer and byte/codepoint mapping;
+    `namespace SpellCheckRendering` — squiggle drawing over `IRenderContext`,
+    usable by any component that can produce a word rectangle.
+  Wired into `UltraCanvasTextArea` via `SetSpellCheckEnabled`; the byte-range →
+  screen-rectangle mapping it needs is the element's own
+  `GetCharacterRangeBounds`, which is equally usable for search highlighting,
+  diff marks and comment anchors.
+  See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
@@ -231,14 +264,30 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
-- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+- `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,
+  `.lnk` via `start /wait`), `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+- `UltraWin_ListPrograms` (Start-Menu shortcuts an installer created — what
+  an ULTRA OS launcher shows; entries are launchable via `UltraWin_RunApp`)
 
-**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`,
-`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
-for FreeRDP RemoteApp windows.
+- `UltraWin_VmProvision`, `UltraWin_VmStart`, `UltraWin_VmStop`,
+  `UltraWin_VmKill`, `UltraWin_VmSuspend`, `UltraWin_VmResume`,
+  `UltraWin_VmGetState`, `UltraWin_VmGetInfo` (Stage 2a machine backbone:
+  the single shared headless QEMU/KVM guest — spawned, never linked —
+  controlled over QMP; RDP port forwarded for the RemoteApp integration)
+
+- `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
+  running guest over FreeRDP (the one linked engine, Apache 2, optional;
+  guest paths, `||aliases`, and host paths under the shared home)
+- virtiofs home share: `UltraWin_VmStart` exports `$HOME` into the guest
+  (spawned virtiofsd + vhost-user-fs, tag `ultrawin_home`) so both tiers
+  present the user's files under the same unified drive letter
+
+**Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
+rendering RAIL window surfaces, guest provisioning validated against real
+install media (incl. the guest-side virtiofs mount service), and
+`UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.

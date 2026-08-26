@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
-// Version: 2.0.1
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 //
 // Tag values are taken verbatim from the Xar Format Specification, Appendix A
@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <stack>
 #include <cstdint>
+#include <cmath>
 #include <functional>
 
 namespace UltraCanvas {
@@ -424,6 +425,14 @@ namespace UltraCanvas {
 
         // New text records
         TAG_TEXT_TAB = 4200,
+        // List records written by modern Xara (observed in Designer Pro X19
+        // output; not in the public spec). 4404 opens a bulleted item (body:
+        // two INT32s + the UTF-16 bullet character), 4410 a numbered item
+        // (body ends with the UTF-16 format string, e.g. "%t%1.%t"), and
+        // 4405 separates the marker fields inside the line.
+        TAG_TEXT_LIST_BULLET = 4404,
+        TAG_TEXT_LIST_SEPARATOR = 4405,
+        TAG_TEXT_LIST_NUMBERED = 4410,
         TAG_TEXT_LEFT_INDENT = 4201,
         TAG_TEXT_FIRST_INDENT = 4202,
         TAG_TEXT_RIGHT_INDENT = 4203,
@@ -458,9 +467,14 @@ namespace UltraCanvas {
         }
 
         void ApplyToContext(IRenderContext* ctx) const {
-            ctx->Transform(
-                static_cast<float>(a), static_cast<float>(b),
-                static_cast<float>(c), static_cast<float>(d),
+            // A singular (or effectively singular after the float cast)
+            // matrix would put the whole cairo context into an unrecoverable
+            // error state; skip it (identity) instead.
+            const float fa = static_cast<float>(a), fb = static_cast<float>(b);
+            const float fc = static_cast<float>(c), fd = static_cast<float>(d);
+            const float det = fa * fd - fb * fc;
+            if (!std::isfinite(det) || std::fabs(det) < 1e-9f) return;
+            ctx->Transform(fa, fb, fc, fd,
                 static_cast<float>(e) * XARConstants::MILLIPOINTS_TO_PIXELS,
                 static_cast<float>(f) * XARConstants::MILLIPOINTS_TO_PIXELS);
         }
@@ -513,6 +527,8 @@ namespace UltraCanvas {
         int32_t colourRef = 0;
     };
 
+    struct XARBitmapDefinition;
+
     struct XARFillAttribute {
         XARFillType type = XARFillType::Flat;
         Color startColor = Color(255, 255, 255, 255);
@@ -526,6 +542,9 @@ namespace UltraCanvas {
         Point2Di minorAxis;
         std::vector<XARFillStop> stops; // multistage
         int32_t bitmapRef = -1;
+        // Resolved at parse time from bitmapRef; owned by the XARDocument's
+        // bitmap table, which outlives every node snapshot.
+        XARBitmapDefinition* bitmapDef = nullptr;
         double profileBias = 0.5;
         double profileGain = 0.5;
         XARFillRepeat repeat = XARFillRepeat::NonRepeating;
@@ -654,6 +673,7 @@ namespace UltraCanvas {
         Document, Chapter, Spread, Layer, Page,
         Group, Path, Rectangle, Ellipse, Polygon,
         Text, TextStory, TextLine, TextString,
+        TextKern,
         Bitmap, ContonedBitmap,
         Blend, Mould, Bevel, Contour, Shadow,
         ClipView, Feather, LiveEffect, Brush,
@@ -737,6 +757,10 @@ namespace UltraCanvas {
     public:
         int32_t numSides = 3;
         Point2Di centre;
+        // Regular-shape axes: vectors from the centre to the middles of two
+        // adjacent edges (so a 4-sided shape with axis-aligned axes is an
+        // axis-aligned rectangle); for a circular shape they are the ellipse
+        // radii. Millipoints, before `transform`.
         Point2Di majorAxis;
         Point2Di minorAxis;
         float curvature = 0.0f;
@@ -744,6 +768,7 @@ namespace UltraCanvas {
         float stellationOffset = 0.0f;
         bool isRounded = false;
         bool isStellated = false;
+        bool isCircular = false;
         XARMatrix transform;
         XARPolygonNode() { type = XARNodeType::Polygon; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
@@ -761,12 +786,50 @@ namespace UltraCanvas {
 
     class XARTextLineNode : public XARNode {
     public:
+        // Position within the story: successive lines step down one leading.
+        int lineIndex = 0;
+        // Xara's own computed line width (millipoints, from
+        // TAG_TEXT_LINE_INFO); 0 when the record was absent. Justification
+        // prefers it over our measurement so the anchor matches Xara's
+        // metrics even where fonts differ.
+        int32_t lineWidthMP = 0;
+        // List layout (bullet / numbered lists, TAG_TEXT_LIST_*): a list
+        // item's marker glyphs start at the marker indent and its text at
+        // the hanging indent; a continuation line starts at the hanging
+        // indent directly.
+        bool isListItem = false;
+        bool hangingIndent = false;
+        // True when the line carries the paragraph's TAG_TEXT_EOL — full
+        // justification spreads every line of a paragraph except this one.
+        bool endsParagraph = false;
+        // Baseline offset from the story origin (millipoints, negative =
+        // down), accumulated from TAG_TEXT_LINE_INFO's per-line step; when
+        // absent the renderer falls back to a leading heuristic.
+        int32_t yOffsetMP = 0;
+        bool hasYOffset = false;
         XARTextLineNode() { type = XARNodeType::TextLine; }
+        void Render(IRenderContext* ctx, float scale = 1.0f) override;
+    private:
+        // Word-spread layout for fully-justified lines; false = fall back.
+        bool RenderJustified(IRenderContext* ctx, float scale, double anchorWidth);
+    public:
+    };
+
+    // An explicit caret adjustment between spans of a line (TAG_TEXT_KERN),
+    // millipoints in Y-up document space.
+    class XARTextKernNode : public XARNode {
+    public:
+        Point2Di offset;
+        XARTextKernNode() { type = XARNodeType::TextKern; }
     };
 
     class XARTextStringNode : public XARNode {
     public:
         std::string text;                       // UTF-8
+        // True for spans built from TAG_TEXT_CHAR records — list marker
+        // glyphs arrive this way, and list layout keys off the transition
+        // from marker characters to the item's text string.
+        bool fromCharRecord = false;
         XARTextStringNode() { type = XARNodeType::TextString; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
@@ -898,8 +961,15 @@ namespace UltraCanvas {
         int32_t height = 0;
         std::vector<uint8_t> data;              // raw encoded bytes
         enum class Format { JPEG, PNG, BMP, GIF, JPEG8BPP, PNG_REAL, XPE } format = Format::PNG;
-        // Cached decoded pixmap, populated lazily by renderer
-        void* decodedPixmap = nullptr;
+        // Lazy render caches. plainPixmap: decode with the alpha channel
+        // inverted — xar-embedded bitmaps store transparency, not alpha
+        // (255 = fully transparent) — used by plain bitmap fills.
+        // fillPixmap: normal decode, the contone tint source. tintedPixmap:
+        // the contone result, keyed by the colour pair that produced it.
+        std::shared_ptr<UCPixmap> plainPixmap;
+        std::shared_ptr<UCPixmap> fillPixmap;
+        std::shared_ptr<UCPixmap> tintedPixmap;
+        Color tintStart, tintEnd;
     };
 
     struct XARColorDefinition {
@@ -961,6 +1031,14 @@ namespace UltraCanvas {
 
         XARNodePtr GetRoot() const { return root; }
 
+        // ===== PAGES =====
+        // Each spread is one page; its coordinates restart at its own
+        // origin, so pages render individually. Render() draws page 0.
+        int GetPageCount() const;
+        float GetPageWidth(int page) const;    // pixels; falls back to GetWidth()
+        float GetPageHeight(int page) const;
+        void RenderPage(IRenderContext* ctx, int page, float scale = 1.0f);
+
         XARColorDefinition* GetColor(int32_t ref);
         XARBitmapDefinition* GetBitmap(int32_t ref);
         XARFontDefinition* GetFont(int32_t ref);
@@ -975,7 +1053,24 @@ namespace UltraCanvas {
         const std::string& GetProducerBuild() const { return producerBuild; }
         const std::string& GetFileType() const { return fileType; }
 
+        // ===== PARSE DIAGNOSTICS =====
+        // Filled during LoadFromFile / LoadFromMemory: how many records were
+        // dispatched, which record tags the parser consumed without handling,
+        // and what went structurally wrong. The XAR renderer is not
+        // feature-complete yet — this is how a file that displays wrong is
+        // triaged (see Tests/XARProbeTest.cpp): an unhandled tag a file leans
+        // on is a feature to implement, a warning is a parse defect.
+        struct XARParseDiagnostics {
+            size_t recordCount = 0;                            // records dispatched
+            std::unordered_map<uint32_t, size_t> unhandledTags; // tag value -> occurrences
+            std::vector<std::string> warnings;                  // structural problems
+        };
+        const XARParseDiagnostics& GetDiagnostics() const { return diagnostics; }
+
     private:
+        XARParseDiagnostics diagnostics;
+        void Warn(const std::string& message) { diagnostics.warnings.push_back(message); }
+
         // Stream reader: switches between outer (raw) and inflated streams
         struct StreamFrame {
             const uint8_t* data;
@@ -1001,6 +1096,7 @@ namespace UltraCanvas {
         void ParseRectangleRecord(const XARRecord& record);
         void ParseEllipseRecord(const XARRecord& record);
         void ParsePolygonRecord(const XARRecord& record);
+        void ParseRegularShapeRecord(const XARRecord& record, bool phase1);
         void ParseGroupRecord(const XARRecord& record);
         void ParseLayerRecord(const XARRecord& record);
         void ParseLayerDetailsRecord(const XARRecord& record, bool isGuide);
@@ -1011,6 +1107,15 @@ namespace UltraCanvas {
         void ParseTextStoryRecord(const XARRecord& record);
         void ParseTextLineRecord(const XARRecord& record);
         void ParseTextStringRecord(const XARRecord& record);
+        void ParseTextCharRecord(const XARRecord& record);
+        void ParseTextKernRecord(const XARRecord& record);
+        void ParseTextLineInfoRecord(const XARRecord& record);
+        // True between a TAG_TEXT_LIST_* record and the paragraph's
+        // TAG_TEXT_EOL: lines opened in that window are continuation lines
+        // of the list item and take its hanging indent.
+        bool textListActive = false;
+        // Running per-story sum of TAG_TEXT_LINE_INFO baseline steps.
+        int64_t storyLineOffsetMP = 0;
         void ParseTextAttrRecord(const XARRecord& record);
         void ParseFontDefRecord(const XARRecord& record, bool isTrueType);
         void ParseBitmapDefRecord(const XARRecord& record, XARBitmapDefinition::Format fmt);
@@ -1070,9 +1175,14 @@ namespace UltraCanvas {
         XARMatrix ReadMatrix(const uint8_t* d, size_t& o);
         Color ReadColor3(const uint8_t* d, size_t& o);
         // Refined relative coord (interleaved MSB-first, delta-encoded)
-        Point2Di ReadRelativeCoord(const uint8_t* d, size_t& o, Point2Di& last);
+        Point2Di ReadRelativeCoord(const uint8_t* d, size_t& o, Point2Di& last,
+                                   bool firstCoord);
 
-        void PushNode(XARNodePtr node);
+        // Tree building follows the Xar grammar: an object record, then
+        // TAG_DOWN, then the object's child records (its attributes, or a
+        // container's members), then TAG_UP. A record therefore only
+        // remembers its node (AttachNode); TAG_DOWN is what descends into it.
+        void AttachNode(XARNodePtr node);
         void PopNode();
         XARNodePtr CurrentNode();
         void RegisterRenderableNode(XARNodePtr node);
@@ -1094,7 +1204,12 @@ namespace UltraCanvas {
         bool haveSpreadInfo = false;
 
         XARNodePtr root;
+        // One entry per spread, in document order — the page list.
+        std::vector<std::shared_ptr<XARSpreadNode>> spreadNodes;
         std::stack<XARNodePtr> nodeStack;
+        // Node created by the most recent record; the next TAG_DOWN descends
+        // into it (its child records follow until the matching TAG_UP).
+        XARNodePtr lastNode;
         XARRenderingContext currentContext;
         std::stack<XARRenderingContext> contextStack;
 
@@ -1127,6 +1242,7 @@ namespace UltraCanvas {
 
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromMemory(const uint8_t* data, size_t size);
+        bool IsLoaded() const { return document != nullptr; }
 
         // Reason for the most recent failed load (locked / missing / not a valid
         // XAR file). Empty after a successful load.
@@ -1139,13 +1255,22 @@ namespace UltraCanvas {
         void SetPreserveAspectRatio(bool preserve) { preserveAspectRatio = preserve; }
         bool GetPreserveAspectRatio() const { return preserveAspectRatio; }
 
+        // Pages (one per spread; multi-page documents render one at a time)
+        int GetPageCount() const { return document ? document->GetPageCount() : 0; }
+        int GetCurrentPage() const { return currentPage; }
+        void SetCurrentPage(int page);
+
         const XARDocument* GetDocument() const { return document.get(); }
+
+        // Fired after SetCurrentPage changes the shown page
+        std::function<void(int)> onPageChanged;
 
     private:
         std::unique_ptr<XARDocument> document;
         std::string lastError;
         float scale = 1.0f;
         bool preserveAspectRatio = true;
+        int currentPage = 0;
     };
 
 // ===== PLUGIN =====

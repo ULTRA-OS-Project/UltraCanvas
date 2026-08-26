@@ -53,8 +53,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.17.1
-// Last Modified: 2026-08-24
+// Version: 1.18.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,6 +63,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
@@ -451,17 +452,30 @@ namespace UltraCanvas {
         // Pick up changes made behind the widget's back - another application
         // saving a file into the shown folder, a download finishing, a script
         // creating or deleting one - and rescan when they happen. On by
-        // default. The check runs on a background worker (one directory scan
-        // per interval, never on the UI thread) and the rescan itself is held
-        // back while the user is busy: no refresh interrupts an open rename
-        // editor, a running drag, a marquee or a file operation waiting on its
-        // dialog - it happens as soon as that ends.
+        // default.
+        //
+        // Where the operating system can report changes itself (inotify on
+        // Linux, ReadDirectoryChangesW on Windows - see
+        // UltraCanvasFolderWatcher) that is used, so a change is seen the
+        // moment it happens and an idle folder costs nothing. Elsewhere the
+        // widget falls back to re-fingerprinting the folder on a background
+        // worker, one directory scan per interval, never on the UI thread.
+        //
+        // Either way the rescan is held back while the user is busy: no
+        // refresh interrupts an open rename editor, a running drag, a marquee
+        // or a file operation waiting on its dialog - it happens as soon as
+        // that ends.
         void SetFolderWatchEnabled(bool enabled);
         bool IsFolderWatchEnabled() const { return folderWatchEnabled; }
-        // How often the shown folder is re-examined, in milliseconds
-        // (default 1500; values below 250 are raised to it).
+        // Polling interval in milliseconds (default 1500; values below 250 are
+        // raised to it). Ignored for detection while a native watcher is
+        // running - there the OS decides when - and it then only bounds how
+        // quickly the UI applies what the watcher reported.
         void SetFolderWatchIntervalMs(int ms);
         int  GetFolderWatchIntervalMs() const { return folderWatchIntervalMs; }
+        // True while the shown folder is watched by the operating system
+        // rather than polled.
+        bool IsFolderWatchNative() const { return nativeWatchActive; }
 
         // ===== DRAGGING ENTRIES =====
         // Dragging files out of the view (on by default): a press on an item
@@ -969,7 +983,8 @@ namespace UltraCanvas {
         // True while an interaction owns the view and a rescan would disturb
         // it (an open rename editor, a drag, a file operation and its dialog).
         bool IsBusyForAutoRefresh() const;
-        // Cheap fingerprint of a directory: its own modification time folded
+        // Cheap fingerprint of a directory, used only where no native backend
+        // exists: its own modification time folded
         // together with every entry's name, size and modification time. Two
         // scans of an unchanged folder give the same number; anything created,
         // deleted, renamed, resized or rewritten changes it.
@@ -977,6 +992,13 @@ namespace UltraCanvas {
 
         bool folderWatchEnabled = true;
         int  folderWatchIntervalMs = 1500;
+        // The operating system's own change notification (inotify /
+        // ReadDirectoryChangesW). When it takes, the fingerprint worker below
+        // stays idle and the interval above only governs how quickly the UI
+        // picks the flag up; where no backend exists Watch() fails and the
+        // polling path runs exactly as before.
+        UltraCanvasFolderWatcher folderWatcher;
+        bool nativeWatchActive = false;
         std::thread             folderWatchWorker;
         mutable std::mutex      folderWatchMutex;
         std::condition_variable folderWatchCond;

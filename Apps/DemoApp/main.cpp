@@ -14,7 +14,14 @@
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
-//#include "UltraCanvasCDRPlugin.h"
+
+// Graphics plugins (headers exist only when the plugin is built)
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+#include "UltraCanvasCDRPlugin.h"
+#endif
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
+#include "UltraCanvasXARPlugin.h"
+#endif
 
 // OS-specific initialization if needed
 #ifdef _WIN32
@@ -109,7 +116,15 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
-//        RegisterCDRPlugin();
+        // Register the graphics plugins with UltraCanvasGraphicsPluginRegistry
+        // so extension-based dispatch (FileLoader supported-format inventory,
+        // LoadGraphicsFile, ...) can find them.
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+        RegisterCDRPlugin();
+#endif
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
+        RegisterXARPlugin();
+#endif
         debugOutput << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Framework initialization failed: ") + e.what());

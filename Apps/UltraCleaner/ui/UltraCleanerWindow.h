@@ -49,6 +49,11 @@ public:
 
 private:
     // ===== CONSTRUCTION =====
+    // Re-lays the window's chrome for a client area of this size. Called at
+    // startup and from onWindowResize, so the app follows the window instead
+    // of staying at whatever size it opened with.
+    void LayoutForSize(float width, float height);
+
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildHomePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRulePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAlbumPage();

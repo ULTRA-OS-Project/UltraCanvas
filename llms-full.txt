@@ -225,6 +225,39 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
+  spell checking. A singleton service owning one backend, the user dictionary,
+  a session ignore list and a worker thread, so checking never runs on the
+  render thread. Backends are wrapped behind the UltraCanvas-owned
+  `ISpellCheckBackend` (`ISpellCheckBackend.h`), never exposed: enchant-2 on
+  Linux, ISpellChecker on Windows 8+, NSSpellChecker on macOS, each in
+  `OS/<Platform>/UltraCanvasSpellCheckSupport.*`, with Hunspell
+  (`core/SpellCheckBackendHunspell.cpp`) as the portable fallback and the only
+  backend on Android and WASM. Every dependency is optional — the service falls
+  back native → Hunspell → a no-op reporting zero dictionaries, so a missing
+  one never fails a build. Public surface:
+  - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
+    `SetBackend`, `GetBackendName`.
+  - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
+    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`).
+  - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
+    asynchronous `QueueCheckText` / `TryTakeResult` / `CancelContext` /
+    `SetContextNotifier` pair-with-drain used by text elements.
+  - Dictionary: `AddToUserDictionary` / `RemoveFromUserDictionary` /
+    `IgnoreWord` / `ClearIgnoredWords` / `RequestRecheck`, with
+    `SetUserDictionaryPath` / `Load` / `Save`.
+  - Menus: `BuildSpellCheckMenu` (a lambda-provided submenu that shows live
+    state), `BuildSpellCheckMenuItems`, `BuildLanguageMenuItems` (radio group),
+    `BuildSuggestionMenuItems` (right-click list).
+  - `namespace SpellCheckText` — UTF-8 tokenizer and byte/codepoint mapping;
+    `namespace SpellCheckRendering` — squiggle drawing over `IRenderContext`,
+    usable by any component that can produce a word rectangle.
+  Wired into `UltraCanvasTextArea` via `SetSpellCheckEnabled`; the byte-range →
+  screen-rectangle mapping it needs is the element's own
+  `GetCharacterRangeBounds`, which is equally usable for search highlighting,
+  diff marks and comment anchors.
+  See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
@@ -401,14 +434,30 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
-- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+- `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,
+  `.lnk` via `start /wait`), `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+- `UltraWin_ListPrograms` (Start-Menu shortcuts an installer created — what
+  an ULTRA OS launcher shows; entries are launchable via `UltraWin_RunApp`)
 
-**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`,
-`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
-for FreeRDP RemoteApp windows.
+- `UltraWin_VmProvision`, `UltraWin_VmStart`, `UltraWin_VmStop`,
+  `UltraWin_VmKill`, `UltraWin_VmSuspend`, `UltraWin_VmResume`,
+  `UltraWin_VmGetState`, `UltraWin_VmGetInfo` (Stage 2a machine backbone:
+  the single shared headless QEMU/KVM guest — spawned, never linked —
+  controlled over QMP; RDP port forwarded for the RemoteApp integration)
+
+- `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
+  running guest over FreeRDP (the one linked engine, Apache 2, optional;
+  guest paths, `||aliases`, and host paths under the shared home)
+- virtiofs home share: `UltraWin_VmStart` exports `$HOME` into the guest
+  (spawned virtiofsd + vhost-user-fs, tag `ultrawin_home`) so both tiers
+  present the user's files under the same unified drive letter
+
+**Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
+rendering RAIL window surfaces, guest provisioning validated against real
+install media (incl. the guest-side virtiofs mount service), and
+`UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.
@@ -1026,6 +1075,7 @@ their *License* is likewise marked **—** (OS component).
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | fmt | [fmt.dev](https://fmt.dev/) | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FontConfig | [freedesktop.org/wiki/Software/fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/) | [gitlab.freedesktop.org/fontconfig/fontconfig](https://gitlab.freedesktop.org/fontconfig/fontconfig) | [MIT](https://spdx.org/licenses/MIT.html) |
+| FreeRDP (optional) | [freerdp.com](https://www.freerdp.com/) | [github.com/FreeRDP/FreeRDP](https://github.com/FreeRDP/FreeRDP) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | FreeType | [freetype.org](https://freetype.org/) | [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype) | [FTL](https://spdx.org/licenses/FTL.html) |
 | giflib | [giflib.sourceforge.net](https://giflib.sourceforge.net/) | [sourceforge.net/projects/giflib](https://sourceforge.net/projects/giflib/) | [MIT](https://spdx.org/licenses/MIT.html) |
 | GLEW | [glew.sourceforge.net](https://glew.sourceforge.net/) | [github.com/nigels-com/glew](https://github.com/nigels-com/glew) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -1130,6 +1180,26 @@ their *License* is likewise marked **—** (OS component).
 | ZIP for ODS / XLSX I/O | miniz (bundled) | miniz (bundled) | miniz (bundled) |
 | JSON parsing (UltraCanvasJSON) | yyjson (bundled) | yyjson (bundled) | yyjson (bundled) |
 | FFT / spectrogram | KissFFT (bundled) | KissFFT (bundled) | KissFFT (bundled) |
+| Spell checking | enchant-2 (optional) → Hunspell/Aspell/Nuspell | NSSpellChecker (system) | ISpellChecker, Windows 8+ (system) |
+| Spell checking fallback | Hunspell (optional) | Hunspell (optional) | Hunspell (optional) |
+
+### Spell checking (all optional)
+
+Every spell dependency is optional and the build never fails without them: the
+service falls back native → Hunspell → a no-op that reports zero dictionaries.
+
+| Package | Platform | Install |
+|---|---|---|
+| `enchant-2` ≥ 2.2 | Linux | `apt install libenchant-2-dev` / `dnf install enchant2-devel` / `pacman -S enchant` |
+| Hunspell ≥ 1.7 | all | `apt install libhunspell-dev` / `dnf install hunspell-devel` / `brew install hunspell` / `vcpkg install hunspell` |
+| ISpellChecker | Windows 8+ | ships with the OS (links `Ole32`) |
+| NSSpellChecker | macOS | ships with the OS (AppKit, Foundation) |
+
+Dictionaries are runtime data, not a build dependency — `apt install
+hunspell-en-us`, or ship `.aff`/`.dic` pairs and point `ULTRACANVAS_DICT_PATH`
+at them. See
+[UltraCanvas/UltraCanvasSpellChecker.md](UltraCanvas/UltraCanvasSpellChecker.md)
+for the full search order.
 
 ---
 
@@ -1227,6 +1297,9 @@ their *License* is likewise marked **—** (OS component).
 |---|---|---|---|
 | Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+| VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
+| QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
+| RemoteApp client (VM tier) | FreeRDP 3 or 2 (optional, **linked** — the only linked UltraWin engine; Apache 2) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully
@@ -8912,7 +8985,7 @@ Registers as an `IGraphicsPlugin` so the framework's graphics plugin registry ca
 class UltraCanvasCDRPlugin : public IGraphicsPlugin {
 public:
     std::string GetPluginName() const override;       // "UltraCanvas CDR Plugin"
-    std::string GetPluginVersion() const override;    // "1.1.0"
+    std::string GetPluginVersion() const override;    // "1.2.0"
     std::vector<std::string> GetSupportedExtensions() const override;
         // returns {"cdr", "cmx", "ccx", "cdt"}
 
@@ -8931,8 +9004,52 @@ public:
     static bool IsFileSupported(const std::string& filePath);
     static std::shared_ptr<CDRDocument> ParseCDRFile(const std::string& filePath);
     static std::shared_ptr<CDRDocument> ParseCDRMemory(const std::vector<uint8_t>& data);
+
+    // Export ("save as") — see below
+    static CDRExportResult ExportToSVG(const std::string& cdrPath,
+                                       const std::string& svgPath,
+                                       int pageIndex = -1);
+    static CDRExportResult ExportToXAR(const std::string& cdrPath,
+                                       const std::string& xarPath);
 };
 ```
+
+### Export ("Save As")
+
+`ExportToSVG` converts a CDR/CMX file to SVG by re-parsing the source through
+librevenge's `RVNGSVGDrawingGenerator` — the generator receives the same
+drawing callbacks as the on-screen painter, so everything libcdr understands
+(paths, shapes, gradients, text, embedded bitmaps) is preserved. No extra
+dependency: the generator ships in core librevenge.
+
+```cpp
+struct CDRExportResult {
+    bool success;                          // false => see error
+    std::string error;
+    std::vector<std::string> writtenFiles; // every file created
+};
+
+// pageIndex is 0-based and selects one page; pass -1 to export every page.
+// SVG has no multi-page form, so with -1 page N >= 2 goes to "<stem>-p<N>.svg".
+auto r = UltraCanvasCDRPlugin::ExportToSVG("brochure.cdr", "out/brochure.svg", -1);
+if (r.success)
+    for (const auto& f : r.writtenFiles) std::cout << "wrote " << f << "\n";
+else
+    std::cerr << r.error << "\n";
+```
+
+Notes:
+
+- The output directory must exist; the exporter does not create it.
+- A page that embeds a very large bitmap produces a large base64 `xlink:href`
+  attribute. The file is valid SVG (browsers open it), but renderers built on
+  libxml2's default limits (e.g. librsvg) refuse attributes over 10 MB.
+
+`ExportToXAR` is **not implemented yet**: the XAR writer (`XARConverter`,
+`Plugins/Vector`) exports only from the shared `VectorStorage` document model,
+and no CDR importer into that model exists. It always fails with an error
+saying so — offer the format in UI, surface the message, and route users to
+SVG meanwhile.
 
 ### Plugin Registration
 
@@ -9196,6 +9313,7 @@ The info panel in the demo lists the headline capabilities exposed by the CDR pl
 - Stroke and fill styles (incl. linear / radial / conical gradients)
 - Zoom and pan controls
 - Fit modes (FitPage, FitWidth, FitHeight, FitNone)
+- Save as SVG via `ExportToSVG` (XAR export planned; see Export section)
 
 Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterface` (see `UltraCanvasCDRPainterImpl` in `UltraCanvasCDRPluginImpl.h`).
 
@@ -11394,6 +11512,146 @@ picker->onScreenColorPick = [picker](bool foreground) {
     else            picker->SetBackgroundColor(pixel);
 };
 ```
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasColorSwatchBar.md
+==============================================================================
+
+# UltraCanvas Color Swatch Bar Documentation
+
+## Overview
+
+**UltraCanvasColorSwatchBar** is a strip of colour swatches: one click picks a
+colour. It is for the places where a full
+[`UltraCanvasColorPicker`](UltraCanvasColorPicker.md) is too much furniture —
+the row of backdrop colours under a transparent image in the media viewer, a
+quick fill palette in an editor, a highlight colour in a toolbar.
+
+The bar **sizes its swatches to the space it is given**: each one grows towards
+`swatchSize` and shrinks towards `minSwatchSize` so a full palette still fits a
+narrow preview pane, and the row is centred in whatever space is left over.
+That is why this is an element rather than a row of buttons — a fixed row of
+buttons cannot adapt, and a palette that overflows its pane is a palette with
+colours nobody can reach.
+
+**File Location**: `include/UltraCanvasColorSwatchBar.h`
+**Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
+  colours, or both
+- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+  transparency pattern"
+- ✅ Swatch size adapts to the element's width **and** height; the row is centred
+- ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
+- ✅ `onColorSelected` / `onCheckeredSelected` callbacks
+- ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasColorSwatchBar.h"
+using namespace UltraCanvas;
+
+// Greys first, then colours — the palette a backdrop chooser wants.
+auto bar = CreateColorSwatchBar("fill-colors", 0, 0, 320, 28);
+bar->onColorSelected = [](const Color& c) { SetFillColor(c); };
+container->AddChild(bar);
+```
+
+A backdrop chooser adds the checkerboard entry — `CreateBackdropSwatchBar` does
+both steps:
+
+```cpp
+auto backdrop = CreateBackdropSwatchBar("backdrop", 0, 0, 0, 28);
+backdrop->onColorSelected    = [&](const Color& c) { view->SetBackdropColor(c); };
+backdrop->onCheckeredSelected = [&]()              { view->SetBackdropCheckered(); };
+```
+
+## Palettes
+
+```cpp
+static std::vector<Color> GrayscalePalette(int steps = 6);  // white → black
+static std::vector<Color> ColorPalette();                   // red → brown, 12 colours
+static std::vector<Color> DefaultPalette();                 // grayscale + colours
+```
+
+Any other list works just as well:
+
+```cpp
+bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
+```
+
+Replacing the palette keeps the selection **only** if the selected colour is in
+the new list; otherwise nothing is marked.
+
+## Selection
+
+```cpp
+void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
+void  SelectCheckered(bool runCallback = false);
+void  ClearSelection();
+bool  HasColorSelected() const;
+bool  IsCheckeredSelected() const;
+int   GetSelectedIndex() const;      // -1 == none
+Color GetSelectedColor() const;      // ask HasColorSelected() first
+```
+
+`SelectColor` with a colour the palette does not hold clears the selection
+instead of adding it — which is what a host wants when the value came from
+somewhere else (a colour picker dialog, a saved setting): no swatch is marked,
+and the strip still works.
+
+Selection is a highlight, not a filter: clicking always reports through the
+callback, even on the swatch that is already selected.
+
+## Layout and style
+
+```cpp
+struct ColorSwatchBarStyle {
+    Color background, border, hoverBorder, selectedBorder;
+    Color checkerLight, checkerDark;
+    float swatchSize, minSwatchSize, spacing, padding;
+    float borderWidth, selectedBorderWidth, cornerRadius, checkerCell;
+};
+
+void SetStyle(const ColorSwatchBarStyle& s);
+void SetSwatchSize(float size);
+float GetPreferredWidth() const;        // every swatch at its preferred size
+float GetEffectiveSwatchSize() const;   // what they are drawn at right now
+```
+
+Give the element the height you want the strip to be (`28` suits a 20 px
+swatch) and let the layout stretch it across the width. The swatch edge is
+`min(swatchSize, width that fits every swatch, height − 2·padding)`, floored at
+`minSwatchSize`, so:
+
+| Space | What happens |
+|---|---|
+| Wide | Swatches reach `swatchSize`; the row is centred |
+| Narrow | Swatches shrink towards `minSwatchSize`; below that the gaps close and the swatches keep shrinking, so every colour stays reachable |
+| Short | Swatches shrink to the height; the row stays a single line |
+
+The background is transparent by default — set `style.background` when the strip
+needs to read as a bar of its own.
+
+## Callbacks
+
+```cpp
+std::function<void(const Color&)> onColorSelected;
+std::function<void()>             onCheckeredSelected;
+```
+
+Programmatic selection stays silent unless `runCallback` is passed, so a host
+can mirror an external change without hearing its own echo.
+
+## Used by
+
+- **[`UltraCanvasMediaViewer`](UltraCanvasMediaViewer.md)** — the backdrop strip
+  under a transparent image (and with it the UltraFiler preview pane).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasContourChart.md
@@ -16889,14 +17147,25 @@ notices and rescans.
 
 ```cpp
 filer->SetFolderWatchEnabled(false);      // on by default
+filer->IsFolderWatchNative();             // OS notifications, or polling?
 filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
-A background worker re-fingerprints the folder every interval — its own
+Where the operating system can report changes itself the widget uses that —
+inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+[`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
+the moment it happens, and an idle folder costs nothing at all.
+
+Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI
-thread, and only a real directory is watched (an archive interior or a file list
-has no folder whose changes would mean anything).
+thread. `IsFolderWatchNative()` reports which of the two is in force.
+
+Either way only a real directory is watched: an archive interior or a file list
+has no folder whose changes would mean anything. The interval governs detection
+only while polling; with a native watcher it bounds just how quickly the UI
+applies what the watcher already reported.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
@@ -18437,6 +18706,72 @@ btnClear->SetOnClick([chart, showNoSelection]() {
 - [UltraCanvasButtonExamples](UltraCanvasButtonExamples.md) — toolbar buttons used by the demo
 - [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — used to host the demo tabs
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base class
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFolderWatcher.md
+==============================================================================
+
+# UltraCanvasFolderWatcher
+
+Watches **one directory** and reports when its content changes — an entry
+created, deleted, renamed, or written to, by this process or any other. Not
+recursive: it answers *"did the folder I am showing change"*, which is what a
+file display needs.
+
+```cpp
+#include "UltraCanvasFolderWatcher.h"
+
+UltraCanvasFolderWatcher watcher;
+if (!watcher.Watch(folder, [this]() { dirty.store(true); })) {
+    // No backend on this platform — fall back to polling.
+}
+```
+
+## The callback runs on the watcher's thread
+
+It must do nothing but hand the news over — set an atomic, post an event — and
+return. Anything else races the UI.
+
+One user action can produce **several** callbacks: saving a file is typically a
+create, one or more writes, and a rename. Coalesce on the receiving side; the
+watcher deliberately does not debounce for you, because how long to wait is the
+caller's decision, not the filesystem's.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Watch(path, onChanged)` | Watch `path`, replacing whatever was watched before. **False** when this build has no native backend, when `path` is empty or has no callback, or when the folder cannot be watched (gone, no permission, out of watch descriptors). |
+| `Stop()` | Stop watching. Joins the backend thread, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice, and safe if `Watch()` failed. |
+| `IsWatching()` / `WatchedPath()` | What is being watched, if anything. |
+| `NativeBackendAvailable()` | *static.* Whether this build has a backend at all. False means every `Watch()` will fail, so a caller can skip trying. |
+
+The destructor calls `Stop()`.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Linux, BSD | `inotify` — one watch on the directory, a thread waiting on the queue and a self-pipe so `Stop()` wakes it immediately |
+| Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE` so watching a folder never blocks renaming or deleting it |
+| macOS, Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+
+Platform code lives under `UltraCanvas/OS/<Platform>/`; the core file holds no
+operating system calls at all. A platform is wired up by dropping its backend
+there and adding it to the `ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH` condition in
+the **top-level** `CMakeLists.txt`. That decision has to be made above the
+subdirectories because the library and `Tests/` both consume it: without the
+define the core file compiles a null-returning fallback, so the two scopes
+disagreeing is a duplicate symbol at link time in one direction and a missing
+one in the other.
+
+## Falling back
+
+A caller must handle `Watch()` returning false — it is the normal answer on a
+platform without a backend, and a possible one everywhere (a folder can vanish
+between being listed and being watched). The
+[Filer widget](UltraCanvasFilerWidget.md#watching-the-shown-folder) shows the
+shape: try the watcher, and keep a polling worker for when it says no.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFunnelChart.md
@@ -25750,6 +26085,66 @@ images; the zoom toolbar also drives the PDF view and, for e-books, the
 reading text scale (books reflow, so zoom is a text scale and "Fit" means a
 comfortable line measure across the pane).
 
+## Zooming the shown page
+
+Images and PDF pages zoom the same way: the **mouse wheel** zooms about the
+pointer — what is under the cursor stays under it — and the keyboard steps with
+`+` / `-`, fits with `0` and shows actual size with `1` (the PDF view adds `W`
+for fit-width). The info bar reports the resulting zoom for both. The other
+wheel action stays on Ctrl+wheel: Ctrl+wheel scrolls the PDF page and turns
+pages at its edges.
+
+```cpp
+viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
+```
+
+## Backdrop under transparent images
+
+A file that really has transparency — an alpha channel that is used, or a
+vector document (SVG), which paints over whatever is behind it — gets a strip of
+colours directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
+swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
+clicking the checkerboard goes back to the transparency pattern. Files without
+transparency never show the strip, so it costs no space where it would mean
+nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
+opaque alpha channel a PNG export routinely carries.
+
+```cpp
+viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
+// Remember what the user picked:
+viewer->onTransparentBackgroundChanged =
+        [&](TransparentImageBackground mode, const Color& color) {
+    settings.checkered = (mode == TransparentImageBackground::Checkered);
+    settings.color = color;
+};
+// Different colours, or different metrics:
+viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
+```
+
+The strip stays in step with `SetTransparentBackground()` / `SetTransparentColor()`
+however they are called: the matching swatch is marked, and a colour the palette
+does not hold (one picked in a settings dialog) simply marks none of them.
+
+## PDF page inventory
+
+The thumbnail strip beside a PDF page takes its width one of two ways: an
+absolute pixel width — the same strip whatever the viewer's size, which is what
+a preview pane wants — or a share of the viewer's own width, so the inventory
+grows with the window (the default, a quarter of the width capped by the PDF
+view's style).
+
+```cpp
+viewer->SetPDFThumbnailWidth(56);           // absolute: 56 px thumbnails
+viewer->SetPDFThumbnailWidthFraction(0.2f); // relative: a fifth of the width
+viewer->IsPDFThumbnailWidthAbsolute();      // which mode is in force
+```
+
+The viewer remembers the choice, so it also applies to documents opened later.
+The strip only appears for documents with more than one page. UltraFiler
+exposes this as *Settings > Display > PDF Inventory* (a slider from 32 to
+120 px, 56 px by default) and applies it to its preview pane.
+
 ### e-books (`MediaKind::Book`)
 
 E-books open in an embedded `UltraCanvasEBookViewer`. Engines come from the
@@ -25834,6 +26229,7 @@ auto preview = CreateMediaViewer("Preview", 0, 0, 0, 0);
 preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
+preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 ```
 
 ### Letting go of the previewed file
@@ -28441,17 +28837,28 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
   white underlay; rendered pages and thumbnails are cached per DPI.
 - **Thumbnail strip** (the page inventory) with click-to-jump and independent
   scrolling (toggleable). It only appears for documents with more than one
-  page, its width is capped at 1/4 of the view so the page area always stays at
-  least 3× the strip, and it auto-scrolls to keep the current page's thumb
-  visible. The strip's width drives the thumbnails: each one is the strip width
-  minus `thumbMargin` on both sides, and **as tall as its own page's aspect
-  ratio requires** — so a slot never pads a page with empty space, and pages of
-  differing sizes each get their own height. Page numbers are sized from the
-  thumbnail they belong to, so they shrink with it.
+  page and auto-scrolls to keep the current page's thumb visible. Its width
+  follows one of two modes (`SetThumbnailWidthMode`): **relative** — a share of
+  the view's width (a quarter by default, capped by `thumbStripWidth`), so the
+  page area always stays at least 3× the strip; or **absolute** — an exact
+  thumbnail width in pixels, the same strip whatever the view's size, for hosts
+  that want a fixed inventory (the UltraFiler preview asks for 56 px). Either
+  way each thumbnail is the strip width minus `thumbMargin` on both sides, and
+  **as tall as its own page's aspect ratio requires** — so a slot never pads a
+  page with empty space, and pages of differing sizes each get their own
+  height. Page numbers are sized from the thumbnail they belong to, so they
+  shrink with it.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
-  Ctrl+wheel to zoom; fit modes re-resolve on resize.
+  fit modes re-resolve on resize.
+- **Zoom by wheel and keyboard**: the wheel zooms about the pointer — the page
+  point under the cursor stays under it — and `+` / `-` step, `0` fits the
+  page, `1` is 100 % and `W` fits the width. Which of zoom and scroll the plain
+  wheel does is `SetWheelAction`; the other one is always the same wheel with
+  Ctrl held, so both stay reachable either way. The default is
+  `WheelAction::Scroll` (so Ctrl+wheel zooms); `UltraCanvasMediaViewer` sets
+  `Zoom`, matching its image surface, where the plain wheel has always zoomed.
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning.
@@ -28551,10 +28958,23 @@ void     ZoomToFit();              // Fit Page
 void     ZoomToWidth();            // Fit Width
 void     ZoomActualSize();         // 100%
 float    GetZoomPercent() const;   // effective on-screen scale, as a percentage
+
+// Zoom keeping the page point under `local` (element-local pixels) in place —
+// what the wheel does. Outside the page it zooms about the viewport centre.
+void SetZoomAt(float scale, const Point2Di& local);
+void ZoomInAt(const Point2Di& local);    // 1.1x step, the wheel's
+void ZoomOutAt(const Point2Di& local);
+
+// What the plain wheel does over the page; Ctrl+wheel always does the other.
+enum class WheelAction { Scroll, Zoom };
+void        SetWheelAction(WheelAction a);   // default: Scroll
+WheelAction GetWheelAction() const;
 ```
 
 Fit modes recompute their scale from the live viewport every frame, so the page
-keeps fitting when the view is resized.
+keeps fitting when the view is resized. The keyboard zooms too while the view
+has the focus: `+` / `-` step, `0` fits the page, `1` is actual size and `W`
+fits the width (see the interaction table below).
 
 ### Search
 
@@ -28648,6 +29068,16 @@ enum class ThumbnailNumberStyle { Caption, Overlay };
 void SetThumbnailNumberStyle(ThumbnailNumberStyle s);   // default: Caption
 ThumbnailNumberStyle GetThumbnailNumberStyle() const;
 
+// How wide the thumbnails are: a share of the view's width, or a pixel width.
+enum class ThumbnailWidthMode { Relative, Absolute };
+void SetThumbnailWidthMode(ThumbnailWidthMode m);       // default: Relative
+ThumbnailWidthMode GetThumbnailWidthMode() const;
+void  SetThumbnailWidth(int pixels);        // Absolute mode (and selects it)
+int   GetThumbnailWidth() const;
+void  SetThumbnailWidthFraction(float f);   // Relative mode (and selects it)
+float GetThumbnailWidthFraction() const;
+int   GetEffectiveThumbnailWidth() const;   // what is laid out right now
+
 void SetStyle(const PDFViewStyle& s);
 const PDFViewStyle& GetStyle() const;
 ```
@@ -28663,17 +29093,32 @@ UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
-metrics (`thumbStripWidth`, `thumbMargin`, `thumbMaxHeight`, `thumbSpacing`,
-`pageMargin`, `pageShadowSize`, `scrollbarWidth`, `defaultDpi`,
-`thumbOverlayNumberHeight`, `thumbLabelHeight`).
+metrics (`thumbStripWidth`, `thumbStripWidthFraction`, `thumbWidth`,
+`thumbMargin`, `thumbMaxHeight`, `thumbSpacing`, `pageMargin`,
+`pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`,
+`thumbLabelHeight`).
 
-The inventory is laid out from its width: `thumbStripWidth` is a request, and
-the effective strip width is capped at 1/4 of the view width so the page area
-keeps at least a 3:1 ratio over the strip. Subtracting `thumbMargin` on both
-sides gives the thumbnail width, and each thumbnail's height follows its own
-page's aspect ratio (`thumbMaxHeight` caps it for extreme formats — such a page
-narrows instead of stretching, keeping its proportions). There is no fixed
-thumbnail height to set.
+The inventory is laid out from its width, and the width mode decides where that
+comes from:
+
+| Mode | Strip width | Use it for |
+|---|---|---|
+| `Relative` (default) | `thumbStripWidthFraction` of the view width (0.25), never more than `thumbStripWidth` (160 px) — so the page area keeps at least a 3:1 ratio over the strip | A full viewer window, where the inventory should grow with it |
+| `Absolute` | `thumbWidth` (56 px) plus `thumbMargin` on both sides, whatever the view's size; it only gives way when it would take more than half the view | A preview pane, where the inventory should look the same at every pane size |
+
+Subtracting `thumbMargin` on both sides gives the thumbnail width, and each
+thumbnail's height follows its own page's aspect ratio (`thumbMaxHeight` caps it
+for extreme formats — such a page narrows instead of stretching, keeping its
+proportions). There is no fixed thumbnail height to set. Changing the mode or
+either width re-lays out the strip and re-renders the thumbnails at their new
+size.
+
+```cpp
+// A preview pane: 56 px thumbnails whatever the pane's width.
+view->SetThumbnailWidth(56);
+// Back to growing with the view: a fifth of its width.
+view->SetThumbnailWidthFraction(0.2f);
+```
 
 ### Editing passthroughs
 
@@ -28709,10 +29154,15 @@ immediately.
 
 ### Built-in interaction
 
+Clicking the view gives it the keyboard focus, so the keys below work in a host
+that focuses something else (a preview pane beside a file list).
+
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
-| Ctrl + wheel | Zoom in / out |
+| Mouse wheel | The configured `WheelAction` over the page — by default scroll it, continuing into the next/previous page at its bottom/top edge. Over the thumbnail strip the wheel always scrolls the strip |
+| Ctrl + wheel | The other action: zoom about the pointer by default, or scroll when `WheelAction::Zoom` is set |
+| + / - (or = / _, and the keypad) | Zoom in / out |
+| 0 / 1 / W | Fit the page / 100 % / fit the width |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
 | Drag (in select mode) | Marquee-select text lines |
@@ -38178,6 +38628,352 @@ channel count) to a mono float buffer suitable for `ComputeSpectrogram`.
 - Hovering a cell shows its time/frequency label and value (dB or magnitude).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSpellChecker.md
+==============================================================================
+
+# UltraCanvasSpellChecker Documentation
+
+## Overview
+**UltraCanvasSpellChecker** is the framework's cross-platform spell checking
+service. It owns a backend, a user dictionary, a session ignore list and one
+worker thread, and it builds ready-to-insert menus for the host application.
+
+Checking never runs on the render thread: text is queued, a worker checks it,
+and the element drains the finished result while it draws.
+
+**Header:** `UltraCanvasSpellChecker.h`
+**Implementation:** `UltraCanvasSpellChecker.cpp`
+**Backend interface:** `ISpellCheckBackend.h`
+**Version:** 1.0.1
+**Last Modified:** 2026-08-24
+**Author:** UltraCanvas Framework
+
+## Backends
+
+One native backend is compiled per platform, with Hunspell as the portable
+fallback. `Initialize()` tries the native one and falls back automatically, so
+an application never has to care which is in use.
+
+| Platform | Backend | Source | Build flag |
+|---|---|---|---|
+| Linux / BSD | enchant-2 | `OS/Linux/UltraCanvasSpellCheckSupport.cpp` | `ULTRACANVAS_HAS_ENCHANT` |
+| Windows 8+ | ISpellChecker (COM) | `OS/MSWindows/UltraCanvasSpellCheckSupport.cpp` | `ULTRACANVAS_HAS_WINSPELLCHECK` |
+| macOS | NSSpellChecker | `OS/MacOS/UltraCanvasSpellCheckSupport.mm` | none needed |
+| Android, WASM | none — Hunspell only | `OS/<Platform>/UltraCanvasSpellCheckSupport.cpp` | — |
+| all | Hunspell (fallback) | `core/SpellCheckBackendHunspell.cpp` | `ULTRACANVAS_HAS_HUNSPELL` |
+
+Every dependency is optional. With none present the module still compiles and
+reports zero dictionaries — the build never fails over a missing one.
+
+Exactly one translation unit per platform defines
+`CreateNativeSpellCheckBackend()`. A new platform directory needs its own
+(returning `nullptr` is a complete implementation) or the link fails.
+
+### Dictionary discovery (Hunspell backend)
+
+`<code>.aff` / `<code>.dic` pairs are searched in priority order; the first
+directory holding a given code wins.
+
+1. `$ULTRACANVAS_DICT_PATH` (`:` separated, `;` on Windows)
+2. `$XDG_DATA_HOME/UltraCanvas/dictionaries`
+3. `$HOME/.local/share/UltraCanvas/dictionaries`, `$HOME/.local/share/hunspell`, `$HOME/Library/Spelling`
+4. `$APPDATA\UltraCanvas\dictionaries`
+5. `./dictionaries`, `./Resources/dictionaries`
+6. `/usr/share/hunspell`, `/usr/share/myspell`, `/usr/local/share/hunspell`, `/Library/Spelling`, `/System/Library/Spelling`
+
+Hunspell expects words in the encoding the dictionary declares in its `SET`
+directive, not UTF-8. That directive is read during discovery: UTF-8,
+ISO-8859-1 and ISO-8859-15 dictionaries are converted as needed, and one in any
+other encoding is reported `isAvailable = false` rather than loaded and left to
+flag every accented word.
+
+## Quick start
+
+```cpp
+#include "UltraCanvasSpellChecker.h"
+
+UltraCanvasSpellChecker& spell = UltraCanvasSpellChecker::Instance();
+spell.Initialize();   // native backend, else Hunspell; language from LANG/LC_ALL
+```
+
+### Host application menu
+
+```cpp
+menuBar->AddItem(MenuItemData::Submenu("Tools", {
+    UltraCanvasSpellChecker::BuildSpellCheckMenu(),
+    MenuItemData::Separator(),
+    MenuItemData::Action("Word Count", cmd(TexterCommand::ToolsWordCount)),
+}));
+```
+
+Produces:
+
+```
+Tools
+└── Spell Check
+    ├── ☑ Enable Spell Check
+    ├── ─────────────────────
+    ├── ○ Deutsch (Germany)          ← only dictionaries actually installed
+    ├── ● English (United States)
+    ├── ○ Français (France)
+    ├── ─────────────────────
+    └── Recheck Document
+```
+
+The submenu is lambda-provided, so it is rebuilt every time it opens: the
+enable check mark and the active-language radio always show live state. The
+host does **not** need to rebuild its menu bar when the language changes.
+
+Language entries are radio items sharing one group, so `UltraCanvasMenu`
+enforces exclusivity itself.
+
+To customise labels, or to splice the entries into a menu of your own:
+
+```cpp
+SpellMenuOptions options;
+options.menuLabel  = "Rechtschreibung";
+options.enableLabel = "Rechtschreibprüfung aktivieren";
+options.useNativeLanguageNames = true;
+options.iconPath = NormalizePath(GetResourcesDir() + "media/icons/spellcheck.svg");
+menuBar->AddItem(UltraCanvasSpellChecker::BuildSpellCheckMenu(options));
+
+std::vector<MenuItemData> items = UltraCanvasSpellChecker::BuildSpellCheckMenuItems(options);
+std::vector<MenuItemData> languages = UltraCanvasSpellChecker::BuildLanguageMenuItems(true);
+```
+
+### Settings and style
+
+```cpp
+spell.SetMode(SpellCheckMode::AsYouType);
+spell.SetLanguage("de_DE");
+spell.SetUserDictionaryPath(GetConfigDir() + "/UltraTexterDictionary.txt");
+
+SpellCheckStyle style;
+style.markStyle = SpellErrorMarkStyle::WavyUnderline;
+style.markColor = darkMode ? Color(248, 113, 113, 255) : Color(220, 38, 38, 255);
+style.waveAmplitude = 1.6f;
+spell.SetStyle(style);
+```
+
+`GetStyle()` returns **by value** — the style is mutex-guarded and another
+thread may replace it while a render pass reads it.
+
+### Callbacks
+
+```cpp
+spell.onSpellLanguageChange   = [](const std::string& code) { /* new dictionary */ };
+spell.onSpellModeChange       = [](SpellCheckMode mode)     { /* enabled/disabled */ };
+spell.onSpellDictionaryChange = [](const std::string& word) { /* word added/removed */ };
+```
+
+`RequestRecheck()` (what the menu's "Recheck Document" calls) clears the ignore
+list and every cached result, then fires `onSpellDictionaryChange` so open
+documents re-queue.
+
+## Threading model
+
+```
+Edit lands
+    ↓
+QueueCheckText(contextId, text)     ← render thread, returns immediately
+    ↓                                  (a pending job for the same element is
+    ↓                                   replaced, so typing builds no backlog)
+Worker thread: CheckText()          ← backend locked PER WORD, never per document
+    ↓
+completedResults[contextId]  →  context notifier fires
+    ↓
+TryTakeResult(contextId, result)    ← render thread, while drawing
+    ↓
+Store errors, redraw
+```
+
+Stale results are discarded automatically: the worker compares its `jobId`
+against the newest job for that context before publishing, so a slow check that
+finishes after a newer edit is dropped rather than painting marks at old
+positions.
+
+Because results are drained while rendering, a check that finishes *after* the
+edit's repaint would otherwise sit undelivered. `SetContextNotifier()` closes
+that gap — it fires on the worker thread once a result is published so the
+caller can ask for a frame. `UltraCanvasTextArea` registers one automatically.
+
+> **`SpellCheckOptions::shouldSkipRange` runs on the worker thread.** It must
+> not touch state the render thread mutates. Capture an immutable snapshot when
+> the options are built.
+
+```cpp
+SpellCheckOptions options;
+options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) -> bool {
+    return snapshot->IsInsideCodeOrLinkOrMath(startByte, byteLength);
+};
+```
+
+## Types
+
+| Type | Description |
+|---|---|
+| `SpellCheckMode` | `Disabled`, `AsYouType`, `OnDemand`. No `None` — X11 defines it as a macro |
+| `SpellErrorKind` | `Misspelled`, `RepeatedWord`, `Capitalization` |
+| `SpellErrorMarkStyle` | `WavyUnderline`, `DottedUnderline`, `SolidUnderline`, `Highlight` |
+| `SpellError` | One flagged word: byte, codepoint **and** line/column offsets, plus `word`, `kind`, `suggestions` |
+| `SpellCheckOptions` | Skip rules, suggestion policy, and the `shouldSkipRange` veto hook |
+| `SpellCheckResult` | Async result: `contextId`, `jobId`, `languageCode`, `errors` |
+| `SpellCheckStyle` | Mark style, colours, wave geometry, stroke width |
+| `SpellMenuOptions` | Labels and section toggles for `BuildSpellCheckMenu()` |
+| `SpellLanguageInfo` | Dictionary descriptor: `code`, `displayName`, `nativeName`, `isAvailable` |
+| `SpellCheckText::WordSpan` | Tokenizer output: byte/char/line/column position of one candidate word |
+
+### Skip rules
+
+Defaults in `SpellCheckOptions`, all individually switchable:
+
+| Option | Default | Skips |
+|---|---|---|
+| `skipWordsWithDigits` | `true` | `abc123`, `H2O` |
+| `skipUpperCaseWords` | `true` | `HTTP`, `UTF` |
+| `skipMixedCaseWords` | `true` | `camelCase` — but not `Berlin` |
+| `skipUrlsAndEmails` | `true` | `http://…`, `name@host` |
+| `skipWordsWithUnderscore` | `true` | `snake_case` |
+| `detectRepeatedWords` | `true` | *reports* `the the` |
+| `minimumWordLength` | `2` | single letters are never flagged |
+
+## API summary
+
+### Lifecycle
+```cpp
+static UltraCanvasSpellChecker& Instance();
+bool Initialize();
+void Shutdown();
+bool IsInitialized() const;
+void SetBackend(std::unique_ptr<ISpellCheckBackend> backend);
+std::string GetBackendName() const;
+```
+
+### Language
+```cpp
+std::vector<SpellLanguageInfo> GetAvailableLanguages() const;
+bool SetLanguage(const std::string& languageCode);
+std::string GetLanguage() const;
+SpellLanguageInfo GetLanguageInfo(const std::string& languageCode) const;
+std::string DetectPreferredLanguage() const;
+```
+
+### Mode and style
+```cpp
+void SetMode(SpellCheckMode mode);
+SpellCheckMode GetMode() const;
+bool IsEnabled() const;
+void SetStyle(const SpellCheckStyle& style);
+SpellCheckStyle GetStyle() const;         // by value - see above
+```
+
+### Checking
+```cpp
+bool IsCorrect(const std::string& word) const;
+std::vector<std::string> GetSuggestions(const std::string& word, int maxCount = 8) const;
+std::vector<SpellError> CheckText(const std::string& text,
+                                  const SpellCheckOptions& options = SpellCheckOptions()) const;
+
+uint64_t QueueCheckText(uint64_t contextId, const std::string& text,
+                        const SpellCheckOptions& options = SpellCheckOptions());
+bool TryTakeResult(uint64_t contextId, SpellCheckResult& outResult);
+void CancelContext(uint64_t contextId);
+void SetContextNotifier(uint64_t contextId, std::function<void()> notifier);
+bool HasPendingWork() const;
+```
+
+### Dictionary
+```cpp
+bool AddToUserDictionary(const std::string& word);
+bool RemoveFromUserDictionary(const std::string& word);
+std::vector<std::string> GetUserDictionary() const;
+void IgnoreWord(const std::string& word);     // session only
+void ClearIgnoredWords();
+bool IsWordIgnored(const std::string& word) const;
+void RequestRecheck();
+void SetUserDictionaryPath(const std::string& filePath);
+std::string GetUserDictionaryPath() const;
+bool LoadUserDictionary();
+bool SaveUserDictionary() const;
+```
+
+A backend owning a persistent user dictionary (macOS, Windows, enchant) stores
+the word itself and the service keeps no second copy; otherwise the word goes
+to the on-disk list, whose parent directory is created on demand.
+
+### Menus
+```cpp
+static MenuItemData BuildSpellCheckMenu(const SpellMenuOptions& = SpellMenuOptions());
+static std::vector<MenuItemData> BuildSpellCheckMenuItems(const SpellMenuOptions& = SpellMenuOptions());
+static std::vector<MenuItemData> BuildLanguageMenuItems(bool useNativeNames = true);
+static std::vector<MenuItemData> BuildSuggestionMenuItems(
+    const SpellError& error,
+    std::function<void(const std::string&)> onApply,
+    std::function<void()> onRecheck = nullptr);
+```
+
+### Text utilities — `namespace SpellCheckText`
+```cpp
+std::vector<WordSpan> TokenizeWords(const std::string& text);
+size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
+size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
+size_t CountCodepoints(const std::string& text);
+bool ContainsDigit(const std::string& word);
+bool IsAllUpperCase(const std::string& word);
+bool IsMixedCase(const std::string& word);
+bool LooksLikeUrlOrEmail(const std::string& word);
+std::string ToLowerAscii(const std::string& word);
+const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+```
+
+### Rendering — `namespace SpellCheckRendering`
+```cpp
+void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
+                        const SpellCheckStyle& style,
+                        SpellErrorKind kind = SpellErrorKind::Misspelled);
+void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
+                       const Color& color, float amplitude, float waveLength, float strokeWidth);
+void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
+                         const Color& color, float strokeWidth);
+```
+
+Any component that can produce a word rectangle can call these — they know
+nothing about elements.
+
+## Using it in a text element
+
+`UltraCanvasTextArea` has it wired in already; see
+[UltraCanvasTextAreaExamples.md](UltraCanvasTextAreaExamples.md#spell-checking).
+
+```cpp
+textArea->SetSpellCheckEnabled(true);
+```
+
+That is the whole integration: the element queues on every edit, drains and
+draws while rendering, and offers suggestions on right-click.
+
+## Testing
+
+| Test | What it covers |
+|---|---|
+| `Tests/SpellCheckerTest.cpp` | Tokenizer, skip rules, language names, dictionary, async queue, shutdown. Framework-independent |
+| `Tests/TextAreaSpellCheckTest.cpp` | The element: results reaching it, byte-offset → screen-rectangle mapping, applying a suggestion. Needs a display; runs under Xvfb |
+
+Both skip rather than fail when no dictionary (or no display) is present.
+
+```bash
+cmake -S . -B build -DBUILD_TESTS=ON && cmake --build build
+./build/bin/SpellCheckerTest
+xvfb-run -a ./build/bin/TextAreaSpellCheckTest
+```
+
+## See also
+
+- [UltraCanvasTextAreaExamples.md](UltraCanvasTextAreaExamples.md) — the element integration
+- [UltraCanvasMenu.md](UltraCanvasMenu.md) — `MenuItemData`, radio groups, lambda-provided submenus
+- [../Dependencies.md](../Dependencies.md) — installing hunspell / enchant and dictionaries
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSpinner.md
 ==============================================================================
 
@@ -40820,6 +41616,106 @@ splitView->SetLeftPane(textArea);
 splitView->SetRightPane(previewPanel);
 ```
 
+## Spell Checking
+
+Backed by the shared [UltraCanvasSpellChecker](UltraCanvasSpellChecker.md)
+service. Checking runs on that service's worker thread; the element queues text
+on every edit and drains the finished result while it draws, so typing is never
+blocked by a dictionary lookup.
+
+```cpp
+UltraCanvasSpellChecker::Instance().Initialize();   // once, at startup
+textArea->SetSpellCheckEnabled(true);
+```
+
+That is the whole integration. Misspellings get a red squiggle, and
+right-clicking one opens a menu of suggestions plus **Add to Dictionary** and
+**Ignore**.
+
+### Options
+
+```cpp
+SpellCheckOptions options;
+options.skipUpperCaseWords = false;    // do check "HTTP"
+options.fetchSuggestions   = true;     // pre-fill, instead of on right-click
+textArea->SetSpellCheckOptions(options);
+```
+
+Markdown mode can keep code, links and math out of the check without the spell
+module knowing any markdown. **The hook runs on the worker thread** — capture an
+immutable snapshot rather than reading live element state:
+
+```cpp
+options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) {
+    return snapshot->IsInsideCodeOrLinkOrMath(startByte, byteLength);
+};
+```
+
+### Reading and applying results
+
+```cpp
+for (const SpellError& error : textArea->GetSpellErrors()) {
+    debugOutput << error.word << " at byte " << error.startByte << std::endl;
+}
+
+textArea->RunSpellCheck();                     // queue a check now
+const SpellError* hit = textArea->GetSpellErrorAtPosition(mouseX, mouseY);
+if (hit) textArea->ApplySpellSuggestion(*hit, "correction");
+```
+
+Errors carry offsets into the text as it was when the check ran. After an edit,
+any whose span no longer holds the word it was raised for is dropped
+immediately, so a mark is never painted over the wrong text while the next
+result is on its way.
+
+### API
+
+```cpp
+void SetSpellCheckEnabled(bool enabled);
+bool IsSpellCheckEnabled() const;
+void SetSpellCheckOptions(const SpellCheckOptions& options);
+const SpellCheckOptions& GetSpellCheckOptions() const;
+void RunSpellCheck();
+const std::vector<SpellError>& GetSpellErrors() const;
+const SpellError* GetSpellErrorAtPosition(int x, int y);
+bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
+bool ShowSpellSuggestionMenu(const UCEvent& event);
+```
+
+## Character Range Geometry
+
+Maps a byte range of the document to where it actually is on screen, accounting
+for soft wrap, both scroll offsets, the line-number gutter and markdown mode
+(where rendered runs do not correspond one-to-one with source bytes).
+
+```cpp
+std::vector<Rect2Df> GetCharacterRangeBounds(size_t startByte, size_t byteLength);
+```
+
+One rectangle per visual line — a range crossing a soft wrap yields two. A
+range scrolled out of view yields none, which is normal rather than an error.
+
+This is what draws spell marks, but it is not spell-specific: search-result
+highlighting, inline diff marks, comment anchors and collaborative-editing
+cursors all need the same mapping.
+
+```cpp
+// Highlight every match of a search term
+for (size_t offset : matchOffsets) {
+    for (const Rect2Df& box : textArea->GetCharacterRangeBounds(offset, term.size())) {
+        ctx->SetFillPaint(Color(255, 235, 59, 90));
+        ctx->FillRectangle(box);
+    }
+}
+```
+
+Its counterpart replaces a byte range, going through the selection and undo
+machinery so the edit is undoable and raises `onTextChanged` like a typed one:
+
+```cpp
+bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
+```
+
 ## Notes and Best Practices
 
 1. **Memory Management**: Use smart pointers for component lifecycle management
@@ -40841,6 +41737,7 @@ splitView->SetRightPane(previewPanel);
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
 - **1.5.0**: Added line numbers and word wrap
 - **1.0.0**: Initial implementation with basic editing
@@ -44446,6 +45343,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | You need | Element | Header |
 |---|---|---|
 | Colour | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
+| A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
@@ -46254,7 +47152,7 @@ FILE: Docs/UltraCanvas/UltraCanvasXARExamples.md
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text strings, bitmaps) is in place, along with flat / gradient / bitmap fills, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. Unlike the sibling CDR element, the XAR element exposes **no multi-page navigation API** (no `GetPageCount` / `SetCurrentPage`) and **no `CDRFitMode`-style fit modes**; viewport handling is done with a single uniform `scale` plus an aspect-ratio flag. The commented-out blocks in the demo source (`SetFitMode`, `SetZoom`, `GetCurrentPage`, `onPageChanged`, …) reference an API that does **not** exist on this element — only the symbols documented below are real.
+XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/xar/` with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -46418,8 +47316,50 @@ public:
     const std::string& GetProducerVersion() const;
     const std::string& GetProducerBuild() const;
     const std::string& GetFileType() const;
+
+    // Parse diagnostics — filled during LoadFromFile / LoadFromMemory
+    struct XARParseDiagnostics {
+        size_t recordCount;                                 // records dispatched
+        std::unordered_map<uint32_t, size_t> unhandledTags; // tag value -> occurrences
+        std::vector<std::string> warnings;                  // structural problems
+    };
+    const XARParseDiagnostics& GetDiagnostics() const;
 };
 ```
+
+#### Parse Diagnostics & Triage
+
+XAR support is **not feature-complete**: some files display partially or
+incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
+(successful or not):
+
+- `unhandledTags` — record types the parser consumed without acting on. A
+  file that leans on one of these needs the matching record handler
+  implemented; tag values are the Xar Format Specification, Appendix A.
+- `warnings` — structural parse problems (bad signature, truncated record,
+  failed decompression). These are parser defects or corrupt files.
+- `recordCount` — how much of the file was walked before parsing stopped.
+
+`Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
+target exists) runs this triage from the command line: it prints the node
+tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
+samples or for any `.xar` files passed as arguments — the first thing to run
+on a file that renders wrong.
+
+Known renderer gaps (parse succeeds, display is approximate): fractal /
+noise fills fall back to simplified paints, transparency tiling modes are
+treated as flat, brush strokes render as plain lines, and some text layout remains
+approximate (explicit tab stops and ruler indents are not applied; lines,
+justification — full justification included — kerns, list indents and
+Xara's own per-line baseline steps are). Bitmap and contone-bitmap fills render the embedded bitmap mapped
+onto the fill parallelogram (both decode with the alpha channel inverted,
+the transparency convention xar-embedded PNGs use; contone maps the
+bitmap's luminance between the fill's two colours and keeps that alpha).
+Soft shadows (`TAG_SHADOWCONTROLLER`) render as flat silhouettes of the
+shadowed objects — glows as a symmetric halo, wall/floor shadows offset —
+with the penumbra approximated by widened fainter strokes instead of a true
+blur. Regular shapes render as plain polygons/ellipses — stellation and
+rounded corners are ignored.
 
 ### XARNode
 
@@ -51249,9 +52189,13 @@ UltraWin_ReleaseApp(app);
 
 ## Running applications
 
-- `UltraWin_RunApp(exePath, options, &handle)` forks and execs
-  `wine <exe> [args...]` in its own process group, with `WINEPREFIX` set and
-  optional extra environment variables (e.g. a DXVK switch) applied.
+- `UltraWin_RunApp(path, options, &handle)` forks and execs Wine in its own
+  process group, with `WINEPREFIX` set and optional extra environment
+  variables (e.g. a DXVK switch) applied. The path is routed by extension:
+  `.exe` (and anything else) runs directly, `.msi` installs through
+  `msiexec /i`, and `.lnk` Start-Menu shortcuts resolve through
+  `start /wait /unix` — so installers and installed programs launch through
+  the same one call.
 - Windows appear as native windows — Wine's default mode; UltraWin never
   enables Wine's "virtual desktop".
 - Supervision is polling-based (non-blocking `waitpid`): UltraWin installs
@@ -51263,6 +52207,16 @@ UltraWin_ReleaseApp(app);
   `UltraWin_ReleaseApp`.
 - `UltraWinRunOptions::forceTier` accepts `Auto` (== Wine in Stage 1) and
   `Wine`; `Vm` returns `NotSupported` until Stage 2.
+
+## Installed programs — feeding the ULTRA OS launcher
+
+Installers create Start-Menu shortcuts inside the environment.
+`UltraWin_ListPrograms(env)` enumerates them (all-users and per-user menus,
+recursively; `UltraWinProgramInfo` carries name, Start-Menu subfolder as
+`category`, and the shortcut's host path), so a launcher or app grid can
+show installed Windows programs like native ones — starting one is
+`UltraWin_RunApp(info.shortcutPath, …)` via the `.lnk` routing above.
+Uninstaller shortcuts are included; filter by name where unwanted.
 
 ## Components — VC++ runtimes, fonts, .NET, DXVK
 
@@ -51322,18 +52276,384 @@ launch/supervision path runs against a stub wine script (via the
 
 ## UltraFiler integration
 
-Double-clicking a `.exe` in UltraFiler launches it through
-`UltraWin_RunApp` in a per-app environment named after the executable
-(created automatically on first launch, off the UI thread). When Wine is
-missing, the status bar says how to install it. Available only in Linux
-builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
-`.exe` behaves as before.
+Double-clicking a `.exe` or `.msi` in UltraFiler launches it through
+`UltraWin_RunApp` in a per-app environment named after the file (created
+automatically on first launch, off the UI thread; installers run through
+msiexec). When Wine is missing, the status bar says how to install it.
+Available only in Linux builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other
+platforms activation behaves as before.
+
+## The VM tier (Stage 2a — machine backbone)
+
+The fallback tier for the apps Wine cannot run boots a **real Windows
+guest** under QEMU/KVM, headless — its desktop is never displayed;
+application windows will reach ULTRA OS through FreeRDP RemoteApp over the
+forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
+
+- `UltraWin_VmProvision(options)` prepares UltraWin's single shared
+  machine under `UltraWinConfig::vmDirectory`: the qcow2 system disk
+  (created via qemu-img, sparse, 64 GB cap by default), the unattended
+  Windows-setup answer file (`autounattend.xml`: RDP host + RemoteApp
+  allow-list enabled, TPM/RAM checks bypassed — **experimental until
+  validated against real media**), and the machine manifest. The Windows
+  ISO is **user-supplied** (Pro/Enterprise; a Windows license is the
+  user's) and can be added by re-provisioning later; re-provisioning never
+  recreates an existing disk.
+- `UltraWin_VmStart` boots headless with KVM (TCG only via
+  `vmAllowWithoutKvm`, for tests), virtio disk/net, the guest's RDP port
+  forwarded to loopback (`vmRdpHostPort`, default 13389), and a QMP
+  control socket in the machine directory; it returns once QMP answers.
+  While install media is configured and setup has not completed, the
+  machine boots from the ISO with the answer file attached as a virtual
+  FAT volume.
+- `UltraWin_VmSuspend` / `UltraWin_VmResume` pause the vCPUs (QMP
+  stop/cont) — the cheap way to keep the guest resident between launches;
+  `UltraWin_VmStop` is a graceful ACPI powerdown with a hard-quit
+  fallback, `UltraWin_VmKill` the virtual power cord.
+  `UltraWin_VmGetState` / `UltraWin_VmGetInfo` report
+  NotProvisioned/Stopped/Running/Suspended plus pid, disk and RDP port.
+- Engines stay wrapped: QEMU is **spawned, never linked** (same policy as
+  Wine/winetricks); QMP is spoken directly over its UNIX socket (design
+  decision: no libvirt daemon dependency), with JSON handled by the
+  vendored yyjson engine the framework already ships.
+- Capabilities: `qemuAvailable`/`qemuPath`, `virtiofsdAvailable`, and
+  `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
+  state is `UltraWin_VmGetInfo`'s business).
+
+## RemoteApp sessions (Stage 2b-i)
+
+The bridge between the running guest and the desktop: **FreeRDP** — the
+one UltraWin engine that IS linked (Apache 2; version-adaptive over
+FreeRDP 3, falling back to FreeRDP 2 where 3 is not packaged; optional —
+without it `UltraWinCapabilities::remoteAppSupported` is false and VM-tier
+launches report `NotSupported`).
+
+- `UltraWin_RunApp(..., forceTier = Vm)` now launches through a RemoteApp
+  (RAIL) session against the guest's forwarded RDP port: the guest runs
+  the program and exports its windows — never a desktop. Sign-in uses
+  `UltraWinConfig::vmGuestUsername/vmGuestPassword` (defaults match the
+  account the provisioning answer file creates).
+- Stage 2b accepts **guest paths** (`C:\...`) and RemoteApp aliases
+  (`||name`); host paths follow with the virtiofs shared-folder
+  integration.
+- Supervision maps onto the session: `Running` while connected,
+  `CloseApp`/`KillApp` end the session, `WaitApp`/`GetAppState` behave as
+  in the Wine tier.
+- The machine must be `Running` (`VmNotRunning` otherwise); drive
+  redirection over RDP is deliberately off — folders come via virtiofs.
+
+## Shared home over virtiofs (Stage 2b-ii)
+
+The VM tier meets the same-folders requirement the same way the Wine tier
+does — one unified home drive:
+
+- With `UltraWinConfig::vmShareHome` (default on) and a virtiofsd binary
+  on the host, `UltraWin_VmStart` spawns **virtiofsd** exporting `$HOME`
+  and attaches it as a `vhost-user-fs` device with tag `ultrawin_home`
+  (shared-memfd memory backend; `UltraWinVmInfo::homeShared` reports the
+  live state, and the daemon's lifetime is tied to the machine's).
+- `UltraWin_RunApp(forceTier = Vm)` accepts **host paths under the home
+  directory** and translates them to the guest spelling
+  (`/home/u/Apps/X.exe` → `U:\Apps\X.exe`, `homeDriveLetter`).
+- Guest side: the virtiofs service (WinFsp + `VirtioFsSvc` from the
+  virtio-win drivers) mounts the tag as the home drive — installed during
+  provisioning once Stage 2c validates against real install media.
 
 ## Not yet implemented (later stages)
 
+- Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
+  window surfaces as native ULTRA OS windows (needs a real Windows guest
+  to validate against).
+- Stage 2c: the provisioning pipeline is complete (WinPE virtio driver
+  injection, guest-tools install, virtiofs mount, RDP-probe install
+  detection, `ultrawin-setup` CLI) but awaits its validation run against
+  real install media on a KVM machine — see
+  [`VmValidation.md`](VmValidation.md).
 - `UltraWin_QueryCompatibility` + automatic tier routing.
-- The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
-  shared folders, `UltraCanvasRemoteAppView` RAIL element.
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/TestingGuide.md
+==============================================================================
+
+# UltraWin testing guide — Tier 1 (Wine) and Tier 2 (VM), step by step
+
+Hands-on validation of the Windows-application support in ULTRA OS, as a
+user would exercise it. Tier 1 needs only a Linux desktop with Wine; Tier 2
+additionally needs KVM and Windows install media. Every step says what
+success looks like, so a failing step plus its output is a complete bug
+report.
+
+The driver for most steps is the **`ultrawin-setup`** CLI (built with the
+framework), plus **UltraFiler** for the desktop-integration checks.
+
+---
+
+## Part 0 — Build (once)
+
+```bash
+sudo apt install build-essential cmake pkg-config \
+    libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev \
+    libglib2.0-dev libfreetype6-dev libtinyxml2-dev libfmt-dev \
+    libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev \
+    libcdr-dev librevenge-dev zlib1g-dev libzbar-dev \
+    freerdp2-dev    # Ubuntu 24.04+: freerdp3-dev
+
+git clone https://github.com/ULTRA-OS-Project/UltraCanvas.git
+cd UltraCanvas
+cmake -B build -DULTRACANVAS_BUILD_ULTRAWIN_TESTS=ON
+cmake --build build -j$(nproc) --target ultrawin-setup UltraFiler UltraWinTests
+```
+
+**Check:** the configure output shows
+`[✓] UltraWin - ENABLED` and `[✓] UltraWin RemoteApp client - ENABLED`.
+
+```bash
+./build/UltraWinTests
+```
+
+**Check:** all tests pass. Without Wine/QEMU installed some self-skip —
+after Part 1 below, re-run and expect **0 skipped** (the RDP handshake
+test may still skip on hosts without IPv6).
+
+---
+
+## Part 1 — Tier 1: Wine
+
+### 1.1 Install the engines
+
+```bash
+sudo apt install wine winetricks
+./build/ultrawin-setup status
+```
+
+**Check:** `wine: yes`, `winetricks: yes`.
+
+### 1.2 First launch from the command line
+
+Use any Windows program you have (a portable `.exe` is easiest —
+e.g. 7-Zip's installer, Notepad++ installer, PhotoFiltre):
+
+```bash
+./build/ultrawin-setup run-wine ~/Downloads/npp.8.6.Installer.x64.exe
+```
+
+**Check:** the installer opens **as a normal window** (no Windows desktop
+anywhere). The first launch prints nothing for ~30–60 s while the
+program's isolated environment is created — that is once per program.
+When you close the program, the CLI prints its exit code.
+
+### 1.3 The user's folders — the U: drive
+
+Inside any running Windows program: File → Open (or Save).
+
+**Check:** drive **U:** exists and shows your home directory — your real
+files, live. Drive **Z:** (the whole host filesystem) must NOT exist.
+Save a file to `U:\` and confirm it appears in `$HOME` on Linux.
+
+### 1.4 Desktop integration — UltraFiler
+
+```bash
+./build/UltraFiler
+```
+
+- Double-click a `.exe` → status bar shows "Launching …", the program
+  opens as a native window.
+- Double-click a `.msi` → status bar shows "Installing …" and the
+  installer runs (through msiexec).
+- With Wine **uninstalled**, double-clicking shows the install hint in
+  the status bar instead of failing silently.
+
+### 1.5 Installed programs reach the launcher
+
+After running an installer (1.2 or 1.4):
+
+```bash
+./build/ultrawin-setup programs
+```
+
+**Check:** the program's Start-Menu entries are listed with their
+environment and shortcut paths. Launch one:
+
+```bash
+./build/ultrawin-setup run-wine "<the listed .lnk path>"
+```
+
+### 1.6 Components fix missing runtimes
+
+If a program complains about VC++/fonts/.NET:
+
+```bash
+./build/ultrawin-setup component <EnvironmentName> vcrun2019
+./build/ultrawin-setup component <EnvironmentName> corefonts
+```
+
+(Environment names = the directories under
+`~/.local/share/ultrawin/environments/`, one per program.)
+
+**Check:** the command reports the installed components; the program's
+complaint is gone on the next launch. Failures name a log file
+(`ultrawin-install.log` in the environment) — send that file.
+
+---
+
+## Part 2 — Tier 2: the Windows VM
+
+Follow [`VmValidation.md`](VmValidation.md) for the full detail; the
+short form:
+
+### 2.1 Prerequisites
+
+```bash
+sudo apt install qemu-system-x86 qemu-utils virtiofsd
+./build/ultrawin-setup status
+```
+
+**Check:** `qemu: yes`, `kvm: yes`, `virtiofsd: yes`, `vm tier: yes`.
+(`kvm: no` → enable virtualization in BIOS/UEFI.)
+
+You also need, downloaded once:
+- a **Windows 10/11 Pro** ISO (your license),
+- the **virtio-win** drivers ISO:
+  <https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio-win/virtio-win.iso>
+
+### 2.2 Provision and install — fully unattended
+
+```bash
+./build/ultrawin-setup provision \
+    --windows-iso ~/isos/Win11_Pro.iso \
+    --drivers-iso ~/isos/virtio-win.iso
+./build/ultrawin-setup start
+./build/ultrawin-setup watch
+```
+
+**Check:** `watch` polls every 10 s and finishes with `installed=yes`
+(expect 20–45 min for the unattended install). No interaction should ever
+be needed. If `watch` reports `stopped` or never finishes, collect
+`~/.local/share/ultrawin/vm/ultrawin-qemu.log` and the `watch` output —
+that plus the screen described in VmValidation.md's failure table is the
+bug report.
+
+### 2.3 Launch Windows apps into the guest
+
+```bash
+./build/ultrawin-setup run "||notepad"
+./build/ultrawin-setup run "C:\\Windows\\System32\\notepad.exe"
+./build/ultrawin-setup run ~/Documents/SomeWindowsTool.exe   # via shared home
+```
+
+**Check:** the session connects and the CLI waits until the program ends.
+(Until the `UltraCanvasRemoteAppView` element lands, the window surface
+itself is not yet composed onto the desktop — a connected, program-bound
+session that ends when the app closes is the pass criterion; full window
+display is the next milestone.)
+
+### 2.4 The shared home inside the guest
+
+In the guest (e.g. via `run "C:\\Windows\\explorer.exe"` once 2b-ii
+lands, or any file dialog): **U:** shows the same home directory as
+Tier 1 and Linux.
+
+### 2.5 Machine lifecycle
+
+```bash
+./build/ultrawin-setup suspend   # freeze the guest (RAM stays)
+./build/ultrawin-setup resume
+./build/ultrawin-setup stop      # graceful shutdown; 'start' boots from disk
+```
+
+**Check:** `status` reflects each transition; after `stop`+`start` the
+machine boots straight from disk (no install media) because
+`installed: yes`.
+
+---
+
+## Reporting results
+
+For every failing step, include:
+1. The exact command and its full output.
+2. `./build/ultrawin-setup status` output.
+3. Tier 1: the environment's `ultrawin-install.log` (component failures).
+   Tier 2: `ultrawin-qemu.log`, `ultrawin-virtiofsd.log` and
+   `ultrawin-vm.conf` from `~/.local/share/ultrawin/vm/`.
+4. Host details: distro/version, Wine version (`wine --version`), QEMU
+   version (`qemu-system-x86_64 --version`).
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/VmValidation.md
+==============================================================================
+
+# UltraWin VM tier — real-hardware validation guide (Stage 2c)
+
+The VM tier's machine, session, and shared-folder layers are covered by
+automated tests, but the unattended **Windows installation** itself can only
+be validated on a machine with KVM and real install media. This is the
+step-by-step run, driven by the `ultrawin-setup` CLI (built with the
+framework whenever UltraWin is: target `ultrawin-setup`).
+
+## What you need
+
+- A Linux machine with `/dev/kvm` (BIOS virtualization enabled) and ~6 GB
+  free RAM, plus QEMU (`sudo apt install qemu-system-x86 qemu-utils
+  virtiofsd`).
+- A **Windows 10/11 Pro or Enterprise ISO** — the RemoteApp host role needs
+  Pro or better, and the Windows license is yours. (Microsoft's media
+  creation / evaluation downloads work.)
+- The **virtio-win drivers ISO**:
+  <https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio-win/virtio-win.iso>
+  — carries the storage/network drivers Windows setup needs on a virtio
+  machine, plus the guest tools (WinFsp + the virtiofs service).
+
+## The run
+
+```bash
+ultrawin-setup status          # expect: qemu yes, kvm yes, vm tier yes
+ultrawin-setup provision \
+    --windows-iso  ~/isos/Win11_Pro.iso \
+    --drivers-iso  ~/isos/virtio-win.iso
+ultrawin-setup start           # boots the installer, fully unattended
+ultrawin-setup watch           # polls until Windows answers on RDP
+```
+
+`watch` reports `installed=yes` once the guest's RDP port answers — that
+flips the machine manifest, so later `start`s boot straight from disk
+without install media. Then:
+
+```bash
+ultrawin-setup run "||notepad"                      # RemoteApp alias
+ultrawin-setup run "C:\\Windows\\System32\\notepad.exe"
+ultrawin-setup run ~/Documents/SomeTool.exe         # via the shared home
+```
+
+## What to report when it fails
+
+Everything lands in the machine directory (default
+`~/.local/share/ultrawin/vm`):
+
+| File | Contents |
+|---|---|
+| `ultrawin-qemu.log` | QEMU's own output (device/boot problems) |
+| `ultrawin-virtiofsd.log` | home-share daemon |
+| `ultrawin-vm.conf` | the machine manifest |
+| `unattend/autounattend.xml` | the generated answer file |
+
+Plus the `ultrawin-setup` output itself. The most likely first-run
+failures and their meaning:
+
+- **Setup asks for a disk driver / no disk found** — the WinPE driver
+  injection didn't reach the virtio-win CD (report which drive letter the
+  CD got in the guest).
+- **Setup stops at an interactive screen** — an answer-file gap; note
+  which screen (edition selection, EULA, account, …).
+- **`watch` never reaches installed** — RDP didn't come up: either
+  firstlogon commands failed (guest tools install, `VirtioFsSvc`) or the
+  RDP enablement didn't apply.
+- **`run` connects but no window appears** — RemoteApp allow-list or RAIL
+  negotiation; the `UltraCanvasRemoteAppView` element work (Stage 2b-ii)
+  also lands here.
+
+The answer file (`GenerateAutounattendXml`) and first-boot orchestration
+are deliberately marked experimental until this run has passed; iteration
+happens against these logs.
 
 ==============================================================================
 FILE: Docs/Modules/Vectorizer/README.md

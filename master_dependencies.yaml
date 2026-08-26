@@ -259,6 +259,142 @@ windows_compatibility:
       # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
       apt: "winetricks"
 
+    qemu:
+      min_version: "8.0"
+      purpose: "VM tier (Stage 2): headless Windows guest via qemu-system-x86_64 + qemu-img, KVM-accelerated (runtime, spawned — never linked; controlled over QMP)"
+      required: false
+      priority: "medium"
+      platforms: ["linux"]
+      # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
+      apt: "qemu-system-x86 qemu-utils"
+
+    freerdp:
+      min_version: "2.11"             # 3.x preferred where packaged
+      purpose: "VM tier RemoteApp (RAIL) client - the only LINKED UltraWin engine (Apache 2); optional, feature off without it"
+      required: false
+      priority: "medium"
+      platforms: ["linux"]
+      pkg_config: "freerdp3 winpr3 freerdp-client3 (fallback: freerdp2 winpr2 freerdp-client2)"
+      apt: "freerdp2-dev"              # 24.04+: freerdp3-dev
+
+# ===== TEXT PROCESSING (spell checking) =====
+#
+# Every entry here is optional and none of them can fail the build. The service
+# picks a backend at runtime in this order:
+#
+#   Linux   -> enchant-2, else Hunspell
+#   Windows -> ISpellChecker (Windows 8+), else Hunspell
+#   macOS   -> NSSpellChecker (always present)
+#   other   -> Hunspell
+#
+# With none of them available the module still compiles and reports zero
+# dictionaries, so spell checking simply does nothing rather than breaking a
+# build or a run. Dictionaries themselves are runtime data, not a build
+# dependency; see dictionary_data below.
+text_processing:
+  core:
+    hunspell:
+      min_version: "1.7"
+      purpose: "Portable spell check engine and fallback backend (Tier 1 core)"
+      required: false
+      priority: "high"
+      platforms: ["all"]
+      pkg_config: "hunspell"
+      build_flag: "ULTRACANVAS_HAS_HUNSPELL"
+      apt: "libhunspell-dev"
+      dnf: "hunspell-devel"
+      pacman: "hunspell"
+      brew: "hunspell"
+      vcpkg: "hunspell"
+      notes: >
+        The only backend on Android and WebAssembly. Discovers .aff/.dic pairs
+        from ULTRACANVAS_DICT_PATH, the user data directory, the application's
+        own "dictionaries" folder and the standard system paths. Words are
+        converted to the encoding each dictionary declares in its SET
+        directive; a dictionary in an encoding the backend cannot represent is
+        reported unavailable rather than loaded. Without the build flag the
+        backend compiles to a stub reporting zero dictionaries.
+
+  advanced:
+    enchant:
+      min_version: "2.2"
+      purpose: "Native Linux spell check broker (wraps Hunspell/Aspell/Nuspell/Voikko)"
+      required: false
+      priority: "high"
+      platforms: ["linux"]
+      pkg_config: "enchant-2"
+      build_flag: "ULTRACANVAS_HAS_ENCHANT"
+      fallback: "hunspell"
+      apt: "libenchant-2-dev"
+      dnf: "enchant2-devel"
+      pacman: "enchant"
+      notes: >
+        The same broker GTK, LibreOffice and Firefox use, so UltraCanvas sees
+        the dictionaries the user already has installed. When absent,
+        CreateNativeSpellCheckBackend() returns nullptr and the service falls
+        back to the Hunspell backend.
+
+    windows_spellcheck:
+      min_version: "Windows 8"
+      purpose: "Native Windows spell checking via the ISpellChecker COM API"
+      required: false
+      priority: "high"
+      platforms: ["windows"]
+      system_header: "spellcheck.h"
+      build_flag: "ULTRACANVAS_HAS_WINSPELLCHECK"
+      fallback: "hunspell"
+      link_libraries: ["Ole32"]
+      notes: >
+        Ships with the OS - nothing to install. Shares dictionaries and the
+        per-user custom word list with Word and Edge. Windows 7 has no
+        spellcheck.h, so the CMake probe fails and the build falls back to
+        Hunspell.
+
+    macos_nsspellchecker:
+      purpose: "Native macOS spell checking via NSSpellChecker"
+      required: false
+      priority: "high"
+      platforms: ["macos"]
+      frameworks: ["AppKit", "Foundation"]
+      notes: >
+        Ships with the OS and needs no feature flag. Inherits the user's
+        installed languages, their learned words and any third-party
+        dictionaries, so no dictionary files are shipped.
+
+  # Runtime data, not a build dependency. Searched in this order; the first
+  # directory holding a given language code wins.
+  dictionary_data:
+    format: "Hunspell .aff + .dic pairs, named <language_code>.aff / <language_code>.dic"
+    search_order:
+      - "$ULTRACANVAS_DICT_PATH (colon-separated; semicolon on Windows)"
+      - "$XDG_DATA_HOME/UltraCanvas/dictionaries"
+      - "$HOME/.local/share/UltraCanvas/dictionaries"
+      - "$HOME/.local/share/hunspell"
+      - "$HOME/Library/Spelling"
+      - "$APPDATA/UltraCanvas/dictionaries"
+      - "./dictionaries"
+      - "./Resources/dictionaries"
+      - "/usr/share/hunspell"
+      - "/usr/share/myspell"
+      - "/usr/share/myspell/dicts"
+      - "/usr/local/share/hunspell"
+      - "/Library/Spelling"
+      - "/System/Library/Spelling"
+    packages:
+      apt: "hunspell-en-us (and hunspell-<lang> for others)"
+      dnf: "hunspell-en"
+      pacman: "hunspell-en_us"
+    user_dictionary:
+      linux:   "$XDG_DATA_HOME/UltraCanvas/UserDictionary.txt"
+      macos:   "$HOME/.local/share/UltraCanvas/UserDictionary.txt"
+      windows: "%APPDATA%\\UltraCanvas\\UserDictionary.txt"
+      format: "One lower-cased word per line; # starts a comment"
+      notes: >
+        Only used when the active backend does not own a persistent user
+        dictionary of its own. enchant, NSSpellChecker and ISpellChecker all
+        do, so on those the word goes to the system list instead and no second
+        copy is kept here.
+
 # ===== AI CAPABILITIES (UltraAI) =====
 #
 # The interfaces, registry, mock adapters, and shared adapter infrastructure

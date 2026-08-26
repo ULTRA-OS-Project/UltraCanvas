@@ -49,6 +49,14 @@ namespace UltraCanvas {
 // Destructor
     UltraCanvasTextArea::~UltraCanvasTextArea() {
         UltraCanvasCaret::GetInstance().Hide(this);
+        // Clear the liveness flag first, so a notifier already running on the
+        // worker thread drops its repaint instead of touching a dying element,
+        // then drop the queued job and any undelivered result: the service keys
+        // those by this pointer's value, which a later element could reuse.
+        spellAlive->store(false);
+        if (spellContextId != 0) {
+            UltraCanvasSpellChecker::Instance().CancelContext(spellContextId);
+        }
     }
 
 // Initialize default style
@@ -228,6 +236,7 @@ namespace UltraCanvas {
         isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
+        QueueSpellCheck();
         if (runNotifications && onTextChanged) {
             onTextChanged(textContent);
         }
@@ -1077,6 +1086,9 @@ namespace UltraCanvas {
 
                 RenderLineLayout(ctx, ll);
             }
+            // Inside the text clip so marks never bleed over the gutter or the
+            // scrollbars, and after the glyphs so they sit on top of them.
+            DrawSpellErrorMarks(ctx);
             ctx->PopState();
 
             if (IsFocused()) {
@@ -1420,6 +1432,15 @@ namespace UltraCanvas {
             }
         }
 
+
+        // --- Spell suggestion menu: right-click over a flagged word ---
+        // After the scrollbar and gutter checks: a click on either still
+        // hit-tests to a text position, so testing earlier could open the menu
+        // from the scrollbar. Falls through when the click misses a flagged
+        // word, so ordinary right-click behaviour is unchanged.
+        if (event.button == UCMouseButton::Right && ShowSpellSuggestionMenu(event)) {
+            return true;
+        }
 
         // --- Markdown link/image click: intercept before cursor move ---
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && HandleMarkdownClick(event.pointer.x, event.pointer.y)) {
@@ -2128,41 +2149,9 @@ namespace UltraCanvas {
         }
     }
 
-    // Visible/layout codepoint → source-line codepoint. Always well-defined; the visible-cp
-    // axis has no stripped regions. See LineLayoutBase::cpMap and the CpRun comment in
-    // UltraCanvasTextArea.h for the mapping invariant.
-    static int VisibleCpToSourceCp(const std::vector<CpRun>& cpMap, int visibleCp) {
-        if (cpMap.empty()) return visibleCp;
-        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), visibleCp,
-            [](int v, const CpRun& r) { return v < r.visibleCp; });
-        if (it == cpMap.begin()) return cpMap.front().sourceCp;
-        --it;
-        return it->sourceCp + (visibleCp - it->visibleCp);
-    }
-
-    // Source-line codepoint → visible/layout codepoint. If `sourceCp` falls strictly inside
-    // a stripped region (between two segments), the result is snapped to the start of the
-    // next visible segment when `snapForward = true` (default), or to the end of the
-    // previous one when `snapForward = false`. Pass `false` for selection-end so a
-    // selection that ends at the trailing marker doesn't grow visually past it.
-    static int SourceCpToVisibleCp(const std::vector<CpRun>& cpMap, int sourceCp,
-                                   bool snapForward = true) {
-        if (cpMap.empty()) return sourceCp;
-        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), sourceCp,
-            [](int s, const CpRun& r) { return s < r.sourceCp; });
-        if (it == cpMap.begin()) return cpMap.front().visibleCp;
-        auto prev = it - 1;
-        int segVisibleEnd = (it == cpMap.end()) ? prev->visibleCp : it->visibleCp;
-        int segSourceEnd  = prev->sourceCp + (segVisibleEnd - prev->visibleCp);
-        if (sourceCp <= segSourceEnd) {
-            return prev->visibleCp + (sourceCp - prev->sourceCp);
-        }
-        // Strictly inside a stripped region between this segment and the next.
-        if (snapForward) {
-            return (it == cpMap.end()) ? segVisibleEnd : it->visibleCp;
-        }
-        return segVisibleEnd;
-    }
+    // VisibleCpToSourceCp / SourceCpToVisibleCp moved to UltraCanvasTextArea.h so
+    // other translation units of this component (spell check, markdown) can use
+    // the mapping the CpRun documentation already points them at.
 
     // Apply the selection background-color attribute to the portion of this line's layout text
     // that falls inside the current selection. Coordinates:
@@ -2223,6 +2212,7 @@ namespace UltraCanvas {
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
 
+        QueueSpellCheck();
         if (onTextChanged) {
             onTextChanged(textContent);
         }

@@ -1,3 +1,32 @@
+#### 2026-08-25 *0.52*
+- **Layout fixes, all three reported from a Windows build.**
+  - **Category rows were drawn over their own descriptions.** Each
+    description was created with a hard-coded 46-pixel box — "two wrapped
+    lines at this width", true only at the width and font it was written
+    against. Windows' wider metrics push the same text to three or four
+    lines, which spill out of the box while the flex column still advances by
+    46, so the next category's checkbox and size badge land on top of the
+    previous description. The panel is now a block container: only the block
+    path measures a wrapping label against a definite width, so the
+    descriptions get the height they actually occupy. Reproduced on Linux by
+    narrowing the panel, and fixed there too.
+  - **The toolbar was clipped along its top edge.** Scan / Stop / the mode
+    dropdown / Clean… sat at an absolute offset inside the tab page, which
+    assumes a tab strip of a particular height. The page is a flex column
+    now, so the toolbar is laid out into whatever content area the tab
+    provides instead of being positioned into it.
+  - **The window ignored being resized.** Every size came from two constants
+    and nothing listened for a resize, so enlarging the window left the app
+    at its opening size with grey space around it. The window now re-lays its
+    tab container on `onWindowResize`, and the panels take the height that
+    comes free.
+- The size badge no longer gives way before the category title when a row is
+  tight: the number is what the row exists to show.
+- Known limitation: the panels still do not widen when the window does.
+  `UltraCanvasTabbedContainer` updates its content area's height on resize
+  but not its width, so the page cannot be told it has more room. That is a
+  framework fix, not an application one.
+
 #### 2026-08-24 *0.51*
 - **"Move to trash" emptied nothing when what was selected was the trash.**
   The Trash category has been in the cleaning tab since the first release,

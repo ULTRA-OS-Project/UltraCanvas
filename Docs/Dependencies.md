@@ -55,6 +55,7 @@ their *License* is likewise marked **—** (OS component).
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | fmt | [fmt.dev](https://fmt.dev/) | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FontConfig | [freedesktop.org/wiki/Software/fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/) | [gitlab.freedesktop.org/fontconfig/fontconfig](https://gitlab.freedesktop.org/fontconfig/fontconfig) | [MIT](https://spdx.org/licenses/MIT.html) |
+| FreeRDP (optional) | [freerdp.com](https://www.freerdp.com/) | [github.com/FreeRDP/FreeRDP](https://github.com/FreeRDP/FreeRDP) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | FreeType | [freetype.org](https://freetype.org/) | [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype) | [FTL](https://spdx.org/licenses/FTL.html) |
 | giflib | [giflib.sourceforge.net](https://giflib.sourceforge.net/) | [sourceforge.net/projects/giflib](https://sourceforge.net/projects/giflib/) | [MIT](https://spdx.org/licenses/MIT.html) |
 | GLEW | [glew.sourceforge.net](https://glew.sourceforge.net/) | [github.com/nigels-com/glew](https://github.com/nigels-com/glew) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -159,6 +160,26 @@ their *License* is likewise marked **—** (OS component).
 | ZIP for ODS / XLSX I/O | miniz (bundled) | miniz (bundled) | miniz (bundled) |
 | JSON parsing (UltraCanvasJSON) | yyjson (bundled) | yyjson (bundled) | yyjson (bundled) |
 | FFT / spectrogram | KissFFT (bundled) | KissFFT (bundled) | KissFFT (bundled) |
+| Spell checking | enchant-2 (optional) → Hunspell/Aspell/Nuspell | NSSpellChecker (system) | ISpellChecker, Windows 8+ (system) |
+| Spell checking fallback | Hunspell (optional) | Hunspell (optional) | Hunspell (optional) |
+
+### Spell checking (all optional)
+
+Every spell dependency is optional and the build never fails without them: the
+service falls back native → Hunspell → a no-op that reports zero dictionaries.
+
+| Package | Platform | Install |
+|---|---|---|
+| `enchant-2` ≥ 2.2 | Linux | `apt install libenchant-2-dev` / `dnf install enchant2-devel` / `pacman -S enchant` |
+| Hunspell ≥ 1.7 | all | `apt install libhunspell-dev` / `dnf install hunspell-devel` / `brew install hunspell` / `vcpkg install hunspell` |
+| ISpellChecker | Windows 8+ | ships with the OS (links `Ole32`) |
+| NSSpellChecker | macOS | ships with the OS (AppKit, Foundation) |
+
+Dictionaries are runtime data, not a build dependency — `apt install
+hunspell-en-us`, or ship `.aff`/`.dic` pairs and point `ULTRACANVAS_DICT_PATH`
+at them. See
+[UltraCanvas/UltraCanvasSpellChecker.md](UltraCanvas/UltraCanvasSpellChecker.md)
+for the full search order.
 
 ---
 
@@ -256,6 +277,9 @@ their *License* is likewise marked **—** (OS component).
 |---|---|---|---|
 | Windows-app compatibility (Wine tier) | Wine ≥ 10 (optional, **runtime only** — spawned as child processes, never linked) | — (module not built) | — (module not built) |
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
+| VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
+| QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
+| RemoteApp client (VM tier) | FreeRDP 3 or 2 (optional, **linked** — the only linked UltraWin engine; Apache 2) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully
