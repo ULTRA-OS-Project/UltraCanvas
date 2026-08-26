@@ -474,31 +474,74 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
+    // Set a string's font on the context; returns the pixel size used.
+    static float ApplyTextFont(IRenderContext* ctx, const XARTextStringNode& s, float scale) {
+        float sizePx = s.textAttr.GetFontSizeInPixels() * scale;
+        if (sizePx <= 0.01f) sizePx = 12.0f * scale;
+        ctx->SetFontFace(s.textAttr.fontName.empty() ? "Sans" : s.textAttr.fontName,
+                         s.textAttr.bold ? FontWeight::Bold : FontWeight::Normal,
+                         s.textAttr.italic ? FontSlant::Italic : FontSlant::Normal);
+        ctx->SetFontSize(sizePx);
+        return sizePx;
+    }
+
     void XARTextLineNode::Render(IRenderContext* ctx, float scale) {
-        if (lineIndex == 0) { XARNode::Render(ctx, scale); return; }
-        float leading = textAttr.GetFontSizeInPixels() * 1.15f;
-        if (leading <= 0.01f) leading = 12.0f;
         ctx->PushState();
-        // The document space is Y-up, so the next line down is negative Y.
-        ctx->Translate(0, -lineIndex * leading * scale);
-        XARNode::Render(ctx, scale);
+        if (lineIndex > 0) {
+            float leading = textAttr.GetFontSizeInPixels() * 1.15f;
+            if (leading <= 0.01f) leading = 12.0f;
+            // The document space is Y-up, so the next line down is negative Y.
+            ctx->Translate(0, -lineIndex * leading * scale);
+        }
+
+        // Lay the line's strings out horizontally and apply the paragraph
+        // justification: the story origin is the anchor — centred text is
+        // centred on it, right-aligned text ends at it.
+        double total = 0;
+        std::vector<double> widths;
+        for (const auto& c : children) {
+            if (c->type != XARNodeType::TextString) continue;
+            auto s = std::static_pointer_cast<XARTextStringNode>(c);
+            double w = 0;
+            if (!s->text.empty()) {
+                ApplyTextFont(ctx, *s, scale);
+                w = ctx->GetTextLineWidth(s->text);
+            }
+            widths.push_back(w);
+            total += w;
+        }
+
+        double x = 0;
+        switch (textAttr.justification) {
+            case XARTextAttribute::Justification::Centre: x = -total / 2.0; break;
+            case XARTextAttribute::Justification::Right:  x = -total; break;
+            default: break;
+        }
+
+        size_t wi = 0;
+        for (const auto& c : children) {
+            if (c->type == XARNodeType::TextString) {
+                ctx->PushState();
+                ctx->Translate(x, 0);
+                c->Render(ctx, scale);
+                ctx->PopState();
+                x += widths[wi++];
+            } else {
+                c->Render(ctx, scale);
+            }
+        }
         ctx->PopState();
     }
 
     void XARTextStringNode::Render(IRenderContext* ctx, float scale) {
         if (text.empty()) return;
-        float sizePx = textAttr.GetFontSizeInPixels() * scale;
-        // An unset size would reach cairo as 0 and make the font matrix
-        // non-invertible, poisoning the whole context.
-        if (sizePx <= 0.01f) sizePx = 12.0f * scale;
-        FontWeight weight = textAttr.bold ? FontWeight::Bold : FontWeight::Normal;
-        FontSlant slant = textAttr.italic ? FontSlant::Italic : FontSlant::Normal;
         ctx->PushState();
         // The document renders under a global Y-flip (Y-up file coordinates);
         // un-flip locally around the baseline so glyphs come out upright.
+        // ApplyTextFont also guards against a zero size, which would make the
+        // cairo font matrix non-invertible and poison the whole context.
         ctx->Scale(1.0f, -1.0f);
-        ctx->SetFontFace(textAttr.fontName.empty() ? "Sans" : textAttr.fontName, weight, slant);
-        ctx->SetFontSize(sizePx);
+        ApplyTextFont(ctx, *this, scale);
         if (hasFill) ctx->SetFillPaint(fill.startColor);
         ctx->FillText(text, 0, 0);
         ctx->PopState();

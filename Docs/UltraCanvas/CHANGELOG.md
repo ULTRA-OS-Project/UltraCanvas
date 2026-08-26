@@ -44,7 +44,10 @@
   `UCImageRaster::CreatePixmapAlphaInverted()` decodes with the channel
   inverted before premultiplication, and plain bitmap fills use it.
 - **Text stories lay their lines out.** Successive `TextLine`s step down
-  one leading instead of overprinting on the story origin.
+  one leading instead of overprinting on the story origin, a line's spans
+  advance horizontally instead of overprinting each other, and the
+  paragraph justification is honoured: the story origin is the anchor, so
+  centred text centres on it and right-aligned text ends at it.
 - **Multi-page documents render page by page.** Every spread's coordinates
   restart at its own origin, so a multi-spread file (a pitch deck, a
   multi-page brochure) used to draw all its pages on top of each other.
