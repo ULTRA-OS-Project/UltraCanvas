@@ -7,7 +7,7 @@ components:
 |---|---|
 | Folder tree (left pane) | `UltraCanvasTreeView` — lazily populated filesystem tree (Home, drives / mounted volumes) |
 | Folder content (center pane) | `UltraCanvasTabbedContainer` hosting one `UltraCanvasFilerWidget` per tab — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
-| Preview (right pane) | `UltraCanvasMediaViewer` — images, video, audio, PDFs, spreadsheets, 3D models and text files |
+| Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
 | Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::ShowFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
@@ -103,14 +103,21 @@ components:
   dragged files out of the selection first, so the preview lets go of the file
   before it is renamed away.
 - **Preview:** selecting a single previewable file shows it in the preview
-  pane; double-click / Enter opens it there too. While nothing previewable
-  is selected the pane folds away, so the folder display always gets the
-  whole width — the Preview toggle only enables / disables the feature, and
-  **Esc** closes an open preview (turning the toggle off). The pane takes
-  its width from the folder display only, so the folder tree and its
-  splitter never move when the preview opens or closes; the width the pane
-  is dragged to is restored on reopen, and the selected file is kept
-  scrolled into view when the narrowed folder display would cut it off.
+  pane; double-click / Enter opens it there too. **Clicking a folder shows
+  that folder's content in the same pane** — a small-thumbnail folder
+  listing instead of a file preview, so a folder can be peeked into without
+  leaving the one on display. The peek is live: double-clicking a subfolder
+  in it descends further, a file activated in it opens with its OS default
+  application, files can be dropped into it, and its context menu offers
+  the usual file commands (only the hover icon menu stays off). While
+  nothing previewable is selected the pane folds away, so the folder
+  display always gets the whole width — the Preview toggle only enables /
+  disables the feature, and **Esc** closes an open preview (turning the
+  toggle off). The pane takes its width from the folder display only, so
+  the folder tree and its splitter never move when the preview opens or
+  closes; the width the pane is dragged to is restored on reopen, and the
+  selected file is kept scrolled into view when the narrowed folder display
+  would cut it off.
   The viewer provides zoom, rotation, color adjustments, slideshow, and
   per-kind views for documents, spreadsheets, models, audio and video.
   A file with real transparency - an alpha channel that is used, or a vector
