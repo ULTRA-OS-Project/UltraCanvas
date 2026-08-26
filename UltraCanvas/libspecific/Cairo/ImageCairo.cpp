@@ -699,8 +699,33 @@ namespace UltraCanvas {
 
         return std::make_shared<UCPixmapCairo>(surface);
     }
+
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
+        if (!imgDataPtr && !LoadFileToMemory(fileName)) return nullptr;
+        try {
+            vips::VImage vimg = vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
+            const int nb = vimg.bands();
+            if (nb == 2 || nb >= 4) {
+                // Invert the alpha band BEFORE premultiplication — a normal
+                // decode zeroes the colour of fully transparent pixels, which
+                // destroys exactly the pixels an inverted-alpha producer
+                // (Xara .xar embedded bitmaps: 255 = fully transparent)
+                // means to show.
+                vips::VImage rgb = vimg.extract_band(0, vips::VImage::option()->set("n", nb - 1));
+                vips::VImage alpha = vimg.extract_band(nb - 1);
+                vimg = rgb.bandjoin(alpha.invert());
+            }
+            return CreatePixmapFromVImage(vimg);
+        } catch (vips::VError& err) {
+            errorMessage = std::string("Failed to decode alpha-inverted: ") + err.what();
+        }
+        return nullptr;
+    }
 #else
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode, float) {
+        return nullptr;
+    }
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
         return nullptr;
     }
 #endif
