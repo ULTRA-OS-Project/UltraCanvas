@@ -1109,6 +1109,27 @@ else()
     message(STATUS "  MetafileWriterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# Validates the Vector plugin's DXF and DWG writers: structural checks, then
+# ezdxf (strict read + audit + structure), LibreOffice rasterization, and -
+# when LibreDWG's dxf2dwg is available - the real DWG conversion round-trip.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building CADWriterTest...")
+    add_executable(CADWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CADWriterTest.cpp
+    )
+    target_include_directories(CADWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CADWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(CADWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(CADWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CADWriterTest COMMAND CADWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CADWriterTest")
+else()
+    message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

@@ -45956,7 +45956,7 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md
 
 The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
 
-**Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`).
+**Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`).
 
 ## The matrix
 
@@ -45970,6 +45970,8 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | EMF | `EMFConverter` | – | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. |
 | WMF | `WMFConverter` | – | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. |
 | AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. |
+| DXF | `DXFConverter` | – | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + nearest-ACI fallback. Opacity is reported, not written. |
+| DWG | `DWGConverter` | – | ✓* | DWG is proprietary and undocumented; the converter produces the DXF output and converts it with GNU LibreDWG's `dxf2dwg` tool (`ULTRACANVAS_DXF2DWG` or PATH). Without the tool, Export warns and declines — export DXF instead, AutoCAD's own exchange format. |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
 
@@ -45990,11 +45992,13 @@ PDFVectorConverter().Export(*doc, "drawing.pdf");
 EMFConverter().Export(*doc, "drawing.emf");
 WMFConverter().Export(*doc, "drawing.wmf");
 AIConverter().Export(*doc, "drawing.ai");
+DXFConverter().Export(*doc, "drawing.dxf");
+DWGConverter().Export(*doc, "drawing.dwg");   // needs LibreDWG's dxf2dwg
 ```
 
 ## Tests
 
-Each writer has a round-trip or independent-consumer test in `Tests/` (all registered with CTest): `SVGConverterTest` (both directions plus rasterization through the framework's librsvg pipeline), `XARWriterTest` (through the XAR plugin reader), `EPSWriterTest` (through the EPS plugin's PostScript interpreter, cross-checked with ghostscript), `CDRWriterTest` (through the CDR plugin / libcdr), `PDFVectorWriterTest` (structure plus ghostscript), and `MetafileWriterTest` (EMF/WMF record-walk structure plus LibreOffice rasterization, AI through ghostscript).
+Each writer has a round-trip or independent-consumer test in `Tests/` (all registered with CTest): `SVGConverterTest` (both directions plus rasterization through the framework's librsvg pipeline), `XARWriterTest` (through the XAR plugin reader), `EPSWriterTest` (through the EPS plugin's PostScript interpreter, cross-checked with ghostscript), `CDRWriterTest` (through the CDR plugin / libcdr), `PDFVectorWriterTest` (structure plus ghostscript), `MetafileWriterTest` (EMF/WMF record-walk structure plus LibreOffice rasterization, AI through ghostscript), and `CADWriterTest` (DXF through ezdxf — the reference DXF implementation: strict read, clean audit, structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when installed).
 
 ## See Also
 

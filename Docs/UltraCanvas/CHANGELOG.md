@@ -1,4 +1,30 @@
 #### 2026-08-26 *0.3.76*
+- **DXF and DWG files can be written now — the CAD formats complete the
+  vector writer matrix.** Two new converters in
+  `Plugins/Vector/UltraCanvasCADConverters.h`:
+  - `DXFConverter` writes R2000 (AC1015) tagged ASCII per Autodesk's
+    public DXF reference, with the full table set (linetypes, layers,
+    styles, block records) under proper handles and ownership. Document
+    layers map to real DXF layers. Fills become solid `HATCH` entities
+    whose boundary paths carry exact spline edges (curves stay curves);
+    strokes become `LWPOLYLINE` or, when curved, `SPLINE` entities with
+    the exact piecewise-bezier NURBS form (degree 3, clamped knots with
+    interior multiplicity 3). Colours are written as 420 true colour
+    with a nearest-ACI 62 fallback for legacy consumers, stroke widths
+    snap to DXF's discrete lineweight set, dash arrays become `UC_DASHn`
+    linetypes, and text maps to `TEXT` entities with real alignment.
+    DXF has no opacity, so it is reported through the warning callback,
+    never dropped silently.
+  - `DWGConverter` — DWG is proprietary and undocumented; rather than
+    embed a reverse-engineered binary writer of uncertain fidelity, the
+    converter produces the DXF output and converts it with GNU
+    LibreDWG's `dxf2dwg` tool (`ULTRACANVAS_DXF2DWG` env or PATH).
+    Without the tool it warns with that guidance and declines cleanly.
+  - `Tests/CADWriterTest.cpp` validates the DXF through ezdxf — the
+    reference DXF implementation: strict read, clean audit, exact
+    entity/layer/colour structure — plus LibreOffice rasterization, and
+    the DWG chain through dxf2dwg with dwgread acceptance when
+    LibreDWG is installed.
 - **EMF, WMF and Adobe Illustrator files can be written now.** Three new
   converters in `Plugins/Vector/UltraCanvasMetafileConverters.h` complete
   the vector writer matrix (with SVG/XAR/EPS/CDR/PDF below):
