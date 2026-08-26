@@ -99,7 +99,14 @@ namespace UltraCanvas {
         float minValue = 0.0f;
         float maxValue = 100.0f;
         float currentValue = 0.0f;
+        // Snap increment. 0 == continuous (every position the track offers).
+        // Left alone it follows the range (see SetRange / DefaultStepForRange):
+        // whole units for a range wide enough for them, continuous otherwise —
+        // a fractional range like 0..2 would otherwise snap to three positions.
         float step = 1.0f;
+        // Set by SetStep(): the caller stated the increment, so SetRange() must
+        // not derive one over it.
+        bool stepExplicit = false;
         SliderStyle sliderStyle = SliderStyle::Horizontal;
         SliderValueDisplay valueDisplay = SliderValueDisplay::NoDisplay;
         SliderOrientation orientation = SliderOrientation::Horizontal;
@@ -132,6 +139,11 @@ namespace UltraCanvas {
         std::vector<GradientStop> trackGradientStops;
 
     public:
+        // A range narrower than this many whole units gets a continuous
+        // default step: below ~20 positions a whole-unit slider is too coarse
+        // to be a slider at all (0..2 would offer three).
+        static constexpr float MinAutoStepSpan = 20.0f;
+
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
         UltraCanvasSlider(const std::string& identifier, float x, float y, float w, float h);
 
@@ -157,8 +169,19 @@ namespace UltraCanvas {
             SetValue(value);
         }
 
-        void SetStep(float stepValue) { step = std::max(0.0f, stepValue); }
+        // Snap increment; 0 makes the slider continuous. Setting it also stops
+        // SetRange() from deriving one, so an integer control keeps whole steps
+        // whatever range it is later given.
+        void SetStep(float stepValue) {
+            step = std::max(0.0f, stepValue);
+            stepExplicit = true;
+        }
         float GetStep() const { return step; }
+        // The increment used when the caller sets none: whole units once the
+        // range spans at least MinAutoStepSpan of them, continuous below that.
+        static float DefaultStepForRange(float min, float max) {
+            return (max - min) >= MinAutoStepSpan ? 1.0f : 0.0f;
+        }
 
         // True while the user is actively dragging the handle. Lets owners
         // suppress programmatic SetValue() feedback (e.g. a media element pushing
