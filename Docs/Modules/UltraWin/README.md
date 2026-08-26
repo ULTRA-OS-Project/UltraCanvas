@@ -264,11 +264,28 @@ launches report `NotSupported`).
 - The machine must be `Running` (`VmNotRunning` otherwise); drive
   redirection over RDP is deliberately off — folders come via virtiofs.
 
+## Shared home over virtiofs (Stage 2b-ii)
+
+The VM tier meets the same-folders requirement the same way the Wine tier
+does — one unified home drive:
+
+- With `UltraWinConfig::vmShareHome` (default on) and a virtiofsd binary
+  on the host, `UltraWin_VmStart` spawns **virtiofsd** exporting `$HOME`
+  and attaches it as a `vhost-user-fs` device with tag `ultrawin_home`
+  (shared-memfd memory backend; `UltraWinVmInfo::homeShared` reports the
+  live state, and the daemon's lifetime is tied to the machine's).
+- `UltraWin_RunApp(forceTier = Vm)` accepts **host paths under the home
+  directory** and translates them to the guest spelling
+  (`/home/u/Apps/X.exe` → `U:\Apps\X.exe`, `homeDriveLetter`).
+- Guest side: the virtiofs service (WinFsp + `VirtioFsSvc` from the
+  virtio-win drivers) mounts the tag as the home drive — installed during
+  provisioning once Stage 2c validates against real install media.
+
 ## Not yet implemented (later stages)
 
 - Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
   window surfaces as native ULTRA OS windows (needs a real Windows guest
-  to validate against); virtiofs shared folders; host-path launches.
+  to validate against).
 - Stage 2c: guest provisioning validated end-to-end against real install
   media (virtio driver injection, first-boot orchestration).
 - `UltraWin_QueryCompatibility` + automatic tier routing.

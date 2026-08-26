@@ -128,11 +128,20 @@ UltraWinResult RunAppVmTier(const std::string& executablePath,
         std::isalpha(static_cast<unsigned char>(executablePath[0])) &&
         executablePath[1] == ':' && executablePath[2] == '\\';
     const bool alias = executablePath.rfind("||", 0) == 0;
-    if (!guestPath && !alias)
-        return UltraWinResult::Error(
-            UltraWinResultCode::InvalidArgument,
-            "VM tier expects a guest path (C:\\...) or a ||alias — host "
-            "paths need the shared-folder integration (Stage 2b-ii)");
+    std::string program = executablePath;
+    if (!guestPath && !alias) {
+        // Host path: reachable in the guest only through the shared home
+        // (virtiofs, mounted as the unified home drive).
+        UltraWinConfig pathCfg = UltraWin_GetConfig();
+        const char* home = std::getenv("HOME");
+        program = HostToGuestPath(executablePath, home ? home : "",
+                                  pathCfg.homeDriveLetter);
+        if (program.empty())
+            return UltraWinResult::Error(
+                UltraWinResultCode::InvalidArgument,
+                "VM tier accepts guest paths (C:\\...), ||aliases, or host "
+                "paths under your home directory (shared into the guest)");
+    }
     if (UltraWin_VmGetState() != UltraWinVmState::Running)
         return UltraWinResult::Error(UltraWinResultCode::VmNotRunning,
                                      "start the machine first "
@@ -145,7 +154,7 @@ UltraWinResult RunAppVmTier(const std::string& executablePath,
     rdp.username = cfg.vmGuestUsername;
     rdp.password = cfg.vmGuestPassword;
     rdp.remoteApp = true;
-    rdp.remoteAppProgram = executablePath;
+    rdp.remoteAppProgram = program;
     for (const auto& a : options.arguments) {
         if (!rdp.remoteAppArgs.empty()) rdp.remoteAppArgs += ' ';
         rdp.remoteAppArgs += a;

@@ -449,11 +449,14 @@ encapsulates them so backings can be swapped — see
 
 - `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
   running guest over FreeRDP (the one linked engine, Apache 2, optional;
-  guest paths / `||aliases` in this stage)
+  guest paths, `||aliases`, and host paths under the shared home)
+- virtiofs home share: `UltraWin_VmStart` exports `$HOME` into the guest
+  (spawned virtiofsd + vhost-user-fs, tag `ultrawin_home`) so both tiers
+  present the user's files under the same unified drive letter
 
 **Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
-rendering RAIL window surfaces, virtiofs shared folders + host-path
-launches, guest provisioning validated against real install media, and
+rendering RAIL window surfaces, guest provisioning validated against real
+install media (incl. the guest-side virtiofs mount service), and
 `UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
@@ -51751,11 +51754,28 @@ launches report `NotSupported`).
 - The machine must be `Running` (`VmNotRunning` otherwise); drive
   redirection over RDP is deliberately off — folders come via virtiofs.
 
+## Shared home over virtiofs (Stage 2b-ii)
+
+The VM tier meets the same-folders requirement the same way the Wine tier
+does — one unified home drive:
+
+- With `UltraWinConfig::vmShareHome` (default on) and a virtiofsd binary
+  on the host, `UltraWin_VmStart` spawns **virtiofsd** exporting `$HOME`
+  and attaches it as a `vhost-user-fs` device with tag `ultrawin_home`
+  (shared-memfd memory backend; `UltraWinVmInfo::homeShared` reports the
+  live state, and the daemon's lifetime is tied to the machine's).
+- `UltraWin_RunApp(forceTier = Vm)` accepts **host paths under the home
+  directory** and translates them to the guest spelling
+  (`/home/u/Apps/X.exe` → `U:\Apps\X.exe`, `homeDriveLetter`).
+- Guest side: the virtiofs service (WinFsp + `VirtioFsSvc` from the
+  virtio-win drivers) mounts the tag as the home drive — installed during
+  provisioning once Stage 2c validates against real install media.
+
 ## Not yet implemented (later stages)
 
 - Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
   window surfaces as native ULTRA OS windows (needs a real Windows guest
-  to validate against); virtiofs shared folders; host-path launches.
+  to validate against).
 - Stage 2c: guest provisioning validated end-to-end against real install
   media (virtio driver injection, first-boot orchestration).
 - `UltraWin_QueryCompatibility` + automatic tier routing.

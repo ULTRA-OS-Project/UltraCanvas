@@ -199,6 +199,12 @@ struct UltraWinConfig {
     // match the account UltraWin_VmProvision's answer file creates.
     std::string vmGuestUsername = "ultra";
     std::string vmGuestPassword = "ultra";
+
+    // Share the user's home directory into the guest over virtiofs (tag
+    // "ultrawin_home" — the guest's virtiofs service mounts it under the
+    // same drive letter the Wine tier uses, homeDriveLetter). Effective
+    // only when a virtiofsd binary is found on the host.
+    bool vmShareHome = true;
 };
 
 // ============================================================================

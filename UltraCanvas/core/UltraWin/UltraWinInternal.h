@@ -88,6 +88,13 @@ std::string FindVirtiofsdBinary();
 // Effective machine home from g_config / process env. Never empty.
 std::string VmDirectory();                    // takes g_mutex
 
+// Host path -> guest path over the shared-home mapping: an absolute host
+// path under $HOME becomes "<homeDriveLetter>:\rel\ative" (backslashes);
+// anything else yields "" (not reachable in the guest). (Pure given the
+// home/letter arguments.)
+std::string HostToGuestPath(const std::string& hostPath,
+                            const std::string& home, char driveLetter);
+
 // The unattended Windows-setup answer file provisioning writes: wipes disk
 // 0, installs Pro, enables RDP + the RemoteApp allow-list, bypasses the
 // TPM/RAM setup checks, creates `userName` with `password` (autologon

@@ -279,11 +279,14 @@ encapsulates them so backings can be swapped — see
 
 - `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
   running guest over FreeRDP (the one linked engine, Apache 2, optional;
-  guest paths / `||aliases` in this stage)
+  guest paths, `||aliases`, and host paths under the shared home)
+- virtiofs home share: `UltraWin_VmStart` exports `$HOME` into the guest
+  (spawned virtiofsd + vhost-user-fs, tag `ultrawin_home`) so both tiers
+  present the user's files under the same unified drive letter
 
 **Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
-rendering RAIL window surfaces, virtiofs shared folders + host-path
-launches, guest provisioning validated against real install media, and
+rendering RAIL window surfaces, guest provisioning validated against real
+install media (incl. the guest-side virtiofs mount service), and
 `UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
