@@ -1,3 +1,41 @@
+#### 2026-08-26 *0.3.70*
+- **The XAR renderer draws real Xara files correctly now.** Files written by
+  a modern Xara (Designer Pro X19) displayed as scattered, unfilled
+  fragments; the repo's `demo.xar` now reproduces its embedded preview —
+  all four logos, correct fills, correct positions — and `backside.xar`
+  renders as a real page instead of failing outright. Four defects fixed:
+  - **The document tree was built wrong.** The Xar grammar is
+    `object record, TAG_DOWN, child records, TAG_UP` — but containers
+    pushed themselves at record time while every object's TAG_UP popped
+    once more than was pushed, unwinding the stack until most objects
+    attached to the root. TAG_DOWN now descends into the node the previous
+    record created.
+  - **Object attributes were lost.** An object's fill and line attributes
+    arrive as its child records, after the object; the parser snapshotted
+    attributes at object-record time and then reverted them at TAG_UP, so
+    almost every path rendered unfilled. The enclosing object now
+    re-snapshots the running context as its attribute children execute.
+  - **Relative path coordinates decoded with the wrong sign.** The first
+    coordinate of a relative path record is absolute; every following one
+    stores the reverse delta (previous minus current). Adding instead of
+    subtracting kept each subpath's shape but scattered the pieces —
+    verified against the renderings Xara itself embeds in the file.
+  - **One bad record could blank the whole drawing.** A singular transform
+    matrix or a zero font size put the cairo context into an unrecoverable
+    error state; both are guarded now.
+- **Bitmap and contone-bitmap fills render.** The embedded bitmap is decoded
+  through `UCImage`, mapped onto the fill parallelogram and clipped to the
+  path; a contone fill maps the bitmap's luminance between the fill's two
+  colours (dark to the second, light to the first — the orientation Xara's
+  own previews use), cached per definition. Text also draws upright now
+  (it was mirrored by the document's Y-flip).
+- **`XARDocument` gained parse diagnostics** — records dispatched, unhandled
+  record tags with counts, structural warnings — via `GetDiagnostics()`,
+  and **`XARProbeTest`** (Tests/, needs `-DBUILD_TESTS=ON`) prints that
+  triage for any `.xar` file and rasterizes it to PNG with `--render <dir>`
+  for comparison against reference screenshots. It doubles as a parse
+  regression test over `media/xar/`.
+
 #### 2026-08-25 *0.3.69*
 - **Transparent images get their backdrop colours under the picture.** Until
   now the only way to change what shows through a transparent PNG or an SVG was

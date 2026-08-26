@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
-// Version: 2.0.1
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 //
 // Tag values are taken verbatim from the Xar Format Specification, Appendix A
@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <stack>
 #include <cstdint>
+#include <cmath>
 #include <functional>
 
 namespace UltraCanvas {
@@ -458,9 +459,14 @@ namespace UltraCanvas {
         }
 
         void ApplyToContext(IRenderContext* ctx) const {
-            ctx->Transform(
-                static_cast<float>(a), static_cast<float>(b),
-                static_cast<float>(c), static_cast<float>(d),
+            // A singular (or effectively singular after the float cast)
+            // matrix would put the whole cairo context into an unrecoverable
+            // error state; skip it (identity) instead.
+            const float fa = static_cast<float>(a), fb = static_cast<float>(b);
+            const float fc = static_cast<float>(c), fd = static_cast<float>(d);
+            const float det = fa * fd - fb * fc;
+            if (!std::isfinite(det) || std::fabs(det) < 1e-9f) return;
+            ctx->Transform(fa, fb, fc, fd,
                 static_cast<float>(e) * XARConstants::MILLIPOINTS_TO_PIXELS,
                 static_cast<float>(f) * XARConstants::MILLIPOINTS_TO_PIXELS);
         }
@@ -513,6 +519,8 @@ namespace UltraCanvas {
         int32_t colourRef = 0;
     };
 
+    struct XARBitmapDefinition;
+
     struct XARFillAttribute {
         XARFillType type = XARFillType::Flat;
         Color startColor = Color(255, 255, 255, 255);
@@ -526,6 +534,9 @@ namespace UltraCanvas {
         Point2Di minorAxis;
         std::vector<XARFillStop> stops; // multistage
         int32_t bitmapRef = -1;
+        // Resolved at parse time from bitmapRef; owned by the XARDocument's
+        // bitmap table, which outlives every node snapshot.
+        XARBitmapDefinition* bitmapDef = nullptr;
         double profileBias = 0.5;
         double profileGain = 0.5;
         XARFillRepeat repeat = XARFillRepeat::NonRepeating;
@@ -898,8 +909,12 @@ namespace UltraCanvas {
         int32_t height = 0;
         std::vector<uint8_t> data;              // raw encoded bytes
         enum class Format { JPEG, PNG, BMP, GIF, JPEG8BPP, PNG_REAL, XPE } format = Format::PNG;
-        // Cached decoded pixmap, populated lazily by renderer
-        void* decodedPixmap = nullptr;
+        // Lazy render caches: the plain decode, and the contone-tinted copy
+        // (luminance mapped between the fill's start/end colours). The tint
+        // cache is keyed by the colour pair that produced it.
+        std::shared_ptr<UCPixmap> fillPixmap;
+        std::shared_ptr<UCPixmap> tintedPixmap;
+        Color tintStart, tintEnd;
     };
 
     struct XARColorDefinition {
@@ -1087,9 +1102,14 @@ namespace UltraCanvas {
         XARMatrix ReadMatrix(const uint8_t* d, size_t& o);
         Color ReadColor3(const uint8_t* d, size_t& o);
         // Refined relative coord (interleaved MSB-first, delta-encoded)
-        Point2Di ReadRelativeCoord(const uint8_t* d, size_t& o, Point2Di& last);
+        Point2Di ReadRelativeCoord(const uint8_t* d, size_t& o, Point2Di& last,
+                                   bool firstCoord);
 
-        void PushNode(XARNodePtr node);
+        // Tree building follows the Xar grammar: an object record, then
+        // TAG_DOWN, then the object's child records (its attributes, or a
+        // container's members), then TAG_UP. A record therefore only
+        // remembers its node (AttachNode); TAG_DOWN is what descends into it.
+        void AttachNode(XARNodePtr node);
         void PopNode();
         XARNodePtr CurrentNode();
         void RegisterRenderableNode(XARNodePtr node);
@@ -1112,6 +1132,9 @@ namespace UltraCanvas {
 
         XARNodePtr root;
         std::stack<XARNodePtr> nodeStack;
+        // Node created by the most recent record; the next TAG_DOWN descends
+        // into it (its child records follow until the matching TAG_UP).
+        XARNodePtr lastNode;
         XARRenderingContext currentContext;
         std::stack<XARRenderingContext> contextStack;
 

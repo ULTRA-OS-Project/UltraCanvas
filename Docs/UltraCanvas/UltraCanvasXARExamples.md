@@ -198,10 +198,12 @@ tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
-Known renderer gaps (parse succeeds, display is approximate): bitmap /
-fractal / noise fills fall back to flat or simplified paints, transparency
-tiling modes are treated as flat, brush strokes render as plain lines, and
-text layout is minimal (no kerning / tabs / indents).
+Known renderer gaps (parse succeeds, display is approximate): fractal /
+noise fills fall back to simplified paints, transparency tiling modes are
+treated as flat, brush strokes render as plain lines, and text layout is
+minimal (no kerning / tabs / indents). Bitmap and contone-bitmap fills render
+the embedded bitmap mapped onto the fill parallelogram (contone maps the
+bitmap's luminance between the fill's two colours).
 
 ### XARNode
 

@@ -937,6 +937,16 @@ if(TARGET UltraCanvasXARPlugin)
     target_compile_definitions(XARProbeTest PRIVATE
         XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/xar"
     )
+    # --render mode writes PNGs through cairo; probing works without it.
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(XARPROBE_CAIRO QUIET cairo)
+    endif()
+    if(XARPROBE_CAIRO_FOUND)
+        target_compile_definitions(XARProbeTest PRIVATE XARPROBE_HAVE_CAIRO)
+        target_include_directories(XARProbeTest PRIVATE ${XARPROBE_CAIRO_INCLUDE_DIRS})
+        target_link_libraries(XARProbeTest PRIVATE ${XARPROBE_CAIRO_LIBRARIES})
+    endif()
     set_target_properties(XARProbeTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
