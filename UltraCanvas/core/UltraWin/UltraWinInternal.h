@@ -71,6 +71,26 @@ std::string FindWineBinary();                 // takes g_mutex (config read)
 // Locate the winetricks script per config/PATH. Empty string when none.
 std::string FindWinetricksBinary();           // takes g_mutex (config read)
 
+// First executable called `name` on PATH; empty string when none. (Pure
+// apart from reading $PATH.)
+std::string FindInPath(const std::string& name);
+
+// VM-tier binaries per config/PATH. Empty string when none.
+std::string FindQemuBinary();                 // takes g_mutex (config read)
+std::string FindQemuImgBinary();
+std::string FindVirtiofsdBinary();
+
+// Effective machine home from g_config / process env. Never empty.
+std::string VmDirectory();                    // takes g_mutex
+
+// The unattended Windows-setup answer file provisioning writes: wipes disk
+// 0, installs Pro, enables RDP + the RemoteApp allow-list, bypasses the
+// TPM/RAM setup checks, creates `userName` with `password` (autologon
+// once). EXPERIMENTAL until validated against real install media (Stage
+// 2c). (Pure.)
+std::string GenerateAutounattendXml(const std::string& userName,
+                                    const std::string& password);
+
 // The wine ELF loader behind a possibly-scripted wine entry point.
 // Distro `wine` commands are often shell wrappers (Ubuntu: /usr/bin/wine ->
 // alternatives -> script calling /usr/lib/wine/wine64); winetricks' arch

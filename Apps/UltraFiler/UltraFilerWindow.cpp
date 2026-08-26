@@ -19,11 +19,14 @@
 // The gear button at the right end of the navigation row opens the settings
 // window (UltraFilerSettingsDialog), which also clears the history / the
 // favorites; persisted settings load at startup and configure the preview's
-// transparent-image backdrop and the folder tree's colours - the background
-// of the drive rows and the highlight of the selected folder. Esc closes the
-// History or Favorites view, or an open media preview.
-// Version: 1.12.0
-// Last Modified: 2026-08-23
+// transparent-image backdrop, the width of the page thumbnails in the
+// preview's PDF page inventory and the folder tree's colours - the background
+// of the drive rows and the highlight of the selected folder. A backdrop
+// colour picked from the strip under a transparent image in the preview is
+// saved the same way. Esc closes the History or Favorites view, or an open
+// media preview.
+// Version: 1.14.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -403,6 +406,15 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // The filer provides the navigation; the preview shows only the media
     // (no breadcrumb / toolbar rows above the image).
     preview->SetTopBarsVisible(false);
+    // Picking a backdrop colour from the strip under a transparent image is a
+    // setting like any other: it is kept, so the next preview opens with it.
+    preview->onTransparentBackgroundChanged =
+            [this](TransparentImageBackground mode, const Color& color) {
+        settings.previewCheckeredBackground =
+                (mode == TransparentImageBackground::Checkered);
+        settings.previewTransparentColor = color;
+        settings.Save();
+    };
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
     // the recently used files / folders / applications behind the clock button.
@@ -550,6 +562,13 @@ void UltraFilerWindow::ApplySettings() {
                 ? TransparentImageBackground::Checkered
                 : TransparentImageBackground::SolidColor);
         preview->SetTransparentColor(settings.previewTransparentColor);
+        // Display > PDF Inventory: the width of the page thumbnails beside a
+        // shown PDF, either fixed or a share of the preview pane's width.
+        if (settings.pdfThumbnailAbsoluteWidth)
+            preview->SetPDFThumbnailWidth(settings.pdfThumbnailWidth);
+        else
+            preview->SetPDFThumbnailWidthFraction(
+                    settings.pdfThumbnailWidthPercent / 100.0f);
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
     // for tabs that were already open when it changed.
@@ -1643,9 +1662,10 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
-        // Windows executables go to the UltraWin emulation layer, not to the
-        // host's file associations.
-        if (entry.extension == "exe") {
+        // Windows executables and installers go to the UltraWin emulation
+        // layer, not to the host's file associations (.msi runs through
+        // msiexec inside the environment).
+        if (entry.extension == "exe" || entry.extension == "msi") {
             LaunchWindowsExecutable(entry);
             return;
         }
@@ -1966,9 +1986,11 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
     if (envName.empty()) envName = "Default";
 
     const bool firstLaunch = !UltraWin_EnvironmentExists(envName);
+    const char* verb =
+        entry.extension == "msi" ? "Installing " : "Launching ";
     if (statusLabel)
         statusLabel->SetText(
-            "Launching " + entry.name +
+            verb + entry.name +
             (firstLaunch ? " — first launch prepares its Windows environment, "
                            "this can take a minute…"
                          : "…"));

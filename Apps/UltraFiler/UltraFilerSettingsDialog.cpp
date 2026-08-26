@@ -2,16 +2,19 @@
 // UltraFiler settings window: settings-page tree on the left, the selected
 // page on the right. Pages: Display > Treeview (the folder tree's drive-row
 // background and selected-folder highlight, each shown as a colour box that
-// opens the colour picker in a popup window), Media Viewer > Transparent
-// Images (the backdrop behind transparent images — checkered pattern or a
-// preset colour chosen with the colour picker), Handling > Drag & Drop (what
+// opens the colour picker in a popup window), Display > PDF Inventory (the
+// width of the page thumbnails in the preview's PDF page inventory - a fixed
+// pixel width or a share of the preview's width, set with a slider), Media
+// Viewer > Transparent Images (the backdrop behind transparent images —
+// checkered pattern or a preset colour chosen with the colour picker),
+// Handling > Drag & Drop (what
 // a plain drop onto a folder does - move or copy), Extras > Open prompt (the
 // command line program UltraFiler opens, picked with the file dialog and
 // stored with "Save app") and History & Favorites (clearing the
 // recently-used lists and the pinned entries). Changes apply live and are
 // saved immediately.
-// Version: 1.5.0
-// Last Modified: 2026-08-23
+// Version: 1.6.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -25,6 +28,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSlider.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
@@ -45,6 +49,7 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
+    constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
     constexpr const char* kPageHandling = "handling";
@@ -64,6 +69,15 @@ namespace {
         // Display > Treeview: the colour boxes that open the picker popup.
         std::shared_ptr<UltraCanvasButton> driveColorBox;
         std::shared_ptr<UltraCanvasButton> selectedColorBox;
+
+        // Display > PDF Inventory: thumbnail width mode + the two sliders.
+        std::shared_ptr<UltraCanvasRadio>  pdfAbsoluteRadio;
+        std::shared_ptr<UltraCanvasRadio>  pdfRelativeRadio;
+        UltraCanvasRadioGroup              pdfWidthGroup;
+        std::shared_ptr<UltraCanvasSlider> pdfWidthSlider;
+        std::shared_ptr<UltraCanvasSlider> pdfPercentSlider;
+        std::shared_ptr<UltraCanvasLabel>  pdfWidthValue;
+        std::shared_ptr<UltraCanvasLabel>  pdfPercentValue;
 
         std::shared_ptr<UltraCanvasRadio>       solidRadio;
         std::shared_ptr<UltraCanvasRadio>       checkeredRadio;
@@ -378,6 +392,182 @@ namespace {
             ApplyAndSave(d);
         }));
 
+        return page;
+    }
+
+    // ===== DISPLAY > PDF INVENTORY =====
+
+    // "56 px" / "25 %" next to the slider it belongs to.
+    void UpdatePdfWidthLabels(DialogState* d) {
+        if (!d->settings) return;
+        if (d->pdfWidthValue) {
+            d->pdfWidthValue->SetText(
+                    std::to_string(d->settings->pdfThumbnailWidth) + " px");
+            d->pdfWidthValue->RequestRedraw();
+        }
+        if (d->pdfPercentValue) {
+            d->pdfPercentValue->SetText(
+                    std::to_string(d->settings->pdfThumbnailWidthPercent) + " %");
+            d->pdfPercentValue->RequestRedraw();
+        }
+    }
+
+    // One "[caption] [slider] [value]" row of the PDF Inventory page.
+    std::shared_ptr<UltraCanvasContainer> MakeSliderRow(
+            const std::string& id, const std::string& caption,
+            const std::shared_ptr<UltraCanvasSlider>& slider,
+            const std::shared_ptr<UltraCanvasLabel>& value) {
+        auto row = std::make_shared<UltraCanvasContainer>(id);
+        row->layout.SetFlexRow().SetFlexGap(10)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.width  = CSSLayout::Dimension::Px(430);
+        row->size.height = CSSLayout::Dimension::Px(32);
+
+        auto label = MakeLabel(id + "-label", caption);
+        label->size.width  = CSSLayout::Dimension::Px(150);
+        label->size.height = CSSLayout::Dimension::Px(20);
+        row->AddChild(label);
+        row->AddChild(slider);
+        row->AddChild(value);
+        return row;
+    }
+
+    // The width slider of one mode. Moving it selects that mode too, so the
+    // slider a user reaches for is the one that takes effect rather than a
+    // value nothing reads.
+    std::shared_ptr<UltraCanvasSlider> MakePdfWidthSlider(
+            const std::string& id, int minValue, int maxValue, int value,
+            std::function<void(int)> onChange) {
+        auto slider = CreateSlider(id, 0, 0, 210, 24);
+        slider->SetRange(static_cast<float>(minValue),
+                         static_cast<float>(maxValue));
+        slider->SetStep(1.0f);
+        slider->SetValue(static_cast<float>(value));
+        slider->size.width  = CSSLayout::Dimension::Px(210);
+        slider->size.height = CSSLayout::Dimension::Px(24);
+        slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Reported both while the handle is dragged and when it is let go, so
+        // the preview follows the slider instead of jumping at the end.
+        slider->onValueChanging = [onChange](float v) {
+            if (onChange) onChange(static_cast<int>(v + 0.5f));
+        };
+        slider->onValueChanged = [onChange](float v) {
+            if (onChange) onChange(static_cast<int>(v + 0.5f));
+        };
+        return slider;
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildPdfInventoryPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-pdf");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-pdf-title", "PDF Inventory", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-pdf-caption",
+                "Width of the page thumbnails in the preview's PDF page "
+                "inventory (the strip beside the page):"));
+
+        const bool absolute = d->settings->pdfThumbnailAbsoluteWidth;
+
+        d->pdfAbsoluteRadio = UltraCanvasRadio::Create(
+                "ufl-set-pdf-absolute", -1, -1,
+                "Fixed width - the same strip whatever the preview's size",
+                absolute);
+        d->pdfRelativeRadio = UltraCanvasRadio::Create(
+                "ufl-set-pdf-relative", -1, -1,
+                "Relative to the preview's width - grows with the window",
+                !absolute);
+        // Explicit sizes: content measuring needs a render context, which the
+        // dialog does not have while it is first laid out.
+        for (auto& radio : {d->pdfAbsoluteRadio, d->pdfRelativeRadio}) {
+            radio->size.width  = CSSLayout::Dimension::Px(400);
+            radio->size.height = CSSLayout::Dimension::Px(22);
+            radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        }
+        d->pdfWidthGroup.AddRadioButton(d->pdfAbsoluteRadio);
+        d->pdfWidthGroup.AddRadioButton(d->pdfRelativeRadio);
+        d->pdfWidthGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->pdfThumbnailAbsoluteWidth = (selected == d->pdfAbsoluteRadio);
+            ApplyAndSave(d);
+        };
+        page->AddChild(d->pdfAbsoluteRadio);
+
+        d->pdfWidthValue = MakeLabel("ufl-set-pdf-width-value", "");
+        d->pdfWidthValue->size.width  = CSSLayout::Dimension::Px(50);
+        d->pdfWidthValue->size.height = CSSLayout::Dimension::Px(20);
+        d->pdfWidthSlider = MakePdfWidthSlider("ufl-set-pdf-width",
+                UltraFilerSettings::kMinPdfThumbnailWidth,
+                UltraFilerSettings::kMaxPdfThumbnailWidth,
+                d->settings->pdfThumbnailWidth, [d](int px) {
+            if (!d->settings) return;
+            d->settings->pdfThumbnailWidth = px;
+            // Dragging this slider is a request for the width it sets, so it
+            // selects its mode too instead of moving a value nothing uses.
+            d->settings->pdfThumbnailAbsoluteWidth = true;
+            // Checking the radio runs the group's selection callback, which is
+            // what keeps the other one clear; it is a no-op when already checked.
+            if (d->pdfAbsoluteRadio) d->pdfAbsoluteRadio->SetChecked(true);
+            UpdatePdfWidthLabels(d);
+            ApplyAndSave(d);
+        });
+        page->AddChild(MakeSliderRow("ufl-set-pdf-width-row",
+                "Thumbnails width:", d->pdfWidthSlider, d->pdfWidthValue));
+
+        page->AddChild(d->pdfRelativeRadio);
+
+        d->pdfPercentValue = MakeLabel("ufl-set-pdf-percent-value", "");
+        d->pdfPercentValue->size.width  = CSSLayout::Dimension::Px(50);
+        d->pdfPercentValue->size.height = CSSLayout::Dimension::Px(20);
+        d->pdfPercentSlider = MakePdfWidthSlider("ufl-set-pdf-percent",
+                UltraFilerSettings::kMinPdfThumbnailPercent,
+                UltraFilerSettings::kMaxPdfThumbnailPercent,
+                d->settings->pdfThumbnailWidthPercent, [d](int percent) {
+            if (!d->settings) return;
+            d->settings->pdfThumbnailWidthPercent = percent;
+            d->settings->pdfThumbnailAbsoluteWidth = false;
+            if (d->pdfRelativeRadio) d->pdfRelativeRadio->SetChecked(true);
+            UpdatePdfWidthLabels(d);
+            ApplyAndSave(d);
+        });
+        page->AddChild(MakeSliderRow("ufl-set-pdf-percent-row",
+                "Share of the width:", d->pdfPercentSlider, d->pdfPercentValue));
+
+        page->AddChild(MakeLabel("ufl-set-pdf-hint",
+                "The inventory only appears for documents with more than one "
+                "page. It gives way when it would take more than half of a very "
+                "narrow preview."));
+
+        page->AddChild(MakeButton("ufl-set-pdf-default", "Restore default widths",
+                160, [d]() {
+            if (!d->settings) return;
+            // Moving a slider selects its own mode, so both sliders together
+            // would leave the last one's mode behind: the chosen mode is put
+            // back afterwards.
+            const bool wasAbsolute = d->settings->pdfThumbnailAbsoluteWidth;
+            if (d->pdfWidthSlider)
+                d->pdfWidthSlider->SetValue(static_cast<float>(
+                        UltraFilerSettings::kDefaultPdfThumbnailWidth));
+            if (d->pdfPercentSlider)
+                d->pdfPercentSlider->SetValue(static_cast<float>(
+                        UltraFilerSettings::kDefaultPdfThumbnailPercent));
+            // The sliders only report a value they actually moved to, so the
+            // settings are written here too.
+            d->settings->pdfThumbnailWidth =
+                    UltraFilerSettings::kDefaultPdfThumbnailWidth;
+            d->settings->pdfThumbnailWidthPercent =
+                    UltraFilerSettings::kDefaultPdfThumbnailPercent;
+            d->settings->pdfThumbnailAbsoluteWidth = wasAbsolute;
+            auto& radio = wasAbsolute ? d->pdfAbsoluteRadio : d->pdfRelativeRadio;
+            if (radio) radio->SetChecked(true);
+            UpdatePdfWidthLabels(d);
+            ApplyAndSave(d);
+        }));
+
+        UpdatePdfWidthLabels(d);
         return page;
     }
 
@@ -775,6 +965,11 @@ namespace {
         treeview.text = "Treeview";
         d->tree->AddNode(kPageDisplay, treeview);
 
+        TreeNodeData pdfInventory;
+        pdfInventory.nodeId = kPagePdfInventory;
+        pdfInventory.text = "PDF Inventory";
+        d->tree->AddNode(kPageDisplay, pdfInventory);
+
         TreeNodeData mediaViewer;
         mediaViewer.nodeId = kPageMediaViewer;
         mediaViewer.text = "Media Viewer";
@@ -827,6 +1022,12 @@ namespace {
                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageTreeview] = treeviewPage;
         d->pageArea->AddChild(treeviewPage);
+
+        auto pdfInventoryPage = BuildPdfInventoryPage(d);
+        pdfInventoryPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPagePdfInventory] = pdfInventoryPage;
+        d->pageArea->AddChild(pdfInventoryPage);
 
         auto transparentPage = BuildTransparentImagesPage(d);
         transparentPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)

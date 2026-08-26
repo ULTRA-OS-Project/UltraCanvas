@@ -2,8 +2,8 @@
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
-// Version: 1.5.0
-// Last Modified: 2026-06-19
+// Version: 1.6.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -78,9 +78,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     pageLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
     auto statusLabel = std::make_shared<UltraCanvasLabel>("PDFStatusLabel", 0, 0, 0, 22);
-    statusLabel->SetText("Mouse-wheel scrolls, Ctrl+wheel zooms, F3 finds next, "
-                         "\"Select\" then drag to select text, right-click to "
-                         "copy/export or extract an image.");
+    statusLabel->SetText("Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
+                         "on the keyboard), F3 finds next, \"Select\" then drag "
+                         "to select text, right-click to copy/export or extract "
+                         "an image.");
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
     statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -260,6 +261,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         b->SetText(toOverlay ? "#: On Page" : "#: Under");
     };
     toolbar->AddChild(numBtn);
+
+    // Toggle the page inventory's width mode: a share of the view's width
+    // (the default) <-> a fixed thumbnail width in pixels.
+    auto widthBtn = CreateButton("PDFThumbWidth", 0, 0, 110, 30, "Strip: 25%");
+    widthBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    std::weak_ptr<UltraCanvasButton> widthWeak = widthBtn;
+    widthBtn->onClick = [viewWeak, widthWeak]() {
+        auto v = viewWeak.lock();
+        auto b = widthWeak.lock();
+        if (!v || !b) return;
+        using TWM = UltraCanvasPDFView::ThumbnailWidthMode;
+        const bool toAbsolute = v->GetThumbnailWidthMode() == TWM::Relative;
+        if (toAbsolute) v->SetThumbnailWidth(56);          // the Filer's width
+        else            v->SetThumbnailWidthFraction(0.25f);
+        b->SetText(toAbsolute ? "Strip: 56px" : "Strip: 25%");
+    };
+    toolbar->AddChild(widthBtn);
 
     pageLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     pageLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(0);

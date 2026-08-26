@@ -111,9 +111,13 @@ UltraWin_ReleaseApp(app);
 
 ## Running applications
 
-- `UltraWin_RunApp(exePath, options, &handle)` forks and execs
-  `wine <exe> [args...]` in its own process group, with `WINEPREFIX` set and
-  optional extra environment variables (e.g. a DXVK switch) applied.
+- `UltraWin_RunApp(path, options, &handle)` forks and execs Wine in its own
+  process group, with `WINEPREFIX` set and optional extra environment
+  variables (e.g. a DXVK switch) applied. The path is routed by extension:
+  `.exe` (and anything else) runs directly, `.msi` installs through
+  `msiexec /i`, and `.lnk` Start-Menu shortcuts resolve through
+  `start /wait /unix` — so installers and installed programs launch through
+  the same one call.
 - Windows appear as native windows — Wine's default mode; UltraWin never
   enables Wine's "virtual desktop".
 - Supervision is polling-based (non-blocking `waitpid`): UltraWin installs
@@ -125,6 +129,16 @@ UltraWin_ReleaseApp(app);
   `UltraWin_ReleaseApp`.
 - `UltraWinRunOptions::forceTier` accepts `Auto` (== Wine in Stage 1) and
   `Wine`; `Vm` returns `NotSupported` until Stage 2.
+
+## Installed programs — feeding the ULTRA OS launcher
+
+Installers create Start-Menu shortcuts inside the environment.
+`UltraWin_ListPrograms(env)` enumerates them (all-users and per-user menus,
+recursively; `UltraWinProgramInfo` carries name, Start-Menu subfolder as
+`category`, and the shortcut's host path), so a launcher or app grid can
+show installed Windows programs like native ones — starting one is
+`UltraWin_RunApp(info.shortcutPath, …)` via the `.lnk` routing above.
+Uninstaller shortcuts are included; filter by name where unwanted.
 
 ## Components — VC++ runtimes, fonts, .NET, DXVK
 
@@ -184,15 +198,54 @@ launch/supervision path runs against a stub wine script (via the
 
 ## UltraFiler integration
 
-Double-clicking a `.exe` in UltraFiler launches it through
-`UltraWin_RunApp` in a per-app environment named after the executable
-(created automatically on first launch, off the UI thread). When Wine is
-missing, the status bar says how to install it. Available only in Linux
-builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation of an
-`.exe` behaves as before.
+Double-clicking a `.exe` or `.msi` in UltraFiler launches it through
+`UltraWin_RunApp` in a per-app environment named after the file (created
+automatically on first launch, off the UI thread; installers run through
+msiexec). When Wine is missing, the status bar says how to install it.
+Available only in Linux builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other
+platforms activation behaves as before.
+
+## The VM tier (Stage 2a — machine backbone)
+
+The fallback tier for the apps Wine cannot run boots a **real Windows
+guest** under QEMU/KVM, headless — its desktop is never displayed;
+application windows will reach ULTRA OS through FreeRDP RemoteApp over the
+forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
+
+- `UltraWin_VmProvision(options)` prepares UltraWin's single shared
+  machine under `UltraWinConfig::vmDirectory`: the qcow2 system disk
+  (created via qemu-img, sparse, 64 GB cap by default), the unattended
+  Windows-setup answer file (`autounattend.xml`: RDP host + RemoteApp
+  allow-list enabled, TPM/RAM checks bypassed — **experimental until
+  validated against real media**), and the machine manifest. The Windows
+  ISO is **user-supplied** (Pro/Enterprise; a Windows license is the
+  user's) and can be added by re-provisioning later; re-provisioning never
+  recreates an existing disk.
+- `UltraWin_VmStart` boots headless with KVM (TCG only via
+  `vmAllowWithoutKvm`, for tests), virtio disk/net, the guest's RDP port
+  forwarded to loopback (`vmRdpHostPort`, default 13389), and a QMP
+  control socket in the machine directory; it returns once QMP answers.
+  While install media is configured and setup has not completed, the
+  machine boots from the ISO with the answer file attached as a virtual
+  FAT volume.
+- `UltraWin_VmSuspend` / `UltraWin_VmResume` pause the vCPUs (QMP
+  stop/cont) — the cheap way to keep the guest resident between launches;
+  `UltraWin_VmStop` is a graceful ACPI powerdown with a hard-quit
+  fallback, `UltraWin_VmKill` the virtual power cord.
+  `UltraWin_VmGetState` / `UltraWin_VmGetInfo` report
+  NotProvisioned/Stopped/Running/Suspended plus pid, disk and RDP port.
+- Engines stay wrapped: QEMU is **spawned, never linked** (same policy as
+  Wine/winetricks); QMP is spoken directly over its UNIX socket (design
+  decision: no libvirt daemon dependency), with JSON handled by the
+  vendored yyjson engine the framework already ships.
+- Capabilities: `qemuAvailable`/`qemuPath`, `virtiofsdAvailable`, and
+  `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
+  state is `UltraWin_VmGetInfo`'s business).
 
 ## Not yet implemented (later stages)
 
+- Stage 2b: the FreeRDP RemoteApp element (`UltraCanvasRemoteAppView`) and
+  `UltraWin_RunApp` routing into the VM tier; virtiofs shared folders.
+- Stage 2c: guest provisioning validated end-to-end against real install
+  media (virtio driver injection, first-boot orchestration).
 - `UltraWin_QueryCompatibility` + automatic tier routing.
-- The whole VM tier: `UltraWin_VmProvision/Start/Suspend/Stop`, virtiofs
-  shared folders, `UltraCanvasRemoteAppView` RAIL element.

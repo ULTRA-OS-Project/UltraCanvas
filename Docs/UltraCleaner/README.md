@@ -153,6 +153,19 @@ the same trash support and the same simulate-by-default posture.
 
 Three tabs: **Overview**, **System junk** and **Photo albums**.
 
+Everything inside a tab is *laid out*, not positioned: pages are flex columns
+whose children carry no absolute coordinates. An absolute offset inside a tab
+page silently assumes a tab strip of a particular height, and a font metric
+away from that assumption the toolbar is clipped — which is exactly what
+happened on Windows. For the same reason, a wrapping label must never be
+given a fixed height: the panel that lists the categories is a *block*
+container, because only the block layout path measures a wrapped label
+against a definite width and gives it the height its text really needs. Under
+flex it reports a single line, and the next row is drawn over the overflow.
+
+`LayoutForSize()` re-lays the tab container from `onWindowResize`, so the app
+follows the window instead of staying at its opening size.
+
 Overview is what the app opens on. It draws one
 `UltraCanvasCircularProgressChart` per mounted volume — green below 75%
 used, amber to 90%, red above — with the drive's name, how full it is, what

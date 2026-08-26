@@ -8,7 +8,9 @@
 
 #include "UltraWinInternal.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -121,6 +123,19 @@ UltraWinResult UltraWin_RunApp(const std::string& executablePath,
                               ? fs::path(executablePath).parent_path().string()
                               : options.workingDirectory;
 
+    // Extension routing: installers and Start-Menu shortcuts need a Wine
+    // helper in front of the file; plain executables run directly.
+    std::string ext = fs::path(executablePath).extension().string();
+    for (char& c : ext) c = static_cast<char>(std::tolower(
+                              static_cast<unsigned char>(c)));
+    std::vector<std::string> wineArgs;
+    if (ext == ".msi")
+        wineArgs = {"msiexec", "/i", executablePath};
+    else if (ext == ".lnk")
+        wineArgs = {"start", "/wait", "/unix", executablePath};
+    else
+        wineArgs = {executablePath};
+
     pid_t pid = fork();
     if (pid < 0)
         return UltraWinResult::Error(UltraWinResultCode::LaunchFailed,
@@ -137,7 +152,8 @@ UltraWinResult UltraWin_RunApp(const std::string& executablePath,
         if (devnull >= 0) dup2(devnull, STDIN_FILENO);
         std::vector<char*> argv;
         argv.push_back(const_cast<char*>(wine.c_str()));
-        argv.push_back(const_cast<char*>(executablePath.c_str()));
+        for (const auto& a : wineArgs)
+            argv.push_back(const_cast<char*>(a.c_str()));
         for (const auto& a : options.arguments)
             argv.push_back(const_cast<char*>(a.c_str()));
         argv.push_back(nullptr);
@@ -245,4 +261,47 @@ UltraWinResult UltraWin_ReleaseApp(UltraWinHandle app) {
                                      "application is still running");
     g_apps.erase(it);
     return UltraWinResult::Ok();
+}
+
+std::vector<UltraWinProgramInfo> UltraWin_ListPrograms(
+    const std::string& environment) {
+    std::vector<UltraWinProgramInfo> out;
+    if (!UltraWin_IsInitialized() || !IsValidEnvironmentName(environment))
+        return out;
+    const fs::path driveC = fs::path(PrefixPath(environment)) / "drive_c";
+    const fs::path menuTail =
+        fs::path("Microsoft") / "Windows" / "Start Menu" / "Programs";
+
+    // The all-users menu plus every profile's per-user menu.
+    std::vector<fs::path> roots = {driveC / "ProgramData" / menuTail};
+    std::error_code ec;
+    for (fs::directory_iterator user(driveC / "users", ec), end;
+         !ec && user != end; user.increment(ec)) {
+        roots.push_back(user->path() / "AppData" / "Roaming" / menuTail);
+    }
+
+    for (const auto& root : roots) {
+        std::error_code rec;
+        fs::recursive_directory_iterator it(root, rec), end;
+        for (; !rec && it != end; it.increment(rec)) {
+            if (!it->is_regular_file(rec)) continue;
+            std::string ext = it->path().extension().string();
+            for (char& c : ext)
+                c = static_cast<char>(
+                    std::tolower(static_cast<unsigned char>(c)));
+            if (ext != ".lnk") continue;
+            UltraWinProgramInfo info;
+            info.name = it->path().stem().string();
+            info.category =
+                fs::relative(it->path().parent_path(), root, rec).string();
+            if (info.category == ".") info.category.clear();
+            info.shortcutPath = it->path().string();
+            info.environment = environment;
+            out.push_back(std::move(info));
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
+        return a.name < b.name;
+    });
+    return out;
 }
