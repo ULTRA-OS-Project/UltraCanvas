@@ -1904,6 +1904,11 @@ namespace UltraCanvas {
         cairo_fill_preserve(cairo);
     }
 
+    void RenderContextCairo::SetFillRule(FillRule rule) {
+        cairo_set_fill_rule(cairo, rule == FillRule::EvenOdd
+                ? CAIRO_FILL_RULE_EVEN_ODD : CAIRO_FILL_RULE_WINDING);
+    }
+
     void RenderContextCairo::StrokePathPreserve() {
         ApplySource(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         cairo_stroke_preserve(cairo);

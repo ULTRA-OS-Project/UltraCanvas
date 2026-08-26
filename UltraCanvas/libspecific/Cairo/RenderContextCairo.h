@@ -216,6 +216,7 @@ namespace UltraCanvas {
         void Circle(double x, double y, double radius) override;
 
         Rect2Dd GetPathExtents() override;
+        void SetFillRule(FillRule rule) override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
         void FillText(const std::string& text, double x, double y) override;

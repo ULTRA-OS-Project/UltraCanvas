@@ -22,6 +22,9 @@
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
 #include "UltraCanvasXARPlugin.h"
 #endif
+#ifdef ULTRACANVAS_HAS_EPS_PLUGIN
+#include "UltraCanvasEPSPlugin.h"
+#endif
 
 // OS-specific initialization if needed
 #ifdef _WIN32
@@ -124,6 +127,9 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         RegisterXARPlugin();
+#endif
+#ifdef ULTRACANVAS_HAS_EPS_PLUGIN
+        RegisterEPSPlugin();
 #endif
         debugOutput << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {

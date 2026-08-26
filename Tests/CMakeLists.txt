@@ -918,6 +918,42 @@ add_test(
 )
 message(STATUS "    Test registered: ElementPluginTest")
 
+# ===== EPS PROBE TEST =====
+# Parses the shipped media/eps samples through the EPS plugin and reports
+# the interpreter's diagnostics; with cairo it also rasterizes to PNG for
+# comparison against a ghostscript rendering of the same file.
+if(TARGET UltraCanvasEPSPlugin)
+    message(STATUS "  Building EPSProbeTest...")
+    add_executable(EPSProbeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EPSProbeTest.cpp
+    )
+    target_include_directories(EPSProbeTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_compile_features(EPSProbeTest PRIVATE cxx_std_20)
+    target_compile_definitions(EPSProbeTest PRIVATE
+        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/eps"
+    )
+    target_link_libraries(EPSProbeTest PRIVATE UltraCanvasEPSPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(EPSPROBE_CAIRO cairo)
+            if(EPSPROBE_CAIRO_FOUND)
+                target_compile_definitions(EPSProbeTest PRIVATE EPSPROBE_HAVE_CAIRO=1)
+                target_include_directories(EPSProbeTest PRIVATE ${EPSPROBE_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(EPSProbeTest PRIVATE ${EPSPROBE_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(EPSProbeTest PROPERTIES
+        OUTPUT_NAME "EPSProbeTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EPSProbeTest COMMAND EPSProbeTest)
+    message(STATUS "    Test registered: EPSProbeTest")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
