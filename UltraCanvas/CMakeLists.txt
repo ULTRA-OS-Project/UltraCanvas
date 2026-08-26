@@ -334,6 +334,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEvent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+        # Kept out of UltraCanvasUtils.cpp so that file stays linkable on
+        # its own (the Tests targets compile it directly for Trim()); this
+        # one needs UltraCanvasJSON for the Dropbox configuration.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCloudStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGitRepository.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp

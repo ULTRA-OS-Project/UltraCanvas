@@ -25,8 +25,13 @@
   context menu the way the drive roots do: deleting one syncs the deletion to
   every other device.
 - New `UltraCanvas::GetCloudStorageFolders()`
-  (`UltraCanvasUtils.h`) behind it — the counterpart of
-  `GetWellKnownUserFolders()`. Each provider is asked where it put its folder
+  (`UltraCanvasCloudStorage.{h,cpp}`) behind it — the counterpart of
+  `GetWellKnownUserFolders()`. It gets a header and translation unit of its
+  own rather than joining its companion in `UltraCanvasUtils` because reading
+  the Dropbox configuration needs `UltraCanvasJSON`, and `UltraCanvasUtils.cpp`
+  sits at the bottom of the stack: `HTMLReaderTest`, `EBookEngineTest` and
+  `WordFormatsTest` each compile it standalone, without linking the framework
+  library, just to get `Trim()`. Each provider is asked where it put its folder
   rather than guessed at: the `OneDrive*` environment variables, the Google
   Drive mount under `HKCU\Software\Google\DriveFS` plus the fixed drives
   labelled *Google Drive*, and the Dropbox `info.json` (where a relocated or a

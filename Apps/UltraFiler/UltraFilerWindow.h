@@ -53,7 +53,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
-#include "UltraCanvasUtils.h"      // CloudStorageInfo (the Cloud Storage section)
+#include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"

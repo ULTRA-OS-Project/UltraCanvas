@@ -17140,7 +17140,8 @@ OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
 (localized names; entries pointing at `$HOME` are disabled per the spec) — for
 building an Explorer/Finder-style curated "Home" section.
 
-`UltraCanvas::GetCloudStorageFolders()` (same header) is its counterpart for a
+`UltraCanvas::GetCloudStorageFolders()` (`UltraCanvasCloudStorage.h`) is its
+counterpart for a
 "Cloud Storage" section: the sync folders the machine actually has, as
 `CloudStorageInfo { CloudStorageKind kind; std::string path, label; }` in the
 canonical OneDrive, Google Drive, Dropbox, iCloud Drive order. Each provider is
@@ -17156,6 +17157,13 @@ Only folders that exist right now are returned, each once: a client that is
 installed but signed out has no folder and is not listed. Nothing is mounted,
 signed in to or contacted — but the lookup does read a registry key, a config
 file and the mount table, so call it off the UI thread (the UltraFiler does).
+
+It gets a header of its own rather than joining `GetWellKnownUserFolders()` in
+`UltraCanvasUtils.h` because reading the Dropbox configuration needs
+`UltraCanvasJSON`: `UltraCanvasUtils.cpp` sits at the bottom of the stack and is
+compiled **standalone**, without the framework library, by several test targets
+that only want `Trim()` — a JSON dependency inside it leaves every one of them
+with undefined references at link time.
 
 ## Selection access
 
