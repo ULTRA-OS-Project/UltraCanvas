@@ -48,6 +48,12 @@
   advance horizontally instead of overprinting each other, and the
   paragraph justification is honoured: the story origin is the anchor, so
   centred text centres on it and right-aligned text ends at it.
+  Single-character records (`TAG_TEXT_CHAR` — dingbats, styled numerals)
+  render as one-character spans, explicit kerns (`TAG_TEXT_KERN`) adjust
+  the caret, and span boundaries are normalised against Xara's own line
+  width (`TAG_TEXT_LINE_INFO`) so substituted fonts don't push spans
+  apart. Verified page-by-page against the author's PDF export of a
+  13-slide pitch deck.
 - **Multi-page documents render page by page.** Every spread's coordinates
   restart at its own origin, so a multi-spread file (a pitch deck, a
   multi-page brochure) used to draw all its pages on top of each other.

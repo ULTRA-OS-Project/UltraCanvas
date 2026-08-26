@@ -665,6 +665,7 @@ namespace UltraCanvas {
         Document, Chapter, Spread, Layer, Page,
         Group, Path, Rectangle, Ellipse, Polygon,
         Text, TextStory, TextLine, TextString,
+        TextKern,
         Bitmap, ContonedBitmap,
         Blend, Mould, Bevel, Contour, Shadow,
         ClipView, Feather, LiveEffect, Brush,
@@ -778,11 +779,22 @@ namespace UltraCanvas {
     class XARTextLineNode : public XARNode {
     public:
         // Position within the story: successive lines step down one leading.
-        // Real per-line placement records (kerning, TEXT_LINE_INFO) are not
-        // parsed yet; this is the layout approximation.
         int lineIndex = 0;
+        // Xara's own computed line width (millipoints, from
+        // TAG_TEXT_LINE_INFO); 0 when the record was absent. Justification
+        // prefers it over our measurement so the anchor matches Xara's
+        // metrics even where fonts differ.
+        int32_t lineWidthMP = 0;
         XARTextLineNode() { type = XARNodeType::TextLine; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
+    };
+
+    // An explicit caret adjustment between spans of a line (TAG_TEXT_KERN),
+    // millipoints in Y-up document space.
+    class XARTextKernNode : public XARNode {
+    public:
+        Point2Di offset;
+        XARTextKernNode() { type = XARNodeType::TextKern; }
     };
 
     class XARTextStringNode : public XARNode {
@@ -1065,6 +1077,9 @@ namespace UltraCanvas {
         void ParseTextStoryRecord(const XARRecord& record);
         void ParseTextLineRecord(const XARRecord& record);
         void ParseTextStringRecord(const XARRecord& record);
+        void ParseTextCharRecord(const XARRecord& record);
+        void ParseTextKernRecord(const XARRecord& record);
+        void ParseTextLineInfoRecord(const XARRecord& record);
         void ParseTextAttrRecord(const XARRecord& record);
         void ParseFontDefRecord(const XARRecord& record, bool isTrueType);
         void ParseBitmapDefRecord(const XARRecord& record, XARBitmapDefinition::Format fmt);

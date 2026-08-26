@@ -494,12 +494,20 @@ namespace UltraCanvas {
             ctx->Translate(0, -lineIndex * leading * scale);
         }
 
-        // Lay the line's strings out horizontally and apply the paragraph
-        // justification: the story origin is the anchor — centred text is
-        // centred on it, right-aligned text ends at it.
+        // Lay the line's spans out along the caret: strings advance by their
+        // measured width, TAG_TEXT_KERN records adjust the caret explicitly.
+        // The paragraph justification anchors the whole line on the story
+        // origin — centred text centres on it, right-aligned text ends at
+        // it — preferring Xara's own line width (TAG_TEXT_LINE_INFO) over
+        // our measurement so the anchor is exact even where fonts differ.
         double total = 0;
         std::vector<double> widths;
         for (const auto& c : children) {
+            if (c->type == XARNodeType::TextKern) {
+                auto k = std::static_pointer_cast<XARTextKernNode>(c);
+                total += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                continue;
+            }
             if (c->type != XARNodeType::TextString) continue;
             auto s = std::static_pointer_cast<XARTextStringNode>(c);
             double w = 0;
@@ -511,10 +519,29 @@ namespace UltraCanvas {
             total += w;
         }
 
-        double x = 0;
+        double anchorWidth = (lineWidthMP > 0)
+                ? lineWidthMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale
+                : total;
+
+        // Our fonts rarely match the author's exactly, so measured span
+        // widths drift from Xara's caret positions (visible as gaps after a
+        // bold span, or letter-spaced runs of single characters). Xara's own
+        // line width is authoritative: scale the measured widths so their
+        // sum lands every span boundary where Xara put it.
+        double measuredSum = 0;
+        for (double w : widths) measuredSum += w;
+        double kernSum = total - measuredSum;
+        if (lineWidthMP > 0 && measuredSum > 0.001) {
+            double factor = (anchorWidth - kernSum) / measuredSum;
+            if (factor > 0.01 && factor < 100.0) {
+                for (double& w : widths) w *= factor;
+            }
+        }
+
+        double x = 0, y = 0;
         switch (textAttr.justification) {
-            case XARTextAttribute::Justification::Centre: x = -total / 2.0; break;
-            case XARTextAttribute::Justification::Right:  x = -total; break;
+            case XARTextAttribute::Justification::Centre: x = -anchorWidth / 2.0; break;
+            case XARTextAttribute::Justification::Right:  x = -anchorWidth; break;
             default: break;
         }
 
@@ -522,10 +549,14 @@ namespace UltraCanvas {
         for (const auto& c : children) {
             if (c->type == XARNodeType::TextString) {
                 ctx->PushState();
-                ctx->Translate(x, 0);
+                ctx->Translate(x, y);
                 c->Render(ctx, scale);
                 ctx->PopState();
                 x += widths[wi++];
+            } else if (c->type == XARNodeType::TextKern) {
+                auto k = std::static_pointer_cast<XARTextKernNode>(c);
+                x += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                y += k->offset.y * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
             } else {
                 c->Render(ctx, scale);
             }
@@ -1100,11 +1131,11 @@ namespace UltraCanvas {
                 break;
             case XARTag::TAG_TEXT_LINE: ParseTextLineRecord(record); break;
             case XARTag::TAG_TEXT_STRING: ParseTextStringRecord(record); break;
-            case XARTag::TAG_TEXT_CHAR:
+            case XARTag::TAG_TEXT_CHAR: ParseTextCharRecord(record); break;
+            case XARTag::TAG_TEXT_KERN: ParseTextKernRecord(record); break;
+            case XARTag::TAG_TEXT_LINE_INFO: ParseTextLineInfoRecord(record); break;
             case XARTag::TAG_TEXT_EOL:
-            case XARTag::TAG_TEXT_KERN:
             case XARTag::TAG_TEXT_CARET:
-            case XARTag::TAG_TEXT_LINE_INFO:
             case XARTag::TAG_TEXT_STRING_POS:
             case XARTag::TAG_TEXT_TAB:
             case XARTag::TAG_TEXT_LEFT_INDENT:
@@ -1787,6 +1818,49 @@ namespace UltraCanvas {
             str->text = ReadUTF16String(d, off, record.data.size());
         }
         AttachNode(str);
+    }
+
+    void XARDocument::ParseTextCharRecord(const XARRecord& record) {
+        // A single UTF-16 code unit as its own object — used for characters
+        // whose attributes differ from their neighbours (dingbats, the big
+        // numerals in the samples). Modelled as a one-character string.
+        if (record.data.size() < 2) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        uint16_t code = ReadUInt16(d, off);
+        auto str = std::make_shared<XARTextStringNode>();
+        ApplyCurrentAttributesTo(str);
+        // Encode the BMP code point as UTF-8.
+        if (code < 0x80) {
+            str->text.push_back(static_cast<char>(code));
+        } else if (code < 0x800) {
+            str->text.push_back(static_cast<char>(0xC0 | (code >> 6)));
+            str->text.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+        } else {
+            str->text.push_back(static_cast<char>(0xE0 | (code >> 12)));
+            str->text.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3F)));
+            str->text.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+        }
+        AttachNode(str);
+    }
+
+    void XARDocument::ParseTextKernRecord(const XARRecord& record) {
+        if (record.data.size() < 8) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        auto kern = std::make_shared<XARTextKernNode>();
+        kern->offset = ReadCoord(d, off);
+        AttachNode(kern);
+    }
+
+    void XARDocument::ParseTextLineInfoRecord(const XARRecord& record) {
+        // First INT32 is the line's width as Xara computed it.
+        if (record.data.size() < 4) return;
+        if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            line->lineWidthMP = ReadInt32(d, off);
+        }
     }
 
     void XARDocument::ParseTextAttrRecord(const XARRecord& record) {
