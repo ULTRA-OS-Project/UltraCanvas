@@ -543,6 +543,10 @@ namespace UltraCanvas {
 
         qualitySlider = std::make_shared<UltraCanvasSlider>("QualitySlider", 0, 0, 180, 24);
         qualitySlider->SetRange(0, 100);
+        // Quality / compression levels are whole numbers in every format, and
+        // UpdateQualityRange() narrows the range to 0..9 for PNG — an explicit
+        // step keeps the snapping integral there too.
+        qualitySlider->SetStep(1.0f);
         qualitySlider->SetValue(85);
 
         qualityValueLabel = std::make_shared<UltraCanvasLabel>("QualityValue", 0, 0, 50, 24);
@@ -634,6 +638,7 @@ namespace UltraCanvas {
 
         webpEffortSlider = std::make_shared<UltraCanvasSlider>("WebpEffort", 0, 0, 150, 24);
         webpEffortSlider->SetRange(0, 6);
+        webpEffortSlider->SetStep(1.0f);   // effort is a whole number 0..6
         webpEffortSlider->SetValue(4);
 
         effortRow->AddChild(effortLabel);
@@ -651,6 +656,7 @@ namespace UltraCanvas {
 
         webpAlphaQualitySlider = std::make_shared<UltraCanvasSlider>("WebpAlphaQuality", 0, 0, 150, 24);
         webpAlphaQualitySlider->SetRange(0, 100);
+        webpAlphaQualitySlider->SetStep(1.0f);
         webpAlphaQualitySlider->SetValue(100);
 
         alphaRow->AddChild(alphaLabel);
@@ -684,6 +690,7 @@ namespace UltraCanvas {
 
         avifSpeedSlider = std::make_shared<UltraCanvasSlider>("AvifSpeed", 0, 0, 150, 24);
         avifSpeedSlider->SetRange(0, 10);
+        avifSpeedSlider->SetStep(1.0f);    // speed is a whole number 0..10
         avifSpeedSlider->SetValue(6);
 
         speedRow->AddChild(speedLabel);

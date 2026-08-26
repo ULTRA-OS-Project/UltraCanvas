@@ -1,3 +1,31 @@
+#### 2026-08-26 *0.3.73*
+- **Sliders over a small range reach every value again.** `UltraCanvasSlider`
+  defaulted to a snap increment of 1.0 whatever its range, so a fractional
+  slider offered only the whole numbers inside it: the media viewer's
+  adjustment sliders (gamma 0.2..3.0, the colour channels 0..2) had three
+  usable positions each, and a 0..1 ratio slider had two. A slider that is
+  given no step now derives one from its range — whole units where the range
+  spans at least 20 of them, continuous below that — and a step the caller
+  states survives any later `SetRange()`, so integer controls (the export
+  dialog's quality, effort and speed) keep whole steps. The media viewer's
+  sliders are continuous, carry their live value in the caption
+  (`Gamma  1.37`) and are put back by *Reset*, which used to leave every
+  handle where the user had dragged it.
+- **Curves: per-channel tone editing for images.** New framework facility in
+  three layers — `UltraCanvasToneCurve` / `ToneCurveSet` (the model: control
+  points, monotone-cubic interpolation, 256-entry lookup tables, text
+  serialisation), `UltraCanvasCurveEditor` (the element the points are dragged
+  in, over an optional histogram) and `UltraCanvasCurvesDialog` (channel
+  selector, preview toggle, reset / OK / cancel). Pixels are mapped by the new
+  `PixelFX::Colour::MapLut()`, which applies per-channel 8-bit tables and
+  passes alpha through untouched.
+- **The media viewer got a *Curves* button.** It edits `MediaAdjustments::curves`
+  — a master (RGB) curve plus one per colour channel — over the histogram of
+  the shown image, previewing live on the picture at full size; *Cancel*
+  restores what was there. Curves are applied first in the colour pipeline, so
+  the existing sliders act on their result, and *Save as* bakes them in like
+  every other adjustment. This is the tool that reaches highlights, midtones
+  and shadows separately; the sliders move the whole tone range at once.
 #### 2026-08-26 *0.3.72*
 - **The XAR renderer draws real Xara files correctly now.** Files written by
   a modern Xara (Designer Pro X19) displayed as scattered, unfilled

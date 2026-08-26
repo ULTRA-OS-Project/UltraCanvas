@@ -5,7 +5,7 @@ A comprehensive, self-contained media viewer widget
 One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
 folder breadcrumb, two toolbar rows (open / navigation / slideshow /
-transitions, zoom / rotate / mirror / adjust / save / info), an image
+transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
 adjustments panel and a bottom info bar with a details popup.
 
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
@@ -30,7 +30,7 @@ The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
 
-Image-only tools (rotate, mirror, tone/colour adjustments, save-as) apply to
+Image-only tools (rotate, mirror, tone/colour adjustments, curves, save-as) apply to
 images; the zoom toolbar also drives the PDF view and, for e-books, the
 reading text scale (books reflow, so zoom is a text scale and "Fit" means a
 comfortable line measure across the pane).
@@ -211,3 +211,30 @@ The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+Each slider is **continuous over its whole range** and carries its live value in
+its caption (`Gamma  1.37`), so an edit can be read off and repeated. *Reset*
+puts the controls and the values back in one pass — curves included.
+
+### Curves (highlights, midtones, shadows)
+
+The sliders move the whole tone range at once. To reach one part of it — lift
+the shadows without blowing the highlights, drop a colour cast out of the
+whites — the *Curves* toolbar button opens
+[`UltraCanvasCurvesDialog`](UltraCanvasCurveEditor.md): a master (RGB) curve
+plus one per colour channel, over the histogram of the shown image.
+
+```cpp
+viewer->GetSurface()->GetAdjustments().curves;   // the ToneCurveSet in force
+```
+
+The curves live in `MediaAdjustments::curves` (a `ToneCurveSet`) and are applied
+**first** in the colour pipeline, as a per-channel lookup table
+(`PixelFX::Colour::MapLut`); the sliders then act on the curve's result, the way
+an image editor stacks a Curves layer under its brightness controls. They are
+part of the adjustment like everything else, so *Save as* bakes them in too.
+
+Dragging a point previews on the image itself at full size (untick *Preview* to
+compare against the original); *Cancel*, or closing the window, restores the
+curves the viewer had. The button applies to images — for any other kind of file
+the info bar says so and nothing opens.
