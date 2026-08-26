@@ -1,3 +1,28 @@
+#### 2026-08-26 *0.3.68*
+- **The CDR and XAR graphics plugins are actually registered now, so the File
+  Loader can see them.** Both plugins compiled, and the demo displayed them by
+  constructing the elements directly — but the one `RegisterCDRPlugin()` call
+  had been commented out, so `UltraCanvasGraphicsPluginRegistry` stayed empty:
+  the File Loader's supported-format inventory never listed `cdr`/`cmx`/`ccx`/
+  `cdt` (or `xar`), and extension-based dispatch (`LoadGraphicsFile`) returned
+  null for files both plugins could parse. The demo now registers each plugin
+  at startup under its `ULTRACANVAS_HAS_*_PLUGIN` guard, exactly as the docs'
+  integration checklist prescribes. Verified end-to-end: with registration,
+  `UltraCanvasFileLoader::GetSupportedFormats(Vector)` reports all four CDR
+  extensions with the plugin as provider, and `LoadGraphicsFile()` parses every
+  sample under `media/cdr/` into a loaded multi-page element.
+- **CDR plugin build cleanup.** The plugin's CMakeLists demanded libvips,
+  vips-cpp and glib-2.0 as `REQUIRED` although the plugin never uses any of
+  them (parsing is libcdr + librevenge; images decode through `UCImage`) —
+  a stray hard dependency that broke the build on systems without libvips
+  headers. Removed, along with the unused include paths. The plugin now builds
+  against exactly what it links: libcdr, librevenge, and the UltraCanvas core.
+- Elements the CDR plugin creates for the registry are now named from a
+  monotonic counter instead of `rand()`, so identifiers cannot collide.
+- Fixed the vector storage plugin's target name typo:
+  `UltraCanvasVectorlugin` → `UltraCanvasVectorPlugin` (referenced only
+  through exported variables, so nothing else moves).
+
 #### 2026-08-25 *0.3.67*
 - **The Filer's folder watching is the operating system's now, not a timer.**
   It shipped as a poll: a worker re-fingerprinted the shown folder every 1.5 s

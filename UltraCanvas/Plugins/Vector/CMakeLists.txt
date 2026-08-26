@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # ===== PLUGIN DEFINITION =====
-set(PLUGIN_NAME "UltraCanvasVectorlugin")
+set(PLUGIN_NAME "UltraCanvasVectorPlugin")
 set(PLUGIN_VERSION "1.0.0")
 
 message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")

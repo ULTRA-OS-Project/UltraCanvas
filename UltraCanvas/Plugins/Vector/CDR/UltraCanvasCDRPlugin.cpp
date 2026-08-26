@@ -8,6 +8,7 @@
 #include "UltraCanvasCDRPluginImpl.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
+#include <atomic>
 #include <iostream>
 #include <fstream>
 #include <cmath>
@@ -1858,9 +1859,14 @@ namespace UltraCanvas {
                CanHandle(fileInfo.filename);
     }
 
+    // Monotonic id source for elements the plugin creates on behalf of the
+    // registry (callers that care about identifiers construct the element
+    // themselves).
+    static std::atomic<uint64_t> nextCdrElementId{0};
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasCDRPlugin::LoadGraphics(const std::string& filePath) {
         auto element = std::make_shared<UltraCanvasCDRElement>(
-                "cdr_" + std::to_string(rand()), 0, 0, 800, 600);
+                "cdr_" + std::to_string(nextCdrElementId++), 0, 0, 800, 600);
 
         if (element->LoadFromFile(filePath)) {
             return element;
@@ -1876,7 +1882,7 @@ namespace UltraCanvas {
                                                                                GraphicsFormatType type) {
         if (type == GraphicsFormatType::Vector) {
             return std::make_shared<UltraCanvasCDRElement>(
-                    "cdr_new_" + std::to_string(rand()), 0, 0, width, height);
+                    "cdr_new_" + std::to_string(nextCdrElementId++), 0, 0, width, height);
         }
         return nullptr;
     }
