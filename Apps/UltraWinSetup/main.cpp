@@ -83,8 +83,14 @@ int Usage() {
         "  ultrawin-setup start | stop | kill | suspend | resume\n"
         "  ultrawin-setup watch          (poll state until Windows is "
         "installed)\n"
-        "  ultrawin-setup run <program>  (guest path, ||alias, or host "
-        "path under $HOME)\n\n"
+        "  ultrawin-setup run <program>  (VM tier: guest path, ||alias, or "
+        "host path under $HOME)\n"
+        "  ultrawin-setup run-wine <path.exe|.msi> [args...]   (Wine "
+        "tier)\n"
+        "  ultrawin-setup component <environment> <verb>       (e.g. "
+        "vcrun2019, corefonts)\n"
+        "  ultrawin-setup programs       (installed Start-Menu programs, "
+        "all environments)\n\n"
         "Install media: a Windows 10/11 Pro ISO (your license) and the\n"
         "virtio-win drivers ISO "
         "(fedorapeople.org/groups/virt/virtio-win/).\n"
@@ -158,19 +164,46 @@ int main(int argc, char** argv) {
             std::this_thread::sleep_for(std::chrono::seconds(10));
         }
     }
-    if (cmd == "run" && argc >= 3) {
+    if ((cmd == "run" || cmd == "run-wine") && argc >= 3) {
         UltraWinRunOptions opt;
-        opt.forceTier = UltraWinTier::Vm;
+        opt.forceTier =
+            cmd == "run" ? UltraWinTier::Vm : UltraWinTier::Wine;
         for (int i = 3; i < argc; ++i) opt.arguments.push_back(argv[i]);
         UltraWinHandle h = UltraWinInvalidHandle;
         auto r = UltraWin_RunApp(argv[2], opt, &h);
         if (!r) return Fail(r);
-        std::printf("launched (handle %llu) — session ends when the "
-                    "program closes.\n",
+        std::printf("launched (handle %llu) — waiting for the program to "
+                    "end...\n",
                     static_cast<unsigned long long>(h));
         int code = -1;
         UltraWin_WaitApp(h, 0, &code);
-        std::printf("session ended.\n");
+        std::printf("ended (exit code %d).\n", code);
+        return 0;
+    }
+    if (cmd == "component" && argc == 4) {
+        std::printf("installing '%s' into environment '%s' — downloads "
+                    "may take a while...\n",
+                    argv[3], argv[2]);
+        std::fflush(stdout);
+        auto r = UltraWin_InstallComponent(argv[2], argv[3]);
+        if (!r) return Fail(r);
+        std::printf("installed. components now in '%s':\n", argv[2]);
+        for (const auto& c : UltraWin_ListComponents(argv[2]))
+            std::printf("  %s\n", c.c_str());
+        return 0;
+    }
+    if (cmd == "programs") {
+        auto environments = UltraWin_ListEnvironments();
+        for (const auto& env : environments) {
+            for (const auto& p : UltraWin_ListPrograms(env.name)) {
+                std::printf("%-16s %-28s %s\n", env.name.c_str(),
+                            (p.category.empty() ? p.name
+                                                : p.category + "/" + p.name)
+                                .c_str(),
+                            p.shortcutPath.c_str());
+            }
+        }
+        if (environments.empty()) std::printf("no environments yet.\n");
         return 0;
     }
     return Usage();
