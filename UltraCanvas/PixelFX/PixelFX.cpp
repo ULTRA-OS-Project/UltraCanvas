@@ -531,8 +531,16 @@ namespace PixelFX {
                     lutData[static_cast<size_t>(i) * colourBands + b] = table[i];
                 }
             }
-            vips::VImage lut = vips::VImage::new_from_memory_copy(
+            // vips must own the table pixels: the lookup image outlives this
+            // scope (maplut is evaluated lazily), so `lutData` must not be what
+            // it points at. Use the C vips_image_new_from_memory_copy (which
+            // copies) rather than the C++ VImage::new_from_memory_copy wrapper,
+            // absent in older libvips (e.g. 8.12); VImage steals the returned
+            // reference. Same pattern as MagicWandMask below.
+            VipsImage* lutRaw = vips_image_new_from_memory_copy(
                     lutData.data(), lutData.size(), 256, 1, colourBands, VIPS_FORMAT_UCHAR);
+            if (!lutRaw) throw PixelFXException("MapLut: could not build the lookup image");
+            vips::VImage lut(lutRaw);   // steals the reference
             lut = lut.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_HISTOGRAM));
 
             vips::VImage colour = src.extract_band(0, vips::VImage::option()->set("n", colourBands));
