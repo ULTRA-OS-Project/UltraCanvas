@@ -9330,6 +9330,23 @@ Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterfac
 4. **Load files** either through the plugin (extension-based dispatch) or directly via `UltraCanvasCDRElement::LoadFromFile()` / `LoadCDRFromFile()`.
 5. **Pick a fit mode** — `CDRFitMode::FitPage` is the right default for thumbnails; switch to `CDRFitMode::FitNone` before applying user zoom/offset.
 
+## Writing CDR files (`UltraCanvasCDRConverter.h`)
+
+The Vector plugin's `UltraCanvas::VectorConverter::CDRConverter` writes a `VectorStorage::VectorDocument` as a version-7 RIFF CDR file (`Export` / `ExportToString` / `ExportToStream`). It is export-only — `CanImport()` is false; reading stays with this plugin.
+
+CorelDRAW's format has no public specification, so the writer targets the record layouts consumed by libcdr — the reference open-source reader and the engine underneath this plugin — and the round-trip through that parser is the correctness contract (`Tests/CDRWriterTest.cpp`). What the writer emits:
+
+- The RIFF structure `RIFF…CDR7` / `vrsn` / `LIST doc` / `mcfg` (page size) / `fild`+`outl` style definitions / `LIST page` of `LIST obj` objects — written topmost-first, because CDR draws objects in reverse file order.
+- All geometry as line-and-curve `loda` chunks (point list + per-point type bytes) with 32-bit coordinates in 1/254000 inch, page-centred with Y up; every `PathCommandType` is normalised through the shared `PathOps` helpers, and transforms are baked into the points (each object carries an identity `trfd`).
+- Solid fills (RGB colour model) and outline styles: width, caps, joins, and dash patterns (stored in line-width multiples, so dash lengths round to those units); fill opacity from style opacity and fill alpha.
+- Flattened with a warning: gradients (blend of the end stops), pattern fills. Skipped with a warning: text and bitmap objects.
+
+```cpp
+using namespace UltraCanvas::VectorConverter;
+CDRConverter cdr;
+cdr.Export(*document, "drawing.cdr");          // document is a VectorStorage::VectorDocument
+```
+
 ## See Also
 
 - [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG vector graphics plugin

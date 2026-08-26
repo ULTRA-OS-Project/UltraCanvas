@@ -1,4 +1,28 @@
 #### 2026-08-26 *0.3.76*
+- **CDR files can be written now.** New `VectorConverter::CDRConverter`
+  (`Plugins/Vector/UltraCanvasCDRConverter.{h,cpp}`) serializes a
+  `VectorStorage::VectorDocument` as a version-7 RIFF CDR file. CorelDRAW's
+  format has no public specification, so the writer targets the record
+  layouts consumed by libcdr — the reference open-source reader and the
+  engine underneath the framework's CDR plugin: `vrsn`/`mcfg`/`fild`/
+  `outl`/`trfd`/`loda` chunks, 32-bit coordinates in 1/254000 inch in a
+  page-centred Y-up space, objects written topmost-first (CDR draws in
+  reverse file order), geometry as line-and-curve point lists through the
+  shared `PathOps` normalisation with transforms baked in, solid fills,
+  outline width/caps/joins/dash patterns, and fill opacity. Gradients fall
+  back to the blend of their end stops; text and bitmaps are skipped —
+  each reported through the warning callback. `Tests/CDRWriterTest.cpp`
+  round-trips a document through the writer and the CDR plugin (libcdr)
+  and pixel-checks the rendered placement — that parse is the correctness
+  contract. Export-only: reading stays with the CDR plugin.
+- **CDR rendering: one object's transparency no longer bleeds into the
+  rest of the drawing.** The plugin's librevenge painter accumulated style
+  properties across objects, but a librevenge style is complete —
+  properties at their defaults are simply absent (libcdr emits
+  `draw:opacity` only when it is below 1.0). A single semi-transparent
+  object made every object drawn after it semi-transparent too, and a
+  dash pattern could survive `stroke-dasharray: none`. Opacities now reset
+  per style and `none` clears the dash pattern.
 - **EPS files can be written now.** New `VectorConverter::EPSConverter`
   (`Plugins/Vector/UltraCanvasEPSConverter.{h,cpp}`) serializes a
   `VectorStorage::VectorDocument` as an EPSF-3.0 PostScript program:

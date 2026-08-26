@@ -1012,6 +1012,39 @@ else()
     message(STATUS "  EPSWriterTest skipped (needs UltraCanvasEPSPlugin and UltraCanvasVectorPlugin)")
 endif()
 
+# Round-trips a VectorDocument through the Vector plugin's CDR writer and the
+# CDR plugin (libcdr): the file must parse, carry the right page, and render
+# the objects at their places. Needs both plugins.
+if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building CDRWriterTest...")
+    add_executable(CDRWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CDRWriterTest.cpp
+    )
+    target_include_directories(CDRWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CDRWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(CDRWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasCDRPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(CDRWRITER_CAIRO cairo)
+            if(CDRWRITER_CAIRO_FOUND)
+                target_compile_definitions(CDRWriterTest PRIVATE CDRWRITER_HAVE_CAIRO=1)
+                target_include_directories(CDRWriterTest PRIVATE ${CDRWRITER_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(CDRWriterTest PRIVATE ${CDRWRITER_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(CDRWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CDRWriterTest COMMAND CDRWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CDRWriterTest")
+else()
+    message(STATUS "  CDRWriterTest skipped (needs UltraCanvasCDRPlugin and UltraCanvasVectorPlugin)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
