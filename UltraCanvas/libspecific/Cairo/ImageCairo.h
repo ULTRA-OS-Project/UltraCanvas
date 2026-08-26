@@ -119,6 +119,10 @@ namespace UltraCanvas {
         bool ownData = false;
         std::string fileName;
 
+        // Transparency state, resolved on the first HasTransparency() call and
+        // kept: -1 unknown, 0 opaque, 1 shows what is behind it.
+        int transparency = -1;
+
         // Animation state ("n-pages" / "delay" loader metadata). Multi-page
         // stills (TIFF, PDF) have pages but no delays and stay static.
         int nPages = 1;
@@ -177,6 +181,21 @@ namespace UltraCanvas {
         }
         int GetWidth() const { return width; }
         int GetHeight() const { return height; }
+
+        // ===== TRANSPARENCY =====
+        // True when something behind the image can show through it: the image
+        // carries an alpha channel that is not fully opaque, or it is a vector
+        // document (SVG), which paints over whatever is beneath it. Answers
+        // the question a viewer asks before offering a backdrop colour.
+        //
+        // The answer is worked out once and kept. An alpha channel that turns
+        // out to be fully opaque counts as opaque — the common "PNG with an
+        // unused alpha channel" case — which costs one decode of the alpha
+        // channel, so images past 16 megapixels take the channel's presence at
+        // face value instead. An image with no alpha channel is answered from
+        // its header alone. Without libvips (and for an unreadable file) the
+        // answer is false.
+        bool HasTransparency();
 
         // ===== ANIMATION (GIF / animated WebP) =====
         // True when the loader reported multiple pages WITH per-frame delays.

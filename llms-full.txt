@@ -11460,6 +11460,146 @@ picker->onScreenColorPick = [picker](bool foreground) {
 ```
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasColorSwatchBar.md
+==============================================================================
+
+# UltraCanvas Color Swatch Bar Documentation
+
+## Overview
+
+**UltraCanvasColorSwatchBar** is a strip of colour swatches: one click picks a
+colour. It is for the places where a full
+[`UltraCanvasColorPicker`](UltraCanvasColorPicker.md) is too much furniture —
+the row of backdrop colours under a transparent image in the media viewer, a
+quick fill palette in an editor, a highlight colour in a toolbar.
+
+The bar **sizes its swatches to the space it is given**: each one grows towards
+`swatchSize` and shrinks towards `minSwatchSize` so a full palette still fits a
+narrow preview pane, and the row is centred in whatever space is left over.
+That is why this is an element rather than a row of buttons — a fixed row of
+buttons cannot adapt, and a palette that overflows its pane is a palette with
+colours nobody can reach.
+
+**File Location**: `include/UltraCanvasColorSwatchBar.h`
+**Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
+  colours, or both
+- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+  transparency pattern"
+- ✅ Swatch size adapts to the element's width **and** height; the row is centred
+- ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
+- ✅ `onColorSelected` / `onCheckeredSelected` callbacks
+- ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasColorSwatchBar.h"
+using namespace UltraCanvas;
+
+// Greys first, then colours — the palette a backdrop chooser wants.
+auto bar = CreateColorSwatchBar("fill-colors", 0, 0, 320, 28);
+bar->onColorSelected = [](const Color& c) { SetFillColor(c); };
+container->AddChild(bar);
+```
+
+A backdrop chooser adds the checkerboard entry — `CreateBackdropSwatchBar` does
+both steps:
+
+```cpp
+auto backdrop = CreateBackdropSwatchBar("backdrop", 0, 0, 0, 28);
+backdrop->onColorSelected    = [&](const Color& c) { view->SetBackdropColor(c); };
+backdrop->onCheckeredSelected = [&]()              { view->SetBackdropCheckered(); };
+```
+
+## Palettes
+
+```cpp
+static std::vector<Color> GrayscalePalette(int steps = 6);  // white → black
+static std::vector<Color> ColorPalette();                   // red → brown, 12 colours
+static std::vector<Color> DefaultPalette();                 // grayscale + colours
+```
+
+Any other list works just as well:
+
+```cpp
+bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
+```
+
+Replacing the palette keeps the selection **only** if the selected colour is in
+the new list; otherwise nothing is marked.
+
+## Selection
+
+```cpp
+void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
+void  SelectCheckered(bool runCallback = false);
+void  ClearSelection();
+bool  HasColorSelected() const;
+bool  IsCheckeredSelected() const;
+int   GetSelectedIndex() const;      // -1 == none
+Color GetSelectedColor() const;      // ask HasColorSelected() first
+```
+
+`SelectColor` with a colour the palette does not hold clears the selection
+instead of adding it — which is what a host wants when the value came from
+somewhere else (a colour picker dialog, a saved setting): no swatch is marked,
+and the strip still works.
+
+Selection is a highlight, not a filter: clicking always reports through the
+callback, even on the swatch that is already selected.
+
+## Layout and style
+
+```cpp
+struct ColorSwatchBarStyle {
+    Color background, border, hoverBorder, selectedBorder;
+    Color checkerLight, checkerDark;
+    float swatchSize, minSwatchSize, spacing, padding;
+    float borderWidth, selectedBorderWidth, cornerRadius, checkerCell;
+};
+
+void SetStyle(const ColorSwatchBarStyle& s);
+void SetSwatchSize(float size);
+float GetPreferredWidth() const;        // every swatch at its preferred size
+float GetEffectiveSwatchSize() const;   // what they are drawn at right now
+```
+
+Give the element the height you want the strip to be (`28` suits a 20 px
+swatch) and let the layout stretch it across the width. The swatch edge is
+`min(swatchSize, width that fits every swatch, height − 2·padding)`, floored at
+`minSwatchSize`, so:
+
+| Space | What happens |
+|---|---|
+| Wide | Swatches reach `swatchSize`; the row is centred |
+| Narrow | Swatches shrink towards `minSwatchSize`; below that the gaps close and the swatches keep shrinking, so every colour stays reachable |
+| Short | Swatches shrink to the height; the row stays a single line |
+
+The background is transparent by default — set `style.background` when the strip
+needs to read as a bar of its own.
+
+## Callbacks
+
+```cpp
+std::function<void(const Color&)> onColorSelected;
+std::function<void()>             onCheckeredSelected;
+```
+
+Programmatic selection stays silent unless `runCallback` is passed, so a host
+can mirror an external change without hearing its own echo.
+
+## Used by
+
+- **[`UltraCanvasMediaViewer`](UltraCanvasMediaViewer.md)** — the backdrop strip
+  under a transparent image (and with it the UltraFiler preview pane).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasContourChart.md
 ==============================================================================
 
@@ -25700,6 +25840,66 @@ images; the zoom toolbar also drives the PDF view and, for e-books, the
 reading text scale (books reflow, so zoom is a text scale and "Fit" means a
 comfortable line measure across the pane).
 
+## Zooming the shown page
+
+Images and PDF pages zoom the same way: the **mouse wheel** zooms about the
+pointer — what is under the cursor stays under it — and the keyboard steps with
+`+` / `-`, fits with `0` and shows actual size with `1` (the PDF view adds `W`
+for fit-width). The info bar reports the resulting zoom for both. The other
+wheel action stays on Ctrl+wheel: Ctrl+wheel scrolls the PDF page and turns
+pages at its edges.
+
+```cpp
+viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
+```
+
+## Backdrop under transparent images
+
+A file that really has transparency — an alpha channel that is used, or a
+vector document (SVG), which paints over whatever is behind it — gets a strip of
+colours directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
+swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
+clicking the checkerboard goes back to the transparency pattern. Files without
+transparency never show the strip, so it costs no space where it would mean
+nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
+opaque alpha channel a PNG export routinely carries.
+
+```cpp
+viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
+// Remember what the user picked:
+viewer->onTransparentBackgroundChanged =
+        [&](TransparentImageBackground mode, const Color& color) {
+    settings.checkered = (mode == TransparentImageBackground::Checkered);
+    settings.color = color;
+};
+// Different colours, or different metrics:
+viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
+```
+
+The strip stays in step with `SetTransparentBackground()` / `SetTransparentColor()`
+however they are called: the matching swatch is marked, and a colour the palette
+does not hold (one picked in a settings dialog) simply marks none of them.
+
+## PDF page inventory
+
+The thumbnail strip beside a PDF page takes its width one of two ways: an
+absolute pixel width — the same strip whatever the viewer's size, which is what
+a preview pane wants — or a share of the viewer's own width, so the inventory
+grows with the window (the default, a quarter of the width capped by the PDF
+view's style).
+
+```cpp
+viewer->SetPDFThumbnailWidth(56);           // absolute: 56 px thumbnails
+viewer->SetPDFThumbnailWidthFraction(0.2f); // relative: a fifth of the width
+viewer->IsPDFThumbnailWidthAbsolute();      // which mode is in force
+```
+
+The viewer remembers the choice, so it also applies to documents opened later.
+The strip only appears for documents with more than one page. UltraFiler
+exposes this as *Settings > Display > PDF Inventory* (a slider from 32 to
+120 px, 56 px by default) and applies it to its preview pane.
+
 ### e-books (`MediaKind::Book`)
 
 E-books open in an embedded `UltraCanvasEBookViewer`. Engines come from the
@@ -25784,6 +25984,7 @@ auto preview = CreateMediaViewer("Preview", 0, 0, 0, 0);
 preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
+preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 ```
 
 ### Letting go of the previewed file
@@ -28364,17 +28565,28 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
   white underlay; rendered pages and thumbnails are cached per DPI.
 - **Thumbnail strip** (the page inventory) with click-to-jump and independent
   scrolling (toggleable). It only appears for documents with more than one
-  page, its width is capped at 1/4 of the view so the page area always stays at
-  least 3× the strip, and it auto-scrolls to keep the current page's thumb
-  visible. The strip's width drives the thumbnails: each one is the strip width
-  minus `thumbMargin` on both sides, and **as tall as its own page's aspect
-  ratio requires** — so a slot never pads a page with empty space, and pages of
-  differing sizes each get their own height. Page numbers are sized from the
-  thumbnail they belong to, so they shrink with it.
+  page and auto-scrolls to keep the current page's thumb visible. Its width
+  follows one of two modes (`SetThumbnailWidthMode`): **relative** — a share of
+  the view's width (a quarter by default, capped by `thumbStripWidth`), so the
+  page area always stays at least 3× the strip; or **absolute** — an exact
+  thumbnail width in pixels, the same strip whatever the view's size, for hosts
+  that want a fixed inventory (the UltraFiler preview asks for 56 px). Either
+  way each thumbnail is the strip width minus `thumbMargin` on both sides, and
+  **as tall as its own page's aspect ratio requires** — so a slot never pads a
+  page with empty space, and pages of differing sizes each get their own
+  height. Page numbers are sized from the thumbnail they belong to, so they
+  shrink with it.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
-  Ctrl+wheel to zoom; fit modes re-resolve on resize.
+  fit modes re-resolve on resize.
+- **Zoom by wheel and keyboard**: the wheel zooms about the pointer — the page
+  point under the cursor stays under it — and `+` / `-` step, `0` fits the
+  page, `1` is 100 % and `W` fits the width. Which of zoom and scroll the plain
+  wheel does is `SetWheelAction`; the other one is always the same wheel with
+  Ctrl held, so both stay reachable either way. The default is
+  `WheelAction::Scroll` (so Ctrl+wheel zooms); `UltraCanvasMediaViewer` sets
+  `Zoom`, matching its image surface, where the plain wheel has always zoomed.
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning.
@@ -28474,10 +28686,23 @@ void     ZoomToFit();              // Fit Page
 void     ZoomToWidth();            // Fit Width
 void     ZoomActualSize();         // 100%
 float    GetZoomPercent() const;   // effective on-screen scale, as a percentage
+
+// Zoom keeping the page point under `local` (element-local pixels) in place —
+// what the wheel does. Outside the page it zooms about the viewport centre.
+void SetZoomAt(float scale, const Point2Di& local);
+void ZoomInAt(const Point2Di& local);    // 1.1x step, the wheel's
+void ZoomOutAt(const Point2Di& local);
+
+// What the plain wheel does over the page; Ctrl+wheel always does the other.
+enum class WheelAction { Scroll, Zoom };
+void        SetWheelAction(WheelAction a);   // default: Scroll
+WheelAction GetWheelAction() const;
 ```
 
 Fit modes recompute their scale from the live viewport every frame, so the page
-keeps fitting when the view is resized.
+keeps fitting when the view is resized. The keyboard zooms too while the view
+has the focus: `+` / `-` step, `0` fits the page, `1` is actual size and `W`
+fits the width (see the interaction table below).
 
 ### Search
 
@@ -28571,6 +28796,16 @@ enum class ThumbnailNumberStyle { Caption, Overlay };
 void SetThumbnailNumberStyle(ThumbnailNumberStyle s);   // default: Caption
 ThumbnailNumberStyle GetThumbnailNumberStyle() const;
 
+// How wide the thumbnails are: a share of the view's width, or a pixel width.
+enum class ThumbnailWidthMode { Relative, Absolute };
+void SetThumbnailWidthMode(ThumbnailWidthMode m);       // default: Relative
+ThumbnailWidthMode GetThumbnailWidthMode() const;
+void  SetThumbnailWidth(int pixels);        // Absolute mode (and selects it)
+int   GetThumbnailWidth() const;
+void  SetThumbnailWidthFraction(float f);   // Relative mode (and selects it)
+float GetThumbnailWidthFraction() const;
+int   GetEffectiveThumbnailWidth() const;   // what is laid out right now
+
 void SetStyle(const PDFViewStyle& s);
 const PDFViewStyle& GetStyle() const;
 ```
@@ -28586,17 +28821,32 @@ UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
-metrics (`thumbStripWidth`, `thumbMargin`, `thumbMaxHeight`, `thumbSpacing`,
-`pageMargin`, `pageShadowSize`, `scrollbarWidth`, `defaultDpi`,
-`thumbOverlayNumberHeight`, `thumbLabelHeight`).
+metrics (`thumbStripWidth`, `thumbStripWidthFraction`, `thumbWidth`,
+`thumbMargin`, `thumbMaxHeight`, `thumbSpacing`, `pageMargin`,
+`pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`,
+`thumbLabelHeight`).
 
-The inventory is laid out from its width: `thumbStripWidth` is a request, and
-the effective strip width is capped at 1/4 of the view width so the page area
-keeps at least a 3:1 ratio over the strip. Subtracting `thumbMargin` on both
-sides gives the thumbnail width, and each thumbnail's height follows its own
-page's aspect ratio (`thumbMaxHeight` caps it for extreme formats — such a page
-narrows instead of stretching, keeping its proportions). There is no fixed
-thumbnail height to set.
+The inventory is laid out from its width, and the width mode decides where that
+comes from:
+
+| Mode | Strip width | Use it for |
+|---|---|---|
+| `Relative` (default) | `thumbStripWidthFraction` of the view width (0.25), never more than `thumbStripWidth` (160 px) — so the page area keeps at least a 3:1 ratio over the strip | A full viewer window, where the inventory should grow with it |
+| `Absolute` | `thumbWidth` (56 px) plus `thumbMargin` on both sides, whatever the view's size; it only gives way when it would take more than half the view | A preview pane, where the inventory should look the same at every pane size |
+
+Subtracting `thumbMargin` on both sides gives the thumbnail width, and each
+thumbnail's height follows its own page's aspect ratio (`thumbMaxHeight` caps it
+for extreme formats — such a page narrows instead of stretching, keeping its
+proportions). There is no fixed thumbnail height to set. Changing the mode or
+either width re-lays out the strip and re-renders the thumbnails at their new
+size.
+
+```cpp
+// A preview pane: 56 px thumbnails whatever the pane's width.
+view->SetThumbnailWidth(56);
+// Back to growing with the view: a fifth of its width.
+view->SetThumbnailWidthFraction(0.2f);
+```
 
 ### Editing passthroughs
 
@@ -28632,10 +28882,15 @@ immediately.
 
 ### Built-in interaction
 
+Clicking the view gives it the keyboard focus, so the keys below work in a host
+that focuses something else (a preview pane beside a file list).
+
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
-| Ctrl + wheel | Zoom in / out |
+| Mouse wheel | The configured `WheelAction` over the page — by default scroll it, continuing into the next/previous page at its bottom/top edge. Over the thumbnail strip the wheel always scrolls the strip |
+| Ctrl + wheel | The other action: zoom about the pointer by default, or scroll when `WheelAction::Zoom` is set |
+| + / - (or = / _, and the keypad) | Zoom in / out |
+| 0 / 1 / W | Fit the page / 100 % / fit the width |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
 | Drag (in select mode) | Marquee-select text lines |
@@ -44790,6 +45045,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | You need | Element | Header |
 |---|---|---|
 | Colour | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
+| A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |

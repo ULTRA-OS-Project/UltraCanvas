@@ -35,6 +35,66 @@ images; the zoom toolbar also drives the PDF view and, for e-books, the
 reading text scale (books reflow, so zoom is a text scale and "Fit" means a
 comfortable line measure across the pane).
 
+## Zooming the shown page
+
+Images and PDF pages zoom the same way: the **mouse wheel** zooms about the
+pointer — what is under the cursor stays under it — and the keyboard steps with
+`+` / `-`, fits with `0` and shows actual size with `1` (the PDF view adds `W`
+for fit-width). The info bar reports the resulting zoom for both. The other
+wheel action stays on Ctrl+wheel: Ctrl+wheel scrolls the PDF page and turns
+pages at its edges.
+
+```cpp
+viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
+```
+
+## Backdrop under transparent images
+
+A file that really has transparency — an alpha channel that is used, or a
+vector document (SVG), which paints over whatever is behind it — gets a strip of
+colours directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
+swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
+clicking the checkerboard goes back to the transparency pattern. Files without
+transparency never show the strip, so it costs no space where it would mean
+nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
+opaque alpha channel a PNG export routinely carries.
+
+```cpp
+viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
+// Remember what the user picked:
+viewer->onTransparentBackgroundChanged =
+        [&](TransparentImageBackground mode, const Color& color) {
+    settings.checkered = (mode == TransparentImageBackground::Checkered);
+    settings.color = color;
+};
+// Different colours, or different metrics:
+viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
+```
+
+The strip stays in step with `SetTransparentBackground()` / `SetTransparentColor()`
+however they are called: the matching swatch is marked, and a colour the palette
+does not hold (one picked in a settings dialog) simply marks none of them.
+
+## PDF page inventory
+
+The thumbnail strip beside a PDF page takes its width one of two ways: an
+absolute pixel width — the same strip whatever the viewer's size, which is what
+a preview pane wants — or a share of the viewer's own width, so the inventory
+grows with the window (the default, a quarter of the width capped by the PDF
+view's style).
+
+```cpp
+viewer->SetPDFThumbnailWidth(56);           // absolute: 56 px thumbnails
+viewer->SetPDFThumbnailWidthFraction(0.2f); // relative: a fifth of the width
+viewer->IsPDFThumbnailWidthAbsolute();      // which mode is in force
+```
+
+The viewer remembers the choice, so it also applies to documents opened later.
+The strip only appears for documents with more than one page. UltraFiler
+exposes this as *Settings > Display > PDF Inventory* (a slider from 32 to
+120 px, 56 px by default) and applies it to its preview pane.
+
 ### e-books (`MediaKind::Book`)
 
 E-books open in an embedded `UltraCanvasEBookViewer`. Engines come from the
@@ -119,6 +179,7 @@ auto preview = CreateMediaViewer("Preview", 0, 0, 0, 0);
 preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
+preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 ```
 
 ### Letting go of the previewed file

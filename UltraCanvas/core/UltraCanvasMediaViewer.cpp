@@ -21,6 +21,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
@@ -963,12 +964,17 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         pv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         pv->onPageChanged = [this](int, int) { UpdateInfoBar(); };
+        // The page zooms with the wheel and the keyboard, so the info bar
+        // reports the zoom the way it does for images.
+        pv->onZoomChanged = [this](float) { UpdateInfoBar(); };
         // Page numbers drawn over the thumbnail pages (not captions beneath).
         pv->SetThumbnailNumberStyle(
             UltraCanvasPDFView::ThumbnailNumberStyle::Overlay);
         pv->SetVisible(false);
         pdfView = pv;
         AddChild(pdfView);
+        // Page-inventory width and wheel zoom as configured on the viewer.
+        ApplyPDFViewSettings();
     }
 #endif
 
@@ -1059,6 +1065,39 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(audioPlayer);
     }
 #endif
+
+    // ----- BACKDROP PALETTE (directly under the picture) -----
+    // Only up for a file that really has transparency (see
+    // UpdateTransparencyPalette): the checkered swatch first, then greys and
+    // colours. The strip sizes its own swatches to the width it gets, so it
+    // fits a narrow preview pane as well as a full window.
+    backdropBar = CreateBackdropSwatchBar("MV_Backdrop", 0, 0, 0, 28);
+    {
+        ColorSwatchBarStyle bs = backdropBar->GetStyle();
+        bs.background     = Color(30, 30, 36, 255);
+        bs.border         = Color(70, 70, 78, 255);
+        bs.hoverBorder    = Color(210, 210, 218, 255);
+        bs.selectedBorder = Color(90, 160, 240, 255);
+        backdropBar->SetStyle(bs);
+    }
+    backdropBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    backdropBar->SetVisible(false);
+    backdropBar->onColorSelected = [this](const Color& c) {
+        SetTransparentBackground(TransparentImageBackground::SolidColor);
+        SetTransparentColor(c);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::SolidColor, c);
+        }
+    };
+    backdropBar->onCheckeredSelected = [this]() {
+        SetTransparentBackground(TransparentImageBackground::Checkered);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::Checkered,
+                                           GetTransparentColor());
+        }
+    };
+    AddChild(backdropBar);
 
     // ----- BOTTOM INFO BAR -----
     bottomBar = std::make_shared<UltraCanvasContainer>("MV_Bottom", 0, 0, 0, 26);
@@ -1413,6 +1452,7 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SetTransparentBackground(TransparentImageBackground mode) {
     if (surface) surface->SetTransparentBackground(mode);
+    SyncBackdropSelection();
 }
 
 TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() const {
@@ -1422,6 +1462,44 @@ TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() co
 
 void UltraCanvasMediaViewer::SetTransparentColor(const Color& c) {
     if (surface) surface->SetTransparentColor(c);
+    SyncBackdropSelection();
+}
+
+void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
+    transparencyPaletteEnabled = visible;
+    UpdateTransparencyPalette();
+}
+
+// ===== BACKDROP PALETTE =====
+// The strip is only up while it means something: the shown file is an image
+// (the PDF, sheet, text, … views paint their own background) and that image
+// really has transparency — an alpha channel that is used, or a vector
+// document. Everything else would be a row of colours changing nothing.
+
+void UltraCanvasMediaViewer::SyncBackdropSelection() {
+    if (!backdropBar || !surface) return;
+    if (surface->GetTransparentBackground() == TransparentImageBackground::Checkered) {
+        backdropBar->SelectCheckered();
+    } else {
+        // A colour the palette does not hold (one picked in a settings dialog)
+        // simply leaves no swatch marked.
+        backdropBar->SelectColor(surface->GetTransparentColor());
+    }
+}
+
+void UltraCanvasMediaViewer::UpdateTransparencyPalette() {
+    if (!backdropBar) return;
+    bool show = transparencyPaletteEnabled && activeKind == MediaKind::Image &&
+                surface != nullptr;
+    if (show) {
+        auto img = surface->GetImage();
+        show = img && img->IsValid() && img->HasTransparency();
+    }
+    if (show != backdropBar->IsVisible()) {
+        backdropBar->SetVisible(show);
+        RequestRedraw();
+    }
+    if (show) SyncBackdropSelection();
 }
 
 Color UltraCanvasMediaViewer::GetTransparentColor() const {
@@ -1460,6 +1538,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (playlist.empty()) {
         ShowView(MediaKind::Image);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        UpdateTransparencyPalette();   // nothing shown - the strip goes away
         UpdateInfoBar();
         return;
     }
@@ -1609,12 +1688,49 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         auto img = UCImage::Get(path);
         surface->ShowImage(img, transition, transitionDurationMs, animated);
     }
+    // The strip of backdrop colours belongs to the file just loaded: up for a
+    // transparent image, gone for everything else.
+    UpdateTransparencyPalette();
     UpdateInfoBar();
     UpdateDetailedInfo();
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
     if (surface) surface->SetAdjustments(adjustments);
+}
+
+// ===== PDF DISPLAY SETTINGS =====
+// The viewer, not the PDF view, is the host's point of contact: it remembers
+// the choice and re-applies it, so a host can set it once and every document
+// opened later follows.
+
+void UltraCanvasMediaViewer::ApplyPDFViewSettings() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!pdfView) return;
+    auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+    if (pdfThumbAbsolute) pv->SetThumbnailWidth(pdfThumbWidthPx);
+    else                  pv->SetThumbnailWidthFraction(pdfThumbWidthFraction);
+    pv->SetWheelAction(documentWheelZoom
+            ? UltraCanvasPDFView::WheelAction::Zoom
+            : UltraCanvasPDFView::WheelAction::Scroll);
+#endif
+}
+
+void UltraCanvasMediaViewer::SetPDFThumbnailWidth(int pixels) {
+    pdfThumbAbsolute = true;
+    pdfThumbWidthPx  = std::max(16, pixels);
+    ApplyPDFViewSettings();
+}
+
+void UltraCanvasMediaViewer::SetPDFThumbnailWidthFraction(float share) {
+    pdfThumbAbsolute      = false;
+    pdfThumbWidthFraction = std::clamp(share, 0.05f, 0.5f);
+    ApplyPDFViewSettings();
+}
+
+void UltraCanvasMediaViewer::SetDocumentWheelZoom(bool zoom) {
+    documentWheelZoom = zoom;
+    ApplyPDFViewSettings();
 }
 
 // ===== ZOOM ACTIONS (routed to whichever view is live) =====
@@ -1711,6 +1827,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         auto sz = fs::file_size(path, ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        if (pv->HasDocument()) {
+            char zbuf[32];
+            snprintf(zbuf, sizeof(zbuf), "%.0f%%", pv->GetZoomPercent());
+            os << "   \xC2\xB7   " << zbuf;
+        }
         infoLabel->SetText(os.str());
         return;
     }

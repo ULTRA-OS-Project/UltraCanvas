@@ -113,6 +113,12 @@ components:
   scrolled into view when the narrowed folder display would cut it off.
   The viewer provides zoom, rotation, color adjustments, slideshow, and
   per-kind views for documents, spreadsheets, models, audio and video.
+  A file with real transparency - an alpha channel that is used, or a vector
+  document (SVG) - shows a strip of backdrop colours right under the picture:
+  greys and colours to click, and the checkered swatch to go back to the
+  transparency pattern. What is picked there is saved, so the next preview
+  opens with it (it is the same setting as *Settings > Media Viewer >
+  Transparent Images*).
   While the preview is enabled, **deleting the previewed file selects its
   neighbour** (the next entry, or the previous one when it was the last), so
   the pane moves on to that file instead of folding away and snapping the
@@ -153,7 +159,9 @@ running application immediately and is saved to the config file
 
 | Page | Setting |
 |---|---|
-| Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker` |
+| Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
+| Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
+| Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker`. The colour strip under a transparent image in the preview writes to the same setting |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
 | History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |

@@ -1,3 +1,71 @@
+#### 2026-08-25 *0.3.69*
+- **Transparent images get their backdrop colours under the picture.** Until
+  now the only way to change what shows through a transparent PNG or an SVG was
+  a settings dialog in the host application - the viewer itself offered
+  nothing. A file that really has transparency now shows a strip of swatches
+  directly beneath the image: the checkered pattern first, then six greys, then
+  twelve colours. Clicking one makes it the backdrop; the checkerboard swatch
+  goes back to the transparency pattern. A file without transparency shows no
+  strip at all, so nothing is given up where it would mean nothing.
+  - `UltraCanvasMediaViewer::SetTransparencyPaletteVisible` turns the strip off
+    for hosts with their own chooser, `GetTransparencyPalette()` hands out the
+    element for different colours or metrics, and
+    `onTransparentBackgroundChanged` reports what was picked. The strip also
+    follows `SetTransparentBackground()` / `SetTransparentColor()` set from
+    anywhere else, marking the matching swatch.
+- **`UltraCanvasColorSwatchBar`** is the new element behind it (`include/`
+  + `core/`), for anywhere a full colour picker is too much furniture: a strip
+  of colours, an optional leading checkerboard entry, hover and selection
+  outlines, per-swatch hex tooltips, `onColorSelected` / `onCheckeredSelected`.
+  It **sizes its swatches to the space it is given** - growing towards the
+  preferred size, shrinking towards the minimum - so the same palette fits a
+  narrow preview pane and a full window, which a fixed row of buttons cannot
+  do. It never takes the keyboard focus, so a host keeps its own arrow keys.
+  Ready-made palettes: `GrayscalePalette()`, `ColorPalette()`,
+  `DefaultPalette()`.
+- **`UCImage::HasTransparency()`** answers whether anything behind an image can
+  show through it: an alpha channel that is actually used, or a vector document
+  (SVG), which paints over whatever is beneath it. The fully opaque alpha
+  channel a PNG export routinely carries counts as opaque - the channel's
+  minimum settles it, except on images too large to scan on the way to the
+  screen, where its presence is taken at face value. Worked out once per image
+  and kept.
+- **UltraFiler** saves a colour picked from the strip in the preview pane, so
+  the next preview opens with it - the same setting as *Settings > Media Viewer
+  > Transparent Images*.
+
+#### 2026-08-25 *0.3.68*
+- **The media viewer's PDF page zooms like a picture now.** The wheel over the
+  page zooms about the pointer - the spot under the cursor stays under it - and
+  the keyboard steps with `+` / `-`, fits the page with `0`, shows actual size
+  with `1` and fits the width with `W`. The image surface has always zoomed on
+  the plain wheel; the PDF view scrolled and left zooming to Ctrl+wheel, so the
+  same gesture did two different things depending on the file. Both are
+  reachable either way: `UltraCanvasPDFView::SetWheelAction` picks what the
+  plain wheel does and Ctrl+wheel always does the other, the media viewer asks
+  for `Zoom` (`SetDocumentWheelZoom(false)` puts scrolling back), and a bare
+  `UltraCanvasPDFView` keeps its old default of scrolling. The info bar reports
+  the PDF's zoom the way it reports an image's.
+- **The PDF page inventory can be a fixed width instead of a share of the
+  view.** The thumbnail strip was always a quarter of the view width capped at
+  160 px, which is right for a viewer window and wrong for a preview pane,
+  where the same document's inventory changed size with the pane.
+  `SetThumbnailWidthMode` now chooses: `Relative` (the shipped behaviour, the
+  share is `SetThumbnailWidthFraction`) or `Absolute`, an exact thumbnail width
+  in pixels (`SetThumbnailWidth`) that only gives way when the strip would take
+  more than half a very narrow view. The media viewer forwards both
+  (`SetPDFThumbnailWidth` / `SetPDFThumbnailWidthFraction`) and remembers the
+  choice for documents opened later.
+- **UltraFiler: Settings > Display > PDF Inventory.** A new settings page sets
+  the width of the page thumbnails in the preview's PDF inventory - a slider
+  from 32 to 120 px (56 px by default, the width the preview pane ships with)
+  or, in relative mode, a 5-40 % share of the preview's width. Moving either
+  slider selects its own mode, the choice applies to the open preview
+  immediately and is saved to `config.ini`
+  (`display.pdf.inventory.mode` / `.width` / `.percent`).
+- The demo app's PDF example gained a strip-width toggle (`Strip: 25%` /
+  `Strip: 56px`) next to the page-number style toggle.
+
 #### 2026-08-25 *0.3.67*
 - **The Filer's folder watching is the operating system's now, not a timer.**
   It shipped as a poll: a worker re-fingerprinted the shown folder every 1.5 s
