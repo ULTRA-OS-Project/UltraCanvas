@@ -1,7 +1,7 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.cpp
 // CorelDRAW CDR/CMX file format plugin implementation
-// Version: 1.1.0
-// Last Modified: 2025-12-15
+// Version: 1.2.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCDRPlugin.h"
@@ -1988,5 +1988,99 @@ namespace UltraCanvas {
             return false;
         }
         return true;
+    }
+
+// ===== EXPORT ("SAVE AS") =====
+
+    // "<dir>/name.svg" + page 3 -> "<dir>/name-p3.svg"
+    static std::string PageOutputPath(const std::string& basePath, int pageNumber) {
+        if (pageNumber <= 1) return basePath;
+        size_t slash = basePath.find_last_of("/\\");
+        size_t dot = basePath.find_last_of('.');
+        if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) {
+            return basePath + "-p" + std::to_string(pageNumber);
+        }
+        return basePath.substr(0, dot) + "-p" + std::to_string(pageNumber) +
+               basePath.substr(dot);
+    }
+
+    CDRExportResult UltraCanvasCDRPlugin::ExportToSVG(const std::string& cdrPath,
+                                                      const std::string& svgPath,
+                                                      int pageIndex) {
+        CDRExportResult result;
+
+        librevenge::RVNGFileStream input(cdrPath.c_str());
+
+        // Re-parse the source through librevenge's SVG generator: it receives
+        // the same drawing callbacks as our painter, so everything libcdr
+        // understands ends up in the SVG. Empty namespace prefix = plain
+        // <svg> elements, right for a standalone file.
+        librevenge::RVNGStringVector svgPages;
+        librevenge::RVNGSVGDrawingGenerator generator(svgPages, "");
+
+        bool parsed = false;
+        if (libcdr::CDRDocument::isSupported(&input)) {
+            parsed = libcdr::CDRDocument::parse(&input, &generator);
+        } else if (libcdr::CMXDocument::isSupported(&input)) {
+            parsed = libcdr::CMXDocument::parse(&input, &generator);
+        } else {
+            result.error = "Not a CorelDRAW (.cdr) or Corel Exchange (.cmx) file: " + cdrPath;
+            return result;
+        }
+
+        if (!parsed || svgPages.empty()) {
+            result.error = "Could not parse the CorelDRAW file: " + cdrPath;
+            return result;
+        }
+
+        const int pageCount = static_cast<int>(svgPages.size());
+        if (pageIndex >= pageCount) {
+            result.error = "Page " + std::to_string(pageIndex + 1) + " does not exist (document has " +
+                           std::to_string(pageCount) + (pageCount == 1 ? " page)" : " pages)");
+            return result;
+        }
+
+        const int firstPage = (pageIndex < 0) ? 0 : pageIndex;
+        const int lastPage = (pageIndex < 0) ? pageCount - 1 : pageIndex;
+
+        for (int page = firstPage; page <= lastPage; ++page) {
+            // When exporting all pages, number outputs by their page position;
+            // a single-page selection always gets the exact path asked for.
+            const std::string outPath = (pageIndex < 0)
+                    ? PageOutputPath(svgPath, page + 1)
+                    : svgPath;
+
+            std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                result.error = "Cannot write file: " + outPath;
+                result.writtenFiles.clear();
+                return result;
+            }
+            out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+            out << svgPages[static_cast<unsigned>(page)].cstr();
+            out.close();
+            if (!out) {
+                result.error = "Write failed: " + outPath;
+                result.writtenFiles.clear();
+                return result;
+            }
+            result.writtenFiles.push_back(outPath);
+        }
+
+        result.success = true;
+        return result;
+    }
+
+    CDRExportResult UltraCanvasCDRPlugin::ExportToXAR(const std::string& cdrPath,
+                                                      const std::string& xarPath) {
+        (void)cdrPath;
+        (void)xarPath;
+        CDRExportResult result;
+        // The XAR writer (XARConverter) only exports from the VectorStorage
+        // document model, and nothing imports CDR into that model yet. Fail
+        // with the reason instead of writing a broken file.
+        result.error = "Saving as XAR is not implemented yet (no CorelDRAW importer into the "
+                       "shared vector document model). Save as SVG instead.";
+        return result;
     }
 } // namespace UltraCanvas

@@ -1,3 +1,24 @@
+#### 2026-08-26 *0.3.69*
+- **CDR files can be saved as SVG.** The CDR plugin gains an export API:
+  `UltraCanvasCDRPlugin::ExportToSVG(cdrPath, svgPath, pageIndex)` re-parses
+  the CorelDRAW/CMX source through librevenge's `RVNGSVGDrawingGenerator`, so
+  everything libcdr understands — paths, shapes, gradients, text, embedded
+  bitmaps — is preserved in the SVG. `pageIndex` selects one page; `-1`
+  exports every page (page N ≥ 2 to `<stem>-p<N>.svg`, since SVG has no
+  multi-page form). No new dependency: the generator ships in core
+  librevenge. `ExportToXAR` exists as API but reports "not implemented yet"
+  with the reason (the XAR writer exports only from the `VectorStorage`
+  model, which nothing imports CDR into yet) instead of writing a broken
+  file; results come back as `CDRExportResult{success, error, writtenFiles}`.
+- **The demo's CDR page shows its samples again, each with a "Save as…"
+  button.** The `demo1.cdr` and `detailed.cdr` (zoom demo) tiles were
+  commented out — re-enabled against the samples that ship in `media/cdr/`,
+  alongside `demo.cdr` and the multi-page `logo.cdr`. Every tile gets a
+  "Save as…" button: native save dialog offering SVG and XAR (marked "not
+  finished yet"), exporting the page currently shown; the outcome — files
+  written or the exact error — lands in the page's status label. The CMX
+  tile stays disabled until a `.cmx` sample ships.
+
 #### 2026-08-26 *0.3.68*
 - **The CDR and XAR graphics plugins are actually registered now, so the File
   Loader can see them.** Both plugins compiled, and the demo displayed them by
