@@ -26,9 +26,14 @@
 - **Bitmap and contone-bitmap fills render.** The embedded bitmap is decoded
   through `UCImage`, mapped onto the fill parallelogram and clipped to the
   path; a contone fill maps the bitmap's luminance between the fill's two
-  colours (dark to the second, light to the first — the orientation Xara's
-  own previews use), cached per definition. Text also draws upright now
-  (it was mirrored by the document's Y-flip).
+  colours — luminance 0 to the first, 255 to the second — keeping the
+  bitmap's own (inverted) transparency, so the page shows through where the
+  bitmap is transparent. The orientation and the preserved alpha are both
+  verified against Xara's own renderings: the file-embedded preview of the
+  `demo.xar` cogwheel, and the author's PDF export of a logo whose soft
+  shadow is a flattened contone (which previously painted its whole
+  bounding box black). Tinted results are cached per bitmap definition.
+  Text also draws upright now (it was mirrored by the document's Y-flip).
 - **Regular shapes (QuickShapes) parse and render correctly.** The
   `TAG_REGULAR_SHAPE_PHASE_1/2` records (every square mosaic in a modern
   Xara drawing) were read with a guessed layout, producing garbage geometry
@@ -54,6 +59,15 @@
   width (`TAG_TEXT_LINE_INFO`) so substituted fonts don't push spans
   apart. Verified page-by-page against the author's PDF export of a
   13-slide pitch deck.
+- **Soft shadows draw as silhouettes.** `TAG_SHADOWCONTROLLER` used to be
+  skipped entirely, silently dropping every shadowed object's shadow. The
+  controller now parses its record (type, penumbra width, offset,
+  darkness) and renders its children twice: first as a flat silhouette in
+  the shadow paint — glows (type 3) as a symmetric halo, wall/floor
+  shadows displaced by the stored offset — then normally on top. The
+  penumbra is approximated with widened, fainter stroke passes around the
+  silhouette. Calibrated against a MAGIX Photo & Graphic Designer 16
+  export where every bar of a logo carries a glow shadow.
 - **Multi-page documents render page by page.** Every spread's coordinates
   restart at its own origin, so a multi-spread file (a pitch deck, a
   multi-page brochure) used to draw all its pages on top of each other.

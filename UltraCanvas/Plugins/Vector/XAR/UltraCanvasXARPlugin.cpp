@@ -21,6 +21,15 @@ namespace UltraCanvas {
         return static_cast<float>(mp) * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
     }
 
+    // While set, path nodes render as a flat silhouette in this paint instead
+    // of their own fill/stroke — the shadow pass of a shadow controller.
+    // Rendering is single-threaded per document, so a file-scope slot is safe.
+    struct SilhouettePaint {
+        Color color;
+        int32_t penumbraMP = 0;     // soft-edge width, millipoints
+    };
+    static const SilhouettePaint* g_silhouettePaint = nullptr;
+
     static Color BlendColors(const Color& a, const Color& b, float t) {
         t = std::max(0.0f, std::min(1.0f, t));
         return Color(
@@ -199,7 +208,10 @@ namespace UltraCanvas {
         if (!def->fillPixmap) {
             auto image = UCImage::GetFromMemory(def->data.data(), def->data.size());
             if (!image || !image->IsValid()) return nullptr;
-            def->fillPixmap = image->GetPixmap();
+            // Contone sources use the same inverted alpha semantics as plain
+            // bitmap fills (255 = fully transparent).
+            def->fillPixmap = image->CreatePixmapAlphaInverted();
+            if (!def->fillPixmap) def->fillPixmap = image->GetPixmap();
         }
         if (!def->fillPixmap || !def->fillPixmap->IsValid()) return nullptr;
 
@@ -215,31 +227,30 @@ namespace UltraCanvas {
         int h = def->fillPixmap->GetHeight();
         auto tinted = std::make_shared<UCPixmap>();
         if (!tinted->Init(w, h)) return def->fillPixmap.get();
-        // Empirically verified against Xara's own preview rendering of the
-        // file (cogwheel in media/xar/demo.xar): the bitmap is treated as a
-        // grayscale composited over white (transparent counts as white), and
-        // its luminance maps from the SECOND contone colour at black to the
-        // FIRST at white; the result is opaque.
-        const Color& light = fill.startColor;
-        const Color& dark = fill.endColor;
+        // Empirically verified against Xara's own renderings (the cogwheel in
+        // media/xar/demo.xar against the file's embedded preview, and a
+        // flattened soft-shadow contone against its author's PDF export):
+        // luminance 0 maps to the fill's START colour, luminance 255 to the
+        // END colour, and the bitmap's own (inverted) alpha is preserved so
+        // the page shows through transparent regions.
+        const Color& start = fill.startColor;
+        const Color& end = fill.endColor;
         for (int y = 0; y < h; ++y) {
             for (int x = 0; x < w; ++x) {
                 uint32_t p = def->fillPixmap->GetPixel(x, y);
                 uint32_t a = p >> 24;
-                uint32_t lum;
-                if (a == 0) {
-                    lum = 255;
-                } else {
-                    uint32_t r = ((p >> 16) & 0xFF) * 255 / a;
-                    uint32_t g = ((p >> 8) & 0xFF) * 255 / a;
-                    uint32_t b = (p & 0xFF) * 255 / a;
-                    uint32_t lumRaw = (r * 54 + g * 183 + b * 19) >> 8;
-                    lum = (lumRaw * a + 255 * (255 - a)) / 255;
-                }
-                uint32_t r = dark.r + (light.r - dark.r) * lum / 255;
-                uint32_t g = dark.g + (light.g - dark.g) * lum / 255;
-                uint32_t b = dark.b + (light.b - dark.b) * lum / 255;
-                tinted->SetPixel(x, y, 0xFF000000u | (r << 16) | (g << 8) | b);
+                if (a == 0) { tinted->SetPixel(x, y, 0); continue; }
+                uint32_t r = ((p >> 16) & 0xFF) * 255 / a;
+                uint32_t g = ((p >> 8) & 0xFF) * 255 / a;
+                uint32_t b = (p & 0xFF) * 255 / a;
+                uint32_t lum = (r * 54 + g * 183 + b * 19) >> 8;
+                if (lum > 255) lum = 255;
+                r = start.r + (end.r - start.r) * static_cast<int>(lum) / 255;
+                g = start.g + (end.g - start.g) * static_cast<int>(lum) / 255;
+                b = start.b + (end.b - start.b) * static_cast<int>(lum) / 255;
+                // Re-premultiply against the preserved alpha
+                r = r * a / 255; g = g * a / 255; b = b * a / 255;
+                tinted->SetPixel(x, y, (a << 24) | (r << 16) | (g << 8) | b);
             }
         }
         tinted->MarkDirty();
@@ -253,6 +264,46 @@ namespace UltraCanvas {
         if (commands.empty()) { XARNode::Render(ctx, scale); return; }
         ctx->PushState();
         if (hasTransform) transform.ApplyToContext(ctx);
+
+        if (g_silhouettePaint) {
+            // Shadow pass: the node's own geometry in the silhouette paint.
+            // The penumbra is faked with two widened, fainter stroke passes
+            // (widest first) around the hard silhouette.
+            const SilhouettePaint& sp = *g_silhouettePaint;
+            float pen = MPtoPx(sp.penumbraMP, scale);
+            float w = (isStroked && hasLine) ? line.GetWidthInPixels() * scale
+                                             : 0.0f;
+            bool fillIt = isFilled && hasFill;
+            EmitPath(ctx, scale);
+            ctx->SetLineCap(LineCap::Round);
+            ctx->SetLineJoin(LineJoin::Round);
+            if (pen > 0.5f) {
+                Color soft = sp.color;
+                soft.a = static_cast<uint8_t>(sp.color.a / 6);
+                ctx->SetStrokePaint(soft);
+                ctx->SetStrokeWidth(w + 2.0f * pen);
+                ctx->StrokePathPreserve();
+                soft.a = static_cast<uint8_t>(sp.color.a / 3);
+                ctx->SetStrokePaint(soft);
+                ctx->SetStrokeWidth(w + pen);
+                ctx->StrokePathPreserve();
+            }
+            if (fillIt) {
+                ctx->SetFillPaint(sp.color);
+                ctx->FillPathPreserve();
+            }
+            if (w > 0.0f) {
+                ctx->SetStrokePaint(sp.color);
+                ctx->SetStrokeWidth(w);
+                ctx->SetLineCap(line.cap);
+                ctx->SetLineJoin(line.join);
+                ctx->StrokePathPreserve();
+            }
+            ctx->ClearPath();
+            ctx->PopState();
+            XARNode::Render(ctx, scale);
+            return;
+        }
 
         float fillAlpha = 1.0f;
         if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
@@ -610,12 +661,23 @@ namespace UltraCanvas {
 // ===== SHADOW NODE =====
 
     void XARShadowNode::Render(IRenderContext* ctx, float scale) {
-        // Best-effort: render children at offset with reduced alpha, then normally
-        ctx->PushState();
-        ctx->Translate(MPtoPx(offsetX, scale), MPtoPx(offsetY, scale));
-        ctx->SetAlpha(static_cast<float>(shadowColor.a) / 255.0f);
-        XARNode::Render(ctx, scale);
-        ctx->PopState();
+        if (children.empty()) return;
+        // Shadow pass: the children's silhouette in the shadow paint, at the
+        // shadow offset, beneath the objects themselves. Nested shadows keep
+        // the outermost paint.
+        if (!g_silhouettePaint && shadowColor.a > 0) {
+            SilhouettePaint paint{shadowColor, blurRadius};
+            ctx->PushState();
+            // A glow (type 3) is a symmetric halo; wall/floor shadows are
+            // displaced copies (verified against a MAGIX Designer export).
+            if (shadowType != 3) {
+                ctx->Translate(MPtoPx(offsetX, scale), MPtoPx(offsetY, scale));
+            }
+            g_silhouettePaint = &paint;
+            XARNode::Render(ctx, scale);
+            g_silhouettePaint = nullptr;
+            ctx->PopState();
+        }
         XARNode::Render(ctx, scale);
     }
 
@@ -1185,8 +1247,10 @@ namespace UltraCanvas {
                 ParseFontDefRecord(record, false); break;
 
             // Effects
-            case XARTag::TAG_SHADOW: ParseShadowRecord(record); break;
-            case XARTag::TAG_SHADOWCONTROLLER:
+            case XARTag::TAG_SHADOWCONTROLLER: ParseShadowRecord(record); break;
+            case XARTag::TAG_SHADOW:
+                // The shadow atom inside the controller; the silhouette is
+                // derived from the shadowed siblings, so nothing to keep.
                 break;
             case XARTag::TAG_BEVEL: ParseBevelRecord(record); break;
             case XARTag::TAG_BEVATTR_INDENT:
@@ -1727,10 +1791,26 @@ namespace UltraCanvas {
         AttachNode(g);
     }
 
+    // TAG_SHADOWCONTROLLER: the group holding a shadowed object. Layout
+    // (verified against MAGIX Designer 16 output): BYTE type, INT32 penumbra
+    // width (mp), INT32 offsetX (mp), INT32 offsetY (mp), INT32 wall angle
+    // (microradians), INT32 darkness (percent), then scale/height fields.
     void XARDocument::ParseShadowRecord(const XARRecord& record) {
         auto sh = std::make_shared<XARShadowNode>();
-        // Best-effort: defaults, not all spec fields parsed (variable layout)
-        if (record.data.size() >= 1) sh->shadowType = record.data[0];
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        if (record.data.size() >= 21) {
+            sh->shadowType = ReadByte(d, off);
+            sh->blurRadius = ReadInt32(d, off);
+            sh->offsetX = ReadInt32(d, off);
+            sh->offsetY = ReadInt32(d, off);
+            ReadInt32(d, off);                                  // wall angle
+            int32_t darkness = ReadInt32(d, off);
+            if (darkness < 0) darkness = 0;
+            if (darkness > 100) darkness = 100;
+            sh->shadowColor = Color(0, 0, 0,
+                    static_cast<uint8_t>(255 * darkness / 100));
+        }
         AttachNode(sh);
     }
 
