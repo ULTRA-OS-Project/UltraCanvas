@@ -1242,6 +1242,7 @@ namespace UltraCanvas {
 
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromMemory(const uint8_t* data, size_t size);
+        bool IsLoaded() const { return document != nullptr; }
 
         // Reason for the most recent failed load (locked / missing / not a valid
         // XAR file). Empty after a successful load.

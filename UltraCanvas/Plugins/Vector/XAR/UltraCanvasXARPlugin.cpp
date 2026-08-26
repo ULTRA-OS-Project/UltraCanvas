@@ -3070,6 +3070,10 @@ namespace UltraCanvas {
                 ctx->Scale(scaleX * scale, scaleY * scale);
                 renderScale = 1.0f;
             }
+            // White page behind the drawing, like Xara's own canvas — the
+            // host surface (e.g. the fullscreen viewer) may be dark.
+            ctx->SetFillPaint(Color(255, 255, 255, 255));
+            ctx->FillRectangle(Rect2Dd(0, 0, docW * renderScale, docH * renderScale));
             document->RenderPage(ctx, currentPage, renderScale);
         }
         ctx->PopState();

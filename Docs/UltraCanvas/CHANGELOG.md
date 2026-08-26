@@ -100,6 +100,14 @@
   XAR element gets `SetCurrentPage` / `onPageChanged`, and `XARProbeTest
   --render` writes one PNG per page. Verified on a real 13-slide Xara
   Designer Pro X19 pitch deck: all thirteen slides render individually.
+- **The demo's XAR page is active.** It shows both shipped samples
+  (`media/xar/demo.xar`, `media/xar/backside.xar`) as clickable tiles with
+  load-failure reasons in the status line, and the fullscreen viewer gained
+  page navigation (prev/next with a page counter, via the element's new
+  page API), zoom in/out and fit-page. The page's stale CorelDRAW wording
+  is gone, and `UltraCanvasXARElement` now paints a white page behind the
+  drawing (`IsLoaded()` added), so drawings read correctly on the dark
+  fullscreen backdrop.
 - **`XARDocument` gained parse diagnostics** — records dispatched, unhandled
   record tags with counts, structural warnings — via `GetDiagnostics()`,
   and **`XARProbeTest`** (Tests/, needs `-DBUILD_TESTS=ON`) prints that
