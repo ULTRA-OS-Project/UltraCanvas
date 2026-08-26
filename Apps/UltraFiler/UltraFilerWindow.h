@@ -8,10 +8,12 @@
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
 // the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
-// the media preview (UltraCanvasMediaViewer, shown only while a previewable
-// file is selected; Esc closes it), plus a status bar describing the folder
-// and the selection (kept in step with the folder listing through the
-// filer's onFolderRefreshed callback).
+// the detail pane (shown only while a single previewable file OR a folder is
+// selected; Esc closes it): a selected media file shows in the
+// UltraCanvasMediaViewer, a selected folder shows its content through a second
+// small-thumbnail UltraCanvasFilerWidget — the two share the one pane. Plus a
+// status bar describing the folder and the selection (kept in step with the
+// folder listing through the filer's onFolderRefreshed callback).
 // The clock button swaps the whole tree + folder area for the History view: a
 // tabbed container (Files / Folders / Apps) whose pages are UltraCanvasFilerWidgets
 // in small-thumbnail mode showing the recently used paths (UltraFilerHistory)
@@ -33,8 +35,8 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.10.0
-// Last Modified: 2026-08-22
+// Version: 1.11.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -265,16 +267,20 @@ private:
     // Turns the preview feature on/off (the command bar toggle; Esc while
     // the preview is shown turns it off the same way).
     void SetPreviewEnabled(bool enabled);
-    // Shows the preview pane only while the preview is enabled AND a
-    // previewable file is selected; otherwise the folder display gets the
-    // whole width. Adds / removes the split pane accordingly. The preview
-    // takes its width from the folder display only — the tree pane (and the
-    // splitter the user dragged) stays where it is — and the selected file
-    // is kept scrolled into view when the pane narrows the folder display.
+    // Shows the detail pane only while the preview is enabled AND a single
+    // previewable file or a folder is selected; otherwise the folder display
+    // gets the whole width. Adds / removes the split pane accordingly, and
+    // swaps the pane's content between the media viewer (a file) and the
+    // folder preview filer (a folder — its content is shown, not a blank
+    // pane). The pane takes its width from the folder display only — the
+    // tree pane (and the splitter the user dragged) stays where it is — and
+    // the selected file is kept scrolled into view when the pane narrows the
+    // folder display.
     void UpdatePreviewPane();
-    // Path of the single selected previewable file, or "" when there is
-    // nothing to preview.
-    std::string PreviewablePathForSelection() const;
+    // The single selected entry of the active tab's filer, or nullptr while
+    // the selection is empty or holds several entries. The pointer is into
+    // the filer's entry vector — use it immediately, don't keep it.
+    const FilerEntry* SingleSelectedEntry() const;
     // Mirrors the preview toggle into every tab's filer: while the preview is
     // on, deleting the previewed file hands the selection to the neighbouring
     // entry, so the pane shows that file instead of folding away.
@@ -315,6 +321,10 @@ private:
     std::shared_ptr<UltraCanvasTabbedContainer> tabbedContainer;
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
     std::shared_ptr<UltraCanvasMediaViewer>     preview;
+    // Folder preview: shows the content of a selected folder in the detail
+    // pane, the way `preview` shows a selected file. The two share the pane;
+    // UpdatePreviewPane swaps whichever the selection calls for into it.
+    std::shared_ptr<UltraCanvasFilerWidget>     folderPreview;
     std::shared_ptr<UltraCanvasSplitPane>       split;
     std::shared_ptr<UltraCanvasContainer>       contentBox;    // holds the split OR the History view
     std::shared_ptr<UltraCanvasContainer>       historyPane;   // History view root
@@ -364,6 +374,7 @@ private:
     bool syncingControls = false;          // dropdowns driven by filer callbacks
     bool previewEnabled = true;            // the command bar toggle state
     bool previewShown = false;             // preview pane currently in the split
+    bool previewShowsFolder = false;       // pane holds folderPreview, not preview
     int  previewPaneWidth = 0;             // last shown width (px), restored on reopen
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split

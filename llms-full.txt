@@ -17010,7 +17010,7 @@ filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
-| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph) |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 
 Notes:

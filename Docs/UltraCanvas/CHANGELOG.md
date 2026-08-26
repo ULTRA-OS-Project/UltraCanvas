@@ -1,4 +1,4 @@
-#### 2026-08-26 *0.3.75*
+#### 2026-08-26 *0.3.76*
 - **EPS files can be written now.** New `VectorConverter::EPSConverter`
   (`Plugins/Vector/UltraCanvasEPSConverter.{h,cpp}`) serializes a
   `VectorStorage::VectorDocument` as an EPSF-3.0 PostScript program:
@@ -68,6 +68,33 @@
   source, and a duplicate legacy `XARConverter` declaration are fixed; the
   never-implemented legacy import attribute handlers are stubbed so the
   plugin links.
+
+#### 2026-08-26 *0.3.75*
+- **Filer widget: legible spreadsheet previews.** The thumbnail preview of a
+  spreadsheet (ods / xlsx / csv / tsv) split the tile width evenly over the
+  columns, so a sheet with several columns showed one or two characters per
+  cell — a calendar previewed as a grid of first letters. Column widths now
+  follow the content: each column is as wide as its widest shown cell,
+  floored at about six characters so text stays recognizable, unless the
+  column's own content is narrower (a column of one-digit values takes only
+  what it needs). Columns that then no longer fit are clipped at the right
+  edge — a few legible columns beat many unreadable ones — and when
+  everything fits with room to spare the leftover is spread evenly so the
+  grid still fills the page.
+- **UltraFiler: clicking a folder shows its content in the detail pane.** The
+  pane to the right of the folder display — which used to open only for a
+  previewable file and folded away when a folder was selected — now previews
+  folders too: selecting one shows its content as a small-thumbnail folder
+  listing (a second `UltraCanvasFilerWidget` sharing the pane with the media
+  viewer). The peek is live — a subfolder double-clicked in it is entered
+  right in the pane, an activated file opens with its OS default application,
+  files can be dropped into it and its context menu offers the usual file
+  commands (the hover icon menu stays off; subfolder prefetch too, the pane
+  being a peek rather than a working view). Esc, the Preview toggle, the
+  restored pane width and the selection-follows-delete behaviour all work
+  exactly as for file previews, and moving the selection between a file and a
+  folder swaps the pane's content in place instead of closing and reopening
+  the pane.
 
 
 #### 2026-08-26 *0.3.74*
