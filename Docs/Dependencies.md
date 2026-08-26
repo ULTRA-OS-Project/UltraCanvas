@@ -55,6 +55,7 @@ their *License* is likewise marked **—** (OS component).
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | fmt | [fmt.dev](https://fmt.dev/) | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FontConfig | [freedesktop.org/wiki/Software/fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/) | [gitlab.freedesktop.org/fontconfig/fontconfig](https://gitlab.freedesktop.org/fontconfig/fontconfig) | [MIT](https://spdx.org/licenses/MIT.html) |
+| FreeRDP (optional) | [freerdp.com](https://www.freerdp.com/) | [github.com/FreeRDP/FreeRDP](https://github.com/FreeRDP/FreeRDP) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | FreeType | [freetype.org](https://freetype.org/) | [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype) | [FTL](https://spdx.org/licenses/FTL.html) |
 | giflib | [giflib.sourceforge.net](https://giflib.sourceforge.net/) | [sourceforge.net/projects/giflib](https://sourceforge.net/projects/giflib/) | [MIT](https://spdx.org/licenses/MIT.html) |
 | GLEW | [glew.sourceforge.net](https://glew.sourceforge.net/) | [github.com/nigels-com/glew](https://github.com/nigels-com/glew) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -278,6 +279,7 @@ for the full search order.
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
 | VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
 | QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
+| RemoteApp client (VM tier) | FreeRDP 3 or 2 (optional, **linked** — the only linked UltraWin engine; Apache 2) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully

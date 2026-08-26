@@ -242,10 +242,33 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
   state is `UltraWin_VmGetInfo`'s business).
 
+## RemoteApp sessions (Stage 2b-i)
+
+The bridge between the running guest and the desktop: **FreeRDP** — the
+one UltraWin engine that IS linked (Apache 2; version-adaptive over
+FreeRDP 3, falling back to FreeRDP 2 where 3 is not packaged; optional —
+without it `UltraWinCapabilities::remoteAppSupported` is false and VM-tier
+launches report `NotSupported`).
+
+- `UltraWin_RunApp(..., forceTier = Vm)` now launches through a RemoteApp
+  (RAIL) session against the guest's forwarded RDP port: the guest runs
+  the program and exports its windows — never a desktop. Sign-in uses
+  `UltraWinConfig::vmGuestUsername/vmGuestPassword` (defaults match the
+  account the provisioning answer file creates).
+- Stage 2b accepts **guest paths** (`C:\...`) and RemoteApp aliases
+  (`||name`); host paths follow with the virtiofs shared-folder
+  integration.
+- Supervision maps onto the session: `Running` while connected,
+  `CloseApp`/`KillApp` end the session, `WaitApp`/`GetAppState` behave as
+  in the Wine tier.
+- The machine must be `Running` (`VmNotRunning` otherwise); drive
+  redirection over RDP is deliberately off — folders come via virtiofs.
+
 ## Not yet implemented (later stages)
 
-- Stage 2b: the FreeRDP RemoteApp element (`UltraCanvasRemoteAppView`) and
-  `UltraWin_RunApp` routing into the VM tier; virtiofs shared folders.
+- Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
+  window surfaces as native ULTRA OS windows (needs a real Windows guest
+  to validate against); virtiofs shared folders; host-path launches.
 - Stage 2c: guest provisioning validated end-to-end against real install
   media (virtio driver injection, first-boot orchestration).
 - `UltraWin_QueryCompatibility` + automatic tier routing.

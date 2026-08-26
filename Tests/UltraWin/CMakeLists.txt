@@ -14,6 +14,7 @@ set(ULTRAWIN_TEST_SOURCES
     test_components.cpp
     test_programs.cpp
     test_vm.cpp
+    test_remoteapp.cpp
 )
 
 add_executable(UltraWinTests ${ULTRAWIN_TEST_SOURCES})

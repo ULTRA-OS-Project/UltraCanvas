@@ -447,10 +447,14 @@ encapsulates them so backings can be swapped — see
   the single shared headless QEMU/KVM guest — spawned, never linked —
   controlled over QMP; RDP port forwarded for the RemoteApp integration)
 
-**Planned (Stage 2b/2c, 3):** the `UltraCanvasRemoteAppView` element for
-FreeRDP RemoteApp windows with `UltraWin_RunApp` VM-tier routing, virtiofs
-shared folders, guest provisioning validated against real install media,
-and `UltraWin_QueryCompatibility` tier routing.
+- `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
+  running guest over FreeRDP (the one linked engine, Apache 2, optional;
+  guest paths / `||aliases` in this stage)
+
+**Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
+rendering RAIL window surfaces, virtiofs shared folders + host-path
+launches, guest provisioning validated against real install media, and
+`UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.
@@ -1068,6 +1072,7 @@ their *License* is likewise marked **—** (OS component).
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | fmt | [fmt.dev](https://fmt.dev/) | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FontConfig | [freedesktop.org/wiki/Software/fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/) | [gitlab.freedesktop.org/fontconfig/fontconfig](https://gitlab.freedesktop.org/fontconfig/fontconfig) | [MIT](https://spdx.org/licenses/MIT.html) |
+| FreeRDP (optional) | [freerdp.com](https://www.freerdp.com/) | [github.com/FreeRDP/FreeRDP](https://github.com/FreeRDP/FreeRDP) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | FreeType | [freetype.org](https://freetype.org/) | [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype) | [FTL](https://spdx.org/licenses/FTL.html) |
 | giflib | [giflib.sourceforge.net](https://giflib.sourceforge.net/) | [sourceforge.net/projects/giflib](https://sourceforge.net/projects/giflib/) | [MIT](https://spdx.org/licenses/MIT.html) |
 | GLEW | [glew.sourceforge.net](https://glew.sourceforge.net/) | [github.com/nigels-com/glew](https://github.com/nigels-com/glew) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -1291,6 +1296,7 @@ for the full search order.
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
 | VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
 | QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
+| RemoteApp client (VM tier) | FreeRDP 3 or 2 (optional, **linked** — the only linked UltraWin engine; Apache 2) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully
@@ -51723,10 +51729,33 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
   state is `UltraWin_VmGetInfo`'s business).
 
+## RemoteApp sessions (Stage 2b-i)
+
+The bridge between the running guest and the desktop: **FreeRDP** — the
+one UltraWin engine that IS linked (Apache 2; version-adaptive over
+FreeRDP 3, falling back to FreeRDP 2 where 3 is not packaged; optional —
+without it `UltraWinCapabilities::remoteAppSupported` is false and VM-tier
+launches report `NotSupported`).
+
+- `UltraWin_RunApp(..., forceTier = Vm)` now launches through a RemoteApp
+  (RAIL) session against the guest's forwarded RDP port: the guest runs
+  the program and exports its windows — never a desktop. Sign-in uses
+  `UltraWinConfig::vmGuestUsername/vmGuestPassword` (defaults match the
+  account the provisioning answer file creates).
+- Stage 2b accepts **guest paths** (`C:\...`) and RemoteApp aliases
+  (`||name`); host paths follow with the virtiofs shared-folder
+  integration.
+- Supervision maps onto the session: `Running` while connected,
+  `CloseApp`/`KillApp` end the session, `WaitApp`/`GetAppState` behave as
+  in the Wine tier.
+- The machine must be `Running` (`VmNotRunning` otherwise); drive
+  redirection over RDP is deliberately off — folders come via virtiofs.
+
 ## Not yet implemented (later stages)
 
-- Stage 2b: the FreeRDP RemoteApp element (`UltraCanvasRemoteAppView`) and
-  `UltraWin_RunApp` routing into the VM tier; virtiofs shared folders.
+- Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
+  window surfaces as native ULTRA OS windows (needs a real Windows guest
+  to validate against); virtiofs shared folders; host-path launches.
 - Stage 2c: guest provisioning validated end-to-end against real install
   media (virtio driver injection, first-boot orchestration).
 - `UltraWin_QueryCompatibility` + automatic tier routing.

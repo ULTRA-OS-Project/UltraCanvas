@@ -112,7 +112,10 @@ TEST(run_app_argument_validation) {
     UltraWinRunOptions vm;
     vm.forceTier = UltraWinTier::Vm;
     r = UltraWin_RunApp("/bin/true", vm, &h);
-    REQUIRE_EQ(r.code, UltraWinResultCode::NotSupported);
+    // Routed to the VM tier (Stage 2b): host paths are rejected there, or
+    // the whole tier is absent in builds without FreeRDP.
+    CHECK(r.code == UltraWinResultCode::InvalidArgument ||
+          r.code == UltraWinResultCode::NotSupported);
 
     r = UltraWin_RunApp("relative.exe", {}, &h);
     REQUIRE_EQ(r.code, UltraWinResultCode::InvalidArgument);

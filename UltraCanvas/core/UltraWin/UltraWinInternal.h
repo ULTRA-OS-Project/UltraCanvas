@@ -9,6 +9,7 @@
 
 #include "UltraWin/UltraWin.h"
 
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -23,9 +24,13 @@ extern std::mutex g_mutex;
 extern bool g_initialized;
 extern UltraWinConfig g_config;
 
+class RdpSession;  // UltraWinRdp.h — VM-tier RemoteApp connection
+
 struct AppInstance {
     UltraWinAppInfo info;   // info.processId is the wine child's pid
     bool reaped = false;    // waitpid() has collected the exit status
+    bool closeRequested = false;          // CloseApp/KillApp was called
+    std::shared_ptr<RdpSession> session;  // set on VM-tier instances only
 };
 
 extern std::unordered_map<UltraWinHandle, AppInstance> g_apps;

@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
+#include "UltraWinRdp.h"
 
 #include <algorithm>
 #include <cctype>
@@ -264,6 +265,7 @@ UltraWinCapabilities UltraWin_GetCapabilities() {
     caps.qemuAvailable =
         !caps.qemuPath.empty() && !FindQemuImgBinary().empty();
     caps.virtiofsdAvailable = !FindVirtiofsdBinary().empty();
+    caps.remoteAppSupported = RdpBuiltIn();
     // Host-capable: QEMU present and hardware acceleration usable. Whether
     // the machine is provisioned/installed is UltraWin_VmGetInfo's business.
     caps.vmTierAvailable = caps.qemuAvailable && caps.kvmAvailable;

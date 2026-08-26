@@ -277,10 +277,14 @@ encapsulates them so backings can be swapped — see
   the single shared headless QEMU/KVM guest — spawned, never linked —
   controlled over QMP; RDP port forwarded for the RemoteApp integration)
 
-**Planned (Stage 2b/2c, 3):** the `UltraCanvasRemoteAppView` element for
-FreeRDP RemoteApp windows with `UltraWin_RunApp` VM-tier routing, virtiofs
-shared folders, guest provisioning validated against real install media,
-and `UltraWin_QueryCompatibility` tier routing.
+- `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
+  running guest over FreeRDP (the one linked engine, Apache 2, optional;
+  guest paths / `||aliases` in this stage)
+
+**Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
+rendering RAIL window surfaces, virtiofs shared folders + host-path
+launches, guest provisioning validated against real install media, and
+`UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.

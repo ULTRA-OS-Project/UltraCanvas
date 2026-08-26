@@ -1962,6 +1962,24 @@ endif()
 # Docs/Modules/UltraWin/README.md.
 if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
     find_package(Threads REQUIRED)
+    # FreeRDP: the VM tier's RemoteApp client — the one UltraWin engine that
+    # IS linked (Apache-2.0). Optional: without it the module builds with
+    # the VM tier's RunApp routing reporting NotSupported
+    # (UltraWinCapabilities::remoteAppSupported = false). FreeRDP 3 is
+    # preferred (Ubuntu 24.04+ ships its channels built in); FreeRDP 2 is
+    # the fallback for hosts where 3 is not packaged (Ubuntu 22.04).
+    pkg_check_modules(ULTRAWIN_FREERDP freerdp3 winpr3 freerdp-client3)
+    if(ULTRAWIN_FREERDP_FOUND)
+        set(ULTRAWIN_FREERDP_MAJOR 3)
+        set(ULTRAWIN_FREERDP_VERSION ${ULTRAWIN_FREERDP_freerdp3_VERSION})
+    else()
+        pkg_check_modules(ULTRAWIN_FREERDP freerdp2 winpr2 freerdp-client2)
+        if(ULTRAWIN_FREERDP_FOUND)
+            set(ULTRAWIN_FREERDP_MAJOR 2)
+            set(ULTRAWIN_FREERDP_VERSION ${ULTRAWIN_FREERDP_freerdp2_VERSION})
+        endif()
+    endif()
+
     set(ULTRAWIN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
@@ -1969,6 +1987,7 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinQmp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinRdp.cpp
     )
     add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
     set_target_properties(UltraWin PROPERTIES
@@ -1982,6 +2001,21 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
     # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
     target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
+    if(ULTRAWIN_FREERDP_FOUND)
+        target_compile_definitions(UltraWin PRIVATE
+            ULTRAWIN_HAS_FREERDP=${ULTRAWIN_FREERDP_MAJOR})
+        target_include_directories(UltraWin PRIVATE
+            ${ULTRAWIN_FREERDP_INCLUDE_DIRS})
+        target_link_directories(UltraWin PUBLIC
+            ${ULTRAWIN_FREERDP_LIBRARY_DIRS})
+        # freerdp-clientN carries freerdp_client_load_addins (the channel
+        # loader the RemoteApp session uses); freerdpN/winprN the core.
+        target_link_libraries(UltraWin PUBLIC
+            ${ULTRAWIN_FREERDP_LIBRARIES})
+        message(STATUS "  [✓] UltraWin RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
+    else()
+        message(STATUS "  [−] UltraWin RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
+    endif()
 
     # Same single-host export strategy as UltraNet: a shared libultracanvas
     # re-exports the whole UltraWin API so apps import one copy of the module
