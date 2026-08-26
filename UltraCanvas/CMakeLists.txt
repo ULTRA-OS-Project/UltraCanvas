@@ -1325,6 +1325,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             uuid
             shell32
             shlwapi        # AssocQueryStringW (OS/MSWindows file associations)
+            advapi32       # RegGetValueW (GetCloudStorageFolders: Google Drive mount)
             comdlg32
             comctl32
             imm32

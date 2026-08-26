@@ -5,7 +5,7 @@ components:
 
 | Area | Component |
 |---|---|
-| Folder tree (left pane) | `UltraCanvasTreeView` — lazily populated filesystem tree (Home, drives / mounted volumes) |
+| Folder tree (left pane) | `UltraCanvasTreeView` — lazily populated filesystem tree (a curated Home, Cloud Storage, drives / mounted volumes) |
 | Folder content (center pane) | `UltraCanvasTabbedContainer` hosting one `UltraCanvasFilerWidget` per tab — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
@@ -87,8 +87,26 @@ components:
   folders) and *Settings > History & Favorites > Clear Folder views* forgets
   them.
 - **Folder tree:** a **Pinned** section on top — above *Computer*, open, and
-  shown only while something is pinned — then *Computer* with Home and the
-  drives / volumes below it.
+  shown only while something is pinned — then *Computer* with Home, **Cloud
+  Storage** and the drives / volumes below it.
+  - **Home** is curated, not scanned: it lists the user's main folders —
+    Desktop, Documents, Downloads, Music, Pictures, Videos — and stops there,
+    so a profile does not spill *3D Objects*, *Saved Games*, *Links* and every
+    working folder into the tree. The paths come from the platform
+    (`SHGetKnownFolderPath`, the macOS home layout, `xdg-user-dirs`), so a
+    redirected or localized folder — *Bilder*, a Documents folder moved into
+    OneDrive — is the one listed, under its own icon. Everything left out is
+    still one click away: the folder display lists the whole home folder.
+  - **Cloud Storage** collects the sync folders this machine actually has —
+    OneDrive (personal and every business tenant), Google Drive, Dropbox
+    (personal and business) and iCloud Drive — instead of leaving them
+    scattered through the profile, and instead of hiding a Google Drive that
+    mounted as a virtual drive letter among the real drives. Each provider is
+    asked where it put its folder (`UltraCanvas::GetCloudStorageFolders()`);
+    the section is hidden entirely when there is nothing to show, and the
+    lookup runs off the UI thread, so the window never waits for it. Like the
+    drive roots, the cloud roots keep *Delete* disabled in the context menu —
+    deleting one would sync the deletion to every other device.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps
