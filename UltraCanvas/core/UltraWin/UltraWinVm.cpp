@@ -18,8 +18,13 @@
 #include <sstream>
 #include <thread>
 
+#include <arpa/inet.h>
+#include <cerrno>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <poll.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -74,6 +79,50 @@ std::string VmDirectory() {
     return fs::path(envRoot).parent_path() / "vm";
 }
 
+bool ProbeTcpPort(const std::string& host, int port, int timeoutMs) {
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    if (fd < 0) return false;
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
+        close(fd);
+        return false;
+    }
+    bool connected = false;
+    int rc = connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    if (rc == 0) {
+        connected = true;
+    } else if (errno == EINPROGRESS) {
+        struct pollfd pfd{fd, POLLOUT, 0};
+        if (poll(&pfd, 1, timeoutMs) == 1) {
+            int soerr = 0;
+            socklen_t len = sizeof(soerr);
+            connected =
+                getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &len) == 0 &&
+                soerr == 0;
+        }
+    }
+    // QEMU's usernet hostfwd accepts the connect itself and only then
+    // relays into the guest — a closed guest port shows up as an
+    // immediate close/reset. A listener that keeps the connection open
+    // (RDP waits for the client to speak first) is the real signal.
+    bool open = false;
+    if (connected) {
+        struct pollfd pfd{fd, POLLIN, 0};
+        int pr = poll(&pfd, 1, timeoutMs);
+        if (pr == 0) {
+            open = true;  // quiet but held open — someone is listening
+        } else if (pr == 1) {
+            char b;
+            ssize_t n = recv(fd, &b, 1, MSG_PEEK);
+            open = n > 0;  // data = a live server; 0/-1 = closed/reset
+        }
+    }
+    close(fd);
+    return open;
+}
+
 std::string HostToGuestPath(const std::string& hostPath,
                             const std::string& home, char driveLetter) {
     if (hostPath.empty() || hostPath[0] != '/' || home.empty() ||
@@ -93,7 +142,8 @@ std::string HostToGuestPath(const std::string& hostPath,
 }
 
 std::string GenerateAutounattendXml(const std::string& userName,
-                                    const std::string& password) {
+                                    const std::string& password,
+                                    char homeDriveLetter) {
     // EXPERIMENTAL (Stage 2c validates against real media). Answers every
     // interactive stage: disk 0 is wiped into an EFI layout, Pro edition
     // installs to it, the hardware checks are bypassed, and first logon
@@ -103,6 +153,26 @@ std::string GenerateAutounattendXml(const std::string& userName,
     x << R"(<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="windowsPE">
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35" language="neutral"
+               versionScope="nonSxS">
+      <!-- The system disk is virtio (if=virtio): without the viostor
+           driver Windows Setup sees NO disk at all. The virtio-win
+           drivers ISO is attached as the second CD; setup enumerates
+           drive letters, so both common letters are listed (harmless
+           when one is absent). NetKVM is picked up from the same tree. -->
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Path>E:\</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Path>F:\</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
     <component name="Microsoft-Windows-Setup" processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35" language="neutral"
                versionScope="nonSxS">
@@ -210,12 +280,47 @@ std::string GenerateAutounattendXml(const std::string& userName,
           <Order>2</Order>
           <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f</CommandLine>
         </SynchronousCommand>
+        <!-- virtio-win guest tools: remaining drivers, the QEMU guest
+             agent, WinFsp and the virtiofs service. Both plausible CD
+             letters are tried; absent ones no-op. -->
+        <SynchronousCommand wcm:action="add"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Order>3</Order>
+          <CommandLine>cmd /c "if exist E:\virtio-win-guest-tools.exe E:\virtio-win-guest-tools.exe /install /passive /norestart"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Order>4</Order>
+          <CommandLine>cmd /c "if exist F:\virtio-win-guest-tools.exe F:\virtio-win-guest-tools.exe /install /passive /norestart"</CommandLine>
+        </SynchronousCommand>
+        <!-- Mount the ultrawin_home share as the unified home drive: the
+             virtiofs service mounts the first virtiofs tag; MountPoint
+             pins the drive letter to match the Wine tier's mapping. -->
+        <SynchronousCommand wcm:action="add"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Order>5</Order>
+          <CommandLine>reg add "HKLM\SOFTWARE\WinFsp\Services\VirtioFsSvc" /v MountPoint /t REG_SZ /d "@HOMEDRIVE@:" /f</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Order>6</Order>
+          <CommandLine>cmd /c "sc config VirtioFsSvc start= auto &amp; sc start VirtioFsSvc"</CommandLine>
+        </SynchronousCommand>
       </FirstLogonCommands>
     </component>
   </settings>
 </unattend>
 )";
-    return x.str();
+    // Pin the guest-side mount to the configured unified home letter.
+    std::string xml = x.str();
+    const std::string placeholder = "@HOMEDRIVE@";
+    const std::string letter(1, homeDriveLetter != 0
+                                    ? CanonicalDriveLetter(homeDriveLetter)
+                                    : 'U');
+    size_t pos;
+    while ((pos = xml.find(placeholder)) != std::string::npos)
+        xml.replace(pos, placeholder.size(), letter);
+    return xml;
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +463,10 @@ UltraWinResult UltraWin_VmProvision(const UltraWinVmOptions& options) {
     {
         std::ofstream out(fs::path(vmDir) / "unattend" /
                           "autounattend.xml");
-        out << GenerateAutounattendXml("ultra", "ultra");
+        out << GenerateAutounattendXml(
+            UltraWin_GetConfig().vmGuestUsername,
+            UltraWin_GetConfig().vmGuestPassword,
+            UltraWin_GetConfig().homeDriveLetter);
         if (!out)
             return UltraWinResult::Error(UltraWinResultCode::IoError,
                                          "cannot write autounattend.xml");
@@ -626,7 +734,8 @@ UltraWinResult UltraWin_VmResume() { return VmQmpCommand("cont"); }
 UltraWinVmState UltraWin_VmGetState() {
     if (!UltraWin_IsInitialized()) return UltraWinVmState::NotProvisioned;
     const std::string vmDir = VmDirectory();
-    if (ReadManifest(vmDir).empty()) return UltraWinVmState::NotProvisioned;
+    auto manifest = ReadManifest(vmDir);
+    if (manifest.empty()) return UltraWinVmState::NotProvisioned;
     {
         std::lock_guard<std::mutex> lk(g_mutex);
         if (!VmProcessAliveLocked()) return UltraWinVmState::Stopped;
@@ -638,6 +747,18 @@ UltraWinVmState UltraWin_VmGetState() {
     if (status == "paused" || status == "suspended")
         return UltraWinVmState::Suspended;
     if (status.empty()) return UltraWinVmState::Unknown;
+
+    // While setup is still marked pending, the guest's RDP port answering
+    // is the host-visible signal Windows is installed and running — flip
+    // the manifest so later boots skip the install media.
+    if (manifest["installed"] != "1") {
+        UltraWinConfig cfg = UltraWin_GetConfig();
+        int port = cfg.vmRdpHostPort > 0 ? cfg.vmRdpHostPort : 13389;
+        if (ProbeTcpPort("127.0.0.1", port, 500)) {
+            manifest["installed"] = "1";
+            WriteManifest(vmDir, manifest);
+        }
+    }
     return UltraWinVmState::Running;
 }
 
@@ -652,6 +773,8 @@ UltraWinResult UltraWin_VmGetInfo(UltraWinVmInfo* out) {
     out->vmDirectory = VmDirectory();
     out->diskPath = (fs::path(out->vmDirectory) / "disk.qcow2").string();
     out->state = UltraWin_VmGetState();
+    out->windowsInstalled =
+        ReadManifest(out->vmDirectory)["installed"] == "1";
     UltraWinConfig cfg = UltraWin_GetConfig();
     out->rdpHostPort = cfg.vmRdpHostPort > 0 ? cfg.vmRdpHostPort : 13389;
     std::lock_guard<std::mutex> lk(g_mutex);

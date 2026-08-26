@@ -563,6 +563,18 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRAWIN SETUP CLI =====
+# ultrawin-setup: the console driver for the VM tier's real-hardware
+# validation (provision from install media, boot, watch, launch). Plain
+# CLI over the UltraWin API — built wherever UltraWin is.
+option(BUILD_ULTRAWIN_SETUP "Build the ultrawin-setup CLI tool" ON)
+if(BUILD_ULTRAWIN_SETUP AND TARGET UltraWin)
+    add_executable(ultrawin-setup Apps/UltraWinSetup/main.cpp)
+    target_compile_features(ultrawin-setup PRIVATE cxx_std_20)
+    target_link_libraries(ultrawin-setup PRIVATE UltraWin)
+    message(STATUS "  [✓] ultrawin-setup CLI - ENABLED")
+endif()
+
 # ===== ULTRAWIN TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses the same tiny in-tree framework
 # as the UltraNet suite. Wine itself is NOT required — wine-dependent tests

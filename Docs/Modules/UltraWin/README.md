@@ -286,6 +286,9 @@ does — one unified home drive:
 - Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
   window surfaces as native ULTRA OS windows (needs a real Windows guest
   to validate against).
-- Stage 2c: guest provisioning validated end-to-end against real install
-  media (virtio driver injection, first-boot orchestration).
+- Stage 2c: the provisioning pipeline is complete (WinPE virtio driver
+  injection, guest-tools install, virtiofs mount, RDP-probe install
+  detection, `ultrawin-setup` CLI) but awaits its validation run against
+  real install media on a KVM machine — see
+  [`VmValidation.md`](VmValidation.md).
 - `UltraWin_QueryCompatibility` + automatic tier routing.

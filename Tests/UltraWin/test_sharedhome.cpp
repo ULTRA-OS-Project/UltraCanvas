@@ -13,6 +13,9 @@
 #include <cstdlib>
 #include <filesystem>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -59,6 +62,24 @@ TEST(host_to_guest_path_translation) {
     REQUIRE_EQ(HostToGuestPath("/home/u/a", "", 'U'), std::string(""));
     REQUIRE_EQ(HostToGuestPath("/home/u/a", "/home/u", 0),
                std::string(""));
+}
+
+TEST(tcp_probe_semantics) {
+    // Closed port: refused outright.
+    CHECK(!ProbeTcpPort("127.0.0.1", 24397, 500));
+    // A held-open, silent listener (RDP behaves this way) is "open".
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    REQUIRE(fd >= 0);
+    int one = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(24397);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) == 0);
+    REQUIRE(listen(fd, 1) == 0);
+    CHECK(ProbeTcpPort("127.0.0.1", 24397, 500));
+    close(fd);
 }
 
 TEST(vm_boot_with_home_share) {
