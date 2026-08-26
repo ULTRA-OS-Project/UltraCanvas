@@ -150,6 +150,31 @@ void SetStep(float stepValue);
 float GetStep() const;
 ```
 
+#### Step: what a slider snaps to
+
+`step` is the snap increment; **0 makes the slider continuous** (every position
+the track offers). A slider that is never given one follows its range:
+
+- range of **20 units or more** (0..100, 5..40) → whole-unit steps, as before;
+- **narrower** (0.2..3.0 gamma, a 0..1 ratio, 0..2 gain) → **continuous**,
+  because whole units would leave such a range with a handful of reachable
+  positions — a 0..2 slider would offer exactly three.
+
+`SetStep()` overrides that for good: the value stated by the caller survives any
+later `SetRange()`, so an integer control (quality 0..100 that narrows to 0..9,
+an effort level 0..6) keeps whole steps whatever range it is given.
+
+```cpp
+gamma->SetRange(0.2f, 3.0f);      // continuous by default
+quality->SetRange(0, 100);        // whole units by default
+effort->SetStep(1.0f);            // whole units, stated
+effort->SetRange(0, 6);           // ...and kept here
+seek->SetStep(0.0f);              // continuous, stated
+```
+
+`UltraCanvasSlider::MinAutoStepSpan` (20) is the threshold, and
+`DefaultStepForRange(min, max)` is the rule itself.
+
 ### Style Configuration
 
 ```cpp

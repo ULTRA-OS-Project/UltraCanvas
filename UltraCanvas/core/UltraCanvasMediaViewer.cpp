@@ -21,6 +21,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
+#include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
@@ -228,6 +229,18 @@ static std::string BuildUCDDetailsText(const std::string& path,
 // operation (e.g. sharpen on an exotic format) doesn't abort the whole chain.
 static PixelFX::PFXImage ApplyColourAdjustments(PixelFX::PFXImage p,
                                                 const MediaAdjustments& a) {
+    // Tone curves run first: they are a per-channel remap of the original
+    // tones, so the sliders below act on the curve's result, exactly as an
+    // image editor stacks a Curves layer under its brightness controls.
+    if (!a.curves.IsIdentity()) {
+        try {
+            std::array<std::array<uint8_t, 256>, 3> luts = a.curves.BuildChannelLuts();
+            std::vector<std::vector<uint8_t>> tables;
+            tables.reserve(3);
+            for (const auto& lut : luts) tables.emplace_back(lut.begin(), lut.end());
+            p = PixelFX::Colour::MapLut(p, tables);
+        } catch (...) {}
+    }
     if (a.autoOptimize) {
         try { p = PixelFX::Colour::HistEqual(p); } catch (...) {}
     }
@@ -782,6 +795,14 @@ UltraCanvasMediaViewer::UltraCanvasMediaViewer(const std::string& identifier,
 UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
     // The key filter captures `this`; it must not outlive the widget.
     RemoveKeyFilter();
+    // Same for the Curves dialog: it lives in the application's window list and
+    // would call back into a destroyed viewer.
+    if (auto dlg = curvesDialog.lock()) {
+        dlg->onCurvesChanged = nullptr;
+        dlg->onAccept = nullptr;
+        dlg->onCancel = nullptr;
+        dlg->Close();
+    }
     if (slideshowTimer) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(slideshowTimer);
         slideshowTimer = 0;
@@ -803,12 +824,31 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasMediaViewer::BuildAdjustSlider(
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     box->AddChild(lbl);
 
+    // "Gamma  1.00" — the caption carries the live value, so a photo edit can
+    // be repeated instead of being dialled in by eye.
+    auto caption_text = [caption](float v) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s  %.2f", caption.c_str(), v);
+        return std::string(buf);
+    };
+    lbl->SetText(caption_text(value));
+
     auto sld = std::make_shared<UltraCanvasSlider>(id, 0, 0, 124, 22);
     sld->SetRange(minV, maxV);
+    // Continuous: these are fractional ranges (gamma 0.2..3.0, a channel gain
+    // 0..2), where any snapping increment would cost most of the scale.
+    sld->SetStep(0.0f);
     sld->SetValue(value);
-    sld->onValueChanged = [onChange](float v) { if (onChange) onChange(v); };
+    sld->onValueChanged = [this, onChange, lbl, caption_text](float v) {
+        lbl->SetText(caption_text(v));
+        if (suppressAdjustCallbacks) return;
+        if (onChange) onChange(v);
+    };
     sld->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     box->AddChild(sld);
+
+    // Reset puts the control back where it was built.
+    adjustResetters.push_back([sld, value]() { sld->SetValue(value); });
 
     return box;
 }
@@ -900,6 +940,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar2->AddSeparator("mv_sep4");
     toolbar2->AddToggleButton("mv_adjust", "Adjust", "",
             [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); });
+    toolbar2->AddButton("mv_curves", "Curves", "", [this] { ShowCurvesDialog(); });
     toolbar2->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
     toolbar2->AddButton("mv_info", "Info", "", [this] { if (surface) surface->ToggleInfoPopup(); });
     AddChild(toolbar2);
@@ -936,10 +977,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     adjustPanel->AddChild(autoBtn);
 
     auto resetBtn = std::make_shared<UltraCanvasButton>("adj_reset", 0, 0, 96, 28, "Reset");
-    resetBtn->onClick = [this] {
-        adjustments = MediaAdjustments();
-        ApplyAdjustments();
-    };
+    resetBtn->onClick = [this] { ResetAdjustments(); };
     resetBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     adjustPanel->AddChild(resetBtn);
     AddChild(adjustPanel);
@@ -1687,6 +1725,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ShowView(MediaKind::Image);
         auto img = UCImage::Get(path);
         surface->ShowImage(img, transition, transitionDurationMs, animated);
+        // The adjustments (curves included) carry over to the new picture, so
+        // an open Curves dialog must show the new picture's histogram.
+        if (auto dlg = curvesDialog.lock()) FillCurveHistograms(*dlg);
     }
     // The strip of backdrop colours belongs to the file just loaded: up for a
     // transparent image, gone for everything else.
@@ -1697,6 +1738,105 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
     if (surface) surface->SetAdjustments(adjustments);
+}
+
+void UltraCanvasMediaViewer::ResetAdjustments() {
+    // Move the controls first (silently — one re-render, not one per slider),
+    // then drop the values themselves, curves included.
+    suppressAdjustCallbacks = true;
+    for (auto& reset : adjustResetters) reset();
+    suppressAdjustCallbacks = false;
+
+    adjustments = MediaAdjustments();
+    if (auto dlg = curvesDialog.lock()) dlg->SetCurves(adjustments.curves);
+    ApplyAdjustments();
+}
+
+// ===== CURVES DIALOG =====
+
+void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const {
+#ifdef HAS_LIBVIPS
+    if (!surface) return;
+    auto img = surface->GetImage();
+    if (!img || !img->IsValid()) return;
+    try {
+        vips::VImage v = img->GetVImage();
+        PixelFX::PFXImage p(v);
+        // Histograms describe the tones the curve maps, so they are taken in
+        // sRGB — the space the lookup tables are applied in.
+        p = PixelFX::Colour::ToSrgb(p);
+        PixelFX::PFXImage hist = PixelFX::Colour::HistFind(p);
+        if (hist.bands() <= 0) return;
+
+        std::vector<uint32_t> master(256, 0), red(256, 0), green(256, 0), blue(256, 0);
+        for (int level = 0; level < 256; ++level) {
+            std::vector<double> counts = PixelFX::Arithmetic::GetPoint(hist, level, 0);
+            if (counts.empty()) continue;
+            double r = counts[0];
+            double g = counts.size() > 1 ? counts[1] : counts[0];
+            double b = counts.size() > 2 ? counts[2] : counts[0];
+            red[level]    = static_cast<uint32_t>(std::max(0.0, r));
+            green[level]  = static_cast<uint32_t>(std::max(0.0, g));
+            blue[level]   = static_cast<uint32_t>(std::max(0.0, b));
+            master[level] = red[level] + green[level] + blue[level];
+        }
+        dialog.SetHistogram(ToneCurveChannel::RGB,   master);
+        dialog.SetHistogram(ToneCurveChannel::Red,   red);
+        dialog.SetHistogram(ToneCurveChannel::Green, green);
+        dialog.SetHistogram(ToneCurveChannel::Blue,  blue);
+    } catch (...) {
+        // A colourspace the histogram pass cannot handle simply leaves the
+        // curve grid without its backdrop.
+    }
+#else
+    (void)dialog;
+#endif
+}
+
+void UltraCanvasMediaViewer::ShowCurvesDialog() {
+    // Curves work on the bitmap pipeline; other views have no pixels to map.
+    if (activeKind != MediaKind::Image || !surface ||
+        !surface->GetImage() || !surface->GetImage()->IsValid()) {
+        if (infoLabel) infoLabel->SetText("Curves apply to images only");
+        return;
+    }
+
+    // A dialog that is still open comes back to the front with the current
+    // curves; one that was closed a moment ago (it is dropped from the
+    // application's window list on the next loop pass) is replaced.
+    if (auto existing = curvesDialog.lock()) {
+        if (existing->GetState() != WindowState::Closed &&
+            existing->GetState() != WindowState::Closing) {
+            existing->SetCurves(adjustments.curves);
+            existing->Show();
+            return;
+        }
+        curvesDialog.reset();
+    }
+
+    curvesBeforeDialog = adjustments.curves;
+    auto dlg = std::make_shared<UltraCanvasCurvesDialog>(adjustments.curves);
+    FillCurveHistograms(*dlg);
+
+    // Live preview on the image itself — the surface is already showing it at
+    // full size, so the dialog needs no thumbnail of its own.
+    dlg->onCurvesChanged = [this](const ToneCurveSet& set) {
+        adjustments.curves = set;
+        ApplyAdjustments();
+    };
+    dlg->onAccept = [this](const ToneCurveSet& set) {
+        adjustments.curves = set;
+        ApplyAdjustments();
+        UpdateInfoBar();
+    };
+    dlg->onCancel = [this]() {
+        adjustments.curves = curvesBeforeDialog;
+        ApplyAdjustments();
+    };
+
+    curvesDialog = dlg;
+    dlg->Create();      // hands ownership to the application window list
+    dlg->Show();
 }
 
 // ===== PDF DISPLAY SETTINGS =====

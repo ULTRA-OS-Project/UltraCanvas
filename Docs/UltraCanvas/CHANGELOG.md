@@ -1,4 +1,4 @@
-#### 2026-08-26 *0.3.73*
+#### 2026-08-26 *0.3.75*
 - **XAR files can be written now.** `VectorConverter::XARConverter::Export`
   (and `ExportToString`/`ExportToStream`) serializes a
   `VectorStorage::VectorDocument` into the XAR record grammar the
@@ -44,6 +44,63 @@
   never-implemented legacy import attribute handlers are stubbed so the
   plugin links.
 
+
+#### 2026-08-26 *0.3.74*
+- **EPS (Encapsulated PostScript) vector graphics support.** New
+  `UltraCanvasEPSPlugin` (`Plugins/Vector/EPS/`) renders `.eps`/`.epsf`/`.ps`
+  drawings. EPS files are PostScript programs — real writers define their own
+  procedures in a prolog and draw through them — so the plugin embeds a
+  PostScript-subset interpreter: scanner, operand/dictionary/execution
+  stacks, procedures and control flow, the path/paint/transform/color/line
+  operators, text through mapped system fonts, and sampled images including
+  `ASCII85Decode` + `FlateDecode` data sources (zlib is the plugin's only
+  dependency beyond the core). DOS EPS binary preview headers are unwrapped,
+  `%%BoundingBox` sets the page, and `EPSDocument::GetDiagnostics()` reports
+  unknown operators and approximations for triage. Verified against
+  ghostscript renderings of the shipped samples, a cairo-generated vector
+  drawing (~43k tokens) and a 5000×7501 ASCII85+Flate fallback raster —
+  all agree to within antialiasing differences.
+- **`IRenderContext` gained `SetFillRule` (NonZero/EvenOdd).** The interface
+  default ignores the call, the Cairo backend implements it, and the EPS
+  plugin uses it for `eofill`/`eoclip`; the rule participates in the saved
+  graphics state.
+- **`UltraCanvasEPSElement`** mirrors the sibling vector elements: scale +
+  aspect-ratio viewport, `IsLoaded`/`GetLastError`, a white page behind the
+  drawing, and File Loader registration (`RegisterEPSPlugin`). The demo
+  gains an **EPS Images** page with the two new `media/eps/` samples, a
+  fullscreen viewer and zoom controls, and **`Tests/EPSProbeTest`** prints
+  the interpreter's triage for any file and rasterizes `--render` PNGs for
+  ghostscript comparison (registered as a parse regression test).
+
+
+#### 2026-08-26 *0.3.73*
+- **Sliders over a small range reach every value again.** `UltraCanvasSlider`
+  defaulted to a snap increment of 1.0 whatever its range, so a fractional
+  slider offered only the whole numbers inside it: the media viewer's
+  adjustment sliders (gamma 0.2..3.0, the colour channels 0..2) had three
+  usable positions each, and a 0..1 ratio slider had two. A slider that is
+  given no step now derives one from its range — whole units where the range
+  spans at least 20 of them, continuous below that — and a step the caller
+  states survives any later `SetRange()`, so integer controls (the export
+  dialog's quality, effort and speed) keep whole steps. The media viewer's
+  sliders are continuous, carry their live value in the caption
+  (`Gamma  1.37`) and are put back by *Reset*, which used to leave every
+  handle where the user had dragged it.
+- **Curves: per-channel tone editing for images.** New framework facility in
+  three layers — `UltraCanvasToneCurve` / `ToneCurveSet` (the model: control
+  points, monotone-cubic interpolation, 256-entry lookup tables, text
+  serialisation), `UltraCanvasCurveEditor` (the element the points are dragged
+  in, over an optional histogram) and `UltraCanvasCurvesDialog` (channel
+  selector, preview toggle, reset / OK / cancel). Pixels are mapped by the new
+  `PixelFX::Colour::MapLut()`, which applies per-channel 8-bit tables and
+  passes alpha through untouched.
+- **The media viewer got a *Curves* button.** It edits `MediaAdjustments::curves`
+  — a master (RGB) curve plus one per colour channel — over the histogram of
+  the shown image, previewing live on the picture at full size; *Cancel*
+  restores what was there. Curves are applied first in the colour pipeline, so
+  the existing sliders act on their result, and *Save as* bakes them in like
+  every other adjustment. This is the tool that reaches highlights, midtones
+  and shadows separately; the sliders move the whole tone range at once.
 #### 2026-08-26 *0.3.72*
 - **The XAR renderer draws real Xara files correctly now.** Files written by
   a modern Xara (Designer Pro X19) displayed as scattered, unfilled

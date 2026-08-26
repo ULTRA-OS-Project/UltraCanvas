@@ -12346,6 +12346,197 @@ tooltip lists the per-stage counts and the total, and
 plot).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCurveEditor.md
+==============================================================================
+
+# UltraCanvas Curve Editor and Curves Dialog
+
+## Overview
+
+The **tone curve** stack is the framework's "Curves" facility — the per-channel
+remap of image tones every photo editor puts behind that name. It comes in
+three layers, each usable on its own:
+
+| Layer | What it is | Files |
+|---|---|---|
+| `UltraCanvasToneCurve` / `ToneCurveSet` | The model: control points, monotone interpolation, 256-entry lookup tables | `include/UltraCanvasToneCurve.h`, `core/UltraCanvasToneCurve.cpp` |
+| `UltraCanvasCurveEditor` | The element the user drags points in (grid, histogram backdrop, selection) | `include/UltraCanvasCurveEditor.h`, `core/UltraCanvasCurveEditor.cpp` |
+| `UltraCanvasCurvesDialog` | The window: channel selector, editor, preview toggle, OK / Cancel / Reset | `dialogs/UltraCanvasCurvesDialog.h`, `dialogs/UltraCanvasCurvesDialog.cpp` |
+
+**Version**: 1.0.0
+**Last Modified**: 2026-08-25
+**Author**: UltraCanvas Framework
+
+None of the three touches pixels. They produce lookup tables;
+`PixelFX::Colour::MapLut()` applies them (see below). That split is what makes
+the same curve usable for a live preview, a saved file and a batch job, and it
+keeps the model free of any image-library include.
+
+The first caller is **UltraCanvasMediaViewer** (the *Curves* toolbar button of
+UltraViewer / the UltraFiler preview), which previews the curve live on the
+image it is already showing.
+
+## The model
+
+### `ToneCurvePoint`
+
+```cpp
+struct ToneCurvePoint {
+    float input  = 0.0f;   // original tone, 0..1
+    float output = 0.0f;   // tone it maps to, 0..1
+};
+```
+
+Both coordinates are normalised, so a curve does not depend on the bit depth it
+is later applied at.
+
+### `UltraCanvasToneCurve`
+
+A curve always holds at least the two endpoints. Their **input** is pinned to 0
+and 1; their **output** is draggable — that is how the black and white points
+are set. Interior points stay strictly between their neighbours, so the mapping
+can never fold back on itself.
+
+```cpp
+UltraCanvasToneCurve curve;                 // identity: 0->0, 1->1
+int i = curve.AddPoint(0.5f, 0.65f);        // lift the midtones
+curve.MovePoint(i, 0.5f, 0.70f);            // returns the point's new index
+curve.RemovePoint(i);                       // interior points only
+curve.Reset();
+
+float y = curve.Evaluate(0.25f);            // monotone cubic, clamped to 0..1
+std::array<uint8_t, 256> lut = curve.BuildLut();
+bool untouched = curve.IsIdentity();        // skip the whole pass when true
+```
+
+Interpolation is **Fritsch–Carlson monotone cubic**: the curve passes through
+every control point, never overshoots them and never dips backwards, which a
+plain Catmull-Rom spline does on a steep S-curve (and which shows up in a photo
+as a bright halo where the curve bulges past 1.0).
+
+Curves serialise to a short text form for settings files and presets:
+
+```cpp
+std::string text = curve.ToString();        // "0.000,0.000;0.500,0.650;1.000,1.000"
+UltraCanvasToneCurve restored;
+if (!restored.FromString(text)) { /* malformed: `restored` is untouched */ }
+```
+
+Limits: `UltraCanvasToneCurve::MaxPoints` (16) control points;
+`MinPointDistance` (1/255) is the closest two points may sit in input.
+
+### `ToneCurveSet`
+
+The four curves an image adjustment is made of — the master plus one per colour
+channel:
+
+```cpp
+ToneCurveSet set;
+set.Channel(ToneCurveChannel::Blue).AddPoint(0.5f, 0.42f);   // cool the midtones
+set.rgb.MovePoint(1, 1.0f, 0.9f);                            // pull the whites down
+
+if (!set.IsIdentity()) {
+    std::array<std::array<uint8_t, 256>, 3> luts = set.BuildChannelLuts();
+    // luts[0] = red, [1] = green, [2] = blue — the channel curve composed
+    // with the master curve, in that order.
+}
+```
+
+## Applying a curve to an image — `PixelFX::Colour::MapLut`
+
+```cpp
+PFXImage MapLut(const PFXImage& image,
+                const std::vector<std::vector<uint8_t>>& tables);
+```
+
+Maps an image through per-channel 8-bit lookup tables. Every table holds 256
+entries; pass **one** table to map all colour bands the same way, or **one per
+colour band**. A trailing alpha band is passed through untouched, and the image
+is mapped as 8-bit (a wider one is cast down first). Any other table size throws
+`PixelFXException`.
+
+```cpp
+auto luts = set.BuildChannelLuts();
+std::vector<std::vector<uint8_t>> tables;
+for (const auto& lut : luts) tables.emplace_back(lut.begin(), lut.end());
+PixelFX::PFXImage graded = PixelFX::Colour::MapLut(source, tables);
+```
+
+## The editor element
+
+```cpp
+auto editor = CreateCurveEditor("Curves", 0, 0, 320, 320);
+editor->SetCurves(existing);                       // seed from a stored adjustment
+editor->SetActiveChannel(ToneCurveChannel::Red);   // which curve is edited/drawn
+editor->SetHistogram(ToneCurveChannel::Red, bins); // 256 bin counts, optional
+editor->onCurveChanged  = [](const ToneCurveSet& s) { /* live preview */ };
+editor->onEditFinished  = [](const ToneCurveSet& s) { /* commit / undo step */ };
+editor->onSelectionChanged = [](int index) { /* update a readout */ };
+```
+
+Input (x, left to right) is plotted against output (y, bottom to top) over a
+grid, the identity diagonal and — when supplied — the histogram of the image
+being edited (drawn on a square-root scale so a dominant background tone does
+not flatten the rest of the distribution).
+
+Interaction follows the convention of every image editor's curves box:
+
+| Action | Result |
+|---|---|
+| Left click on empty space | Adds a point there and starts dragging it |
+| Left drag on a point | Moves it; endpoints slide along their edge |
+| Right click / double click on a point | Removes it |
+| `Delete` / `Backspace` | Removes the selected point |
+| Arrow keys | Nudges the selected point one 8-bit step (`Shift`: ten) |
+
+`ResetActiveChannel()` / `ResetAllChannels()` return curves to the identity.
+`GetSelectedPointValues(in, out)` gives the selected point in 8-bit units
+(both `-1` when nothing is selected) — what a readout line shows.
+
+Appearance comes from `CurveEditorStyle` (`Default()` / `Dark()`): grid,
+diagonal, curve, point, selection and histogram colours, plus `gridDivisions`,
+`pointSize`, `grabRadius` and `curveWidth`. The active channel's curve is drawn
+in its own colour (red / green / blue; the master curve in `curveColor`).
+
+## The dialog
+
+```cpp
+auto dlg = CreateCurvesDialog(currentCurves);
+dlg->SetHistogram(ToneCurveChannel::RGB, bins);        // one call per channel
+dlg->onCurvesChanged = [this](const ToneCurveSet& s) { Preview(s); };
+dlg->onAccept        = [this](const ToneCurveSet& s) { Commit(s); };
+dlg->onCancel        = [this]()                       { Restore(); };
+dlg->Create();   // hands ownership to the application window list
+dlg->Show();
+```
+
+The window holds the channel dropdown (RGB / Red / Green / Blue), a **Preview**
+checkbox, the curve editor, the selected-point readout and
+*Reset channel* / *Reset all* / *OK* / *Cancel*.
+
+`onCurvesChanged` fires on every drag step **while Preview is ticked**;
+unticking it sends an identity set so the host shows the untouched image, and
+re-ticking sends the edited curves back. Closing the window through its frame
+counts as Cancel. The dialog previews on the host's own display — it carries no
+thumbnail of its own, so the user judges the edit at full size.
+
+A host that keeps a pointer to the dialog must clear its callbacks (or close
+it) when the host itself goes away: the window lives in the application's window
+list, not in the host.
+
+## Notes
+
+- The model has its own unit test (`Tests/ToneCurveTest.cpp`, target
+  `ToneCurveTest`): point management, monotonicity, lookup tables, channel
+  composition and serialisation. Build with `-DBUILD_TESTS=ON`.
+- See also: [UltraCanvasMediaViewer.md](UltraCanvasMediaViewer.md) (the Curves
+  button and how the viewer stacks curves with its other adjustments).
+- A tone curve is a **function** `y = f(x)`, not free-form geometry. For
+  editing Bézier *paths* — anchors with tangent handles, closed shapes — see
+  [UltraCanvasBezierEditorProposal.md](UltraCanvasBezierEditorProposal.md),
+  which proposes a sibling element rather than a generalisation of this one.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDatePicker.md
 ==============================================================================
 
@@ -15010,6 +15201,130 @@ Inherited from the chart base: `SetChartTitle` / `SetTitle`, `SetShowGrid`,
 - Complexity is O(n) for both rendering and hit testing; the auto-fit layout
   keeps 50+ rows legible, beyond which a scrolling parent with auto-fit off and
   `GetPreferredHeight()` reads better.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEPSExamples.md
+==============================================================================
+
+# UltraCanvasEPS Documentation
+
+## Overview
+
+The `UltraCanvasEPSElement` is a UI element that loads and renders **Encapsulated PostScript** (`.eps`, `.epsf`, `.ps`) drawings inside an UltraCanvas window. It is part of the `UltraCanvasEPSPlugin`.
+
+EPS files are PostScript *programs*: real-world files (Illustrator, CorelDRAW, ghostscript, cairo, …) define their own procedures in a prolog and draw through them, so a fixed operator table cannot render them. The plugin therefore embeds a **PostScript-subset interpreter** — scanner, operand / dictionary / execution stacks, procedures, control flow, and the graphics, path, text and image operators — and plays the program back through the standard `IRenderContext`. There is no external dependency beyond zlib (for `FlateDecode` image data).
+
+EPS support is **partially implemented**: the interpreter covers the level-1/2 core that drawing programs actually emit; see *Known gaps* below for the approximations. Renderings of the shipped samples agree with ghostscript to within antialiasing differences.
+
+**Version:** 1.0.0
+**Header:** `Plugins/Vector/EPS/UltraCanvasEPSPlugin.h`
+**Namespace:** `UltraCanvas`
+**Base Class:** `UltraCanvasUIElement` (the plugin class derives from `IGraphicsPlugin`)
+
+## Features
+
+- PostScript scanner: numbers (radix forms included), `(strings)` with escapes, `<hex>` strings, literal and executable names, procedures, `<< >>` dictionaries, DSC comments
+- Execution model: operand / dictionary stacks, `def`/`bind`/`load`/`store`/`where`, `if`/`ifelse`/`for`/`repeat`/`loop`/`forall`/`exit`/`stopped`, arrays, strings and dictionary operators, PostScript single-precision `for` accumulation
+- Paths: `moveto`/`lineto`/`curveto` (absolute and relative), `arc`/`arcn`, `closepath`, `rectfill`/`rectstroke`/`rectclip`, `pathbbox`, `currentpoint`
+- Painting: `fill`, `eofill`, `stroke`, `clip`, `eoclip` — the even-odd rule renders through the new `IRenderContext::SetFillRule`
+- Full transform algebra: `translate`/`scale`/`rotate`/`concat`, matrix objects with `transform`/`itransform`/`dtransform`/`idtransform`/`invertmatrix`/`concatmatrix`
+- Color: gray, RGB, HSB, CMYK, `setcolorspace`/`setcolor` for the device spaces
+- Line attributes: width, caps, joins, miter limit, dash patterns (all CTM-scaled)
+- Sampled images: level-1 operand and level-2 dictionary forms, `image`/`imagemask`/`colorimage`, hex, `ASCII85Decode` and `FlateDecode` data sources; very large fallback rasters are sampled down
+- Text: `findfont`/`scalefont`/`makefont`/`setfont`/`selectfont`, `show` family (`ashow`, `widthshow`, `awidthshow`, `kshow`, `xshow`/`yshow`/`xyshow`), `stringwidth`; standard PS font names map to system families (Helvetica → Liberation Sans, Times → serif, Courier → monospace)
+- DOS EPS binary preview headers (`C5 D0 D3 C6`) are unwrapped automatically
+- `%%BoundingBox` (or `%%HiResBoundingBox`) sets the page; `%%Title` / `%%Creator` are exposed
+- Registers with `UltraCanvasGraphicsPluginRegistry` for extension-based file dispatch
+
+## Known gaps (diagnosed, approximated)
+
+- Embedded Type 1 fonts (`eexec`) are skipped; text renders in the mapped system font
+- `charpath` advances the caret but produces no outlines
+- Shading patterns (`shfill`, `makepattern`/`setpattern`) are not painted
+- `save`/`restore` only restore graphics state, not VM state
+- `initclip` cannot widen an active clip; `strokepath` leaves the path unchanged
+- Rotated/sheared *text* renders unrotated at the transformed size (paths transform fully)
+
+`EPSDocument::GetDiagnostics()` reports every operator the interpreter did not recognize (with use counts) and each approximation taken — the first thing to check when a file renders wrong. `Tests/EPSProbeTest` prints that triage from the command line and, with `--render <dir>`, rasterizes files to PNG for comparison against a ghostscript rendering.
+
+## Header Include
+
+```cpp
+#include "Plugins/Vector/EPS/UltraCanvasEPSPlugin.h"
+```
+
+## Class Reference
+
+### EPSDocument
+
+```cpp
+class EPSDocument {
+public:
+    bool LoadFromFile(const std::string& filepath);
+    bool LoadFromMemory(const uint8_t* data, size_t size);
+
+    float GetWidth() const;    // BoundingBox size in points
+    float GetHeight() const;
+
+    // Interpret the program against the context; the BoundingBox's
+    // lower-left corner maps to the page's bottom-left.
+    void Render(IRenderContext* ctx, float scale = 1.0f);
+
+    const EPSParseDiagnostics& GetDiagnostics() const;
+    const std::string& GetTitle() const;
+    const std::string& GetCreator() const;
+};
+```
+
+`EPSParseDiagnostics` carries `tokenCount`, `unknownOperators` (name → use count) and `warnings`.
+
+### UltraCanvasEPSElement
+
+```cpp
+class UltraCanvasEPSElement : public UltraCanvasUIElement {
+public:
+    UltraCanvasEPSElement(const std::string& identifier,
+                          float x, float y, float w, float h);
+
+    bool LoadFromFile(const std::string& filepath);
+    bool LoadFromMemory(const uint8_t* data, size_t size);
+    bool IsLoaded() const;
+    const std::string& GetLastError() const;   // reason of the last failed load
+
+    void SetScale(float s);
+    float GetScale() const;
+    void SetPreserveAspectRatio(bool preserve);
+    bool GetPreserveAspectRatio() const;
+
+    const EPSDocument* GetDocument() const;
+};
+```
+
+The element letterboxes the BoundingBox into its bounds (aspect preserved by default), paints a white page behind the drawing, and re-interprets the program on each render.
+
+### UltraCanvasEPSPlugin
+
+Implements `IGraphicsPlugin` for the extensions `eps`, `epsf`, `ps`; `ValidateFile` accepts `%!` signatures and DOS EPS binary headers. Register it at application startup:
+
+```cpp
+#ifdef ULTRACANVAS_HAS_EPS_PLUGIN
+    RegisterEPSPlugin();
+#endif
+```
+
+With registration in place the File Loader lists the extensions and `LoadGraphicsFile()` dispatches EPS files to this plugin.
+
+## Usage Example
+
+```cpp
+auto eps = std::make_shared<UltraCanvasEPSElement>("Logo", 20, 20, 300, 280);
+if (!eps->LoadFromFile("media/eps/demo.eps")) {
+    std::cerr << eps->GetLastError() << std::endl;
+}
+window->AddChild(eps);
+```
+
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/eps/` with a fullscreen viewer and zoom controls.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasERDiagram.md
@@ -25864,7 +26179,7 @@ A comprehensive, self-contained media viewer widget
 One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
 folder breadcrumb, two toolbar rows (open / navigation / slideshow /
-transitions, zoom / rotate / mirror / adjust / save / info), an image
+transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
 adjustments panel and a bottom info bar with a details popup.
 
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
@@ -25889,7 +26204,7 @@ The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
 
-Image-only tools (rotate, mirror, tone/colour adjustments, save-as) apply to
+Image-only tools (rotate, mirror, tone/colour adjustments, curves, save-as) apply to
 images; the zoom toolbar also drives the PDF view and, for e-books, the
 reading text scale (books reflow, so zoom is a text scale and "Fit" means a
 comfortable line measure across the pane).
@@ -26070,6 +26385,33 @@ The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+Each slider is **continuous over its whole range** and carries its live value in
+its caption (`Gamma  1.37`), so an edit can be read off and repeated. *Reset*
+puts the controls and the values back in one pass — curves included.
+
+### Curves (highlights, midtones, shadows)
+
+The sliders move the whole tone range at once. To reach one part of it — lift
+the shadows without blowing the highlights, drop a colour cast out of the
+whites — the *Curves* toolbar button opens
+[`UltraCanvasCurvesDialog`](UltraCanvasCurveEditor.md): a master (RGB) curve
+plus one per colour channel, over the histogram of the shown image.
+
+```cpp
+viewer->GetSurface()->GetAdjustments().curves;   // the ToneCurveSet in force
+```
+
+The curves live in `MediaAdjustments::curves` (a `ToneCurveSet`) and are applied
+**first** in the colour pipeline, as a per-channel lookup table
+(`PixelFX::Colour::MapLut`); the sliders then act on the curve's result, the way
+an image editor stacks a Curves layer under its brightness controls. They are
+part of the adjustment like everything else, so *Save as* bakes them in too.
+
+Dragging a point previews on the image itself at full size (untick *Preview* to
+compare against the original); *Cancel*, or closing the window, restores the
+curves the viewer had. The button applies to images — for any other kind of file
+the info bar says so and nothing opens.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMekkoChart.md
@@ -37470,6 +37812,31 @@ void SetStep(float stepValue);
 float GetStep() const;
 ```
 
+#### Step: what a slider snaps to
+
+`step` is the snap increment; **0 makes the slider continuous** (every position
+the track offers). A slider that is never given one follows its range:
+
+- range of **20 units or more** (0..100, 5..40) → whole-unit steps, as before;
+- **narrower** (0.2..3.0 gamma, a 0..1 ratio, 0..2 gain) → **continuous**,
+  because whole units would leave such a range with a handful of reachable
+  positions — a 0..2 slider would offer exactly three.
+
+`SetStep()` overrides that for good: the value stated by the caller survives any
+later `SetRange()`, so an integer control (quality 0..100 that narrows to 0..9,
+an effort level 0..6) keeps whole steps whatever range it is given.
+
+```cpp
+gamma->SetRange(0.2f, 3.0f);      // continuous by default
+quality->SetRange(0, 100);        // whole units by default
+effort->SetStep(1.0f);            // whole units, stated
+effort->SetRange(0, 6);           // ...and kept here
+seek->SetStep(0.0f);              // continuous, stated
+```
+
+`UltraCanvasSlider::MinAutoStepSpan` (20) is the threshold, and
+`DefaultStepForRange(min, max)` is the rule itself.
+
 ### Style Configuration
 
 ```cpp
@@ -45043,6 +45410,7 @@ multi-byte text. Reproducing even half of that by hand is a week of bugs.
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
+| A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |
 | Step through a sequence | `UltraCanvasStepper` | `UltraCanvasStepper.h` |
 
@@ -45106,6 +45474,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
+| Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 
 Charts, diagrams and document views live under `UltraCanvas/Plugins/` with their

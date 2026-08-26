@@ -837,6 +837,30 @@ add_test(
 )
 message(STATUS "    Test registered: LabelPlacementTest")
 
+# ===== TONE CURVE TEST =====
+# The tone curve model behind the Curves dialog: point management, monotone
+# interpolation, lookup tables and the four-curve set. Pure model code - no UI
+# stack, no image library.
+message(STATUS "  Building ToneCurveTest...")
+add_executable(ToneCurveTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ToneCurveTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasToneCurve.cpp
+)
+target_include_directories(ToneCurveTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ToneCurveTest PRIVATE cxx_std_20)
+set_target_properties(ToneCurveTest PROPERTIES
+    OUTPUT_NAME "ToneCurveTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ToneCurveTest
+    COMMAND ToneCurveTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ToneCurveTest")
+
 # ===== CHART ENGINE TEST =====
 # The engine's model layer: axis ranges and scales, tick generation and
 # formatting, layout negotiation, the vertical / horizontal / polar projections
@@ -917,6 +941,42 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ElementPluginTest")
+
+# ===== EPS PROBE TEST =====
+# Parses the shipped media/eps samples through the EPS plugin and reports
+# the interpreter's diagnostics; with cairo it also rasterizes to PNG for
+# comparison against a ghostscript rendering of the same file.
+if(TARGET UltraCanvasEPSPlugin)
+    message(STATUS "  Building EPSProbeTest...")
+    add_executable(EPSProbeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EPSProbeTest.cpp
+    )
+    target_include_directories(EPSProbeTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_compile_features(EPSProbeTest PRIVATE cxx_std_20)
+    target_compile_definitions(EPSProbeTest PRIVATE
+        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/eps"
+    )
+    target_link_libraries(EPSProbeTest PRIVATE UltraCanvasEPSPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(EPSPROBE_CAIRO cairo)
+            if(EPSPROBE_CAIRO_FOUND)
+                target_compile_definitions(EPSProbeTest PRIVATE EPSPROBE_HAVE_CAIRO=1)
+                target_include_directories(EPSProbeTest PRIVATE ${EPSPROBE_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(EPSProbeTest PRIVATE ${EPSPROBE_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(EPSProbeTest PROPERTIES
+        OUTPUT_NAME "EPSProbeTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EPSProbeTest COMMAND EPSProbeTest)
+    message(STATUS "    Test registered: EPSProbeTest")
+endif()
 
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:

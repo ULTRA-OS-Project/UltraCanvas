@@ -42,6 +42,7 @@ endif ()
 option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
@@ -149,6 +150,7 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library" FORCE)
     set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CorelDRAW CDR plugin" FORCE)
     set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_EPS OFF CACHE BOOL "Build EPS (PostScript) plugin" FORCE)
     set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin" FORCE)
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)" FORCE)
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" FORCE)
@@ -391,6 +393,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
+        # Tone curve model + interactive curve editor (Curves dialog, image tools)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToneCurve.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCurveEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCurvesDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpinner.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPagination.cpp
@@ -2127,6 +2133,17 @@ if(ULTRACANVAS_PLUGIN_XAR)
     endif()
 else()
     message(STATUS "  [−] XAR Plugin - SKIPPED (disabled by option)")
+endif()
+
+if(ULTRACANVAS_PLUGIN_EPS)
+    add_subdirectory(Plugins/Vector/EPS)
+    if(ULTRACANVAS_EPS_PLUGIN_FOUND)
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_EPS_PLUGIN_TARGET})
+        list(APPEND ULTRACANVAS_PLUGIN_INCLUDE_DIRS ${ULTRACANVAS_EPS_PLUGIN_INCLUDE_DIR})
+        message(STATUS "  [✓] EPS Plugin - ENABLED")
+    endif()
+else()
+    message(STATUS "  [−] EPS Plugin - SKIPPED (disabled by option)")
 endif()
 
 if(ULTRACANVAS_PLUGIN_VECTOR)
