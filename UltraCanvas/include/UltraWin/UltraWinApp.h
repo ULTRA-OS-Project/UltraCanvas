@@ -50,9 +50,14 @@ struct UltraWinAppInfo {
     int64_t processId = 0;        // host pid of the wine process
 };
 
-// Launch a Windows executable (host path to the .exe). Returns immediately
-// after the spawn; use UltraWin_GetAppState / UltraWin_WaitApp to follow the
-// application. On success *outHandle identifies the instance.
+// Launch a Windows program (host path). Routed by extension:
+//   .exe (and anything else) — run directly
+//   .msi                     — installed via `msiexec /i`
+//   .lnk                     — resolved via `start /wait /unix` (Start-Menu
+//                              shortcuts, see UltraWin_ListPrograms)
+// Returns immediately after the spawn; use UltraWin_GetAppState /
+// UltraWin_WaitApp to follow the application. On success *outHandle
+// identifies the instance.
 UltraWinResult UltraWin_RunApp(const std::string& executablePath,
                                const UltraWinRunOptions& options,
                                UltraWinHandle* outHandle);
@@ -77,3 +82,22 @@ UltraWinResult UltraWin_WaitApp(UltraWinHandle app, int timeoutMilliseconds,
 // Forget an ended instance (frees its slot). Fails with InvalidArgument
 // while the application is still running.
 UltraWinResult UltraWin_ReleaseApp(UltraWinHandle app);
+
+// ============================================================================
+// Installed programs — the Start-Menu shortcuts an installer created inside
+// an environment. This is what an ULTRA OS launcher shows so installed
+// Windows programs are startable like native ones: pass shortcutPath to
+// UltraWin_RunApp (routed through the .lnk path above).
+// ============================================================================
+struct UltraWinProgramInfo {
+    std::string name;          // menu name (shortcut file name, no .lnk)
+    std::string category;      // Start-Menu subfolder chain, "" at top level
+    std::string shortcutPath;  // host path of the .lnk inside the prefix
+    std::string environment;
+};
+
+// Start-Menu programs of one environment (both the all-users and per-user
+// menus), sorted by name. Uninstaller shortcuts are included — filter by
+// name where a launcher does not want them.
+std::vector<UltraWinProgramInfo> UltraWin_ListPrograms(
+    const std::string& environment);

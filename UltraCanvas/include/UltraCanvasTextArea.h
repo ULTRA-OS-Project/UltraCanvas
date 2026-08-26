@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.1
-// Last Modified: 2026-06-22
+// Version: 3.8.0
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,6 +10,8 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasSpellChecker.h"
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +21,7 @@
 #include <memory>
 #include <utility>
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <unordered_map>
 
@@ -310,6 +313,42 @@ namespace UltraCanvas {
         int visibleCp = 0;
         int sourceCp  = 0;
     };
+
+    // Visible/layout codepoint → source-line codepoint. Always well-defined; the visible-cp
+    // axis has no stripped regions. See LineLayoutBase::cpMap and the CpRun comment
+    // above for the mapping invariant.
+    inline int VisibleCpToSourceCp(const std::vector<CpRun>& cpMap, int visibleCp) {
+        if (cpMap.empty()) return visibleCp;
+        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), visibleCp,
+            [](int v, const CpRun& r) { return v < r.visibleCp; });
+        if (it == cpMap.begin()) return cpMap.front().sourceCp;
+        --it;
+        return it->sourceCp + (visibleCp - it->visibleCp);
+    }
+
+    // Source-line codepoint → visible/layout codepoint. If `sourceCp` falls strictly inside
+    // a stripped region (between two segments), the result is snapped to the start of the
+    // next visible segment when `snapForward = true` (default), or to the end of the
+    // previous one when `snapForward = false`. Pass `false` for selection-end so a
+    // selection that ends at the trailing marker doesn't grow visually past it.
+    inline int SourceCpToVisibleCp(const std::vector<CpRun>& cpMap, int sourceCp,
+                                   bool snapForward = true) {
+        if (cpMap.empty()) return sourceCp;
+        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), sourceCp,
+            [](int s, const CpRun& r) { return s < r.sourceCp; });
+        if (it == cpMap.begin()) return cpMap.front().visibleCp;
+        auto prev = it - 1;
+        int segVisibleEnd = (it == cpMap.end()) ? prev->visibleCp : it->visibleCp;
+        int segSourceEnd  = prev->sourceCp + (segVisibleEnd - prev->visibleCp);
+        if (sourceCp <= segSourceEnd) {
+            return prev->visibleCp + (sourceCp - prev->sourceCp);
+        }
+        // Strictly inside a stripped region between this segment and the next.
+        if (snapForward) {
+            return (it == cpMap.end()) ? segVisibleEnd : it->visibleCp;
+        }
+        return segVisibleEnd;
+    }
 
     struct LineLayoutBase {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
@@ -689,6 +728,48 @@ namespace UltraCanvas {
         void AddWarningMarker(int lineIndex, const std::string& message);
         void ClearMarkers();
 
+        // ===== CHARACTER RANGE GEOMETRY =====
+        // Maps a byte range of the document to the on-screen rectangles covering
+        // it. One rectangle per visual line, because a range can cross a soft
+        // wrap or a shard boundary; ranges scrolled out of view are omitted, so
+        // an empty result is normal rather than an error.
+        //
+        // Not spell-check specific: search-result highlighting, inline diff
+        // marks, comment anchors and collaborative cursors need the same map.
+        std::vector<Rect2Df> GetCharacterRangeBounds(size_t startByte, size_t byteLength);
+
+        // Replaces a byte range of the document. Goes through the selection and
+        // undo machinery, so the edit is undoable and fires onTextChanged like
+        // any other. Returns false on a read-only area or an out-of-range span.
+        bool ReplaceTextRange(size_t startByte, size_t byteLength,
+                              const std::string& replacement);
+
+        // ===== SPELL CHECKING =====
+        // Checking runs on the shared UltraCanvasSpellChecker worker thread; the
+        // element only queues text and drains finished results while rendering.
+        // Requires the service to be initialised and enabled as well.
+        void SetSpellCheckEnabled(bool enabled);
+        bool IsSpellCheckEnabled() const { return spellCheckEnabled; }
+        void SetSpellCheckOptions(const SpellCheckOptions& options);
+        const SpellCheckOptions& GetSpellCheckOptions() const { return spellOptions; }
+
+        // Queues a check of the current text immediately.
+        void RunSpellCheck();
+
+        const std::vector<SpellError>& GetSpellErrors() const { return spellErrors; }
+
+        // Error under a screen point, or nullptr. Used to open the suggestion
+        // menu on right-click.
+        const SpellError* GetSpellErrorAtPosition(int x, int y);
+
+        // Replaces the flagged word with `replacement` and re-queues a check.
+        bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
+
+        // Opens the suggestion menu if the event lands on a flagged word.
+        // Returns false when it does not, so the caller can fall through to its
+        // normal handling. Called from HandleMouseDown for right-clicks.
+        bool ShowSpellSuggestionMenu(const UCEvent& event);
+
         // Callbacks
         TextChangedCallback onTextChanged;
         CursorPositionChangedCallback onCursorPositionChanged;
@@ -829,6 +910,27 @@ namespace UltraCanvas {
                                              const std::vector<InlineRun>& runs,
                                              std::vector<MarkdownHitRect>& outHitRects);
 
+        // ===== SPELL CHECK INTERNALS =====
+        // Byte offsets here are into textContent, which is the verbatim
+        // concatenation of `lines`. Long logical lines are sharded across
+        // several `lines` entries, so a spell result's own lineIndex (which
+        // counts newlines) cannot be used as an index into `lines` - these
+        // resolve positions from the byte offset instead.
+        bool ByteOffsetToLineColumn(size_t byteOffset, LineColumnIndex& out) const;
+        bool LineColumnToByteOffset(const LineColumnIndex& idx, size_t& out) const;
+        void DrawSpellErrorMarks(IRenderContext* ctx);
+        void QueueSpellCheck();
+        // Drops the errors whose span no longer holds the word they were raised
+        // for, so an edit never leaves a mark on the wrong text.
+        void DropStaleSpellErrors();
+        // Asks the service to request a repaint when a result lands, so a check
+        // finishing after the edit's frame still gets drawn.
+        void RegisterSpellResultNotifier();
+        // Emits one rectangle per visual line covered by [sourceStartCp, sourceEndCp)
+        // within a single line layout, splitting on soft-wrap boundaries.
+        void AppendLineRangeBounds(LineLayoutBase* line, int sourceStartCp, int sourceEndCp,
+                                   std::vector<Rect2Df>& outBounds);
+
         // handle cursor position
         Rect2Di LineColumnToCursorPos(const LineColumnIndex& idx);
         LineColumnIndex PosToLineColumn(const Point2Di& pos);
@@ -873,6 +975,20 @@ namespace UltraCanvas {
         bool isDraggingVerticalThumb = false;
         bool isCursorMoved = false;
         bool isTextChanged = false;
+
+        // Spell checking. spellContextId identifies this element to the shared
+        // service; it is this pointer's value, which is unique for the lifetime
+        // of the element and released in the destructor via CancelContext.
+        bool spellCheckEnabled = false;
+        std::vector<SpellError> spellErrors;
+        uint64_t spellContextId = 0;
+        SpellCheckOptions spellOptions;
+        // Held so the popup outlives the click that opened it.
+        std::shared_ptr<UltraCanvasMenu> spellSuggestionMenu;
+        // The destructor clears this so a queued repaint that outlives the
+        // element becomes a no-op instead of a dangling call.
+        std::shared_ptr<std::atomic<bool>> spellAlive =
+                std::make_shared<std::atomic<bool>>(true);
 
         // Mouse text selection state
         bool isSelectingText = false;

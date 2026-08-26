@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.18.0
-// Last Modified: 2026-08-24
+// Version: 1.19.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -67,6 +67,7 @@
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasProgressDialog.h"
+#include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasContainer.h"
@@ -122,6 +123,10 @@ namespace UltraCanvas {
         // How often the UI reads the archive worker's counters. Fast enough
         // that the ring moves smoothly, slow enough to cost nothing.
         constexpr unsigned int kArchivePollIntervalMs = 100;
+        // How often the UI applies a change the NATIVE watcher reported. The
+        // OS tells us immediately; this is only the hand-over to the UI thread,
+        // so it is short - and it costs one atomic read per tick.
+        constexpr unsigned int kNativeWatchApplyIntervalMs = 200;
 
         // ===== RESIZABLE COLUMNS =====
         // Narrowest a column can be dragged; the Name column keeps more so it
@@ -1727,6 +1732,7 @@ namespace UltraCanvas {
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
         StopFolderWatchTimer();     // its callback captures `this`
+        folderWatcher.Stop();       // joins its thread; its callback too
         // A pack / unpack still running: ask it to stop, then wait for it. The
         // worker holds no widget state, but its thread must not outlive the
         // widget whose poll timer would report it.
@@ -7900,7 +7906,7 @@ namespace UltraCanvas {
         if (enabled) {
             WatchFolder(fileListMode ? std::string() : currentPath);
         } else {
-            WatchFolder("");
+            WatchFolder("");        // also stops the native watcher
             StopFolderWatchTimer();
             folderWatchDirty.store(false);
         }
@@ -7971,12 +7977,29 @@ namespace UltraCanvas {
         const std::string target =
                 (folderWatchEnabled && !path.empty() && fs::is_directory(path, ec))
                         ? path : std::string();
+
+        // The operating system can usually tell us the moment something
+        // changes - inotify, ReadDirectoryChangesW - which beats re-reading
+        // the folder on a timer on both latency and cost. The callback runs on
+        // the watcher's thread and does nothing but raise the flag the UI timer
+        // already polls, so the rest of the machinery is unchanged.
+        folderWatcher.Stop();
+        nativeWatchActive = false;
+        if (!target.empty()) {
+            nativeWatchActive = folderWatcher.Watch(target, [this]() {
+                folderWatchDirty.store(true);
+            });
+        }
+
         {
             std::lock_guard<std::mutex> lk(folderWatchMutex);
             if (folderWatchShutdown) return;
             const bool sameFolder = (folderWatchPath == target) &&
                                     (folderWatchIncludeHidden == showHiddenFiles);
-            folderWatchPath = target;
+            // With a native watcher running the fingerprint worker has nothing
+            // to do: it would re-scan the folder every interval to learn what
+            // the OS just told us.
+            folderWatchPath = nativeWatchActive ? std::string() : target;
             folderWatchIncludeHidden = showHiddenFiles;
             // A new folder (or a changed hidden-files setting) needs a fresh
             // baseline: the worker's first fingerprint of it only measures.
@@ -7985,7 +8008,7 @@ namespace UltraCanvas {
                 folderWatchSignature = 0;
             }
             if (target.empty()) return;
-            StartFolderWatchWorkerLocked();
+            if (!nativeWatchActive) StartFolderWatchWorkerLocked();
         }
         folderWatchDirty.store(false);   // whatever was pending described the old folder
         folderWatchCond.notify_all();
@@ -8063,7 +8086,13 @@ namespace UltraCanvas {
         if (folderWatchTimer != InvalidTimerId) return;
         auto* app = UltraCanvasApplication::GetInstance();
         if (!app) return;
-        folderWatchTimer = app->StartTimer(folderWatchIntervalMs, true,
+        // Polling: no point checking more often than the worker re-fingerprints.
+        // Native: the flag is already set when the OS said so, and this
+        // interval is the only delay left before the user sees it.
+        const unsigned int tick = nativeWatchActive
+                ? kNativeWatchApplyIntervalMs
+                : static_cast<unsigned int>(folderWatchIntervalMs);
+        folderWatchTimer = app->StartTimer(tick, true,
                                            [this](TimerId) {
             if (!folderWatchDirty.load()) return;
             if (IsBusyForAutoRefresh()) return;   // try again on the next tick

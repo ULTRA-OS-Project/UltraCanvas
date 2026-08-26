@@ -26,6 +26,294 @@
   the existing sliders act on their result, and *Save as* bakes them in like
   every other adjustment. This is the tool that reaches highlights, midtones
   and shadows separately; the sliders move the whole tone range at once.
+#### 2026-08-26 *0.3.72*
+- **The XAR renderer draws real Xara files correctly now.** Files written by
+  a modern Xara (Designer Pro X19) displayed as scattered, unfilled
+  fragments; the repo's `demo.xar` now reproduces its embedded preview —
+  all four logos, correct fills, correct positions — and `backside.xar`
+  renders as a real page instead of failing outright. Four defects fixed:
+  - **The document tree was built wrong.** The Xar grammar is
+    `object record, TAG_DOWN, child records, TAG_UP` — but containers
+    pushed themselves at record time while every object's TAG_UP popped
+    once more than was pushed, unwinding the stack until most objects
+    attached to the root. TAG_DOWN now descends into the node the previous
+    record created.
+  - **Object attributes were lost.** An object's fill and line attributes
+    arrive as its child records, after the object; the parser snapshotted
+    attributes at object-record time and then reverted them at TAG_UP, so
+    almost every path rendered unfilled. The enclosing object now
+    re-snapshots the running context as its attribute children execute.
+  - **Relative path coordinates decoded with the wrong sign.** The first
+    coordinate of a relative path record is absolute; every following one
+    stores the reverse delta (previous minus current). Adding instead of
+    subtracting kept each subpath's shape but scattered the pieces —
+    verified against the renderings Xara itself embeds in the file.
+  - **One bad record could blank the whole drawing.** A singular transform
+    matrix or a zero font size put the cairo context into an unrecoverable
+    error state; both are guarded now.
+- **Bitmap and contone-bitmap fills render.** The embedded bitmap is decoded
+  through `UCImage`, mapped onto the fill parallelogram and clipped to the
+  path; a contone fill maps the bitmap's luminance between the fill's two
+  colours — luminance 0 to the first, 255 to the second — keeping the
+  bitmap's own (inverted) transparency, so the page shows through where the
+  bitmap is transparent. The orientation and the preserved alpha are both
+  verified against Xara's own renderings: the file-embedded preview of the
+  `demo.xar` cogwheel, and the author's PDF export of a logo whose soft
+  shadow is a flattened contone (which previously painted its whole
+  bounding box black). Tinted results are cached per bitmap definition.
+  Text also draws upright now (it was mirrored by the document's Y-flip).
+- **Regular shapes (QuickShapes) parse and render correctly.** The
+  `TAG_REGULAR_SHAPE_PHASE_1/2` records (every square mosaic in a modern
+  Xara drawing) were read with a guessed layout, producing garbage geometry
+  — one such shape painted a full-page colour slab over everything. They
+  now follow Xara LX's record layout (flags, side count, edge-midpoint
+  axes, fixed-point matrix, stellation/curvature), and the on-disk MATRIX
+  reader itself was wrong everywhere: 6 doubles instead of the spec's four
+  16.16 fixed-point values plus two millipoint integers.
+- **Embedded bitmaps keep their transparency the way Xara means it.**
+  Xar-embedded PNGs store transparency, not alpha, in the alpha channel
+  (255 = fully transparent); a standard decode premultiplies the colour of
+  exactly the pixels such a bitmap wants shown down to black.
+  `UCImageRaster::CreatePixmapAlphaInverted()` decodes with the channel
+  inverted before premultiplication, and plain bitmap fills use it.
+- **Text stories lay their lines out.** Successive `TextLine`s step down
+  one leading instead of overprinting on the story origin, a line's spans
+  advance horizontally instead of overprinting each other, and the
+  paragraph justification is honoured: the story origin is the anchor, so
+  centred text centres on it and right-aligned text ends at it.
+  Single-character records (`TAG_TEXT_CHAR` — dingbats, styled numerals)
+  render as one-character spans, explicit kerns (`TAG_TEXT_KERN`) adjust
+  the caret, and span boundaries are normalised against Xara's own line
+  width (`TAG_TEXT_LINE_INFO`) so substituted fonts don't push spans
+  apart. Verified page-by-page against the author's PDF export of a
+  13-slide pitch deck.
+- **Soft shadows draw as silhouettes.** `TAG_SHADOWCONTROLLER` used to be
+  skipped entirely, silently dropping every shadowed object's shadow. The
+  controller now parses its record (type, penumbra width, offset,
+  darkness) and renders its children twice: first as a flat silhouette in
+  the shadow paint — glows (type 3) as a symmetric halo, wall/floor
+  shadows displaced by the stored offset — then normally on top. The
+  penumbra is approximated with widened, fainter stroke passes around the
+  silhouette. Calibrated against a MAGIX Photo & Graphic Designer 16
+  export where every bar of a logo carries a glow shadow.
+- **Text renders WYSIWYG against Xara's own output now** — verified line by
+  line against a Designer Pro X19 text-formatting test and its author's PDF
+  export:
+  - *Measure and draw finally agree.* Spans were measured through the pango
+    layout engine but drawn through cairo's toy text API, which resolves
+    fonts differently — every caret position drifted. Spans now draw
+    through the same layouts that measure them (`DrawSpanText` /
+    `MeasureSpanText`), baseline-anchored.
+  - *Glyphs were 4/3 too large.* The render context's font size is points
+    at the text system's 96 dpi resolution while XAR page pixels are 72 dpi
+    points; `ApplyTextFont` now converts.
+  - *Xara's own line positions.* `TAG_TEXT_LINE_INFO` carries each line's
+    baseline step; accumulating it replaces the leading heuristic, fixing
+    line spacing everywhere (visible on the pitch deck's centred slides).
+  - *Full justification.* Lines of a fully-justified paragraph spread
+    their word gaps to Xara's stored line width — every line except the one
+    carrying the paragraph's `TAG_TEXT_EOL`, which stays at natural width.
+  - *Bullet and numbered lists.* The undocumented `TAG_TEXT_LIST_*`
+    records (4404/4405/4410, written by modern Xara) mark list items;
+    marker glyphs render at the marker indent, item text and wrapped
+    continuation lines at the hanging indent.
+  - *Font names parse correctly.* `TAG_FONT_DEF_TRUETYPE` starts with the
+    typeface name; the old parser read panose bytes first and only
+    recovered 5-character names ("Arial") by accident.
+- **Multi-page documents render page by page.** Every spread's coordinates
+  restart at its own origin, so a multi-spread file (a pitch deck, a
+  multi-page brochure) used to draw all its pages on top of each other.
+  `XARDocument` now exposes the spread list as pages
+  (`GetPageCount` / `GetPageWidth` / `GetPageHeight` / `RenderPage`), the
+  XAR element gets `SetCurrentPage` / `onPageChanged`, and `XARProbeTest
+  --render` writes one PNG per page. Verified on a real 13-slide Xara
+  Designer Pro X19 pitch deck: all thirteen slides render individually.
+- **The demo's XAR page is active.** It shows both shipped samples
+  (`media/xar/demo.xar`, `media/xar/backside.xar`) as clickable tiles with
+  load-failure reasons in the status line, and the fullscreen viewer gained
+  page navigation (prev/next with a page counter, via the element's new
+  page API), zoom in/out and fit-page. The page's stale CorelDRAW wording
+  is gone, and `UltraCanvasXARElement` now paints a white page behind the
+  drawing (`IsLoaded()` added), so drawings read correctly on the dark
+  fullscreen backdrop.
+- **`XARDocument` gained parse diagnostics** — records dispatched, unhandled
+  record tags with counts, structural warnings — via `GetDiagnostics()`,
+  and **`XARProbeTest`** (Tests/, needs `-DBUILD_TESTS=ON`) prints that
+  triage for any `.xar` file and rasterizes it to PNG with `--render <dir>`
+  for comparison against reference screenshots. It doubles as a parse
+  regression test over `media/xar/`.
+
+#### 2026-08-26 *0.3.71*
+- **CDR files can be saved as SVG.** The CDR plugin gains an export API:
+  `UltraCanvasCDRPlugin::ExportToSVG(cdrPath, svgPath, pageIndex)` re-parses
+  the CorelDRAW/CMX source through librevenge's `RVNGSVGDrawingGenerator`, so
+  everything libcdr understands — paths, shapes, gradients, text, embedded
+  bitmaps — is preserved in the SVG. `pageIndex` selects one page; `-1`
+  exports every page (page N ≥ 2 to `<stem>-p<N>.svg`, since SVG has no
+  multi-page form). No new dependency: the generator ships in core
+  librevenge. `ExportToXAR` exists as API but reports "not implemented yet"
+  with the reason (the XAR writer exports only from the `VectorStorage`
+  model, which nothing imports CDR into yet) instead of writing a broken
+  file; results come back as `CDRExportResult{success, error, writtenFiles}`.
+- **The demo's CDR page shows its samples again, each with a "Save as…"
+  button.** The `demo1.cdr` and `detailed.cdr` (zoom demo) tiles were
+  commented out — re-enabled against the samples that ship in `media/cdr/`,
+  alongside `demo.cdr` and the multi-page `logo.cdr`. Every tile gets a
+  "Save as…" button: native save dialog offering SVG and XAR (marked "not
+  finished yet"), exporting the page currently shown; the outcome — files
+  written or the exact error — lands in the page's status label. The CMX
+  tile stays disabled until a `.cmx` sample ships.
+
+#### 2026-08-26 *0.3.70*
+- **The CDR and XAR graphics plugins are actually registered now, so the File
+  Loader can see them.** Both plugins compiled, and the demo displayed them by
+  constructing the elements directly — but the one `RegisterCDRPlugin()` call
+  had been commented out, so `UltraCanvasGraphicsPluginRegistry` stayed empty:
+  the File Loader's supported-format inventory never listed `cdr`/`cmx`/`ccx`/
+  `cdt` (or `xar`), and extension-based dispatch (`LoadGraphicsFile`) returned
+  null for files both plugins could parse. The demo now registers each plugin
+  at startup under its `ULTRACANVAS_HAS_*_PLUGIN` guard, exactly as the docs'
+  integration checklist prescribes. Verified end-to-end: with registration,
+  `UltraCanvasFileLoader::GetSupportedFormats(Vector)` reports all four CDR
+  extensions with the plugin as provider, and `LoadGraphicsFile()` parses every
+  sample under `media/cdr/` into a loaded multi-page element.
+- **CDR plugin build cleanup.** The plugin's CMakeLists demanded libvips,
+  vips-cpp and glib-2.0 as `REQUIRED` although the plugin never uses any of
+  them (parsing is libcdr + librevenge; images decode through `UCImage`) —
+  a stray hard dependency that broke the build on systems without libvips
+  headers. Removed, along with the unused include paths. The plugin now builds
+  against exactly what it links: libcdr, librevenge, and the UltraCanvas core.
+- Elements the CDR plugin creates for the registry are now named from a
+  monotonic counter instead of `rand()`, so identifiers cannot collide.
+- Fixed the vector storage plugin's target name typo:
+  `UltraCanvasVectorlugin` → `UltraCanvasVectorPlugin` (referenced only
+  through exported variables, so nothing else moves).
+#### 2026-08-25 *0.3.69*
+- **Transparent images get their backdrop colours under the picture.** Until
+  now the only way to change what shows through a transparent PNG or an SVG was
+  a settings dialog in the host application - the viewer itself offered
+  nothing. A file that really has transparency now shows a strip of swatches
+  directly beneath the image: the checkered pattern first, then six greys, then
+  twelve colours. Clicking one makes it the backdrop; the checkerboard swatch
+  goes back to the transparency pattern. A file without transparency shows no
+  strip at all, so nothing is given up where it would mean nothing.
+  - `UltraCanvasMediaViewer::SetTransparencyPaletteVisible` turns the strip off
+    for hosts with their own chooser, `GetTransparencyPalette()` hands out the
+    element for different colours or metrics, and
+    `onTransparentBackgroundChanged` reports what was picked. The strip also
+    follows `SetTransparentBackground()` / `SetTransparentColor()` set from
+    anywhere else, marking the matching swatch.
+- **`UltraCanvasColorSwatchBar`** is the new element behind it (`include/`
+  + `core/`), for anywhere a full colour picker is too much furniture: a strip
+  of colours, an optional leading checkerboard entry, hover and selection
+  outlines, per-swatch hex tooltips, `onColorSelected` / `onCheckeredSelected`.
+  It **sizes its swatches to the space it is given** - growing towards the
+  preferred size, shrinking towards the minimum - so the same palette fits a
+  narrow preview pane and a full window, which a fixed row of buttons cannot
+  do. It never takes the keyboard focus, so a host keeps its own arrow keys.
+  Ready-made palettes: `GrayscalePalette()`, `ColorPalette()`,
+  `DefaultPalette()`.
+- **`UCImage::HasTransparency()`** answers whether anything behind an image can
+  show through it: an alpha channel that is actually used, or a vector document
+  (SVG), which paints over whatever is beneath it. The fully opaque alpha
+  channel a PNG export routinely carries counts as opaque - the channel's
+  minimum settles it, except on images too large to scan on the way to the
+  screen, where its presence is taken at face value. Worked out once per image
+  and kept.
+- **UltraFiler** saves a colour picked from the strip in the preview pane, so
+  the next preview opens with it - the same setting as *Settings > Media Viewer
+  > Transparent Images*.
+
+#### 2026-08-25 *0.3.68*
+- **The media viewer's PDF page zooms like a picture now.** The wheel over the
+  page zooms about the pointer - the spot under the cursor stays under it - and
+  the keyboard steps with `+` / `-`, fits the page with `0`, shows actual size
+  with `1` and fits the width with `W`. The image surface has always zoomed on
+  the plain wheel; the PDF view scrolled and left zooming to Ctrl+wheel, so the
+  same gesture did two different things depending on the file. Both are
+  reachable either way: `UltraCanvasPDFView::SetWheelAction` picks what the
+  plain wheel does and Ctrl+wheel always does the other, the media viewer asks
+  for `Zoom` (`SetDocumentWheelZoom(false)` puts scrolling back), and a bare
+  `UltraCanvasPDFView` keeps its old default of scrolling. The info bar reports
+  the PDF's zoom the way it reports an image's.
+- **The PDF page inventory can be a fixed width instead of a share of the
+  view.** The thumbnail strip was always a quarter of the view width capped at
+  160 px, which is right for a viewer window and wrong for a preview pane,
+  where the same document's inventory changed size with the pane.
+  `SetThumbnailWidthMode` now chooses: `Relative` (the shipped behaviour, the
+  share is `SetThumbnailWidthFraction`) or `Absolute`, an exact thumbnail width
+  in pixels (`SetThumbnailWidth`) that only gives way when the strip would take
+  more than half a very narrow view. The media viewer forwards both
+  (`SetPDFThumbnailWidth` / `SetPDFThumbnailWidthFraction`) and remembers the
+  choice for documents opened later.
+- **UltraFiler: Settings > Display > PDF Inventory.** A new settings page sets
+  the width of the page thumbnails in the preview's PDF inventory - a slider
+  from 32 to 120 px (56 px by default, the width the preview pane ships with)
+  or, in relative mode, a 5-40 % share of the preview's width. Moving either
+  slider selects its own mode, the choice applies to the open preview
+  immediately and is saved to `config.ini`
+  (`display.pdf.inventory.mode` / `.width` / `.percent`).
+- The demo app's PDF example gained a strip-width toggle (`Strip: 25%` /
+  `Strip: 56px`) next to the page-number style toggle.
+
+#### 2026-08-25 *0.3.67*
+- **The Filer's folder watching is the operating system's now, not a timer.**
+  It shipped as a poll: a worker re-fingerprinted the shown folder every 1.5 s
+  by scanning it, which meant up to a second and a half of latency and a full
+  directory scan every interval whether anything happened or not - on a folder
+  with thousands of entries, forever, for nothing. The new
+  `UltraCanvasFolderWatcher` asks the system instead: inotify on Linux and BSD,
+  `ReadDirectoryChangesW` on Windows. A change is seen the moment it happens and
+  an idle folder costs nothing.
+  - The watcher is a small service of its own (`UltraCanvasFolderWatcher.h`),
+    not Filer-private: `Watch(path, onChanged)` / `Stop()`, one directory, not
+    recursive. `Stop()` joins the backend thread, so no callback can arrive
+    after it returns - which is what lets a caller's callback capture the
+    caller.
+  - Platform code lives under `OS/<Platform>/`; the core file makes no
+    operating system calls. Platforms without a backend (macOS, Android,
+    WebAssembly) return false from `Watch()` and the Filer keeps the polling
+    worker it already had, so nothing regresses there and adding a backend
+    later touches nothing above the header.
+  - `UltraCanvasFilerWidget::IsFolderWatchNative()` reports which of the two is
+    running. The watch interval now governs detection only while polling; with
+    a native watcher it bounds only how quickly the UI applies the change.
+  - Everything the poll fed into is unchanged: the refresh is still held back
+    while an open rename editor, a drag, a marquee, a context menu or a file
+    operation owns the view.
+- **`FolderWatcherTest`** covers the contract on every platform - that changes
+  are reported, that unwatchable paths are refused, that `Stop()` is final and
+  repeatable, and that a watcher can be re-pointed at another folder. It builds
+  from the watcher's own sources, so it needs no display and no library, and on
+  a platform with no backend it asserts exactly that instead of being skipped.
+
+#### 2026-08-25 *0.3.66*
+- **Spell checking, and text areas that use it.** The framework had no spell
+  checker at all. `UltraCanvasSpellChecker` adds one: a service owning a
+  backend, a user dictionary, a session ignore list and a worker thread, so a
+  dictionary lookup never happens on the render thread. Backends sit behind the
+  UltraCanvas-owned `ISpellCheckBackend` and are picked at runtime — enchant-2
+  on Linux, ISpellChecker on Windows 8+, NSSpellChecker on macOS, Hunspell
+  everywhere else and as the fallback. All of it is optional: with nothing
+  installed the module compiles, reports zero dictionaries and does nothing,
+  rather than failing the build.
+  `UltraCanvasTextArea::SetSpellCheckEnabled(true)` is the whole integration for
+  an application — misspellings get a squiggle, right-click offers suggestions
+  plus Add to Dictionary and Ignore, and a chosen suggestion is applied as an
+  ordinary undoable edit. One line puts the language menu in a menu bar:
+  `UltraCanvasSpellChecker::BuildSpellCheckMenu()` lists only the dictionaries
+  actually installed, as a radio group that shows which one is active, and
+  rebuilds itself each time it opens so the host never has to.
+- **Text areas can say where a character range is on screen.** `TextArea::
+  GetCharacterRangeBounds(startByte, byteLength)` maps a byte range of the
+  document to the rectangles covering it, accounting for soft wrap, both scroll
+  offsets, the line-number gutter, sharded long lines and markdown mode (where
+  rendered runs do not match source bytes one-to-one). One rectangle per visual
+  line. Nothing equivalent existed, and it is what search-result highlighting,
+  inline diff marks, comment anchors and collaborative cursors all need.
+  `ReplaceTextRange(startByte, byteLength, text)` is its counterpart, replacing
+  a range through the selection and undo machinery so the edit behaves like a
+  typed one.
 
 #### 2026-08-24 *0.3.65*
 - **The numeric keypad's Enter finishes a text entry.** `UltraCanvasTextInput`

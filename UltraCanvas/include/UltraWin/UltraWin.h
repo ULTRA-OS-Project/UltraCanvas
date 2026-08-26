@@ -9,3 +9,4 @@
 #include "UltraWinCore.h"
 #include "UltraWinEnvironment.h"
 #include "UltraWinApp.h"
+#include "UltraWinVm.h"

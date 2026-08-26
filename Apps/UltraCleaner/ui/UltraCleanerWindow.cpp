@@ -17,6 +17,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 #include <thread>
@@ -113,6 +114,13 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     }
     window_->AddChild(tabs_);
 
+    // Follow the window. Everything inside the tabs is laid out rather than
+    // positioned, so resizing the tab container is the whole job.
+    LayoutForSize(kWindowWidth, kWindowHeight);
+    window_->onWindowResize = [this](int width, int height) {
+        LayoutForSize(static_cast<float>(width), static_cast<float>(height));
+    };
+
 
     // Worker threads queue their results here; this timer applies them on the
     // UI thread.
@@ -126,6 +134,8 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildHomePage() {
     auto page = homeView_.Build(kWindowWidth - 40, kWindowHeight - 170);
+    page->SetElementSize(CSSLayout::Dimension::Pct(100),
+                         CSSLayout::Dimension::Pct(100));
     // The overview's two buttons are shortcuts into the tabs behind it.
     homeView_.onCleanSystemJunk = [this]() {
         if (tabs_) tabs_->SetActiveTab(kRuleTab);
@@ -138,6 +148,8 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildHomePage() {
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildAlbumPage() {
     auto page = albumView_.Build(kWindowWidth - 40, kWindowHeight - 170);
+    page->SetElementSize(CSSLayout::Dimension::Pct(100),
+                         CSSLayout::Dimension::Pct(100));
     albumView_.onChooseFolder = [this]() { ChooseAlbumFolder(); };
     albumView_.onScan         = [this]() { StartAlbumScan(); };
     albumView_.onStop         = [this]() { albumScanner_.RequestCancel(); };
@@ -148,10 +160,39 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildAlbumPage() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRulePage() {
+    // Laid out, not positioned. Absolute offsets inside a tab page assume a
+    // tab strip of a particular height, which is a font-metric away from
+    // being wrong — on Windows it clipped the toolbar along its top edge.
     auto page = CreateContainer("ucRulePage", 0, 0, kWindowWidth - 40,
                                 kWindowHeight - 170);
+    page->layout.SetFlexColumn()
+                .SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(10);
+    // No explicit size: the tabbed container measures its active page with
+    // an exact width and height, so the page must not carry a size of its own
+    // that competes with that.
+    page->SetElementSize(CSSLayout::Dimension::Auto(),
+                         CSSLayout::Dimension::Auto());
+    ContainerStyle plainPage;
+    plainPage.autoShowScrollbars = false;
+    page->SetContainerStyle(plainPage);
 
-    page->AddChild(BuildToolbar());
+    auto toolbar = BuildToolbar();
+    page->AddChild(toolbar);
+    toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    toolbar->layoutItem.SetFlexShrink(0);
+
+    // The two panels side by side, taking whatever height is left.
+    auto columns = CreateContainer("ucRuleColumns", 0, 0, 0, 0);
+    columns->layout.SetFlexRow()
+                   .SetFlexGap(12)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ContainerStyle plainColumns;
+    plainColumns.autoShowScrollbars = false;
+    columns->SetContainerStyle(plainColumns);
+    columns->SetElementSize(CSSLayout::Dimension::Auto(),
+                            CSSLayout::Dimension::Auto());
 
     auto categories = CreateGroupBox("ucCategoryBox", 12, 48, 404, 500,
                                      "What to clean");
@@ -165,6 +206,10 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRulePage() {
     ContainerStyle plainBox;
     plainBox.autoShowScrollbars = false;
     categories->SetContainerStyle(plainBox);
+    // A literal height would freeze the box at its opening size; the width is
+    // deliberate (a readable column), the height comes from the row.
+    categories->SetElementSize(CSSLayout::Dimension::Px(404),
+                               CSSLayout::Dimension::Pct(100));
     auto categoryList = categoryPanel_.Build(0, 0, 376, 520);
     categories->AddChild(categoryList);
     categoryList->layoutItem.SetFlexGrow(1);
@@ -172,18 +217,65 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRulePage() {
     categoryPanel_.onCategoryToggled = [this](CleanCategory category, bool on) {
         ApplyCategorySelection(category, on);
     };
-    page->AddChild(categories);
-    page->AddChild(BuildDetailPanel());
+    columns->AddChild(categories);
+    // The category list keeps a readable, roughly constant width; the detail
+    // list takes the rest, because that is the panel that benefits from a
+    // wider window.
+    categories->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(404));
+    categories->layoutItem.SetFlexGrow(0);
+    categories->layoutItem.SetFlexShrink(0);
+    categories->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    summaryLabel_ = CreateLabel("ucSummary", 12, 556, 1000, 24,
+    auto detail = BuildDetailPanel();
+    columns->AddChild(detail);
+    // Basis zero, grow one: take all the width the category column does not.
+    // Without an explicit basis the box keeps its construction width and the
+    // free space is simply left empty.
+    detail->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    detail->layoutItem.SetFlexGrow(1);
+    detail->layoutItem.SetFlexShrink(1);
+    detail->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    page->AddChild(columns);
+    columns->layoutItem.SetFlexGrow(1);
+    columns->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    summaryLabel_ = CreateLabel("ucSummary", 0, 0, 1000, 24,
                                 "Nothing scanned yet — press “Scan”.");
+    summaryLabel_->SetElementSize(CSSLayout::Dimension::Pct(100),
+                                  CSSLayout::Dimension::Auto());
     page->AddChild(summaryLabel_);
+    summaryLabel_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    summaryLabel_->layoutItem.SetFlexShrink(0);
 
-    statusLabel_ = CreateLabel("ucStatus", 12, 582, 1000, 40, "");
+    statusLabel_ = CreateLabel("ucStatus", 0, 0, 1000, 40, "");
     statusLabel_->SetWrap(TextWrap::WrapWord);
     statusLabel_->SetFontSize(11);
+    // The status line carries whole sentences and has to be free to take a
+    // second line rather than clip one.
+    statusLabel_->SetElementSize(CSSLayout::Dimension::Pct(100),
+                                 CSSLayout::Dimension::Auto());
     page->AddChild(statusLabel_);
+    statusLabel_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    statusLabel_->layoutItem.SetFlexShrink(0);
     return page;
+}
+
+void UltraCleanerWindow::LayoutForSize(float width, float height) {
+    if (!tabs_) return;
+    // The title and its subtitle sit in the band above the tabs; the tabs
+    // take everything below, minus a margin that matches the one on the left.
+    constexpr float kSideMargin = 8.0f;
+    constexpr float kTabsTop    = 44.0f;
+    const float tabsWidth  = std::max(320.0f, width  - 2 * kSideMargin);
+    const float tabsHeight = std::max(240.0f, height - kTabsTop - kSideMargin);
+    // SetElementSize, not SetBounds: the layout engine sizes from the CSS
+    // dimensions, so a bounds-only change is overwritten on the next pass.
+    tabs_->SetElementAbsolutePosition(Point2Df(kSideMargin, kTabsTop));
+    tabs_->SetElementSize(Size2Df(tabsWidth, tabsHeight));
+    tabs_->InvalidateLayout();
+    if (window_) window_->AddDirtyRectangle(
+        Rect2Di(0, 0, static_cast<int>(width), static_cast<int>(height)));
 }
 
 void UltraCleanerWindow::Show() {
@@ -191,19 +283,28 @@ void UltraCleanerWindow::Show() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
-    auto bar = CreateContainer("ucToolbar", 12, 6, 1000, 36);
+    auto bar = CreateContainer("ucToolbar", 0, 0, 0, 36);
     bar->layout.SetFlexRow()
                .SetFlexGap(8)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // Width comes from the page it is stretched across, not from a literal;
+    // the height is the one real constraint. A toolbar never scrolls.
+    bar->SetElementSize(CSSLayout::Dimension::Auto(),
+                        CSSLayout::Dimension::Px(36));
+    ContainerStyle plainBar;
+    plainBar.autoShowScrollbars = false;
+    bar->SetContainerStyle(plainBar);
 
     scanButton_ = CreateButton("ucScan", 0, 0, 110, 28, "Scan");
     scanButton_->onClick = [this]() { StartScan(); };
     bar->AddChild(scanButton_);
+    scanButton_->layoutItem.SetFlexShrink(0);
 
     stopButton_ = CreateButton("ucStop", 0, 0, 80, 28, "Stop");
     stopButton_->onClick = [this]() { StopWork(); };
     stopButton_->SetDisabled(true);
     bar->AddChild(stopButton_);
+    stopButton_->layoutItem.SetFlexShrink(0);
 
     bar->AddChild(CreateLabel("ucModeLabel", 0, 0, 60, 24, "Then:"));
 
@@ -213,10 +314,12 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
     modeDropdown_->AddItem("Delete permanently");
     modeDropdown_->SetSelectedIndex(0, /*runNotifications=*/false);
     bar->AddChild(modeDropdown_);
+    modeDropdown_->layoutItem.SetFlexShrink(0);
 
     cleanButton_ = CreateButton("ucClean", 0, 0, 120, 28, "Clean…");
     cleanButton_->onClick = [this]() { StartClean(); };
     bar->AddChild(cleanButton_);
+    cleanButton_->layoutItem.SetFlexShrink(0);
 
     bar->AddStretchSpacer(1);
 
@@ -226,10 +329,12 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
     auto safeButton = CreateButton("ucSelectSafe", 0, 0, 130, 28, "Tick safe ones");
     safeButton->onClick = [this]() { SelectSafeDefaults(); };
     bar->AddChild(safeButton);
+    safeButton->layoutItem.SetFlexShrink(0);
 
     auto noneButton = CreateButton("ucSelectNone", 0, 0, 100, 28, "Tick none");
     noneButton->onClick = [this]() { SelectNone(); };
     bar->AddChild(noneButton);
+    noneButton->layoutItem.SetFlexShrink(0);
 
     return bar;
 }
@@ -243,6 +348,10 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
     ContainerStyle plainBox;
     plainBox.autoShowScrollbars = false;
     box->SetContainerStyle(plainBox);
+    // Both axes come from the row it sits in: it takes the width left over
+    // and the full height.
+    box->SetElementSize(CSSLayout::Dimension::Auto(),
+                        CSSLayout::Dimension::Pct(100));
 
     auto filterRow = CreateContainer("ucFilterRow", 0, 0, 0, 30);
     filterRow->layout.SetFlexRow()

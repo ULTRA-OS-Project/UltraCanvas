@@ -108,6 +108,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | You need | Element | Header |
 |---|---|---|
 | Colour | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
+| A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |

@@ -12,6 +12,10 @@ set(ULTRAWIN_TEST_SOURCES
     test_lifecycle.cpp
     test_supervision.cpp
     test_components.cpp
+    test_programs.cpp
+    test_vm.cpp
+    test_remoteapp.cpp
+    test_sharedhome.cpp
 )
 
 add_executable(UltraWinTests ${ULTRAWIN_TEST_SOURCES})

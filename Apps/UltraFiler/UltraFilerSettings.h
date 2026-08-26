@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.3.0
-// Last Modified: 2026-08-23
+// Version: 1.4.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,11 +28,31 @@ public:
     static inline const Color kDefaultTreeDriveBackgroundColor{226, 236, 248, 255};
     static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
 
+    // Display > PDF Inventory: the range the thumbnail width slider offers and
+    // the width the preview ships with. A thumbnail below ~32 px shows nothing
+    // recognisable, and above ~120 px the inventory starts crowding the page
+    // out of a preview pane.
+    static constexpr int kMinPdfThumbnailWidth     = 32;
+    static constexpr int kMaxPdfThumbnailWidth     = 120;
+    static constexpr int kDefaultPdfThumbnailWidth = 56;
+    // The same slider in relative mode: percent of the preview's own width.
+    static constexpr int kMinPdfThumbnailPercent     = 5;
+    static constexpr int kMaxPdfThumbnailPercent    = 40;
+    static constexpr int kDefaultPdfThumbnailPercent = 25;
+
     // ===== THE SETTINGS =====
     // Media viewer: backdrop behind transparent images — the checkered
     // pattern used by image editors, or a preset solid colour (default white).
     bool  previewCheckeredBackground = false;
     Color previewTransparentColor    = Color(255, 255, 255, 255);
+
+    // Display > PDF Inventory: how wide the page thumbnails in the preview's
+    // PDF page inventory are - a fixed pixel width (what a preview pane wants:
+    // the same strip whatever the pane's size) or a share of the preview's
+    // width, so the inventory grows with the window.
+    bool pdfThumbnailAbsoluteWidth = true;
+    int  pdfThumbnailWidth         = kDefaultPdfThumbnailWidth;    // pixels
+    int  pdfThumbnailWidthPercent  = kDefaultPdfThumbnailPercent;  // % of width
 
     // Display > Treeview: the row background of the drive entries in the
     // folder tree (the drive roots on Windows, "File System" and the mounted
@@ -92,6 +112,16 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("preview.transparent.color");
         if (it != kv.end()) ParseColor(it->second, previewTransparentColor);
+        it = kv.find("display.pdf.inventory.mode");
+        if (it != kv.end()) pdfThumbnailAbsoluteWidth = (it->second != "relative");
+        it = kv.find("display.pdf.inventory.width");
+        if (it != kv.end())
+            ParseInt(it->second, pdfThumbnailWidth,
+                     kMinPdfThumbnailWidth, kMaxPdfThumbnailWidth);
+        it = kv.find("display.pdf.inventory.percent");
+        if (it != kv.end())
+            ParseInt(it->second, pdfThumbnailWidthPercent,
+                     kMinPdfThumbnailPercent, kMaxPdfThumbnailPercent);
         it = kv.find("tree.drive.background.color");
         if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
         it = kv.find("tree.selected.folder.color");
@@ -116,6 +146,11 @@ public:
              << (previewCheckeredBackground ? "true" : "false") << "\n";
         file << "preview.transparent.color = "
              << FormatColor(previewTransparentColor) << "\n";
+        file << "display.pdf.inventory.mode = "
+             << (pdfThumbnailAbsoluteWidth ? "absolute" : "relative") << "\n";
+        file << "display.pdf.inventory.width = " << pdfThumbnailWidth << "\n";
+        file << "display.pdf.inventory.percent = " << pdfThumbnailWidthPercent
+             << "\n";
         file << "tree.drive.background.color = "
              << FormatColor(treeDriveBackgroundColor) << "\n";
         file << "tree.selected.folder.color = "
@@ -132,6 +167,19 @@ private:
         if (start == std::string::npos) return "";
         size_t end = s.find_last_not_of(" \t");
         return s.substr(start, end - start + 1);
+    }
+
+    // A whole number, kept inside [minValue, maxValue]; anything unparseable
+    // leaves the setting at the value it had.
+    static void ParseInt(const std::string& text, int& out,
+                         int minValue, int maxValue) {
+        const std::string trimmed = Trim(text);
+        if (trimmed.empty()) return;
+        char* end = nullptr;
+        const long v = std::strtol(trimmed.c_str(), &end, 10);
+        if (!end || *end != '\0') return;
+        out = static_cast<int>(v < minValue ? minValue
+                                            : (v > maxValue ? maxValue : v));
     }
 
     // "#RRGGBB" — the backdrop colour is always opaque.
