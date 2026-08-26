@@ -1,16 +1,17 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasDWGConverter.cpp
-// DWG (AutoCAD Drawing) writer - see UltraCanvasCADConverters.h.
+// DWG (AutoCAD Drawing) converter - see UltraCanvasCADConverters.h.
 //
 // DWG is a proprietary, undocumented binary format; the only open-source
-// implementation that writes it is GNU LibreDWG. Rather than embed a
-// reverse-engineered binary writer of uncertain fidelity, this converter
-// produces the DXF writer's output and converts it with LibreDWG's
-// dxf2dwg tool - the ULTRACANVAS_DXF2DWG environment variable names the
-// executable, otherwise "dxf2dwg" is taken from PATH. When no tool is
-// available, Export warns with that guidance and fails cleanly; the DXF
-// the conversion is built on is AutoCAD's own exchange format and opens
-// everywhere DWG does.
-// Version: 1.0.0
+// implementation is GNU LibreDWG. Rather than embed a reverse-engineered
+// binary codec of uncertain fidelity, this converter delegates both
+// directions to LibreDWG's command-line tools: writing produces the DXF
+// writer's output and converts it with dxf2dwg (ULTRACANVAS_DXF2DWG names
+// the executable, otherwise PATH), reading converts with dwg2dxf
+// (ULTRACANVAS_DWG2DXF, otherwise PATH) and parses the result with the
+// DXF reader. When no tool is available the converter warns with that
+// guidance and fails cleanly; the DXF the conversion is built on is
+// AutoCAD's own exchange format and opens everywhere DWG does.
+// Version: 1.1.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
@@ -36,6 +37,66 @@ std::string DWGConverter::FindDxf2Dwg() {
     }
     if (std::system("command -v dxf2dwg >/dev/null 2>&1") == 0) return "dxf2dwg";
     return {};
+}
+
+std::string DWGConverter::FindDwg2Dxf() {
+    if (const char* env = std::getenv("ULTRACANVAS_DWG2DXF")) {
+        if (*env && std::ifstream(env).good()) return env;
+    }
+    if (std::system("command -v dwg2dxf >/dev/null 2>&1") == 0) return "dwg2dxf";
+    return {};
+}
+
+std::shared_ptr<VectorStorage::VectorDocument> DWGConverter::ImportFromString(
+        const std::string& data, const ConversionOptions& options) {
+    if (!ValidateData(data)) {
+        if (options.WarningCallback) {
+            options.WarningCallback("Not a DWG file (missing AC10xx magic)");
+        }
+        return nullptr;
+    }
+    std::string tool = FindDwg2Dxf();
+    if (tool.empty()) {
+        if (options.WarningCallback) {
+            options.WarningCallback(
+                    "DWG import needs LibreDWG's dwg2dxf tool (set "
+                    "ULTRACANVAS_DWG2DXF or put dwg2dxf on PATH); DWG is a "
+                    "proprietary format with no public specification.");
+        }
+        return nullptr;
+    }
+
+    // dwg2dxf works on files; stage through temporaries.
+    std::string base = std::string("/tmp/uc_dwg_in_") + std::to_string(
+            reinterpret_cast<uintptr_t>(&data) ^
+            static_cast<uintptr_t>(data.size()));
+    std::string dwgPath = base + ".dwg";
+    std::string dxfPath = base + ".dxf";
+    {
+        std::ofstream f(dwgPath, std::ios::binary);
+        if (!f.is_open()) return nullptr;
+        f.write(data.data(), static_cast<std::streamsize>(data.size()));
+    }
+    std::string cmd = tool + " -y -o " + dxfPath + " " + dwgPath + " >/dev/null 2>&1";
+    int rc = std::system(cmd.c_str());
+    std::remove(dwgPath.c_str());
+    std::string dxfData;
+    {
+        std::ifstream f(dxfPath, std::ios::binary);
+        if (f.is_open()) {
+            std::ostringstream ss;
+            ss << f.rdbuf();
+            dxfData = ss.str();
+        }
+    }
+    std::remove(dxfPath.c_str());
+    if (rc != 0 || dxfData.empty()) {
+        if (options.WarningCallback) {
+            options.WarningCallback("dwg2dxf failed to convert the drawing");
+        }
+        return nullptr;
+    }
+    return DXFConverter().ImportFromString(dxfData, options);
 }
 
 std::string DWGConverter::ExportToString(

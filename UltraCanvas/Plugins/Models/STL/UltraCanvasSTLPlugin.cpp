@@ -86,6 +86,13 @@ bool UltraCanvasSTLPlugin::ValidateFile(const std::string& filePath) {
     return UltraCanvasSTLLoader::Load(filePath, mesh, nullptr);
 }
 
+bool UltraCanvasSTLPlugin::SaveGraphics(const std::shared_ptr<UltraCanvasUIElement>& element,
+                                        const std::string& filePath) {
+    auto stlElement = std::dynamic_pointer_cast<UltraCanvasSTLElement>(element);
+    if (!stlElement) return false;
+    return SaveModel(filePath, stlElement->GetMesh());
+}
+
 bool UltraCanvasSTLPlugin::SaveModel(const std::string& filePath, const Mesh3D& mesh,
                                      STLFormat format, std::string* outError) {
     return UltraCanvasSTLLoader::Save(filePath, mesh, format, outError);

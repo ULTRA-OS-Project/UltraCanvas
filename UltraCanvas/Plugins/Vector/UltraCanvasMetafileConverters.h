@@ -10,10 +10,12 @@
 //                  produces the Vector plugin's PDF output under the .ai
 //                  extension - valid for Illustrator and every PDF consumer.
 //
-// All three are export-only: none of these formats has a reader in the
-// framework, and GDI metafiles have no alpha channel, so opacity flattens
-// toward the white page with a warning (as in the EPS writer).
-// Version: 1.0.0
+// EMF and WMF read back through the record parsers in
+// UltraCanvasEMFReader.cpp / UltraCanvasWMFReader.cpp; AI stays
+// export-only (PDF-based .ai files are the MuPDF PDF plugin's to read).
+// GDI metafiles have no alpha channel, so opacity flattens toward the
+// white page with a warning on export (as in the EPS writer).
+// Version: 1.1.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 #pragma once
@@ -23,9 +25,13 @@
 namespace UltraCanvas {
     namespace VectorConverter {
 
-        // Common scaffolding for the three export-only converters declared
-        // below: file/stream plumbing around ExportToString and warn-and-null
-        // Import methods.
+        // Common scaffolding for the writer-first converters declared below
+        // and in UltraCanvasCADConverters.h: file/stream plumbing around
+        // ExportToString on the export side, and file/stream imports that
+        // funnel into ImportFromString on the import side — so a converter
+        // that has a reader (DXF, DWG, EMF, WMF) overrides only
+        // ImportFromString and CanImport, while pure writers (AI) inherit
+        // the warn-and-null default.
         class ExportOnlyConverter : public IVectorFormatConverter {
         public:
             bool CanImport() const override { return false; }
@@ -60,6 +66,11 @@ namespace UltraCanvas {
             std::string GetMimeType() const override { return "image/emf"; }
             FormatCapabilities GetCapabilities() const override;
 
+            bool CanImport() const override { return true; }
+            std::shared_ptr<VectorStorage::VectorDocument> ImportFromString(
+                    const std::string& data,
+                    const ConversionOptions& options = ConversionOptions()) override;
+
             std::string ExportToString(
                     const VectorStorage::VectorDocument& document,
                     const ConversionOptions& options = ConversionOptions()) override;
@@ -75,6 +86,11 @@ namespace UltraCanvas {
             std::vector<std::string> GetFileExtensions() const override { return {".wmf"}; }
             std::string GetMimeType() const override { return "image/wmf"; }
             FormatCapabilities GetCapabilities() const override;
+
+            bool CanImport() const override { return true; }
+            std::shared_ptr<VectorStorage::VectorDocument> ImportFromString(
+                    const std::string& data,
+                    const ConversionOptions& options = ConversionOptions()) override;
 
             std::string ExportToString(
                     const VectorStorage::VectorDocument& document,

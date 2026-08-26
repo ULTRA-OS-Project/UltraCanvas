@@ -1,4 +1,46 @@
 #### 2026-08-26 *0.3.76*
+- **Every vector format is now covered by the plugin system, load and
+  save.** The graphics plugin registry gained a save side and the converter
+  matrix gained readers:
+  - `IGraphicsPlugin` now has a save interface (`GetSaveExtensions()` +
+    `SaveGraphics()`, default load-only so existing plugins are
+    unaffected), with registry dispatch (`SaveGraphicsFile`,
+    `CanSaveGraphicsFile`, `GetSupportedSaveExtensions`). The
+    `UltraCanvasSupportedFormats` inventory reports per-extension load/save
+    from the real interface instead of a hardcoded STL special case, and
+    the STL plugin implements the new interface (mesh back to `.stl`).
+  - The new `UltraCanvasVectorFormatsPlugin` exposes the whole converter
+    matrix through that registry: loading SVG/XAR/EMF/WMF/DXF/DWG into an
+    editable `UltraCanvasVectorElement`, saving all ten formats
+    (SVG/XAR/EPS/CDR/PDF/EMF/WMF/AI/DXF/DWG) from one. Registered in the
+    DemoApp alongside the CDR/XAR/EPS viewer plugins.
+  - **New readers**: DXF (`UltraCanvasDXFReader.cpp` — tables, ACI+true
+    colours, LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE with bulges/POLYLINE/
+    SPLINE/HATCH/SOLID/TEXT/MTEXT; piecewise-bezier splines reproduce
+    exactly, general NURBS sample via de Boor), DWG (LibreDWG `dwg2dxf`
+    delegation, `ULTRACANVAS_DWG2DXF` or PATH), EMF
+    (`UltraCanvasEMFReader.cpp` — GDI object table, path records,
+    immediate primitives, `ExtTextOutW` with `TA_UPDATECP` chains merging
+    back into text spans) and WMF (`UltraCanvasWMFReader.cpp` — placeable
+    header, 16-bit records, object table, text).
+  - The XAR converter's import side was replaced: the legacy record
+    processors used wrong tag numbers and a 28-byte "file header" struct
+    where real XAR has an 8-byte signature, so they could not read a
+    single real file. The new reader consumes the spec-correct grammar the
+    writer emits (uncompressed; compressed Xara files remain the XAR
+    plugin's). XAR dash patterns are also written and read now
+    (define/reference records), replacing the export warning.
+  - Two writer fixes the readers surfaced: DXF entities now carry a valid
+    model-space owner handle (it was written empty, which made LibreDWG
+    drop every entity when converting the resulting DWG back), and the
+    DXF nearest-ACI fallback searches the full 256-colour palette instead
+    of 10 classic entries — LibreDWG's DXF output carries only ACI, so
+    this decides the colours a DWG round trip keeps.
+  - `Tests/VectorFormatsPluginTest.cpp` drives the whole matrix through
+    the registry: saves all ten formats via `SaveGraphicsFile` and
+    validates each file, loads the readable ones back via
+    `LoadGraphicsFile` and checks geometry, colours, dashes and text
+    survive, and verifies the supported-format inventory.
 - **DXF and DWG files can be written now — the CAD formats complete the
   vector writer matrix.** Two new converters in
   `Plugins/Vector/UltraCanvasCADConverters.h`:

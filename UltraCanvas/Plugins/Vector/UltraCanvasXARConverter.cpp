@@ -299,6 +299,668 @@ namespace UltraCanvas {
             return std::memcmp(data.data(), XAR_SIGNATURE, sizeof(XAR_SIGNATURE)) == 0;
         }
 
+// ===== SPEC-CORRECT TAG NUMBERS =====
+//
+// Tags from the Xar Format Specification Appendix A, matching the XARTag
+// enum in Plugins/Vector/XAR/UltraCanvasXARPlugin.h. (The legacy XARTags
+// namespace in UltraCanvasXARConverter.h predates the spec-verified reader
+// and carries wrong numbers; both the writer below and the reader here use
+// these constants instead.)
+
+        namespace {
+            namespace XarOut {
+                constexpr uint32_t Up = 0;
+                constexpr uint32_t Down = 1;
+                constexpr uint32_t FileHeader = 2;
+                constexpr uint32_t EndOfFile = 3;
+                constexpr uint32_t StartCompression = 30;
+                constexpr uint32_t EndCompression = 31;
+                constexpr uint32_t Document = 40;
+                constexpr uint32_t Chapter = 41;
+                constexpr uint32_t Spread = 42;
+                constexpr uint32_t Layer = 43;
+                constexpr uint32_t SpreadInformation = 45;
+                constexpr uint32_t LayerDetails = 48;
+                constexpr uint32_t DefineRGBColour = 50;
+                constexpr uint32_t DefineComplexColour = 51;
+                constexpr uint32_t Path = 100;
+                constexpr uint32_t PathFilled = 101;
+                constexpr uint32_t PathStroked = 102;
+                constexpr uint32_t PathFilledStroked = 103;
+                constexpr uint32_t Group = 104;
+                constexpr uint32_t FlatFill = 150;
+                constexpr uint32_t LineColour = 151;
+                constexpr uint32_t LineWidth = 152;
+                constexpr uint32_t LinearFill = 153;
+                constexpr uint32_t CircularFill = 154;
+                constexpr uint32_t FlatTransparentFill = 166;
+                constexpr uint32_t StartCap = 174;
+                constexpr uint32_t EndCap = 175;
+                constexpr uint32_t JoinStyle = 176;
+                constexpr uint32_t MitreLimit = 177;
+                constexpr uint32_t DashStyle = 183;
+                constexpr uint32_t DefineDash = 184;
+                constexpr uint32_t DefineDashScaled = 188;
+                constexpr uint32_t FlatFillNone = 190;
+                constexpr uint32_t LineColourNone = 193;
+                constexpr uint32_t EllipseSimple = 1000;
+                constexpr uint32_t RectangleSimple = 1100;
+                constexpr uint32_t RectangleSimpleRounded = 1104;
+                constexpr uint32_t FontDefTrueType = 2000;
+                constexpr uint32_t TextStorySimple = 2100;
+                constexpr uint32_t TextLine = 2200;
+                constexpr uint32_t TextString = 2201;
+                constexpr uint32_t TextEOL = 2203;
+                constexpr uint32_t TextJustificationLeft = 2902;
+                constexpr uint32_t TextJustificationCentre = 2903;
+                constexpr uint32_t TextJustificationRight = 2904;
+                constexpr uint32_t TextFontSize = 2906;
+                constexpr uint32_t TextFontTypeface = 2907;
+                constexpr uint32_t TextBoldOn = 2908;
+                constexpr uint32_t TextBoldOff = 2909;
+                constexpr uint32_t TextItalicOn = 2910;
+                constexpr uint32_t TextItalicOff = 2911;
+                constexpr uint32_t TextUnderlineOn = 2912;
+                constexpr uint32_t TextUnderlineOff = 2913;
+            }
+
+// ===== READER =====
+//
+// Consumes the uncompressed record grammar (8-byte signature, then
+// (TAG:UINT32, size:UINT32, body) records, tree encoded as "object record,
+// Down, children, Up") that the emitter below writes and that real
+// uncompressed Xara files use: layers with details, simple rectangle /
+// ellipse shapes, paths (verb array + millipoint Y-up coordinates),
+// attribute children (flat and two-stop gradient fills, line colour /
+// width / caps / joins, flat transparency) and simple text stories with
+// styled string chunks. Colour and font definitions resolve by record
+// sequence number exactly as the writer references them. Compressed
+// sections are reported and skipped - the XAR plugin's reader handles
+// those files.
+
+            class XarReader {
+            public:
+                XarReader(const uint8_t* bytes, size_t size,
+                          std::function<void(const std::string&)> warnFn)
+                        : data(bytes), size(size), warn(std::move(warnFn)) {}
+
+                std::shared_ptr<VectorDocument> Parse() {
+                    static const uint8_t signature[8] = {0x58, 0x41, 0x52, 0x41,
+                                                         0xA3, 0xA3, 0x0D, 0x0A};
+                    if (size < 8 || std::memcmp(data, signature, 8) != 0) {
+                        warn("Invalid XAR file header");
+                        return nullptr;
+                    }
+                    doc = std::make_shared<VectorDocument>();
+                    doc->Size = Size2Dd{595, 842};
+                    pageH = 842;
+
+                    size_t pos = 8;
+                    uint32_t seq = 0;
+                    while (pos + 8 <= size) {
+                        uint32_t tag = U32(pos);
+                        uint32_t recSize = U32(pos + 4);
+                        pos += 8;
+                        if (pos + recSize > size) break;
+                        ++seq;
+                        Record(tag, seq, data + pos, recSize);
+                        pos += recSize;
+                        if (tag == XarOut::EndOfFile || stopped) break;
+                    }
+
+                    // Table-created layers with no content are dropped.
+                    doc->Layers.erase(
+                            std::remove_if(doc->Layers.begin(), doc->Layers.end(),
+                                           [](const std::shared_ptr<VectorLayer>& l) {
+                                               return !l || l->Children.empty();
+                                           }),
+                            doc->Layers.end());
+
+                    if (!skipped.empty()) {
+                        std::ostringstream msg;
+                        msg << "XAR import: unsupported record tags skipped:";
+                        for (const auto& [t, count] : skipped) {
+                            msg << " " << t << " (x" << count << ")";
+                        }
+                        warn(msg.str());
+                    }
+                    return doc;
+                }
+
+            private:
+                const uint8_t* data;
+                size_t size;
+                std::function<void(const std::string&)> warn;
+                std::shared_ptr<VectorDocument> doc;
+                double pageH = 842;
+                bool stopped = false;
+                std::map<uint32_t, int> skipped;
+
+                std::map<uint32_t, Color> coloursBySeq;
+                std::map<uint32_t, std::string> fontsBySeq;
+                std::map<uint32_t, std::vector<double>> dashesBySeq;
+
+                struct Ctx {
+                    enum Kind { Passthrough, Container, Shape, Story, Line } kind =
+                            Passthrough;
+                    VectorGroup* container = nullptr;
+                    VectorLayer* layer = nullptr;
+                    std::shared_ptr<VectorElement> shape;
+                    VectorText* story = nullptr;
+                    // Stroke assembly (Shape).
+                    bool hasStrokeColour = false;
+                    Color strokeColour{0, 0, 0, 255};
+                    double strokeWidth = 1.0;
+                    StrokeLineCap cap = StrokeLineCap::Butt;
+                    StrokeLineJoin join = StrokeLineJoin::Miter;
+                    float miter = 4.0f;
+                    std::vector<double> dashes;
+                    // Running chunk style (Story / Line).
+                    VectorTextStyle chunk;
+                    int lineCount = 0;
+                };
+                std::vector<Ctx> stack;
+                Ctx pendingDown;         // context the next Down record enters
+                bool havePending = false;
+
+                uint32_t U32(size_t off) const {
+                    return static_cast<uint32_t>(data[off]) |
+                           (static_cast<uint32_t>(data[off + 1]) << 8) |
+                           (static_cast<uint32_t>(data[off + 2]) << 16) |
+                           (static_cast<uint32_t>(data[off + 3]) << 24);
+                }
+                static int32_t BI32(const uint8_t* p) {
+                    return static_cast<int32_t>(
+                            static_cast<uint32_t>(p[0]) |
+                            (static_cast<uint32_t>(p[1]) << 8) |
+                            (static_cast<uint32_t>(p[2]) << 16) |
+                            (static_cast<uint32_t>(p[3]) << 24));
+                }
+
+                Point2Dd Pt(const uint8_t* p) const {
+                    return Point2Dd(BI32(p) / 1000.0, pageH - BI32(p + 4) / 1000.0);
+                }
+
+                static std::string Utf16ToUtf8(const uint8_t* p, size_t maxBytes,
+                                               size_t* consumed = nullptr) {
+                    std::string out;
+                    size_t i = 0;
+                    while (i + 1 < maxBytes) {
+                        uint32_t cp = static_cast<uint32_t>(p[i]) |
+                                      (static_cast<uint32_t>(p[i + 1]) << 8);
+                        i += 2;
+                        if (!cp) break;
+                        if (cp >= 0xD800 && cp < 0xDC00 && i + 1 < maxBytes) {
+                            uint32_t lo = static_cast<uint32_t>(p[i]) |
+                                          (static_cast<uint32_t>(p[i + 1]) << 8);
+                            if (lo >= 0xDC00 && lo < 0xE000) {
+                                i += 2;
+                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                            }
+                        }
+                        if (cp < 0x80) {
+                            out.push_back(static_cast<char>(cp));
+                        } else if (cp < 0x800) {
+                            out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+                            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                        } else if (cp < 0x10000) {
+                            out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+                            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                        } else {
+                            out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+                            out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+                            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                        }
+                    }
+                    if (consumed) *consumed = i;
+                    return out;
+                }
+
+                Color ColourFor(int32_t ref) const {
+                    auto it = coloursBySeq.find(static_cast<uint32_t>(ref));
+                    return it != coloursBySeq.end() ? it->second
+                                                    : Color(0, 0, 0, 255);
+                }
+
+                VectorGroup* CurrentContainer() {
+                    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+                        if (it->container) return it->container;
+                    }
+                    // Content outside any layer: create one on demand.
+                    auto layer = doc->AddLayer("Layer");
+                    Ctx root;
+                    root.kind = Ctx::Container;
+                    root.container = layer.get();
+                    root.layer = layer.get();
+                    stack.insert(stack.begin(), root);
+                    return layer.get();
+                }
+
+                Ctx* Top() { return stack.empty() ? nullptr : &stack.back(); }
+
+                void SetPending(Ctx ctx) {
+                    pendingDown = std::move(ctx);
+                    havePending = true;
+                }
+
+                void FinishShape(Ctx& ctx) {
+                    if (ctx.shape && ctx.hasStrokeColour) {
+                        StrokeData stroke;
+                        stroke.Fill = ctx.strokeColour;
+                        stroke.Width = static_cast<float>(ctx.strokeWidth);
+                        stroke.LineCap = ctx.cap;
+                        stroke.LineJoin = ctx.join;
+                        stroke.MiterLimit = ctx.miter;
+                        if (!ctx.dashes.empty()) stroke.DashArray = ctx.dashes;
+                        ctx.shape->Style.Stroke = stroke;
+                    }
+                }
+
+                void Record(uint32_t tag, uint32_t seq, const uint8_t* b, uint32_t n) {
+                    Ctx* top = Top();
+                    bool clearPending = true;
+                    switch (tag) {
+                        case XarOut::Down: {
+                            stack.push_back(havePending ? pendingDown : Ctx{});
+                            havePending = false;
+                            break;
+                        }
+                        case XarOut::Up: {
+                            if (!stack.empty()) {
+                                if (stack.back().kind == Ctx::Shape) {
+                                    FinishShape(stack.back());
+                                }
+                                stack.pop_back();
+                            }
+                            break;
+                        }
+                        case XarOut::FileHeader:
+                        case XarOut::EndOfFile:
+                        case XarOut::Document:
+                        case XarOut::Chapter:
+                        case XarOut::Spread:
+                            break;   // structural; Down enters a passthrough
+                        case XarOut::StartCompression:
+                        case XarOut::EndCompression:
+                            warn("XAR import: compressed XAR sections are not "
+                                 "supported by the converter (the XAR plugin "
+                                 "reads them); remaining content skipped");
+                            stopped = true;
+                            break;
+                        case XarOut::SpreadInformation: {
+                            if (n >= 8) {
+                                double w = BI32(b) / 1000.0;
+                                double h = BI32(b + 4) / 1000.0;
+                                if (w > 0 && h > 0) {
+                                    doc->Size = Size2Dd{w, h};
+                                    pageH = h;
+                                }
+                            }
+                            break;
+                        }
+                        case XarOut::Layer: {
+                            auto layer = doc->AddLayer("Layer");
+                            Ctx ctx;
+                            ctx.kind = Ctx::Container;
+                            ctx.container = layer.get();
+                            ctx.layer = layer.get();
+                            SetPending(ctx);
+                            clearPending = false;
+                            break;
+                        }
+                        case XarOut::LayerDetails: {
+                            if (top && top->layer && n >= 1) {
+                                top->layer->Visible = (b[0] & 0x1) != 0;
+                                top->layer->Locked = (b[0] & 0x2) != 0;
+                                std::string name = Utf16ToUtf8(b + 1, n - 1);
+                                if (!name.empty()) top->layer->Name = name;
+                            }
+                            break;
+                        }
+                        case XarOut::DefineRGBColour: {
+                            if (n >= 3) coloursBySeq[seq] = Color(b[0], b[1], b[2], 255);
+                            break;
+                        }
+                        case XarOut::FontDefTrueType: {
+                            if (n > 2) fontsBySeq[seq] = Utf16ToUtf8(b, n);
+                            break;
+                        }
+                        case XarOut::Group: {
+                            auto group = std::make_shared<VectorGroup>();
+                            CurrentContainer()->AddChild(group);
+                            Ctx ctx;
+                            ctx.kind = Ctx::Container;
+                            ctx.container = group.get();
+                            SetPending(ctx);
+                            clearPending = false;
+                            break;
+                        }
+                        case XarOut::Path:
+                        case XarOut::PathFilled:
+                        case XarOut::PathStroked:
+                        case XarOut::PathFilledStroked: {
+                            auto path = ParsePathRecord(b, n);
+                            if (path) {
+                                CurrentContainer()->AddChild(path);
+                                Ctx ctx;
+                                ctx.kind = Ctx::Shape;
+                                ctx.shape = path;
+                                SetPending(ctx);
+                                clearPending = false;
+                            }
+                            break;
+                        }
+                        case XarOut::EllipseSimple: {
+                            if (n < 24) break;
+                            Point2Dd c = Pt(b);
+                            double rx = std::hypot(BI32(b + 8) / 1000.0,
+                                                   BI32(b + 12) / 1000.0);
+                            double ry = std::hypot(BI32(b + 16) / 1000.0,
+                                                   BI32(b + 20) / 1000.0);
+                            auto el = std::make_shared<VectorEllipse>();
+                            el->Center = c;
+                            el->RadiusX = static_cast<float>(rx);
+                            el->RadiusY = static_cast<float>(ry);
+                            CurrentContainer()->AddChild(el);
+                            Ctx ctx;
+                            ctx.kind = Ctx::Shape;
+                            ctx.shape = el;
+                            SetPending(ctx);
+                            clearPending = false;
+                            break;
+                        }
+                        case XarOut::RectangleSimple:
+                        case XarOut::RectangleSimpleRounded: {
+                            if (n < 24) break;
+                            Point2Dd c = Pt(b);
+                            double hw = std::hypot(BI32(b + 8) / 1000.0,
+                                                   BI32(b + 12) / 1000.0);
+                            double hh = std::hypot(BI32(b + 16) / 1000.0,
+                                                   BI32(b + 20) / 1000.0);
+                            auto rect = std::make_shared<VectorRect>();
+                            rect->Bounds = Rect2Dd{c.x - hw, c.y - hh, 2 * hw, 2 * hh};
+                            if (tag == XarOut::RectangleSimpleRounded && n >= 28) {
+                                float r = static_cast<float>(BI32(b + 24) / 1000.0);
+                                rect->RadiusX = r;
+                                rect->RadiusY = r;
+                            }
+                            CurrentContainer()->AddChild(rect);
+                            Ctx ctx;
+                            ctx.kind = Ctx::Shape;
+                            ctx.shape = rect;
+                            SetPending(ctx);
+                            clearPending = false;
+                            break;
+                        }
+                        case XarOut::TextStorySimple: {
+                            if (n < 8) break;
+                            auto text = std::make_shared<VectorText>();
+                            text->Position = Pt(b);
+                            CurrentContainer()->AddChild(text);
+                            Ctx ctx;
+                            ctx.kind = Ctx::Story;
+                            ctx.story = text.get();
+                            ctx.shape = text;
+                            ctx.chunk = text->BaseStyle;
+                            SetPending(ctx);
+                            clearPending = false;
+                            break;
+                        }
+                        // ----- attributes (children of the current object) -----
+                        case XarOut::FlatFill: {
+                            if (n < 4 || !top) break;
+                            Color c = ColourFor(BI32(b));
+                            if (top->story) top->story->Style.Fill = c;
+                            else if (top->shape) top->shape->Style.Fill = c;
+                            break;
+                        }
+                        case XarOut::FlatFillNone:
+                            break;   // absent fill is the default
+                        case XarOut::LinearFill: {
+                            if (n < 24 || !top || !top->shape) break;
+                            LinearGradientData lg;
+                            lg.Start = Pt(b);
+                            lg.End = Pt(b + 8);
+                            lg.Units = GradientUnits::UserSpaceOnUse;
+                            lg.Stops.push_back(GradientStop(0.0f, ColourFor(BI32(b + 16))));
+                            lg.Stops.push_back(GradientStop(1.0f, ColourFor(BI32(b + 20))));
+                            top->shape->Style.Fill = GradientData(lg);
+                            break;
+                        }
+                        case XarOut::CircularFill: {
+                            if (n < 24 || !top || !top->shape) break;
+                            RadialGradientData rg;
+                            Point2Dd c = Pt(b);
+                            Point2Dd edge = Pt(b + 8);
+                            rg.Center = c;
+                            rg.FocalPoint = c;
+                            rg.Radius = static_cast<float>(
+                                    std::hypot(edge.x - c.x, edge.y - c.y));
+                            rg.Units = GradientUnits::UserSpaceOnUse;
+                            rg.Stops.push_back(GradientStop(0.0f, ColourFor(BI32(b + 16))));
+                            rg.Stops.push_back(GradientStop(1.0f, ColourFor(BI32(b + 20))));
+                            top->shape->Style.Fill = GradientData(rg);
+                            break;
+                        }
+                        case XarOut::LineColour: {
+                            if (n < 4 || !top) break;
+                            top->hasStrokeColour = true;
+                            top->strokeColour = ColourFor(BI32(b));
+                            break;
+                        }
+                        case XarOut::LineColourNone:
+                            if (top) top->hasStrokeColour = false;
+                            break;
+                        case XarOut::LineWidth:
+                            if (n >= 4 && top) top->strokeWidth = BI32(b) / 1000.0;
+                            break;
+                        case XarOut::StartCap:
+                        case XarOut::EndCap:
+                            if (n >= 1 && top) {
+                                top->cap = b[0] == 1 ? StrokeLineCap::Round
+                                         : b[0] == 2 ? StrokeLineCap::Square
+                                                     : StrokeLineCap::Butt;
+                            }
+                            break;
+                        case XarOut::JoinStyle:
+                            if (n >= 1 && top) {
+                                top->join = b[0] == 1 ? StrokeLineJoin::Round
+                                          : b[0] == 2 ? StrokeLineJoin::Bevel
+                                                      : StrokeLineJoin::Miter;
+                            }
+                            break;
+                        case XarOut::MitreLimit:
+                            if (n >= 4 && top) {
+                                top->miter = static_cast<float>(BI32(b) / 65536.0);
+                            }
+                            break;
+                        case XarOut::DefineDash:
+                        case XarOut::DefineDashScaled: {
+                            if (n < 4) break;
+                            int32_t count = BI32(b);
+                            std::vector<double> pattern;
+                            for (int32_t i = 0;
+                                 i < count && 4 + 4 * (i + 1) <= static_cast<int32_t>(n);
+                                 ++i) {
+                                pattern.push_back(BI32(b + 4 + 4 * i) / 1000.0);
+                            }
+                            if (!pattern.empty()) dashesBySeq[seq] = pattern;
+                            break;
+                        }
+                        case XarOut::DashStyle: {
+                            if (n >= 4 && top) {
+                                auto it = dashesBySeq.find(
+                                        static_cast<uint32_t>(BI32(b)));
+                                if (it != dashesBySeq.end()) top->dashes = it->second;
+                                else top->dashes.clear();
+                            }
+                            break;
+                        }
+                        case XarOut::FlatTransparentFill: {
+                            if (n >= 1 && top && top->shape) {
+                                top->shape->Style.Opacity =
+                                        1.0f - static_cast<float>(b[0]) / 255.0f;
+                            }
+                            break;
+                        }
+                        // ----- text story content -----
+                        case XarOut::TextJustificationLeft:
+                        case XarOut::TextJustificationCentre:
+                        case XarOut::TextJustificationRight:
+                            if (top && top->story) {
+                                top->story->BaseStyle.Anchor =
+                                        tag == XarOut::TextJustificationCentre
+                                                ? TextAnchor::Middle
+                                        : tag == XarOut::TextJustificationRight
+                                                ? TextAnchor::End
+                                                : TextAnchor::Start;
+                            }
+                            break;
+                        case XarOut::TextFontTypeface:
+                            if (n >= 4 && top) {
+                                auto it = fontsBySeq.find(
+                                        static_cast<uint32_t>(BI32(b)));
+                                if (it != fontsBySeq.end()) {
+                                    top->chunk.FontFamily = it->second;
+                                    ApplyStoryBase(*top);
+                                }
+                            }
+                            break;
+                        case XarOut::TextFontSize:
+                            if (n >= 4 && top) {
+                                top->chunk.FontSize =
+                                        static_cast<float>(BI32(b) / 1000.0);
+                                ApplyStoryBase(*top);
+                            }
+                            break;
+                        case XarOut::TextBoldOn:
+                        case XarOut::TextBoldOff:
+                            if (top) {
+                                top->chunk.Weight = tag == XarOut::TextBoldOn
+                                        ? FontWeight::Bold : FontWeight::Normal;
+                                ApplyStoryBase(*top);
+                            }
+                            break;
+                        case XarOut::TextItalicOn:
+                        case XarOut::TextItalicOff:
+                            if (top) {
+                                top->chunk.Slant = tag == XarOut::TextItalicOn
+                                        ? FontSlant::Italic : FontSlant::Normal;
+                                ApplyStoryBase(*top);
+                            }
+                            break;
+                        case XarOut::TextUnderlineOn:
+                        case XarOut::TextUnderlineOff:
+                            if (top) {
+                                top->chunk.Underline = tag == XarOut::TextUnderlineOn;
+                                ApplyStoryBase(*top);
+                            }
+                            break;
+                        case XarOut::TextLine: {
+                            // A story-level record: new line of the enclosing
+                            // story; second and later lines join with '\n'.
+                            Ctx* storyCtx = top;
+                            if (storyCtx && storyCtx->story) {
+                                if (++storyCtx->lineCount > 1) {
+                                    TextSpanData nl;
+                                    nl.Text = "\n";
+                                    nl.Style = storyCtx->story->BaseStyle;
+                                    storyCtx->story->Spans.push_back(nl);
+                                }
+                                Ctx ctx;
+                                ctx.kind = Ctx::Line;
+                                ctx.story = storyCtx->story;
+                                ctx.chunk = storyCtx->chunk;
+                                SetPending(ctx);
+                                clearPending = false;
+                            }
+                            break;
+                        }
+                        case XarOut::TextString: {
+                            if (top && top->story && n > 1) {
+                                TextSpanData span;
+                                span.Text = Utf16ToUtf8(b, n);
+                                span.Style = top->chunk;
+                                if (!span.Text.empty()) {
+                                    top->story->Spans.push_back(span);
+                                }
+                            }
+                            break;
+                        }
+                        case XarOut::TextEOL:
+                        case XarOut::DefineComplexColour:
+                            break;
+                        default:
+                            ++skipped[tag];
+                            break;
+                    }
+                    if (clearPending) havePending = false;
+                }
+
+                // Story-level style deltas (before the first line) define the
+                // text's base style.
+                static void ApplyStoryBase(Ctx& ctx) {
+                    if (ctx.kind == Ctx::Story && ctx.story &&
+                        ctx.lineCount == 0) {
+                        ctx.story->BaseStyle = ctx.chunk;
+                    }
+                }
+
+                std::shared_ptr<VectorPath> ParsePathRecord(const uint8_t* b,
+                                                            uint32_t n) {
+                    if (n < 4) return nullptr;
+                    uint32_t verbCount = static_cast<uint32_t>(b[0]) |
+                                         (static_cast<uint32_t>(b[1]) << 8) |
+                                         (static_cast<uint32_t>(b[2]) << 16) |
+                                         (static_cast<uint32_t>(b[3]) << 24);
+                    size_t verbsAt = 4;
+                    size_t coordsAt = verbsAt + verbCount;
+                    coordsAt += (4 - coordsAt % 4) % 4;   // padded to 4 bytes
+                    if (coordsAt + 8ull * verbCount > n) return nullptr;
+
+                    auto path = std::make_shared<VectorPath>();
+                    size_t ci = 0;
+                    auto coord = [&](size_t idx) { return Pt(b + coordsAt + 8 * idx); };
+                    for (uint32_t i = 0; i < verbCount; ++i) {
+                        uint8_t verb = b[verbsAt + i];
+                        uint8_t kind = verb & 0xFE;
+                        bool close = (verb & 0x01) != 0 && kind != 0x06;
+                        if (verb == 0x06) {
+                            Point2Dd p = coord(ci++);
+                            path->MoveTo(static_cast<float>(p.x),
+                                         static_cast<float>(p.y));
+                        } else if (kind == 0x02) {
+                            Point2Dd p = coord(ci++);
+                            path->LineTo(static_cast<float>(p.x),
+                                         static_cast<float>(p.y));
+                            if (close) path->ClosePath();
+                        } else if (kind == 0x04) {
+                            if (i + 2 >= verbCount) break;
+                            bool closeCubic =
+                                    (b[verbsAt + i + 2] & 0x01) != 0;
+                            Point2Dd c1 = coord(ci++);
+                            Point2Dd c2 = coord(ci++);
+                            Point2Dd e = coord(ci++);
+                            path->CurveTo(static_cast<float>(c1.x),
+                                          static_cast<float>(c1.y),
+                                          static_cast<float>(c2.x),
+                                          static_cast<float>(c2.y),
+                                          static_cast<float>(e.x),
+                                          static_cast<float>(e.y));
+                            if (closeCubic) path->ClosePath();
+                            i += 2;
+                        } else {
+                            ++skipped[3000000 + verb];   // unknown verb marker
+                            ++ci;
+                        }
+                    }
+                    return path->Path.commands.empty() ? nullptr : path;
+                }
+            };
+        }   // anonymous namespace
+
 // ===== IMPLEMENTATION: IMPORT =====
 
         std::shared_ptr<VectorDocument> XARConverter::Impl::ImportFromFile(
@@ -311,54 +973,19 @@ namespace UltraCanvas {
                 LogWarning("Failed to open XAR file: " + filename);
                 return nullptr;
             }
-
-            // Get file size for progress reporting
-            file.seekg(0, std::ios::end);
-            size_t fileSize = file.tellg();
-            file.seekg(0, std::ios::beg);
+            std::ostringstream buffer;
+            buffer << file.rdbuf();
+            std::string bytes = buffer.str();
 
             currentOptions = options;
             currentXarOptions = xarOptions;
-            importState.Reset();
 
-            // Read and validate header
-            XARFileHeader header;
-            if (!ReadFileHeader(file, header)) {
-                LogWarning("Invalid XAR file header");
-                return nullptr;
-            }
-
-            // Initialize document
-            importState.document = std::make_shared<VectorDocument>();
-            importState.currentLayer = importState.document->AddLayer("Default Layer");
-
-            // Read records
-            XARRecordHeader recordHeader;
-            std::vector<uint8_t> recordData;
-            size_t bytesRead = sizeof(XARFileHeader);
-
-            while (file.good() && !file.eof()) {
-                if (!ReadRecord(file, recordHeader, recordData)) {
-                    break;
-                }
-
-                bytesRead += sizeof(XARRecordHeader) + recordHeader.Size;
-                ReportProgress(static_cast<float>(bytesRead) / fileSize);
-
-                if (!ProcessRecord(recordHeader.Tag, recordData)) {
-                    if (currentOptions.ErrorHandling == ConversionOptions::ErrorMode::Strict) {
-                        return nullptr;
-                    }
-                }
-
-                // Check for end of file
-                if (recordHeader.Tag == TAG_ENDOFFILE) {
-                    break;
-                }
-            }
-
+            XarReader reader(reinterpret_cast<const uint8_t*>(bytes.data()),
+                             bytes.size(),
+                             [this](const std::string& msg) { LogWarning(msg); });
+            auto document = reader.Parse();
             ReportProgress(1.0f);
-            return importState.document;
+            return document;
         }
 
         std::shared_ptr<VectorDocument> XARConverter::Impl::ImportFromMemory(
@@ -366,51 +993,27 @@ namespace UltraCanvas {
                 const ConversionOptions& options,
                 const XARConversionOptions& xarOptions) {
 
-            std::istringstream stream(std::string(reinterpret_cast<const char*>(data), size),
-                                      std::ios::binary);
-
             currentOptions = options;
             currentXarOptions = xarOptions;
-            importState.Reset();
 
-            // Read and validate header
-            XARFileHeader header;
-            if (!ReadFileHeader(stream, header)) {
-                LogWarning("Invalid XAR file header");
-                return nullptr;
-            }
-
-            // Initialize document
-            importState.document = std::make_shared<VectorDocument>();
-            importState.currentLayer = importState.document->AddLayer("Default Layer");
-
-            // Read records
-            XARRecordHeader recordHeader;
-            std::vector<uint8_t> recordData;
-
-            while (stream.good() && !stream.eof()) {
-                if (!ReadRecord(stream, recordHeader, recordData)) {
-                    break;
-                }
-
-                if (!ProcessRecord(recordHeader.Tag, recordData)) {
-                    if (currentOptions.ErrorHandling == ConversionOptions::ErrorMode::Strict) {
-                        return nullptr;
-                    }
-                }
-
-                if (recordHeader.Tag == TAG_ENDOFFILE) {
-                    break;
-                }
-            }
-
-            return importState.document;
+            XarReader reader(data, size,
+                             [this](const std::string& msg) { LogWarning(msg); });
+            auto document = reader.Parse();
+            ReportProgress(1.0f);
+            return document;
         }
 
 // ===== FILE READING =====
 
         bool XARConverter::Impl::ReadFileHeader(std::istream& stream, XARFileHeader& header) {
-            stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+            // A XAR file is the 8-byte signature followed immediately by
+            // records - the "file header" (CXN identification etc.) is
+            // itself a record (TAG_FILEHEADER). Consume only the signature
+            // here; reading sizeof(XARFileHeader) would eat the first
+            // record's header and desync the whole stream.
+            std::memset(&header, 0, sizeof(header));
+            stream.read(reinterpret_cast<char*>(header.Signature),
+                        sizeof(header.Signature));
 
             if (!stream.good()) return false;
 
@@ -1312,56 +1915,6 @@ namespace UltraCanvas {
 // enum in UltraCanvasXARPlugin.h.
 
         namespace {
-            namespace XarOut {
-                constexpr uint32_t Up = 0;
-                constexpr uint32_t Down = 1;
-                constexpr uint32_t FileHeader = 2;
-                constexpr uint32_t EndOfFile = 3;
-                constexpr uint32_t Document = 40;
-                constexpr uint32_t Chapter = 41;
-                constexpr uint32_t Spread = 42;
-                constexpr uint32_t Layer = 43;
-                constexpr uint32_t SpreadInformation = 45;
-                constexpr uint32_t LayerDetails = 48;
-                constexpr uint32_t DefineRGBColour = 50;
-                constexpr uint32_t Path = 100;
-                constexpr uint32_t PathFilled = 101;
-                constexpr uint32_t PathStroked = 102;
-                constexpr uint32_t PathFilledStroked = 103;
-                constexpr uint32_t Group = 104;
-                constexpr uint32_t FlatFill = 150;
-                constexpr uint32_t LineColour = 151;
-                constexpr uint32_t LineWidth = 152;
-                constexpr uint32_t LinearFill = 153;
-                constexpr uint32_t CircularFill = 154;
-                constexpr uint32_t FlatTransparentFill = 166;
-                constexpr uint32_t StartCap = 174;
-                constexpr uint32_t EndCap = 175;
-                constexpr uint32_t JoinStyle = 176;
-                constexpr uint32_t MitreLimit = 177;
-                constexpr uint32_t FlatFillNone = 190;
-                constexpr uint32_t LineColourNone = 193;
-                constexpr uint32_t EllipseSimple = 1000;
-                constexpr uint32_t RectangleSimple = 1100;
-                constexpr uint32_t RectangleSimpleRounded = 1104;
-                constexpr uint32_t FontDefTrueType = 2000;
-                constexpr uint32_t TextStorySimple = 2100;
-                constexpr uint32_t TextLine = 2200;
-                constexpr uint32_t TextString = 2201;
-                constexpr uint32_t TextEOL = 2203;
-                constexpr uint32_t TextJustificationLeft = 2902;
-                constexpr uint32_t TextJustificationCentre = 2903;
-                constexpr uint32_t TextJustificationRight = 2904;
-                constexpr uint32_t TextFontSize = 2906;
-                constexpr uint32_t TextFontTypeface = 2907;
-                constexpr uint32_t TextBoldOn = 2908;
-                constexpr uint32_t TextBoldOff = 2909;
-                constexpr uint32_t TextItalicOn = 2910;
-                constexpr uint32_t TextItalicOff = 2911;
-                constexpr uint32_t TextUnderlineOn = 2912;
-                constexpr uint32_t TextUnderlineOff = 2913;
-            }
-
             // Little-endian record body builder.
             struct XarBody {
                 std::vector<uint8_t> bytes;
@@ -1487,6 +2040,7 @@ namespace UltraCanvas {
                 double pageW = 0, pageH = 0;                 // points
                 std::map<uint32_t, uint32_t> colourRefs;     // 0xRRGGBB -> record seq
                 std::map<std::string, uint32_t> fontRefs;    // family -> record seq
+                std::map<std::string, uint32_t> dashRefs;    // pattern -> record seq
 
                 // ===== RECORD PRIMITIVES =====
 
@@ -1551,6 +2105,19 @@ namespace UltraCanvas {
                     for (int i = 0; i < 10; ++i) b.U8(0);   // panose
                     uint32_t ref = Rec(XarOut::FontDefTrueType, b);
                     fontRefs[family] = ref;
+                    return static_cast<int32_t>(ref);
+                }
+
+                int32_t DashRef(const std::vector<double>& dash, double scale) {
+                    std::ostringstream key;
+                    for (double d : dash) key << d * scale << ",";
+                    auto it = dashRefs.find(key.str());
+                    if (it != dashRefs.end()) return static_cast<int32_t>(it->second);
+                    XarBody b;
+                    b.I32(static_cast<int32_t>(dash.size()));
+                    for (double d : dash) b.I32(Mp(d * scale));
+                    uint32_t ref = Rec(XarOut::DefineDash, b);
+                    dashRefs[key.str()] = ref;
                     return static_cast<int32_t>(ref);
                 }
 
@@ -1828,8 +2395,9 @@ namespace UltraCanvas {
                         Rec(XarOut::MitreLimit, mb);
 
                         if (!st.DashArray.empty()) {
-                            warn("XAR export: dash patterns are not written yet, "
-                                 "stroke exported solid");
+                            XarBody db;
+                            db.I32(DashRef(st.DashArray, AvgScale(ctm)));
+                            Rec(XarOut::DashStyle, db);
                         }
                     } else {
                         Rec(XarOut::LineColourNone);

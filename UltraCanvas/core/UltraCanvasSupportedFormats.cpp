@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace UltraCanvas {
 
@@ -374,14 +375,29 @@ namespace {
     // ---- Runtime-registered graphics plugins (CDR, XAR, STL, ...) ----
     // Whatever the host application registered with
     // UltraCanvasGraphicsPluginRegistry is reported with the plugin's own
-    // name as the provider. The IGraphicsPlugin interface is load-only; the
-    // STL plugin is the one plugin known to also implement saving (via its
-    // SaveModel API outside the interface).
+    // name as the provider. Loading comes from GetSupportedExtensions,
+    // saving from GetSaveExtensions — the two lists are independent, so a
+    // save-only extension (the vector formats plugin writes EPS/CDR/PDF/...
+    // it cannot read) appears with canLoad=false, and a plugin that saves a
+    // format an earlier provider already listed upgrades that entry's
+    // canSave instead of duplicating it.
     void AddRegisteredGraphicsPlugins(std::vector<MediaFormatInfo>& out) {
+        auto findEntry = [&out](const std::string& ext) -> MediaFormatInfo* {
+            for (auto& f : out) {
+                if (f.MatchesExtension(ext)) return &f;
+            }
+            return nullptr;
+        };
+
         for (const auto& plugin : UltraCanvasGraphicsPluginRegistry::GetAllPlugins()) {
             if (!plugin) continue;
             const std::string name = plugin->GetPluginName();
-            const bool pluginSaves = (name.find("STL") != std::string::npos);
+
+            std::set<std::string> saveExts;
+            for (const std::string& rawExt : plugin->GetSaveExtensions()) {
+                const std::string ext = ToLowerNoDot(rawExt);
+                if (!ext.empty()) saveExts.insert(ext);
+            }
 
             // A plugin's extensions are one format family (e.g. XAR's
             // xar/web/wix), so classify the whole plugin by its first
@@ -393,17 +409,30 @@ namespace {
                 if (type != GraphicsFormatType::Unknown) break;
             }
 
-            for (const std::string& rawExt : plugin->GetSupportedExtensions()) {
-                const std::string ext = ToLowerNoDot(rawExt);
-                if (ext.empty() || ListContains(out, ext)) continue;
+            auto addOrUpgrade = [&](const std::string& ext, bool canLoad) {
+                if (MediaFormatInfo* existing = findEntry(ext)) {
+                    if (canLoad) existing->canLoad = true;
+                    if (saveExts.count(ext)) existing->canSave = true;
+                    return;
+                }
                 MediaFormatInfo f;
                 f.extension   = ext;
                 f.description = ext + " (" + name + ")";
-                f.category    = CategoryFromGraphicsType(type);
-                f.canLoad     = true;
-                f.canSave     = pluginSaves;
+                f.category    = CategoryFromGraphicsType(
+                        canLoad ? type
+                                : GraphicsFormatDetector::DetectFromExtension(ext));
+                f.canLoad     = canLoad;
+                f.canSave     = saveExts.count(ext) > 0;
                 f.provider    = name;
                 out.push_back(std::move(f));
+            };
+
+            for (const std::string& rawExt : plugin->GetSupportedExtensions()) {
+                const std::string ext = ToLowerNoDot(rawExt);
+                if (!ext.empty()) addOrUpgrade(ext, true);
+            }
+            for (const std::string& ext : saveExts) {
+                addOrUpgrade(ext, false);
             }
         }
     }

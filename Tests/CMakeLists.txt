@@ -1130,6 +1130,29 @@ else()
     message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== VECTOR FORMATS PLUGIN TEST =====
+# The whole converter matrix through the graphics plugin registry: saving
+# all ten formats via SaveGraphicsFile, loading the formats with readers
+# via LoadGraphicsFile, round-trip structure checks, and the supported-
+# format inventory's per-extension load/save capabilities.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFormatsPluginTest...")
+    add_executable(VectorFormatsPluginTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorFormatsPluginTest.cpp
+    )
+    target_include_directories(VectorFormatsPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorFormatsPluginTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFormatsPluginTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFormatsPluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorFormatsPluginTest COMMAND VectorFormatsPluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorFormatsPluginTest")
+else()
+    message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

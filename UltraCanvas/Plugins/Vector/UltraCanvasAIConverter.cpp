@@ -25,7 +25,23 @@ namespace VectorConverter {
 
 std::shared_ptr<VectorStorage::VectorDocument> ExportOnlyConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    (void)filename;
+    // File and stream imports funnel into ImportFromString, so a subclass
+    // that grows a reader (DXF, DWG, EMF, WMF) overrides only that method
+    // plus CanImport; for pure writers the base ImportFromString warns.
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+        if (CanImport() && options.WarningCallback) {
+            options.WarningCallback("Cannot open file: " + filename);
+        }
+        if (!CanImport()) return ImportFromString("", options);   // format warning
+        return nullptr;
+    }
+    return ImportFromStream(file, options);
+}
+
+std::shared_ptr<VectorStorage::VectorDocument> ExportOnlyConverter::ImportFromString(
+        const std::string& data, const ConversionOptions& options) {
+    (void)data;
     if (options.WarningCallback) {
         options.WarningCallback(GetFormatName() + " import is not supported; "
                                 "this converter only writes");
@@ -33,16 +49,11 @@ std::shared_ptr<VectorStorage::VectorDocument> ExportOnlyConverter::Import(
     return nullptr;
 }
 
-std::shared_ptr<VectorStorage::VectorDocument> ExportOnlyConverter::ImportFromString(
-        const std::string& data, const ConversionOptions& options) {
-    (void)data;
-    return Import("", options);
-}
-
 std::shared_ptr<VectorStorage::VectorDocument> ExportOnlyConverter::ImportFromStream(
         std::istream& stream, const ConversionOptions& options) {
-    (void)stream;
-    return Import("", options);
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+    return ImportFromString(buffer.str(), options);
 }
 
 bool ExportOnlyConverter::Export(

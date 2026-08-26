@@ -32,7 +32,11 @@ set(VECTOR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasWMFConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasAIConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasDXFConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasDXFReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasDWGConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEMFReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasWMFReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorFormatsPlugin.cpp
 )
 
 set(VECTOR_PLUGIN_HEADERS

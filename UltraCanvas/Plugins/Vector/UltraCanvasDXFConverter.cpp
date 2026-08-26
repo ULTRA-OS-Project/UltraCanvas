@@ -67,22 +67,24 @@ int SnapLineweight(double widthPt) {
     return best;
 }
 
-// Nearest of the classic ACI colours (a display fallback for consumers that
-// ignore the 420 true colour).
+// Nearest ACI colour over the full 256-entry palette (a display fallback
+// for consumers that ignore the 420 true colour - LibreDWG's DXF output
+// carries only the ACI, so this fidelity matters for the DWG chain).
 int NearestAci(const Color& c) {
-    struct Aci { int index; int r, g, b; };
-    static const Aci table[] = {
-        {1, 255, 0, 0}, {2, 255, 255, 0}, {3, 0, 255, 0}, {4, 0, 255, 255},
-        {5, 0, 0, 255}, {6, 255, 0, 255}, {7, 255, 255, 255}, {7, 0, 0, 0},
-        {8, 128, 128, 128}, {9, 192, 192, 192},
-    };
+    // ACI 7 renders black on white pages: keep both extremes there.
+    if ((c.r > 245 && c.g > 245 && c.b > 245) ||
+        (c.r < 10 && c.g < 10 && c.b < 10)) {
+        return 7;
+    }
     long bestDist = -1;
     int best = 7;
-    for (const auto& a : table) {
-        long d = static_cast<long>(a.r - c.r) * (a.r - c.r) +
-                 static_cast<long>(a.g - c.g) * (a.g - c.g) +
-                 static_cast<long>(a.b - c.b) * (a.b - c.b);
-        if (bestDist < 0 || d < bestDist) { bestDist = d; best = a.index; }
+    for (int aci = 1; aci <= 255; ++aci) {
+        if (aci == 7) continue;   // handled above (palette lists it as black)
+        Color p = AciPaletteColor(aci);
+        long d = static_cast<long>(p.r - c.r) * (p.r - c.r) +
+                 static_cast<long>(p.g - c.g) * (p.g - c.g) +
+                 static_cast<long>(p.b - c.b) * (p.b - c.b);
+        if (bestDist < 0 || d < bestDist) { bestDist = d; best = aci; }
     }
     return best;
 }
@@ -113,6 +115,11 @@ public:
             if (pageW <= 0) pageW = 595;
             if (pageH <= 0) pageH = 842;
         }
+
+        // The model/paper space block record handles are referenced by every
+        // entity's owner (330), so they must exist before the entity pass.
+        msbr = NH();
+        psbr = NH();
 
         // Pre-pass: collect layers, font families and dash patterns so the
         // tables can be written before the entities that reference them.
@@ -326,7 +333,7 @@ private:
             T(o, 0, "TABLE"); T(o, 2, "BLOCK_RECORD"); T(o, 5, th);
             T(o, 100, "AcDbSymbolTable"); T(o, 70, 2);
             for (std::string* h : {&msbr, &psbr}) {
-                *h = NH();
+                // Handles pre-allocated in Build(): entities own-link to them.
                 T(o, 0, "BLOCK_RECORD"); T(o, 5, *h); T(o, 330, th);
                 T(o, 100, "AcDbSymbolTableRecord");
                 T(o, 100, "AcDbBlockTableRecord");
