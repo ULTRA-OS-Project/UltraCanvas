@@ -53,6 +53,10 @@ jobs:
               sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
               sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
               sudo apt-get install -y libzbar-dev
+              # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
+              # CI should compile it. 22.04 ships freerdp2; newer runners
+              # will pick freerdp3-dev automatically once available.
+              sudo apt-get install -y freerdp2-dev || sudo apt-get install -y freerdp3-dev
               # ImageMagick runtime: not a build dep, but package-linux.sh bundles
               # it as libvips' delegate (coder modules + config), so the files must
               # be present on the runner to match the developer package.

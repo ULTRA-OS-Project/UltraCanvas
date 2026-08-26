@@ -131,6 +131,9 @@ struct UltraWinCapabilities {
     // The host can run the VM tier: QEMU present and KVM usable. Whether
     // the machine is provisioned/installed is UltraWin_VmGetInfo's business.
     bool vmTierAvailable = false;
+    // This build carries the FreeRDP RemoteApp client (compile-time flag —
+    // the library links libfreerdp when it is present at build time).
+    bool remoteAppSupported = false;
 };
 
 // ============================================================================
@@ -191,6 +194,17 @@ struct UltraWinConfig {
 
     // Seconds allowed for QEMU to answer on its QMP socket after spawn.
     int vmStartTimeoutSeconds = 30;
+
+    // Guest account the RemoteApp integration signs in with. Defaults
+    // match the account UltraWin_VmProvision's answer file creates.
+    std::string vmGuestUsername = "ultra";
+    std::string vmGuestPassword = "ultra";
+
+    // Share the user's home directory into the guest over virtiofs (tag
+    // "ultrawin_home" — the guest's virtiofs service mounts it under the
+    // same drive letter the Wine tier uses, homeDriveLetter). Effective
+    // only when a virtiofsd binary is found on the host.
+    bool vmShareHome = true;
 };
 
 // ============================================================================

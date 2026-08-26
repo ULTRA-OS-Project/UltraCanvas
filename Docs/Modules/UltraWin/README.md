@@ -242,10 +242,53 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
   state is `UltraWin_VmGetInfo`'s business).
 
+## RemoteApp sessions (Stage 2b-i)
+
+The bridge between the running guest and the desktop: **FreeRDP** — the
+one UltraWin engine that IS linked (Apache 2; version-adaptive over
+FreeRDP 3, falling back to FreeRDP 2 where 3 is not packaged; optional —
+without it `UltraWinCapabilities::remoteAppSupported` is false and VM-tier
+launches report `NotSupported`).
+
+- `UltraWin_RunApp(..., forceTier = Vm)` now launches through a RemoteApp
+  (RAIL) session against the guest's forwarded RDP port: the guest runs
+  the program and exports its windows — never a desktop. Sign-in uses
+  `UltraWinConfig::vmGuestUsername/vmGuestPassword` (defaults match the
+  account the provisioning answer file creates).
+- Stage 2b accepts **guest paths** (`C:\...`) and RemoteApp aliases
+  (`||name`); host paths follow with the virtiofs shared-folder
+  integration.
+- Supervision maps onto the session: `Running` while connected,
+  `CloseApp`/`KillApp` end the session, `WaitApp`/`GetAppState` behave as
+  in the Wine tier.
+- The machine must be `Running` (`VmNotRunning` otherwise); drive
+  redirection over RDP is deliberately off — folders come via virtiofs.
+
+## Shared home over virtiofs (Stage 2b-ii)
+
+The VM tier meets the same-folders requirement the same way the Wine tier
+does — one unified home drive:
+
+- With `UltraWinConfig::vmShareHome` (default on) and a virtiofsd binary
+  on the host, `UltraWin_VmStart` spawns **virtiofsd** exporting `$HOME`
+  and attaches it as a `vhost-user-fs` device with tag `ultrawin_home`
+  (shared-memfd memory backend; `UltraWinVmInfo::homeShared` reports the
+  live state, and the daemon's lifetime is tied to the machine's).
+- `UltraWin_RunApp(forceTier = Vm)` accepts **host paths under the home
+  directory** and translates them to the guest spelling
+  (`/home/u/Apps/X.exe` → `U:\Apps\X.exe`, `homeDriveLetter`).
+- Guest side: the virtiofs service (WinFsp + `VirtioFsSvc` from the
+  virtio-win drivers) mounts the tag as the home drive — installed during
+  provisioning once Stage 2c validates against real install media.
+
 ## Not yet implemented (later stages)
 
-- Stage 2b: the FreeRDP RemoteApp element (`UltraCanvasRemoteAppView`) and
-  `UltraWin_RunApp` routing into the VM tier; virtiofs shared folders.
-- Stage 2c: guest provisioning validated end-to-end against real install
-  media (virtio driver injection, first-boot orchestration).
+- Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
+  window surfaces as native ULTRA OS windows (needs a real Windows guest
+  to validate against).
+- Stage 2c: the provisioning pipeline is complete (WinPE virtio driver
+  injection, guest-tools install, virtiofs mount, RDP-probe install
+  detection, `ultrawin-setup` CLI) but awaits its validation run against
+  real install media on a KVM machine — see
+  [`VmValidation.md`](VmValidation.md).
 - `UltraWin_QueryCompatibility` + automatic tier routing.

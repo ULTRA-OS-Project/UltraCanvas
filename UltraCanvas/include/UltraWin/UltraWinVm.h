@@ -42,6 +42,11 @@ struct UltraWinVmInfo {
     int64_t qemuPid = 0;       // 0 when not running
     bool kvm = false;          // started with KVM acceleration
     int rdpHostPort = 0;       // host loopback port forwarded to guest 3389
+    bool homeShared = false;   // this run exports home over virtiofs
+    // Windows setup completed: flipped automatically the first time the
+    // guest's RDP port answers while the machine runs; later boots then
+    // skip the install media. (Manifest-backed.)
+    bool windowsInstalled = false;
 };
 
 // Prepare the machine under UltraWinConfig::vmDirectory: create the qcow2

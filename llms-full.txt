@@ -447,10 +447,17 @@ encapsulates them so backings can be swapped — see
   the single shared headless QEMU/KVM guest — spawned, never linked —
   controlled over QMP; RDP port forwarded for the RemoteApp integration)
 
-**Planned (Stage 2b/2c, 3):** the `UltraCanvasRemoteAppView` element for
-FreeRDP RemoteApp windows with `UltraWin_RunApp` VM-tier routing, virtiofs
-shared folders, guest provisioning validated against real install media,
-and `UltraWin_QueryCompatibility` tier routing.
+- `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
+  running guest over FreeRDP (the one linked engine, Apache 2, optional;
+  guest paths, `||aliases`, and host paths under the shared home)
+- virtiofs home share: `UltraWin_VmStart` exports `$HOME` into the guest
+  (spawned virtiofsd + vhost-user-fs, tag `ultrawin_home`) so both tiers
+  present the user's files under the same unified drive letter
+
+**Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
+rendering RAIL window surfaces, guest provisioning validated against real
+install media (incl. the guest-side virtiofs mount service), and
+`UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.
@@ -1068,6 +1075,7 @@ their *License* is likewise marked **—** (OS component).
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | fmt | [fmt.dev](https://fmt.dev/) | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | [MIT](https://spdx.org/licenses/MIT.html) |
 | FontConfig | [freedesktop.org/wiki/Software/fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/) | [gitlab.freedesktop.org/fontconfig/fontconfig](https://gitlab.freedesktop.org/fontconfig/fontconfig) | [MIT](https://spdx.org/licenses/MIT.html) |
+| FreeRDP (optional) | [freerdp.com](https://www.freerdp.com/) | [github.com/FreeRDP/FreeRDP](https://github.com/FreeRDP/FreeRDP) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | FreeType | [freetype.org](https://freetype.org/) | [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype) | [FTL](https://spdx.org/licenses/FTL.html) |
 | giflib | [giflib.sourceforge.net](https://giflib.sourceforge.net/) | [sourceforge.net/projects/giflib](https://sourceforge.net/projects/giflib/) | [MIT](https://spdx.org/licenses/MIT.html) |
 | GLEW | [glew.sourceforge.net](https://glew.sourceforge.net/) | [github.com/nigels-com/glew](https://github.com/nigels-com/glew) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -1291,6 +1299,7 @@ for the full search order.
 | Component installer (VC++ runtimes, fonts, .NET, DXVK) | winetricks (optional, **runtime only** — spawned, never linked) | — | — |
 | VM tier (Windows guest, Stage 2) | QEMU (qemu-system-x86_64 + qemu-img; optional, **runtime only** — spawned, never linked; KVM via the host kernel) | — | — |
 | QMP control JSON | yyjson (bundled — the same vendored engine behind UltraCanvasJSON, built once as `uc-yyjson`) | — | — |
+| RemoteApp client (VM tier) | FreeRDP 3 or 2 (optional, **linked** — the only linked UltraWin engine; Apache 2) | — | — |
 
 > UltraWin is Linux / ULTRA OS only. Nothing is linked: the module probes for
 > a `wine` binary at runtime and degrades gracefully
@@ -52024,13 +52033,340 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmTierAvailable` (= QEMU present **and** KVM usable — provisioning
   state is `UltraWin_VmGetInfo`'s business).
 
+## RemoteApp sessions (Stage 2b-i)
+
+The bridge between the running guest and the desktop: **FreeRDP** — the
+one UltraWin engine that IS linked (Apache 2; version-adaptive over
+FreeRDP 3, falling back to FreeRDP 2 where 3 is not packaged; optional —
+without it `UltraWinCapabilities::remoteAppSupported` is false and VM-tier
+launches report `NotSupported`).
+
+- `UltraWin_RunApp(..., forceTier = Vm)` now launches through a RemoteApp
+  (RAIL) session against the guest's forwarded RDP port: the guest runs
+  the program and exports its windows — never a desktop. Sign-in uses
+  `UltraWinConfig::vmGuestUsername/vmGuestPassword` (defaults match the
+  account the provisioning answer file creates).
+- Stage 2b accepts **guest paths** (`C:\...`) and RemoteApp aliases
+  (`||name`); host paths follow with the virtiofs shared-folder
+  integration.
+- Supervision maps onto the session: `Running` while connected,
+  `CloseApp`/`KillApp` end the session, `WaitApp`/`GetAppState` behave as
+  in the Wine tier.
+- The machine must be `Running` (`VmNotRunning` otherwise); drive
+  redirection over RDP is deliberately off — folders come via virtiofs.
+
+## Shared home over virtiofs (Stage 2b-ii)
+
+The VM tier meets the same-folders requirement the same way the Wine tier
+does — one unified home drive:
+
+- With `UltraWinConfig::vmShareHome` (default on) and a virtiofsd binary
+  on the host, `UltraWin_VmStart` spawns **virtiofsd** exporting `$HOME`
+  and attaches it as a `vhost-user-fs` device with tag `ultrawin_home`
+  (shared-memfd memory backend; `UltraWinVmInfo::homeShared` reports the
+  live state, and the daemon's lifetime is tied to the machine's).
+- `UltraWin_RunApp(forceTier = Vm)` accepts **host paths under the home
+  directory** and translates them to the guest spelling
+  (`/home/u/Apps/X.exe` → `U:\Apps\X.exe`, `homeDriveLetter`).
+- Guest side: the virtiofs service (WinFsp + `VirtioFsSvc` from the
+  virtio-win drivers) mounts the tag as the home drive — installed during
+  provisioning once Stage 2c validates against real install media.
+
 ## Not yet implemented (later stages)
 
-- Stage 2b: the FreeRDP RemoteApp element (`UltraCanvasRemoteAppView`) and
-  `UltraWin_RunApp` routing into the VM tier; virtiofs shared folders.
-- Stage 2c: guest provisioning validated end-to-end against real install
-  media (virtio driver injection, first-boot orchestration).
+- Stage 2b-ii: the `UltraCanvasRemoteAppView` element rendering RAIL
+  window surfaces as native ULTRA OS windows (needs a real Windows guest
+  to validate against).
+- Stage 2c: the provisioning pipeline is complete (WinPE virtio driver
+  injection, guest-tools install, virtiofs mount, RDP-probe install
+  detection, `ultrawin-setup` CLI) but awaits its validation run against
+  real install media on a KVM machine — see
+  [`VmValidation.md`](VmValidation.md).
 - `UltraWin_QueryCompatibility` + automatic tier routing.
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/TestingGuide.md
+==============================================================================
+
+# UltraWin testing guide — Tier 1 (Wine) and Tier 2 (VM), step by step
+
+Hands-on validation of the Windows-application support in ULTRA OS, as a
+user would exercise it. Tier 1 needs only a Linux desktop with Wine; Tier 2
+additionally needs KVM and Windows install media. Every step says what
+success looks like, so a failing step plus its output is a complete bug
+report.
+
+The driver for most steps is the **`ultrawin-setup`** CLI (built with the
+framework), plus **UltraFiler** for the desktop-integration checks.
+
+---
+
+## Part 0 — Build (once)
+
+```bash
+sudo apt install build-essential cmake pkg-config \
+    libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev \
+    libglib2.0-dev libfreetype6-dev libtinyxml2-dev libfmt-dev \
+    libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev \
+    libcdr-dev librevenge-dev zlib1g-dev libzbar-dev \
+    freerdp2-dev    # Ubuntu 24.04+: freerdp3-dev
+
+git clone https://github.com/ULTRA-OS-Project/UltraCanvas.git
+cd UltraCanvas
+cmake -B build -DULTRACANVAS_BUILD_ULTRAWIN_TESTS=ON
+cmake --build build -j$(nproc) --target ultrawin-setup UltraFiler UltraWinTests
+```
+
+**Check:** the configure output shows
+`[✓] UltraWin - ENABLED` and `[✓] UltraWin RemoteApp client - ENABLED`.
+
+```bash
+./build/UltraWinTests
+```
+
+**Check:** all tests pass. Without Wine/QEMU installed some self-skip —
+after Part 1 below, re-run and expect **0 skipped** (the RDP handshake
+test may still skip on hosts without IPv6).
+
+---
+
+## Part 1 — Tier 1: Wine
+
+### 1.1 Install the engines
+
+```bash
+sudo apt install wine winetricks
+./build/ultrawin-setup status
+```
+
+**Check:** `wine: yes`, `winetricks: yes`.
+
+### 1.2 First launch from the command line
+
+Use any Windows program you have (a portable `.exe` is easiest —
+e.g. 7-Zip's installer, Notepad++ installer, PhotoFiltre):
+
+```bash
+./build/ultrawin-setup run-wine ~/Downloads/npp.8.6.Installer.x64.exe
+```
+
+**Check:** the installer opens **as a normal window** (no Windows desktop
+anywhere). The first launch prints nothing for ~30–60 s while the
+program's isolated environment is created — that is once per program.
+When you close the program, the CLI prints its exit code.
+
+### 1.3 The user's folders — the U: drive
+
+Inside any running Windows program: File → Open (or Save).
+
+**Check:** drive **U:** exists and shows your home directory — your real
+files, live. Drive **Z:** (the whole host filesystem) must NOT exist.
+Save a file to `U:\` and confirm it appears in `$HOME` on Linux.
+
+### 1.4 Desktop integration — UltraFiler
+
+```bash
+./build/UltraFiler
+```
+
+- Double-click a `.exe` → status bar shows "Launching …", the program
+  opens as a native window.
+- Double-click a `.msi` → status bar shows "Installing …" and the
+  installer runs (through msiexec).
+- With Wine **uninstalled**, double-clicking shows the install hint in
+  the status bar instead of failing silently.
+
+### 1.5 Installed programs reach the launcher
+
+After running an installer (1.2 or 1.4):
+
+```bash
+./build/ultrawin-setup programs
+```
+
+**Check:** the program's Start-Menu entries are listed with their
+environment and shortcut paths. Launch one:
+
+```bash
+./build/ultrawin-setup run-wine "<the listed .lnk path>"
+```
+
+### 1.6 Components fix missing runtimes
+
+If a program complains about VC++/fonts/.NET:
+
+```bash
+./build/ultrawin-setup component <EnvironmentName> vcrun2019
+./build/ultrawin-setup component <EnvironmentName> corefonts
+```
+
+(Environment names = the directories under
+`~/.local/share/ultrawin/environments/`, one per program.)
+
+**Check:** the command reports the installed components; the program's
+complaint is gone on the next launch. Failures name a log file
+(`ultrawin-install.log` in the environment) — send that file.
+
+---
+
+## Part 2 — Tier 2: the Windows VM
+
+Follow [`VmValidation.md`](VmValidation.md) for the full detail; the
+short form:
+
+### 2.1 Prerequisites
+
+```bash
+sudo apt install qemu-system-x86 qemu-utils virtiofsd
+./build/ultrawin-setup status
+```
+
+**Check:** `qemu: yes`, `kvm: yes`, `virtiofsd: yes`, `vm tier: yes`.
+(`kvm: no` → enable virtualization in BIOS/UEFI.)
+
+You also need, downloaded once:
+- a **Windows 10/11 Pro** ISO (your license),
+- the **virtio-win** drivers ISO:
+  <https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio-win/virtio-win.iso>
+
+### 2.2 Provision and install — fully unattended
+
+```bash
+./build/ultrawin-setup provision \
+    --windows-iso ~/isos/Win11_Pro.iso \
+    --drivers-iso ~/isos/virtio-win.iso
+./build/ultrawin-setup start
+./build/ultrawin-setup watch
+```
+
+**Check:** `watch` polls every 10 s and finishes with `installed=yes`
+(expect 20–45 min for the unattended install). No interaction should ever
+be needed. If `watch` reports `stopped` or never finishes, collect
+`~/.local/share/ultrawin/vm/ultrawin-qemu.log` and the `watch` output —
+that plus the screen described in VmValidation.md's failure table is the
+bug report.
+
+### 2.3 Launch Windows apps into the guest
+
+```bash
+./build/ultrawin-setup run "||notepad"
+./build/ultrawin-setup run "C:\\Windows\\System32\\notepad.exe"
+./build/ultrawin-setup run ~/Documents/SomeWindowsTool.exe   # via shared home
+```
+
+**Check:** the session connects and the CLI waits until the program ends.
+(Until the `UltraCanvasRemoteAppView` element lands, the window surface
+itself is not yet composed onto the desktop — a connected, program-bound
+session that ends when the app closes is the pass criterion; full window
+display is the next milestone.)
+
+### 2.4 The shared home inside the guest
+
+In the guest (e.g. via `run "C:\\Windows\\explorer.exe"` once 2b-ii
+lands, or any file dialog): **U:** shows the same home directory as
+Tier 1 and Linux.
+
+### 2.5 Machine lifecycle
+
+```bash
+./build/ultrawin-setup suspend   # freeze the guest (RAM stays)
+./build/ultrawin-setup resume
+./build/ultrawin-setup stop      # graceful shutdown; 'start' boots from disk
+```
+
+**Check:** `status` reflects each transition; after `stop`+`start` the
+machine boots straight from disk (no install media) because
+`installed: yes`.
+
+---
+
+## Reporting results
+
+For every failing step, include:
+1. The exact command and its full output.
+2. `./build/ultrawin-setup status` output.
+3. Tier 1: the environment's `ultrawin-install.log` (component failures).
+   Tier 2: `ultrawin-qemu.log`, `ultrawin-virtiofsd.log` and
+   `ultrawin-vm.conf` from `~/.local/share/ultrawin/vm/`.
+4. Host details: distro/version, Wine version (`wine --version`), QEMU
+   version (`qemu-system-x86_64 --version`).
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/VmValidation.md
+==============================================================================
+
+# UltraWin VM tier — real-hardware validation guide (Stage 2c)
+
+The VM tier's machine, session, and shared-folder layers are covered by
+automated tests, but the unattended **Windows installation** itself can only
+be validated on a machine with KVM and real install media. This is the
+step-by-step run, driven by the `ultrawin-setup` CLI (built with the
+framework whenever UltraWin is: target `ultrawin-setup`).
+
+## What you need
+
+- A Linux machine with `/dev/kvm` (BIOS virtualization enabled) and ~6 GB
+  free RAM, plus QEMU (`sudo apt install qemu-system-x86 qemu-utils
+  virtiofsd`).
+- A **Windows 10/11 Pro or Enterprise ISO** — the RemoteApp host role needs
+  Pro or better, and the Windows license is yours. (Microsoft's media
+  creation / evaluation downloads work.)
+- The **virtio-win drivers ISO**:
+  <https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio-win/virtio-win.iso>
+  — carries the storage/network drivers Windows setup needs on a virtio
+  machine, plus the guest tools (WinFsp + the virtiofs service).
+
+## The run
+
+```bash
+ultrawin-setup status          # expect: qemu yes, kvm yes, vm tier yes
+ultrawin-setup provision \
+    --windows-iso  ~/isos/Win11_Pro.iso \
+    --drivers-iso  ~/isos/virtio-win.iso
+ultrawin-setup start           # boots the installer, fully unattended
+ultrawin-setup watch           # polls until Windows answers on RDP
+```
+
+`watch` reports `installed=yes` once the guest's RDP port answers — that
+flips the machine manifest, so later `start`s boot straight from disk
+without install media. Then:
+
+```bash
+ultrawin-setup run "||notepad"                      # RemoteApp alias
+ultrawin-setup run "C:\\Windows\\System32\\notepad.exe"
+ultrawin-setup run ~/Documents/SomeTool.exe         # via the shared home
+```
+
+## What to report when it fails
+
+Everything lands in the machine directory (default
+`~/.local/share/ultrawin/vm`):
+
+| File | Contents |
+|---|---|
+| `ultrawin-qemu.log` | QEMU's own output (device/boot problems) |
+| `ultrawin-virtiofsd.log` | home-share daemon |
+| `ultrawin-vm.conf` | the machine manifest |
+| `unattend/autounattend.xml` | the generated answer file |
+
+Plus the `ultrawin-setup` output itself. The most likely first-run
+failures and their meaning:
+
+- **Setup asks for a disk driver / no disk found** — the WinPE driver
+  injection didn't reach the virtio-win CD (report which drive letter the
+  CD got in the guest).
+- **Setup stops at an interactive screen** — an answer-file gap; note
+  which screen (edition selection, EULA, account, …).
+- **`watch` never reaches installed** — RDP didn't come up: either
+  firstlogon commands failed (guest tools install, `VirtioFsSvc`) or the
+  RDP enablement didn't apply.
+- **`run` connects but no window appears** — RemoteApp allow-list or RAIL
+  negotiation; the `UltraCanvasRemoteAppView` element work (Stage 2b-ii)
+  also lands here.
+
+The answer file (`GenerateAutounattendXml`) and first-boot orchestration
+are deliberately marked experimental until this run has passed; iteration
+happens against these logs.
 
 ==============================================================================
 FILE: Docs/Modules/Vectorizer/README.md

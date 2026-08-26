@@ -68,7 +68,7 @@ TEST(vm_argument_validation) {
 
 TEST(vm_autounattend_generation) {
     using namespace ultrawin_internal;
-    std::string xml = GenerateAutounattendXml("ultra", "secret");
+    std::string xml = GenerateAutounattendXml("ultra", "secret", 'u');
     CHECK(xml.find("<?xml") == 0);
     // The guest-side switches the RemoteApp integration depends on.
     CHECK(xml.find("fDenyTSConnections") != std::string::npos);
@@ -78,6 +78,14 @@ TEST(vm_autounattend_generation) {
     CHECK(xml.find("<Name>ultra</Name>") != std::string::npos);
     CHECK(xml.find("secret") != std::string::npos);
     CHECK(xml.find("</unattend>") != std::string::npos);
+    // Stage 2c: virtio storage drivers reach WinPE (virtio system disk),
+    // guest tools install, and the share mounts as the unified letter.
+    CHECK(xml.find("PnpCustomizationsWinPE") != std::string::npos);
+    CHECK(xml.find("DriverPaths") != std::string::npos);
+    CHECK(xml.find("virtio-win-guest-tools.exe") != std::string::npos);
+    CHECK(xml.find("VirtioFsSvc") != std::string::npos);
+    CHECK(xml.find("\"U:\"") != std::string::npos);   // canonicalised 'u'
+    CHECK(xml.find("@HOMEDRIVE@") == std::string::npos);
 }
 
 TEST(vm_provision_and_lifecycle_with_real_qemu) {

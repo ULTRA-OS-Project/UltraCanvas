@@ -9,6 +9,7 @@
 
 #include "UltraWin/UltraWin.h"
 
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -23,9 +24,13 @@ extern std::mutex g_mutex;
 extern bool g_initialized;
 extern UltraWinConfig g_config;
 
+class RdpSession;  // UltraWinRdp.h — VM-tier RemoteApp connection
+
 struct AppInstance {
     UltraWinAppInfo info;   // info.processId is the wine child's pid
     bool reaped = false;    // waitpid() has collected the exit status
+    bool closeRequested = false;          // CloseApp/KillApp was called
+    std::shared_ptr<RdpSession> session;  // set on VM-tier instances only
 };
 
 extern std::unordered_map<UltraWinHandle, AppInstance> g_apps;
@@ -83,13 +88,28 @@ std::string FindVirtiofsdBinary();
 // Effective machine home from g_config / process env. Never empty.
 std::string VmDirectory();                    // takes g_mutex
 
-// The unattended Windows-setup answer file provisioning writes: wipes disk
-// 0, installs Pro, enables RDP + the RemoteApp allow-list, bypasses the
-// TPM/RAM setup checks, creates `userName` with `password` (autologon
-// once). EXPERIMENTAL until validated against real install media (Stage
-// 2c). (Pure.)
+// True when a TCP connect to host:port succeeds within timeoutMs — the
+// host-visible signal that the guest's RDP stack (and so Windows) is up.
+bool ProbeTcpPort(const std::string& host, int port, int timeoutMs);
+
+// Host path -> guest path over the shared-home mapping: an absolute host
+// path under $HOME becomes "<homeDriveLetter>:\rel\ative" (backslashes);
+// anything else yields "" (not reachable in the guest). (Pure given the
+// home/letter arguments.)
+std::string HostToGuestPath(const std::string& hostPath,
+                            const std::string& home, char driveLetter);
+
+// The unattended Windows-setup answer file provisioning writes: injects
+// the virtio storage/net drivers in WinPE (the system disk is virtio —
+// without them setup sees no disk), wipes disk 0, installs Pro, enables
+// RDP + the RemoteApp allow-list, bypasses the TPM/RAM setup checks,
+// creates `userName` with `password` (autologon once), installs the
+// virtio-win guest tools and mounts the ultrawin_home share as
+// `homeDriveLetter`. EXPERIMENTAL until validated against real install
+// media. (Pure.)
 std::string GenerateAutounattendXml(const std::string& userName,
-                                    const std::string& password);
+                                    const std::string& password,
+                                    char homeDriveLetter);
 
 // The wine ELF loader behind a possibly-scripted wine entry point.
 // Distro `wine` commands are often shell wrappers (Ubuntu: /usr/bin/wine ->

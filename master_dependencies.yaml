@@ -268,6 +268,15 @@ windows_compatibility:
       # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
       apt: "qemu-system-x86 qemu-utils"
 
+    freerdp:
+      min_version: "2.11"             # 3.x preferred where packaged
+      purpose: "VM tier RemoteApp (RAIL) client - the only LINKED UltraWin engine (Apache 2); optional, feature off without it"
+      required: false
+      priority: "medium"
+      platforms: ["linux"]
+      pkg_config: "freerdp3 winpr3 freerdp-client3 (fallback: freerdp2 winpr2 freerdp-client2)"
+      apt: "freerdp2-dev"              # 24.04+: freerdp3-dev
+
 # ===== TEXT PROCESSING (spell checking) =====
 #
 # Every entry here is optional and none of them can fail the build. The service
