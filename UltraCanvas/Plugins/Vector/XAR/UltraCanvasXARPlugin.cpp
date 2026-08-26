@@ -532,13 +532,46 @@ namespace UltraCanvas {
         ctx->SetFontFace(s.textAttr.fontName.empty() ? "Sans" : s.textAttr.fontName,
                          s.textAttr.bold ? FontWeight::Bold : FontWeight::Normal,
                          s.textAttr.italic ? FontSlant::Italic : FontSlant::Normal);
-        ctx->SetFontSize(sizePx);
+        // The context's font size is in points at the text system's 96 dpi
+        // resolution, so glyphs come out size×96/72 device pixels; XAR page
+        // pixels are 72 dpi points. Verified against a Designer Pro X19 PDF
+        // export: without the factor every glyph rendered 4/3 too large.
+        ctx->SetFontSize(sizePx * (72.0f / 96.0f));
         return sizePx;
+    }
+
+    // Measure and draw span text through the same layout engine. FillText's
+    // toy-cairo path resolves fonts differently from the pango layouts
+    // behind GetTextLineWidth, so mixing them makes measured span widths
+    // and drawn glyphs disagree — and every caret position in the text
+    // layout depends on those two agreeing.
+    static double MeasureSpanText(IRenderContext* ctx, const std::string& text) {
+        if (text.empty()) return 0;
+        auto layout = ctx->GetOrCreateTextLayout(text, Size2Di(0, 0), false);
+        if (layout && layout->IsValid()) return layout->GetLayoutWidth();
+        return ctx->GetTextLineWidth(text);
+    }
+
+    static void DrawSpanText(IRenderContext* ctx, const std::string& text, const Color& color) {
+        if (text.empty()) return;
+        auto layout = ctx->GetOrCreateTextLayout(text, Size2Di(0, 0), false);
+        if (layout && layout->IsValid()) {
+            ctx->SetTextPaint(color);
+            // Anchor the layout so its baseline lands on y = 0, like FillText.
+            ctx->DrawTextLayout(*layout, Point2Dd(0, -layout->GetBaseline()));
+        } else {
+            ctx->SetFillPaint(color);
+            ctx->FillText(text, 0, 0);
+        }
     }
 
     void XARTextLineNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
-        if (lineIndex > 0) {
+        if (hasYOffset) {
+            // Xara's own baseline offset (negative = down, and the document
+            // space is Y-up, so it applies directly).
+            ctx->Translate(0, yOffsetMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale);
+        } else if (lineIndex > 0) {
             float leading = textAttr.GetFontSizeInPixels() * 1.15f;
             if (leading <= 0.01f) leading = 12.0f;
             // The document space is Y-up, so the next line down is negative Y.
@@ -551,6 +584,15 @@ namespace UltraCanvas {
         // origin — centred text centres on it, right-aligned text ends at
         // it — preferring Xara's own line width (TAG_TEXT_LINE_INFO) over
         // our measurement so the anchor is exact even where fonts differ.
+        float fontEm = textAttr.GetFontSizeInPixels() * scale;
+        if (fontEm <= 0.01f) fontEm = 12.0f * scale;
+        // List geometry, calibrated against a Designer Pro X19 PDF export:
+        // marker glyphs from 0.375 em, the item text (and every wrapped
+        // continuation line) from 1.5 em.
+        const double markerIndent = isListItem ? 0.375 * fontEm : 0.0;
+        const double hangIndent = 1.5 * fontEm;
+        const bool inList = isListItem || hangingIndent;
+
         double total = 0;
         std::vector<double> widths;
         for (const auto& c : children) {
@@ -564,7 +606,7 @@ namespace UltraCanvas {
             double w = 0;
             if (!s->text.empty()) {
                 ApplyTextFont(ctx, *s, scale);
-                w = ctx->GetTextLineWidth(s->text);
+                w = MeasureSpanText(ctx, s->text);
             }
             widths.push_back(w);
             total += w;
@@ -574,22 +616,35 @@ namespace UltraCanvas {
                 ? lineWidthMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale
                 : total;
 
+        // Full justification spreads the slack between the natural width
+        // and Xara's line width (= the column width on all but the last
+        // line of a paragraph) across the line's word gaps. The line that
+        // ends its paragraph stays at natural width, as Xara leaves it.
+        if (textAttr.justification == XARTextAttribute::Justification::Full &&
+            lineWidthMP > 0 && !inList && !endsParagraph &&
+            RenderJustified(ctx, scale, anchorWidth)) {
+            ctx->PopState();
+            return;
+        }
+
         // Our fonts rarely match the author's exactly, so measured span
         // widths drift from Xara's caret positions (visible as gaps after a
         // bold span, or letter-spaced runs of single characters). Xara's own
         // line width is authoritative: scale the measured widths so their
-        // sum lands every span boundary where Xara put it.
+        // sum lands every span boundary where Xara put it. List lines skip
+        // this — their indents make the measured and stored widths disagree
+        // by design.
         double measuredSum = 0;
         for (double w : widths) measuredSum += w;
         double kernSum = total - measuredSum;
-        if (lineWidthMP > 0 && measuredSum > 0.001) {
+        if (lineWidthMP > 0 && measuredSum > 0.001 && !inList) {
             double factor = (anchorWidth - kernSum) / measuredSum;
             if (factor > 0.01 && factor < 100.0) {
                 for (double& w : widths) w *= factor;
             }
         }
 
-        double x = 0, y = 0;
+        double x = hangingIndent ? hangIndent : markerIndent, y = 0;
         switch (textAttr.justification) {
             case XARTextAttribute::Justification::Centre: x = -anchorWidth / 2.0; break;
             case XARTextAttribute::Justification::Right:  x = -anchorWidth; break;
@@ -597,8 +652,17 @@ namespace UltraCanvas {
         }
 
         size_t wi = 0;
+        bool listTextStarted = false;
         for (const auto& c : children) {
             if (c->type == XARNodeType::TextString) {
+                auto s = std::static_pointer_cast<XARTextStringNode>(c);
+                // Marker-to-text transition of a list item: the item text
+                // starts at the hanging indent, or at least half an em past
+                // wherever the marker glyphs ended.
+                if (isListItem && !s->fromCharRecord && !listTextStarted) {
+                    listTextStarted = true;
+                    x = std::max(x + 0.5 * fontEm, hangIndent);
+                }
                 ctx->PushState();
                 ctx->Translate(x, y);
                 c->Render(ctx, scale);
@@ -615,6 +679,96 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
+    // Word-spread layout for fully-justified lines. Returns false when the
+    // line has nothing to spread (no word gaps, no slack, or explicit kerns
+    // take over) — the caller then falls back to the plain span layout.
+    bool XARTextLineNode::RenderJustified(IRenderContext* ctx, float scale,
+                                          double anchorWidth) {
+        struct Token {
+            XARTextStringNode* span;
+            std::string word;
+            bool gapBefore;
+            double spaceW;      // width of the gap's space, in the gap's font
+            double wordW;
+        };
+        std::vector<Token> tokens;
+        bool pendingGap = false;
+        double pendingSpaceW = 0;
+
+        // Find the last text span so its trailing spaces (Xara keeps the
+        // line-break space in the string) don't count as a gap.
+        XARTextStringNode* lastSpan = nullptr;
+        for (const auto& c : children) {
+            if (c->type == XARNodeType::TextKern) return false;
+            if (c->type == XARNodeType::TextString) {
+                lastSpan = std::static_pointer_cast<XARTextStringNode>(c).get();
+            }
+        }
+
+        double natural = 0;
+        int gaps = 0;
+        for (const auto& c : children) {
+            if (c->type != XARNodeType::TextString) continue;
+            auto s = std::static_pointer_cast<XARTextStringNode>(c);
+            std::string text = s->text;
+            if (s.get() == lastSpan) {
+                while (!text.empty() && text.back() == ' ') text.pop_back();
+            }
+            if (text.empty()) continue;
+            ApplyTextFont(ctx, *s, scale);
+            // Trailing-space-safe space width: bracket the space with ink.
+            double spaceW = MeasureSpanText(ctx, "| |") - MeasureSpanText(ctx, "||");
+            if (spaceW <= 0) spaceW = 0.25 * textAttr.GetFontSizeInPixels() * scale;
+            size_t pos = 0;
+            while (pos < text.size()) {
+                if (text[pos] == ' ') {
+                    pendingGap = true;
+                    pendingSpaceW = spaceW;
+                    ++pos;
+                    continue;
+                }
+                size_t end = text.find(' ', pos);
+                if (end == std::string::npos) end = text.size();
+                Token t;
+                t.span = s.get();
+                t.word = text.substr(pos, end - pos);
+                t.gapBefore = pendingGap;
+                t.spaceW = pendingSpaceW;
+                t.wordW = MeasureSpanText(ctx, t.word);
+                if (t.gapBefore) { natural += t.spaceW; ++gaps; }
+                natural += t.wordW;
+                tokens.push_back(std::move(t));
+                pendingGap = false;
+                pos = end;
+            }
+        }
+        if (tokens.empty() || gaps == 0) return false;
+
+        double extra = anchorWidth - natural;
+        float fontEm = textAttr.GetFontSizeInPixels() * scale;
+        if (fontEm <= 0.01f) fontEm = 12.0f * scale;
+        // A slightly negative slack just means our font measures wider than
+        // the author's — compressing the gaps keeps the right margin true.
+        // Guard against degenerate stretches either way.
+        double extraPerGap = extra / gaps;
+        if (extraPerGap > 4.0 * fontEm) return false;
+        if (extraPerGap < -0.15 * fontEm) extraPerGap = -0.15 * fontEm;
+
+        double x = 0;
+        for (const auto& t : tokens) {
+            if (t.gapBefore) x += t.spaceW + extraPerGap;
+            ctx->PushState();
+            ctx->Translate(x, 0);
+            ctx->Scale(1.0f, -1.0f);
+            ApplyTextFont(ctx, *t.span, scale);
+            DrawSpanText(ctx, t.word,
+                         t.span->hasFill ? t.span->fill.startColor : Color(0, 0, 0, 255));
+            ctx->PopState();
+            x += t.wordW;
+        }
+        return true;
+    }
+
     void XARTextStringNode::Render(IRenderContext* ctx, float scale) {
         if (text.empty()) return;
         ctx->PushState();
@@ -624,8 +778,7 @@ namespace UltraCanvas {
         // cairo font matrix non-invertible and poison the whole context.
         ctx->Scale(1.0f, -1.0f);
         ApplyTextFont(ctx, *this, scale);
-        if (hasFill) ctx->SetFillPaint(fill.startColor);
-        ctx->FillText(text, 0, 0);
+        DrawSpanText(ctx, text, hasFill ? fill.startColor : Color(0, 0, 0, 255));
         ctx->PopState();
     }
 
@@ -1197,6 +1350,22 @@ namespace UltraCanvas {
             case XARTag::TAG_TEXT_KERN: ParseTextKernRecord(record); break;
             case XARTag::TAG_TEXT_LINE_INFO: ParseTextLineInfoRecord(record); break;
             case XARTag::TAG_TEXT_EOL:
+                textListActive = false;
+                if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+                    line->endsParagraph = true;
+                }
+                break;
+            case XARTag::TAG_TEXT_LIST_BULLET:
+            case XARTag::TAG_TEXT_LIST_NUMBERED:
+                if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+                    line->isListItem = true;
+                }
+                textListActive = true;
+                break;
+            case XARTag::TAG_TEXT_LIST_SEPARATOR:
+                // Field boundary inside a list marker; the layout keys off
+                // the marker-to-text transition instead.
+                break;
             case XARTag::TAG_TEXT_CARET:
             case XARTag::TAG_TEXT_STRING_POS:
             case XARTag::TAG_TEXT_TAB:
@@ -1862,6 +2031,8 @@ namespace UltraCanvas {
 // ===== TEXT =====
 
     void XARDocument::ParseTextStoryRecord(const XARRecord& record) {
+        textListActive = false;
+        storyLineOffsetMP = 0;
         auto story = std::make_shared<XARTextStoryNode>();
         ApplyCurrentAttributesTo(story);
         // Text stories have variable layouts; try to read a position/matrix prefix
@@ -1886,6 +2057,9 @@ namespace UltraCanvas {
             if (sibling->type == XARNodeType::TextLine) ++existing;
         }
         line->lineIndex = existing;
+        // A line opened while a list item's paragraph is still running (no
+        // TAG_TEXT_EOL yet) wraps that item: it starts at the hanging indent.
+        line->hangingIndent = textListActive;
         AttachNode(line);
     }
 
@@ -1909,6 +2083,7 @@ namespace UltraCanvas {
         size_t off = 0;
         uint16_t code = ReadUInt16(d, off);
         auto str = std::make_shared<XARTextStringNode>();
+        str->fromCharRecord = true;
         ApplyCurrentAttributesTo(str);
         // Encode the BMP code point as UTF-8.
         if (code < 0x80) {
@@ -1934,12 +2109,21 @@ namespace UltraCanvas {
     }
 
     void XARDocument::ParseTextLineInfoRecord(const XARRecord& record) {
-        // First INT32 is the line's width as Xara computed it.
+        // Layout: INT32 line width as Xara computed it, INT32 ascent, INT32
+        // step from the previous line's baseline (negative = down, 0 on the
+        // story's first line). Accumulating the steps gives each line's
+        // exact baseline offset, replacing the leading heuristic.
         if (record.data.size() < 4) return;
         if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
             const uint8_t* d = record.data.data();
             size_t off = 0;
             line->lineWidthMP = ReadInt32(d, off);
+            if (record.data.size() >= 12) {
+                ReadInt32(d, off);                          // ascent
+                storyLineOffsetMP += ReadInt32(d, off);
+                line->yOffsetMP = static_cast<int32_t>(storyLineOffsetMP);
+                line->hasYOffset = true;
+            }
         }
     }
 
@@ -1988,18 +2172,19 @@ namespace UltraCanvas {
         XARFontDefinition fd;
         fd.sequenceNumber = currentSequenceNumber;
         fd.isTrueType = isTrueType;
-        if (record.data.size() >= 12) {
+        if (record.data.size() >= 2) {
             const uint8_t* d = record.data.data();
             size_t off = 0;
-            for (int i = 0; i < 10 && off < record.data.size(); ++i) fd.panose[i] = d[off++];
-            // Skip flags + reserved bytes (variable per font flavor)
-            // Find the font name: it's a Unicode string at the end
-            // Heuristic: scan back from end looking for trailing 0x0000
-            // For best-effort, skip 2 more bytes then read string
-            if (off + 2 <= record.data.size()) off += 2;
+            // Layout (verified against Designer Pro X19 output): the typeface
+            // name as a null-terminated UTF-16 string, then the full font
+            // name, then the panose classification bytes.
             fd.fontName = ReadUTF16String(d, off, record.data.size() - off);
+            fd.familyName = ReadUTF16String(d, off, record.data.size() - off);
+            if (fd.familyName.empty()) fd.familyName = fd.fontName;
+            for (int i = 0; i < 10 && off < record.data.size(); ++i) {
+                fd.panose[i] = d[off++];
+            }
         }
-        fd.familyName = fd.fontName;
         fonts[currentSequenceNumber] = std::move(fd);
     }
 

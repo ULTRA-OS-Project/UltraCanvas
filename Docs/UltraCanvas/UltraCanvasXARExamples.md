@@ -200,9 +200,10 @@ on a file that renders wrong.
 
 Known renderer gaps (parse succeeds, display is approximate): fractal /
 noise fills fall back to simplified paints, transparency tiling modes are
-treated as flat, brush strokes render as plain lines, and text layout is
-approximate (lines step by one leading; kerning / tabs / indents are not
-applied). Bitmap and contone-bitmap fills render the embedded bitmap mapped
+treated as flat, brush strokes render as plain lines, and some text layout remains
+approximate (explicit tab stops and ruler indents are not applied; lines,
+justification — full justification included — kerns, list indents and
+Xara's own per-line baseline steps are). Bitmap and contone-bitmap fills render the embedded bitmap mapped
 onto the fill parallelogram (both decode with the alpha channel inverted,
 the transparency convention xar-embedded PNGs use; contone maps the
 bitmap's luminance between the fill's two colours and keeps that alpha).

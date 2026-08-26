@@ -68,6 +68,30 @@
   penumbra is approximated with widened, fainter stroke passes around the
   silhouette. Calibrated against a MAGIX Photo & Graphic Designer 16
   export where every bar of a logo carries a glow shadow.
+- **Text renders WYSIWYG against Xara's own output now** — verified line by
+  line against a Designer Pro X19 text-formatting test and its author's PDF
+  export:
+  - *Measure and draw finally agree.* Spans were measured through the pango
+    layout engine but drawn through cairo's toy text API, which resolves
+    fonts differently — every caret position drifted. Spans now draw
+    through the same layouts that measure them (`DrawSpanText` /
+    `MeasureSpanText`), baseline-anchored.
+  - *Glyphs were 4/3 too large.* The render context's font size is points
+    at the text system's 96 dpi resolution while XAR page pixels are 72 dpi
+    points; `ApplyTextFont` now converts.
+  - *Xara's own line positions.* `TAG_TEXT_LINE_INFO` carries each line's
+    baseline step; accumulating it replaces the leading heuristic, fixing
+    line spacing everywhere (visible on the pitch deck's centred slides).
+  - *Full justification.* Lines of a fully-justified paragraph spread
+    their word gaps to Xara's stored line width — every line except the one
+    carrying the paragraph's `TAG_TEXT_EOL`, which stays at natural width.
+  - *Bullet and numbered lists.* The undocumented `TAG_TEXT_LIST_*`
+    records (4404/4405/4410, written by modern Xara) mark list items;
+    marker glyphs render at the marker indent, item text and wrapped
+    continuation lines at the hanging indent.
+  - *Font names parse correctly.* `TAG_FONT_DEF_TRUETYPE` starts with the
+    typeface name; the old parser read panose bytes first and only
+    recovered 5-character names ("Arial") by accident.
 - **Multi-page documents render page by page.** Every spread's coordinates
   restart at its own origin, so a multi-spread file (a pitch deck, a
   multi-page brochure) used to draw all its pages on top of each other.

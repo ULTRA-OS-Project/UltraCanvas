@@ -425,6 +425,14 @@ namespace UltraCanvas {
 
         // New text records
         TAG_TEXT_TAB = 4200,
+        // List records written by modern Xara (observed in Designer Pro X19
+        // output; not in the public spec). 4404 opens a bulleted item (body:
+        // two INT32s + the UTF-16 bullet character), 4410 a numbered item
+        // (body ends with the UTF-16 format string, e.g. "%t%1.%t"), and
+        // 4405 separates the marker fields inside the line.
+        TAG_TEXT_LIST_BULLET = 4404,
+        TAG_TEXT_LIST_SEPARATOR = 4405,
+        TAG_TEXT_LIST_NUMBERED = 4410,
         TAG_TEXT_LEFT_INDENT = 4201,
         TAG_TEXT_FIRST_INDENT = 4202,
         TAG_TEXT_RIGHT_INDENT = 4203,
@@ -785,8 +793,26 @@ namespace UltraCanvas {
         // prefers it over our measurement so the anchor matches Xara's
         // metrics even where fonts differ.
         int32_t lineWidthMP = 0;
+        // List layout (bullet / numbered lists, TAG_TEXT_LIST_*): a list
+        // item's marker glyphs start at the marker indent and its text at
+        // the hanging indent; a continuation line starts at the hanging
+        // indent directly.
+        bool isListItem = false;
+        bool hangingIndent = false;
+        // True when the line carries the paragraph's TAG_TEXT_EOL — full
+        // justification spreads every line of a paragraph except this one.
+        bool endsParagraph = false;
+        // Baseline offset from the story origin (millipoints, negative =
+        // down), accumulated from TAG_TEXT_LINE_INFO's per-line step; when
+        // absent the renderer falls back to a leading heuristic.
+        int32_t yOffsetMP = 0;
+        bool hasYOffset = false;
         XARTextLineNode() { type = XARNodeType::TextLine; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
+    private:
+        // Word-spread layout for fully-justified lines; false = fall back.
+        bool RenderJustified(IRenderContext* ctx, float scale, double anchorWidth);
+    public:
     };
 
     // An explicit caret adjustment between spans of a line (TAG_TEXT_KERN),
@@ -800,6 +826,10 @@ namespace UltraCanvas {
     class XARTextStringNode : public XARNode {
     public:
         std::string text;                       // UTF-8
+        // True for spans built from TAG_TEXT_CHAR records — list marker
+        // glyphs arrive this way, and list layout keys off the transition
+        // from marker characters to the item's text string.
+        bool fromCharRecord = false;
         XARTextStringNode() { type = XARNodeType::TextString; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
@@ -1080,6 +1110,12 @@ namespace UltraCanvas {
         void ParseTextCharRecord(const XARRecord& record);
         void ParseTextKernRecord(const XARRecord& record);
         void ParseTextLineInfoRecord(const XARRecord& record);
+        // True between a TAG_TEXT_LIST_* record and the paragraph's
+        // TAG_TEXT_EOL: lines opened in that window are continuation lines
+        // of the list item and take its hanging indent.
+        bool textListActive = false;
+        // Running per-story sum of TAG_TEXT_LINE_INFO baseline steps.
+        int64_t storyLineOffsetMP = 0;
         void ParseTextAttrRecord(const XARRecord& record);
         void ParseFontDefRecord(const XARRecord& record, bool isTrueType);
         void ParseBitmapDefRecord(const XARRecord& record, XARBitmapDefinition::Format fmt);
