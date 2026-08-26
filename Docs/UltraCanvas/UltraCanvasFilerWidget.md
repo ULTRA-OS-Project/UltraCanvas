@@ -457,6 +457,31 @@ OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
 (localized names; entries pointing at `$HOME` are disabled per the spec) — for
 building an Explorer/Finder-style curated "Home" section.
 
+`UltraCanvas::GetCloudStorageFolders()` (`UltraCanvasCloudStorage.h`) is its
+counterpart for a
+"Cloud Storage" section: the sync folders the machine actually has, as
+`CloudStorageInfo { CloudStorageKind kind; std::string path, label; }` in the
+canonical OneDrive, Google Drive, Dropbox, iCloud Drive order. Each provider is
+asked where it put its folder rather than guessed at:
+
+| Platform | Where each provider is found |
+|---|---|
+| Windows | the `OneDrive` / `OneDriveConsumer` / `OneDriveCommercial` environment variables; the Google Drive mount recorded under `HKCU\Software\Google\DriveFS` plus the fixed drives whose volume label reads *Google Drive* (a default install mounts a virtual drive, not a folder); the Dropbox `info.json` under `LOCALAPPDATA`/`APPDATA`, which is where a relocated or a second, business folder is recorded; `%USERPROFILE%\iCloudDrive`; and the profile defaults for each |
+| macOS | the per-provider folders macOS 12+ keeps under `~/Library/CloudStorage` (`OneDrive-Contoso`, `GoogleDrive-me@gmail.com`, `Dropbox`) — what Finder's sidebar lists — plus `~/Library/Mobile Documents/com~apple~CloudDocs` and the pre-CloudStorage locations |
+| Linux | the GVFS mount table (`$XDG_RUNTIME_DIR/gvfs`, GNOME Online Accounts) and the defaults of the native sync clients |
+
+Only folders that exist right now are returned, each once: a client that is
+installed but signed out has no folder and is not listed. Nothing is mounted,
+signed in to or contacted — but the lookup does read a registry key, a config
+file and the mount table, so call it off the UI thread (the UltraFiler does).
+
+It gets a header of its own rather than joining `GetWellKnownUserFolders()` in
+`UltraCanvasUtils.h` because reading the Dropbox configuration needs
+`UltraCanvasJSON`: `UltraCanvasUtils.cpp` sits at the bottom of the stack and is
+compiled **standalone**, without the framework library, by several test targets
+that only want `Trim()` — a JSON dependency inside it leaves every one of them
+with undefined references at link time.
+
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /

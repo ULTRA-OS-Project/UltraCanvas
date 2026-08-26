@@ -53,6 +53,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
@@ -141,6 +142,14 @@ private:
     void ApplyTreeColors();
     // Selects (expanding ancestors as needed) the tree node of `path`.
     void SyncTreeSelection(const std::string& path);
+
+    // Fills the "Cloud Storage" section. Which cloud folders exist is asked
+    // off the UI thread (GetCloudStorageFolders touches the registry, a config
+    // file and the mount table); the answer posts back and reveals the
+    // section, which stays hidden while there is nothing in it.
+    void QueueCloudStorageDiscovery();
+    void StopCloudStorageDiscovery();
+    void ApplyCloudStorageFolders(const std::vector<CloudStorageInfo>& found);
 
     // "Does this folder contain subfolders?" costs a directory open each, and a
     // single expansion asks it once per child — on a slow or network volume
@@ -365,6 +374,8 @@ private:
     std::condition_variable probeCond;
     std::thread probeWorker;
     bool probeShutdown = false;
+    // One-shot "which cloud folders exist?" lookup (QueueCloudStorageDiscovery).
+    std::thread cloudWorker;
     // Cleared on destruction so results still in flight drop instead of
     // reaching a half-destroyed window.
     std::shared_ptr<std::atomic<bool>> probeAlive =

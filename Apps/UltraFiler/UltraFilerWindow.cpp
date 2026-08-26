@@ -57,7 +57,6 @@
 #include <fstream>
 #include <sstream>
 #include <system_error>
-#include <unordered_set>
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -82,6 +81,10 @@ namespace {
     constexpr const char* kPinnedNodeId = "ufl-pinned";
     constexpr const char* kPinnedChildPrefix = "ufl-pin:";
     constexpr size_t kPinnedChildPrefixLen = 8;   // strlen(kPinnedChildPrefix)
+    // "Cloud Storage": the section header the OneDrive / Google Drive /
+    // Dropbox / iCloud folders hang under. Like "Pinned" it is a header, not a
+    // folder, and is never scanned as a path.
+    constexpr const char* kCloudNodeId = "ufl-cloud";
 
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
@@ -114,6 +117,35 @@ namespace {
         return home ? std::string(home) : std::string();
     }
 
+    // Is `path` the user's home folder? Compared through FolderIdentityKey, so
+    // a differently spelled or differently cased path for it still matches.
+    bool IsUserHomeDir(const std::string& path);
+
+    // The home folder shows only the user's *main* folders in the tree, the way
+    // the Explorer and Finder sidebars do: Desktop, Documents, Downloads,
+    // Music, Pictures and Videos, resolved through the platform
+    // (GetWellKnownUserFolders), so a redirected or localized folder -
+    // "Bilder", a Documents folder moved into OneDrive - is the one listed.
+    // The rest of the profile ("3D Objects", "Saved Games", "Links", the
+    // working folders a user drops in their home, and the sync-client folders
+    // that now have their own Cloud Storage section) stays out of the tree;
+    // the folder display still lists every one of them. Add a kind here to
+    // give it a row of its own.
+    constexpr UserFolderKind kHomeTreeFolders[] = {
+        UserFolderKind::Desktop,
+        UserFolderKind::Documents,
+        UserFolderKind::Downloads,
+        UserFolderKind::Music,
+        UserFolderKind::Pictures,
+        UserFolderKind::Videos,
+    };
+
+    bool IsHomeTreeFolder(UserFolderKind kind) {
+        for (UserFolderKind k : kHomeTreeFolders)
+            if (k == kind) return true;
+        return false;
+    }
+
     // Tree icon for each of the well-known home folders
     // (GetWellKnownUserFolders), Explorer / Finder sidebar style.
     const char* UserFolderIconFile(UserFolderKind kind) {
@@ -139,6 +171,28 @@ namespace {
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);
 #endif
         return key;
+    }
+
+    bool IsUserHomeDir(const std::string& path) {
+        const std::string home = UserHomeDir();
+        return !home.empty() && FolderIdentityKey(path) == FolderIdentityKey(home);
+    }
+
+    // One row of the folder tree, as EnsureTreeChildren is about to add it.
+    struct TreeChild { std::string path, label, icon; };
+
+    // The rows the home folder shows: its main user folders (kHomeTreeFolders),
+    // and nothing else. A well-known folder that resolves to the home folder
+    // itself is skipped, so the home folder is never listed inside itself.
+    std::vector<TreeChild> HomeTreeChildren() {
+        std::vector<TreeChild> children;
+        const std::string homeKey = FolderIdentityKey(UserHomeDir());
+        for (const UserFolderInfo& f : GetWellKnownUserFolders()) {
+            if (!IsHomeTreeFolder(f.kind)) continue;
+            if (FolderIdentityKey(f.path) == homeKey) continue;
+            children.push_back({f.path, f.label, UserFolderIconFile(f.kind)});
+        }
+        return children;
     }
 
     // Would moving `src` into the folder `dest` be a no-op or copy a folder into
@@ -175,6 +229,16 @@ namespace {
                 return true;
         }
         return false;
+    }
+
+    // Does the tree show anything below `path`? The home folder answers from
+    // its curated list rather than from the disk: it only ever shows the main
+    // user folders, so a profile holding none of them is a leaf however many
+    // other folders sit in it - and gets no expand button that opens onto
+    // nothing.
+    bool TreeFolderHasChildren(const std::string& path) {
+        if (IsUserHomeDir(path)) return !HomeTreeChildren().empty();
+        return HasSubdirectories(path);
     }
 
     // Visible subfolders of `path`, sorted case-insensitively by name.
@@ -357,6 +421,7 @@ namespace {
 UltraFilerWindow::~UltraFilerWindow() {
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     StopSubfolderProbeWorker();
+    StopCloudStorageDiscovery();
 }
 
 bool UltraFilerWindow::Initialize(const std::string& startFolder) {
@@ -1114,6 +1179,20 @@ void UltraFilerWindow::BuildFolderTree() {
         AddTreeFolderNode("ufl-computer", home, "Home", "home-icon.png");
     }
 
+    // "Cloud Storage" sits between Home and the drives: OneDrive, Google Drive,
+    // Dropbox and iCloud Drive collected into one section instead of scattered
+    // through the profile (and, for a Google Drive that mounted as a virtual
+    // drive letter, instead of hiding among the real drives). The header is
+    // created here so the section keeps its place in the order; which folders
+    // exist is answered off the UI thread (QueueCloudStorageDiscovery), and,
+    // exactly like the Pinned section, an empty one stays hidden.
+    folderTree->AddNode("ufl-computer",
+            MakeFolderNodeData(kCloudNodeId, "Cloud Storage", "cloud.svg"));
+    treeChildrenLoaded.insert(kCloudNodeId);
+    if (TreeNode* cloud = folderTree->FindNode(kCloudNodeId))
+        cloud->data.visible = false;
+    QueueCloudStorageDiscovery();
+
 #ifdef _WIN32
     // ListDriveRoots() reads the mount table in one call. Probing every letter
     // with is_directory() instead spins up empty optical drives and waits out
@@ -1278,29 +1357,19 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
-    // The home folder's well-known folders - Desktop, Documents, Downloads, ...
-    // resolved through the platform (SHGetKnownFolderPath / xdg-user-dirs), so a
-    // redirected Documents folder is found too - keep their own icons, like the
-    // Explorer and Finder sidebars, but are sorted in with the ordinary
-    // subfolders alphabetically rather than pinned to the top. A well-known
-    // folder that physically sits in the home folder is not listed a second
-    // time, and the home folder itself is never listed inside itself.
-    struct TreeChild { std::string path, label, icon; };
+    // The home folder is curated, not scanned: it shows the user's main folders
+    // (kHomeTreeFolders) and stops there, so a profile does not spill "3D
+    // Objects", "Saved Games", "Links" and every working folder into the tree.
+    // The paths come from the platform (SHGetKnownFolderPath / xdg-user-dirs),
+    // so a redirected or localized folder - "Bilder", a Documents folder moved
+    // into OneDrive - is the one listed, under its own icon. Everything left
+    // out is still reachable: the folder display lists the whole home folder.
     std::vector<TreeChild> children;
-    std::unordered_set<std::string> curated;
-    if (path == UserHomeDir()) {
-        const std::string homeKey = FolderIdentityKey(path);
-        for (const UserFolderInfo& f : GetWellKnownUserFolders()) {
-            const std::string key = FolderIdentityKey(f.path);
-            if (key == homeKey) continue;
-            curated.insert(key);
-            children.push_back({f.path, f.label, UserFolderIconFile(f.kind)});
-        }
-    }
-    for (const fs::path& dir : ListSubdirectories(path)) {
-        if (!curated.empty() && curated.count(FolderIdentityKey(dir.string())))
-            continue;
-        children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+    if (IsUserHomeDir(path)) {
+        children = HomeTreeChildren();
+    } else {
+        for (const fs::path& dir : ListSubdirectories(path))
+            children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
     }
     std::sort(children.begin(), children.end(),
               [](const TreeChild& a, const TreeChild& b) {
@@ -1315,6 +1384,50 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     for (const TreeChild& c : children)
         AddTreeFolderNode(path, c.path, c.label, c.icon);
     folderTree->RemoveNode(PlaceholderId(path));
+}
+
+// ===== FOLDER TREE: CLOUD STORAGE SECTION =====
+
+void UltraFilerWindow::QueueCloudStorageDiscovery() {
+    // Asking every provider where it put its folder is cheap but not free -
+    // a registry read, a JSON file, a volume label per fixed drive on Windows,
+    // a GVFS mount listing on Linux - and one wedged mount would hold up the
+    // window. It runs on its own thread and the section appears when it
+    // answers, the way the expand buttons do.
+    if (cloudWorker.joinable()) return;   // runs exactly once, at tree build
+    auto alive = probeAlive;
+    cloudWorker = std::thread([this, alive]() {
+        std::vector<CloudStorageInfo> found = GetCloudStorageFolders();
+        if (found.empty()) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, found = std::move(found)]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            ApplyCloudStorageFolders(found);
+        });
+    });
+}
+
+void UltraFilerWindow::StopCloudStorageDiscovery() {
+    // Joined rather than detached, like the subfolder probe: the thread posts
+    // back into the window, so it must not outlive it - nor the application it
+    // posts through.
+    if (cloudWorker.joinable()) cloudWorker.join();
+}
+
+void UltraFilerWindow::ApplyCloudStorageFolders(
+        const std::vector<CloudStorageInfo>& found) {
+    if (found.empty() || !folderTree) return;
+    TreeNode* cloud = folderTree->FindNode(kCloudNodeId);
+    if (!cloud) return;
+    for (const CloudStorageInfo& c : found)
+        AddTreeFolderNode(kCloudNodeId, c.path, c.label, "cloud.svg");
+    if (cloud->children.empty()) return;   // every folder vanished meanwhile
+    // Shown open: a section of two or three entries that has to be unfolded
+    // first hides exactly what it was added to surface.
+    cloud->data.visible = true;
+    folderTree->ExpandNode(cloud);
+    folderTree->RequestRedraw();
 }
 
 // ===== FOLDER TREE: BACKGROUND "HAS SUBFOLDERS?" PROBE =====
@@ -1356,7 +1469,7 @@ void UltraFilerWindow::SubfolderProbeWorkerMain() {
         }
 
         // The directory open - outside the lock, off the UI thread.
-        const bool has = HasSubdirectories(path);
+        const bool has = TreeFolderHasChildren(path);
         if (!has) continue;   // leaf folder: nothing to change on the node
 
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -1422,7 +1535,8 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
 std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
     if (!node) return {};
     const std::string& id = node->data.nodeId;
-    if (id == kTreeRootNodeId || id == "ufl-computer" || id == kPinnedNodeId)
+    if (id == kTreeRootNodeId || id == "ufl-computer" || id == kPinnedNodeId ||
+        id == kCloudNodeId)
         return {};
     if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return id.substr(kPinnedChildPrefixLen);
@@ -1468,11 +1582,14 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     const std::string& id = node->data.nodeId;
     const bool isPinnedEntry =
             id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0;
-    // Home, File System and the drive roots sit directly under Computer;
-    // deleting one of those from a context menu would be a catastrophe, so
+    // Home, File System, the drive roots and the cloud folders are the roots of
+    // the tree - the first sit directly under Computer, the others under Cloud
+    // Storage. Deleting one of those from a context menu would be a
+    // catastrophe (a cloud folder syncs the deletion to every other device), so
     // they keep Delete disabled.
     const bool isTopLevelRoot = !isPinnedEntry && node->parent &&
-            node->parent->data.nodeId == "ufl-computer";
+            (node->parent->data.nodeId == "ufl-computer" ||
+             node->parent->data.nodeId == kCloudNodeId);
 
     std::vector<std::string> clipboardFiles;
     bool clipboardCut = false;

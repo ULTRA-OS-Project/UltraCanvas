@@ -1,3 +1,51 @@
+#### 2026-08-26 *0.3.77*
+- **The UltraFiler's Home entry is curated instead of scanned.** Expanding
+  *Home* listed the whole profile — *3D Objects*, *Contacts*, *Favorites*,
+  *Links*, *Saved Games*, *Searches*, the sync-client folders and every
+  working folder a user had dropped in there, ~20 rows on a stock Windows
+  profile — which is exactly the list a places tree exists to spare you. It
+  now shows the user's main folders and stops: Desktop, Documents, Downloads,
+  Music, Pictures, Videos. The paths still come from the platform
+  (`SHGetKnownFolderPath` / the macOS home layout / `xdg-user-dirs`), so a
+  redirected or localized folder — *Bilder*, a Documents folder moved into
+  OneDrive — is the one listed, under its own icon, and the duplicate rows a
+  localized profile used to show (*Documents* **and** *Dokumente*) are gone
+  with it. Nothing became unreachable: the folder display still lists the
+  whole home folder. The set is one array in `UltraFilerWindow.cpp`
+  (`kHomeTreeFolders`). The "has subfolders?" probe answers for Home from the
+  same curated list, so a profile holding none of them is a leaf rather than
+  an expand button that opens onto nothing.
+- **New "Cloud Storage" section in the UltraFiler's folder tree**, between
+  Home and the drives: OneDrive (personal and every business tenant), Google
+  Drive, Dropbox (personal and business) and iCloud Drive in one place,
+  instead of scattered through the profile — and instead of a Google Drive
+  that mounted as a virtual drive letter hiding among the real drives. Like
+  the Pinned section it is hidden entirely while there is nothing in it, and
+  shown open when there is. The cloud roots keep *Delete* disabled in the
+  context menu the way the drive roots do: deleting one syncs the deletion to
+  every other device.
+- New `UltraCanvas::GetCloudStorageFolders()`
+  (`UltraCanvasCloudStorage.{h,cpp}`) behind it — the counterpart of
+  `GetWellKnownUserFolders()`. It gets a header and translation unit of its
+  own rather than joining its companion in `UltraCanvasUtils` because reading
+  the Dropbox configuration needs `UltraCanvasJSON`, and `UltraCanvasUtils.cpp`
+  sits at the bottom of the stack: `HTMLReaderTest`, `EBookEngineTest` and
+  `WordFormatsTest` each compile it standalone, without linking the framework
+  library, just to get `Trim()`. Each provider is asked where it put its folder
+  rather than guessed at: the `OneDrive*` environment variables, the Google
+  Drive mount under `HKCU\Software\Google\DriveFS` plus the fixed drives
+  labelled *Google Drive*, and the Dropbox `info.json` (where a relocated or a
+  second, business folder is recorded, read through `UltraCanvasJSON`) on
+  Windows; the per-provider folders macOS 12+ keeps under
+  `~/Library/CloudStorage` — what Finder's sidebar lists — plus
+  `~/Library/Mobile Documents/com~apple~CloudDocs` on macOS; the GVFS mount
+  table (GNOME Online Accounts) and the native sync-client defaults on Linux.
+  Only folders that exist right now are returned, each once, in a canonical
+  order: a client that is installed but signed out has no folder and is not
+  listed. Nothing is mounted, signed in to or contacted. The UltraFiler runs
+  it on its own thread and fills the section when it answers, so a wedged
+  mount cannot hold up the window.
+
 #### 2026-08-26 *0.3.76*
 - **EPS files can be written now.** New `VectorConverter::EPSConverter`
   (`Plugins/Vector/UltraCanvasEPSConverter.{h,cpp}`) serializes a

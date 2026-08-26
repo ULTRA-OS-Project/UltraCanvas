@@ -61,6 +61,12 @@ namespace UltraCanvas {
     };
     std::vector<UserFolderInfo> GetWellKnownUserFolders();
 
+    // Its cloud-storage counterpart - the OneDrive / Google Drive / Dropbox /
+    // iCloud folders present on this machine - is GetCloudStorageFolders() in
+    // UltraCanvasCloudStorage.h. It lives in its own header because reading
+    // the Dropbox configuration needs UltraCanvasJSON, which this bottom-of-
+    // the-stack header deliberately does not drag in.
+
     // UltraCanvas strings are UTF-8 everywhere. On Windows the narrow CRT /
     // ANSI Win32 APIs interpret narrow strings in the legacy system code page,
     // so characters outside it (Thai, CJK, ...) get mangled to '?'. These
