@@ -1,0 +1,47 @@
+# UltraCanvas Vector Format Converters
+
+The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
+
+**Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`).
+
+## The matrix
+
+| Format | Class | Read | Write | Fidelity notes |
+|---|---|---|---|---|
+| SVG | `SVGConverter` | ✓ | ✓ | Lossless both ways — the storage model is SVG-shaped. Gradients keep all stops, transforms stay attributes, text keeps spans. |
+| XAR | `XARConverter` | ✓ | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear/radial gradients (end stops), flat transparency, text stories. Reading also via the XAR plugin. |
+| EPS | `EPSConverter` | – | ✓ | PostScript program restricted to operators the EPS plugin's interpreter knows. Opacity flattens toward white; gradients blend end stops. Reading via the EPS plugin. |
+| CDR | `CDRConverter` | – | ✓ | Version-7 RIFF targeting libcdr's parser layouts (no public spec exists). Solid fills, outline state, fill opacity; text/bitmaps skipped. Reading via the CDR plugin. |
+| PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
+| EMF | `EMFConverter` | – | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. |
+| WMF | `WMFConverter` | – | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. |
+| AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. |
+
+All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
+
+Unsupported features never change meaning silently: each converter reports its fallbacks (gradient flattening, opacity flattening, skipped element types, encoding limits) through `ConversionOptions::WarningCallback`.
+
+## Usage
+
+```cpp
+using namespace UltraCanvas::VectorConverter;
+
+SVGConverter svg;
+auto doc = svg.Import("drawing.svg");        // VectorStorage::VectorDocument
+
+XARConverter().Export(*doc, "drawing.xar");
+EPSConverter().Export(*doc, "drawing.eps");
+CDRConverter().Export(*doc, "drawing.cdr");
+PDFVectorConverter().Export(*doc, "drawing.pdf");
+EMFConverter().Export(*doc, "drawing.emf");
+WMFConverter().Export(*doc, "drawing.wmf");
+AIConverter().Export(*doc, "drawing.ai");
+```
+
+## Tests
+
+Each writer has a round-trip or independent-consumer test in `Tests/` (all registered with CTest): `SVGConverterTest` (both directions plus rasterization through the framework's librsvg pipeline), `XARWriterTest` (through the XAR plugin reader), `EPSWriterTest` (through the EPS plugin's PostScript interpreter, cross-checked with ghostscript), `CDRWriterTest` (through the CDR plugin / libcdr), `PDFVectorWriterTest` (structure plus ghostscript), and `MetafileWriterTest` (EMF/WMF record-walk structure plus LibreOffice rasterization, AI through ghostscript).
+
+## See Also
+
+- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md), [UltraCanvasXARExamples](UltraCanvasXARExamples.md), [UltraCanvasEPSExamples](UltraCanvasEPSExamples.md), [UltraCanvasCDRExamples](UltraCanvasCDRExamples.md) — the format plugins (rendering/UI elements)

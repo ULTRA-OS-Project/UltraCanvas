@@ -1,4 +1,33 @@
 #### 2026-08-26 *0.3.76*
+- **EMF, WMF and Adobe Illustrator files can be written now.** Three new
+  converters in `Plugins/Vector/UltraCanvasMetafileConverters.h` complete
+  the vector writer matrix (with SVG/XAR/EPS/CDR/PDF below):
+  - `EMFConverter` writes Enhanced Metafiles per the public [MS-EMF]
+    record layouts: MM_ANISOTROPIC mapping at 20 logical units per point,
+    geometry through GDI paths with real beziers
+    (BeginPath/MoveToEx/LineTo/PolyBezierTo/CloseFigure painted by
+    Fill/Stroke(AndFill)Path), ExtCreatePen geometric pens with caps,
+    joins and user-style dash entries, and ExtTextOutW text with
+    SetTextAlign anchoring (TA_UPDATECP chains multi-style spans).
+  - `WMFConverter` writes legacy 16-bit Windows Metafiles per [MS-WMF]
+    with the placeable (Aldus) header in twips: Polygon/PolyPolygon
+    fills, Polyline strokes (WMF has no bezier record, so curves flatten
+    to polylines), TextOut text, and a faithfully modelled GDI object
+    table. Dash patterns approximate as PS_DASH.
+  - GDI metafiles have no alpha channel, so opacity flattens toward the
+    white page in both, with a warning.
+  - `AIConverter` writes Adobe Illustrator files: modern .ai IS a PDF
+    (Illustrator's own editing data is an optional attachment), so the
+    output is the PDF writer's under the .ai extension — valid for
+    Illustrator and every PDF consumer; validation also recognizes
+    legacy EPS-based .ai.
+  - `Tests/MetafileWriterTest.cpp` checks structure (record walks that
+    must land exactly on the terminating record, the placeable header's
+    XOR checksum, header sizes against file sizes) and rendering through
+    independent consumers — LibreOffice rasterizes the EMF and WMF,
+    ghostscript the AI — with layout-order colour checks.
+  - The new `Docs/UltraCanvas/UltraCanvasVectorConverters.md` documents
+    the full eight-format converter matrix in one place.
 - **SVG can be read and written now — the declared `SVGConverter` exists.**
   `VectorConverter::SVGConverter` was declared in
   `UltraCanvasVectorConverter.h` but had no implementation anywhere; the new

@@ -1088,6 +1088,27 @@ else()
     message(STATUS "  PDFVectorWriterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# Validates the Vector plugin's EMF, WMF and AI writers: structural record
+# walks, plus rasterization through LibreOffice (EMF/WMF) and ghostscript
+# (AI) with pixel checks when those tools are installed.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building MetafileWriterTest...")
+    add_executable(MetafileWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MetafileWriterTest.cpp
+    )
+    target_include_directories(MetafileWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MetafileWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(MetafileWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(MetafileWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MetafileWriterTest COMMAND MetafileWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MetafileWriterTest")
+else()
+    message(STATUS "  MetafileWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
