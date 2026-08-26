@@ -131,9 +131,9 @@ namespace UltraCanvas {
             static Matrix3x3 Translate(float tx, float ty);
             static Matrix3x3 Scale(float sx, float sy);
             static Matrix3x3 Rotate(float a);
-            Matrix3x3 RotateDegrees(float degrees);
-            Matrix3x3 SkewX(float angle);
-            Matrix3x3 SkewY(float angle);
+            static Matrix3x3 RotateDegrees(float degrees);
+            static Matrix3x3 SkewX(float angle);
+            static Matrix3x3 SkewY(float angle);
             static Matrix3x3 FromValues(float a, float b, float c, float d, float e, float f);
             Matrix3x3 operator*(const Matrix3x3 &o) const;
             Point2Dd Transform(const Point2Dd &p) const;
@@ -155,7 +155,7 @@ namespace UltraCanvas {
             bool Closed = false;
             mutable std::optional<Rect2Dd> cachedBounds;
             mutable std::optional<float> length;
-            mutable std::optional<Point2Dd> flattenedPoints;
+            mutable std::optional<std::vector<Point2Dd>> flattenedPoints;
 
             Rect2Dd GetBounds() const {
                 if (cachedBounds) return *cachedBounds;
@@ -635,6 +635,7 @@ namespace UltraCanvas {
             std::map<std::string, VectorStyle> NamedStyles;
 
             std::shared_ptr<VectorLayer> AddLayer(const std::string &n);
+            void FitToContent(float padding);
             void RemoveLayer(const std::string &n);
             std::shared_ptr<VectorLayer> GetLayer(const std::string &n) const;
             void AddDefinition(const std::string &id, std::shared_ptr<VectorElement> e);

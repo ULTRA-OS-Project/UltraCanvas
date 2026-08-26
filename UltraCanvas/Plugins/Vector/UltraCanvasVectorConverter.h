@@ -382,96 +382,10 @@ private:
     SVGOptions svgOptions;
 };
 
-// XAR Converter
-class XARConverter : public IVectorFormatConverter {
-public:
-    VectorFormat GetFormat() const override { return VectorFormat::XAR; }
-    std::string GetFormatName() const override { return "Xara Format"; }
-    std::string GetFormatVersion() const override { return "1.0"; }
-    std::vector<std::string> GetFileExtensions() const override { return {".xar", ".web"}; }
-    std::string GetMimeType() const override { return "application/x-xara"; }
-    
-    FormatCapabilities GetCapabilities() const override;
-    bool CanImport() const override { return true; }
-    bool CanExport() const override { return true; }
-    
-    // XAR-specific features
-    struct XAROptions {
-        bool UseCompression = true;    // Use zlib compression
-        bool ProgressiveRendering = true;
-        bool PreserveLayers = true;
-        bool PreserveEffects = true;
-    };
-    
-    void SetXAROptions(const XAROptions& options) { xarOptions = options; }
-    
-    // Implement interface methods
-    std::shared_ptr<VectorStorage::VectorDocument> Import(
-        const std::string& filename,
-        const ConversionOptions& options = ConversionOptions()
-    ) override;
-    
-    std::shared_ptr<VectorStorage::VectorDocument> ImportFromString(
-        const std::string& data,
-        const ConversionOptions& options = ConversionOptions()
-    ) override;
-    
-    std::shared_ptr<VectorStorage::VectorDocument> ImportFromStream(
-        std::istream& stream,
-        const ConversionOptions& options = ConversionOptions()
-    ) override;
-    
-    bool Export(
-        const VectorStorage::VectorDocument& document,
-        const std::string& filename,
-        const ConversionOptions& options = ConversionOptions()
-    ) override;
-    
-    std::string ExportToString(
-        const VectorStorage::VectorDocument& document,
-        const ConversionOptions& options = ConversionOptions()
-    ) override;
-    
-    bool ExportToStream(
-        const VectorStorage::VectorDocument& document,
-        std::ostream& stream,
-        const ConversionOptions& options = ConversionOptions()
-    ) override;
-    
-    bool ValidateFile(const std::string& filename) const override;
-    bool ValidateData(const std::string& data) const override;
-    
-private:
-    XAROptions xarOptions;
-    
-    // XAR-specific record types
-    enum class XARRecordType : uint32_t {
-        StartDocument = 0x1000,
-        EndDocument = 0x1001,
-        StartGroup = 0x1100,
-        EndGroup = 0x1101,
-        Path = 0x2000,
-        Rectangle = 0x2001,
-        Ellipse = 0x2002,
-        Text = 0x3000,
-        Fill = 0x4000,
-        Stroke = 0x4001,
-        LinearGradient = 0x4100,
-        RadialGradient = 0x4101,
-        Transform = 0x5000,
-        // ... more record types
-    };
-    
-    struct XARRecord {
-        XARRecordType Type;
-        uint32_t Size;
-        std::vector<uint8_t> Data;
-    };
-    
-    // Binary reading/writing helpers
-    XARRecord ReadRecord(std::istream& stream);
-    void WriteRecord(std::ostream& stream, const XARRecord& record);
-};
+// The XAR converter is declared in UltraCanvasXARConverter.h (the
+// specification-compliant implementation); the legacy duplicate that
+// lived here clashed with it at compile time.
+
 
 // PDF Converter (vector parts only)
 class PDFVectorConverter : public IVectorFormatConverter {

@@ -384,6 +384,22 @@ public:
 
 `XARConversionOptions` controls compression, progressive rendering, layer/effect preservation, strict mode, a feather-fallback opacity, and optional warning / progress callbacks. The header also provides `XARCoordUtils` and `XARColourUtils` helpers for millipoint / 16.16-fixed-point / colour conversions.
 
+### Writing XAR files
+
+`Export` / `ExportToString` / `ExportToStream` serialize a `VectorStorage::VectorDocument` into the XAR record grammar (signature, `FILEHEADER`, the `DOCUMENT`→`CHAPTER`→`SPREAD`→`LAYER` tree, per-object attribute children, `ENDOFFILE`). What the writer covers:
+
+- **Shapes.** Rectangles, rounded rectangles, circles and ellipses become native `RECTANGLE_SIMPLE`/`ELLIPSE_SIMPLE` records while the accumulated transform is axis-aligned; under rotation or skew they are baked into path records instead. Lines, polylines and polygons always write as paths.
+- **Paths.** Every `PathCommandType` is normalised to XAR's move/line/bezier verbs — quadratics and smooth variants become cubics, SVG arcs are converted via the standard endpoint-to-centre parameterisation.
+- **Fills & strokes.** Solid colours, linear and radial gradients (first and last stop; XAR's plain gradient records hold two colours), stroke colour/width/caps/joins/mitre limit. Style opacity and fill alpha fold into a `FLATTRANSPARENTFILL` record. Colours and fonts are emitted as definition records referenced by record sequence number.
+- **Text.** Stories with per-line `TEXT_LINE`/`TEXT_STRING` records; per-span typeface, size, bold/italic/underline deltas; left/centre/right justification from `TextAnchor`. Coordinates are converted to millipoints with the Y-axis flip (XAR is Y-up).
+- **Not written yet:** dash patterns, conical/mesh gradients (flat fallback), pattern fills, bitmap objects, story rotation matrices, an embedded preview bitmap, and compressed output (files are written uncompressed, which every XAR reader must accept).
+
+Round-trip coverage lives in `Tests/XARWriterTest.cpp`: it builds a document, exports it, re-reads it through the plugin's `XARDocument`, and checks structure, millipoint placement, colour references and text content. The exported file also renders through `XARProbeTest --render`.
+
+### Filer thumbnails
+
+Xara files embed a preview bitmap (GIF/JPEG/PNG record 61/62/63) in the uncompressed file head. `UltraCanvasFilerWidget` extracts those bytes directly on its thumbnail workers — no XAR renderer involved — and decodes them through the image pipeline, so a folder of `.xar` files thumbnails like a folder of photos. Files without a preview record keep the generic glyph.
+
 ## Examples
 
 All examples below are drawn from or based on `Apps/DemoApp/UltraCanvasXARExamples.cpp`.

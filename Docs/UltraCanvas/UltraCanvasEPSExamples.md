@@ -106,6 +106,26 @@ Implements `IGraphicsPlugin` for the extensions `eps`, `epsf`, `ps`; `ValidateFi
 
 With registration in place the File Loader lists the extensions and `LoadGraphicsFile()` dispatches EPS files to this plugin.
 
+## Writing EPS files (`UltraCanvasEPSConverter.h`)
+
+The Vector plugin's `UltraCanvas::VectorConverter::EPSConverter` writes a `VectorStorage::VectorDocument` as an EPSF-3.0 PostScript program (`Export` / `ExportToString` / `ExportToStream`). It is export-only — `CanImport()` is false, because reading EPS means interpreting a PostScript program, which is this plugin's job and produces render calls, not a `VectorDocument`.
+
+What the writer emits:
+
+- A DSC header (`%%BoundingBox`, `%%HiResBoundingBox`, `%%Title`, `%%Creator: UltraCanvas`) and a tiny prolog of operator aliases.
+- Shapes and paths as `moveto`/`lineto`/`curveto` programs: every `PathCommandType` (quadratics, smooth variants, SVG arcs) is normalised to cubics by the shared `PathOps` helpers (`UltraCanvasVectorPathOps.h`); transforms are baked into the coordinates with the Y-axis flip to PostScript's Y-up space.
+- Solid fills and strokes with width, caps, joins, mitre limit and `setdash` dash patterns.
+- Text through `selectfont`/`show` with per-span font changes (bold/italic mapped to `-Bold`/`-Italic` name suffixes), centre/right anchoring computed in PostScript via `stringwidth`, and parenthesis/backslash escaping.
+
+Flattened with a warning (PostScript has neither): opacity (blended toward the white page) and gradients (the blend of the end stops). The output restricts itself to operators this plugin's interpreter understands, so written files round-trip cleanly — `Tests/EPSWriterTest.cpp` asserts zero unknown operators and zero warnings, plus pixel placement; ghostscript renders the same output identically.
+
+```cpp
+using namespace UltraCanvas::VectorConverter;
+EPSConverter eps;
+eps.Export(*document, "drawing.eps");          // document is a VectorStorage::VectorDocument
+std::string program = eps.ExportToString(*document);
+```
+
 ## Usage Example
 
 ```cpp

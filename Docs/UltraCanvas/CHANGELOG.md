@@ -1,3 +1,74 @@
+#### 2026-08-26 *0.3.76*
+- **EPS files can be written now.** New `VectorConverter::EPSConverter`
+  (`Plugins/Vector/UltraCanvasEPSConverter.{h,cpp}`) serializes a
+  `VectorStorage::VectorDocument` as an EPSF-3.0 PostScript program:
+  DSC header with `%%BoundingBox`, shapes and paths as move/line/curve
+  operators (sharing the writers' path normalisation, see below), solid
+  fills, stroke width/caps/joins/mitre/dash, and text via
+  `selectfont`/`show` with per-span fonts, centre/right anchoring done in
+  PostScript with `stringwidth`, and proper string escaping. Transforms are
+  baked into the coordinates with the Y-axis flip. PostScript has no
+  transparency and the plain operator set has no gradients, so opacity
+  flattens toward the white page and gradients fall back to the blend of
+  their end stops — each reported through the warning callback. The writer
+  emits only operators the EPS plugin's interpreter knows:
+  `Tests/EPSWriterTest.cpp` round-trips a document through the writer and
+  that interpreter (header fields, zero unknown operators, zero warnings,
+  pixel placement), and ghostscript renders the same output identically.
+  The converter is export-only — reading EPS stays with the EPS plugin.
+- The `%%Title`/`%%Creator` DSC values now unwrap a parenthesized
+  PostScript string (`%%Title: (name.ai)`), the form Adobe Illustrator
+  writes.
+- The path normalisation shared by the format writers (every
+  `PathCommandType` down to absolute move/line/cubic segments, SVG arcs
+  via endpoint-to-centre conversion, and the rounded-rect/ellipse
+  builders) moved from the XAR writer into
+  `Plugins/Vector/UltraCanvasVectorPathOps.h`, used by both converters.
+- **XAR files can be written now.** `VectorConverter::XARConverter::Export`
+  (and `ExportToString`/`ExportToStream`) serializes a
+  `VectorStorage::VectorDocument` into the XAR record grammar the
+  spec-verified reader consumes: signature, `FILEHEADER`, the
+  `DOCUMENT`/`CHAPTER`/`SPREAD`/`LAYER` tree, and per-object attribute
+  children, with colours and fonts emitted as definition records referenced
+  by record sequence number. Rectangles, rounded rectangles, circles and
+  ellipses write as native shape records while the combined transform is
+  axis-aligned and fall back to path records under rotation or skew; paths
+  normalise every command type (including quadratics, smooth variants and
+  SVG arcs) to the move/line/bezier verbs XAR stores; text writes as story,
+  line and string records with per-span typeface, size, bold, italic and
+  underline attributes; solid fills, linear and radial gradients, stroke
+  colour, width, caps, joins and mitre limit, and flat transparency (from
+  style opacity and fill alpha) all round-trip. Coordinates convert to
+  millipoints with the Y-axis flip. The previous export code emitted a flat
+  record list with wrong tag numbers (the legacy `XARTags` constants) that
+  no reader could open. `Tests/XARWriterTest.cpp` round-trips a document
+  through the writer and the XAR plugin's reader and checks structure,
+  placement, colours and text; the export renders correctly through
+  `XARProbeTest --render`.
+- **The filer thumbnails `.xar` files.** Xara files embed a preview bitmap
+  (GIF/JPEG/PNG) in the uncompressed file head; the filer's thumbnail
+  workers now extract those bytes directly — twelve lines of record
+  walking, no XAR renderer involved — and decode them through the image
+  pipeline like any photo. Files without a preview record (including ones
+  this writer produces) keep the generic glyph.
+- **XAR renderer fixes surfaced by round-tripping written files:**
+  - `ELLIPSE_SIMPLE` records drew at half size, offset toward the lower
+    right: the renderer passed the centre and the radii where
+    `FillEllipse`/`DrawEllipse` expect a bounding box. The repo samples
+    never hit this (Xara writes circles as regular shapes).
+  - Flat transparency now actually applies to simple shapes and paths. The
+    generic fill path called `SetAlpha` after staging the fill paint, but
+    filling re-applies the stored paint, overwriting the alpha; the
+    transparency is now folded into the paint colours (and gradient stops)
+    themselves, and the simple rectangle/ellipse/polygon nodes respect it
+    too.
+- The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`, off by default) compiles
+  again after storage-model drift: `PathData` command-field renames, the
+  `Point2Dd`/gradient API changes, two `Clone()` methods that mutated their
+  source, and a duplicate legacy `XARConverter` declaration are fixed; the
+  never-implemented legacy import attribute handlers are stubbed so the
+  plugin links.
+
 #### 2026-08-26 *0.3.75*
 - **Filer widget: legible spreadsheet previews.** The thumbnail preview of a
   spreadsheet (ods / xlsx / csv / tsv) split the tile width evenly over the
