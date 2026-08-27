@@ -21,6 +21,7 @@
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "Plugins/Charts/UltraCanvasContourSurface3D.h"
 
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -157,6 +158,10 @@ namespace UltraCanvas {
         double yaw = -0.62;
         double pitch = 0.42;
         double distance = 4.6;
+        // The wheel dollies the camera: the distance eases towards its target
+        // instead of stepping, so a spin reads as one continuous move (the dolly
+        // is multiplicative, which is what UltraCanvasSmoothZoom animates).
+        UltraCanvasSmoothZoom dollyAnim;
         double fieldOfView = 0.62;
         bool enableOrbit = true;
         bool autoRotate = false;

@@ -1752,6 +1752,7 @@ namespace UltraCanvas {
         cs.forceShowVerticalScrollbar = false;
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
+        BindScrollAnimators();
         EnsureDetailsColumnWidths();
 
         newDocumentTypes = {
@@ -1808,6 +1809,7 @@ namespace UltraCanvas {
         currentPath = folderPath;
         fileListMode = false;
         fileListPaths.clear();
+        CancelScrollAnimations();   // the new folder starts at the top, at once
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
@@ -1820,6 +1822,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ShowFileList(const std::vector<std::string>& paths) {
         fileListMode = true;
         fileListPaths = paths;
+        CancelScrollAnimations();
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
@@ -2253,6 +2256,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::SetViewType(FilerViewType type) {
         if (viewType == type) return;
         viewType = type;
+        CancelScrollAnimations();
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
@@ -5276,6 +5280,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::RecomputeLayout() {
+        ++layoutGeneration;      // see RefreshHoverState()
         items.clear();
         detailsColumns.clear();
         captionLinesMeasured = true;   // only the thumbnail grid measures names
@@ -5633,6 +5638,28 @@ namespace UltraCanvas {
         scrollOffsetX = clampi(scrollOffsetX, 0, MaxScrollX());
     }
 
+    // Each animated step writes its eased offset here, so a glide goes through
+    // exactly the same clamp and repaint as an instant scroll would.
+    void UltraCanvasFilerWidget::BindScrollAnimators() {
+        scrollAnimX.Bind([this] { return static_cast<double>(scrollOffsetX); },
+                         [this](double v) {
+                             scrollOffsetX = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+        scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                         [this](double v) {
+                             scrollOffsetY = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+    }
+
+    void UltraCanvasFilerWidget::CancelScrollAnimations() {
+        scrollAnimX.Cancel();
+        scrollAnimY.Cancel();
+    }
+
     UltraCanvasFilerWidget::ScrollbarGeom UltraCanvasFilerWidget::ScrollbarGeometry() const {
         ScrollbarGeom g;
         auto b = GetLocalBounds();
@@ -5669,6 +5696,9 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx) {
         ScrollbarGeom g = ScrollbarGeometry();
         if (!g.active || g.travel <= 0) return;
+        // Dragging the thumb positions the view directly: a glide chasing the
+        // pointer would lag behind the grabbed thumb.
+        CancelScrollAnimations();
         auto b = GetLocalBounds();
         if (g.horizontal) {
             int rel = clampi(thumbLeadPx - static_cast<int>(b.x), 0, g.travel);
@@ -5695,24 +5725,38 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasFilerWidget::ScrollEntryIntoView(size_t entryIndex) {
+    // Keyboard navigation lands here through EnsureVisible(), so revealing the
+    // next entry glides like a wheel notch does. `animated` is false where the
+    // scroll position is being re-derived rather than moved — a resize putting
+    // the viewport back on its anchor entry, which must not look like a scroll.
+    void UltraCanvasFilerWidget::ScrollEntryIntoView(size_t entryIndex, bool animated) {
         for (const ItemLayout& it : items) {
             if (it.entryIndex != entryIndex) continue;
             auto b = GetLocalBounds();
+            // Measured against where an in-flight glide is heading, not against
+            // the offset it happens to have reached, so a held-down arrow key
+            // does not re-reveal what the running glide already has covered.
             if (IsHorizontal()) {
-                if (it.rect.x - scrollOffsetX < 0)
-                    scrollOffsetX = it.rect.x;
-                else if (it.rect.x + it.rect.width - scrollOffsetX > (int)b.width)
-                    scrollOffsetX = it.rect.x + it.rect.width - (int)b.width;
+                int from = static_cast<int>(std::lround(scrollAnimX.PendingValue()));
+                int target = from;
+                if (it.rect.x - from < 0)
+                    target = it.rect.x;
+                else if (it.rect.x + it.rect.width - from > (int)b.width)
+                    target = it.rect.x + it.rect.width - (int)b.width;
+                if (animated) scrollAnimX.AnimateTo(target, 0, MaxScrollX());
+                else          scrollAnimX.Jump(target, 0, MaxScrollX());
             } else {
                 int top = (viewType == FilerViewType::Details) ? detailsHeaderHeight : 0;
                 int viewH = static_cast<int>(b.height) - InfoBarHeight();
-                if (it.rect.y - scrollOffsetY < top)
-                    scrollOffsetY = it.rect.y - top;
-                else if (it.rect.y + it.rect.height - scrollOffsetY > viewH)
-                    scrollOffsetY = it.rect.y + it.rect.height - viewH;
+                int from = static_cast<int>(std::lround(scrollAnimY.PendingValue()));
+                int target = from;
+                if (it.rect.y - from < top)
+                    target = it.rect.y - top;
+                else if (it.rect.y + it.rect.height - from > viewH)
+                    target = it.rect.y + it.rect.height - viewH;
+                if (animated) scrollAnimY.AnimateTo(target, 0, MaxScrollY());
+                else          scrollAnimY.Jump(target, 0, MaxScrollY());
             }
-            ClampScroll();
             break;
         }
     }
@@ -5756,6 +5800,10 @@ namespace UltraCanvas {
         if (!anchor.valid) return;
         for (const ItemLayout& it : items) {
             if (it.entryIndex != anchor.entryIndex) continue;
+            // The viewport is being put back where it already was against a
+            // rebuilt layout, so it lands at once — animating it would read as
+            // the folder sliding about while the window is resized.
+            CancelScrollAnimations();
             if (IsHorizontal()) scrollOffsetX = it.rect.x - anchor.offset;
             else                scrollOffsetY = it.rect.y - anchor.offset;
             ClampScroll();
@@ -5763,7 +5811,7 @@ namespace UltraCanvas {
             // edge when the reflow changed its size (a wrapped caption, a
             // taller row) or when the clamp pulled the scroll back at the end
             // of the content, so finish with the usual reveal.
-            ScrollEntryIntoView(anchor.entryIndex);
+            ScrollEntryIntoView(anchor.entryIndex, false);
             return;
         }
     }
@@ -5777,6 +5825,10 @@ namespace UltraCanvas {
         if (!captionLinesMeasured) InvalidateFilerLayout();
         EnsureLayout();
         measureContext = nullptr;
+        // The layout has settled for this frame: if it (or the scroll offset)
+        // moved a different file under a standing cursor, the hover follows it
+        // here, before anything is drawn with it.
+        RefreshHoverState();
 
         auto lb = GetLocalBounds();
         Rect2Di bounds(static_cast<int>(lb.x), static_cast<int>(lb.y),
@@ -8462,8 +8514,8 @@ namespace UltraCanvas {
     // Details view the name column tells the user the file name while the icon
     // strip — which sits over the columns to its right — keeps describing its
     // buttons.
-    void UltraCanvasFilerWidget::UpdateHoverTooltip(const UCEvent& event,
-                                                    const Point2Di& localPoint) {
+    void UltraCanvasFilerWidget::UpdateHoverTooltip(const Point2Di& localPoint,
+                                                    const Point2Di& windowPoint) {
         TooltipTarget target = TooltipTarget::NoneTarget;
         size_t entry = 0;
         int action = -1;
@@ -8506,8 +8558,7 @@ namespace UltraCanvas {
             UltraCanvasTooltipManager::HideTooltip();
             return;
         }
-        UltraCanvasTooltipManager::UpdateAndShowTooltip(
-                win, text, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(win, text, windowPoint);
     }
 
     void UltraCanvasFilerWidget::HideHoverTooltip() {
@@ -8515,6 +8566,54 @@ namespace UltraCanvas {
         tooltipTarget = TooltipTarget::NoneTarget;
         tooltipAction = -1;
         UltraCanvasTooltipManager::HideTooltip();
+    }
+
+    void UltraCanvasFilerWidget::RememberPointer(const UCEvent& event) {
+        pointerInside = true;
+        lastPointerLocal  = Point2Di(event.pointer.x, event.pointer.y);
+        lastPointerWindow = Point2Di(event.pointerWindow.x, event.pointerWindow.y);
+    }
+
+    // The hover highlight, the hover icon-menu and the tooltip describe the
+    // file under the pointer — but the pointer is not the only thing that
+    // moves. The wheel, the scrollbar, keyboard navigation revealing an entry,
+    // a resize or a rescan all slide the files past a cursor that never moved,
+    // and a hover worked out only on MouseMove then stays glued to the file it
+    // was first put on: the icon-menu toolbar rides away with the old item
+    // instead of appearing on the one now under the cursor. Every paint runs
+    // this, which re-derives the hover whenever the content moved under the
+    // pointer since it was last worked out.
+    void UltraCanvasFilerWidget::RefreshHoverState() {
+        const bool contentMoved = scrollOffsetX != hoverScrollX ||
+                                  scrollOffsetY != hoverScrollY ||
+                                  layoutGeneration != hoverLayoutGeneration;
+        if (!contentMoved && !hoverDirty) return;
+        hoverScrollX = scrollOffsetX;
+        hoverScrollY = scrollOffsetY;
+        hoverLayoutGeneration = layoutGeneration;
+        hoverDirty = false;
+        if (!pointerInside) return;
+        // A gesture that owns the pointer is not hovering: an item drag and a
+        // rubber band both drop the hover for their duration (and autoscroll
+        // while they run), a splitter drag keeps the pointer on the splitter
+        // and a scrollbar drag keeps it on the bar. Their own end restores the
+        // hover on the next move.
+        if (draggingItems || marqueeActive || draggingSplitter >= 0 ||
+            draggingScrollbar) {
+            hoverDirty = true;   // worked out by the first paint after it ends
+            return;
+        }
+
+        const Point2Di local = lastPointerLocal;
+        int newHover = IsInInfoBar(local) ? -1 : ItemAt(ToContentPoint(local));
+        // Unlike MouseMove this cannot let an icon-menu button hold the hover
+        // on its item: iconMenuHits still says where the buttons were *before*
+        // the content moved. The paint this runs in rebuilds them under the
+        // item that is there now, so the next move has current rects again.
+        // No RequestRedraw() here: this runs from the paint that is about to
+        // draw the items, so the new hover lands in that same frame.
+        hoveredIndex = newHover;
+        UpdateHoverTooltip(local, lastPointerWindow);
     }
 
     // ===== INTERACTION =====
@@ -8980,6 +9079,9 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::UpdateMarquee(const Point2Di& localPoint) {
         // Auto-scroll at the viewport edge so the rectangle can grow past it.
+        // It steps per mouse move and is already continuous, so it positions
+        // the view directly — a glide would trail the rubber band's edge.
+        CancelScrollAnimations();
         Rect2Di area = ContentBounds();
         if (IsHorizontal()) {
             if (localPoint.x > area.x + area.width)
@@ -9066,6 +9168,7 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseLeave: {
+                pointerInside = false;   // nothing to re-derive a hover at
                 if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
                 if (hoveredSplitter != -1 && draggingSplitter < 0) {
                     hoveredSplitter = -1;
@@ -9079,21 +9182,29 @@ namespace UltraCanvas {
                 return true;
             }
             case UCEventType::MouseWheel: {
+                RememberPointer(event);
+                // Glide to the new position instead of jumping (see
+                // UltraCanvasSmoothScroll.h); each eased step repaints, and the
+                // files sliding under a cursor that never moved re-derive the
+                // hover, its icon menu and its tooltip on every one of those
+                // paints (RefreshHoverState) rather than staying on the old
+                // file.
                 if (IsHorizontal()) {
                     if (MaxScrollX() <= 0) return false;
-                    scrollOffsetX -= event.wheelDelta * kWheelStep;
+                    scrollAnimX.AnimateBy(-event.wheelDelta * kWheelStep,
+                                          0, MaxScrollX());
                 } else {
                     if (MaxScrollY() <= 0) return false;
-                    scrollOffsetY -= event.wheelDelta * kWheelStep;
+                    scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep,
+                                          0, MaxScrollY());
                 }
-                // What the tooltip describes slides away under the cursor.
-                HideHoverTooltip();
-                ClampScroll();
-                RequestRedraw();
                 return true;
             }
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                // Remembered for RefreshHoverState(): scrolling and relayouts
+                // move files under the pointer with no move event to read.
+                RememberPointer(event);
                 // A column splitter drag owns the pointer until it is released.
                 if (draggingSplitter >= 0) {
                     UpdateColumnSplitterDrag(local);
@@ -9170,14 +9281,22 @@ namespace UltraCanvas {
                     hoveredIndex = newHover;
                     RequestRedraw();
                 }
+                // This hover is current for the scroll position and layout it
+                // was read from; RefreshHoverState() only redoes it once one
+                // of those moves.
+                hoverScrollX = scrollOffsetX;
+                hoverScrollY = scrollOffsetY;
+                hoverLayoutGeneration = layoutGeneration;
+                hoverDirty = false;
 
-                UpdateHoverTooltip(event, local);
+                UpdateHoverTooltip(local, lastPointerWindow);
                 // While the gesture holds the pointer capture this move is
                 // ours: consuming it keeps the dispatcher from handing the
                 // same move to whatever else is under the cursor.
                 return dragMouseCaptured;
             }
             case UCEventType::MouseDown: {
+                RememberPointer(event);
                 // A running drag owns the pointer until it is released.
                 if (draggingItems) return true;
                 Point2Di local(event.pointer.x, event.pointer.y);
@@ -9234,6 +9353,12 @@ namespace UltraCanvas {
                                               - scrollbarGrabOffset);
                             }
                             draggingScrollbar = true;
+                            // The pointer is parked on the bar for the whole
+                            // drag, not on a file: drop the hover so its icon
+                            // menu does not sit under the thumb the user is
+                            // dragging (the bar hugs the item edge).
+                            if (hoveredIndex != -1) hoveredIndex = -1;
+                            HideHoverTooltip();
                             // Capture the mouse so the drag keeps tracking even
                             // when the pointer leaves the widget (the vertical
                             // scrollbar hugs the right edge, so dragging right

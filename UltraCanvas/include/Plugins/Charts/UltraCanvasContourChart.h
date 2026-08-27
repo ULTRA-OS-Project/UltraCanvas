@@ -14,6 +14,7 @@
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasHeatmapChart.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "Plugins/Charts/UltraCanvasContourGrid.h"
 #include "Plugins/Charts/UltraCanvasMarchingSquares.h"
 #include <functional>
@@ -157,6 +158,12 @@ namespace UltraCanvas {
         double viewXMin = 0.0, viewXMax = 1.0;
         double viewYMin = 0.0, viewYMax = 1.0;
         bool viewActive = false;          // false = the full field is shown
+        // Wheel zoom eases in instead of stepping: the animator hands out a
+        // series of small factors, each applied with ApplyZoom() about the same
+        // focus point — which is exactly applying their product once (see
+        // UltraCanvasSmoothScroll.h).
+        UltraCanvasSmoothZoom zoomAnim;
+        double zoomFocusX = 0.0, zoomFocusY = 0.0;
         double maxZoomFactor = 1000.0;    // smallest allowed span = full span / this
 
         // ---- crosshair ----

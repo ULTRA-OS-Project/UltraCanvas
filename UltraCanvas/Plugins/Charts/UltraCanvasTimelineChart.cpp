@@ -1919,11 +1919,25 @@ namespace UltraCanvas {
 
             case UCEventType::MouseWheel:
                 if (enableZoom) {
-                    const double factor = (event.wheelDelta > 0) ? (1.0 / 1.25) : 1.25;
-                    axis.ZoomAbout(static_cast<double>(event.pointer.x), factor);
-                    InvalidateLayout();
-                    RequestRedraw();
-                    if (onViewChanged) onViewChanged();
+                    // Ease the zoom in: applying a run of small factors about
+                    // the same x is exactly applying their product once, so the
+                    // axis' own ZoomAbout does all the maths (see
+                    // UltraCanvasSmoothScroll.h).
+                    if (!zoomAnim.IsBound()) {
+                        zoomAnim.Bind([this](double f) {
+                                          axis.ZoomAbout(zoomAnchorX, f);
+                                          InvalidateLayout();
+                                      },
+                                      [this] {
+                                          RequestRedraw();
+                                          if (onViewChanged) onViewChanged();
+                                      });
+                    }
+                    zoomAnchorX = static_cast<double>(event.pointer.x);
+                    // The axis clamps its own span, so the animator is given a
+                    // wide range and only paces the factor.
+                    zoomAnim.ZoomBy((event.wheelDelta > 0) ? (1.0 / 1.25) : 1.25,
+                                    1.0, 1.0 / 1e6, 1e6);
                     return true;
                 }
                 break;

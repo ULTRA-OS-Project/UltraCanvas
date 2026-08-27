@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
 #include <vector>
@@ -407,6 +408,11 @@ private:
     
     // View state
     float zoomLevel = 1.0f;
+    // Wheel zoom eases in instead of stepping: the animator hands out a series
+    // of small factors which ApplyZoomFactorAtCursor() applies with the same
+    // maths a single one used (see UltraCanvasSmoothScroll.h).
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
     double panX = 0.0f;
     double panY = 0.0f;
     float minZoom = 0.1f;
@@ -462,6 +468,7 @@ private:
     bool HandleMouseDown(const UCEvent& event);
     bool HandleMouseUp(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
     bool HandleDoubleClick(const UCEvent& event);
     bool HandleKeyDown(const UCEvent& event);
     

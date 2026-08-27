@@ -66,6 +66,7 @@
 #pragma once
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageAnimation.h"
@@ -223,6 +224,7 @@ private:
     double FitScale(double iw, double ih, int rotQ) const;  // uses current bounds
     void   RebuildProcessed();
     bool   HandleWheelZoom(const UCEvent& event);
+    void   ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
 
     // Draw `img` (or its colour-processed `pm`) into local bounds `b` with the
     // given orientation, scale, centre offset and opacity.
@@ -261,6 +263,11 @@ private:
 
     // View geometry for the current image.
     double zoom = 1.0;        // multiple of the fit scale (1.0 == fit)
+    // Wheel zoom eases in instead of stepping: the animator hands out a series
+    // of small factors which ApplyZoomFactorAtCursor() applies with the same
+    // maths a single one used (see UltraCanvasSmoothScroll.h).
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
     double panX = 0.0, panY = 0.0;
     int    rotationQuarters = 0;
     bool   flipH = false, flipV = false;

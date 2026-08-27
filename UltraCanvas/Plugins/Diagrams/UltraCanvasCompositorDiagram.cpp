@@ -323,6 +323,9 @@ UltraCanvasCompositorDiagram::UltraCanvasCompositorDiagram(
     viewport.SetControlsConfig(MakeCompositorControlsDefaults());
     viewport.SetSnapGrid(kCompositorDefaultSnap, kCompositorDefaultSnap);
     viewport.SetViewportSize(width, height);
+    // Repaint each eased step of a wheel zoom, so it glides instead of
+    // stepping (see UltraCanvasDiagramViewport::ZoomAtPoint).
+    viewport.SetRepaintCallback([this] { RequestRedraw(); });
 
     auto seed = [this](SocketDataType t, const char* name, Color c) {
         SocketTypeInfo info;

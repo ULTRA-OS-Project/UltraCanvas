@@ -78,8 +78,9 @@ UltraCanvasPDFView::~UltraCanvasPDFView() = default;
 void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
     doc_ = std::move(doc);
     currentPage_ = 1;
-    scrollX_ = thumbScroll_ = 0;
-    scrollY_ = kScrollPageTop;   // open at the top of the first page
+    SetScrollNow(0, kScrollPageTop);   // a fresh document opens at the top
+    thumbScrollAnim_.Cancel();
+    thumbScroll_ = 0;   // open at the top of the first page
     zoomMode_ = ZoomMode::FitPage;
     userZoom_ = 1.0f;
     effectiveZoom_ = 1.0f;
@@ -140,8 +141,7 @@ void UltraCanvasPDFView::GoToPage(int page) {
     page = std::clamp(page, 1, total);
     if (page == currentPage_) return;
     currentPage_ = page;
-    scrollX_ = 0;
-    scrollY_ = kScrollPageTop;   // a page opens at its top, not centered
+    SetScrollNow(0, kScrollPageTop);   // a page opens at its top, not centered
     // The selection and cached text belong to the previous page.
     selecting_ = false;
     hasSelection_ = false;
@@ -227,12 +227,13 @@ void UltraCanvasPDFView::SetZoomAt(float scale, const Point2Di& local) {
     const float wantY = anchor.y - fy * newH;
     int maxX = 0, maxY = 0;
     ComputeScrollLimitsAt(newZoom, maxX, maxY);
-    scrollX_ = std::clamp(static_cast<int>(
+    // The zoom has repositioned the page under the anchor: land there.
+    SetScrollNow(std::clamp(static_cast<int>(
             area.x + style_.pageMargin + (innerW - newW) * 0.5f - wantX + 0.5f),
-            -maxX, maxX);
-    scrollY_ = std::clamp(static_cast<int>(
+            -maxX, maxX),
+                 std::clamp(static_cast<int>(
             area.y + style_.pageMargin + (innerH - newH) * 0.5f - wantY + 0.5f),
-            -maxY, maxY);
+            -maxY, maxY));
     Repaint();
 }
 
@@ -1223,23 +1224,52 @@ void UltraCanvasPDFView::ScrollBy(int dx, int dy) {
     }
     if (dy < 0 && scrollY_ <= -maxY && currentPage_ > 1) {
         GoToPage(currentPage_ - 1);
-        scrollY_ = kScrollPageBottom;      // arrive at the previous page's bottom
+        SetScrollNow(scrollX_, kScrollPageBottom);   // at the previous page's bottom
         return;
     }
 
     // Within the page the scroll is hard-limited: it stops once the page edge
     // sits style_.pageMargin inside the viewport — on the last/first page that
     // is the end of the line.
-    scrollX_ = std::clamp(scrollX_ + dx, -maxX, maxX);
-    scrollY_ = std::clamp(scrollY_ + dy, -maxY, maxY);
-    Repaint();
+    // Within the page the scroll glides to its target (see
+    // UltraCanvasSmoothScroll.h); the page-flip cases above have already
+    // returned, so a glide never runs across a page change.
+    if (!scrollAnimX_.IsBound()) {
+        scrollAnimX_.Bind([this] { return static_cast<double>(scrollX_); },
+                          [this](double v) {
+                              scrollX_ = static_cast<int>(std::lround(v));
+                              Repaint();
+                          });
+        scrollAnimY_.Bind([this] { return static_cast<double>(scrollY_); },
+                          [this](double v) {
+                              scrollY_ = static_cast<int>(std::lround(v));
+                              Repaint();
+                          });
+    }
+    if (dx != 0) scrollAnimX_.AnimateBy(dx, -maxX, maxX);
+    if (dy != 0) scrollAnimY_.AnimateBy(dy, -maxY, maxY);
+}
+
+// Page changes, zoom and fit modes reposition the view rather than scroll it,
+// so they land at once and drop whatever glide was running.
+void UltraCanvasPDFView::SetScrollNow(int x, int y) {
+    scrollAnimX_.Cancel();
+    scrollAnimY_.Cancel();
+    scrollX_ = x;
+    scrollY_ = y;
 }
 
 void UltraCanvasPDFView::ScrollThumbsBy(int delta) {
     const Rect2Di strip = ThumbStripArea();
     const int maxScroll = std::max(0, ThumbContentHeight() - strip.height);
-    thumbScroll_ = std::clamp(thumbScroll_ + delta, 0, maxScroll);
-    Repaint();
+    if (!thumbScrollAnim_.IsBound()) {
+        thumbScrollAnim_.Bind([this] { return static_cast<double>(thumbScroll_); },
+                              [this](double v) {
+                                  thumbScroll_ = static_cast<int>(std::lround(v));
+                                  Repaint();
+                              });
+    }
+    thumbScrollAnim_.AnimateBy(delta, 0, maxScroll);
 }
 
 void UltraCanvasPDFView::EnsureThumbVisible(int page) {
@@ -1335,13 +1365,14 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
             }
             if (panning_) {
                 // A pan drag stays within the current page (no page turning);
-                // clamp so the page cannot be dragged out of the viewport.
+                // clamp so the page cannot be dragged out of the viewport. The
+                // page follows the cursor exactly, so a glide is dropped.
                 int maxX = 0, maxY = 0;
                 ComputeScrollLimits(maxX, maxY);
-                scrollX_ = std::clamp(
-                    panScrollX_ - (event.pointer.x - panAnchor_.x), -maxX, maxX);
-                scrollY_ = std::clamp(
-                    panScrollY_ - (event.pointer.y - panAnchor_.y), -maxY, maxY);
+                SetScrollNow(std::clamp(
+                    panScrollX_ - (event.pointer.x - panAnchor_.x), -maxX, maxX),
+                             std::clamp(
+                    panScrollY_ - (event.pointer.y - panAnchor_.y), -maxY, maxY));
                 Repaint();
                 return true;
             }

@@ -83,6 +83,7 @@ namespace UltraCanvas {
         cs.forceShowVerticalScrollbar = false;
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
+        BindScrollAnimators();
     }
 
     UltraCanvasAlbum::~UltraCanvasAlbum() {
@@ -110,6 +111,7 @@ namespace UltraCanvas {
     void UltraCanvasAlbum::SetLayout(AlbumLayout layout) {
         if (config.layout == layout) return;
         config.layout = layout;
+        CancelScrollAnimations();   // the relaid-out album starts at the top
         scrollOffsetX = scrollOffsetY = 0;
         InvalidateAlbumLayout();
         RequestRedraw();
@@ -177,6 +179,7 @@ namespace UltraCanvas {
         hoveredItem = -1;
         StopHoverPreview();
         DropVideoPosters();
+        CancelScrollAnimations();
         scrollOffsetX = scrollOffsetY = 0;
         InvalidateAlbumLayout();
         RequestRedraw();
@@ -757,6 +760,28 @@ namespace UltraCanvas {
         scrollOffsetX = clampi(scrollOffsetX, 0, MaxScrollX());
     }
 
+    // Each eased step of a glide is written here, so it goes through the same
+    // clamp and repaint an instant scroll would.
+    void UltraCanvasAlbum::BindScrollAnimators() {
+        scrollAnimX.Bind([this] { return static_cast<double>(scrollOffsetX); },
+                         [this](double v) {
+                             scrollOffsetX = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+        scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                         [this](double v) {
+                             scrollOffsetY = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+    }
+
+    void UltraCanvasAlbum::CancelScrollAnimations() {
+        scrollAnimX.Cancel();
+        scrollAnimY.Cancel();
+    }
+
     UltraCanvasAlbum::ScrollbarGeom UltraCanvasAlbum::ScrollbarGeometry() const {
         ScrollbarGeom g;
         auto b = GetLocalBounds();
@@ -789,6 +814,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAlbum::ScrollThumbTo(int thumbLeadPx) {
+        // The view follows the grabbed thumb exactly; a glide would trail it.
+        CancelScrollAnimations();
         ScrollbarGeom g = ScrollbarGeometry();
         if (!g.active || g.travel <= 0) return;
         auto b = GetLocalBounds();
@@ -1676,15 +1703,17 @@ namespace UltraCanvas {
                 return true;
             }
             case UCEventType::MouseWheel: {
+                // Glide to the new position instead of jumping; each eased
+                // step repaints (see UltraCanvasSmoothScroll.h).
                 if (IsHorizontal()) {
                     if (MaxScrollX() <= 0) return false;
-                    scrollOffsetX -= event.wheelDelta * kWheelStep;
+                    scrollAnimX.AnimateBy(-event.wheelDelta * kWheelStep,
+                                          0, MaxScrollX());
                 } else {
                     if (MaxScrollY() <= 0) return false;
-                    scrollOffsetY -= event.wheelDelta * kWheelStep;
+                    scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep,
+                                          0, MaxScrollY());
                 }
-                ClampScroll();
-                RequestRedraw();
                 return true;
             }
             case UCEventType::MouseMove: {

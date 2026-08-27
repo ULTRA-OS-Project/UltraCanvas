@@ -517,16 +517,36 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMarkdownDisplay::ScrollTo(int offset) {
-        int maxScroll = std::max(0, static_cast<int>(contentHeight - GetHeight()));
-        verticalScrollOffset = std::clamp(offset, 0, maxScroll);
+        // Positioning the page: lands at once (a jump to an anchor or a
+        // programmatic position is not a scroll gesture).
+        scrollAnim.Cancel();
+        ApplyScrollOffset(offset);
+    }
+
+    void UltraCanvasMarkdownDisplay::ScrollBy(int delta) {
+        // The wheel comes through here, so it glides to its target instead of
+        // jumping (see UltraCanvasSmoothScroll.h).
+        if (!scrollAnim.IsBound()) {
+            scrollAnim.Bind([this] { return static_cast<double>(verticalScrollOffset); },
+                            [this](double v) {
+                                ApplyScrollOffset(static_cast<int>(std::lround(v)));
+                            });
+        }
+        scrollAnim.AnimateBy(delta, 0, MaxScrollOffset());
+    }
+
+    int UltraCanvasMarkdownDisplay::MaxScrollOffset() const {
+        return std::max(0, static_cast<int>(contentHeight - GetHeight()));
+    }
+
+    // The one place the offset is stored, so an eased step and a direct
+    // position notify onScrollChanged and repaint identically.
+    void UltraCanvasMarkdownDisplay::ApplyScrollOffset(int offset) {
+        verticalScrollOffset = std::clamp(offset, 0, MaxScrollOffset());
         RequestRedraw();
         if (onScrollChanged) {
             onScrollChanged(verticalScrollOffset);
         }
-    }
-
-    void UltraCanvasMarkdownDisplay::ScrollBy(int delta) {
-        ScrollTo(verticalScrollOffset + delta);
     }
 
     void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {

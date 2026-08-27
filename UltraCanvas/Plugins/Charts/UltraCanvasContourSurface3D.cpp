@@ -860,7 +860,19 @@ namespace UltraCanvas {
                     }
                     break;
                 case UCEventType::MouseWheel:
-                    SetCamera(yaw, pitch, distance * (event.wheelDelta > 0 ? 0.9 : 1.1));
+                    // Ease the dolly in rather than stepping it (see
+                    // UltraCanvasSmoothScroll.h); each step is the same
+                    // SetCamera call a single one made.
+                    if (!dollyAnim.IsBound()) {
+                        // SetCamera already asks for a repaint, so the animator
+                        // needs no separate one.
+                        dollyAnim.Bind(
+                            [this](double f) { SetCamera(yaw, pitch, distance * f); },
+                            [] {});
+                    }
+                    // The same limits SetCamera clamps the distance to.
+                    dollyAnim.ZoomBy(event.wheelDelta > 0 ? 0.9 : 1.1,
+                                     distance, 0.6, 40.0);
                     return true;
                 default:
                     break;
