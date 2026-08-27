@@ -4,9 +4,11 @@
 // UltraCanvasScrollbar animates its own position, so every element that scrolls
 // through a real scrollbar child (containers, list and tree views, dropdowns)
 // already glides. The self-rendered views — the filer and album pages, the text
-// area, the spreadsheet, the markdown and PDF pages, the diagram and chart
-// viewports — keep their scroll position in plain members and used to jump it
-// by a fixed step per wheel notch. This is the piece they were missing: bind it
+// area, the markdown and PDF pages, the diagram and chart viewports — keep their
+// scroll position in plain members and used to jump it by a fixed step per wheel
+// notch. (Views that scroll by whole rows rather than pixels, such as the
+// spreadsheet and the hex dump, need a pixel offset in their paint path before
+// this can help them; see Docs/UltraCanvas/UltraCanvasSmoothScroll.md.) This is the piece they were missing: bind it
 // to that member once and wheel notches, arrow keys and page steps animate
 // towards their target with the same easing and duration the scrollbar uses, so
 // scrolling feels the same everywhere in an application.
@@ -25,12 +27,13 @@
 // writing the member directly) so the view tracks the pointer exactly instead
 // of chasing it.
 //
-// The animator is also used for wheel-driven zoom: a zoom factor eased over the
-// same duration reads as one continuous move rather than a series of steps —
-// bind it to the zoom scalar and animate that. Views that zoom about the cursor
-// keep the focus point fixed while the factor eases, so the write callback
-// recomputes the pan from the eased factor (see the chart and diagram
-// viewports).
+// Wheel-driven zoom eases over the same duration, so a spin reads as one
+// continuous move rather than a series of steps. Zoom about a cursor is
+// multiplicative, which needs its own treatment: use UltraCanvasSmoothZoom at
+// the bottom of this header. The plain animator above is the right one only for
+// a zoom that steps *additively* (UltraCanvasVectorElement), where the write
+// callback re-solves the pan from an anchor captured at the start of the
+// gesture.
 #pragma once
 
 #include "UltraCanvasTimer.h"
@@ -51,7 +54,7 @@ namespace UltraCanvas {
 // next wheel notch — there is nothing to re-apply to existing elements. New
 // ScrollbarStyle instances pick the same values up (see UltraCanvasScrollbar.h),
 // which is what keeps the scrollbar-backed elements and the self-rendered ones
-// in step.
+// in step. They govern UltraCanvasSmoothZoom below just as much.
     void SetSmoothScrollingEnabled(bool enabled);
     bool IsSmoothScrollingEnabled();
     // Duration of one animated scroll step, in milliseconds. <= 0 disables the
