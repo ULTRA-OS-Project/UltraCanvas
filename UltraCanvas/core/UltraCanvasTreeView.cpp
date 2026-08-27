@@ -215,6 +215,7 @@ namespace UltraCanvas {
         textColor = Colors::Black;           // Black text
 
         // Scrolling defaults
+        scrollAnim.Cancel();
         scrollOffsetY = 0;
         maxScrollY = 0;
         CreateScrollbar();
@@ -255,6 +256,7 @@ namespace UltraCanvas {
         textColor = Colors::Black;           // Black text
 
         // Scrolling defaults
+        scrollAnim.Cancel();
         scrollOffsetY = 0;
         maxScrollY = 0;
         CreateScrollbar();
@@ -295,6 +297,7 @@ namespace UltraCanvas {
         textColor = Colors::Black;           // Black text
 
         // Scrolling defaults
+        scrollAnim.Cancel();
         scrollOffsetY = 0;
         maxScrollY = 0;
         CreateScrollbar();
@@ -500,6 +503,9 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::ScrollTo(TreeNode *node) {
         if (!node) return;
+        // Revealing a node positions the tree directly — it is normally the
+        // answer to a keyboard move that has already happened.
+        scrollAnim.Cancel();
 
         int nodeY = GetNodeDisplayY(node);
         int viewHeight = GetHeight() - GetHeaderHeight();   // visible rows sit below the header band
@@ -514,9 +520,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTreeView::ScrollBy(int deltaY) {
-        scrollOffsetY += deltaY;
-        ClampScrollOffset();
-        RequestRedraw();
+        if (!scrollAnim.IsBound()) {
+            scrollAnim.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                            [this](double v) {
+                                scrollOffsetY = static_cast<int>(std::lround(v));
+                                ClampScrollOffset();
+                                RequestRedraw();
+                            });
+        }
+        // Glide rather than jump, matching what the scrollbar does on the path
+        // where one is visible (see UltraCanvasSmoothScroll.h).
+        scrollAnim.AnimateBy(deltaY, 0, std::max(0, maxScrollY));
     }
 
     void UltraCanvasTreeView::ScrollToTop() {
@@ -1376,6 +1390,7 @@ namespace UltraCanvas {
                 GetIdentifier() + "_vscroll", 0, 0, scrollbarStyle.trackSize, 100,
                 ScrollbarOrientation::Vertical);
         verticalScrollbar->onScrollChange = [this](int pos) {
+            scrollAnim.Cancel();   // the scrollbar owns the position here
             scrollOffsetY = pos;
             RequestRedraw();
         };

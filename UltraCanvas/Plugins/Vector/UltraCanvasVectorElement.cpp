@@ -314,24 +314,38 @@ namespace UltraCanvas {
             float mouseX = event.pointer.x - finalBounds.x;
             float mouseY = event.pointer.y - finalBounds.y;
 
-            float oldZoom = zoomLevel;
-            float newZoom = zoomLevel + (event.wheelDelta > 0 ? options.ZoomStep : -options.ZoomStep);
-            newZoom = std::clamp(newZoom, options.MinZoom, options.MaxZoom);
-
-            // Zoom towards mouse position
-            float docX = (mouseX - panOffset.x) / oldZoom;
-            float docY = (mouseY - panOffset.y) / oldZoom;
-            zoomLevel = newZoom;
-            panOffset.x = mouseX - docX * newZoom;
-            panOffset.y = mouseY - docY * newZoom;
-
-            UpdateViewTransform();
-            state.IsDirty = true;
-            if (onZoomChange) onZoomChange(zoomLevel);
-            RequestRedraw();
+            // The document point under the cursor is captured once and held
+            // there for the whole glide, so the drawing grows around the cursor
+            // instead of drifting as the eased steps land.
+            zoomAnchorX = mouseX;
+            zoomAnchorY = mouseY;
+            zoomAnchorDocX = (mouseX - panOffset.x) / zoomLevel;
+            zoomAnchorDocY = (mouseY - panOffset.y) / zoomLevel;
+            if (!zoomAnim.IsBound()) {
+                zoomAnim.Bind([this] { return static_cast<double>(zoomLevel); },
+                              [this](double z) {
+                                  ApplyZoomLevelAtAnchor(static_cast<float>(z));
+                              });
+            }
+            zoomAnim.AnimateBy(event.wheelDelta > 0 ? options.ZoomStep
+                                                    : -options.ZoomStep,
+                               options.MinZoom, options.MaxZoom);
             return true;
         }
         return false;
+    }
+
+    // One eased step of a wheel zoom: set the level, then re-solve the pan that
+    // keeps the gesture's anchor document point under the cursor.
+    void UltraCanvasVectorElement::ApplyZoomLevelAtAnchor(float newZoom) {
+        zoomLevel = std::clamp(newZoom, options.MinZoom, options.MaxZoom);
+        panOffset.x = zoomAnchorX - zoomAnchorDocX * zoomLevel;
+        panOffset.y = zoomAnchorY - zoomAnchorDocY * zoomLevel;
+
+        UpdateViewTransform();
+        state.IsDirty = true;
+        if (onZoomChange) onZoomChange(zoomLevel);
+        RequestRedraw();
     }
 
     void UltraCanvasVectorElement::SetError(const std::string& message) {

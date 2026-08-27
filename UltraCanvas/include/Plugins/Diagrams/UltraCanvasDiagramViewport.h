@@ -30,6 +30,7 @@
 #pragma once
 
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasCommonTypes.h"
 #include <functional>
 #include <algorithm>
@@ -183,6 +184,7 @@ public:
 
     double GetZoomLevel() const { return zoomLevel; }
     void SetZoomLevel(double zoom) {
+        zoomAnim.Cancel();   // a set zoom is a position, not a gesture
         zoomLevel = zoom;
         ClampZoom();
     }
@@ -211,13 +213,30 @@ public:
     // Zoom about a cursor position so the world point under the cursor stays
     // put. localCursor is in element-local pixels.
     // Returns false when the zoom was already clamped and nothing changed.
+    //
+    // With a repaint hook set (SetRepaintCallback) the zoom eases towards its
+    // target over the app-wide smooth-scroll duration instead of stepping, so a
+    // wheel spin reads as one continuous move; the anchor world point is held
+    // under the cursor for the whole glide. Without a hook the viewport has no
+    // way to ask its element to repaint the intermediate steps, so the zoom is
+    // applied in one go exactly as it always was.
     bool ZoomAtPoint(const Point2Di& localCursor, double factor);
+
+    // How the viewport asks its owning element to repaint. Elements that set it
+    // get animated wheel zoom; those that do not keep the instant behaviour.
+    void SetRepaintCallback(std::function<void()> repaint) {
+        requestRepaint = std::move(repaint);
+    }
+    // Drops an in-flight zoom glide — for anything that positions the view
+    // outright (FitView, a programmatic zoom, loading another diagram).
+    void CancelZoomAnimation() { zoomAnim.Cancel(); }
 
     // Fit the given world content into the viewport. Returns false when the
     // content or the viewport is degenerate and nothing was changed.
     bool FitView(const DiagramContentBounds& content, double padding = 40.0);
 
     void CenterOn(double worldX, double worldY) {
+        zoomAnim.Cancel();
         panOffset.x = viewportWidth / 2.0 - worldX * zoomLevel;
         panOffset.y = viewportHeight / 2.0 - worldY * zoomLevel;
     }
@@ -341,6 +360,16 @@ private:
 
     double zoomLevel = 1.0;
     Point2Dd panOffset;
+    // Wheel zoom animation: the world point that must stay under the cursor for
+    // the whole glide, the cursor pixel it stays under, and the animator easing
+    // zoomLevel towards its target (see UltraCanvasSmoothScroll.h).
+    Point2Dd zoomAnchorWorld;
+    Point2Di zoomAnchorLocal;
+    UltraCanvasSmoothScroll zoomAnim;
+    std::function<void()> requestRepaint;
+    // Applies one eased zoom step: sets the level and re-solves the pan that
+    // holds the anchor under the cursor.
+    void ApplyZoomAtAnchor(double zoom);
     double minZoom = 0.1;
     double maxZoom = 5.0;
 

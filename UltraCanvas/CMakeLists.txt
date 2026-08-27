@@ -396,6 +396,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSmoothScroll.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
         # Tone curve model + interactive curve editor (Curves dialog, image tools)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToneCurve.cpp

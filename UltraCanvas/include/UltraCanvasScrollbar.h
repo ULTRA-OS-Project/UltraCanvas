@@ -10,6 +10,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <functional>
 #include <algorithm>
 #include <chrono>
@@ -74,9 +75,12 @@ namespace UltraCanvas {
         int pageScrollRatio = 90;   // Percentage of viewport for page scroll
         // Smooth scrolling: wheel, arrow-button and track-page scrolls animate
         // towards their target instead of jumping. Thumb dragging and
-        // programmatic SetScrollPosition() stay immediate.
-        bool smoothScrolling = true;
-        int smoothScrollDuration = 150;  // milliseconds
+        // programmatic SetScrollPosition() stay immediate. Both follow the
+        // app-wide defaults (UltraCanvasSmoothScroll.h) so one switch governs
+        // the scrollbar-backed elements and the self-rendered views alike; a
+        // style can still override either for a single bar.
+        bool smoothScrolling = IsSmoothScrollingEnabled();
+        int smoothScrollDuration = GetSmoothScrollDuration();  // milliseconds
 
         // ===== PRESET STYLES =====
         static ScrollbarStyle Default() {

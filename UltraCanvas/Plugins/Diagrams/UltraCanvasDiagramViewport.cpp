@@ -12,24 +12,47 @@ namespace UltraCanvas {
 // ZOOM & PAN
 // =============================================================================
 
-bool UltraCanvasDiagramViewport::ZoomAtPoint(const Point2Di& localCursor, double factor) {
-    double newZoom = std::clamp(zoomLevel * factor, minZoom, maxZoom);
-    if (std::abs(newZoom - zoomLevel) < 1e-6) return false;
-
-    // World point under the cursor before the zoom change.
-    Point2Dd worldUnderCursor = ScreenToWorld(localCursor);
-
-    zoomLevel = newZoom;
-
-    // Solve pan so that world point lands back under the same local pixel:
+void UltraCanvasDiagramViewport::ApplyZoomAtAnchor(double zoom) {
+    zoomLevel = zoom;
+    // Solve pan so the anchor world point lands back under the same local pixel:
     //   local = world * zoom + pan   =>   pan = local - world * zoom
-    panOffset.x = localCursor.x - worldUnderCursor.x * zoomLevel;
-    panOffset.y = localCursor.y - worldUnderCursor.y * zoomLevel;
+    panOffset.x = zoomAnchorLocal.x - zoomAnchorWorld.x * zoomLevel;
+    panOffset.y = zoomAnchorLocal.y - zoomAnchorWorld.y * zoomLevel;
+}
+
+bool UltraCanvasDiagramViewport::ZoomAtPoint(const Point2Di& localCursor, double factor) {
+    // Chain onto where a running glide is heading, so a fast wheel spin
+    // multiplies up into one long zoom rather than restarting each notch.
+    const double base = zoomAnim.IsAnimating() ? zoomAnim.PendingValue() : zoomLevel;
+    const double newZoom = std::clamp(base * factor, minZoom, maxZoom);
+    if (std::abs(newZoom - base) < 1e-6) return false;
+
+    // The world point under the cursor is captured once and held under it for
+    // the whole glide, so the diagram grows around the cursor rather than
+    // drifting as the intermediate steps re-read a moving transform.
+    zoomAnchorWorld = ScreenToWorld(localCursor);
+    zoomAnchorLocal = localCursor;
+
+    // Without a repaint hook the viewport cannot show intermediate steps, so
+    // the zoom is applied in one go — the behaviour every caller had before.
+    if (!requestRepaint) {
+        ApplyZoomAtAnchor(newZoom);
+        return true;
+    }
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this] { return zoomLevel; },
+                      [this](double z) {
+                          ApplyZoomAtAnchor(z);
+                          if (requestRepaint) requestRepaint();
+                      });
+    }
+    zoomAnim.AnimateTo(newZoom, minZoom, maxZoom);
     return true;
 }
 
 bool UltraCanvasDiagramViewport::FitView(const DiagramContentBounds& content, double padding) {
     if (!content.IsUsable()) return false;
+    zoomAnim.Cancel();   // fitting positions the view; it is not a zoom gesture
 
     double availW = viewportWidth - padding * 2.0;
     double availH = viewportHeight - padding * 2.0;

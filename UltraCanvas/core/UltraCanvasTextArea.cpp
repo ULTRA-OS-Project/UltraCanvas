@@ -40,6 +40,19 @@ namespace UltraCanvas {
         // Initialize style with defaults
         ApplyDefaultStyle();
 
+        // Explicit scrolling glides; each eased step writes the offset and
+        // repaints (see UltraCanvasSmoothScroll.h).
+        scrollAnimV.Bind([this] { return static_cast<double>(verticalScrollOffset); },
+                         [this](double v) {
+                             verticalScrollOffset = static_cast<float>(v);
+                             RequestRedraw();
+                         });
+        scrollAnimH.Bind([this] { return static_cast<double>(horizontalScrollOffset); },
+                         [this](double v) {
+                             horizontalScrollOffset = static_cast<float>(v);
+                             RequestRedraw();
+                         });
+
         // Initialize syntax highlighter if needed
         if (style.highlightSyntax) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
@@ -1546,7 +1559,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleMouseMove(const UCEvent& event) {
-        // Scrollbar thumb dragging (pixel-based).
+        // Scrollbar thumb dragging (pixel-based). The view follows the grabbed
+        // thumb exactly, so a glide in flight is dropped rather than fought.
+        if (isDraggingVerticalThumb || isDraggingHorizontalThumb) {
+            scrollAnimV.Cancel();
+            scrollAnimH.Cancel();
+        }
         if (isDraggingVerticalThumb) {
             auto bounds = GetLocalBounds();
             float scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
@@ -1875,6 +1893,11 @@ namespace UltraCanvas {
             }
         }
 
+        // Keeping the caret on screen has to hold the instant the keystroke is
+        // handled — every typed character passes here — so this positions the
+        // view directly and drops any glide the wheel or a page key started.
+        scrollAnimV.Cancel();
+        scrollAnimH.Cancel();
         if (cursorContentTop < verticalScrollOffset) {
             verticalScrollOffset = cursorContentTop;
         } else if (cursorContentBottom > verticalScrollOffset + visibleTextArea.height) {
@@ -2281,35 +2304,43 @@ namespace UltraCanvas {
         if (lineLayout) {
             targetY = lineLayout->bounds.y;
         }
+        // Programmatic positioning (Go to line, SetFirstVisibleLine) lands at
+        // once: the jump can be thousands of lines and easing it would just be
+        // a blur.
+        scrollAnimV.Cancel();
         verticalScrollOffset = std::max(0.0f, static_cast<float>(targetY));
         RequestRedraw();
     }
 
+    float UltraCanvasTextArea::MaxVerticalScroll() {
+        return std::max(0.0f, GetContentHeight() - visibleTextArea.height);
+    }
+
+    float UltraCanvasTextArea::MaxHorizontalScroll() const {
+        return std::max(0.0f, static_cast<float>(maxLineWidth) - visibleTextArea.width);
+    }
+
+    // The wheel and the page keys come through here, so both glide. Consecutive
+    // steps chain onto the pending target, which is what turns a held-down
+    // PageDown into one continuous move instead of a series of jumps.
     void UltraCanvasTextArea::ScrollUp(int lineCount) {
         float h = style.fontStyle.fontSize * 1.3f;
-        verticalScrollOffset = std::max(0.0f, verticalScrollOffset - lineCount * h);
-        RequestRedraw();
+        scrollAnimV.AnimateBy(-lineCount * h, 0.0, MaxVerticalScroll());
     }
 
     void UltraCanvasTextArea::ScrollDown(int lineCount) {
         float h = style.fontStyle.fontSize * 1.3f;
-        verticalScrollOffset += lineCount * h;
-        float maxOffset = std::max(0.0f, GetContentHeight() - visibleTextArea.height);
-        verticalScrollOffset = std::min(std::max(0.0f, verticalScrollOffset), maxOffset);
-        RequestRedraw();
+        scrollAnimV.AnimateBy(lineCount * h, 0.0, MaxVerticalScroll());
     }
 
     void UltraCanvasTextArea::ScrollLeft(int chars) {
         if (wordWrap) return; // No horizontal scrolling when word wrap is on
-        horizontalScrollOffset = std::max(0.0f, horizontalScrollOffset - chars * 10.0f);
-        RequestRedraw();
+        scrollAnimH.AnimateBy(-chars * 10.0, 0.0, MaxHorizontalScroll());
     }
 
     void UltraCanvasTextArea::ScrollRight(int chars) {
         if (wordWrap) return; // No horizontal scrolling when word wrap is on
-        float maxOffset = std::max(0.0f, static_cast<float>(maxLineWidth) - visibleTextArea.width);
-        horizontalScrollOffset = std::min(maxOffset, horizontalScrollOffset + chars * 10.0f);
-        RequestRedraw();
+        scrollAnimH.AnimateBy(chars * 10.0, 0.0, MaxHorizontalScroll());
     }
 
     void UltraCanvasTextArea::SetFirstVisibleLine(int line) {

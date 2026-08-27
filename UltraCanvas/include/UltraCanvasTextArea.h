@@ -11,6 +11,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSpellChecker.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -681,6 +682,9 @@ namespace UltraCanvas {
         LineEndingChangedCallback onLineEndingChanged;
 
         // Scrolling
+        // Largest scroll offset the content allows in each direction.
+        float MaxVerticalScroll();
+        float MaxHorizontalScroll() const;
         void ScrollTo(int line);
         void ScrollUp(int lines = 1);
         void ScrollDown(int lines = 1);
@@ -964,6 +968,14 @@ namespace UltraCanvas {
         // Scrolling
         float horizontalScrollOffset;
         float verticalScrollOffset;
+        // Explicit scrolling — the wheel and the ScrollUp/Down/Left/Right API the
+        // page keys go through — glides to its target instead of jumping (see
+        // UltraCanvasSmoothScroll.h). Following the caret does not: keeping the
+        // cursor on screen has to be true the instant the key is handled, so
+        // EnsureCursorVisible() cancels any glide and positions the view
+        // directly, and so does dragging a scrollbar thumb.
+        UltraCanvasSmoothScroll scrollAnimV;
+        UltraCanvasSmoothScroll scrollAnimH;
         // firstVisibleLine / maxVisibleLines removed in Step 8b — pixel-based verticalScrollOffset
         // is now the authoritative scroll state.
         int maxLineWidth;

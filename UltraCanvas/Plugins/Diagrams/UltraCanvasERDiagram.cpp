@@ -4057,19 +4057,28 @@ bool UltraCanvasERDiagram::HandleMouseWheel(const UCEvent& event) {
         return false;
     }
 
-    double factor = (event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1);
-    double newZoom = std::clamp(zoomLevel * factor, minZoom, maxZoom);
-    if (std::abs(newZoom - zoomLevel) < 1e-4) return true;
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] { NotifyViewportChange(); RequestRedraw(); });
+    }
+    zoomCursor = cursor;
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1),
+                    zoomLevel, minZoom, maxZoom);
+    return true;
+}
 
-    // Keep the world point under the cursor pinned while zooming.
+// One zoom step about the cursor: the world point under it stays put. A wheel
+// notch is eased in as a run of these (UltraCanvasSmoothZoom), and applying them
+// in a row about the same cursor is exactly applying their product once.
+void UltraCanvasERDiagram::ApplyZoomFactorAtCursor(double factor,
+                                                   const Point2Di& cursor) {
+    double newZoom = std::clamp(zoomLevel * factor, minZoom, maxZoom);
+    if (std::abs(newZoom - zoomLevel) < 1e-9) return;
+
     Point2Dd worldUnderCursor = ScreenToWorld(cursor);
     zoomLevel = newZoom;
     panOffset.x = cursor.x - worldUnderCursor.x * zoomLevel;
     panOffset.y = cursor.y - worldUnderCursor.y * zoomLevel;
-
-    NotifyViewportChange();
-    RequestRedraw();
-    return true;
 }
 
 bool UltraCanvasERDiagram::HandleKeyDown(const UCEvent& event) {

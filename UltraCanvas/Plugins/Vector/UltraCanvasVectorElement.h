@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasVectorStorage.h"
 #include "UltraCanvasVectorRenderer.h"
 #include <memory>
@@ -55,6 +56,14 @@ namespace UltraCanvas {
         std::unique_ptr<VectorRenderer> renderer;
         float zoomLevel = 1.0f;
         Point2Dd panOffset{0.0f, 0.0f};
+        // Wheel zoom eases towards its target instead of stepping. This one is
+        // additive (options.ZoomStep), so the plain scroll animator drives the
+        // level while ApplyZoomLevelAtAnchor() re-solves the pan that keeps the
+        // document point captured at the start of the gesture under the cursor
+        // (see UltraCanvasSmoothScroll.h).
+        UltraCanvasSmoothScroll zoomAnim;
+        float zoomAnchorDocX = 0.0f, zoomAnchorDocY = 0.0f;
+        float zoomAnchorX = 0.0f, zoomAnchorY = 0.0f;
         VectorStorage::Matrix3x3 viewTransform;
         bool isPanning = false;
         Point2Di lastMousePos{0, 0};
@@ -138,6 +147,7 @@ namespace UltraCanvas {
         bool HandleMouseUp(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseWheel(const UCEvent& event);
+        void ApplyZoomLevelAtAnchor(float newZoom);
         void SetError(const std::string& message);
         void ClearError();
         std::string HitTest(int x, int y) const;

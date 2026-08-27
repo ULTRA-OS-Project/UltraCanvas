@@ -226,6 +226,31 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
+  smooth scrolling and wheel zoom. Scrolling glides to its target instead of
+  jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
+  page step, a keyboard reveal or a zoom step is eased over ~150 ms with an
+  ease-out cubic. Public surface:
+  - Application-wide defaults, read at the moment a scroll starts:
+    `SetSmoothScrollingEnabled` / `IsSmoothScrollingEnabled`,
+    `SetSmoothScrollDuration` / `GetSmoothScrollDuration`. `ScrollbarStyle`
+    initialises from these, so one switch governs the scrollbar-backed elements
+    and the self-rendered views alike.
+  - `UltraCanvasSmoothScroll` — one animator per scalar (a scroll offset, a zoom
+    level). `Bind(read, write)`, `AnimateBy` / `AnimateTo` (chaining, so a fast
+    wheel spin is one glide), `PendingValue`, `Jump`, `Cancel`, `SetDuration`.
+    Holds a ~60 Hz timer only while a glide runs.
+  - `UltraCanvasSmoothZoom` — eases a multiplicative zoom in log space and hands
+    the element a run of small incremental factors, which it applies with its own
+    zoom-about-cursor code; no transform maths is duplicated. `Bind(apply,
+    repaint)`, `ZoomBy(factor, currentZoom, minZoom, maxZoom)`, `Cancel`.
+  Anything that positions the view rather than scrolls it — a thumb drag, a pan,
+  keeping the text caret on screen, opening a folder, fitting a diagram — cancels
+  the glide and lands at once. Row-indexed views (spreadsheet, hex dump, the two
+  dialog file lists) are not converted: their scroll position is a row index, so
+  they need a pixel offset in the paint path first.
+  See `Docs/UltraCanvas/UltraCanvasSmoothScroll.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the
@@ -16904,6 +16929,11 @@ The hover icon-menu buttons keep their own action tooltips and win wherever the
 two overlap, so in the Details view the name column describes the file while the
 icon strip — which sits over the columns to its right — describes its buttons.
 
+Like the icon strip, the tooltip describes the file under the cursor even when
+it was the view that moved: scrolling with the wheel, the scrollbar or the
+keyboard re-points it at whatever name is under the pointer afterwards (see
+[The hover follows the cursor, not the content](#the-hover-follows-the-cursor-not-the-content)).
+
 ## Context menu
 
 A right-click opens the file menu:
@@ -17231,6 +17261,22 @@ pressing Delete on a file is "delete that file", not "show me that file", so it
 does not fire `onSelectionChanged` and cannot re-target (or pop open) a preview
 pane fed by it. The selection only moves when the icon menu deletes it, and then
 only as described under [Selection after a delete](#selection-after-a-delete).
+
+### The hover follows the cursor, not the content
+
+The hovered item is whatever sits under the pointer *now*, and the pointer is
+not the only thing that moves it: the wheel, dragging the scrollbar, keyboard
+navigation revealing an entry, a resize and a rescan all slide the files past a
+cursor that never moved. The widget therefore re-derives the hover at the start
+of every paint whose scroll offset or layout changed, so the icon strip (and the
+hover highlight, and the name tooltip) jumps to the file that is under the
+cursor after the scroll instead of riding away with the one it started on.
+
+While a gesture owns the pointer the hover stays off: an item drag and a rubber
+band drop it for their duration, a splitter drag keeps the pointer on the
+splitter, and pressing the scrollbar drops it too — the pointer is parked on the
+bar for the whole drag, not on a file. The first paint after such a gesture ends
+works the hover out again, without waiting for the pointer to move.
 
 ## File operations
 
@@ -38750,6 +38796,198 @@ show->SetStaticText("Our Gallery", "A curated selection of recent work.");
 - [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSmoothScroll.md
+==============================================================================
+
+# UltraCanvasSmoothScroll — framework-wide smooth scrolling and zoom
+
+`UltraCanvasSmoothScroll.h` / `core/UltraCanvasSmoothScroll.cpp`
+
+Scrolling and wheel zoom **glide to their target instead of jumping**, in every
+UltraCanvas application, without the application opting in. A wheel notch, a
+page step, an arrow-key reveal or a zoom step is eased over ~150 ms with an
+ease-out cubic — quick off the mark so the view answers the input at once,
+gentle onto the target so it does not appear to stop dead.
+
+Nothing about the *amount* scrolled changed: only how the view travels there.
+
+---
+
+## Application-wide defaults
+
+Smooth scrolling is **on by default**. An application that wants the old instant
+jumps, or a different feel, sets it once at start-up:
+
+```cpp
+#include "UltraCanvasSmoothScroll.h"
+
+UltraCanvas::SetSmoothScrollingEnabled(false);   // instant everywhere
+UltraCanvas::SetSmoothScrollDuration(220);       // a slower glide (ms)
+```
+
+| Function | Meaning |
+|---|---|
+| `SetSmoothScrollingEnabled(bool)` / `IsSmoothScrollingEnabled()` | Master switch. Off means every animated scroll and zoom lands immediately. |
+| `SetSmoothScrollDuration(int ms)` / `GetSmoothScrollDuration()` | Length of one animated step. `<= 0` disables the animation as surely as the switch. |
+
+Both are read **at the moment a scroll starts**, so a change takes effect on the
+next wheel notch — there is nothing to re-apply to existing elements.
+
+`ScrollbarStyle::smoothScrolling` and `ScrollbarStyle::smoothScrollDuration`
+(see [UltraCanvasScrollbarExamples](UltraCanvasScrollbarExamples.md)) initialise from these same
+values, which is what keeps the scrollbar-backed elements and the self-rendered
+views in step. A style can still override either for one bar.
+
+---
+
+## What glides
+
+Every element that scrolls through a real `UltraCanvasScrollbar` child —
+containers, list and tree views, dropdowns, menus with a scrollbar — was already
+animated by the scrollbar itself. The change is that the **self-rendered views**,
+which keep their scroll position in plain members, now glide too:
+
+| Element | What glides |
+|---|---|
+| `UltraCanvasFilerWidget` | Wheel; keyboard navigation revealing an entry (`EnsureVisible`) |
+| `UltraCanvasAlbum` | Wheel (vertical, and horizontal in Filmstrip) |
+| `UltraCanvasTextArea` | Wheel and the `ScrollUp/Down/Left/Right` API the page keys go through |
+| `UltraCanvasTreeView` | Wheel (through the scrollbar where one is up, `ScrollBy` where not) |
+| `UltraCanvasMenu` | Wheel over a scrolling item list |
+| `UltraCanvasCalendarView` (date picker) | Wheel and the scroll track's page steps, in `Scrolling` nav mode |
+| `UltraCanvasMarkdownDisplay` | Wheel (`ScrollBy`) |
+| `UltraCanvasPDFView` | Wheel scrolling of the page and of the thumbnail strip |
+| `UltraCanvasGanttChartElement` | Wheel (timeline, both axes) |
+| `UltraCanvasKanbanBoardElement` | Wheel (board sideways, and each column on its own) |
+| `UltraCanvasGitGraph` | Diff pane file list and diff text |
+
+Wheel **zoom** eases in as well — the zoom factor is spread over the same
+duration while the point under the cursor stays put:
+
+| Element | |
+|---|---|
+| `UltraCanvasDiagramViewport` | The shared pan/zoom viewport: MindMap, NodeDiagram, CompositorDiagram |
+| Class, ER, Flow, Sequence, Requirement, Pert diagrams; GitGraph; GourceTree; Dendrogram | Each element's own zoom-about-cursor |
+| `UltraCanvasZoomPanImage` (image viewer), `UltraCanvasMediaSurface` (media viewer) | |
+| `UltraCanvasVectorElement` | |
+| `UltraCanvasContourChartElement`, `UltraCanvasTimelineChart` | |
+| 3D charts (`ScatterPlot3D`, `ContourSurface3D`, `ContourSurfaceGL`) and `UltraCanvasSTLElement` | The camera dolly |
+
+### What deliberately does not glide
+
+- **Dragging a scrollbar thumb, or panning with the mouse.** The view has to
+  track the pointer exactly; a glide chasing the cursor would trail the thing
+  being dragged. Pressing a scrollbar also drops the hover state, since the
+  pointer is parked on the bar rather than on content.
+- **Keeping the text caret on screen.** `UltraCanvasTextArea::EnsureCursorVisible`
+  runs on every keystroke and must be true the instant the key is handled, so it
+  positions the view directly and cancels any glide the wheel started. Explicit
+  scrolling (wheel, page keys) still glides.
+- **Positioning, as opposed to scrolling.** Opening a folder, switching view
+  type, `ScrollTo(line)`, a Go-to-line, fitting a diagram to its content, putting
+  the viewport back on its anchor entry after a resize: these set where the view
+  *is* rather than move it, so they land at once.
+- **PDF wheel zoom.** Every intermediate scale would invalidate the rasterised
+  page cache and re-render the page, so easing it would cost roughly nine full
+  page rasterisations per notch. PDF *scrolling* glides; its zoom steps.
+- **Value steppers.** The wheel over a spinner, a time picker or a paged
+  calendar changes a value or flips a page — it is not scrolling.
+
+### Not converted
+
+Four views scroll by **whole rows or items** rather than by pixels — their scroll
+position *is* a row index, and the renderer draws starting from that row. Easing
+an index only spreads the same row-by-row steps over 150 ms, which reads worse
+than the jump. Making them genuinely smooth means first changing the scroll
+position to a pixel offset and teaching the paint and hit-test paths a sub-row
+remainder, which is a change to each view rather than an adoption of this
+animator:
+
+- `UltraCanvasSpreadsheet` — the scroll position is a cell coordinate on the
+  sheet model (`SetScrollPosition(row, col)`), read by the grid painter, the
+  header painters, hit-testing and the scrollbar fractions.
+- `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
+- The `UltraCanvasFileDialog` file list and the `UltraCanvasNewDocumentDialog`
+  document list (item indices, also used for click hit-testing).
+
+---
+
+## Using it in a new element
+
+An element that keeps its own scroll offset binds one animator per axis. The
+writer is the single place the offset is stored, so an eased step goes through
+exactly the clamp and repaint an instant scroll would:
+
+```cpp
+// member
+UltraCanvasSmoothScroll scrollAnimY;
+
+// once (constructor)
+scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                 [this](double v) {
+                     scrollOffsetY = static_cast<int>(std::lround(v));
+                     ClampScroll();
+                     RequestRedraw();
+                 });
+
+// wheel / page key
+scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+```
+
+| Call | |
+|---|---|
+| `AnimateBy(delta, lo, hi)` / `AnimateTo(value, lo, hi)` | Glide. Consecutive calls **chain** onto the pending target, so a fast wheel spin is one long glide rather than a stutter. |
+| `PendingValue()` | Where an in-flight glide is heading (the current value when idle). Ask this rather than reading the member when deciding "is the target already reached?". |
+| `Jump(value, lo, hi)` | Land now, dropping any glide. |
+| `Cancel()` | Drop a glide and leave the value where it got to — **call this before writing the bound member directly**, or the animation will overwrite it. |
+| `SetDuration(ms)` | Per-instance override; `< 0` (default) follows the application-wide duration. |
+
+The animator holds a repeating ~60 Hz timer only while a glide is running, and
+stops it on landing and in its destructor.
+
+## Using it for wheel zoom
+
+Zooming about the cursor is multiplicative, and applying two factors in a row
+about the same point is exactly the same as applying their product once — the pan
+solve holds that point fixed after each application. `UltraCanvasSmoothZoom` uses
+that: it eases in log space and hands the element a run of small **incremental
+factors**, which the element applies with the very code it used for the single
+one. No transform maths is duplicated or reinterpreted:
+
+```cpp
+// members
+UltraCanvasSmoothZoom zoomAnim;
+Point2Di zoomCursor;
+
+// wheel handler
+if (!zoomAnim.IsBound()) {
+    zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                  [this] { RequestRedraw(); });
+}
+zoomCursor = event.pointer;
+zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+```
+
+The element keeps clamping its own zoom; the range passed to `ZoomBy` only stops
+notches spun against a limit from piling up into a factor that would take a
+visible moment to unwind.
+
+For a zoom that steps **additively** rather than multiplicatively (as
+`UltraCanvasVectorElement` does), use the plain `UltraCanvasSmoothScroll` on the
+zoom level and re-solve the pan from a document anchor captured once at the start
+of the gesture.
+
+---
+
+## See also
+
+- [UltraCanvasScrollbarExamples](UltraCanvasScrollbarExamples.md) — the scrollbar
+  control, which animates its own position and now takes its defaults from here.
+- [UltraCanvasFilerWidget](UltraCanvasFilerWidget.md) — its hover icon menu and
+  tooltip re-derive on every eased step, so they follow the file that is under
+  the cursor as the folder glides past.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSpectrogram.md
 ==============================================================================
 
@@ -47181,6 +47419,249 @@ player's `onPositionChanged` into `SetPlayheadTime()`, and feed the waveform's
 `onSeek` into the player's `Seek()`. See
 `Apps/DemoApp/UltraCanvasWaveformExamples.cpp` for a complete demo that decodes a
 bundled MP3 into an envelope and keeps both views in sync.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md
+==============================================================================
+
+# Diagnosing a Windows Build That Will Not Start
+
+What to do when a packaged UltraCanvas application — the demo, UltraFiler,
+UltraViewer, Texter, or a host application such as the Ladybird port that
+embeds the framework — starts on one Windows machine and does nothing at all
+on another.
+
+## Why the failure is silent
+
+Windows applications built from this repository are linked as **GUI-subsystem**
+executables (`set_target_properties(... WIN32_EXECUTABLE TRUE)` in
+`CMakeLists.txt`). A GUI-subsystem process is not given a console, so:
+
+- `std::cerr`, `printf` and the framework's `debugOutput` have nowhere to write;
+- an unhandled exception kills the process without printing anything;
+- the process exit code is discarded by the usual launcher.
+
+Launchers make this worse by design. A launcher of the shape
+
+```bat
+@echo off
+set "HERE=%~dp0"
+start "" "%HERE%bin\App.exe" %*
+```
+
+uses `start`, which **detaches** the child: the shell prompt returns
+immediately whether the application came up or died in its first millisecond,
+and `ERRORLEVEL` never reflects what happened.
+
+So this transcript contains no error at all:
+
+```
+PS C:\...\Ladybird> .\Ladybird.bat
+PS C:\...\Ladybird>
+```
+
+The prompt returning at once is `start` doing its job. (A preceding
+*"The command … was not found. However, it exists in the current location …
+type `.\App.bat` instead"* is unrelated — that is PowerShell declining to run
+a command from the current directory, and it is fixed by the `.\`, which the
+transcript above already does.)
+
+Everything below exists to turn that silence into a message.
+
+## 1. Run the diagnostic launcher
+
+`scripts/uc-diagnose.bat` ships in the Windows package. It runs the executable
+**attached** so the exit code survives, enables the framework log, prints the
+Windows build number, and checks the executable for a Mark of the Web:
+
+```bat
+uc-diagnose.bat
+uc-diagnose.bat bin\Ladybird.exe https://example.com
+```
+
+With no argument it picks the single `.exe` beside it, or in `bin\`. It writes
+`uc-diagnose.log` next to itself and prints it at the end, then decodes the
+exit code:
+
+```
+===========================================================
+Exit code: -1073741515
+Meaning  : 0xC0000135 STATUS_DLL_NOT_FOUND - a required DLL is missing.
+===========================================================
+```
+
+## 2. Turn on the log by hand
+
+The launcher only sets one environment variable, and any shell can do the same:
+
+```bat
+set ULTRACANVAS_DEBUG_LOG=%TEMP%\ultracanvas.log
+bin\App.exe
+```
+
+```powershell
+$env:ULTRACANVAS_DEBUG_LOG = "$env:TEMP\ultracanvas.log"
+.\bin\App.exe
+```
+
+| `ULTRACANVAS_DEBUG_LOG` | Effect |
+|---|---|
+| *unset* | Debug builds log to stderr; Release builds log nothing. |
+| `0`, `off`, `no`, `none`, `false` | Off, in every build configuration. |
+| `1`, `on`, `yes`, `true`, `stderr`, `-` | On, to stderr. |
+| *any other value* | On, appending to that file. |
+
+This works in **Release** builds. It used to not: `debugOutput` compiled to a
+do-nothing stream unless `ULTRACANVAS_DEBUG` was defined, which meant the
+packaged binaries users actually run were the only ones that could not be
+diagnosed. The sink is now chosen at runtime
+(`UltraCanvas/include/UltraCanvasDebug.h`), so a shipped binary can be asked
+for a log without rebuilding it.
+
+Two related variables:
+
+| Variable | Effect |
+|---|---|
+| `ULTRACANVAS_NO_ERROR_DIALOG=1` | Suppresses the startup-failure and crash message boxes. Set it in helper processes (a browser's content process, a test runner, CI) so a failure logs and exits instead of blocking on a dialog nobody will click. |
+| `FONTCONFIG_FILE` | Read, not written, by the framework. It is logged in the startup banner because a launcher pointing it at a file that does not exist is a common packaging mistake. |
+
+A healthy start begins like this:
+
+```
+[10:14:02.113] UltraCanvas: ===== startup =====
+[10:14:02.113] UltraCanvas: app          = Ladybird
+[10:14:02.113] UltraCanvas: os           = Windows 11 (10.0 build 26100)
+[10:14:02.113] UltraCanvas: architecture = 64-bit process on x64
+[10:14:02.113] UltraCanvas: executable   = C:\...\Ladybird\bin\Ladybird.exe
+[10:14:02.113] UltraCanvas: working dir  = C:\...\Ladybird
+[10:14:02.114] UltraCanvas: Windows Application initialized successfully
+```
+
+The `os` line is what a "works on 10, not on 11" report needs, and it is not
+guessable from `GetVersionEx`: an application without a compatibility manifest
+is told it is running on 6.2, so the framework reads the true build number
+through `RtlGetVersion`.
+
+## 3. Read what came out
+
+**A log with a `FATAL` line.** Initialisation failed and named the step. The
+same text is shown in a message box, so the user sees it even without a
+console.
+
+```
+[10:14:02.115] UltraCanvas: FATAL Could not register the window class
+"UltraCanvas_Ladybird_Main": 1410 (Class already exists)
+```
+
+**A log ending in a crash line.** The unhandled-exception filter recorded the
+exception code, the faulting address and — most usefully — the module that
+address belongs to:
+
+```
+Ladybird crashed: exception 0xC0000005 (ACCESS_VIOLATION) at
+0x00007FFB1C2E4A10 in C:\Windows\System32\ig9icd64.dll.
+Windows 11 (10.0 build 26100)
+```
+
+A driver, a codec or a third-party DLL in that field means the framework was
+the victim, not the cause.
+
+**No log at all.** The process died before any UltraCanvas code ran, so the
+problem is the loader, not the application. Go to the exit code and to
+**Event Viewer → Windows Logs → Application**, which records an entry naming
+the executable and the failing module.
+
+## Windows 11 differences worth checking first
+
+Nothing in `UltraCanvas/OS/MSWindows/` branches on the Windows version — the
+DPI entry point is resolved dynamically and everything else is version-neutral
+— so a Windows-11-only failure is almost always environmental. In rough order
+of how often they bite:
+
+1. **Smart App Control.** Windows 11 only, on by default on clean installs,
+   and it blocks unsigned or unrecognised executables *without a dialog* —
+   the exact reported symptom. Check Windows Security → App & browser control
+   → Smart App Control; if it is On, switch it Off and try again. The
+   long-term fix is Authenticode signing (see `SignUltraDemo.ps1`).
+2. **Mark of the Web.** Files extracted from a downloaded ZIP carry a
+   `Zone.Identifier` stream that Windows 11 enforces much harder than Windows
+   10. Clear it for the whole folder:
+   `Get-ChildItem -Recurse .\Ladybird | Unblock-File`.
+3. **Endpoint protection.** Behaviour-based heuristics quarantine unsigned
+   binaries that open sockets or load plug-in DLLs — the reason
+   `package-win.sh` refuses to ship the test and diagnostic executables at all.
+   Check the AV product's quarantine log.
+4. **A different CPU, not a different Windows.** The Windows 11 machine is
+   usually also newer or older hardware. Exit code `0xC000001D`
+   (`ILLEGAL_INSTRUCTION`) means the binary uses instructions this CPU does not
+   have; build without `-march=native`.
+5. **A different GPU driver.** OpenGL surfaces go through WGL
+   (`GLContextManagerWGL_MSWindows.cpp`), which needs a vendor driver for a
+   3.x core context; Microsoft's fallback renderer only offers OpenGL 1.1.
+   This is logged, not fatal, but it is worth ruling out on a VM or a machine
+   running on the Microsoft Basic Display Adapter.
+
+## Exit codes
+
+`uc-diagnose.bat` decodes these; the table is here for the cases where you run
+the executable yourself. `cmd` reports an NTSTATUS as a signed 32-bit integer,
+which is why the decimal column looks the way it does.
+
+| Hex | Decimal | Meaning |
+|---|---|---|
+| `0xC0000135` | -1073741515 | `STATUS_DLL_NOT_FOUND` — a required DLL is missing from the package. |
+| `0xC0000139` | -1073741511 | `STATUS_ENTRYPOINT_NOT_FOUND` — a DLL was found but is the wrong version; usually an older copy earlier on `PATH`. |
+| `0xC0000142` | -1073741502 | `STATUS_DLL_INIT_FAILED` — a DLL loaded but its initialiser failed. |
+| `0xC000007B` | -1073741701 | `STATUS_INVALID_IMAGE_FORMAT` — 32/64-bit mismatch between the EXE and a DLL. |
+| `0xC0000005` | -1073741819 | `ACCESS_VIOLATION` — crash; the log names the faulting module. |
+| `0xC000001D` | -1073741795 | `ILLEGAL_INSTRUCTION` — binary built for a CPU this machine is not. |
+| `0xC00000FD` | -1073741571 | `STATUS_STACK_OVERFLOW`. |
+| `0xC0000409` | -1073740791 | `STATUS_STACK_BUFFER_OVERRUN` — a security check aborted the process. |
+| `0xC0000022` | -1073741790 | `STATUS_ACCESS_DENIED` — something refused to let the process run. On Windows 11, suspect Smart App Control first. |
+
+## Writing a launcher that does not hide failures
+
+A launcher may legitimately want the detached, no-console behaviour — that is
+what a desktop shortcut should do. It should not be the *only* way to start the
+application. Ship both: the quiet launcher for normal use, and
+`uc-diagnose.bat` beside it. If you write your own, the two rules are
+
+- run the executable directly (`"%HERE%bin\App.exe" %*`) rather than through
+  `start` whenever you want the exit code, and
+- set `ULTRACANVAS_DEBUG_LOG` to a writable path so a failure leaves a trace
+  even when the window never appears.
+
+`FONTCONFIG_FILE` needs no launcher help. The framework calls
+`SetupBundledFontconfig()` before anything touches fontconfig; it checks
+whether the configured file actually exists and writes a working one into
+`%LOCALAPPDATA%\UltraCanvas\fontconfig` when it does not — including when a
+launcher points the variable at a path that was never packaged.
+
+## API
+
+Declared in `UltraCanvas/include/UltraCanvasDebug.h`:
+
+```cpp
+bool IsDebugOutputEnabled();                     // is anything reaching a sink?
+void SetDebugOutputFile(const std::string& path); // redirect; "" returns to stderr
+void SetDebugOutputEnabled(bool enabled);
+```
+
+Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
+(Windows only; called for you by `UltraCanvasWindowsApplication::InitializeNative()`):
+
+```cpp
+bool        AttachParentConsole();
+std::string GetWindowsVersionString();
+void        LogWindowsStartupBanner(const std::string& appName);
+void        InstallWindowsCrashReporter(const std::string& appName);
+void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
+std::string DescribeWin32Error(unsigned long error);
+```
+
+An application embedding the framework in its own `WinMain` gets all of this by
+calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is
+required.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWordCloudExamples.md
