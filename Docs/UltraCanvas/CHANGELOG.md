@@ -1,4 +1,4 @@
-#### 2026-08-27 *0.3.80*
+#### 2026-08-27 *0.3.81*
 - **CI builds Linux on ARM as well as x86_64.** The build matrix gained an
   `ubuntu-22.04-arm` row, so every commit is now compiled, unit-tested and
   packaged for Linux/aarch64 next to the existing x86_64 job — the same 22.04
@@ -21,6 +21,8 @@
   delegate is copied from the host's own multiarch directory instead of a
   hard-coded `/usr/lib/x86_64-linux-gnu`. The Linux artifact upload no longer
   hard-codes `x86_64` in the tarball it looks for.
+
+#### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
   executables are linked as GUI-subsystem binaries, which gives them no
   console: `std::cerr` went nowhere, an unhandled exception killed the process
