@@ -95,6 +95,7 @@ UltraCanvas/
 -   **Text Rendering:** FreeType, Pango, HarfBuzz
 -   **Image Processing:** libvips
 -   **Utilities:** glib-2.0, tinyxml2, fmt (JSON support is built in via the vendored yyjson engine behind UltraCanvasJSON)
+-   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI and DXF are implemented in-tree; DWG conversion uses GNU LibreDWG's `dxf2dwg`/`dwg2dxf` command-line tools (optional, external processes — found on PATH or named by `ULTRACANVAS_DXF2DWG`/`ULTRACANVAS_DWG2DXF`)
 
 ----------
 
