@@ -36,8 +36,9 @@
 // UltraCanvasSplitPane-style splitters between their columns, and names that
 // do not fit their column show the full name in a tooltip. In the tile-shaped
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
-// further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
-// even then is dropped from the front of the last line, which opens with "…".
+// further lines (FilerStyle::captionMaxLines, 2 by default), broken between
+// whole words wherever the width allows one; what does not fit even then is
+// dropped from the front of the last line, which opens with "…".
 // An explicit file list (ShowFileList) is sorted like a folder listing unless
 // SetFileListOrderPreserved() asks for the given order to be kept — for lists
 // whose order is the information, such as a most-recently-used history.
@@ -53,8 +54,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.18.0
-// Last Modified: 2026-08-25
+// Version: 1.19.0
+// Last Modified: 2026-08-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -65,6 +66,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSplitPane.h"
+#include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTimer.h"
 #include <atomic>
 #include <chrono>
@@ -293,6 +295,18 @@ namespace UltraCanvas {
         // captionLineHeight to the tile.
         int captionMaxLines   = 2;
         int captionLineHeight = 0;       // 0 = derived from smallFontSize
+
+        // Words are kept whole. A name is broken *inside* a word only when it
+        // has to be, and never where that would leave captionBreakTolerance
+        // characters or fewer on either side of the break: cutting "CoderBox"
+        // into "CoderBo" / "x" buys the line a single character. 0 breaks a
+        // word wherever it stops fitting (the behaviour before 0.3.79).
+        // captionOverflowSlack is how far a line may run past the caption
+        // width to keep a word — or a whole last line — in one piece; the
+        // caption is inset from the tile edge, so those pixels are free.
+        // 0 derives it from smallFontSize.
+        int captionBreakTolerance = 3;
+        int captionOverflowSlack  = 0;
 
         // Thumbnail tile edge for the four thumbnail view types.
         int thumbnailSmall     = 72;
@@ -1462,16 +1476,19 @@ namespace UltraCanvas {
         std::string EllipsizeEntryName(IRenderContext* ctx, size_t entryIndex,
                                        const std::string& name, int maxWidth);
         // Breaks `text` into at most `maxLines` lines that each fit `maxWidth`,
-        // for the captions of the tile-shaped views. Breaks after a separator
-        // (space, -, _, .) when one sits in the back half of the line, else at
-        // the exact fit — file names are frequently one long "word". When the
-        // text still does not fit, the head of what is left is dropped and the
-        // last line opens with "…", keeping the end of the name (extension)
-        // visible. `outTruncated` reports whether anything was dropped.
-        // A text that fits its lines completely is re-broken at the smallest
-        // line width needing no extra line, so the lines come out near equal
-        // ("CoderBox" / "compiler.png" instead of the greedily filled
-        // "CoderBox compiler" / ".png") without changing the line count.
+        // for the captions of the tile-shaped views (UltraCanvasTextWrapping.h
+        // does the work; these bind it to the context's font and the style).
+        // Breaks land after a separator (space, -, _, .) or between whole
+        // words; a word is only broken apart when it has to be — never for
+        // the sake of the last character or three of it, and a line may use
+        // captionOverflowSlack pixels of the caption's inset to keep one
+        // whole. When the text still does not fit, the head of what is left
+        // is dropped and the last line opens with "…", keeping the end of the
+        // name (extension) visible. `outTruncated` reports whether anything
+        // was dropped. A text that fits its lines completely is re-broken at
+        // the smallest line width needing no extra line, so the lines come out
+        // near equal ("CoderBox" / "compiler.png" instead of the greedily
+        // filled "CoderBox compiler" / ".png") without changing the count.
         std::vector<std::string> WrapText(IRenderContext* ctx,
                                           const std::string& text,
                                           int maxWidth, int maxLines,
@@ -1483,6 +1500,10 @@ namespace UltraCanvas {
                                                 const std::string& text,
                                                 int lineWidth, int maxLines,
                                                 bool* outTruncated) const;
+        // Wrapping rules for a caption of `lineWidth`, from the style.
+        TextWrapping::Options CaptionWrapOptions(int lineWidth, int maxLines) const;
+        // FilerStyle::captionOverflowSlack, resolved (0 = from smallFontSize).
+        int  CaptionOverflowSlack() const;
         // WrapText for an entry name; records whether it had to be shortened,
         // so the hover tooltip only pops for names that are really cut off.
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,

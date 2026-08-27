@@ -22,8 +22,8 @@
 // splitters between their columns (see COLUMN SPLITTERS), and names too long
 // for the space they are drawn in show the full name in a hover tooltip.
 // Tile captions (thumbnail grids, treemap) wrap long names over several lines
-// instead of cutting them off after one, with the breaks balanced so the
-// lines come out near equal (see WRAPPED CAPTIONS).
+// instead of cutting them off after one, keeping words whole and the breaks
+// balanced so the lines come out near equal (see WRAPPED CAPTIONS).
 // Besides clicking, entries are selected with a rubber band: dragging from
 // empty space draws a selection rectangle and everything it touches becomes
 // the selection (Ctrl adds the rectangle to the selection held before).
@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.19.1
-// Last Modified: 2026-08-26
+// Version: 1.19.2
+// Last Modified: 2026-08-27
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -53,6 +53,7 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -6040,72 +6041,30 @@ namespace UltraCanvas {
     }
 
     namespace {
-        // Byte offset of every UTF-8 code point start in `s`, plus s.size() as
-        // the closing boundary: cutting on one never splits a multibyte
-        // sequence. Index i of the result addresses the prefix s[0, b[i]) and
-        // the suffix s[b[i], end).
-        std::vector<size_t> Utf8Boundaries(const std::string& s) {
-            std::vector<size_t> b;
-            b.reserve(s.size() + 1);
-            for (size_t i = 0; i < s.size(); ++i) {
-                if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) b.push_back(i);
+        // The wrapping itself lives in UltraCanvasTextWrapping.h, which measures
+        // text through a callable instead of a render context so it can be
+        // unit-tested against a synthetic font (Tests/TextWrapTest.cpp). This
+        // is the callable: the width of one line in the context's current font.
+        struct ContextMeasure {
+            IRenderContext* ctx;
+            int operator()(const std::string& s) const {
+                return ctx->GetTextLineDimensions(s).width;
             }
-            b.push_back(s.size());
-            return b;
-        }
-
-        // Break the line after one of these when it sits in the back half of
-        // what fits: a name reads much better broken at its own separators
-        // ("Holiday photos - Rome.jpg") than in the middle of a word.
-        bool IsNameBreakChar(char c) {
-            return c == ' ' || c == '-' || c == '_' || c == '.' || c == ',' ||
-                   c == ';' || c == '(' || c == ')' || c == '[' || c == ']';
-        }
+        };
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeText(IRenderContext* ctx,
                                                       const std::string& text,
                                                       int maxWidth) const {
-        if (maxWidth <= 0) return "";
-        Size2Di ts = ctx->GetTextLineDimensions(text);
-        if (ts.width <= maxWidth) return text;
-        // Longest prefix that fits with the trailing "…": binary search over
-        // the code-point boundaries (fit is monotone in prefix length). The
-        // one-code-point-at-a-time trim measured the text once per removed
-        // character — a long name in a narrow Details column cost hundreds of
-        // text measurements per cell, every frame.
-        std::vector<size_t> bounds = Utf8Boundaries(text);
-        size_t lo = 0, hi = bounds.size() - 1;   // prefix is text[0, bounds[i])
-        while (lo < hi) {
-            size_t mid = (lo + hi + 1) / 2;
-            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid]) + "…").width
-                    <= maxWidth)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-        if (lo == 0) return "…";
-        return text.substr(0, bounds[lo]) + "…";
+        return TextWrapping::Ellipsize(ContextMeasure{ctx}, text, maxWidth);
     }
 
     std::string UltraCanvasFilerWidget::TruncateTextToWidth(IRenderContext* ctx,
                                                             const std::string& text,
                                                             int maxWidth) const {
-        if (maxWidth <= 0) return "";
-        if (ctx->GetTextLineDimensions(text).width <= maxWidth) return text;
-        // Same binary search as EllipsizeText, without the trailing "…": in a
-        // page preview the ellipsis would be most of what a narrow spreadsheet
-        // column has room for.
-        std::vector<size_t> bounds = Utf8Boundaries(text);
-        size_t lo = 0, hi = bounds.size() - 1;
-        while (lo < hi) {
-            size_t mid = (lo + hi + 1) / 2;
-            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid])).width <= maxWidth)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-        return text.substr(0, bounds[lo]);
+        // Without the trailing "…": in a page preview the marker would be most
+        // of what a narrow spreadsheet column has room for.
+        return TextWrapping::Truncate(ContextMeasure{ctx}, text, maxWidth);
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
@@ -6124,125 +6083,49 @@ namespace UltraCanvas {
     // the name off after one line it is broken over up to captionMaxLines
     // lines; only what does not fit even then is dropped, from the front of the
     // last line, so the tail — the extension — always remains readable.
+    // Words are kept whole: a name is only broken *inside* a word when it has
+    // to be, and a line may run captionOverflowSlack pixels into the caption's
+    // inset to keep one whole ("Logo CoderBox" / "with text.png" rather than
+    // the "Logo CoderBo" / "x with text.png" the exact fit produced).
     // A name that fits its lines completely is then re-broken so the lines
     // come out near equal — "CoderBox" / "compiler.png" rather than the
-    // greedy "CoderBox compiler" / ".png" (see WrapText).
+    // greedy "CoderBox compiler" / ".png" (see UltraCanvasTextWrapping.h).
+
+    int UltraCanvasFilerWidget::CaptionOverflowSlack() const {
+        if (style.captionOverflowSlack > 0) return style.captionOverflowSlack;
+        // Auto: about half a character of the caption font — enough for the
+        // one or two glyphs a word is regularly short by, and well inside the
+        // 4 px the caption is inset from the tile edge on either side.
+        return clampi(static_cast<int>(style.smallFontSize * 0.5f), 2, 6);
+    }
+
+    TextWrapping::Options UltraCanvasFilerWidget::CaptionWrapOptions(int lineWidth,
+                                                                int maxLines) const {
+        TextWrapping::Options o;
+        o.lineWidth = lineWidth;
+        o.maxLines = std::max(1, maxLines);
+        o.breakTolerance = std::max(0, style.captionBreakTolerance);
+        o.overflowSlack = CaptionOverflowSlack();
+        return o;
+    }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapTextGreedy(
             IRenderContext* ctx, const std::string& text,
             int lineWidth, int maxLines, bool* outTruncated) const {
-        std::vector<std::string> lines;
-        std::string rest = text;
-        for (int line = 0; line < maxLines && !rest.empty(); ++line) {
-            std::vector<size_t> bounds = Utf8Boundaries(rest);
-            const bool lastLine = (line == maxLines - 1);
-
-            if (lastLine) {
-                if (ctx->GetTextLineDimensions(rest).width <= lineWidth) {
-                    lines.push_back(rest);
-                    break;
-                }
-                // Longest tail that fits behind a leading "…" (the shorter the
-                // tail the narrower the line, so the fit is monotone in `lo`).
-                size_t lo = 0, hi = bounds.size() - 1;
-                while (lo < hi) {
-                    size_t mid = (lo + hi) / 2;
-                    std::string cand = "…" + rest.substr(bounds[mid]);
-                    if (ctx->GetTextLineDimensions(cand).width <= lineWidth) hi = mid;
-                    else lo = mid + 1;
-                }
-                lines.push_back("…" + rest.substr(bounds[lo]));
-                if (outTruncated) *outTruncated = true;
-                break;
-            }
-
-            // Longest prefix that still fits this line.
-            size_t lo = 0, hi = bounds.size() - 1;
-            while (lo < hi) {
-                size_t mid = (lo + hi + 1) / 2;
-                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= lineWidth)
-                    lo = mid;
-                else
-                    hi = mid - 1;
-            }
-            size_t fit = bounds[lo];
-            // Not even one code point fits: take one anyway so the loop always
-            // makes progress (a caption this narrow is unreadable regardless).
-            if (fit == 0) fit = bounds.size() > 1 ? bounds[1] : rest.size();
-
-            // The exact fit is kept when it already ends on a word boundary;
-            // otherwise the line backs off to the last separator inside it —
-            // unless that would leave more than half the line empty.
-            size_t cut = fit;
-            if (fit < rest.size() && !IsNameBreakChar(rest[fit])) {
-                for (size_t i = fit; i > 0; --i) {
-                    if (!IsNameBreakChar(rest[i - 1])) continue;
-                    if (i * 2 >= fit) cut = i;
-                    break;
-                }
-            }
-
-            std::string head = rest.substr(0, cut);
-            rest.erase(0, cut);
-            while (!head.empty() && head.back() == ' ') head.pop_back();
-            while (!rest.empty() && rest.front() == ' ') rest.erase(0, 1);
-            if (!head.empty()) lines.push_back(head);
-        }
-        return lines;
+        if (!ctx) return {};
+        return TextWrapping::WrapGreedy(ContextMeasure{ctx}, text,
+                                    CaptionWrapOptions(lineWidth, maxLines),
+                                    outTruncated);
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapText(
             IRenderContext* ctx, const std::string& text,
             int maxWidth, int maxLines, bool* outTruncated) const {
         if (outTruncated) *outTruncated = false;
-        std::vector<std::string> lines;
-        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
-        if (maxLines < 1) maxLines = 1;
-
-        const int totalWidth = ctx->GetTextLineDimensions(text).width;
-        if (totalWidth <= maxWidth) {
-            lines.push_back(text);
-            return lines;                       // the common case: one measure
-        }
-        if (maxLines == 1) {
-            lines.push_back(EllipsizeText(ctx, text, maxWidth));
-            if (outTruncated) *outTruncated = true;
-            return lines;
-        }
-
-        bool truncated = false;
-        lines = WrapTextGreedy(ctx, text, maxWidth, maxLines, &truncated);
-        if (outTruncated) *outTruncated = truncated;
-
-        // ===== BALANCED BREAKS =====
-        // Greedy filling front-loads the lines and leaves a stub on the last
-        // one — "CoderBox compiler" / ".png". When the whole name fits its
-        // lines, it is re-broken at the smallest line width that still needs
-        // no extra line, which evens the lines out ("CoderBox" /
-        // "compiler.png") while the line count — and with it the caption
-        // band height — stays exactly the same.
-        if (!truncated && lines.size() >= 2) {
-            const size_t lineCount = lines.size();
-            // No re-break can make every line narrower than the average.
-            int lo = clampi(totalWidth / static_cast<int>(lineCount), 1, maxWidth);
-            int hi = maxWidth;
-            while (lo < hi) {
-                const int mid = lo + (hi - lo) / 2;
-                bool cut = false;
-                const size_t n =
-                        WrapTextGreedy(ctx, text, mid, maxLines, &cut).size();
-                if (!cut && n <= lineCount) hi = mid;
-                else lo = mid + 1;
-            }
-            if (hi < maxWidth) {
-                bool cut = false;
-                std::vector<std::string> balanced =
-                        WrapTextGreedy(ctx, text, hi, maxLines, &cut);
-                if (!cut && balanced.size() <= lineCount)
-                    lines = std::move(balanced);
-            }
-        }
-        return lines;
+        if (!ctx) return {};
+        return TextWrapping::Wrap(ContextMeasure{ctx}, text,
+                              CaptionWrapOptions(maxWidth, maxLines),
+                              outTruncated);
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapEntryName(
@@ -6261,12 +6144,8 @@ namespace UltraCanvas {
                                                 int maxWidth) const {
         int maxLines = std::max(1, style.captionMaxLines);
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
-        if (ctx->GetTextLineDimensions(name).width <= maxWidth) return 1;
-        // Balancing (WrapText) never changes the line count, so the cheaper
-        // greedy pass is enough to size the caption band.
-        int n = static_cast<int>(
-                WrapTextGreedy(ctx, name, maxWidth, maxLines, nullptr).size());
-        return clampi(n, 1, maxLines);
+        return TextWrapping::LineCount(ContextMeasure{ctx}, name,
+                                   CaptionWrapOptions(maxWidth, maxLines));
     }
 
     int UltraCanvasFilerWidget::NameLineHeight() const {

@@ -140,9 +140,24 @@ a name gets is only as wide as the tile, which is far less than most file names
 need. A name that does not fit therefore **wraps onto the next line** instead of
 being cut off after one:
 
-- Lines break after a separator (space, `-`, `_`, `.`) when one sits in the back
-  half of the line, otherwise at the exact character that still fits — file names
-  are frequently one long "word".
+- Lines break after a separator (space, `-`, `_`, `.`) or between whole words.
+  A name is only broken **inside** a word when it has to be — file names are
+  frequently one long "word" — and never where that leaves a stub of
+  `FilerStyle::captionBreakTolerance` characters or fewer on either side of the
+  break: cutting `CoderBox` into `CoderBo` / `x` gains the line one character
+  and costs a readable name.
+- A line may run `FilerStyle::captionOverflowSlack` pixels past the caption
+  width to keep a word (or a whole last line) in one piece. The caption is
+  inset from the tile edge, so those pixels are free:
+
+  ```
+  Logo CoderBox         Logo CoderBo
+  with text.png    not  x with text.png
+  ```
+
+- Characters beat typography: when keeping the words whole would push part of
+  the name off the caption, the name is re-broken with mid-word breaks allowed
+  and the version showing more of it wins.
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
   restores the old single-line caption).
 - A name that fits its lines completely is broken **balanced**, not greedily:
@@ -991,13 +1006,16 @@ filer->ShowFileList(matches);   // shown in the current view mode
 `SetStyle(FilerStyle)` controls colors (background, selection, hover, bars,
 grid lines, icon-menu), fonts, row heights, thumbnail tile sizes and paddings —
 see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. `captionHeight`,
-`captionMaxLines` and `captionLineHeight` size the tile caption and its name
-wrapping (see [Long names](#long-names)):
+`captionMaxLines`, `captionLineHeight`, `captionBreakTolerance` and
+`captionOverflowSlack` size the tile caption and its name wrapping (see
+[Long names](#long-names)):
 
 ```cpp
 FilerStyle s = filer->GetStyle();
-s.captionMaxLines = 3;     // let tile names run over up to three lines
-s.captionLineHeight = 16;  // 0 = derived from smallFontSize
+s.captionMaxLines = 3;        // let tile names run over up to three lines
+s.captionLineHeight = 16;     // 0 = derived from smallFontSize
+s.captionBreakTolerance = 3;  // never split a word for 3 characters or fewer
+s.captionOverflowSlack = 0;   // 0 = derived from smallFontSize
 filer->SetStyle(s);
 ```
 
