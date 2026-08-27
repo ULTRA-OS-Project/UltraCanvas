@@ -1,3 +1,45 @@
+#### 2026-08-27 *0.3.80*
+- **A Windows build that fails to start can now say why.** The Windows
+  executables are linked as GUI-subsystem binaries, which gives them no
+  console: `std::cerr` went nowhere, an unhandled exception killed the process
+  without a word, and a failed `InitializeNative()` returned false and exited
+  with no window and no message. `debugOutput` made it worse by compiling to a
+  do-nothing stream outside Debug builds — the packaged binaries users actually
+  run were the only ones that could not be asked what went wrong. Reports of
+  the "it starts on this machine and does nothing on that one" kind had no
+  evidence to work from at all.
+- `debugOutput` now picks its sink at **runtime**, in every build
+  configuration. `ULTRACANVAS_DEBUG_LOG=<path>` appends to that file (flushed
+  per line, so it survives a crash), `=1` writes to stderr, `=0` silences even
+  a Debug build, and leaving it unset keeps the old behaviour — stderr in Debug,
+  nothing in Release. Disabled, it costs one branch per `<<`. Values with no
+  `operator<<(std::ostream&, T)` are dropped rather than rejected, so call
+  sites that only ever compiled against the old null stream keep compiling.
+  `IsDebugOutputEnabled()`, `SetDebugOutputFile()` and `SetDebugOutputEnabled()`
+  expose the sink to application code.
+- New `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.{h,cpp}`, wired
+  into `InitializeNative()`: stdio is reconnected to the console the process
+  was launched from, when there is one; a startup banner records the real
+  Windows build number (via `RtlGetVersion` — `GetVersionEx` reports 6.2 to an
+  unmanifested app, making Windows 10 and 11 indistinguishable), architecture,
+  paths and `FONTCONFIG_FILE`; an unhandled-exception filter turns a silent
+  crash into a logged exception code, faulting address and **module name**,
+  plus a message box; and each fatal initialisation step reports its stage and
+  `FormatMessage` text instead of returning false quietly. The crash path
+  writes with raw Win32 calls — no allocation, no stream, no lock — because the
+  process is already unsound. `ULTRACANVAS_NO_ERROR_DIALOG=1` suppresses the
+  dialogs for helper processes and CI.
+- `scripts/uc-diagnose.bat` ships in the Windows package: it runs the
+  executable *attached* so the exit code survives (a `start`-based launcher
+  discards it — which is why such a launcher looks identical whether the app
+  came up or died), turns the log on, flags a Mark of the Web on the binary,
+  and decodes the NTSTATUS exit codes that matter (`DLL_NOT_FOUND`,
+  `ENTRYPOINT_NOT_FOUND`, `INVALID_IMAGE_FORMAT`, `ILLEGAL_INSTRUCTION`,
+  `ACCESS_DENIED`, …). New `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md`
+  walks through reading the result, and lists the Windows 11-only environment
+  differences — Smart App Control, Mark-of-the-Web enforcement — that stop an
+  unsigned binary with no dialog at all.
+
 #### 2026-08-27 *0.3.79*
 - **Tile captions in the Filer stop cutting file names apart.** "Logo
   CoderBox with text.png" under a thumbnail read *Logo CoderBo* / *x with
