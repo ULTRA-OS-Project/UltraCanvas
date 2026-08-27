@@ -5275,6 +5275,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::RecomputeLayout() {
+        ++layoutGeneration;      // see RefreshHoverState()
         items.clear();
         detailsColumns.clear();
         captionLinesMeasured = true;   // only the thumbnail grid measures names
@@ -5776,6 +5777,10 @@ namespace UltraCanvas {
         if (!captionLinesMeasured) InvalidateFilerLayout();
         EnsureLayout();
         measureContext = nullptr;
+        // The layout has settled for this frame: if it (or the scroll offset)
+        // moved a different file under a standing cursor, the hover follows it
+        // here, before anything is drawn with it.
+        RefreshHoverState();
 
         auto lb = GetLocalBounds();
         Rect2Di bounds(static_cast<int>(lb.x), static_cast<int>(lb.y),
@@ -8583,8 +8588,8 @@ namespace UltraCanvas {
     // Details view the name column tells the user the file name while the icon
     // strip — which sits over the columns to its right — keeps describing its
     // buttons.
-    void UltraCanvasFilerWidget::UpdateHoverTooltip(const UCEvent& event,
-                                                    const Point2Di& localPoint) {
+    void UltraCanvasFilerWidget::UpdateHoverTooltip(const Point2Di& localPoint,
+                                                    const Point2Di& windowPoint) {
         TooltipTarget target = TooltipTarget::NoneTarget;
         size_t entry = 0;
         int action = -1;
@@ -8627,8 +8632,7 @@ namespace UltraCanvas {
             UltraCanvasTooltipManager::HideTooltip();
             return;
         }
-        UltraCanvasTooltipManager::UpdateAndShowTooltip(
-                win, text, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(win, text, windowPoint);
     }
 
     void UltraCanvasFilerWidget::HideHoverTooltip() {
@@ -8636,6 +8640,54 @@ namespace UltraCanvas {
         tooltipTarget = TooltipTarget::NoneTarget;
         tooltipAction = -1;
         UltraCanvasTooltipManager::HideTooltip();
+    }
+
+    void UltraCanvasFilerWidget::RememberPointer(const UCEvent& event) {
+        pointerInside = true;
+        lastPointerLocal  = Point2Di(event.pointer.x, event.pointer.y);
+        lastPointerWindow = Point2Di(event.pointerWindow.x, event.pointerWindow.y);
+    }
+
+    // The hover highlight, the hover icon-menu and the tooltip describe the
+    // file under the pointer — but the pointer is not the only thing that
+    // moves. The wheel, the scrollbar, keyboard navigation revealing an entry,
+    // a resize or a rescan all slide the files past a cursor that never moved,
+    // and a hover worked out only on MouseMove then stays glued to the file it
+    // was first put on: the icon-menu toolbar rides away with the old item
+    // instead of appearing on the one now under the cursor. Every paint runs
+    // this, which re-derives the hover whenever the content moved under the
+    // pointer since it was last worked out.
+    void UltraCanvasFilerWidget::RefreshHoverState() {
+        const bool contentMoved = scrollOffsetX != hoverScrollX ||
+                                  scrollOffsetY != hoverScrollY ||
+                                  layoutGeneration != hoverLayoutGeneration;
+        if (!contentMoved && !hoverDirty) return;
+        hoverScrollX = scrollOffsetX;
+        hoverScrollY = scrollOffsetY;
+        hoverLayoutGeneration = layoutGeneration;
+        hoverDirty = false;
+        if (!pointerInside) return;
+        // A gesture that owns the pointer is not hovering: an item drag and a
+        // rubber band both drop the hover for their duration (and autoscroll
+        // while they run), a splitter drag keeps the pointer on the splitter
+        // and a scrollbar drag keeps it on the bar. Their own end restores the
+        // hover on the next move.
+        if (draggingItems || marqueeActive || draggingSplitter >= 0 ||
+            draggingScrollbar) {
+            hoverDirty = true;   // worked out by the first paint after it ends
+            return;
+        }
+
+        const Point2Di local = lastPointerLocal;
+        int newHover = IsInInfoBar(local) ? -1 : ItemAt(ToContentPoint(local));
+        // Unlike MouseMove this cannot let an icon-menu button hold the hover
+        // on its item: iconMenuHits still says where the buttons were *before*
+        // the content moved. The paint this runs in rebuilds them under the
+        // item that is there now, so the next move has current rects again.
+        // No RequestRedraw() here: this runs from the paint that is about to
+        // draw the items, so the new hover lands in that same frame.
+        hoveredIndex = newHover;
+        UpdateHoverTooltip(local, lastPointerWindow);
     }
 
     // ===== INTERACTION =====
@@ -9187,6 +9239,7 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseLeave: {
+                pointerInside = false;   // nothing to re-derive a hover at
                 if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
                 if (hoveredSplitter != -1 && draggingSplitter < 0) {
                     hoveredSplitter = -1;
@@ -9200,6 +9253,7 @@ namespace UltraCanvas {
                 return true;
             }
             case UCEventType::MouseWheel: {
+                RememberPointer(event);
                 if (IsHorizontal()) {
                     if (MaxScrollX() <= 0) return false;
                     scrollOffsetX -= event.wheelDelta * kWheelStep;
@@ -9207,14 +9261,19 @@ namespace UltraCanvas {
                     if (MaxScrollY() <= 0) return false;
                     scrollOffsetY -= event.wheelDelta * kWheelStep;
                 }
-                // What the tooltip describes slides away under the cursor.
-                HideHoverTooltip();
                 ClampScroll();
+                // The files slide under a cursor that never moved, so the
+                // hover, its icon menu and its tooltip are re-derived from the
+                // new scroll position by the paint this asks for
+                // (RefreshHoverState) rather than left on the old file.
                 RequestRedraw();
                 return true;
             }
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                // Remembered for RefreshHoverState(): scrolling and relayouts
+                // move files under the pointer with no move event to read.
+                RememberPointer(event);
                 // A column splitter drag owns the pointer until it is released.
                 if (draggingSplitter >= 0) {
                     UpdateColumnSplitterDrag(local);
@@ -9291,14 +9350,22 @@ namespace UltraCanvas {
                     hoveredIndex = newHover;
                     RequestRedraw();
                 }
+                // This hover is current for the scroll position and layout it
+                // was read from; RefreshHoverState() only redoes it once one
+                // of those moves.
+                hoverScrollX = scrollOffsetX;
+                hoverScrollY = scrollOffsetY;
+                hoverLayoutGeneration = layoutGeneration;
+                hoverDirty = false;
 
-                UpdateHoverTooltip(event, local);
+                UpdateHoverTooltip(local, lastPointerWindow);
                 // While the gesture holds the pointer capture this move is
                 // ours: consuming it keeps the dispatcher from handing the
                 // same move to whatever else is under the cursor.
                 return dragMouseCaptured;
             }
             case UCEventType::MouseDown: {
+                RememberPointer(event);
                 // A running drag owns the pointer until it is released.
                 if (draggingItems) return true;
                 Point2Di local(event.pointer.x, event.pointer.y);
@@ -9355,6 +9422,12 @@ namespace UltraCanvas {
                                               - scrollbarGrabOffset);
                             }
                             draggingScrollbar = true;
+                            // The pointer is parked on the bar for the whole
+                            // drag, not on a file: drop the hover so its icon
+                            // menu does not sit under the thumb the user is
+                            // dragging (the bar hugs the item edge).
+                            if (hoveredIndex != -1) hoveredIndex = -1;
+                            HideHoverTooltip();
                             // Capture the mouse so the drag keeps tracking even
                             // when the pointer leaves the widget (the vertical
                             // scrollbar hugs the right edge, so dragging right

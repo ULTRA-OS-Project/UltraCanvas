@@ -791,6 +791,27 @@ namespace UltraCanvas {
         std::vector<uint8_t> frameSelected;
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
+        // Where the pointer was last seen inside the widget, in widget-local
+        // and in window coordinates, and whether it is still in there. The
+        // view can move under a standing cursor — the wheel, the scrollbar,
+        // keyboard navigation revealing an entry, a resize or a rescan
+        // reflowing the layout — and then a different file is under the
+        // pointer without a mouse move ever arriving. The hover highlight,
+        // the hover icon-menu and the tooltip are re-derived from this
+        // position instead of waiting for that move (see RefreshHoverState).
+        Point2Di lastPointerLocal{0, 0};
+        Point2Di lastPointerWindow{0, 0};
+        bool pointerInside = false;
+        // What the hover state above was derived against, so the re-derive is
+        // skipped while neither the scroll position nor the layout moved.
+        int      hoverScrollX = 0;
+        int      hoverScrollY = 0;
+        uint64_t hoverLayoutGeneration = 0;
+        // Set while a gesture that owns the pointer (an item drag, a rubber
+        // band, a splitter or scrollbar drag) suppressed a re-derive, so the
+        // first paint after it ends works the hover out again instead of
+        // waiting for the pointer to move.
+        bool     hoverDirty = false;
         // SetSelectNextAfterDelete: when a delete takes the whole selection
         // away, PerformDeletion parks the neighbour that should inherit it
         // here and the rescan selects that path instead of restoring the
@@ -837,6 +858,12 @@ namespace UltraCanvas {
         };
         std::vector<ItemLayout> items;
         bool layoutValid = false;
+        // Bumped by every RecomputeLayout(): `items` are content coordinates,
+        // so a reflow can put a different file under a standing cursor even
+        // when the scroll position did not budge (a view switch, a rescan, a
+        // column resize). RefreshHoverState() watches this to know its hover
+        // is stale.
+        uint64_t layoutGeneration = 0;
         // Tile heights depend on measured text (wrapped names), so a layout
         // built without a render context — before the widget is on a window —
         // falls back to single-line captions. The first Render() then redoes it
@@ -1533,9 +1560,20 @@ namespace UltraCanvas {
         void EndColumnSplitterDrag();
         void NotifyColumnWidthsChanged();
         // Shows / hides the hover tooltip for the icon-menu button or the
-        // truncated item name under the cursor.
-        void UpdateHoverTooltip(const UCEvent& event, const Point2Di& localPoint);
+        // truncated item name under the cursor. The window point is where the
+        // tooltip pops; it is passed in rather than read from an event so a
+        // scroll can refresh the tooltip with no event to hand.
+        void UpdateHoverTooltip(const Point2Di& localPoint,
+                                const Point2Di& windowPoint);
         void HideHoverTooltip();
+        // Re-derives the hovered item, its icon menu and its tooltip at the
+        // last known pointer position. Runs once per paint and returns
+        // immediately unless the content moved under the cursor since the
+        // hover was last worked out.
+        void RefreshHoverState();
+        // Records where an incoming pointer event puts the cursor, so the
+        // hover can be re-derived later with no event in hand.
+        void RememberPointer(const UCEvent& event);
 
         void HandleItemClick(int index, bool ctrl, bool shift);
         void ActivateEntry(size_t index);          // double-click / Enter

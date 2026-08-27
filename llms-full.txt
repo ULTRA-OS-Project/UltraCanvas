@@ -16889,6 +16889,11 @@ The hover icon-menu buttons keep their own action tooltips and win wherever the
 two overlap, so in the Details view the name column describes the file while the
 icon strip — which sits over the columns to its right — describes its buttons.
 
+Like the icon strip, the tooltip describes the file under the cursor even when
+it was the view that moved: scrolling with the wheel, the scrollbar or the
+keyboard re-points it at whatever name is under the pointer afterwards (see
+[The hover follows the cursor, not the content](#the-hover-follows-the-cursor-not-the-content)).
+
 ## Context menu
 
 A right-click opens the file menu:
@@ -17216,6 +17221,22 @@ pressing Delete on a file is "delete that file", not "show me that file", so it
 does not fire `onSelectionChanged` and cannot re-target (or pop open) a preview
 pane fed by it. The selection only moves when the icon menu deletes it, and then
 only as described under [Selection after a delete](#selection-after-a-delete).
+
+### The hover follows the cursor, not the content
+
+The hovered item is whatever sits under the pointer *now*, and the pointer is
+not the only thing that moves it: the wheel, dragging the scrollbar, keyboard
+navigation revealing an entry, a resize and a rescan all slide the files past a
+cursor that never moved. The widget therefore re-derives the hover at the start
+of every paint whose scroll offset or layout changed, so the icon strip (and the
+hover highlight, and the name tooltip) jumps to the file that is under the
+cursor after the scroll instead of riding away with the one it started on.
+
+While a gesture owns the pointer the hover stays off: an item drag and a rubber
+band drop it for their duration, a splitter drag keeps the pointer on the
+splitter, and pressing the scrollbar drops it too — the pointer is parked on the
+bar for the whole drag, not on a file. The first paint after such a gesture ends
+works the hover out again, without waiting for the pointer to move.
 
 ## File operations
 
