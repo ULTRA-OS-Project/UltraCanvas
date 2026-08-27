@@ -1,3 +1,12 @@
+#### 2026-08-27 *0.3.78*
+- **GNU LibreDWG is listed in the dependency overviews now.** The DWG
+  converter's delegation to LibreDWG's `dxf2dwg`/`dwg2dxf` command-line
+  tools (external processes, never linked; GPL 3) appears in the demo
+  app's *Dependencies & Third-Party Libraries* page — with a new "Vector
+  formats plugin" section that also records that the SVG/XAR/EPS/CDR/PDF/
+  EMF/WMF/AI/DXF converters are implemented in-tree — and in the READMEs'
+  Technical Stack.
+
 #### 2026-08-26 *0.3.77*
 - **The UltraFiler's Home entry is curated instead of scanned.** Expanding
   *Home* listed the whole profile — *3D Objects*, *Contacts*, *Favorites*,
