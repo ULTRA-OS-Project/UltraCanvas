@@ -652,5 +652,6 @@ namespace UltraCanvas {
         std::string SerializePathData(const PathData &path);
         Color ParseColorString(const std::string &colorStr);
         Matrix3x3 ParseTransformString(const std::string &transformStr);
+        std::string SerializeTransform(const Matrix3x3 &transform);
     } // namespace VectorStorage
 } // namespace UltraCanvas

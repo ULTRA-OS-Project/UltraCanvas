@@ -47,6 +47,162 @@
   mount cannot hold up the window.
 
 #### 2026-08-26 *0.3.76*
+- **Every vector format is now covered by the plugin system, load and
+  save.** The graphics plugin registry gained a save side and the converter
+  matrix gained readers:
+  - `IGraphicsPlugin` now has a save interface (`GetSaveExtensions()` +
+    `SaveGraphics()`, default load-only so existing plugins are
+    unaffected), with registry dispatch (`SaveGraphicsFile`,
+    `CanSaveGraphicsFile`, `GetSupportedSaveExtensions`). The
+    `UltraCanvasSupportedFormats` inventory reports per-extension load/save
+    from the real interface instead of a hardcoded STL special case, and
+    the STL plugin implements the new interface (mesh back to `.stl`).
+  - The new `UltraCanvasVectorFormatsPlugin` exposes the whole converter
+    matrix through that registry: loading SVG/XAR/EMF/WMF/DXF/DWG into an
+    editable `UltraCanvasVectorElement`, saving all ten formats
+    (SVG/XAR/EPS/CDR/PDF/EMF/WMF/AI/DXF/DWG) from one. Registered in the
+    DemoApp alongside the CDR/XAR/EPS viewer plugins.
+  - **New readers**: DXF (`UltraCanvasDXFReader.cpp` — tables, ACI+true
+    colours, LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE with bulges/POLYLINE/
+    SPLINE/HATCH/SOLID/TEXT/MTEXT; piecewise-bezier splines reproduce
+    exactly, general NURBS sample via de Boor), DWG (LibreDWG `dwg2dxf`
+    delegation, `ULTRACANVAS_DWG2DXF` or PATH), EMF
+    (`UltraCanvasEMFReader.cpp` — GDI object table, path records,
+    immediate primitives, `ExtTextOutW` with `TA_UPDATECP` chains merging
+    back into text spans) and WMF (`UltraCanvasWMFReader.cpp` — placeable
+    header, 16-bit records, object table, text).
+  - The XAR converter's import side was replaced: the legacy record
+    processors used wrong tag numbers and a 28-byte "file header" struct
+    where real XAR has an 8-byte signature, so they could not read a
+    single real file. The new reader consumes the spec-correct grammar the
+    writer emits (uncompressed; compressed Xara files remain the XAR
+    plugin's). XAR dash patterns are also written and read now
+    (define/reference records), replacing the export warning.
+  - Two writer fixes the readers surfaced: DXF entities now carry a valid
+    model-space owner handle (it was written empty, which made LibreDWG
+    drop every entity when converting the resulting DWG back), and the
+    DXF nearest-ACI fallback searches the full 256-colour palette instead
+    of 10 classic entries — LibreDWG's DXF output carries only ACI, so
+    this decides the colours a DWG round trip keeps.
+  - `Tests/VectorFormatsPluginTest.cpp` drives the whole matrix through
+    the registry: saves all ten formats via `SaveGraphicsFile` and
+    validates each file, loads the readable ones back via
+    `LoadGraphicsFile` and checks geometry, colours, dashes and text
+    survive, and verifies the supported-format inventory.
+- **DXF and DWG files can be written now — the CAD formats complete the
+  vector writer matrix.** Two new converters in
+  `Plugins/Vector/UltraCanvasCADConverters.h`:
+  - `DXFConverter` writes R2000 (AC1015) tagged ASCII per Autodesk's
+    public DXF reference, with the full table set (linetypes, layers,
+    styles, block records) under proper handles and ownership. Document
+    layers map to real DXF layers. Fills become solid `HATCH` entities
+    whose boundary paths carry exact spline edges (curves stay curves);
+    strokes become `LWPOLYLINE` or, when curved, `SPLINE` entities with
+    the exact piecewise-bezier NURBS form (degree 3, clamped knots with
+    interior multiplicity 3). Colours are written as 420 true colour
+    with a nearest-ACI 62 fallback for legacy consumers, stroke widths
+    snap to DXF's discrete lineweight set, dash arrays become `UC_DASHn`
+    linetypes, and text maps to `TEXT` entities with real alignment.
+    DXF has no opacity, so it is reported through the warning callback,
+    never dropped silently.
+  - `DWGConverter` — DWG is proprietary and undocumented; rather than
+    embed a reverse-engineered binary writer of uncertain fidelity, the
+    converter produces the DXF output and converts it with GNU
+    LibreDWG's `dxf2dwg` tool (`ULTRACANVAS_DXF2DWG` env or PATH).
+    Without the tool it warns with that guidance and declines cleanly.
+  - `Tests/CADWriterTest.cpp` validates the DXF through ezdxf — the
+    reference DXF implementation: strict read, clean audit, exact
+    entity/layer/colour structure — plus LibreOffice rasterization, and
+    the DWG chain through dxf2dwg with dwgread acceptance when
+    LibreDWG is installed.
+- **EMF, WMF and Adobe Illustrator files can be written now.** Three new
+  converters in `Plugins/Vector/UltraCanvasMetafileConverters.h` complete
+  the vector writer matrix (with SVG/XAR/EPS/CDR/PDF below):
+  - `EMFConverter` writes Enhanced Metafiles per the public [MS-EMF]
+    record layouts: MM_ANISOTROPIC mapping at 20 logical units per point,
+    geometry through GDI paths with real beziers
+    (BeginPath/MoveToEx/LineTo/PolyBezierTo/CloseFigure painted by
+    Fill/Stroke(AndFill)Path), ExtCreatePen geometric pens with caps,
+    joins and user-style dash entries, and ExtTextOutW text with
+    SetTextAlign anchoring (TA_UPDATECP chains multi-style spans).
+  - `WMFConverter` writes legacy 16-bit Windows Metafiles per [MS-WMF]
+    with the placeable (Aldus) header in twips: Polygon/PolyPolygon
+    fills, Polyline strokes (WMF has no bezier record, so curves flatten
+    to polylines), TextOut text, and a faithfully modelled GDI object
+    table. Dash patterns approximate as PS_DASH.
+  - GDI metafiles have no alpha channel, so opacity flattens toward the
+    white page in both, with a warning.
+  - `AIConverter` writes Adobe Illustrator files: modern .ai IS a PDF
+    (Illustrator's own editing data is an optional attachment), so the
+    output is the PDF writer's under the .ai extension — valid for
+    Illustrator and every PDF consumer; validation also recognizes
+    legacy EPS-based .ai.
+  - `Tests/MetafileWriterTest.cpp` checks structure (record walks that
+    must land exactly on the terminating record, the placeable header's
+    XOR checksum, header sizes against file sizes) and rendering through
+    independent consumers — LibreOffice rasterizes the EMF and WMF,
+    ghostscript the AI — with layout-order colour checks.
+  - The new `Docs/UltraCanvas/UltraCanvasVectorConverters.md` documents
+    the full eight-format converter matrix in one place.
+- **SVG can be read and written now — the declared `SVGConverter` exists.**
+  `VectorConverter::SVGConverter` was declared in
+  `UltraCanvasVectorConverter.h` but had no implementation anywhere; the new
+  `UltraCanvasSVGConverter.cpp` implements both directions, and it is the
+  one converter with lossless fidelity because the `VectorStorage` model is
+  essentially SVG-shaped. Export keeps groups/layers as `<g>`, transforms as
+  `matrix()` attributes, gradients with every stop in `<defs>`, patterns
+  with their content, multi-span text with `xml:space="preserve"`, dashes,
+  opacity and `<use>`/`<symbol>`/`<image>`. Import (tinyxml2) covers all
+  basic shapes, paths, groups, presentation attributes and inline
+  `style=""`, `url(#id)` gradient resolution with one level of `href`
+  inheritance, tspans, entities and CSS-unit conversion; a document whose
+  top level is all `<g>` elements imports them as layers. Round-trip
+  coverage in `Tests/SVGConverterTest.cpp` includes rasterizing the export
+  through the framework's real SVG pipeline (librsvg) with pixel checks —
+  an independent renderer accepts the output.
+- **Vector PDF can be written now — the declared `PDFVectorConverter`
+  exists.** Also previously declaration-only vapor. Writes a
+  self-contained, hand-assembled PDF 1.4: catalog/pages/page objects, a
+  content stream of path and text operators (transforms baked through the
+  shared `PathOps` walk, Y axis flipped to PDF's page space), base-14
+  Type1 fonts mapped from font families (bold/italic variants included),
+  ExtGState entries for opacity, dash patterns, and a correct xref table.
+  Gradients fall back to the blend of their end stops and centre/right
+  text anchoring is approximated from an average glyph width — each
+  warned. Export-only: reading PDF stays with the MuPDF plugin, and the
+  converter's `CanImport()` now says so honestly. Validated in
+  `Tests/PDFVectorWriterTest.cpp`: structural checks including xref
+  offsets that really point at their objects, plus a ghostscript
+  rasterization with pixel checks.
+- **SVG `matrix(a,b,c,d,e,f)` transforms parse correctly now.**
+  `ParseTransformString` fed SVG's column-major b and c straight into the
+  row-major `Matrix3x3::FromValues`, transposing every skew and rotation
+  it imported; the two values now swap places, matching what
+  `SerializeTransform` (which was already correct) writes.
+- **CDR files can be written now.** New `VectorConverter::CDRConverter`
+  (`Plugins/Vector/UltraCanvasCDRConverter.{h,cpp}`) serializes a
+  `VectorStorage::VectorDocument` as a version-7 RIFF CDR file. CorelDRAW's
+  format has no public specification, so the writer targets the record
+  layouts consumed by libcdr — the reference open-source reader and the
+  engine underneath the framework's CDR plugin: `vrsn`/`mcfg`/`fild`/
+  `outl`/`trfd`/`loda` chunks, 32-bit coordinates in 1/254000 inch in a
+  page-centred Y-up space, objects written topmost-first (CDR draws in
+  reverse file order), geometry as line-and-curve point lists through the
+  shared `PathOps` normalisation with transforms baked in, solid fills,
+  outline width/caps/joins/dash patterns, and fill opacity. Gradients fall
+  back to the blend of their end stops; text and bitmaps are skipped —
+  each reported through the warning callback. `Tests/CDRWriterTest.cpp`
+  round-trips a document through the writer and the CDR plugin (libcdr)
+  and pixel-checks the rendered placement — that parse is the correctness
+  contract. Export-only: reading stays with the CDR plugin.
+- **CDR rendering: one object's transparency no longer bleeds into the
+  rest of the drawing.** The plugin's librevenge painter accumulated style
+  properties across objects, but a librevenge style is complete —
+  properties at their defaults are simply absent (libcdr emits
+  `draw:opacity` only when it is below 1.0). A single semi-transparent
+  object made every object drawn after it semi-transparent too, and a
+  dash pattern could survive `stroke-dasharray: none`. Opacities now reset
+  per style and `none` clears the dash pattern.
 - **EPS files can be written now.** New `VectorConverter::EPSConverter`
   (`Plugins/Vector/UltraCanvasEPSConverter.{h,cpp}`) serializes a
   `VectorStorage::VectorDocument` as an EPSF-3.0 PostScript program:

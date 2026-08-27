@@ -397,10 +397,11 @@ public:
     std::string GetMimeType() const override { return "application/pdf"; }
     
     FormatCapabilities GetCapabilities() const override;
-    bool CanImport() const override { return true; }
+    // Reading PDF is the MuPDF-based PDF plugin's job; this converter only
+    // writes. The Import methods warn and return null.
+    bool CanImport() const override { return false; }
     bool CanExport() const override { return true; }
-    
-    // Implement interface methods...
+
     std::shared_ptr<VectorStorage::VectorDocument> Import(
         const std::string& filename,
         const ConversionOptions& options = ConversionOptions()

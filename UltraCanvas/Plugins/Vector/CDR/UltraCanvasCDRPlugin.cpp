@@ -549,6 +549,14 @@ namespace UltraCanvas {
     void UltraCanvasCDRPainterImpl::setStyle(const librevenge::RVNGPropertyList& propList) {
         CDRStyleState style = styleStack.top();
 
+        // A librevenge style is complete: properties at their defaults are
+        // simply absent (libcdr emits draw:opacity only when it is below
+        // 1.0), so reset those here instead of inheriting them from the
+        // previously drawn object.
+        style.opacity = 1.0f;
+        style.fillOpacity = 1.0f;
+        style.strokeOpacity = 1.0f;
+
         // Parse fill properties
         const librevenge::RVNGProperty* fillProp = propList["draw:fill"];
         if (fillProp) {
@@ -617,8 +625,8 @@ namespace UltraCanvas {
         const librevenge::RVNGProperty* dashProp = propList["svg:stroke-dasharray"];
         if (dashProp) {
             std::string dashStr = dashProp->getStr().cstr();
+            style.dashPattern.dashes.clear();
             if (dashStr != "none") {
-                style.dashPattern.dashes.clear();
                 std::istringstream iss(dashStr);
                 std::string token;
                 while (std::getline(iss, token, ',')) {

@@ -1012,6 +1012,147 @@ else()
     message(STATUS "  EPSWriterTest skipped (needs UltraCanvasEPSPlugin and UltraCanvasVectorPlugin)")
 endif()
 
+# Round-trips a VectorDocument through the Vector plugin's CDR writer and the
+# CDR plugin (libcdr): the file must parse, carry the right page, and render
+# the objects at their places. Needs both plugins.
+if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building CDRWriterTest...")
+    add_executable(CDRWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CDRWriterTest.cpp
+    )
+    target_include_directories(CDRWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CDRWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(CDRWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasCDRPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(CDRWRITER_CAIRO cairo)
+            if(CDRWRITER_CAIRO_FOUND)
+                target_compile_definitions(CDRWriterTest PRIVATE CDRWRITER_HAVE_CAIRO=1)
+                target_include_directories(CDRWriterTest PRIVATE ${CDRWRITER_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(CDRWriterTest PRIVATE ${CDRWRITER_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(CDRWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CDRWriterTest COMMAND CDRWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CDRWriterTest")
+else()
+    message(STATUS "  CDRWriterTest skipped (needs UltraCanvasCDRPlugin and UltraCanvasVectorPlugin)")
+endif()
+
+# Round-trips a VectorDocument through the Vector plugin's SVG converter in
+# both directions (export -> import, structural comparison), rasterizes the
+# export through the framework's real SVG pipeline, and parses a hand-written
+# snippet for importer robustness.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building SVGConverterTest...")
+    add_executable(SVGConverterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SVGConverterTest.cpp
+    )
+    target_include_directories(SVGConverterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SVGConverterTest PRIVATE cxx_std_20)
+    target_link_libraries(SVGConverterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(SVGConverterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SVGConverterTest COMMAND SVGConverterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SVGConverterTest")
+else()
+    message(STATUS "  SVGConverterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's PDF writer: structural checks (an xref table
+# whose offsets really point at their objects, resources, operators) plus a
+# ghostscript rasterization with pixel checks when gs is installed.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building PDFVectorWriterTest...")
+    add_executable(PDFVectorWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PDFVectorWriterTest.cpp
+    )
+    target_include_directories(PDFVectorWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PDFVectorWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(PDFVectorWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(PDFVectorWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PDFVectorWriterTest COMMAND PDFVectorWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PDFVectorWriterTest")
+else()
+    message(STATUS "  PDFVectorWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's EMF, WMF and AI writers: structural record
+# walks, plus rasterization through LibreOffice (EMF/WMF) and ghostscript
+# (AI) with pixel checks when those tools are installed.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building MetafileWriterTest...")
+    add_executable(MetafileWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MetafileWriterTest.cpp
+    )
+    target_include_directories(MetafileWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MetafileWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(MetafileWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(MetafileWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MetafileWriterTest COMMAND MetafileWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MetafileWriterTest")
+else()
+    message(STATUS "  MetafileWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's DXF and DWG writers: structural checks, then
+# ezdxf (strict read + audit + structure), LibreOffice rasterization, and -
+# when LibreDWG's dxf2dwg is available - the real DWG conversion round-trip.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building CADWriterTest...")
+    add_executable(CADWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CADWriterTest.cpp
+    )
+    target_include_directories(CADWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CADWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(CADWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(CADWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CADWriterTest COMMAND CADWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CADWriterTest")
+else()
+    message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# ===== VECTOR FORMATS PLUGIN TEST =====
+# The whole converter matrix through the graphics plugin registry: saving
+# all ten formats via SaveGraphicsFile, loading the formats with readers
+# via LoadGraphicsFile, round-trip structure checks, and the supported-
+# format inventory's per-extension load/save capabilities.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFormatsPluginTest...")
+    add_executable(VectorFormatsPluginTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorFormatsPluginTest.cpp
+    )
+    target_include_directories(VectorFormatsPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorFormatsPluginTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFormatsPluginTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFormatsPluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorFormatsPluginTest COMMAND VectorFormatsPluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorFormatsPluginTest")
+else()
+    message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

@@ -25,6 +25,9 @@
 #ifdef ULTRACANVAS_HAS_EPS_PLUGIN
 #include "UltraCanvasEPSPlugin.h"
 #endif
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasVectorFormatsPlugin.h"
+#endif
 
 // OS-specific initialization if needed
 #ifdef _WIN32
@@ -121,7 +124,14 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
         }
         // Register the graphics plugins with UltraCanvasGraphicsPluginRegistry
         // so extension-based dispatch (FileLoader supported-format inventory,
-        // LoadGraphicsFile, ...) can find them.
+        // LoadGraphicsFile, SaveGraphicsFile, ...) can find them. The vector
+        // formats plugin goes first: the dedicated CDR/XAR/EPS viewers then
+        // win their shared load extensions (last registration wins), while
+        // saving and the remaining vector formats (SVG/EMF/WMF/DXF/DWG/...)
+        // stay with the converter-backed plugin.
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        RegisterVectorFormatsPlugin();
+#endif
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         RegisterCDRPlugin();
 #endif

@@ -41,7 +41,13 @@ namespace UltraCanvas {
         GraphicsFileInfo GetFileInfo(const std::string& filePath) override;
         bool ValidateFile(const std::string& filePath) override;
 
-        // ----- Saving (not part of IGraphicsPlugin) -----
+        // ----- Saving -----
+        // IGraphicsPlugin save interface: writes the mesh of an
+        // UltraCanvasSTLElement back to an .stl file.
+        std::vector<std::string> GetSaveExtensions() const override { return {"stl"}; }
+        bool SaveGraphics(const std::shared_ptr<UltraCanvasUIElement>& element,
+                          const std::string& filePath) override;
+
         // Save a mesh to an STL file. Convenience entry point so callers/FileLoader
         // can write STL without touching the loader directly.
         static bool SaveModel(const std::string& filePath, const Mesh3D& mesh,
