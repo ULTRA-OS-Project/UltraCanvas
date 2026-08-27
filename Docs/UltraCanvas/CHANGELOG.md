@@ -1,3 +1,27 @@
+#### 2026-08-27 *0.3.79*
+- **Tile captions in the Filer stop cutting file names apart.** "Logo
+  CoderBox with text.png" under a thumbnail read *Logo CoderBo* / *x with
+  text.png*: the line took the name to the exact pixel it stopped fitting,
+  which bought it a single character and cost the word. Wrapping now keeps
+  words whole — a break inside a word is only made when the word has to be
+  split, and never where it would leave a stub of `captionBreakTolerance`
+  characters or fewer (3 by default) on either side of it. A line may also
+  use `captionOverflowSlack` pixels of the inset the caption already has
+  around it (auto: half a character) to pull the last letter or two of a word
+  up rather than break it, and to keep a last line that is a few pixels too
+  wide whole instead of opening it with "…". Nothing is lost to the tidier
+  break: when keeping the words whole would push part of a name off the
+  caption, the name is re-broken with mid-word breaks allowed and whichever
+  version shows more of it wins. Line counts — and with them the tile
+  heights — are unchanged.
+- The wrapper itself moved out of the widget into the new header-only
+  `UltraCanvasTextWrapping.h` (`Wrap`, `WrapGreedy`, `LineCount`, `Ellipsize`,
+  `Truncate`). It measures text through a callable instead of an
+  `IRenderContext`, so the same code runs in the widget and against a
+  synthetic proportional font in `Tests/TextWrapTest.cpp` — the new suite
+  covers the reported name, the stub rule, the slack, UTF-8 breaks and a
+  width sweep asserting no wrapped name silently loses characters.
+
 #### 2026-08-27 *0.3.78*
 - **GNU LibreDWG is listed in the dependency overviews now.** The DWG
   converter's delegation to LibreDWG's `dxf2dwg`/`dwg2dxf` command-line

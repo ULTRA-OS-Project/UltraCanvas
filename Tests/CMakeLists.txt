@@ -125,6 +125,24 @@ add_test(NAME RecentFilesTest COMMAND RecentFilesTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RecentFilesTest")
 
+# ===== TEXT WRAP TEST =====
+# UltraCanvasTextWrapping.h is header-only and measures text through a callable
+# instead of a render context, so the caption wrapper behind the Filer's tile
+# names is tested against a synthetic font: no display, no framework link.
+message(STATUS "  Building TextWrapTest...")
+
+add_executable(TextWrapTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextWrapTest.cpp
+)
+target_include_directories(TextWrapTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextWrapTest PRIVATE cxx_std_20)
+set_target_properties(TextWrapTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextWrapTest COMMAND TextWrapTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextWrapTest")
+
 # ===== FOLDER WATCHER TEST =====
 # UltraCanvasFolderWatcher is built from its own sources - the core file plus
 # this platform's backend - so the test needs no display and does not link
