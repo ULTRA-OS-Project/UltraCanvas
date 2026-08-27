@@ -207,6 +207,15 @@ cp -r media Docs $DIST_DIR/Resources
 # + the "DemoApp/..." paths registered in UltraCanvasDemo.cpp).
 cp -r Apps/DemoApp/*.cpp $DIST_DIR/Resources/DemoApp/
 
+# Startup troubleshooting launcher. The shipped EXEs are GUI-subsystem
+# binaries, so a failure to start produces no console output — and through a
+# `start`-based launcher, no exit code either. uc-diagnose.bat runs one
+# attached with the framework log turned on and decodes what comes back. CRLF
+# so Notepad shows it correctly. See
+# Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md.
+sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-diagnose.bat" > "$DIST_DIR/uc-diagnose.bat"
+echo "  Added uc-diagnose.bat (startup troubleshooting launcher)"
+
 cd $DIST_DIR
 zip -r ../$PACKAGE_ZIP *
 cd ..

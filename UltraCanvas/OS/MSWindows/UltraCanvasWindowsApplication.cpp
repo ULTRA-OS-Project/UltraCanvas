@@ -7,6 +7,7 @@
 #include "../../include/UltraCanvasApplication.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
+#include "UltraCanvasWindowsDiagnostics.h"
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -38,20 +39,32 @@ namespace UltraCanvas {
             return true;
         }
 
+        // STEP 0: Make this process able to explain itself. The Windows targets
+        // link as GUI-subsystem executables, so without these three calls a
+        // failure to start produces no window, no console output and no log --
+        // the failure mode that makes "it doesn't start on that machine"
+        // unfixable. None of them affects a successful start.
+        AttachParentConsole();
+        InstallWindowsCrashReporter(appName);
+        LogWindowsStartupBanner(appName);
+
         debugOutput << "UltraCanvas: Initializing Windows Application..." << std::endl;
 
         try {
             // STEP 1: Get module handle
             hInstance = GetModuleHandle(nullptr);
             if (!hInstance) {
-                debugOutput << "UltraCanvas: GetModuleHandle failed" << std::endl;
+                ReportWindowsStartupFailure("GetModuleHandle failed",
+                                            DescribeWin32Error(GetLastError()));
                 return false;
             }
 
             // STEP 2: Initialize COM/OLE for drag-drop and file dialogs
             HRESULT hr = OleInitialize(nullptr);
             if (FAILED(hr)) {
-                debugOutput << "UltraCanvas: OleInitialize failed: 0x" << std::hex << hr << std::endl;
+                std::ostringstream detail;
+                detail << "OleInitialize returned 0x" << std::hex << hr;
+                ReportWindowsStartupFailure("COM/OLE initialisation failed", detail.str());
                 return false;
             }
 
@@ -75,7 +88,8 @@ namespace UltraCanvas {
 
             // STEP 5: Register main window class
             if (!RegisterWindowClass()) {
-                debugOutput << "UltraCanvas: Failed to register window class" << std::endl;
+                // RegisterWindowClass() has already reported the reason, while
+                // GetLastError() still held it.
                 OleUninitialize();
                 return false;
             }
@@ -96,7 +110,7 @@ namespace UltraCanvas {
             return true;
 
         } catch (const std::exception& e) {
-            debugOutput << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
+            ReportWindowsStartupFailure("Exception during initialisation", e.what());
             ShutdownNative();
             return false;
         }
@@ -148,7 +162,10 @@ namespace UltraCanvas {
 
         windowClassAtom = RegisterClassExW(&wc);
         if (!windowClassAtom) {
-            debugOutput << "UltraCanvas: RegisterClassExW failed: " << GetLastError() << std::endl;
+            ReportWindowsStartupFailure(
+                "Could not register the window class \"" +
+                    Utf16ToUtf8(mainWindowClassName) + "\"",
+                DescribeWin32Error(GetLastError()));
             return false;
         }
 
