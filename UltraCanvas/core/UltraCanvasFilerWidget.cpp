@@ -53,7 +53,6 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
-#include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -95,6 +94,17 @@
 #include <sys/stat.h>
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
+// The MSVC UCRT <sys/stat.h> exposes _S_IREAD/_S_IWRITE/_S_IEXEC but not the POSIX permission-bit
+// names (S_IRUSR/S_IWUSR/S_IXUSR) UltraCanvas uses; map the ones referenced here.
+#ifndef S_IRUSR
+#define S_IRUSR _S_IREAD
+#endif
+#ifndef S_IWUSR
+#define S_IWUSR _S_IWRITE
+#endif
+#ifndef S_IXUSR
+#define S_IXUSR _S_IEXEC
+#endif
 #endif
 
 // X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
@@ -522,62 +532,6 @@ namespace UltraCanvas {
             (void)path; (void)w; (void)h; (void)scale;
             return nullptr;
 #endif
-        }
-
-        // ===== XAR PREVIEW (embedded thumbnail) =====
-        // Xara .xar files carry a preview bitmap (GIF, JPEG or PNG) as one of
-        // the first records of the uncompressed file head. The record grammar
-        // is trivial — 8-byte signature, then (tag:u32le, size:u32le, body) —
-        // so the bytes are extracted here directly and decoded through the
-        // image pipeline: no XAR renderer involved, and nothing to configure.
-        std::vector<uint8_t> ExtractXarPreviewBytes(const std::string& path) {
-            std::ifstream f(path, std::ios::binary);
-            if (!f.is_open()) return {};
-            static const uint8_t kSig[8] = {'X', 'A', 'R', 'A', 0xA3, 0xA3, 0x0D, 0x0A};
-            uint8_t sig[8];
-            f.read(reinterpret_cast<char*>(sig), sizeof(sig));
-            if (!f.good() || std::memcmp(sig, kSig, sizeof(kSig)) != 0) return {};
-
-            // Preview records: 61 GIF, 62 JPEG, 63 PNG. Record 30 starts the
-            // compressed body — the preview always precedes it, so stop there
-            // (and at 3, end of file). The record cap is a corrupt-file guard;
-            // real writers put the preview second, right after the header.
-            constexpr uint32_t kPreviewGif = 61, kPreviewJpeg = 62, kPreviewPng = 63;
-            constexpr uint32_t kEndOfFile = 3, kStartCompression = 30;
-            constexpr uint32_t kMaxPreviewBytes = 64u << 20;
-            for (int i = 0; i < 64; ++i) {
-                uint8_t hdr[8];
-                f.read(reinterpret_cast<char*>(hdr), sizeof(hdr));
-                if (!f.good()) return {};
-                auto u32 = [&](int o) {
-                    return static_cast<uint32_t>(hdr[o]) |
-                           (static_cast<uint32_t>(hdr[o + 1]) << 8) |
-                           (static_cast<uint32_t>(hdr[o + 2]) << 16) |
-                           (static_cast<uint32_t>(hdr[o + 3]) << 24);
-                };
-                uint32_t tag = u32(0), size = u32(4);
-                if (tag == kPreviewGif || tag == kPreviewJpeg || tag == kPreviewPng) {
-                    if (size == 0 || size > kMaxPreviewBytes) return {};
-                    std::vector<uint8_t> bytes(size);
-                    f.read(reinterpret_cast<char*>(bytes.data()), size);
-                    if (!f.good()) return {};
-                    return bytes;
-                }
-                if (tag == kEndOfFile || tag == kStartCompression) return {};
-                f.seekg(size, std::ios::cur);
-                if (!f.good()) return {};
-            }
-            return {};
-        }
-
-        std::shared_ptr<UCPixmap> RenderXarPreviewPixmap(const std::string& path,
-                                                         int w, int h,
-                                                         ImageFitMode fit, float scale) {
-            auto bytes = ExtractXarPreviewBytes(path);
-            if (bytes.empty()) return nullptr;
-            auto img = UCImage::LoadFromMemory(bytes);
-            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
-            return img->GetPixmap(w, h, fit, scale);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -6093,30 +6047,72 @@ namespace UltraCanvas {
     }
 
     namespace {
-        // The wrapping itself lives in UltraCanvasTextWrapping.h, which measures
-        // text through a callable instead of a render context so it can be
-        // unit-tested against a synthetic font (Tests/TextWrapTest.cpp). This
-        // is the callable: the width of one line in the context's current font.
-        struct ContextMeasure {
-            IRenderContext* ctx;
-            int operator()(const std::string& s) const {
-                return ctx->GetTextLineDimensions(s).width;
+        // Byte offset of every UTF-8 code point start in `s`, plus s.size() as
+        // the closing boundary: cutting on one never splits a multibyte
+        // sequence. Index i of the result addresses the prefix s[0, b[i]) and
+        // the suffix s[b[i], end).
+        std::vector<size_t> Utf8Boundaries(const std::string& s) {
+            std::vector<size_t> b;
+            b.reserve(s.size() + 1);
+            for (size_t i = 0; i < s.size(); ++i) {
+                if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) b.push_back(i);
             }
-        };
+            b.push_back(s.size());
+            return b;
+        }
+
+        // Break the line after one of these when it sits in the back half of
+        // what fits: a name reads much better broken at its own separators
+        // ("Holiday photos - Rome.jpg") than in the middle of a word.
+        bool IsNameBreakChar(char c) {
+            return c == ' ' || c == '-' || c == '_' || c == '.' || c == ',' ||
+                   c == ';' || c == '(' || c == ')' || c == '[' || c == ']';
+        }
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeText(IRenderContext* ctx,
                                                       const std::string& text,
                                                       int maxWidth) const {
-        return TextWrapping::Ellipsize(ContextMeasure{ctx}, text, maxWidth);
+        if (maxWidth <= 0) return "";
+        Size2Di ts = ctx->GetTextLineDimensions(text);
+        if (ts.width <= maxWidth) return text;
+        // Longest prefix that fits with the trailing "…": binary search over
+        // the code-point boundaries (fit is monotone in prefix length). The
+        // one-code-point-at-a-time trim measured the text once per removed
+        // character — a long name in a narrow Details column cost hundreds of
+        // text measurements per cell, every frame.
+        std::vector<size_t> bounds = Utf8Boundaries(text);
+        size_t lo = 0, hi = bounds.size() - 1;   // prefix is text[0, bounds[i])
+        while (lo < hi) {
+            size_t mid = (lo + hi + 1) / 2;
+            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid]) + "…").width
+                    <= maxWidth)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        if (lo == 0) return "…";
+        return text.substr(0, bounds[lo]) + "…";
     }
 
     std::string UltraCanvasFilerWidget::TruncateTextToWidth(IRenderContext* ctx,
                                                             const std::string& text,
                                                             int maxWidth) const {
-        // Without the trailing "…": in a page preview the marker would be most
-        // of what a narrow spreadsheet column has room for.
-        return TextWrapping::Truncate(ContextMeasure{ctx}, text, maxWidth);
+        if (maxWidth <= 0) return "";
+        if (ctx->GetTextLineDimensions(text).width <= maxWidth) return text;
+        // Same binary search as EllipsizeText, without the trailing "…": in a
+        // page preview the ellipsis would be most of what a narrow spreadsheet
+        // column has room for.
+        std::vector<size_t> bounds = Utf8Boundaries(text);
+        size_t lo = 0, hi = bounds.size() - 1;
+        while (lo < hi) {
+            size_t mid = (lo + hi + 1) / 2;
+            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid])).width <= maxWidth)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        return text.substr(0, bounds[lo]);
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
@@ -6135,49 +6131,125 @@ namespace UltraCanvas {
     // the name off after one line it is broken over up to captionMaxLines
     // lines; only what does not fit even then is dropped, from the front of the
     // last line, so the tail — the extension — always remains readable.
-    // Words are kept whole: a name is only broken *inside* a word when it has
-    // to be, and a line may run captionOverflowSlack pixels into the caption's
-    // inset to keep one whole ("Logo CoderBox" / "with text.png" rather than
-    // the "Logo CoderBo" / "x with text.png" the exact fit produced).
     // A name that fits its lines completely is then re-broken so the lines
     // come out near equal — "CoderBox" / "compiler.png" rather than the
-    // greedy "CoderBox compiler" / ".png" (see UltraCanvasTextWrapping.h).
-
-    int UltraCanvasFilerWidget::CaptionOverflowSlack() const {
-        if (style.captionOverflowSlack > 0) return style.captionOverflowSlack;
-        // Auto: about half a character of the caption font — enough for the
-        // one or two glyphs a word is regularly short by, and well inside the
-        // 4 px the caption is inset from the tile edge on either side.
-        return clampi(static_cast<int>(style.smallFontSize * 0.5f), 2, 6);
-    }
-
-    TextWrapping::Options UltraCanvasFilerWidget::CaptionWrapOptions(int lineWidth,
-                                                                int maxLines) const {
-        TextWrapping::Options o;
-        o.lineWidth = lineWidth;
-        o.maxLines = std::max(1, maxLines);
-        o.breakTolerance = std::max(0, style.captionBreakTolerance);
-        o.overflowSlack = CaptionOverflowSlack();
-        return o;
-    }
+    // greedy "CoderBox compiler" / ".png" (see WrapText).
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapTextGreedy(
             IRenderContext* ctx, const std::string& text,
             int lineWidth, int maxLines, bool* outTruncated) const {
-        if (!ctx) return {};
-        return TextWrapping::WrapGreedy(ContextMeasure{ctx}, text,
-                                    CaptionWrapOptions(lineWidth, maxLines),
-                                    outTruncated);
+        std::vector<std::string> lines;
+        std::string rest = text;
+        for (int line = 0; line < maxLines && !rest.empty(); ++line) {
+            std::vector<size_t> bounds = Utf8Boundaries(rest);
+            const bool lastLine = (line == maxLines - 1);
+
+            if (lastLine) {
+                if (ctx->GetTextLineDimensions(rest).width <= lineWidth) {
+                    lines.push_back(rest);
+                    break;
+                }
+                // Longest tail that fits behind a leading "…" (the shorter the
+                // tail the narrower the line, so the fit is monotone in `lo`).
+                size_t lo = 0, hi = bounds.size() - 1;
+                while (lo < hi) {
+                    size_t mid = (lo + hi) / 2;
+                    std::string cand = "…" + rest.substr(bounds[mid]);
+                    if (ctx->GetTextLineDimensions(cand).width <= lineWidth) hi = mid;
+                    else lo = mid + 1;
+                }
+                lines.push_back("…" + rest.substr(bounds[lo]));
+                if (outTruncated) *outTruncated = true;
+                break;
+            }
+
+            // Longest prefix that still fits this line.
+            size_t lo = 0, hi = bounds.size() - 1;
+            while (lo < hi) {
+                size_t mid = (lo + hi + 1) / 2;
+                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= lineWidth)
+                    lo = mid;
+                else
+                    hi = mid - 1;
+            }
+            size_t fit = bounds[lo];
+            // Not even one code point fits: take one anyway so the loop always
+            // makes progress (a caption this narrow is unreadable regardless).
+            if (fit == 0) fit = bounds.size() > 1 ? bounds[1] : rest.size();
+
+            // The exact fit is kept when it already ends on a word boundary;
+            // otherwise the line backs off to the last separator inside it —
+            // unless that would leave more than half the line empty.
+            size_t cut = fit;
+            if (fit < rest.size() && !IsNameBreakChar(rest[fit])) {
+                for (size_t i = fit; i > 0; --i) {
+                    if (!IsNameBreakChar(rest[i - 1])) continue;
+                    if (i * 2 >= fit) cut = i;
+                    break;
+                }
+            }
+
+            std::string head = rest.substr(0, cut);
+            rest.erase(0, cut);
+            while (!head.empty() && head.back() == ' ') head.pop_back();
+            while (!rest.empty() && rest.front() == ' ') rest.erase(0, 1);
+            if (!head.empty()) lines.push_back(head);
+        }
+        return lines;
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapText(
             IRenderContext* ctx, const std::string& text,
             int maxWidth, int maxLines, bool* outTruncated) const {
         if (outTruncated) *outTruncated = false;
-        if (!ctx) return {};
-        return TextWrapping::Wrap(ContextMeasure{ctx}, text,
-                              CaptionWrapOptions(maxWidth, maxLines),
-                              outTruncated);
+        std::vector<std::string> lines;
+        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
+        if (maxLines < 1) maxLines = 1;
+
+        const int totalWidth = ctx->GetTextLineDimensions(text).width;
+        if (totalWidth <= maxWidth) {
+            lines.push_back(text);
+            return lines;                       // the common case: one measure
+        }
+        if (maxLines == 1) {
+            lines.push_back(EllipsizeText(ctx, text, maxWidth));
+            if (outTruncated) *outTruncated = true;
+            return lines;
+        }
+
+        bool truncated = false;
+        lines = WrapTextGreedy(ctx, text, maxWidth, maxLines, &truncated);
+        if (outTruncated) *outTruncated = truncated;
+
+        // ===== BALANCED BREAKS =====
+        // Greedy filling front-loads the lines and leaves a stub on the last
+        // one — "CoderBox compiler" / ".png". When the whole name fits its
+        // lines, it is re-broken at the smallest line width that still needs
+        // no extra line, which evens the lines out ("CoderBox" /
+        // "compiler.png") while the line count — and with it the caption
+        // band height — stays exactly the same.
+        if (!truncated && lines.size() >= 2) {
+            const size_t lineCount = lines.size();
+            // No re-break can make every line narrower than the average.
+            int lo = clampi(totalWidth / static_cast<int>(lineCount), 1, maxWidth);
+            int hi = maxWidth;
+            while (lo < hi) {
+                const int mid = lo + (hi - lo) / 2;
+                bool cut = false;
+                const size_t n =
+                        WrapTextGreedy(ctx, text, mid, maxLines, &cut).size();
+                if (!cut && n <= lineCount) hi = mid;
+                else lo = mid + 1;
+            }
+            if (hi < maxWidth) {
+                bool cut = false;
+                std::vector<std::string> balanced =
+                        WrapTextGreedy(ctx, text, hi, maxLines, &cut);
+                if (!cut && balanced.size() <= lineCount)
+                    lines = std::move(balanced);
+            }
+        }
+        return lines;
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapEntryName(
@@ -6196,8 +6268,12 @@ namespace UltraCanvas {
                                                 int maxWidth) const {
         int maxLines = std::max(1, style.captionMaxLines);
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
-        return TextWrapping::LineCount(ContextMeasure{ctx}, name,
-                                   CaptionWrapOptions(maxWidth, maxLines));
+        if (ctx->GetTextLineDimensions(name).width <= maxWidth) return 1;
+        // Balancing (WrapText) never changes the line count, so the cheaper
+        // greedy pass is enough to size the caption band.
+        int n = static_cast<int>(
+                WrapTextGreedy(ctx, name, maxWidth, maxLines, nullptr).size());
+        return clampi(n, 1, maxLines);
     }
 
     int UltraCanvasFilerWidget::NameLineHeight() const {
@@ -6249,15 +6325,9 @@ namespace UltraCanvas {
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::Bitmaps:
-                // The Image category is wider than what the image pipeline
-                // decodes.
-                return ImagePipelineLoadsExtension(e.extension) ? e.path
-                                                                : std::string{};
             case FilerPreviewType::VectorGraphics:
-                // xar doesn't decode through the image pipeline, but carries
-                // an embedded preview bitmap the workers extract; the rest of
-                // the Vector category (cdr) still has no decode path.
-                if (e.extension == "xar") return e.path;
+                // The Image/Vector categories are wider than what the image
+                // pipeline decodes (cdr/xar render through graphics plugins).
                 return ImagePipelineLoadsExtension(e.extension) ? e.path
                                                                 : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
@@ -6718,14 +6788,6 @@ namespace UltraCanvas {
                 case FilerPreviewType::Models3D:
                     pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
                     break;
-                case FilerPreviewType::VectorGraphics:
-                    if (LowerExtension(req.path) == "xar") {
-                        pm = RenderXarPreviewPixmap(req.path, req.w, req.h,
-                                                    req.fit, req.scale);
-                        break;
-                    }
-                    // SVG and friends decode through the image pipeline.
-                    [[fallthrough]];
                 default: {
                     auto img = UCImage::Get(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
@@ -6928,76 +6990,23 @@ namespace UltraCanvas {
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(inner));
         if (snippet.tabular) {
-            // Spreadsheet-shaped content: the cells of each row over a drawn
-            // grid. The columns used to split the width evenly, which with
-            // several columns in a tile left one or two characters per cell —
-            // every cell of a calendar sheet read as its first letter. Widths
-            // are content-aware instead: a column is as wide as its widest
-            // shown cell, floored at about six characters so text stays
-            // recognizable — unless the column's own content is narrower (a
-            // column of one-digit values takes only what it needs). When that
-            // does not fit, the columns keep their floor and the surplus ones
-            // are clipped at the right edge — a few legible columns beat many
-            // unreadable ones.
-            std::vector<std::vector<std::string>> rows(maxLines);
+            // Spreadsheet-shaped content: the cells of each row spread over
+            // equal columns with the grid drawn behind them.
             size_t columns = 1;
             for (size_t i = 0; i < maxLines; ++i) {
-                const std::string& line = snippet.lines[i];
-                size_t start = 0;
-                while (start <= line.size()) {
-                    const size_t tab = line.find('\t', start);
-                    rows[i].push_back(line.substr(
-                            start, tab == std::string::npos ? std::string::npos
-                                                            : tab - start));
-                    if (tab == std::string::npos) break;
-                    start = tab + 1;
-                }
-                columns = std::max(columns, rows[i].size());
+                columns = std::max<size_t>(
+                        columns,
+                        static_cast<size_t>(std::count(snippet.lines[i].begin(),
+                                                       snippet.lines[i].end(),
+                                                       '\t')) + 1);
             }
-
-            // Natural width of every column (its widest cell plus the text
-            // inset) and the six-character floor it may not be squeezed under.
-            const double pad6 = 4.0;   // 2 px inset + 2 px before the grid line
-            const double sixCharsW =
-                    ctx->GetTextLineDimensions("000000").width + pad6;
-            std::vector<double> natural(columns, 0.0);
-            for (size_t i = 0; i < maxLines; ++i)
-                for (size_t c = 0; c < rows[i].size(); ++c)
-                    if (!rows[i][c].empty())
-                        natural[c] = std::max(
-                                natural[c],
-                                ctx->GetTextLineDimensions(rows[i][c]).width + pad6);
-
-            // Shrink the columns towards their floor until they fit; when
-            // they fit with room to spare, spread the leftover evenly so the
-            // grid still fills the page.
-            std::vector<double> colWidth(columns);
-            double naturalSum = 0.0, floorSum = 0.0;
-            for (size_t c = 0; c < columns; ++c) {
-                colWidth[c] = std::max(natural[c], pad6);
-                naturalSum += colWidth[c];
-                floorSum += std::min(colWidth[c], sixCharsW);
-            }
-            if (naturalSum > inner.width && naturalSum > floorSum) {
-                const double keep = std::max(
-                        0.0, (inner.width - floorSum) / (naturalSum - floorSum));
-                for (size_t c = 0; c < columns; ++c) {
-                    const double floorW = std::min(colWidth[c], sixCharsW);
-                    colWidth[c] = floorW + (colWidth[c] - floorW) * keep;
-                }
-            } else if (naturalSum < inner.width) {
-                const double extra = (inner.width - naturalSum) / columns;
-                for (double& w : colWidth) w += extra;
-            }
-
+            const double colW = static_cast<double>(inner.width) / columns;
             ctx->SetStrokePaint(Color(0, 0, 0, 28));
             ctx->SetStrokeWidth(1.0f);
-            double gridX = inner.x;
             for (size_t c = 1; c < columns; ++c) {
-                gridX += colWidth[c - 1];
-                if (gridX >= inner.x + inner.width) break;
-                ctx->DrawLine(Point2Dd(gridX, inner.y),
-                              Point2Dd(gridX, inner.y + maxLines * lineH));
+                const double x = inner.x + c * colW;
+                ctx->DrawLine(Point2Dd(x, inner.y),
+                              Point2Dd(x, inner.y + maxLines * lineH));
             }
             for (size_t i = 1; i <= maxLines; ++i) {
                 const double y = inner.y + i * lineH;
@@ -7006,21 +7015,26 @@ namespace UltraCanvas {
                               Point2Dd(inner.x + inner.width, y));
             }
             for (size_t i = 0; i < maxLines; ++i) {
-                double cellX = inner.x;
-                for (size_t c = 0; c < rows[i].size(); ++c) {
-                    const std::string& cell = rows[i][c];
-                    if (!cell.empty() && cellX < inner.x + inner.width) {
+                const std::string& row = snippet.lines[i];
+                size_t start = 0, column = 0;
+                while (start <= row.size() && column < columns) {
+                    const size_t tab = row.find('\t', start);
+                    const std::string cell = row.substr(
+                            start, tab == std::string::npos ? std::string::npos
+                                                            : tab - start);
+                    if (!cell.empty()) {
                         ctx->SetTextPaint(i == 0 ? style.textColor
                                                  : style.secondaryTextColor);
                         // Cells are cut, not ellipsized: in a tile-sized grid
                         // the "…" would be all that is left of the value.
                         ctx->DrawText(TruncateTextToWidth(
-                                              ctx, cell,
-                                              static_cast<int>(colWidth[c]) - 3),
-                                      Point2Dd(cellX + 2,
+                                              ctx, cell, static_cast<int>(colW) - 3),
+                                      Point2Dd(inner.x + column * colW + 2,
                                                inner.y + i * lineH + 1));
                     }
-                    cellX += colWidth[c];
+                    if (tab == std::string::npos) break;
+                    start = tab + 1;
+                    ++column;
                 }
             }
         } else {

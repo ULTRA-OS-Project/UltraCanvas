@@ -1262,7 +1262,6 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
 endif()
-
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)
@@ -1335,6 +1334,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             comctl32
             imm32
             dwmapi
+            ws2_32  # Winsock select() for host fd-watches (e.g. Ladybird IPC sockets)
             ${FONTCONFIG_LIBRARIES}
     )
     if(ULTRACANVAS_ENABLE_GL)
@@ -1396,6 +1396,24 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${ZBAR_LIBRARY_DIRS}
             ${_uc_hb_prefix}/lib
             ${_uc_hb_prefix}/opt/vips/lib
+    )
+endif()
+
+# Same problem on Windows: vcpkg installs its import libraries under
+# vcpkg_installed/<triplet>/lib, which is not a default linker search directory. The pkg-config
+# dependencies (cairo/pango/glib/fontconfig/harfbuzz/freetype/tinyxml2/vips) are re-exported as
+# bare -l<name> usage requirements, so the -L dirs must propagate (PUBLIC) to every consumer (the
+# final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
+if(WIN32)
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${CAIRO_LIBRARY_DIRS}
+            ${PANGO_LIBRARY_DIRS}
+            ${FONTCONFIG_LIBRARY_DIRS}
+            ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS}
+            ${GLIB_LIBRARY_DIRS}
+            ${TINYXML2_LIBRARY_DIRS}
+            ${LIBVIPS_LIBRARY_DIRS}
     )
 endif()
 

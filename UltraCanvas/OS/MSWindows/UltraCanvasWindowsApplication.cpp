@@ -4,6 +4,10 @@
 // Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
+// winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
+// is not included instead. Needed for select()/fd_set used to service host fd-watches.
+#include <winsock2.h>
+
 #include "../../include/UltraCanvasApplication.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
@@ -239,6 +243,49 @@ namespace UltraCanvas {
 
 // ===== MAIN LOOP =====
 
+    // Poll interval (ms) used to bound the message wait while host fd-watches are registered, so
+    // level-triggered socket readiness is picked up promptly without a busy-spin. Winsock select()
+    // is edge-agnostic here: we re-poll each iteration rather than relying on WSAEventSelect's
+    // edge semantics, which do not match Ladybird's level-triggered Core::Notifier expectations.
+    static constexpr DWORD kFdWatchPollMs = 10;
+
+    bool UltraCanvasWindowsApplication::PollAndServiceFdWatches() {
+        auto fdWatchKeys = SnapshotFdWatchKeys();
+        if (fdWatchKeys.empty())
+            return false;
+
+        fd_set readfds;
+        fd_set writefds;
+        FD_ZERO(&readfds);
+        FD_ZERO(&writefds);
+        int count = 0;
+        for (const auto& key : fdWatchKeys) {
+            if (key.fd < 0)
+                continue;
+            // Ladybird's Windows IPC fds are raw Winsock SOCKETs (see SocketpairWindows.cpp).
+            auto sock = static_cast<SOCKET>(static_cast<uintptr_t>(key.fd));
+            FD_SET(sock, key.type == FdWatchType::Write ? &writefds : &readfds);
+            ++count;
+        }
+        if (count == 0)
+            return true;
+
+        timeval tv { 0, 0 }; // non-blocking poll; the message wait provides the actual blocking.
+        int result = select(0, &readfds, &writefds, nullptr, &tv); // nfds is ignored by Winsock.
+        if (result <= 0)
+            return true;
+
+        for (const auto& key : fdWatchKeys) {
+            if (key.fd < 0)
+                continue;
+            auto sock = static_cast<SOCKET>(static_cast<uintptr_t>(key.fd));
+            fd_set* set = key.type == FdWatchType::Write ? &writefds : &readfds;
+            if (FD_ISSET(sock, set))
+                FireFdWatch(key.id); // invoked unlocked, may re-enter Add/RemoveFdWatch
+        }
+        return true;
+    }
+
     void UltraCanvasWindowsApplication::CollectAndProcessNativeEvents() {
         MSG msg;
         // 1. Drain all pending messages (non-blocking)
@@ -251,13 +298,21 @@ namespace UltraCanvas {
             DispatchMessageW(&msg);
         }
 
-        // 2. Compute wait timeout from timer system
+        // 2. Service host fd-watches that are already readable/writable (e.g. Ladybird IPC).
+        bool const have_fd_watches = PollAndServiceFdWatches();
+
+        // 3. Compute wait timeout from timer system
         auto timeout = GetTimeUntilNextTimer();
         DWORD waitMs = (timeout == std::chrono::milliseconds::max())
                        ? INFINITE
                        : static_cast<DWORD>(timeout.count());
 
-        // 3. Wait for messages, wakeup event, or timer expiry
+        // Bound the wait while watching fds so newly-ready sockets are serviced within the poll
+        // interval (Winsock offers no way to fold arbitrary fds into MsgWaitForMultipleObjectsEx).
+        if (have_fd_watches && (waitMs == INFINITE || waitMs > kFdWatchPollMs))
+            waitMs = kFdWatchPollMs;
+
+        // 4. Wait for messages, wakeup event, or timer expiry
         if (wakeupEvent) {
             MsgWaitForMultipleObjectsEx(1, &wakeupEvent, waitMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         } else {
@@ -266,7 +321,10 @@ namespace UltraCanvas {
         // WAIT_OBJECT_0     = wakeupEvent signaled (auto-reset clears it)
         // WAIT_OBJECT_0 + 1 = Win32 message available
         // WAIT_TIMEOUT      = timer expired
-        // All cases: return to main loop which calls ProcessTimers + ProcessEvents
+
+        // 5. Service fd-watches again post-wait so IPC replies are handled this same iteration.
+        if (have_fd_watches)
+            PollAndServiceFdWatches();
     }
 
     // ===== WAKEUP MECHANISM =====
