@@ -55,6 +55,31 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
+  smooth scrolling and wheel zoom. Scrolling glides to its target instead of
+  jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
+  page step, a keyboard reveal or a zoom step is eased over ~150 ms with an
+  ease-out cubic. Public surface:
+  - Application-wide defaults, read at the moment a scroll starts:
+    `SetSmoothScrollingEnabled` / `IsSmoothScrollingEnabled`,
+    `SetSmoothScrollDuration` / `GetSmoothScrollDuration`. `ScrollbarStyle`
+    initialises from these, so one switch governs the scrollbar-backed elements
+    and the self-rendered views alike.
+  - `UltraCanvasSmoothScroll` — one animator per scalar (a scroll offset, a zoom
+    level). `Bind(read, write)`, `AnimateBy` / `AnimateTo` (chaining, so a fast
+    wheel spin is one glide), `PendingValue`, `Jump`, `Cancel`, `SetDuration`.
+    Holds a ~60 Hz timer only while a glide runs.
+  - `UltraCanvasSmoothZoom` — eases a multiplicative zoom in log space and hands
+    the element a run of small incremental factors, which it applies with its own
+    zoom-about-cursor code; no transform maths is duplicated. `Bind(apply,
+    repaint)`, `ZoomBy(factor, currentZoom, minZoom, maxZoom)`, `Cancel`.
+  Anything that positions the view rather than scrolls it — a thumb drag, a pan,
+  keeping the text caret on screen, opening a folder, fitting a diagram — cancels
+  the glide and lands at once. Row-indexed views (spreadsheet, hex dump, the two
+  dialog file lists) are not converted: their scroll position is a row index, so
+  they need a pixel offset in the paint path first.
+  See `Docs/UltraCanvas/UltraCanvasSmoothScroll.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the

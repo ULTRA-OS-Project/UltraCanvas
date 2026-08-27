@@ -27,6 +27,7 @@ namespace UltraCanvas {
 
             activeIndex = -1;
             InvalidateLayout();
+            scrollAnim.Cancel();   // a menu opens at the top, at once
             scrollOffsetPixels = 0;
             needsScrollbar = false;
 
@@ -896,6 +897,7 @@ namespace UltraCanvas {
             CloseAllSubmenus();
         }
         InvalidateLayout();
+        scrollAnim.Cancel();
         scrollOffsetPixels = 0;
         needsScrollbar = false;
         if (onMenuClosed) onMenuClosed();
@@ -1250,6 +1252,7 @@ namespace UltraCanvas {
 
         menuScrollbar->onScrollChange = [this](int pos) {
             int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
+            scrollAnim.Cancel();   // the scrollbar drives the position here
             scrollOffsetPixels = std::clamp(pos, 0, maxScroll);
             RequestRedraw();
         };
@@ -1337,6 +1340,9 @@ namespace UltraCanvas {
                          style.separatorHeight : style.itemHeight;
 
         // Scroll up if item is above visible area
+        // Revealing the focused item has to be true at once (the keyboard is
+        // already on it), so it positions the list directly.
+        scrollAnim.Cancel();
         if (itemY < scrollOffsetPixels) {
             scrollOffsetPixels = itemY;
         }
@@ -1359,14 +1365,23 @@ namespace UltraCanvas {
 
         int delta = event.wheelDelta > 0 ? -style.itemHeight : style.itemHeight;
         int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
-        scrollOffsetPixels = std::clamp(scrollOffsetPixels + delta, 0, maxScroll);
-
-        if (menuScrollbar) {
-            menuScrollbar->SetScrollPosition(scrollOffsetPixels);
-        }
-
-        RequestRedraw();
+        if (!scrollAnim.IsBound()) BindScrollAnimator();
+        // Glide to the new position; each eased step repaints and carries the
+        // scrollbar thumb with it (see UltraCanvasSmoothScroll.h).
+        scrollAnim.AnimateBy(delta, 0, maxScroll);
         return true;
+    }
+
+    // Each eased step of a wheel glide is written here, so the list, the
+    // scrollbar thumb and the repaint stay in step exactly as they do when the
+    // offset is set directly.
+    void UltraCanvasMenu::BindScrollAnimator() {
+        scrollAnim.Bind([this] { return static_cast<double>(scrollOffsetPixels); },
+                        [this](double v) {
+                            scrollOffsetPixels = static_cast<int>(std::lround(v));
+                            if (menuScrollbar) menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+                            RequestRedraw();
+                        });
     }
 
     void UltraCanvasMenu::StartAnimation() {

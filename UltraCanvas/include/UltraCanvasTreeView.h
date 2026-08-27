@@ -8,6 +8,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -237,6 +238,12 @@ private:
 
     // Scrolling
     int scrollOffsetY;             // Vertical scroll offset
+    // Wheel scrolling normally goes through verticalScrollbar, which animates
+    // itself. This drives the same glide for the direct ScrollBy() path used
+    // when no scrollbar is up (see UltraCanvasSmoothScroll.h); everything that
+    // positions the tree exactly — the scrollbar's own callback, revealing a
+    // node, a rebuilt tree returning to the top — cancels it first.
+    UltraCanvasSmoothScroll scrollAnim;
     int maxScrollY;                // Maximum scroll value
 
     // Floating "move to the top" button (bottom-right of the content area)

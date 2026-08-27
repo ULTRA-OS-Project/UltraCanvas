@@ -66,6 +66,7 @@
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -940,6 +941,13 @@ namespace UltraCanvas {
         // Scrolling (vertical everywhere; horizontal in List mode).
         int scrollOffsetX = 0;
         int scrollOffsetY = 0;
+        // Wheel notches, page steps and keyboard reveals glide to their target
+        // instead of jumping (see UltraCanvasSmoothScroll.h). Everything that
+        // has to land exactly where the user put it — the scrollbar thumb, the
+        // autoscroll of a running drag, a folder change resetting to the top —
+        // calls CancelScrollAnimations() first and writes the offsets directly.
+        UltraCanvasSmoothScroll scrollAnimX;
+        UltraCanvasSmoothScroll scrollAnimY;
         bool draggingScrollbar = false;
         int  scrollbarGrabOffset = 0;
 
@@ -1391,6 +1399,10 @@ namespace UltraCanvas {
         int  MaxScrollY() const;
         int  MaxScrollX() const;
         void ClampScroll();
+        // Binds the two scroll animators to the offsets above (once, from the
+        // constructor) and drops an in-flight glide.
+        void BindScrollAnimators();
+        void CancelScrollAnimations();
 
         struct ScrollbarGeom {
             bool active = false;
@@ -1404,8 +1416,10 @@ namespace UltraCanvas {
         void ScrollThumbTo(int thumbLeadPx);
         void EnsureVisible(size_t entryIndex);
         // The scroll correction of EnsureVisible against the current layout
-        // (assumes EnsureLayout already ran).
-        void ScrollEntryIntoView(size_t entryIndex);
+        // (assumes EnsureLayout already ran). It glides by default, so keyboard
+        // navigation scrolls like the wheel does; `animated` is false only where
+        // the offset is re-derived rather than moved (the resize anchor).
+        void ScrollEntryIntoView(size_t entryIndex, bool animated = true);
 
         // ===== SCROLL ANCHORING (resize / preview pane) =====
         // Every view reflows when the display area changes width or height —

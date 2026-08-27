@@ -11,6 +11,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageAnimation.h"
@@ -42,6 +43,7 @@ public:
 
 private:
     bool HandleZoom(const UCEvent& event);
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
 
     std::shared_ptr<UCImage> image;
     // Steps animated images (GIF / animated WebP) on the app timer; zoom and
@@ -50,6 +52,11 @@ private:
     Color  canvasColor = Color(255, 255, 255, 255);
     bool   needsFit = true;
     double zoom = 1.0;            // multiple of the fit scale (1.0 == fit-to-view)
+    // Wheel zoom eases in instead of stepping: the animator hands out a series
+    // of small factors which ApplyZoomFactorAtCursor() applies with the same
+    // maths a single one used (see UltraCanvasSmoothScroll.h).
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
     double panX = 0.0, panY = 0.0;
     bool   dragging = false;
     double lastX = 0.0, lastY = 0.0;

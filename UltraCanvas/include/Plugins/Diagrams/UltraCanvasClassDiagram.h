@@ -34,6 +34,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "Plugins/Diagrams/UltraCanvasUMLModel.h"
 #include "Plugins/Diagrams/UltraCanvasClassLayout.h"
 #include "Plugins/Diagrams/UltraCanvasDiagramRouting.h"
@@ -358,6 +359,11 @@ private:
     UMLMemberKind hoveredRowKind = UMLMemberKind::Attribute;
 
     double zoomLevel = 1.0;
+    // Wheel zoom eases in instead of stepping: the animator hands out a series
+    // of small factors which ApplyZoomFactorAtCursor() applies with the same
+    // maths a single one used (see UltraCanvasSmoothScroll.h).
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
     Point2Dd panOffset = Point2Dd(0, 0);
     bool isPanning = false;
     bool isDraggingBox = false;
@@ -431,6 +437,7 @@ private:
     bool HandleMouseUp(const UCEvent& event);
     bool HandleMouseMove(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
     bool HandleDoubleClick(const UCEvent& event);
 
     void ApplyThemeColors(ClassDiagramTheme value);

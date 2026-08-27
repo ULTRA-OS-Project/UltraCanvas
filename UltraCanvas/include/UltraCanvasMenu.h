@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
@@ -230,6 +231,11 @@ namespace UltraCanvas {
         // Scroll support for overflow menus
         std::shared_ptr<UltraCanvasScrollbar> menuScrollbar;
         int scrollOffsetPixels = 0;
+        // Wheel notches glide the item list to their target instead of jumping
+        // (see UltraCanvasSmoothScroll.h). Opening the menu, revealing an item
+        // under the keyboard focus and the scrollbar's own callback all cancel
+        // the glide and position the list directly.
+        UltraCanvasSmoothScroll scrollAnim;
         int totalContentHeight = 0;
         int clampedMenuHeight = 0;
         bool needsScrollbar = false;
@@ -401,6 +407,7 @@ namespace UltraCanvas {
         void ExecuteItem(int index);
 
         // ===== ANIMATION =====
+        void BindScrollAnimator();
         void StartAnimation();
         void UpdateAnimation();
     };

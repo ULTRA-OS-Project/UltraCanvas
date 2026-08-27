@@ -12,6 +12,7 @@
 #define ULTRACANVAS_PDF_VIEW_H
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasImage.h"
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -340,6 +341,9 @@ private:
     // previous page when already at the bottom / top edge.
     void   ScrollBy(int deltaX, int deltaY);
     void   ScrollThumbsBy(int delta);
+    // Positions the scroll offsets directly, dropping any glide in flight — for
+    // page changes, zoom and other repositioning that is not a scroll gesture.
+    void   SetScrollNow(int x, int y);
     void   EnsureThumbVisible(int page);   // scroll strip so `page` is on-screen
     void   Repaint();
 
@@ -356,6 +360,14 @@ private:
     float    effectiveZoom_ = 1.0f;     // last applied scale (renderDpi / defaultDpi)
     int     scrollX_     = 0;
     int     scrollY_     = 0;
+    // Wheel scrolling of the page and of the thumbnail strip glides to its
+    // target (see UltraCanvasSmoothScroll.h). Wheel *zoom* deliberately does
+    // not: every intermediate scale would invalidate the rasterised page cache
+    // (SetZoom -> InvalidateCaches) and re-render the page, so easing it would
+    // cost ~9 full page rasterisations per notch.
+    UltraCanvasSmoothScroll scrollAnimX_;
+    UltraCanvasSmoothScroll scrollAnimY_;
+    UltraCanvasSmoothScroll thumbScrollAnim_;
     int     thumbScroll_ = 0;
 
     bool    showThumbs_  = true;

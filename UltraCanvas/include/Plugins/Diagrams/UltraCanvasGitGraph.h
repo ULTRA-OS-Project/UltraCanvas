@@ -17,6 +17,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "Plugins/Diagrams/UltraCanvasGitGraphLayout.h"
 #include "Plugins/Diagrams/UltraCanvasGitGraphTypes.h"
 
@@ -329,6 +330,12 @@ private:
 
     // ===== VIEW =====
     float  zoomLevel = 1.0f;
+    // Wheel zoom eases in instead of stepping, and the diff pane's own wheel
+    // scrolling glides too (see UltraCanvasSmoothScroll.h).
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
+    UltraCanvasSmoothScroll diffFileScrollAnim;
+    UltraCanvasSmoothScroll diffTextScrollAnim;
     double panX = 0.0, panY = 0.0;
     float  minZoom = 0.15f, maxZoom = 6.0f;
 
@@ -456,6 +463,7 @@ private:
     bool HandleMouseDown(const UCEvent& event);
     bool HandleMouseUp(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
     bool HandleDoubleClick(const UCEvent& event);
     bool HandleKeyDown(const UCEvent& event);
 

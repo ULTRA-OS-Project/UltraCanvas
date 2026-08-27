@@ -636,15 +636,32 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
 
 bool UltraCanvasMediaSurface::HandleWheelZoom(const UCEvent& event) {
     if (!image || !image->IsValid()) return false;
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] {
+                          RequestRedraw();
+                          if (onViewChanged) onViewChanged();
+                      });
+    }
+    zoomCursor = Point2Di(event.pointer.x, event.pointer.y);
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15), zoom, 0.05, 64.0);
+    return true;
+}
+
+// One zoom step about the cursor. A wheel notch is eased in as a run of these
+// (UltraCanvasSmoothZoom), and applying them in a row about the same cursor is
+// exactly applying their product once.
+void UltraCanvasMediaSurface::ApplyZoomFactorAtCursor(double factor,
+                                                      const Point2Di& cursor) {
+    if (!image || !image->IsValid()) return;
     Rect2Df b = GetLocalBounds();
     double iw = std::max(1, image->GetWidth());
     double ih = std::max(1, image->GetHeight());
     double fit = FitScale(iw, ih, rotationQuarters);
-    if (fit <= 0.0) return false;
+    if (fit <= 0.0) return;
 
-    double step = (event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15);
-    double newZoom = std::max(0.05, std::min(zoom * step, 64.0));
-    if (newZoom == zoom) return true;
+    double newZoom = std::max(0.05, std::min(zoom * factor, 64.0));
+    if (newZoom == zoom) return;
 
     // Anchor the zoom under the cursor only when the image is un-rotated /
     // un-mirrored (the simple screen<->image mapping holds). Otherwise zoom
@@ -653,20 +670,17 @@ bool UltraCanvasMediaSurface::HandleWheelZoom(const UCEvent& event) {
         double sOld = fit * zoom;
         double leftOld = b.width * 0.5 + panX - iw * sOld * 0.5;
         double topOld  = b.height * 0.5 + panY - ih * sOld * 0.5;
-        double imgX = (event.pointer.x - leftOld) / sOld;
-        double imgY = (event.pointer.y - topOld)  / sOld;
+        double imgX = (cursor.x - leftOld) / sOld;
+        double imgY = (cursor.y - topOld)  / sOld;
         zoom = newZoom;
         double sNew = fit * zoom;
-        double cxNew = event.pointer.x - imgX * sNew + iw * sNew * 0.5;
-        double cyNew = event.pointer.y - imgY * sNew + ih * sNew * 0.5;
+        double cxNew = cursor.x - imgX * sNew + iw * sNew * 0.5;
+        double cyNew = cursor.y - imgY * sNew + ih * sNew * 0.5;
         panX = cxNew - b.width * 0.5;
         panY = cyNew - b.height * 0.5;
     } else {
         zoom = newZoom;
     }
-    RequestRedraw();
-    if (onViewChanged) onViewChanged();
-    return true;
 }
 
 bool UltraCanvasMediaSurface::OnEvent(const UCEvent& event) {

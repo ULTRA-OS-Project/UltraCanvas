@@ -1751,6 +1751,7 @@ namespace UltraCanvas {
         cs.forceShowVerticalScrollbar = false;
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
+        BindScrollAnimators();
         EnsureDetailsColumnWidths();
 
         newDocumentTypes = {
@@ -1807,6 +1808,7 @@ namespace UltraCanvas {
         currentPath = folderPath;
         fileListMode = false;
         fileListPaths.clear();
+        CancelScrollAnimations();   // the new folder starts at the top, at once
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
@@ -1819,6 +1821,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ShowFileList(const std::vector<std::string>& paths) {
         fileListMode = true;
         fileListPaths = paths;
+        CancelScrollAnimations();
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
@@ -2252,6 +2255,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::SetViewType(FilerViewType type) {
         if (viewType == type) return;
         viewType = type;
+        CancelScrollAnimations();
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
         CancelPendingRename();
@@ -5633,6 +5637,28 @@ namespace UltraCanvas {
         scrollOffsetX = clampi(scrollOffsetX, 0, MaxScrollX());
     }
 
+    // Each animated step writes its eased offset here, so a glide goes through
+    // exactly the same clamp and repaint as an instant scroll would.
+    void UltraCanvasFilerWidget::BindScrollAnimators() {
+        scrollAnimX.Bind([this] { return static_cast<double>(scrollOffsetX); },
+                         [this](double v) {
+                             scrollOffsetX = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+        scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                         [this](double v) {
+                             scrollOffsetY = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+    }
+
+    void UltraCanvasFilerWidget::CancelScrollAnimations() {
+        scrollAnimX.Cancel();
+        scrollAnimY.Cancel();
+    }
+
     UltraCanvasFilerWidget::ScrollbarGeom UltraCanvasFilerWidget::ScrollbarGeometry() const {
         ScrollbarGeom g;
         auto b = GetLocalBounds();
@@ -5669,6 +5695,9 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx) {
         ScrollbarGeom g = ScrollbarGeometry();
         if (!g.active || g.travel <= 0) return;
+        // Dragging the thumb positions the view directly: a glide chasing the
+        // pointer would lag behind the grabbed thumb.
+        CancelScrollAnimations();
         auto b = GetLocalBounds();
         if (g.horizontal) {
             int rel = clampi(thumbLeadPx - static_cast<int>(b.x), 0, g.travel);
@@ -5695,24 +5724,38 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasFilerWidget::ScrollEntryIntoView(size_t entryIndex) {
+    // Keyboard navigation lands here through EnsureVisible(), so revealing the
+    // next entry glides like a wheel notch does. `animated` is false where the
+    // scroll position is being re-derived rather than moved — a resize putting
+    // the viewport back on its anchor entry, which must not look like a scroll.
+    void UltraCanvasFilerWidget::ScrollEntryIntoView(size_t entryIndex, bool animated) {
         for (const ItemLayout& it : items) {
             if (it.entryIndex != entryIndex) continue;
             auto b = GetLocalBounds();
+            // Measured against where an in-flight glide is heading, not against
+            // the offset it happens to have reached, so a held-down arrow key
+            // does not re-reveal what the running glide already has covered.
             if (IsHorizontal()) {
-                if (it.rect.x - scrollOffsetX < 0)
-                    scrollOffsetX = it.rect.x;
-                else if (it.rect.x + it.rect.width - scrollOffsetX > (int)b.width)
-                    scrollOffsetX = it.rect.x + it.rect.width - (int)b.width;
+                int from = static_cast<int>(std::lround(scrollAnimX.PendingValue()));
+                int target = from;
+                if (it.rect.x - from < 0)
+                    target = it.rect.x;
+                else if (it.rect.x + it.rect.width - from > (int)b.width)
+                    target = it.rect.x + it.rect.width - (int)b.width;
+                if (animated) scrollAnimX.AnimateTo(target, 0, MaxScrollX());
+                else          scrollAnimX.Jump(target, 0, MaxScrollX());
             } else {
                 int top = (viewType == FilerViewType::Details) ? detailsHeaderHeight : 0;
                 int viewH = static_cast<int>(b.height) - InfoBarHeight();
-                if (it.rect.y - scrollOffsetY < top)
-                    scrollOffsetY = it.rect.y - top;
-                else if (it.rect.y + it.rect.height - scrollOffsetY > viewH)
-                    scrollOffsetY = it.rect.y + it.rect.height - viewH;
+                int from = static_cast<int>(std::lround(scrollAnimY.PendingValue()));
+                int target = from;
+                if (it.rect.y - from < top)
+                    target = it.rect.y - top;
+                else if (it.rect.y + it.rect.height - from > viewH)
+                    target = it.rect.y + it.rect.height - viewH;
+                if (animated) scrollAnimY.AnimateTo(target, 0, MaxScrollY());
+                else          scrollAnimY.Jump(target, 0, MaxScrollY());
             }
-            ClampScroll();
             break;
         }
     }
@@ -5756,6 +5799,10 @@ namespace UltraCanvas {
         if (!anchor.valid) return;
         for (const ItemLayout& it : items) {
             if (it.entryIndex != anchor.entryIndex) continue;
+            // The viewport is being put back where it already was against a
+            // rebuilt layout, so it lands at once — animating it would read as
+            // the folder sliding about while the window is resized.
+            CancelScrollAnimations();
             if (IsHorizontal()) scrollOffsetX = it.rect.x - anchor.offset;
             else                scrollOffsetY = it.rect.y - anchor.offset;
             ClampScroll();
@@ -5763,7 +5810,7 @@ namespace UltraCanvas {
             // edge when the reflow changed its size (a wrapped caption, a
             // taller row) or when the clamp pulled the scroll back at the end
             // of the content, so finish with the usual reveal.
-            ScrollEntryIntoView(anchor.entryIndex);
+            ScrollEntryIntoView(anchor.entryIndex, false);
             return;
         }
     }
@@ -9153,6 +9200,9 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::UpdateMarquee(const Point2Di& localPoint) {
         // Auto-scroll at the viewport edge so the rectangle can grow past it.
+        // It steps per mouse move and is already continuous, so it positions
+        // the view directly — a glide would trail the rubber band's edge.
+        CancelScrollAnimations();
         Rect2Di area = ContentBounds();
         if (IsHorizontal()) {
             if (localPoint.x > area.x + area.width)
@@ -9254,19 +9304,21 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseWheel: {
                 RememberPointer(event);
+                // Glide to the new position instead of jumping (see
+                // UltraCanvasSmoothScroll.h); each eased step repaints, and the
+                // files sliding under a cursor that never moved re-derive the
+                // hover, its icon menu and its tooltip on every one of those
+                // paints (RefreshHoverState) rather than staying on the old
+                // file.
                 if (IsHorizontal()) {
                     if (MaxScrollX() <= 0) return false;
-                    scrollOffsetX -= event.wheelDelta * kWheelStep;
+                    scrollAnimX.AnimateBy(-event.wheelDelta * kWheelStep,
+                                          0, MaxScrollX());
                 } else {
                     if (MaxScrollY() <= 0) return false;
-                    scrollOffsetY -= event.wheelDelta * kWheelStep;
+                    scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep,
+                                          0, MaxScrollY());
                 }
-                ClampScroll();
-                // The files slide under a cursor that never moved, so the
-                // hover, its icon menu and its tooltip are re-derived from the
-                // new scroll position by the paint this asks for
-                // (RefreshHoverState) rather than left on the old file.
-                RequestRedraw();
                 return true;
             }
             case UCEventType::MouseMove: {
