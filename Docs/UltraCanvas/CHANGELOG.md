@@ -1,3 +1,34 @@
+#### 2026-08-27 *0.3.81*
+- **Telling a crashed Windows app from a hung one.** `uc-diagnose.bat` can only
+  report what a process exits with, which is nothing at all when it does not
+  exit. A host that starts, opens its log file and then never shows a window
+  looks identical to one that died on the spot — and the two have nothing in
+  common as bugs. New `scripts/uc-diagnose.ps1` launches the executable, watches
+  it for 20 seconds and returns one of three verdicts: **exited** (with the
+  decoded exit code), **window appeared**, or **alive with no window** — the
+  last with the CPU time that separates "blocked on a wait" from "spinning".
+  It also lists the child processes, any Windows event-log entry naming the
+  executable, and the framework log, and leaves the process running to be
+  inspected. Windows PowerShell 5.1 and PowerShell 7 both work; it changes
+  nothing on the machine. Ships in the Windows package next to the batch file.
+- It starts the process through `[System.Diagnostics.Process]::Start` rather
+  than `Start-Process -PassThru`, whose returned object can report `ExitCode` 0
+  for a process that exited non-zero — enough to file a crash as a clean exit.
+  The same trap is now documented for anyone testing by hand: **PowerShell does
+  not wait for a GUI-subsystem process**, so `$LASTEXITCODE` after `.\App.exe`
+  is whatever ran before it, not the app's code. `cmd` does wait, which is why
+  the batch file can read `%ERRORLEVEL%`.
+- This release is the first to carry the Windows event loop's servicing of host
+  file-descriptor watches (`PollAndServiceFdWatches()`): registered Winsock
+  sockets are polled around the `MsgWaitForMultipleObjectsEx()` wait, and that
+  wait is bounded so level-triggered readiness is picked up promptly. Before it,
+  `AddFdWatch()` was honoured on Linux and ignored on Windows, so a host driving
+  UltraCanvas from its own loop — Ladybird's IPC to its WebContent process is
+  the motivating case — waited forever for a reply the loop would never deliver:
+  no crash, no log, no window. `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md`
+  gains an "Alive but no window" section that walks that symptom back to its
+  cause.
+
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
   executables are linked as GUI-subsystem binaries, which gives them no
