@@ -129,28 +129,57 @@ namespace UltraCanvas {
 #define PF_AVX512F_INSTRUCTIONS_AVAILABLE 41
 #endif
 
-        void CpuIdRaw(int leaf, int subleaf, unsigned int out[4]) {
-#if defined(__GNUC__) && !defined(__clang__)
-            __asm__ __volatile__("cpuid"
-                                 : "=a"(out[0]), "=b"(out[1]), "=c"(out[2]), "=d"(out[3])
-                                 : "a"(leaf), "c"(subleaf));
-#else
-            __cpuidex(reinterpret_cast<int*>(out), leaf, subleaf);
+        // The brand string comes from CPUID, which exists only on x86 - and the
+        // guard has to be on the *architecture*, not on the compiler. Guarding on
+        // the compiler is what broke the ARM64 build: MSYS2's CLANGARM64 toolchain
+        // defines __clang__, so a "GCC or MSVC" split sent an ARM64 target down
+        // the MSVC-intrinsic path and asked for __cpuidex on a CPU that has no
+        // CPUID at all.
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+    #define ULTRACANVAS_HAS_CPUID 1
 #endif
+
+#if defined(ULTRACANVAS_HAS_CPUID)
+    #if defined(__GNUC__) || defined(__clang__)
+        // GCC's and clang's own header. Preferred over hand-written asm because
+        // it gets the 32-bit-PIC EBX save/restore right, which the naive "=b"
+        // output constraint does not.
+        #include <cpuid.h>
+    #elif defined(_MSC_VER)
+        #include <intrin.h>
+    #endif
+
+        bool CpuIdRaw(unsigned int leaf, unsigned int subleaf, unsigned int out[4]) {
+    #if defined(__GNUC__) || defined(__clang__)
+            return __get_cpuid_count(leaf, subleaf, &out[0], &out[1], &out[2], &out[3]) != 0;
+    #elif defined(_MSC_VER)
+            __cpuidex(reinterpret_cast<int*>(out), static_cast<int>(leaf),
+                      static_cast<int>(subleaf));
+            return true;
+    #else
+            (void)leaf; (void)subleaf; (void)out;
+            return false;
+    #endif
         }
+#endif // ULTRACANVAS_HAS_CPUID
 
         // The 48-byte brand string from CPUID leaves 0x80000002..4, if present.
         std::string CpuBrand() {
-#if defined(_M_ARM64) || defined(__aarch64__)
+#if !defined(ULTRACANVAS_HAS_CPUID)
+    #if defined(_M_ARM64) || defined(__aarch64__)
             return "ARM64";
+    #elif defined(_M_ARM) || defined(__arm__)
+            return "ARM";
+    #else
+            return "unknown (no CPUID on this architecture)";
+    #endif
 #else
             unsigned int regs[4] = {};
-            CpuIdRaw(static_cast<int>(0x80000000), 0, regs);
-            if (regs[0] < 0x80000004u) return "unknown";
+            if (!CpuIdRaw(0x80000000u, 0, regs) || regs[0] < 0x80000004u) return "unknown";
 
             char brand[49] = {};
-            for (int i = 0; i < 3; ++i) {
-                CpuIdRaw(static_cast<int>(0x80000002 + i), 0, regs);
+            for (unsigned int i = 0; i < 3; ++i) {
+                if (!CpuIdRaw(0x80000002u + i, 0, regs)) return "unknown";
                 std::memcpy(brand + i * 16, regs, 16);
             }
             brand[48] = '\0';

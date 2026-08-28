@@ -18,6 +18,14 @@
   This is the failure most often misread as an operating-system problem:
   "works on Windows 10, crashes on Windows 11" is what you see when the two
   machines also differ in CPU, which they usually do.
+- CPUID is reached through the compiler's own `<cpuid.h>` (`__get_cpuid_count`)
+  on GCC and clang, `<intrin.h>` on MSVC, and is compiled **only** where the
+  architecture has it. The guard is on the architecture, never on the compiler:
+  MSYS2's CLANGARM64 toolchain defines `__clang__`, so a "GCC or MSVC" split
+  sends an ARM64 target down the MSVC-intrinsic path and asks for `__cpuidex`
+  on a CPU with no CPUID at all. Going through `<cpuid.h>` rather than inline
+  asm also gets the 32-bit-PIC EBX save/restore right, which a naive `"=b"`
+  output constraint does not. On ARM the brand string is simply "ARM64".
 - Only the instruction-fault path pays for any of this. The extra text is built
   only for those two exception codes, and everything else — a stack overflow
   above all, which runs the filter on the stack that just ran out — keeps to the
