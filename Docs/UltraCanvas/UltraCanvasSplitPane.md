@@ -5,7 +5,9 @@
 **UltraCanvasSplitPane** is a container that divides its content area into *N*
 panes along one axis, separated by draggable splitters. Panes are sized by
 proportional **weights**, so resizing the split pane preserves relative sizes,
-and per-pane **min/max pixel sizes** clamp the drag.
+and per-pane **min/max pixel sizes** clamp the drag. A pane can instead be
+given a **fixed pixel size** (`SetPaneFixedSize`), which it keeps through
+container resizes — only the weighted panes share what a resize changed.
 
 Each split line can additionally carry an optional **handle** (square, rounded
 square or round/capsule, at a configurable size) and any number of **action
@@ -72,7 +74,8 @@ panes has *N - 1* splitters.
 | `PaneCount()` / `GetPane(index)` / `GetPaneIndex(pane*)` | Query |
 | `SetPaneWeight(index, w)` / `GetPaneWeight(index)` | Proportional sizing |
 | `SetPaneMinSize(index, px)` / `SetPaneMaxSize(index, px)` | Clamps (0 max = unlimited) |
-| `SetPaneSizes({px, px, …})` | Set all weights at once from pixel sizes |
+| `SetPaneSizes({px, px, …})` | Set all weights at once from pixel sizes (a fixed-size pane takes its value as the new fixed size) |
+| `SetPaneFixedSize(index, px)` / `GetPaneFixedSize(index)` | Absolute sizing: the pane keeps exactly `px` pixels through container resizes (maximizing included) while the weighted panes share the rest. Dragging an adjacent splitter still resizes it — the dragged size becomes the new fixed size, so the width the user chose is what survives the next resize. Min/max still clamp it; `0` returns the pane to weight-based sizing. UltraFiler pins its folder tree this way (280 px until dragged). |
 | `SplitterCount()` | Number of split lines (`PaneCount() - 1`) |
 
 ## Styling the splitter
