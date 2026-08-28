@@ -231,6 +231,16 @@ namespace {
         return false;
     }
 
+    // The folder display's curation of the home folder: the same main folders
+    // the tree shows (HomeTreeChildren), as paths for
+    // UltraCanvasFilerWidget::SetCuratedHomeFolder.
+    std::vector<std::string> HomeCurationPaths() {
+        std::vector<std::string> paths;
+        for (const TreeChild& c : HomeTreeChildren())
+            paths.push_back(c.path);
+        return paths;
+    }
+
     // Does the tree show anything below `path`? The home folder answers from
     // its curated list rather than from the disk: it only ever shows the main
     // user folders, so a profile holding none of them is a leaf however many
@@ -496,6 +506,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // default application, and a double-clicked subfolder is entered right
     // in the pane.
     folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
+    folderPreview->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
     folderPreviewStyle.fontSize = kUiFontSize;
     folderPreviewStyle.smallFontSize = kUiFontSize;
@@ -1765,6 +1776,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
+    // The home folder's display is curated like the tree's Home entry: its
+    // main folders and its files, not the whole profile. Display > Hidden
+    // files reveals the full listing.
+    state->filer->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
     FilerStyle filerStyle = state->filer->GetStyle();
     filerStyle.fontSize = kUiFontSize;
     filerStyle.smallFontSize = kUiFontSize;

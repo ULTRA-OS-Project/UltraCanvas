@@ -1936,6 +1936,22 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Identity key that makes two spellings of the same folder compare
+        // equal for the curated-home display: normalised, no trailing
+        // separator, case-folded on Windows — the same rule the UltraFiler's
+        // folder tree applies to its curated Home section.
+        std::string CuratedIdentityKey(const std::string& path) {
+            std::string key = fs::path(path).lexically_normal().string();
+            while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
+                key.pop_back();
+#ifdef _WIN32
+            std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+#endif
+            return key;
+        }
+    }
+
     void UltraCanvasFilerWidget::ScanFolder(bool usePrefetched) {
         // `selection` indexes `entries`, which is rebuilt below — remember what
         // is selected by path so a rescan (Refresh after a file operation, a
@@ -2052,6 +2068,39 @@ namespace UltraCanvas {
             }
         }
 #endif
+
+        // Curated home folder (SetCuratedHomeFolder): the home folder's
+        // display shows its main folders and its files, nothing else — the
+        // profile clutter ("3D Objects", "Saved Games", the working folders)
+        // stays out, matching the folder tree. A main folder that physically
+        // lives elsewhere (a Documents redirected into OneDrive) is listed by
+        // its real path. Hidden-files ON means "show me everything" and
+        // suspends the curation entirely.
+        if (isRealDir && !fileListMode && !showHiddenFiles &&
+            !curatedHomePath.empty() &&
+            CuratedIdentityKey(currentPath) == CuratedIdentityKey(curatedHomePath)) {
+            std::unordered_set<std::string> curated;
+            for (const std::string& p : curatedHomeFolders)
+                curated.insert(CuratedIdentityKey(p));
+            std::unordered_set<std::string> present;
+            std::vector<FilerEntry> kept;
+            kept.reserve(entries.size());
+            for (FilerEntry& e : entries) {
+                if (e.isDirectory) {
+                    const std::string key = CuratedIdentityKey(e.path);
+                    if (!curated.count(key)) continue;
+                    present.insert(key);
+                }
+                kept.push_back(std::move(e));
+            }
+            entries = std::move(kept);
+            for (const std::string& p : curatedHomeFolders) {
+                if (present.count(CuratedIdentityKey(p))) continue;
+                FilerEntry e;
+                if (StatEntryForPath(p, e) && e.isDirectory)
+                    entries.push_back(std::move(e));
+            }
+        }
 
         for (FilerEntry& e : entries) {
             e.effectiveSize = e.size;
@@ -2239,6 +2288,13 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::SetShowHiddenFiles(bool show) {
         if (showHiddenFiles == show) return;
         showHiddenFiles = show;
+        Refresh();
+    }
+
+    void UltraCanvasFilerWidget::SetCuratedHomeFolder(const std::string& homePath,
+                                                      std::vector<std::string> mainFolders) {
+        curatedHomePath = homePath;
+        curatedHomeFolders = std::move(mainFolders);
         Refresh();
     }
 
@@ -9063,6 +9119,11 @@ namespace UltraCanvas {
             displayItems.push_back(MenuItemData::Checkbox(
                     "Info-Bar", showSelectionInfo,
                     [this](bool on) { SetSelectionInfoVisible(on); }));
+            // "Show me everything": hidden entries, and the full physical
+            // listing of a curated home folder (SetCuratedHomeFolder).
+            displayItems.push_back(MenuItemData::Checkbox(
+                    "Hidden files", showHiddenFiles,
+                    [this](bool on) { SetShowHiddenFiles(on); }));
             menu.AddItem(MenuItemData::Submenu("Display", displayItems));
         }
 

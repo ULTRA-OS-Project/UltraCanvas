@@ -16966,6 +16966,8 @@ Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending
                              Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
+                  Hidden files (checkbox: hidden entries, and the full listing
+                             of a curated home folder — see below)
 Settings
 ```
 
@@ -17203,6 +17205,29 @@ where the OS defines them) resolved through the platform —
 OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
 (localized names; entries pointing at `$HOME` are disabled per the spec) — for
 building an Explorer/Finder-style curated "Home" section.
+
+## Curated home folder
+
+`SetCuratedHomeFolder(homePath, mainFolders)` curates one folder's display —
+the user's home. While set, displaying `homePath` lists only the given main
+folders plus the folder's regular files; every other subfolder is left out.
+Each main folder is named by its resolved full path, so one redirected out of
+the home folder (a Documents moved into OneDrive) is listed too, by its real
+location. Every other folder is displayed untouched, and the curated folders
+themselves behave like any other entry — navigation, context menu, drag & drop.
+
+Display > Hidden files suspends the curation: that toggle means "show me
+everything", so it reveals the untouched physical listing (hidden entries
+included). An empty `homePath` turns curation off.
+
+The UltraFiler sets this on its tab filers and its folder-preview pane, with
+the same main-folder set its folder tree shows for Home
+(`GetWellKnownUserFolders()` filtered to Desktop / Documents / Downloads /
+Music / Pictures / Videos), so the tree and the display agree on what Home
+contains. Note the caveat that follows from the design: a non-main folder
+created or pasted into the home folder exists but is not displayed until
+Hidden files is switched on — curation is a view over the folder, not a
+constraint on it.
 
 `UltraCanvas::GetCloudStorageFolders()` (`UltraCanvasCloudStorage.h`) is its
 counterpart for a

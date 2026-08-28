@@ -11,6 +11,18 @@
   now go through the new public `UltraCanvasTreeView::ToggleNode()`, which
   routes into `ExpandNode` / `CollapseNode`, so `onNodeExpanded` /
   `onNodeCollapsed` fire for every gesture.
+- **The UltraFiler's home folder display is curated like its tree entry.** New
+  `UltraCanvasFilerWidget::SetCuratedHomeFolder(homePath, mainFolders)`: while
+  set, displaying that folder lists only the given main folders — each by its
+  resolved path, so a Documents redirected into OneDrive is listed too — plus
+  the folder's regular files; the profile clutter ("3D Objects", "Saved
+  Games", working folders) stays out, matching the folder tree. The UltraFiler
+  sets it on its tab filers and the folder-preview pane with the same
+  main-folder set the tree shows. Other folders are never affected.
+- New **Display > Hidden files** checkbox in the filer's context menu — the
+  `SetShowHiddenFiles` toggle finally has UI. It doubles as the curation
+  escape hatch: hidden files ON means "show me everything" and reveals the
+  home folder's untouched physical listing.
 
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
