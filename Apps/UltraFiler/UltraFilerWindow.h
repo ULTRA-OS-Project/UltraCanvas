@@ -12,7 +12,9 @@
 // the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
 // the detail pane (shown only while a single previewable file OR a folder is
-// selected; Esc closes it): a selected media file shows in the
+// selected — a folder only once the double-click interval has passed, so a
+// double-click that opens it never flashes its preview; Esc closes it): a
+// selected media file shows in the
 // UltraCanvasMediaViewer, a selected folder shows its content through a second
 // small-thumbnail UltraCanvasFilerWidget — the two share the one pane. Plus a
 // status bar describing the folder and the selection (kept in step with the
@@ -56,6 +58,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderViews.h"
@@ -317,6 +320,16 @@ private:
     // the selection is empty or holds several entries. The pointer is into
     // the filer's entry vector — use it immediately, don't keep it.
     const FilerEntry* SingleSelectedEntry() const;
+    // A single click on a folder shows its content in the detail pane, but a
+    // double-click on it OPENS the folder — so the folder preview first
+    // waits out the double-click interval: the click arms this timer, and
+    // only its firing (with the folder still the single selection) scans
+    // the folder into the pane. Opening the folder — or any selection
+    // change — in the meantime cancels it, so a double-click never flashes
+    // the preview. A shown media/file preview is untouched while the timer
+    // runs.
+    void ArmFolderPreviewTimer(const std::string& folderPath);
+    void CancelFolderPreviewTimer();
     // Mirrors the preview toggle into every tab's filer: while the preview is
     // on, deleting the previewed file hands the selection to the neighbouring
     // entry, so the pane shows that file instead of folding away.
@@ -416,6 +429,12 @@ private:
     bool previewShown = false;             // preview pane currently in the split
     bool previewShowsFolder = false;       // pane holds folderPreview, not preview
     int  previewPaneWidth = 0;             // last shown width (px), restored on reopen
+    // Folder-preview double-click guard (see ArmFolderPreviewTimer): the
+    // folder waiting out the delay, and the folder whose delay has elapsed —
+    // UpdatePreviewPane shows a folder only once it is the "ready" one.
+    TimerId folderPreviewDelayTimer = InvalidTimerId;
+    std::string pendingFolderPreviewPath;
+    std::string folderPreviewReadyPath;
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split
     UltraFilerSettings settings;           // persisted application settings

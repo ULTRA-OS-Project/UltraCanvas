@@ -40,6 +40,12 @@
   (previously ≈345px proportional) and stays at whatever width the user
   drags it to — maximizing or resizing the window changes only the folder
   display's share.
+- **UltraFiler: the folder preview no longer fires on a double-click.**
+  Clicking a folder still shows its content in the detail pane, but only
+  after the double-click interval has passed with the folder still
+  selected — the first click of a double-click that *opens* the folder no
+  longer scans it into the pane (and whatever the pane showed stays put
+  while the delay runs).
 
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows

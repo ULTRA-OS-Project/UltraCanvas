@@ -94,6 +94,13 @@ namespace {
     constexpr int kFilerMinWidth   = 360;
     constexpr int kPreviewMinWidth = 260;
 
+    // Delay before a clicked folder's content is shown in the detail pane.
+    // A double-click on a folder OPENS it, so the pane must not scan the
+    // folder in on the first click of that double-click — like the filer's
+    // rename-click delay, this must exceed the platform double-click
+    // interval.
+    constexpr unsigned int kFolderPreviewClickDelayMs = 500;
+
     void ApplyDropdownFontSize(UltraCanvasDropdown* dropdown) {
         DropdownStyle s = dropdown->GetStyle();
         s.fontSize = kUiFontSize;
@@ -420,6 +427,7 @@ namespace {
 
 UltraFilerWindow::~UltraFilerWindow() {
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
+    CancelFolderPreviewTimer(); // its callback captures `this`
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
 }
@@ -2662,6 +2670,44 @@ void UltraFilerWindow::ApplyPreviewSelectionPolicy() {
         if (state->filer) state->filer->SetSelectNextAfterDelete(previewEnabled);
 }
 
+void UltraFilerWindow::ArmFolderPreviewTimer(const std::string& folderPath) {
+    if (pendingFolderPreviewPath == folderPath &&
+        folderPreviewDelayTimer != InvalidTimerId) {
+        return;   // already waiting for exactly this folder
+    }
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        // No timer source: show at once rather than never. The re-entry
+        // proceeds because the folder is marked ready.
+        folderPreviewReadyPath = folderPath;
+        UpdatePreviewPane();
+        return;
+    }
+    if (folderPreviewDelayTimer != InvalidTimerId)
+        app->StopTimer(folderPreviewDelayTimer);
+    pendingFolderPreviewPath = folderPath;
+    folderPreviewDelayTimer = app->StartTimer(kFolderPreviewClickDelayMs, false,
+            [this](TimerId) {
+        folderPreviewDelayTimer = InvalidTimerId;
+        const std::string path = pendingFolderPreviewPath;
+        pendingFolderPreviewPath.clear();
+        // Show only while the folder is STILL the single selection — a
+        // double-click opened it (or the selection moved on) meanwhile.
+        const FilerEntry* e = SingleSelectedEntry();
+        if (!previewEnabled || !e || !e->isDirectory || e->path != path) return;
+        folderPreviewReadyPath = path;
+        UpdatePreviewPane();
+    });
+}
+
+void UltraFilerWindow::CancelFolderPreviewTimer() {
+    pendingFolderPreviewPath.clear();
+    if (folderPreviewDelayTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        app->StopTimer(folderPreviewDelayTimer);
+    folderPreviewDelayTimer = InvalidTimerId;
+}
+
 void UltraFilerWindow::UpdatePreviewPane() {
     if (!split || !preview || !folderPreview) return;
     // What the selection calls for: a single media file fills the pane with
@@ -2677,6 +2723,24 @@ void UltraFilerWindow::UpdatePreviewPane() {
         }
     }
     const bool wantFolder = !folderPath.empty();
+    if (wantFolder) {
+        const bool alreadyShown = previewShown && previewShowsFolder &&
+                                  folderPreview->GetPath() == folderPath;
+        if (!alreadyShown && folderPath != folderPreviewReadyPath) {
+            // This may be the first click of a double-click that OPENS the
+            // folder: wait out the double-click interval before scanning the
+            // folder into the pane. The pane keeps whatever it shows
+            // meanwhile; the timer's firing comes back here with the folder
+            // marked ready (see ArmFolderPreviewTimer).
+            ArmFolderPreviewTimer(folderPath);
+            return;
+        }
+    } else {
+        // The selection moved off the folder — a pending or elapsed delay
+        // belongs to something no longer selected.
+        CancelFolderPreviewTimer();
+        folderPreviewReadyPath.clear();
+    }
     if (wantFolder || !mediaPath.empty()) {
         if (!previewShown) {
             // Pane sizing is weight-proportional, so plain AddPane would
