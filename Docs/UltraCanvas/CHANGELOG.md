@@ -1,4 +1,4 @@
-#### 2026-08-28 *0.3.81*
+#### 2026-08-28 *0.3.83*
 - **UltraCanvasFilerWidget: name filter (filter-as-you-type).**
   `SetNameFilter(text)` narrows the displayed listing to the names containing
   the text (case-insensitive) without a disk rescan per keystroke — the full
