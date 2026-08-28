@@ -1,4 +1,4 @@
-#### 2026-08-28 *0.3.81*
+#### 2026-08-28 *0.3.83*
 - **TreeView: a double-click or the Enter key on a lazily-loaded node left it
   empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
   which flips the expansion state without firing `onNodeExpanded` — the
