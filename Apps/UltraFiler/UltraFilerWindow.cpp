@@ -2102,7 +2102,12 @@ void UltraFilerWindow::BuildSplitLayout() {
     split->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto treePane = split->AddPane(1.0);
+    // Pane weights are relative; using the pixel widths of the default
+    // 1280px window (minus the 4px splitter between the panes) as the
+    // weights opens the tree at 280px there — and keeps the same proportion
+    // when the window opens at another size. The splitter stays draggable
+    // as before.
+    auto treePane = split->AddPane(280);
     split->SetPaneMinSize(0, 170);
     treePane->layout.SetFlexColumn()
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -2110,7 +2115,7 @@ void UltraFilerWindow::BuildSplitLayout() {
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     treePane->AddChild(folderTree);
 
-    auto filerPane = split->AddPane(2.7);
+    auto filerPane = split->AddPane(1280 - 280 - 4);
     split->SetPaneMinSize(1, kFilerMinWidth);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);

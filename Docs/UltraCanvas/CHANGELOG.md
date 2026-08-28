@@ -29,6 +29,9 @@
   `CreateNewFolder()` / `CreateNewDocument()` themselves leave a file-list
   display and drop an active name filter, so the fresh entry is always
   visible with its inline rename editor open.
+- **UltraFiler: the folder tree opens at 280px** (in the default 1280px
+  window; previously ≈345px), leaving more of the width to the folder
+  display. The splitter is draggable as before.
 
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
