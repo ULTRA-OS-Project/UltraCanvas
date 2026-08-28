@@ -171,6 +171,12 @@ namespace UltraCanvas {
 
         // ===== CURSOR LOADING =====
         HCURSOR LoadCursorFromImageFile(const char* filename, int hotspotX, int hotspotY);
+
+        // ===== HOST FD-WATCHES =====
+        // Non-blocking Winsock select() over the fds registered via AddFdWatch(), firing the
+        // ready ones. Lets a host embedding UltraCanvas (e.g. Ladybird's IPC to WebContent)
+        // have its sockets serviced by this loop. Returns true if any watches are registered.
+        bool PollAndServiceFdWatches();
     };
 
 } // namespace UltraCanvas

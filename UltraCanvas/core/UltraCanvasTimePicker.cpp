@@ -334,11 +334,11 @@ namespace UltraCanvas {
         }
 
         if (!use24h) {
-            FontStyle small;
-            small.fontFamily = style.fontFamily;
-            small.fontSize   = style.fontSize;
-            small.fontWeight = FontWeight::Bold;
-            ctx->SetFontStyle(small);
+            FontStyle smallfont;
+            smallfont.fontFamily = style.fontFamily;
+            smallfont.fontSize   = style.fontSize;
+            smallfont.fontWeight = FontWeight::Bold;
+            ctx->SetFontStyle(smallfont);
             bool pm = value.IsPM();
             auto drawAmPm = [&](const Rect2Df& r, const char* txt, bool active, int hover) {
                 ctx->SetTextPaint(active || headerHover == hover

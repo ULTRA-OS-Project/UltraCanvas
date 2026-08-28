@@ -42,6 +42,7 @@ namespace UltraCanvas {
         wchar_t gCrashLogPath[MAX_PATH * 2] = L"";
         char    gCrashAppName[128]          = "UltraCanvas";
         char    gCrashOsVersion[128]        = "";
+        char    gCrashCpuSummary[256]       = "";
         bool    gCrashDialogAllowed         = true;
 
         bool EnvFlagSet(const char* name) {
@@ -104,6 +105,179 @@ namespace UltraCanvas {
             }
         }
 
+        // ===== CPU / EMULATION =====
+        // An ILLEGAL_INSTRUCTION fault says the binary used an instruction this
+        // machine will not execute. Naming the exception is only half an answer;
+        // the other half is what the machine actually offers, which is what the
+        // helpers below capture. Note the deliberate use of
+        // IsProcessorFeaturePresent rather than raw CPUID feature bits: it
+        // reports what the OS *permits*, so an x64 process running under
+        // emulation on an ARM64 machine is described by what the emulator
+        // supports, not by the silicon underneath.
+
+// Older MinGW-w64 winnt.h predates these; the values are fixed by the ABI.
+#ifndef PF_SSE4_2_INSTRUCTIONS_AVAILABLE
+#define PF_SSE4_2_INSTRUCTIONS_AVAILABLE 38
+#endif
+#ifndef PF_AVX_INSTRUCTIONS_AVAILABLE
+#define PF_AVX_INSTRUCTIONS_AVAILABLE 39
+#endif
+#ifndef PF_AVX2_INSTRUCTIONS_AVAILABLE
+#define PF_AVX2_INSTRUCTIONS_AVAILABLE 40
+#endif
+#ifndef PF_AVX512F_INSTRUCTIONS_AVAILABLE
+#define PF_AVX512F_INSTRUCTIONS_AVAILABLE 41
+#endif
+
+        // The brand string comes from CPUID, which exists only on x86 - and the
+        // guard has to be on the *architecture*, not on the compiler. Guarding on
+        // the compiler is what broke the ARM64 build: MSYS2's CLANGARM64 toolchain
+        // defines __clang__, so a "GCC or MSVC" split sent an ARM64 target down
+        // the MSVC-intrinsic path and asked for __cpuidex on a CPU that has no
+        // CPUID at all.
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+    #define ULTRACANVAS_HAS_CPUID 1
+#endif
+
+#if defined(ULTRACANVAS_HAS_CPUID)
+    #if defined(__GNUC__) || defined(__clang__)
+        // GCC's and clang's own header. Preferred over hand-written asm because
+        // it gets the 32-bit-PIC EBX save/restore right, which the naive "=b"
+        // output constraint does not.
+        #include <cpuid.h>
+    #elif defined(_MSC_VER)
+        #include <intrin.h>
+    #endif
+
+        bool CpuIdRaw(unsigned int leaf, unsigned int subleaf, unsigned int out[4]) {
+    #if defined(__GNUC__) || defined(__clang__)
+            return __get_cpuid_count(leaf, subleaf, &out[0], &out[1], &out[2], &out[3]) != 0;
+    #elif defined(_MSC_VER)
+            __cpuidex(reinterpret_cast<int*>(out), static_cast<int>(leaf),
+                      static_cast<int>(subleaf));
+            return true;
+    #else
+            (void)leaf; (void)subleaf; (void)out;
+            return false;
+    #endif
+        }
+#endif // ULTRACANVAS_HAS_CPUID
+
+        // The 48-byte brand string from CPUID leaves 0x80000002..4, if present.
+        std::string CpuBrand() {
+#if !defined(ULTRACANVAS_HAS_CPUID)
+    #if defined(_M_ARM64) || defined(__aarch64__)
+            return "ARM64";
+    #elif defined(_M_ARM) || defined(__arm__)
+            return "ARM";
+    #else
+            return "unknown (no CPUID on this architecture)";
+    #endif
+#else
+            unsigned int regs[4] = {};
+            if (!CpuIdRaw(0x80000000u, 0, regs) || regs[0] < 0x80000004u) return "unknown";
+
+            char brand[49] = {};
+            for (unsigned int i = 0; i < 3; ++i) {
+                if (!CpuIdRaw(0x80000002u + i, 0, regs)) return "unknown";
+                std::memcpy(brand + i * 16, regs, 16);
+            }
+            brand[48] = '\0';
+            std::string out(brand);
+            // The brand string is space-padded at both ends.
+            while (!out.empty() && out.front() == ' ') out.erase(out.begin());
+            while (!out.empty() && out.back()  == ' ') out.pop_back();
+            return out.empty() ? "unknown" : out;
+#endif
+        }
+
+        // "x64 process emulated on ARM64" and friends. An x64 build running on an
+        // ARM64 machine is the single most likely reason for an unsupported
+        // instruction: the emulator implements a subset, so a binary tuned for
+        // the build machine's CPU faults even though both are "x64".
+        std::string EmulationDescription() {
+            using IsWow64Process2Func = BOOL(WINAPI*)(HANDLE, USHORT*, USHORT*);
+            HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+            if (!kernel32) return "";
+            auto isWow64Process2 = reinterpret_cast<IsWow64Process2Func>(
+                reinterpret_cast<void (*)()>(GetProcAddress(kernel32, "IsWow64Process2")));
+            if (!isWow64Process2) return "";  // pre-1511; no emulation to report
+
+            USHORT processMachine = 0, nativeMachine = 0;
+            if (!isWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine)) return "";
+
+            const char* native = nullptr;
+            switch (nativeMachine) {
+                case IMAGE_FILE_MACHINE_ARM64: native = "ARM64"; break;
+                case IMAGE_FILE_MACHINE_AMD64: native = "x64";   break;
+                case IMAGE_FILE_MACHINE_I386:  native = "x86";   break;
+                default: return "";
+            }
+            // IMAGE_FILE_MACHINE_UNKNOWN for processMachine means "not running
+            // under WOW64", i.e. the image matches the native machine.
+            if (processMachine == IMAGE_FILE_MACHINE_UNKNOWN) return "";
+
+            const char* image = (processMachine == IMAGE_FILE_MACHINE_AMD64) ? "x64"
+                              : (processMachine == IMAGE_FILE_MACHINE_I386)  ? "x86"
+                                                                             : "?";
+            return std::string(", EMULATED: ") + image + " image on a " + native + " machine";
+        }
+
+        std::string CpuSummary() {
+            std::string out = CpuBrand();
+            out += " [";
+            struct Feature { int id; const char* name; };
+            const Feature features[] = {
+                { PF_SSE4_2_INSTRUCTIONS_AVAILABLE,   "SSE4.2" },
+                { PF_AVX_INSTRUCTIONS_AVAILABLE,      "AVX"    },
+                { PF_AVX2_INSTRUCTIONS_AVAILABLE,     "AVX2"   },
+                { PF_AVX512F_INSTRUCTIONS_AVAILABLE,  "AVX512F"},
+            };
+            bool first = true;
+            for (const Feature& feature : features) {
+                if (!IsProcessorFeaturePresent(static_cast<DWORD>(feature.id))) continue;
+                if (!first) out += " ";
+                out += feature.name;
+                first = false;
+            }
+            if (first) out += "no AVX";
+            out += "]";
+            out += EmulationDescription();
+            return out;
+        }
+
+        // Hex dump of the bytes the CPU refused, so the instruction can be
+        // identified. VirtualQuery first: the address faulted on decode, so it is
+        // normally readable, but a crash handler must not take that on trust.
+        void FormatBytesAt(const void* address, char* out, size_t capacity) {
+            if (capacity) out[0] = '\0';
+            if (!address || capacity < 8) return;
+
+            MEMORY_BASIC_INFORMATION info = {};
+            if (VirtualQuery(address, &info, sizeof(info)) != sizeof(info)) return;
+            if (info.State != MEM_COMMIT) return;
+            const DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                   PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+                                   PAGE_EXECUTE_WRITECOPY;
+            if (!(info.Protect & readable)) return;
+            if (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) return;
+
+            // Stay inside the queried region so a 16-byte read cannot run off it.
+            const auto  base      = static_cast<const unsigned char*>(address);
+            const auto  regionEnd = static_cast<const unsigned char*>(info.BaseAddress) +
+                                    info.RegionSize;
+            const size_t available = static_cast<size_t>(regionEnd - base);
+            const size_t count     = available < 16 ? available : 16;
+
+            size_t used = 0;
+            for (size_t i = 0; i < count && used + 4 < capacity; ++i) {
+                const int written = std::snprintf(out + used, capacity - used, "%02X ", base[i]);
+                if (written <= 0) break;
+                used += static_cast<size_t>(written);
+            }
+            if (used && used <= capacity) out[used - 1] = '\0';
+        }
+
         // Appends one line to the crash log with no allocation and no locking.
         void CrashLogLine(const char* line) {
             if (!gCrashLogPath[0]) return;
@@ -139,8 +313,22 @@ namespace UltraCanvas {
                 GetModuleFileNameA(module, moduleName, MAX_PATH);
             }
 
-            // Deliberately small: a stack-overflow exception runs this filter
-            // on the stack that just ran out.
+            // An instruction fault is the one case where naming the exception is
+            // not enough to act on, so it gets the bytes the CPU refused and what
+            // this machine actually supports. Every other case — a stack overflow
+            // above all, which runs this filter on the stack that just ran out —
+            // keeps to the small buffer and the short message.
+            char detail[384] = "";
+            if (code == EXCEPTION_ILLEGAL_INSTRUCTION || code == EXCEPTION_PRIV_INSTRUCTION) {
+                char bytes[64] = "";
+                FormatBytesAt(address, bytes, sizeof(bytes));
+                std::snprintf(detail, sizeof(detail),
+                              "\nThis CPU: %s\nBytes at the fault: %s\nThe binary was built for a "
+                              "CPU this one is not. Rebuild it without -march=native "
+                              "(or /arch:AVX*) so it targets a baseline this machine has.",
+                              gCrashCpuSummary, bytes[0] ? bytes : "<unreadable>");
+            }
+
             char message[512];
             std::snprintf(message, sizeof(message),
                           "%s crashed: exception 0x%08lX (%s) at 0x%016llX in %s. %s",
@@ -149,6 +337,18 @@ namespace UltraCanvas {
                           static_cast<unsigned long long>(
                               reinterpret_cast<std::uintptr_t>(address)),
                           moduleName, gCrashOsVersion);
+
+            if (detail[0]) {
+                CrashLogLine(message);
+                CrashLogLine(detail);
+                if (gCrashDialogAllowed) {
+                    char full[1024];
+                    std::snprintf(full, sizeof(full), "%s%s", message, detail);
+                    MessageBoxA(nullptr, full, gCrashAppName,
+                                MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
+                }
+                return EXCEPTION_CONTINUE_SEARCH;
+            }
 
             CrashLogLine(message);
             if (gCrashDialogAllowed) {
@@ -287,6 +487,7 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: app          = " << appName << std::endl;
         debugOutput << "UltraCanvas: os           = " << GetWindowsVersionString() << std::endl;
         debugOutput << "UltraCanvas: architecture = " << ProcessArchitecture() << std::endl;
+        debugOutput << "UltraCanvas: cpu          = " << CpuSummary() << std::endl;
         debugOutput << "UltraCanvas: executable   = " << CurrentModulePath() << std::endl;
         debugOutput << "UltraCanvas: working dir  = " << CurrentDirectory() << std::endl;
         debugOutput << "UltraCanvas: elevated     = " << (ProcessIsElevated() ? "yes" : "no") << std::endl;
@@ -307,6 +508,9 @@ namespace UltraCanvas {
     void InstallWindowsCrashReporter(const std::string& appName) {
         CopyToFixedBuffer(gCrashAppName, sizeof(gCrashAppName), appName);
         CopyToFixedBuffer(gCrashOsVersion, sizeof(gCrashOsVersion), GetWindowsVersionString());
+        // Captured now, while the process is healthy: CPUID and the feature
+        // queries are not things to be doing inside the filter.
+        CopyToFixedBuffer(gCrashCpuSummary, sizeof(gCrashCpuSummary), CpuSummary());
         gCrashDialogAllowed = !DialogsSuppressed();
 
         // Resolve the log path here rather than asking the debug sink for it:
