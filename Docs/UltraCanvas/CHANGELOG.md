@@ -1,3 +1,17 @@
+#### 2026-08-28 *0.3.81*
+- **TreeView: a double-click or the Enter key on a lazily-loaded node left it
+  empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
+  which flips the expansion state without firing `onNodeExpanded` — the
+  callback a lazily-populated tree loads its children from. The node then sat
+  expanded showing only its "..." placeholder; the UltraFiler's curated Home
+  entry made it visible (double-clicking *Home* showed nothing until
+  something else - navigating into a subfolder, or collapsing and re-opening
+  it with the expand button, which did fire the callback - loaded the
+  children). All toggle gestures - the expand button, double-click, Enter -
+  now go through the new public `UltraCanvasTreeView::ToggleNode()`, which
+  routes into `ExpandNode` / `CollapseNode`, so `onNodeExpanded` /
+  `onNodeCollapsed` fire for every gesture.
+
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
   executables are linked as GUI-subsystem binaries, which gives them no
