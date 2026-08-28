@@ -42,6 +42,14 @@
 // An explicit file list (ShowFileList) is sorted like a folder listing unless
 // SetFileListOrderPreserved() asks for the given order to be kept — for lists
 // whose order is the information, such as a most-recently-used history.
+// A name filter (SetNameFilter) narrows the displayed listing to the entries
+// whose name contains the text, without touching the disk — hosts wire a
+// search field's onTextChanged to it for filter-as-you-type; while the filter
+// hides every entry, a host-provided centered action button
+// (SetFilterEmptyAction, e.g. "Search in sub folders") offers the escalation.
+// A printable key pressed in the widget walks the listing Explorer-style:
+// the first entry whose name starts with that character is selected, and the
+// same key again moves on to the next such entry (wrapping around).
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
@@ -54,8 +62,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.19.0
-// Last Modified: 2026-08-27
+// Version: 1.20.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -377,6 +385,34 @@ namespace UltraCanvas {
         void SetFileListOrderPreserved(bool preserved);
         bool IsFileListOrderPreserved() const { return preserveFileListOrder; }
 
+        // ===== NAME FILTER (filter-as-you-type) =====
+        // Case-insensitive substring filter over the displayed names: while
+        // set, only the matching entries are listed (folder listing and file
+        // list alike). The narrowed listing is re-derived from the already
+        // scanned entries — no disk rescan per keystroke — and "" shows
+        // everything again. SetPath() clears the filter: it belonged to the
+        // listing it was typed against. Hosts wire a search field's
+        // onTextChanged to this for filter-as-you-type.
+        void SetNameFilter(const std::string& filter);
+        const std::string& GetNameFilter() const { return nameFilter; }
+        // Centered action button shown instead of the plain "no matches"
+        // notice while the filter hides every entry — UltraFiler puts
+        // "Search in sub folders" there to escalate the filter into its
+        // recursive search. An empty label (or callback) shows the plain
+        // notice again.
+        void SetFilterEmptyAction(const std::string& label,
+                                  std::function<void()> action);
+
+        // ===== TYPE-AHEAD (single-letter keyboard navigation) =====
+        // Selects the next entry — after the current selection, wrapping
+        // around — whose name starts with `ch` (case-insensitive); when the
+        // current selection does not start with `ch`, the first such entry.
+        // This is what a printable key pressed in the widget does, so
+        // pressing "a" repeatedly walks through every entry starting with
+        // "a"; hosts can also route keys here from a window-level filter.
+        // False when no displayed entry matches.
+        bool SelectNextEntryStartingWith(char ch);
+
         // ===== VIEW =====
         void SetViewType(FilerViewType type);
         FilerViewType GetViewType() const { return viewType; }
@@ -674,8 +710,17 @@ namespace UltraCanvas {
         void OpenExtractDialog();
         static bool ClipboardHasContent();
 
-        // "New >" document kinds (replaces the default seven).
+        // "New >" document kinds (replaces the default seven). The getter
+        // lets a host mirror the submenu elsewhere — UltraFiler's command-bar
+        // "New folder ▾" split button lists exactly these.
         void SetNewDocumentTypes(const std::vector<FilerNewDocumentType>& types);
+        const std::vector<FilerNewDocumentType>& GetNewDocumentTypes() const {
+            return newDocumentTypes;
+        }
+        // Creating an entry (either method below) first returns a file-list
+        // display to the folder and ends an active name filter: the fresh
+        // entry has to be visible and its inline rename editor reachable,
+        // which neither a result display nor a narrowed listing guarantees.
         void CreateNewDocument(const FilerNewDocumentType& type);
         // Create a subfolder of the shown folder ("New folder", uniquely
         // numbered when that name is taken) and open the inline rename editor
@@ -782,6 +827,17 @@ namespace UltraCanvas {
         // Leave a file-list display in the order it was given (see
         // SetFileListOrderPreserved).
         bool preserveFileListOrder = false;
+        // ===== NAME FILTER =====
+        // The active filter (compared lowercase), the full listing it was
+        // applied to — kept only while a filter is set, so widening or
+        // dropping the filter never rescans the disk — and the host-provided
+        // centered action button of the "no matches" state (a real
+        // UltraCanvasButton child, drawn by Render like the rename editor).
+        std::string nameFilter;
+        std::vector<FilerEntry> filterAllEntries;
+        std::string filterEmptyLabel;
+        std::function<void()> onFilterEmptyAction;
+        std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
@@ -1473,6 +1529,16 @@ namespace UltraCanvas {
         // attention icon above the message, vertically centered in the view.
         void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
                             const std::string& message);
+        // ===== NAME FILTER (helpers) =====
+        bool EntryMatchesNameFilter(const FilerEntry& e) const;
+        // Erase the entries the active filter hides (no-op without one).
+        void ApplyNameFilterToEntries();
+        // Create / show / hide the "no matches" action button to match the
+        // current filter and listing; positioned under the notice each frame
+        // by PositionFilterEmptyButton (called from Render, which measures
+        // the label with the pass's context).
+        void UpdateFilterEmptyButton();
+        void PositionFilterEmptyButton(IRenderContext* ctx);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
