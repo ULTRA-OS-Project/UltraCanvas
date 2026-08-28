@@ -29,9 +29,13 @@
 #  undef _WIN32_WINNT
 #  define _WIN32_WINNT 0x0600
 #endif
-#if !defined(NTDDI_VERSION) || NTDDI_VERSION < 0x06000000
+// Keep NTDDI_VERSION consistent with _WIN32_WINNT: the Windows SDK's sdkddkver.h errors on a
+// mismatch when the host build already sets a higher _WIN32_WINNT (e.g. Ladybird's 0x0A00). NTDDI's
+// high word IS the _WIN32_WINNT value, so derive it the way the SDK does by default; the floor above
+// keeps _WIN32_WINNT (hence NTDDI) >= Vista. Works under both MinGW-w64 and MSVC/clang-cl.
+#if !defined(NTDDI_VERSION) || (NTDDI_VERSION >> 16) < _WIN32_WINNT
 #  undef NTDDI_VERSION
-#  define NTDDI_VERSION 0x06000000
+#  define NTDDI_VERSION (_WIN32_WINNT << 16)
 #endif
 
 #include "UltraCanvasFileAssociationsBackend.h"
