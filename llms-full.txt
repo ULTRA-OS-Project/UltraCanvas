@@ -47620,6 +47620,54 @@ kill the process before it can touch the filesystem. Either the binary predates
 application's own log, opened and never flushed), or the process stopped
 between opening it and the first flushed line. Go to the next section.
 
+## ILLEGAL_INSTRUCTION: built for a CPU this machine is not
+
+```
+Ladybird crashed: exception 0xC000001D (ILLEGAL_INSTRUCTION (binary uses CPU
+instructions this machine lacks)) at 0x00007FF8599C3793 in
+C:\...\Ladybird\bin\lagom-gfx.dll. Windows 11 (10.0 build 26200)
+This CPU: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz [SSE4.2 AVX AVX2]
+Bytes at the fault: 62 F1 7C 48 28 C1 ...
+The binary was built for a CPU this one is not. Rebuild it without
+-march=native (or /arch:AVX*) so it targets a baseline this machine has.
+```
+
+Nothing is wrong with the code at that address. The compiler emitted an
+instruction the machine will not execute, and the loader was happy to map it —
+the fault only happens when execution reaches it. Which is why this crash tends
+to land in a *graphics* or *image* library: those are where the vector code is.
+
+The reporter prints three things that settle it between them:
+
+- **the module** — which library was compiled too aggressively;
+- **this CPU** — the brand string and which instruction sets the machine
+  actually offers, read through `IsProcessorFeaturePresent` so it reports what
+  the OS *permits*, not what the silicon has;
+- **the bytes at the fault** — enough to identify the instruction. A `62`
+  prefix is EVEX, i.e. AVX-512; `C5` or `C4` is VEX, i.e. AVX/AVX2.
+
+Two causes, and the CPU line tells you which:
+
+1. **The build machine had a newer CPU than the target.** `-march=native` bakes
+   in whatever the *builder's* processor supported. Build with an explicit
+   baseline instead — `-march=x86-64-v2` (SSE4.2, POPCNT) is a safe floor for
+   anything that runs Windows 10 or 11; `-march=x86-64-v3` requires AVX2 and
+   excludes a lot of still-current laptops and most virtual machines. Never ship
+   `-march=native` binaries.
+2. **The binary is x64 running under emulation on an ARM64 machine.** The
+   reporter appends `EMULATED: x64 image on a ARM64 machine` when it detects
+   this (via `IsWow64Process2`). Windows on ARM emulates a *subset* of x86:
+   AVX-512 is not available at all, and AVX/AVX2 only on recent builds. The fix
+   is to ship a native ARM64 build; lowering the baseline only helps if the
+   emulator covers what is left.
+
+**This is the failure most likely to be misread as an operating-system
+problem.** "Works on Windows 10, crashes on Windows 11" is what you observe when
+the two machines also differ in CPU — which they usually do, because the
+Windows 11 machine is a different box. The OS is a coincidence; the instruction
+set is the cause. The banner's `cpu` line records this on every start, so
+comparing two machines is a diff of two log files rather than a guess.
+
 ## Alive but no window
 
 If `uc-diagnose.ps1` reports the process is still running after 20 seconds with
@@ -47682,9 +47730,11 @@ of how often they bite:
    `package-win.sh` refuses to ship the test and diagnostic executables at all.
    Check the AV product's quarantine log.
 4. **A different CPU, not a different Windows.** The Windows 11 machine is
-   usually also newer or older hardware. Exit code `0xC000001D`
+   usually also different hardware. Exception `0xC000001D`
    (`ILLEGAL_INSTRUCTION`) means the binary uses instructions this CPU does not
-   have; build without `-march=native`.
+   have — see [ILLEGAL_INSTRUCTION](#illegal_instruction-built-for-a-cpu-this-machine-is-not)
+   above, which is the most common real cause of a "works on 10, not on 11"
+   report and has nothing to do with the OS version.
 5. **A different GPU driver.** OpenGL surfaces go through WGL
    (`GLContextManagerWGL_MSWindows.cpp`), which needs a vendor driver for a
    3.x core context; Microsoft's fallback renderer only offers OpenGL 1.1.

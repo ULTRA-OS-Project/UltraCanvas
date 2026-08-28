@@ -1,3 +1,36 @@
+#### 2026-08-28 *0.3.82*
+- **An ILLEGAL_INSTRUCTION crash now names what the machine actually has.**
+  Reporting `0xC000001D` and the faulting module is only half an answer: it says
+  the binary used an instruction this CPU will not execute, but not which
+  instruction, and not what the CPU does support — so the next step was still
+  guesswork. For that exception (and `PRIV_INSTRUCTION`) the reporter now adds
+  the CPU brand string, the instruction sets the machine offers, and a hex dump
+  of the bytes at the fault. `62` is an EVEX prefix (AVX-512), `C5`/`C4` is VEX
+  (AVX/AVX2) — enough to identify the instruction from the dialog alone.
+- Feature detection goes through `IsProcessorFeaturePresent`, not raw CPUID
+  bits, so it reports what the OS *permits*. That matters for the second cause
+  of this crash: an x64 binary running under emulation on an ARM64 machine,
+  which is now called out explicitly (`EMULATED: x64 image on a ARM64 machine`,
+  via `IsWow64Process2`). Windows on ARM emulates only a subset of x86 — no
+  AVX-512 at all — so a binary that runs on every x64 box still faults there.
+- The startup banner gains the same `cpu` line, so comparing a machine that
+  works against one that does not is a diff of two logs rather than a guess.
+  This is the failure most often misread as an operating-system problem:
+  "works on Windows 10, crashes on Windows 11" is what you see when the two
+  machines also differ in CPU, which they usually do.
+- Only the instruction-fault path pays for any of this. The extra text is built
+  only for those two exception codes, and everything else — a stack overflow
+  above all, which runs the filter on the stack that just ran out — keeps to the
+  original small buffer and short message. CPUID and the feature queries run at
+  install time, while the process is still healthy; the byte dump is guarded by
+  `VirtualQuery` so the handler never reads an uncommitted page.
+- `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` gains an
+  "ILLEGAL_INSTRUCTION: built for a CPU this machine is not" section covering
+  both causes, why the crash lands in graphics and image libraries (that is
+  where the vector code is), and why `-march=native` must never be shipped —
+  `-march=x86-64-v2` is a safe floor for Windows 10/11, while `v3` requires AVX2
+  and excludes many current laptops and most virtual machines.
+
 #### 2026-08-27 *0.3.81*
 - **Telling a crashed Windows app from a hung one.** `uc-diagnose.bat` can only
   report what a process exits with, which is nothing at all when it does not
