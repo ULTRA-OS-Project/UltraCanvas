@@ -1,3 +1,75 @@
+#### 2026-08-28 *0.3.82*
+- **An ILLEGAL_INSTRUCTION crash now names what the machine actually has.**
+  Reporting `0xC000001D` and the faulting module is only half an answer: it says
+  the binary used an instruction this CPU will not execute, but not which
+  instruction, and not what the CPU does support — so the next step was still
+  guesswork. For that exception (and `PRIV_INSTRUCTION`) the reporter now adds
+  the CPU brand string, the instruction sets the machine offers, and a hex dump
+  of the bytes at the fault. `62` is an EVEX prefix (AVX-512), `C5`/`C4` is VEX
+  (AVX/AVX2) — enough to identify the instruction from the dialog alone.
+- Feature detection goes through `IsProcessorFeaturePresent`, not raw CPUID
+  bits, so it reports what the OS *permits*. That matters for the second cause
+  of this crash: an x64 binary running under emulation on an ARM64 machine,
+  which is now called out explicitly (`EMULATED: x64 image on a ARM64 machine`,
+  via `IsWow64Process2`). Windows on ARM emulates only a subset of x86 — no
+  AVX-512 at all — so a binary that runs on every x64 box still faults there.
+- The startup banner gains the same `cpu` line, so comparing a machine that
+  works against one that does not is a diff of two logs rather than a guess.
+  This is the failure most often misread as an operating-system problem:
+  "works on Windows 10, crashes on Windows 11" is what you see when the two
+  machines also differ in CPU, which they usually do.
+- CPUID is reached through the compiler's own `<cpuid.h>` (`__get_cpuid_count`)
+  on GCC and clang, `<intrin.h>` on MSVC, and is compiled **only** where the
+  architecture has it. The guard is on the architecture, never on the compiler:
+  MSYS2's CLANGARM64 toolchain defines `__clang__`, so a "GCC or MSVC" split
+  sends an ARM64 target down the MSVC-intrinsic path and asks for `__cpuidex`
+  on a CPU with no CPUID at all. Going through `<cpuid.h>` rather than inline
+  asm also gets the 32-bit-PIC EBX save/restore right, which a naive `"=b"`
+  output constraint does not. On ARM the brand string is simply "ARM64".
+- Only the instruction-fault path pays for any of this. The extra text is built
+  only for those two exception codes, and everything else — a stack overflow
+  above all, which runs the filter on the stack that just ran out — keeps to the
+  original small buffer and short message. CPUID and the feature queries run at
+  install time, while the process is still healthy; the byte dump is guarded by
+  `VirtualQuery` so the handler never reads an uncommitted page.
+- `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` gains an
+  "ILLEGAL_INSTRUCTION: built for a CPU this machine is not" section covering
+  both causes, why the crash lands in graphics and image libraries (that is
+  where the vector code is), and why `-march=native` must never be shipped —
+  `-march=x86-64-v2` is a safe floor for Windows 10/11, while `v3` requires AVX2
+  and excludes many current laptops and most virtual machines.
+
+#### 2026-08-27 *0.3.81*
+- **Telling a crashed Windows app from a hung one.** `uc-diagnose.bat` can only
+  report what a process exits with, which is nothing at all when it does not
+  exit. A host that starts, opens its log file and then never shows a window
+  looks identical to one that died on the spot — and the two have nothing in
+  common as bugs. New `scripts/uc-diagnose.ps1` launches the executable, watches
+  it for 20 seconds and returns one of three verdicts: **exited** (with the
+  decoded exit code), **window appeared**, or **alive with no window** — the
+  last with the CPU time that separates "blocked on a wait" from "spinning".
+  It also lists the child processes, any Windows event-log entry naming the
+  executable, and the framework log, and leaves the process running to be
+  inspected. Windows PowerShell 5.1 and PowerShell 7 both work; it changes
+  nothing on the machine. Ships in the Windows package next to the batch file.
+- It starts the process through `[System.Diagnostics.Process]::Start` rather
+  than `Start-Process -PassThru`, whose returned object can report `ExitCode` 0
+  for a process that exited non-zero — enough to file a crash as a clean exit.
+  The same trap is now documented for anyone testing by hand: **PowerShell does
+  not wait for a GUI-subsystem process**, so `$LASTEXITCODE` after `.\App.exe`
+  is whatever ran before it, not the app's code. `cmd` does wait, which is why
+  the batch file can read `%ERRORLEVEL%`.
+- This release is the first to carry the Windows event loop's servicing of host
+  file-descriptor watches (`PollAndServiceFdWatches()`): registered Winsock
+  sockets are polled around the `MsgWaitForMultipleObjectsEx()` wait, and that
+  wait is bounded so level-triggered readiness is picked up promptly. Before it,
+  `AddFdWatch()` was honoured on Linux and ignored on Windows, so a host driving
+  UltraCanvas from its own loop — Ladybird's IPC to its WebContent process is
+  the motivating case — waited forever for a reply the loop would never deliver:
+  no crash, no log, no window. `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md`
+  gains an "Alive but no window" section that walks that symptom back to its
+  cause.
+
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
   executables are linked as GUI-subsystem binaries, which gives them no

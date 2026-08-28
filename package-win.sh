@@ -214,7 +214,8 @@ cp -r Apps/DemoApp/*.cpp $DIST_DIR/Resources/DemoApp/
 # so Notepad shows it correctly. See
 # Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md.
 sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-diagnose.bat" > "$DIST_DIR/uc-diagnose.bat"
-echo "  Added uc-diagnose.bat (startup troubleshooting launcher)"
+sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-diagnose.ps1" > "$DIST_DIR/uc-diagnose.ps1"
+echo "  Added uc-diagnose.bat + uc-diagnose.ps1 (startup troubleshooting launchers)"
 
 cd $DIST_DIR
 zip -r ../$PACKAGE_ZIP *
