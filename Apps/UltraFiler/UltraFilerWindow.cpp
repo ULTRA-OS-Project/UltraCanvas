@@ -471,6 +471,31 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
         return true;
     }, { UCEventType::KeyDown });
 
+    // A letter typed anywhere in the window — outside a text field — walks
+    // the visible folder listing Explorer-style: the first entry starting
+    // with it, then, on the same letter again, the next such entry (the
+    // filer's type-ahead). This routes the key to the visible filer while
+    // the keyboard focus sits on some other control; the filer handles its
+    // own keys when it is focused itself.
+    window->InstallEventFilter("ufl-typeahead",
+            [this](const UCEvent& e) -> bool {
+        if (e.ctrl || e.alt || e.meta) return false;
+        if (e.character <= 32 ||
+            static_cast<unsigned char>(e.character) >= 127) return false;
+        if (window->GetActivePopupElement()) return false;
+        UltraCanvasUIElement* focused = window->GetFocusedElement();
+        // Text entry keeps its characters (the search field, a rename
+        // editor, a dialog's name field, ...), and a focused filer — the
+        // folder display, the folder preview, a History page — handles its
+        // own type-ahead in its OnEvent.
+        if (dynamic_cast<UltraCanvasTextInput*>(focused)) return false;
+        if (dynamic_cast<UltraCanvasFilerWidget*>(focused)) return false;
+        UltraCanvasFilerWidget* f = VisibleFiler();
+        if (!f) return false;
+        if (f->WantsEscapeKey()) return false;  // rename / drag / dialog run
+        return f->SelectNextEntryStartingWith(e.character);
+    }, { UCEventType::KeyDown });
+
     preview = CreateMediaViewer("ufl-preview", 0, 0, 0, 0);
     // The pane is added / removed as the selection changes; the viewer must
     // not steal the keyboard focus from the filer on every appearance.
@@ -905,6 +930,22 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
 // ===== SEARCH =====
 
+void UltraFilerWindow::ApplyLiveSearchFilter(const std::string& text) {
+    // The filter narrows the folder display, so typing leaves the History /
+    // Favorites views.
+    ShowBrowsingView();
+    if (!filer) return;
+    // Typing filters the folder itself: a recursive-result display from an
+    // earlier Enter ends first (SetPath leaves file-list mode and drops the
+    // old name filter with it).
+    if (filer->IsShowingFileList()) {
+        if (FilerTabState* tab = ActiveTabState()) tab->searchQuery.clear();
+        filer->SetOpenPathMenuItemVisible(false);
+        filer->SetPath(filer->GetPath());
+    }
+    filer->SetNameFilter(text);
+}
+
 void UltraFilerWindow::RunSearch(const std::string& query) {
     // The results are shown in the folder display, so a search leaves the
     // History / Favorites views.
@@ -919,6 +960,10 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
 
     const std::string root = filer->GetPath();
     if (root.empty()) return;
+
+    // The recursive results replace the as-you-type folder filter — they are
+    // an explicit file list, not a narrowed folder listing.
+    filer->SetNameFilter("");
 
     std::string needle = query;
     std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
@@ -1026,11 +1071,17 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sep2->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep2);
 
-    // Recursive name search under the current folder; Enter runs it, an
-    // empty query returns to the normal folder display.
+    // Search field. Typing filters the shown folder as-you-type (the
+    // filer's name filter); Enter runs the recursive search under the
+    // current folder — as does the "Search in sub folders" button the
+    // filer centers when the filter matches nothing. An empty field
+    // returns to the normal folder display.
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
     searchInput->SetFontSize(kUiFontSize);
     searchInput->SetPlaceholder("Search");
+    searchInput->onTextChanged = [this](const std::string& text) {
+        ApplyLiveSearchFilter(text);
+    };
     searchInput->onEnterPressed = [this](const std::string& text) {
         RunSearch(text);
         return true;
@@ -1796,6 +1847,15 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onPathChanged = [this, tab](const std::string& path) {
         HandlePathChanged(tab, path);
     };
+    // When the as-you-type filter matches nothing in the folder, the filer
+    // centers this escalation: the same recursive search Enter runs.
+    tab->filer->SetFilterEmptyAction("Search in sub folders", [this, tab]() {
+        if (!IsActiveTab(tab) || !tab->filer) return;
+        // Copied: RunSearch clears the filer's filter, which would otherwise
+        // empty the query out from under the search.
+        const std::string query = tab->filer->GetNameFilter();
+        RunSearch(query);
+    });
     tab->filer->onSelectionChanged = [this, tab](const std::vector<FilerEntry>&) {
         if (!IsActiveTab(tab)) return;
         UpdateStatusBar();
@@ -1904,7 +1964,14 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
         BuildFolderBreadcrumb(breadcrumb.get(), path,
                               [this](const std::string& folder) { NavigateTo(folder); });
     }
-    if (searchInput) searchInput->SetText(tab->searchQuery);
+    // The field shows whatever search state the tab is in: the recursive
+    // query while its results are displayed, else the tab's live filter.
+    if (searchInput) {
+        searchInput->SetText(!tab->searchQuery.empty()
+                                     ? tab->searchQuery
+                                     : (tab->filer ? tab->filer->GetNameFilter()
+                                                   : std::string()));
+    }
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
@@ -2483,7 +2550,11 @@ void UltraFilerWindow::UpdateStatusBar() {
         return;
     }
     if (!filer) return;
-    statusLabel->SetText(DescribeFilerContent(filer.get()));
+    std::string text = DescribeFilerContent(filer.get());
+    // A live filter changes what the counts describe — say so.
+    if (!filer->GetNameFilter().empty())
+        text += "    |    filtered by \"" + filer->GetNameFilter() + "\"";
+    statusLabel->SetText(text);
 }
 
 void UltraFilerWindow::UpdateWindowTitle() {

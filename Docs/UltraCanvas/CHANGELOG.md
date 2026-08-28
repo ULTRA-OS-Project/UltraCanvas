@@ -1,3 +1,25 @@
+#### 2026-08-28 *0.3.81*
+- **UltraCanvasFilerWidget: name filter (filter-as-you-type).**
+  `SetNameFilter(text)` narrows the displayed listing to the names containing
+  the text (case-insensitive) without a disk rescan per keystroke — the full
+  scan is kept while a filter is active — and `""` shows everything again.
+  The filter survives rescans, keeps the selection on the entries that stay
+  visible, and is cleared by `SetPath()` (it belonged to the listing it was
+  typed against). A listing the filter empties shows *"No matches for "…""*,
+  and `SetFilterEmptyAction(label, action)` centers a host-provided
+  escalation button (a real `UltraCanvasButton` child) under that notice.
+- **UltraCanvasFilerWidget: Explorer-style type-ahead.** A printable
+  character selects the first entry whose name starts with it; the same key
+  again walks on to the next such entry, wrapping around.
+  `SelectNextEntryStartingWith(ch)` exposes the step so hosts can route
+  characters typed elsewhere in their window into the visible filer.
+- **UltraFiler: the search field filters as-you-type.** Typing narrows the
+  shown folder immediately (the status bar notes the filter); when nothing
+  matches, a centered **Search in sub folders** button appears, which — like
+  Enter in the field — runs the recursive search that used to require Enter
+  for every query. A letter typed anywhere outside a text field walks the
+  visible listing by first character (window-level type-ahead routing).
+
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
   executables are linked as GUI-subsystem binaries, which gives them no

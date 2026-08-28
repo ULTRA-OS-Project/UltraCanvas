@@ -4,7 +4,9 @@
 // History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
 // bar (New folder / New file, Cut / Copy / Paste / Rename / Delete, the
-// recursive search field, Sort and
+// search field — typing filters the shown folder as-you-type; when nothing
+// matches, a centered "Search in sub folders" button (and the Enter key)
+// escalates to the recursive search —, Sort and
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
 // the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
@@ -35,8 +37,8 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.11.0
-// Last Modified: 2026-08-26
+// Version: 1.12.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -165,8 +167,16 @@ private:
     // ===== SEARCH =====
     // Searches the active tab's folder (recursively) for names containing
     // `query` and shows the matches in the tab's current view mode; an empty
-    // query returns the tab to its normal folder display.
+    // query returns the tab to its normal folder display. Wired to the
+    // search field's Enter and to the filer's "Search in sub folders" button.
     void RunSearch(const std::string& query);
+    // Filter-as-you-type: every edit of the search field narrows the active
+    // tab's folder listing to the names containing the text (the filer's
+    // name filter — no disk walk). When nothing matches, the filer shows the
+    // centered "Search in sub folders" button, which escalates to RunSearch.
+    // An empty text ends the filter (and leaves an earlier recursive-result
+    // display).
+    void ApplyLiveSearchFilter(const std::string& text);
 
     // ===== HISTORY (the clock button) =====
     // Swaps the tree + folder area for the History view and back. Showing it

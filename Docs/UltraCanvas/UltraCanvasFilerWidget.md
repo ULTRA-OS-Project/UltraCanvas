@@ -72,9 +72,11 @@ icon (a vector-drawn warning triangle, so no icon assets are required) with the
 message below it, vertically centered in the folder display. A folder without
 content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
 — the UltraFiler's History and Favorites tabs before anything was recorded or
-pinned, a search without matches — shows **"No entries"**. A widget that never
-had a folder set keeps the plain "(no folder)" text. Icon and text use
-`FilerStyle::secondaryTextColor`.
+pinned, a search without matches — shows **"No entries"**. A listing emptied by
+the [name filter](#name-filter-filter-as-you-type) shows **"No matches for
+"…""** — with the host's escalation button centered under it when one is set
+via `SetFilterEmptyAction()`. A widget that never had a folder set keeps the
+plain "(no folder)" text. Icon and text use `FilerStyle::secondaryTextColor`.
 
 ## Sorting
 
@@ -870,6 +872,14 @@ Delete deletes, F2 renames, Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V select all / copy 
 cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
 same shortcuts are shown next to their commands in the right-click context menu.
+
+A plain **printable character** is Explorer-style type-ahead: it selects the
+first entry whose name starts with that character (case-insensitive), and the
+same key again walks on to the next such entry, wrapping around at the end.
+The step is also callable — `SelectNextEntryStartingWith(ch)` returns whether
+a displayed entry matched — so a host can route characters typed elsewhere in
+its window into the visible filer (the UltraFiler does this with a window
+event filter that stands back while a text input holds the focus).
 Click, Ctrl+click and Shift+click select single items, toggle, and ranges.
 Dragging from **empty space** draws a **rubber band**: every entry the
 rectangle touches becomes the selection, live while the band is dragged
@@ -1000,6 +1010,44 @@ filer->onOpenPath = [this](const FilerEntry& e) {
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
+
+## Name filter (filter-as-you-type)
+
+`SetNameFilter(text)` narrows the displayed listing to the entries whose name
+contains `text` (case-insensitive); `""` shows everything again and
+`GetNameFilter()` reads the filter back. The narrowed listing is re-derived
+from the already scanned entries — no disk rescan per keystroke — which is
+what makes wiring a search field's `onTextChanged` straight to it cheap:
+
+```cpp
+searchField->onTextChanged = [filer](const std::string& text) {
+    filer->SetNameFilter(text);   // filter-as-you-type
+};
+```
+
+The filter applies to whatever is displayed — the folder listing or a
+[file list](#file-list-search-results) — and stays applied through rescans
+(file operations, the folder watch), so entries created or dropped in while a
+filter is active only show when they match. Selection is kept on the entries
+that stay visible, each change resets the scroll to the top, and
+`onFolderRefreshed` fires so the host can refresh its counts. `SetPath()`
+**clears the filter**: it belonged to the listing it was typed against, so
+entering another folder starts unfiltered.
+
+When the filter hides every entry the widget shows "No matches for "…"", and
+a host can center an escalation button under that notice:
+
+```cpp
+filer->SetFilterEmptyAction("Search in sub folders", [this]() {
+    RunRecursiveSearch(filer->GetNameFilter());   // e.g. ShowFileList(matches)
+});
+```
+
+The button (a real `UltraCanvasButton` child) appears only while a filter is
+active, matches nothing, and both a label and a callback are set; an empty
+label removes it. The UltraFiler uses exactly this pair: typing in its search
+field filters the shown folder, and the button — like Enter in the field —
+escalates to the recursive subfolder search.
 
 ## Callbacks
 
