@@ -1,3 +1,22 @@
+#### 2026-08-28 *0.3.83*
+- **The XAR renderer matches Xara Designer Pro X19 output much closer now**
+  — three fidelity fixes found by comparing a real Designer Pro file's
+  render against its author's PDF export, pixel by pixel:
+  - Soft shadows composite at their true darkness: the shadow atom record
+    (`TAG_SHADOW`) carries the exact opacity as a double, which Xara's own
+    export uses — the controller record's coarse percentage field made
+    shadows twice as dark (50% instead of 25% in the reference file). The
+    penumbra also lost its banding: instead of two widened stroke passes,
+    the blur is approximated with eight concentric rings whose alphas walk
+    a smoothstep ramp to half the darkness at the outline.
+  - QuickShapes (rectangles/ellipses/polygons) render bitmap and contone
+    fills now — Designer Pro's image placeholder is a rectangle QuickShape
+    with a bitmap fill, which previously fell back to a flat colour. The
+    path node's bitmap-fill painter is shared instead of duplicated.
+  - A line-level left indent (`TAG_TEXT_LEFT_INDENT` attached to a text
+    line) shifts that line's origin — indented paragraph blocks rendered
+    flush left before.
+
 #### 2026-08-28 *0.3.82*
 - **An ILLEGAL_INSTRUCTION crash now names what the machine actually has.**
   Reporting `0xC000001D` and the faulting module is only half an answer: it says
