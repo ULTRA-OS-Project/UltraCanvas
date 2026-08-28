@@ -17,6 +17,53 @@
     line) shifts that line's origin — indented paragraph blocks rendered
     flush left before.
 
+- **UltraCanvasFilerWidget: name filter (filter-as-you-type).**
+  `SetNameFilter(text)` narrows the displayed listing to the names containing
+  the text (case-insensitive) without a disk rescan per keystroke — the full
+  scan is kept while a filter is active — and `""` shows everything again.
+  The filter survives rescans, keeps the selection on the entries that stay
+  visible, and is cleared by `SetPath()` (it belonged to the listing it was
+  typed against). A listing the filter empties shows *"No matches for "…""*,
+  and `SetFilterEmptyAction(label, action)` centers a host-provided
+  escalation button (a real `UltraCanvasButton` child) under that notice.
+- **UltraCanvasFilerWidget: Explorer-style type-ahead.** A printable
+  character selects the first entry whose name starts with it; the same key
+  again walks on to the next such entry, wrapping around.
+  `SelectNextEntryStartingWith(ch)` exposes the step so hosts can route
+  characters typed elsewhere in their window into the visible filer.
+- **UltraFiler: the search field filters as-you-type.** Typing narrows the
+  shown folder immediately (the status bar notes the filter); when nothing
+  matches, a centered **Search in sub folders** button appears, which — like
+  Enter in the field — runs the recursive search that used to require Enter
+  for every query. A letter typed anywhere outside a text field walks the
+  visible listing by first character (window-level type-ahead routing).
+- **UltraFiler: "New folder ▾" split button.** The command bar's New folder /
+  New file pair is now one split button: the primary section creates a folder
+  (Ctrl+F unchanged), the arrow opens a menu with the same entries as the
+  context menu's "New >" submenu — Folder, then the filer's document kinds
+  (Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video), read live via the
+  widget's new `GetNewDocumentTypes()`. Every creation command first ends the
+  search — the field, the live filter and a recursive-result display — and
+  `CreateNewFolder()` / `CreateNewDocument()` themselves leave a file-list
+  display and drop an active name filter, so the fresh entry is always
+  visible with its inline rename editor open.
+- **UltraCanvasSplitPane: fixed-size panes.** `SetPaneFixedSize(index, px)`
+  pins a pane at an absolute axis size that survives container resizes
+  (maximizing the window included) — only the weighted panes share what a
+  resize changed. Dragging an adjacent splitter still resizes the pane; the
+  dragged size becomes its new fixed size. `SetPaneSizes` updates a fixed
+  pane's absolute size instead of its weight; min/max clamps apply; `0`
+  returns the pane to weight-based sizing.
+- **UltraFiler: the folder tree keeps an absolute width.** It opens at 280px
+  (previously ≈345px proportional) and stays at whatever width the user
+  drags it to — maximizing or resizing the window changes only the folder
+  display's share.
+- **UltraFiler: the folder preview no longer fires on a double-click.**
+  Clicking a folder still shows its content in the detail pane, but only
+  after the double-click interval has passed with the folder still
+  selected — the first click of a double-click that *opens* the folder no
+  longer scans it into the pane (and whatever the pane showed stays put
+  while the delay runs).
 #### 2026-08-28 *0.3.82*
 - **An ILLEGAL_INSTRUCTION crash now names what the machine actually has.**
   Reporting `0xC000001D` and the faulting module is only half an answer: it says
