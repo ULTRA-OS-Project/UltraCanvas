@@ -314,43 +314,14 @@ namespace UltraCanvas {
 
         if (g_silhouettePaint) {
             // Shadow pass: the node's own geometry in the silhouette paint.
-            // The penumbra approximates a gaussian blur with concentric,
-            // fading stroke passes (widest first): each ring's alpha is the
-            // over-composited delta that walks the accumulated coverage up a
-            // smoothstep ramp, so the edge fades smoothly from nothing to
-            // half the shadow darkness at the outline (a gaussian-blurred
-            // edge sits at 50%) with no visible banding; the hard fill then
-            // carries the interior at full darkness.
+            // The penumbra comes from the shadow node's gaussian offset
+            // passes (see XARShadowNode::Render), so the silhouette itself
+            // is a plain hard fill/stroke here.
             const SilhouettePaint& sp = *g_silhouettePaint;
-            float pen = MPtoPx(sp.penumbraMP, scale);
             float w = (isStroked && hasLine) ? line.GetWidthInPixels() * scale
                                              : 0.0f;
             bool fillIt = isFilled && hasFill;
             EmitPath(ctx, scale);
-            ctx->SetLineCap(LineCap::Round);
-            ctx->SetLineJoin(LineJoin::Round);
-            if (pen > 0.5f) {
-                const int passes = 8;
-                const double dark = sp.color.a / 255.0;
-                double prev = 0.0;   // accumulated coverage under the rings
-                for (int i = 1; i <= passes; ++i) {
-                    // Ring i reaches pen*(passes-i+1)/passes beyond the
-                    // outline; its coverage target follows the smoothstep
-                    // of how far in it sits, peaking at dark/2.
-                    double t = static_cast<double>(i) / passes;
-                    double target = 0.5 * dark * t * t * (3.0 - 2.0 * t);
-                    double ringAlpha = (target - prev) / (1.0 - prev);
-                    prev = target;
-                    if (ringAlpha <= 0.0) continue;
-                    Color soft = sp.color;
-                    soft.a = static_cast<uint8_t>(std::min(255.0, ringAlpha * 255.0 + 0.5));
-                    if (soft.a == 0) continue;
-                    ctx->SetStrokePaint(soft);
-                    ctx->SetStrokeWidth(w + 2.0f * pen *
-                            static_cast<float>(passes - i + 1) / passes);
-                    ctx->StrokePathPreserve();
-                }
-            }
             if (fillIt) {
                 ctx->SetFillPaint(sp.color);
                 ctx->FillPathPreserve();
@@ -893,6 +864,53 @@ namespace UltraCanvas {
         // shadow offset, beneath the objects themselves. Nested shadows keep
         // the outermost paint.
         if (!g_silhouettePaint && shadowColor.a > 0) {
+            // The penumbra is a real gaussian blur: blurring the silhouette
+            // equals averaging copies of it shifted over the blur kernel, so
+            // the silhouette renders in several passes at gaussian-
+            // distributed offsets (a deterministic golden-angle spiral,
+            // radii sampled from the radial CDF), each pass at the
+            // over-composited alpha that accumulates to the shadow's
+            // darkness where all passes overlap. Sigma calibrated against a
+            // Designer Pro X19 PDF export: the blur field spans ~3.3 sigma,
+            // and the edge sits at half darkness on the outline.
+            float pen = MPtoPx(blurRadius, scale);
+            double dark = shadowColor.a / 255.0;
+            int passes = 1;
+            if (pen > 0.75f && dark < 0.999) {
+                passes = static_cast<int>(pen * 1.5f);
+                if (passes < 8) passes = 8;
+                if (passes > 64) passes = 64;
+                // Colours composite in 8 bits, so a pass alpha below ~2/255
+                // cannot be expressed; cap the pass count accordingly.
+                int maxPasses = static_cast<int>(std::floor(
+                        std::log(1.0 - dark) / std::log(1.0 - 2.0 / 255.0)));
+                if (maxPasses < 1) maxPasses = 1;
+                if (passes > maxPasses) passes = maxPasses;
+            }
+            // The ideal pass alpha rarely lands on an 8-bit step, so the
+            // passes dither between the two neighbouring steps: k of them
+            // one step higher, spread evenly, make the accumulated product
+            // hit the target darkness.
+            int alphaLo = 255, alphaHi = 255, hiCount = 0;
+            if (passes > 1) {
+                double ideal = 1.0 - std::pow(1.0 - dark, 1.0 / passes);
+                alphaLo = static_cast<int>(std::floor(ideal * 255.0));
+                if (alphaLo < 1) alphaLo = 1;
+                alphaHi = alphaLo < 255 ? alphaLo + 1 : 255;
+                double logLo = std::log(1.0 - alphaLo / 255.0);
+                double logHi = std::log(1.0 - alphaHi / 255.0);
+                if (logHi < logLo) {
+                    double k = (std::log(1.0 - dark) - passes * logLo) /
+                               (logHi - logLo);
+                    hiCount = static_cast<int>(std::lround(k));
+                    if (hiCount < 0) hiCount = 0;
+                    if (hiCount > passes) hiCount = passes;
+                }
+            } else {
+                alphaLo = alphaHi = shadowColor.a;
+            }
+            double sigma = 0.30 * pen;
+
             SilhouettePaint paint{shadowColor, blurRadius};
             ctx->PushState();
             // A glow (type 3) is a symmetric halo; wall/floor shadows are
@@ -901,7 +919,19 @@ namespace UltraCanvas {
                 ctx->Translate(MPtoPx(offsetX, scale), MPtoPx(offsetY, scale));
             }
             g_silhouettePaint = &paint;
-            XARNode::Render(ctx, scale);
+            for (int i = 0; i < passes; ++i) {
+                bool hi = passes > 1 &&
+                          (i + 1) * hiCount / passes != i * hiCount / passes;
+                paint.color.a = static_cast<uint8_t>(hi ? alphaHi : alphaLo);
+                double u = (i + 0.5) / passes;
+                double r = passes > 1
+                        ? sigma * std::sqrt(-2.0 * std::log(1.0 - u)) : 0.0;
+                double angle = i * 2.3999632297286533;   // golden angle
+                ctx->PushState();
+                ctx->Translate(r * std::cos(angle), r * std::sin(angle));
+                XARNode::Render(ctx, scale);
+                ctx->PopState();
+            }
             g_silhouettePaint = nullptr;
             ctx->PopState();
         }

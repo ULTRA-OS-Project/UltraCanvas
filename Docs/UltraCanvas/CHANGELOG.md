@@ -6,9 +6,13 @@
     (`TAG_SHADOW`) carries the exact opacity as a double, which Xara's own
     export uses — the controller record's coarse percentage field made
     shadows twice as dark (50% instead of 25% in the reference file). The
-    penumbra also lost its banding: instead of two widened stroke passes,
-    the blur is approximated with eight concentric rings whose alphas walk
-    a smoothstep ramp to half the darkness at the outline.
+    penumbra is a real gaussian blur now: blurring a silhouette equals
+    averaging copies of it shifted over the kernel, so the silhouette
+    renders in up to 64 passes at gaussian-distributed offsets (a
+    deterministic golden-angle spiral), each at the low alpha that
+    accumulates to the shadow darkness — the measured edge falloff matches
+    the reference export point for point, where the previous widened-stroke
+    fake produced a hard edge with dark banding.
   - QuickShapes (rectangles/ellipses/polygons) render bitmap and contone
     fills now — Designer Pro's image placeholder is a rectangle QuickShape
     with a bitmap fill, which previously fell back to a flat colour. The
