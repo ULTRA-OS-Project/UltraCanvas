@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea_SpellCheck.cpp
 // Spell check integration and character-range geometry for UltraCanvasTextArea
-// Version: 1.0.0
-// Last Modified: 2026-08-24
+// Version: 1.1.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 //
 // Split out of UltraCanvasTextArea.cpp for the same reason as the _Markdown and
@@ -267,9 +267,17 @@ void UltraCanvasTextArea::QueueSpellCheck() {
 
     DropStaleSpellErrors();
 
+    // Options that depend on the text itself - shouldSkipRange above all - have
+    // to be rebuilt from the text this check will actually run on, so the host
+    // gets a copy to fill in rather than the stored options being mutated.
+    SpellCheckOptions options = spellOptions;
+    if (onPrepareSpellCheck) {
+        onPrepareSpellCheck(options, textContent);
+    }
+
     // Queuing replaces any job still pending for this element, so holding a key
     // down builds no backlog.
-    service.QueueCheckText(spellContextId, textContent, spellOptions);
+    service.QueueCheckText(spellContextId, textContent, options);
 }
 
 // The errors on hand describe the text as it was when the check ran. Until the

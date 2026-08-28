@@ -247,6 +247,26 @@ else()
     message(STATUS "  TextAreaSpellCheckTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ULTRATEXTER MARKDOWN SPELL RANGE TEST =====
+# The scanner that keeps fenced code, link targets and math out of UltraTexter's
+# spell check has no framework or editor dependency, so the test builds from
+# that one source file.
+message(STATUS "  Building TexterMarkdownSpellRangesTest...")
+
+add_executable(TexterMarkdownSpellRangesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TexterMarkdownSpellRangesTest.cpp
+    ${ULTRACANVAS_ROOT}/Apps/Texter/UltraCanvasMarkdownSpellRanges.cpp
+)
+target_include_directories(TexterMarkdownSpellRangesTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/Texter)
+target_compile_features(TexterMarkdownSpellRangesTest PRIVATE cxx_std_20)
+set_target_properties(TexterMarkdownSpellRangesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TexterMarkdownSpellRangesTest COMMAND TexterMarkdownSpellRangesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TexterMarkdownSpellRangesTest")
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.

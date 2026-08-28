@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.8.0
-// Last Modified: 2026-08-24
+// Version: 3.9.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -530,6 +530,8 @@ namespace UltraCanvas {
         int GetSelectionMinGrapheme() const;
         LineColumnIndex GetSelectionStart() const { return selectionStart; }
         LineColumnIndex GetSelectionEnd() const { return selectionEnd; }
+        // True when the element-local point falls inside the current selection.
+        bool IsPositionInsideSelection(const Point2Di& pos);
 
         // Clipboard operations
         void CopySelection();
@@ -778,6 +780,28 @@ namespace UltraCanvas {
         TextChangedCallback onTextChanged;
         CursorPositionChangedCallback onCursorPositionChanged;
         SelectionChangedCallback onSelectionChanged;
+
+        // Right-click hook for the host application, invoked before the
+        // built-in spell suggestion popup so an application with a context menu
+        // of its own can splice the suggestions into it instead of getting two
+        // competing menus. Return true when the click was handled.
+        //
+        // The caret is moved to the click *after* this returns true (unless the
+        // click landed inside the selection, which is kept), so a menu action
+        // invoked later - Paste above all - acts where the user clicked. It is
+        // deliberately not moved first: that would make this the caret line,
+        // and GetSpellErrorAtPosition would then hit-test against the previous
+        // caret line's layout. The selection, in contrast, is already updated,
+        // so HasSelection() is what the menu's Cut and Copy will see.
+        std::function<bool(const UCEvent&)> onContextMenu;
+
+        // Called just before a check is queued, with the exact text about to be
+        // checked. Lets the host rebuild content-dependent options: in
+        // particular SpellCheckOptions::shouldSkipRange, whose byte ranges have
+        // to be recomputed from the current text or they go stale after the
+        // first edit. The options passed in are a copy of GetSpellCheckOptions()
+        // and are used for this check only. Runs on the UI thread.
+        std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 
     protected:
         // ----- Gutter / decoration extension points -----

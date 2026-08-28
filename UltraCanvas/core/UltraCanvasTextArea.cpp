@@ -943,6 +943,24 @@ namespace UltraCanvas {
                  selectionStart.columnIndex == selectionEnd.columnIndex);
     }
 
+    // Hit test against the current selection, used by the right-click handler to
+    // decide whether opening a context menu should move the caret.
+    bool UltraCanvasTextArea::IsPositionInsideSelection(const Point2Di& pos) {
+        if (!HasSelection()) return false;
+
+        const LineColumnIndex hit = PosToLineColumn(pos);
+        if (!hit.IsValid()) return false;
+
+        LineColumnIndex a = selectionStart, b = selectionEnd;
+        if (a.lineIndex > b.lineIndex ||
+            (a.lineIndex == b.lineIndex && a.columnIndex > b.columnIndex)) std::swap(a, b);
+
+        if (hit.lineIndex < a.lineIndex || hit.lineIndex > b.lineIndex) return false;
+        if (hit.lineIndex == a.lineIndex && hit.columnIndex < a.columnIndex) return false;
+        if (hit.lineIndex == b.lineIndex && hit.columnIndex >= b.columnIndex) return false;
+        return true;
+    }
+
     int UltraCanvasTextArea::GetSelectionMinGrapheme() const {
         if (!HasSelection()) return -1;
         LineColumnIndex a = selectionStart, b = selectionEnd;
@@ -1446,13 +1464,51 @@ namespace UltraCanvas {
         }
 
 
-        // --- Spell suggestion menu: right-click over a flagged word ---
+        // --- Right-click: context menu ---
         // After the scrollbar and gutter checks: a click on either still
-        // hit-tests to a text position, so testing earlier could open the menu
-        // from the scrollbar. Falls through when the click misses a flagged
-        // word, so ordinary right-click behaviour is unchanged.
-        if (event.button == UCMouseButton::Right && ShowSpellSuggestionMenu(event)) {
-            return true;
+        // hit-tests to a text position, so testing earlier could open a menu
+        // from the scrollbar. Falls through when neither the host nor the spell
+        // checker wants the click, so ordinary right-click behaviour is
+        // unchanged.
+        if (event.button == UCMouseButton::Right) {
+            // Hex view has its own selection and hit test, so the caret is left
+            // to it; the menu still opens.
+            const bool textMode = (editingMode != TextAreaEditingMode::Hex);
+
+            // Hit test and build the menu before the caret moves. Moving it
+            // makes this the caret line, and until the next render
+            // GetActualLineLayout still hands back the previous caret line's
+            // layout - so a hit test run after the move resolves against the
+            // wrong line and lands at column 0.
+            //
+            // A click inside the selection keeps it, so Cut and Copy still act
+            // on what is highlighted; a click outside drops it, so the menu is
+            // built with the selection state its actions will actually see.
+            LineColumnIndex hit = LineColumnIndex::INVALID;
+            bool keepSelection = true;
+            if (textMode) {
+                hit = PosToLineColumn(event.pointer);
+                keepSelection = IsPositionInsideSelection(event.pointer);
+                if (!keepSelection) {
+                    ClearSelection();
+                }
+            }
+            if (!IsFocused()) {
+                SetFocus(true);
+            }
+
+            const bool handled = (onContextMenu && onContextMenu(event)) ||
+                                 ShowSpellSuggestionMenu(event);
+            if (handled) {
+                // Safe now that the menu is built: an action that works at the
+                // caret - Paste above all - acts where the user clicked.
+                if (textMode && !keepSelection && hit.IsValid()) {
+                    SetCursorPosition(hit);
+                }
+                return true;
+            }
+            // Neither wanted the click: fall through to ordinary handling,
+            // which does its own hit test against an unmoved caret.
         }
 
         // --- Markdown link/image click: intercept before cursor move ---

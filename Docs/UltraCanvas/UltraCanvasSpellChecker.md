@@ -319,12 +319,75 @@ textArea->SetSpellCheckEnabled(true);
 That is the whole integration: the element queues on every edit, drains and
 draws while rendering, and offers suggestions on right-click.
 
+### Taking over the right-click menu
+
+An application that already shows a context menu in its editor does not want
+the element's suggestion popup opening on top of it. Set
+`onContextMenu` and build one menu with the suggestions spliced in:
+
+```cpp
+textArea->onContextMenu = [this](const UCEvent& event) -> bool {
+    std::vector<MenuItemData> items;
+
+    if (const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
+                                                                  event.pointer.y)) {
+        // Copy it: applying a suggestion rebuilds the list `hit` points into.
+        const SpellError error = *hit;
+        for (MenuItemData& item : UltraCanvasSpellChecker::BuildSuggestionMenuItems(
+                 error,
+                 [this, error](const std::string& word) {
+                     textArea->ApplySpellSuggestion(error, word);
+                 })) {
+            items.push_back(std::move(item));
+        }
+        items.push_back(MenuItemData::Separator());
+    }
+
+    items.push_back(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", [this]{ Cut(); }));
+    // ... the rest of the application's edit commands ...
+
+    // build and open the menu, then:
+    return true;    // false falls through to the element's own popup
+};
+```
+
+The hook runs before the built-in popup. The caret moves to the click once the
+hook returns `true` — not before, or the hit test above would resolve against
+the previous caret line's layout — so a `Paste` entry acts where the user
+clicked. A click inside the selection keeps it, so `Cut` and `Copy` still act on
+what is highlighted, and `HasSelection()` inside the hook already reflects that.
+
+### Skipping regions the check should not see
+
+`SpellCheckOptions::shouldSkipRange` takes byte ranges of the text being
+checked, so its ranges have to be recomputed whenever the text changes.
+`onPrepareSpellCheck` is called with the exact text about to be checked, on the
+UI thread, and hands over a copy of the options for that one check:
+
+```cpp
+textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string& text) {
+    auto skip = std::make_shared<std::vector<TextByteSpan>>(ScanMarkdownNoSpellRanges(text));
+    options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
+        return SpanCoversRange(*skip, startByte, byteLength);
+    };
+};
+```
+
+Capture the precomputed ranges by value: the predicate itself runs on the
+worker thread and must not read anything the UI thread can change.
+
+UltraTexter does exactly this for markdown documents — see
+`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` for a scanner that covers fenced
+and indented code, inline code spans, link and image targets, autolinks, inline
+HTML, math and YAML front matter.
+
 ## Testing
 
 | Test | What it covers |
 |---|---|
 | `Tests/SpellCheckerTest.cpp` | Tokenizer, skip rules, language names, dictionary, async queue, shutdown. Framework-independent |
 | `Tests/TextAreaSpellCheckTest.cpp` | The element: results reaching it, byte-offset → screen-rectangle mapping, applying a suggestion. Needs a display; runs under Xvfb |
+| `Tests/TexterMarkdownSpellRangesTest.cpp` | UltraTexter's markdown skip scanner: what counts as code, a link target, math or front matter. No dictionary or display needed |
 
 Both skip rather than fail when no dictionary (or no display) is present.
 
