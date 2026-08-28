@@ -1,7 +1,7 @@
 // core/UltraCanvasSplitPane.cpp
 // Split pane container that divides content into N draggable panes along one axis
-// Version: 1.1.0
-// Last Modified: 2026-08-01
+// Version: 1.2.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplitPane.h"
@@ -731,8 +731,23 @@ namespace UltraCanvas {
         for (size_t i = 0; i < panes.size(); ++i) {
             double w = static_cast<double>(std::max(0, pixelSizes[i])) / total;
             panes[i].weight = (w > 0.0) ? w : 0.0001;
+            // A fixed-size pane takes the pixel value literally: this is its
+            // new absolute size (the weight above is inert while fixed).
+            if (panes[i].fixedSize > 0)
+                panes[i].fixedSize = std::max(0, pixelSizes[i]);
         }
         InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetPaneFixedSize(size_t index, int px) {
+        if (index >= panes.size()) return;
+        panes[index].fixedSize = std::max(0, px);
+        InvalidateLayout();
+    }
+
+    int UltraCanvasSplitPane::GetPaneFixedSize(size_t index) const {
+        if (index >= panes.size()) return 0;
+        return panes[index].fixedSize;
     }
 
     void UltraCanvasSplitPane::EnsureSplitterCountMatches() {
@@ -763,25 +778,59 @@ namespace UltraCanvas {
         std::vector<int> sizes(panes.size(), 0);
         if (panes.empty() || availableAxis <= 0) return sizes;
 
+        // Fixed-size panes (SetPaneFixedSize) take their pixels off the top,
+        // clamped to their own min/max and to what the axis still has — a
+        // container resize therefore only moves the weighted panes.
+        std::vector<bool> fixed(panes.size(), false);
+        int fixedTotal = 0;
         double totalWeight = 0.0;
-        for (const auto& p : panes) totalWeight += p.weight;
-        if (totalWeight <= 0.0) totalWeight = static_cast<double>(panes.size());
-
-        // Initial proportional distribution
-        int assigned = 0;
+        size_t weightedCount = 0;
         for (size_t i = 0; i < panes.size(); ++i) {
-            int s = static_cast<int>(std::round(availableAxis * panes[i].weight / totalWeight));
+            const PaneSlot& p = panes[i];
+            if (p.fixedSize > 0) {
+                int s = p.fixedSize;
+                if (p.minSize > 0 && s < p.minSize) s = p.minSize;
+                if (p.maxSize > 0 && s > p.maxSize) s = p.maxSize;
+                s = std::clamp(s, 0, std::max(0, availableAxis - fixedTotal));
+                sizes[i] = s;
+                fixed[i] = true;
+                fixedTotal += s;
+            } else {
+                totalWeight += p.weight;
+                ++weightedCount;
+            }
+        }
+
+        const int weightedAxis = std::max(0, availableAxis - fixedTotal);
+        if (weightedCount == 0) {
+            // Everything fixed: keep the axis filled by dumping the residual
+            // on the last pane, mirroring the weighted fallback below.
+            sizes.back() += (availableAxis - fixedTotal);
+            if (sizes.back() < 0) sizes.back() = 0;
+            return sizes;
+        }
+        if (totalWeight <= 0.0) totalWeight = static_cast<double>(weightedCount);
+
+        // Proportional distribution of the remainder over the weighted panes
+        int assigned = 0;
+        int lastWeighted = -1;
+        for (size_t i = 0; i < panes.size(); ++i) {
+            if (fixed[i]) continue;
+            int s = static_cast<int>(std::round(weightedAxis * panes[i].weight / totalWeight));
             sizes[i] = s;
             assigned += s;
+            lastWeighted = static_cast<int>(i);
         }
-        // Push rounding drift onto the last pane
-        if (!sizes.empty()) {
-            sizes.back() += (availableAxis - assigned);
+        // Push rounding drift onto the last weighted pane
+        if (lastWeighted >= 0) {
+            sizes[lastWeighted] += (weightedAxis - assigned);
         }
 
-        // Single-pass clamp; redistribute slack onto unclamped neighbours
-        std::vector<bool> clamped(panes.size(), false);
+        // Single-pass clamp; redistribute slack onto unclamped neighbours.
+        // Fixed panes count as clamped from the start: their size is settled.
+        std::vector<bool> clamped = fixed;
         for (size_t i = 0; i < panes.size(); ++i) {
+            if (fixed[i]) continue;
             int s = sizes[i];
             int minS = panes[i].minSize;
             int maxS = (panes[i].maxSize > 0) ? panes[i].maxSize : availableAxis;
@@ -917,6 +966,11 @@ namespace UltraCanvas {
         int newB = pairTotal - newA;
         if (newA < 0) newA = 0;
         if (newB < 0) newB = 0;
+
+        // A fixed-size pane follows the drag: the dragged width becomes its
+        // new absolute size, so what the user set survives the next resize.
+        if (panes[a].fixedSize > 0) panes[a].fixedSize = newA;
+        if (panes[b].fixedSize > 0) panes[b].fixedSize = newB;
 
         // Convert all current pane sizes to weights (only a and b changed)
         std::vector<int> currentSizes = dragStartPaneSizes;

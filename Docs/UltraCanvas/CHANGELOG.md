@@ -29,9 +29,17 @@
   `CreateNewFolder()` / `CreateNewDocument()` themselves leave a file-list
   display and drop an active name filter, so the fresh entry is always
   visible with its inline rename editor open.
-- **UltraFiler: the folder tree opens at 280px** (in the default 1280px
-  window; previously ≈345px), leaving more of the width to the folder
-  display. The splitter is draggable as before.
+- **UltraCanvasSplitPane: fixed-size panes.** `SetPaneFixedSize(index, px)`
+  pins a pane at an absolute axis size that survives container resizes
+  (maximizing the window included) — only the weighted panes share what a
+  resize changed. Dragging an adjacent splitter still resizes the pane; the
+  dragged size becomes its new fixed size. `SetPaneSizes` updates a fixed
+  pane's absolute size instead of its weight; min/max clamps apply; `0`
+  returns the pane to weight-based sizing.
+- **UltraFiler: the folder tree keeps an absolute width.** It opens at 280px
+  (previously ≈345px proportional) and stays at whatever width the user
+  drags it to — maximizing or resizing the window changes only the folder
+  display's share.
 
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows
