@@ -5221,6 +5221,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
+        // The fresh document lands in the shown folder and has to be visible
+        // there (with its rename editor reachable): a file-list (search
+        // result) display returns to the folder first, and an active name
+        // filter ends — a narrowed listing cannot guarantee either.
+        if (fileListMode) SetPath(currentPath);
+        else SetNameFilter("");
         if (onNewDocument && onNewDocument(type, currentPath)) {
             Refresh();
             NotifyFolderModified();
@@ -5248,6 +5254,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        // Same as CreateNewDocument: the fresh folder must be visible in the
+        // folder display, so the search-result display and the name filter
+        // both end here.
+        if (fileListMode) SetPath(currentPath);
+        else SetNameFilter("");
         std::error_code ec;
         if (!fs::is_directory(currentPath, ec)) {
             ReportError("Cannot create a folder here: " + currentPath);

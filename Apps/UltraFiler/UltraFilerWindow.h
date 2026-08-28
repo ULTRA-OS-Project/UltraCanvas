@@ -3,7 +3,8 @@
 // a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, the
 // History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
-// bar (New folder / New file, Cut / Copy / Paste / Rename / Delete, the
+// bar (the "New folder ▾" split button — its arrow lists the same kinds as
+// the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
 // search field — typing filters the shown folder as-you-type; when nothing
 // matches, a centered "Search in sub folders" button (and the Enter key)
 // escalates to the recursive search —, Sort and
@@ -177,6 +178,22 @@ private:
     // An empty text ends the filter (and leaves an earlier recursive-result
     // display).
     void ApplyLiveSearchFilter(const std::string& text);
+    // Ends every search state of the active tab — the field's text, the live
+    // filter and a recursive-result display — used by the file-creation
+    // commands, whose fresh entry has to be visible in the folder display.
+    void ResetSearchState();
+
+    // ===== NEW ENTRY (the command bar's "New folder ▾" split button) =====
+    // The primary section creates a folder (the old "New folder" button);
+    // the arrow opens ShowNewEntryMenu below. Both creation commands end the
+    // search first (ResetSearchState), so the fresh entry and its rename
+    // editor are on screen.
+    void CreateNewFolderCommand();
+    void CreateNewDocumentCommand(const FilerNewDocumentType& type);
+    // The arrow's menu under the button: the same entries as the filer
+    // context menu's "New >" submenu — Folder (Ctrl+F), then the filer's
+    // document kinds (Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video).
+    void ShowNewEntryMenu();
 
     // ===== HISTORY (the clock button) =====
     // Swaps the tree + folder area for the History view and back. Showing it
@@ -353,6 +370,8 @@ private:
     std::shared_ptr<UltraCanvasTabbedContainer> favoritesTabs; // Files / Folders / Apps
     std::shared_ptr<UltraCanvasFilerWidget>     favoritesFilers[HistoryTabCount];
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
+    std::shared_ptr<UltraCanvasButton>          newButton;       // "New folder ▾" split button
+    std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
     std::shared_ptr<UltraCanvasBreadcrumb>      breadcrumb;
     std::shared_ptr<UltraCanvasTextInput>       searchInput;

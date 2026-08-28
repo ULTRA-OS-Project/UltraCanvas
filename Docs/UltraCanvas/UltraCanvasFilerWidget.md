@@ -648,7 +648,11 @@ snapping the folder display back to full width. The new selection is installed
 **before** `onFolderRefreshed` fires, so the host sees a single selection change
 and never an empty one in between.
 
-`SetNewDocumentTypes()` replaces the default New > entries; each entry may name a
+`SetNewDocumentTypes()` replaces the default New > entries (Text `txt`, Doc
+`odt`, Spreadsheet `ods`, Bitmap `png`, Vector `svg`, Audio `wav`, Video
+`mp4`); `GetNewDocumentTypes()` reads the current set back, so a host can
+mirror the submenu elsewhere — the UltraFiler's command-bar "New folder ▾"
+split button lists exactly these. Each entry may name a
 `templatePath` that is copied instead of creating an empty file, and
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
@@ -662,6 +666,13 @@ and so on when the name is taken) in the shown folder, reports the change to
 ```cpp
 filer->CreateNewFolder();   // what New > Folder and Ctrl+F do
 ```
+
+Creating anything — `CreateNewFolder()` or `CreateNewDocument()` — first
+returns a [file-list display](#file-list-search-results) to the folder and
+ends an active [name filter](#name-filter-filter-as-you-type): the fresh
+entry lands in the shown folder and has to be visible there, with its inline
+rename editor reachable, which neither a result display nor a narrowed
+listing can guarantee.
 
 ## Watching the shown folder
 

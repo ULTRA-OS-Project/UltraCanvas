@@ -710,8 +710,17 @@ namespace UltraCanvas {
         void OpenExtractDialog();
         static bool ClipboardHasContent();
 
-        // "New >" document kinds (replaces the default seven).
+        // "New >" document kinds (replaces the default seven). The getter
+        // lets a host mirror the submenu elsewhere — UltraFiler's command-bar
+        // "New folder ▾" split button lists exactly these.
         void SetNewDocumentTypes(const std::vector<FilerNewDocumentType>& types);
+        const std::vector<FilerNewDocumentType>& GetNewDocumentTypes() const {
+            return newDocumentTypes;
+        }
+        // Creating an entry (either method below) first returns a file-list
+        // display to the folder and ends an active name filter: the fresh
+        // entry has to be visible and its inline rename editor reachable,
+        // which neither a result display nor a narrowed listing guarantees.
         void CreateNewDocument(const FilerNewDocumentType& type);
         // Create a subfolder of the shown folder ("New folder", uniquely
         // numbered when that name is taken) and open the inline rename editor

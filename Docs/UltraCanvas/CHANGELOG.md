@@ -19,6 +19,16 @@
   Enter in the field — runs the recursive search that used to require Enter
   for every query. A letter typed anywhere outside a text field walks the
   visible listing by first character (window-level type-ahead routing).
+- **UltraFiler: "New folder ▾" split button.** The command bar's New folder /
+  New file pair is now one split button: the primary section creates a folder
+  (Ctrl+F unchanged), the arrow opens a menu with the same entries as the
+  context menu's "New >" submenu — Folder, then the filer's document kinds
+  (Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video), read live via the
+  widget's new `GetNewDocumentTypes()`. Every creation command first ends the
+  search — the field, the live filter and a recursive-result display — and
+  `CreateNewFolder()` / `CreateNewDocument()` themselves leave a file-list
+  display and drop an active name filter, so the fresh entry is always
+  visible with its inline rename editor open.
 
 #### 2026-08-27 *0.3.80*
 - **A Windows build that fails to start can now say why.** The Windows

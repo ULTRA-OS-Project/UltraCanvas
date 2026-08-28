@@ -946,6 +946,59 @@ void UltraFilerWindow::ApplyLiveSearchFilter(const std::string& text) {
     filer->SetNameFilter(text);
 }
 
+void UltraFilerWindow::ResetSearchState() {
+    // Programmatic SetText fires no onTextChanged, so clearing the field
+    // does not re-enter the filter path.
+    if (searchInput) searchInput->SetText("");
+    if (FilerTabState* tab = ActiveTabState()) tab->searchQuery.clear();
+    if (!filer) return;
+    if (filer->IsShowingFileList()) {
+        filer->SetOpenPathMenuItemVisible(false);
+        filer->SetPath(filer->GetPath());   // also drops the name filter
+    } else {
+        filer->SetNameFilter("");
+    }
+}
+
+// ===== NEW ENTRY (the command bar's "New folder ▾" split button) =====
+
+void UltraFilerWindow::CreateNewFolderCommand() {
+    ShowBrowsingView();
+    ResetSearchState();
+    if (filer) filer->CreateNewFolder();
+}
+
+void UltraFilerWindow::CreateNewDocumentCommand(const FilerNewDocumentType& type) {
+    ShowBrowsingView();
+    ResetSearchState();
+    if (filer) filer->CreateNewDocument(type);
+}
+
+void UltraFilerWindow::ShowNewEntryMenu() {
+    if (!window || !newButton) return;
+    MenuStyle style = MenuStyle::Default();
+    style.font.fontSize = kUiFontSize;
+    newEntryMenu = std::make_shared<UltraCanvasMenu>("ufl-new-menu", 0, 0, 160, 0);
+    newEntryMenu->SetMenuType(MenuType::PopupMenu);
+    newEntryMenu->SetStyle(style);
+    // Mirror of the filer context menu's "New >" submenu: the folder first,
+    // set apart from the document kinds.
+    newEntryMenu->AddItem(MenuItemData::ActionWithShortcut(
+            "Folder", "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
+    if (filer) {
+        newEntryMenu->AddItem(MenuItemData::Separator());
+        for (const FilerNewDocumentType& t : filer->GetNewDocumentTypes()) {
+            FilerNewDocumentType copy = t;
+            newEntryMenu->AddItem(MenuItemData::Action(
+                    t.label, [this, copy]() { CreateNewDocumentCommand(copy); }));
+        }
+    }
+    newEntryMenu->OpenMenu(
+            Point2Di(newButton->GetXInWindow(),
+                     newButton->GetYInWindow() + (int)newButton->GetHeight() + 1),
+            *window, PopupElementSettings());
+}
+
 void UltraFilerWindow::RunSearch(const std::string& query) {
     // The results are shown in the folder display, so a search leaves the
     // History / Favorites views.
@@ -1011,22 +1064,29 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // of them leaves the History / Favorites views first - the change they
     // make has to be visible (an inline rename editor especially).
     {
-        // Same action as the folder display's "New > Folder" (Ctrl+F): the
-        // widget creates the folder, records it through onFolderModified and
-        // opens the rename editor on it.
-        auto newFolder = MakeToolButton("ufl-new-folder", "New folder",
-                "add-folder.svg", 0, [this]() {
-            ShowBrowsingView();
-            if (filer) filer->CreateNewFolder();
-        });
-        newFolder->SetTooltip("New folder (Ctrl+F)");
-        row->AddChild(newFolder);
+        // "New folder ▾" split button (replaces the New folder / New file
+        // pair): the primary section is the folder — the same action as the
+        // folder display's "New > Folder" (Ctrl+F) — and the arrow opens a
+        // menu with the same entries as the context menu's "New >" submenu.
+        // Either way the search ends first (ResetSearchState inside the
+        // commands): the fresh entry has to be visible and its rename editor
+        // reachable, which a filtered listing or a result display cannot
+        // guarantee.
+        newButton = MakeToolButton("ufl-new", "New folder", "add-folder.svg",
+                138, [this]() { CreateNewFolderCommand(); });
+        newButton->SetSplitEnabled(true);
+        newButton->SetSplitRatio(0.8f);
+        newButton->SetSplitSecondaryText("▾");
+        // The same quiet flat look as the primary section.
+        newButton->SetSplitColors(Color(255, 255, 255, 255),
+                                  Color(55, 55, 60, 255),
+                                  Color(233, 238, 244, 255),
+                                  Color(208, 228, 250, 255));
+        newButton->SetSplitSeparator(true, Color(0, 0, 0, 60), 1.0f);
+        newButton->onSecondaryClick = [this]() { ShowNewEntryMenu(); };
+        newButton->SetTooltip("New folder (Ctrl+F) — the arrow lists more kinds");
+        row->AddChild(newButton);
     }
-    row->AddChild(MakeToolButton("ufl-new-file", "New file", "add-document.svg", 0,
-            [this]() {
-        ShowBrowsingView();
-        if (filer) filer->CreateNewDocument({"Text", "txt", ""});
-    }));
 
     auto sep1 = std::make_shared<UltraCanvasLabel>("ufl-sep1", 0, 0, 9, 24);
     sep1->SetText("|");
@@ -1866,6 +1926,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // the item counts in the status bar describe it, and a previewed file
         // may have moved away.
         if (!IsActiveTab(tab)) return;
+        // The widget can end its own name filter (creating an entry does, so
+        // the fresh one is visible) — the search field follows it.
+        if (searchInput && tab->searchQuery.empty() && tab->filer &&
+            searchInput->GetText() != tab->filer->GetNameFilter()) {
+            searchInput->SetText(tab->filer->GetNameFilter());
+        }
         UpdateStatusBar();
         UpdatePreviewPane();
     };

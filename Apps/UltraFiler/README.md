@@ -76,11 +76,16 @@ components:
   without touching the folder. The pins survive restarts — they are stored
   next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
   empties them (History and Favorites are separate stores).
-- **Command bar:** New folder (also **Ctrl+F**, and *New > Folder* at the top
-  of the file display's context menu) / New file — inline rename starts
-  automatically — Cut / Copy / Paste (system clipboard interop), Rename,
-  Delete (with confirmation), sort field + direction, view type selection,
-  video preview mode, Preview toggle.
+- **Command bar:** the **New folder ▾** split button — its primary section
+  creates a folder (also **Ctrl+F**, and *New > Folder* at the top of the
+  file display's context menu), its arrow opens a menu with the same entries
+  as the context menu's *New >* submenu (Folder, then Text / Doc /
+  Spreadsheet / Bitmap / Vector / Audio / Video); inline rename starts
+  automatically, and creating anything first ends the search (field, live
+  filter and result display), so the fresh entry is visible — Cut / Copy /
+  Paste (system clipboard interop), Rename, Delete (with confirmation),
+  sort field + direction, view type selection, video preview mode, Preview
+  toggle.
 - **Live folder:** the file display rescans by itself when the folder changes
   behind it — another application saving a file into it, a download finishing,
   a script deleting one. The check runs on a background worker, and the refresh
