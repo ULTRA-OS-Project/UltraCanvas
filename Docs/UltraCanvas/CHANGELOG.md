@@ -1,4 +1,4 @@
-#### 2026-08-27 *0.3.81*
+#### 2026-08-28 *0.3.83*
 - **CI builds Linux on ARM as well as x86_64.** The build matrix gained an
   `ubuntu-22.04-arm` row, so every commit is now compiled, unit-tested and
   packaged for Linux/aarch64 next to the existing x86_64 job — the same 22.04
