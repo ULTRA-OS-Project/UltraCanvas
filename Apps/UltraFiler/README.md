@@ -9,7 +9,7 @@ components:
 | Folder content (center pane) | `UltraCanvasTabbedContainer` hosting one `UltraCanvasFilerWidget` per tab — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
-| Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::ShowFileList()` |
+| Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type and `ShowFileList()` for the recursive search |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
 | Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
@@ -23,14 +23,21 @@ components:
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
   tree with lazy expansion, and the History toggle (see below).
-- **Search:** the field on the right of the path bar searches the current
-  folder recursively for names containing the text (case-insensitive, up to
-  1000 matches). Enter runs it; the matches are displayed in the tab's
-  current view mode, with a *Path* column after the name in Details view.
-  The context menu's first entry, **Open path (in new tab)**, opens the
-  selected match's folder in a new tab. Clearing the field (or navigating
-  anywhere) returns to the normal folder display. Each tab keeps its own
-  search.
+- **Search:** typing in the field filters the shown folder **as-you-type**
+  (case-insensitive name filter, no disk walk; the status bar notes the
+  filter). When nothing in the folder matches, a centered **Search in sub
+  folders** button appears in the folder display; it — like **Enter** in the
+  field — searches the current folder recursively for names containing the
+  text (case-insensitive, up to 1000 matches). The recursive matches are
+  displayed in the tab's current view mode, with a *Path* column after the
+  name in Details view, and the context menu's first entry, **Open path (in
+  new tab)**, opens the selected match's folder in a new tab. Clearing the
+  field (or navigating anywhere) returns to the normal folder display. Each
+  tab keeps its own search.
+- **Type-ahead:** a letter typed anywhere outside a text field selects the
+  first entry in the visible listing whose name starts with it; pressing the
+  same letter again walks on to the next such entry (wrapping), Explorer
+  style.
 - **History:** the clock button in the navigation row replaces the folder tree
   and folder display with the History view — a tabbed container with **Files**,
   **Folders** and **Apps** tabs, each a filer widget in *small thumbnails* mode
@@ -69,11 +76,16 @@ components:
   without touching the folder. The pins survive restarts — they are stored
   next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
   empties them (History and Favorites are separate stores).
-- **Command bar:** New folder (also **Ctrl+F**, and *New > Folder* at the top
-  of the file display's context menu) / New file — inline rename starts
-  automatically — Cut / Copy / Paste (system clipboard interop), Rename,
-  Delete (with confirmation), sort field + direction, view type selection,
-  video preview mode, Preview toggle.
+- **Command bar:** the **New folder ▾** split button — its primary section
+  creates a folder (also **Ctrl+F**, and *New > Folder* at the top of the
+  file display's context menu), its arrow opens a menu with the same entries
+  as the context menu's *New >* submenu (Folder, then Text / Doc /
+  Spreadsheet / Bitmap / Vector / Audio / Video); inline rename starts
+  automatically, and creating anything first ends the search (field, live
+  filter and result display), so the fresh entry is visible — Cut / Copy /
+  Paste (system clipboard interop), Rename, Delete (with confirmation),
+  sort field + direction, view type selection, video preview mode, Preview
+  toggle.
 - **Live folder:** the file display rescans by itself when the folder changes
   behind it — another application saving a file into it, a download finishing,
   a script deleting one. The check runs on a background worker, and the refresh

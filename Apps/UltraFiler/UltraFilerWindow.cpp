@@ -94,6 +94,13 @@ namespace {
     constexpr int kFilerMinWidth   = 360;
     constexpr int kPreviewMinWidth = 260;
 
+    // Delay before a clicked folder's content is shown in the detail pane.
+    // A double-click on a folder OPENS it, so the pane must not scan the
+    // folder in on the first click of that double-click — like the filer's
+    // rename-click delay, this must exceed the platform double-click
+    // interval.
+    constexpr unsigned int kFolderPreviewClickDelayMs = 500;
+
     void ApplyDropdownFontSize(UltraCanvasDropdown* dropdown) {
         DropdownStyle s = dropdown->GetStyle();
         s.fontSize = kUiFontSize;
@@ -430,6 +437,7 @@ namespace {
 
 UltraFilerWindow::~UltraFilerWindow() {
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
+    CancelFolderPreviewTimer(); // its callback captures `this`
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
 }
@@ -479,6 +487,31 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
             return false;
         SetPreviewEnabled(false);
         return true;
+    }, { UCEventType::KeyDown });
+
+    // A letter typed anywhere in the window — outside a text field — walks
+    // the visible folder listing Explorer-style: the first entry starting
+    // with it, then, on the same letter again, the next such entry (the
+    // filer's type-ahead). This routes the key to the visible filer while
+    // the keyboard focus sits on some other control; the filer handles its
+    // own keys when it is focused itself.
+    window->InstallEventFilter("ufl-typeahead",
+            [this](const UCEvent& e) -> bool {
+        if (e.ctrl || e.alt || e.meta) return false;
+        if (e.character <= 32 ||
+            static_cast<unsigned char>(e.character) >= 127) return false;
+        if (window->GetActivePopupElement()) return false;
+        UltraCanvasUIElement* focused = window->GetFocusedElement();
+        // Text entry keeps its characters (the search field, a rename
+        // editor, a dialog's name field, ...), and a focused filer — the
+        // folder display, the folder preview, a History page — handles its
+        // own type-ahead in its OnEvent.
+        if (dynamic_cast<UltraCanvasTextInput*>(focused)) return false;
+        if (dynamic_cast<UltraCanvasFilerWidget*>(focused)) return false;
+        UltraCanvasFilerWidget* f = VisibleFiler();
+        if (!f) return false;
+        if (f->WantsEscapeKey()) return false;  // rename / drag / dialog run
+        return f->SelectNextEntryStartingWith(e.character);
     }, { UCEventType::KeyDown });
 
     preview = CreateMediaViewer("ufl-preview", 0, 0, 0, 0);
@@ -916,6 +949,75 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
 // ===== SEARCH =====
 
+void UltraFilerWindow::ApplyLiveSearchFilter(const std::string& text) {
+    // The filter narrows the folder display, so typing leaves the History /
+    // Favorites views.
+    ShowBrowsingView();
+    if (!filer) return;
+    // Typing filters the folder itself: a recursive-result display from an
+    // earlier Enter ends first (SetPath leaves file-list mode and drops the
+    // old name filter with it).
+    if (filer->IsShowingFileList()) {
+        if (FilerTabState* tab = ActiveTabState()) tab->searchQuery.clear();
+        filer->SetOpenPathMenuItemVisible(false);
+        filer->SetPath(filer->GetPath());
+    }
+    filer->SetNameFilter(text);
+}
+
+void UltraFilerWindow::ResetSearchState() {
+    // Programmatic SetText fires no onTextChanged, so clearing the field
+    // does not re-enter the filter path.
+    if (searchInput) searchInput->SetText("");
+    if (FilerTabState* tab = ActiveTabState()) tab->searchQuery.clear();
+    if (!filer) return;
+    if (filer->IsShowingFileList()) {
+        filer->SetOpenPathMenuItemVisible(false);
+        filer->SetPath(filer->GetPath());   // also drops the name filter
+    } else {
+        filer->SetNameFilter("");
+    }
+}
+
+// ===== NEW ENTRY (the command bar's "New folder ▾" split button) =====
+
+void UltraFilerWindow::CreateNewFolderCommand() {
+    ShowBrowsingView();
+    ResetSearchState();
+    if (filer) filer->CreateNewFolder();
+}
+
+void UltraFilerWindow::CreateNewDocumentCommand(const FilerNewDocumentType& type) {
+    ShowBrowsingView();
+    ResetSearchState();
+    if (filer) filer->CreateNewDocument(type);
+}
+
+void UltraFilerWindow::ShowNewEntryMenu() {
+    if (!window || !newButton) return;
+    MenuStyle style = MenuStyle::Default();
+    style.font.fontSize = kUiFontSize;
+    newEntryMenu = std::make_shared<UltraCanvasMenu>("ufl-new-menu", 0, 0, 160, 0);
+    newEntryMenu->SetMenuType(MenuType::PopupMenu);
+    newEntryMenu->SetStyle(style);
+    // Mirror of the filer context menu's "New >" submenu: the folder first,
+    // set apart from the document kinds.
+    newEntryMenu->AddItem(MenuItemData::ActionWithShortcut(
+            "Folder", "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
+    if (filer) {
+        newEntryMenu->AddItem(MenuItemData::Separator());
+        for (const FilerNewDocumentType& t : filer->GetNewDocumentTypes()) {
+            FilerNewDocumentType copy = t;
+            newEntryMenu->AddItem(MenuItemData::Action(
+                    t.label, [this, copy]() { CreateNewDocumentCommand(copy); }));
+        }
+    }
+    newEntryMenu->OpenMenu(
+            Point2Di(newButton->GetXInWindow(),
+                     newButton->GetYInWindow() + (int)newButton->GetHeight() + 1),
+            *window, PopupElementSettings());
+}
+
 void UltraFilerWindow::RunSearch(const std::string& query) {
     // The results are shown in the folder display, so a search leaves the
     // History / Favorites views.
@@ -930,6 +1032,10 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
 
     const std::string root = filer->GetPath();
     if (root.empty()) return;
+
+    // The recursive results replace the as-you-type folder filter — they are
+    // an explicit file list, not a narrowed folder listing.
+    filer->SetNameFilter("");
 
     std::string needle = query;
     std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
@@ -977,22 +1083,29 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // of them leaves the History / Favorites views first - the change they
     // make has to be visible (an inline rename editor especially).
     {
-        // Same action as the folder display's "New > Folder" (Ctrl+F): the
-        // widget creates the folder, records it through onFolderModified and
-        // opens the rename editor on it.
-        auto newFolder = MakeToolButton("ufl-new-folder", "New folder",
-                "add-folder.svg", 0, [this]() {
-            ShowBrowsingView();
-            if (filer) filer->CreateNewFolder();
-        });
-        newFolder->SetTooltip("New folder (Ctrl+F)");
-        row->AddChild(newFolder);
+        // "New folder ▾" split button (replaces the New folder / New file
+        // pair): the primary section is the folder — the same action as the
+        // folder display's "New > Folder" (Ctrl+F) — and the arrow opens a
+        // menu with the same entries as the context menu's "New >" submenu.
+        // Either way the search ends first (ResetSearchState inside the
+        // commands): the fresh entry has to be visible and its rename editor
+        // reachable, which a filtered listing or a result display cannot
+        // guarantee.
+        newButton = MakeToolButton("ufl-new", "New folder", "add-folder.svg",
+                138, [this]() { CreateNewFolderCommand(); });
+        newButton->SetSplitEnabled(true);
+        newButton->SetSplitRatio(0.8f);
+        newButton->SetSplitSecondaryText("▾");
+        // The same quiet flat look as the primary section.
+        newButton->SetSplitColors(Color(255, 255, 255, 255),
+                                  Color(55, 55, 60, 255),
+                                  Color(233, 238, 244, 255),
+                                  Color(208, 228, 250, 255));
+        newButton->SetSplitSeparator(true, Color(0, 0, 0, 60), 1.0f);
+        newButton->onSecondaryClick = [this]() { ShowNewEntryMenu(); };
+        newButton->SetTooltip("New folder (Ctrl+F) — the arrow lists more kinds");
+        row->AddChild(newButton);
     }
-    row->AddChild(MakeToolButton("ufl-new-file", "New file", "add-document.svg", 0,
-            [this]() {
-        ShowBrowsingView();
-        if (filer) filer->CreateNewDocument({"Text", "txt", ""});
-    }));
 
     auto sep1 = std::make_shared<UltraCanvasLabel>("ufl-sep1", 0, 0, 9, 24);
     sep1->SetText("|");
@@ -1037,11 +1150,17 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sep2->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep2);
 
-    // Recursive name search under the current folder; Enter runs it, an
-    // empty query returns to the normal folder display.
+    // Search field. Typing filters the shown folder as-you-type (the
+    // filer's name filter); Enter runs the recursive search under the
+    // current folder — as does the "Search in sub folders" button the
+    // filer centers when the filter matches nothing. An empty field
+    // returns to the normal folder display.
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
     searchInput->SetFontSize(kUiFontSize);
     searchInput->SetPlaceholder("Search");
+    searchInput->onTextChanged = [this](const std::string& text) {
+        ApplyLiveSearchFilter(text);
+    };
     searchInput->onEnterPressed = [this](const std::string& text) {
         RunSearch(text);
         return true;
@@ -1811,6 +1930,15 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onPathChanged = [this, tab](const std::string& path) {
         HandlePathChanged(tab, path);
     };
+    // When the as-you-type filter matches nothing in the folder, the filer
+    // centers this escalation: the same recursive search Enter runs.
+    tab->filer->SetFilterEmptyAction("Search in sub folders", [this, tab]() {
+        if (!IsActiveTab(tab) || !tab->filer) return;
+        // Copied: RunSearch clears the filer's filter, which would otherwise
+        // empty the query out from under the search.
+        const std::string query = tab->filer->GetNameFilter();
+        RunSearch(query);
+    });
     tab->filer->onSelectionChanged = [this, tab](const std::vector<FilerEntry>&) {
         if (!IsActiveTab(tab)) return;
         UpdateStatusBar();
@@ -1821,6 +1949,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // the item counts in the status bar describe it, and a previewed file
         // may have moved away.
         if (!IsActiveTab(tab)) return;
+        // The widget can end its own name filter (creating an entry does, so
+        // the fresh one is visible) — the search field follows it.
+        if (searchInput && tab->searchQuery.empty() && tab->filer &&
+            searchInput->GetText() != tab->filer->GetNameFilter()) {
+            searchInput->SetText(tab->filer->GetNameFilter());
+        }
         UpdateStatusBar();
         UpdatePreviewPane();
     };
@@ -1919,7 +2053,14 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
         BuildFolderBreadcrumb(breadcrumb.get(), path,
                               [this](const std::string& folder) { NavigateTo(folder); });
     }
-    if (searchInput) searchInput->SetText(tab->searchQuery);
+    // The field shows whatever search state the tab is in: the recursive
+    // query while its results are displayed, else the tab's live filter.
+    if (searchInput) {
+        searchInput->SetText(!tab->searchQuery.empty()
+                                     ? tab->searchQuery
+                                     : (tab->filer ? tab->filer->GetNameFilter()
+                                                   : std::string()));
+    }
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
@@ -1986,13 +2127,17 @@ void UltraFilerWindow::BuildSplitLayout() {
 
     auto treePane = split->AddPane(1.0);
     split->SetPaneMinSize(0, 170);
+    // The tree keeps an absolute width: 280px at startup, then whatever the
+    // user drags the splitter to. Maximizing or resizing the window changes
+    // only the folder display's share — the tree stays as wide as it is.
+    split->SetPaneFixedSize(0, 280);
     treePane->layout.SetFlexColumn()
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     folderTree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     treePane->AddChild(folderTree);
 
-    auto filerPane = split->AddPane(2.7);
+    auto filerPane = split->AddPane(1.0);
     split->SetPaneMinSize(1, kFilerMinWidth);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -2498,7 +2643,11 @@ void UltraFilerWindow::UpdateStatusBar() {
         return;
     }
     if (!filer) return;
-    statusLabel->SetText(DescribeFilerContent(filer.get()));
+    std::string text = DescribeFilerContent(filer.get());
+    // A live filter changes what the counts describe — say so.
+    if (!filer->GetNameFilter().empty())
+        text += "    |    filtered by \"" + filer->GetNameFilter() + "\"";
+    statusLabel->SetText(text);
 }
 
 void UltraFilerWindow::UpdateWindowTitle() {
@@ -2536,6 +2685,44 @@ void UltraFilerWindow::ApplyPreviewSelectionPolicy() {
         if (state->filer) state->filer->SetSelectNextAfterDelete(previewEnabled);
 }
 
+void UltraFilerWindow::ArmFolderPreviewTimer(const std::string& folderPath) {
+    if (pendingFolderPreviewPath == folderPath &&
+        folderPreviewDelayTimer != InvalidTimerId) {
+        return;   // already waiting for exactly this folder
+    }
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        // No timer source: show at once rather than never. The re-entry
+        // proceeds because the folder is marked ready.
+        folderPreviewReadyPath = folderPath;
+        UpdatePreviewPane();
+        return;
+    }
+    if (folderPreviewDelayTimer != InvalidTimerId)
+        app->StopTimer(folderPreviewDelayTimer);
+    pendingFolderPreviewPath = folderPath;
+    folderPreviewDelayTimer = app->StartTimer(kFolderPreviewClickDelayMs, false,
+            [this](TimerId) {
+        folderPreviewDelayTimer = InvalidTimerId;
+        const std::string path = pendingFolderPreviewPath;
+        pendingFolderPreviewPath.clear();
+        // Show only while the folder is STILL the single selection — a
+        // double-click opened it (or the selection moved on) meanwhile.
+        const FilerEntry* e = SingleSelectedEntry();
+        if (!previewEnabled || !e || !e->isDirectory || e->path != path) return;
+        folderPreviewReadyPath = path;
+        UpdatePreviewPane();
+    });
+}
+
+void UltraFilerWindow::CancelFolderPreviewTimer() {
+    pendingFolderPreviewPath.clear();
+    if (folderPreviewDelayTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        app->StopTimer(folderPreviewDelayTimer);
+    folderPreviewDelayTimer = InvalidTimerId;
+}
+
 void UltraFilerWindow::UpdatePreviewPane() {
     if (!split || !preview || !folderPreview) return;
     // What the selection calls for: a single media file fills the pane with
@@ -2551,6 +2738,24 @@ void UltraFilerWindow::UpdatePreviewPane() {
         }
     }
     const bool wantFolder = !folderPath.empty();
+    if (wantFolder) {
+        const bool alreadyShown = previewShown && previewShowsFolder &&
+                                  folderPreview->GetPath() == folderPath;
+        if (!alreadyShown && folderPath != folderPreviewReadyPath) {
+            // This may be the first click of a double-click that OPENS the
+            // folder: wait out the double-click interval before scanning the
+            // folder into the pane. The pane keeps whatever it shows
+            // meanwhile; the timer's firing comes back here with the folder
+            // marked ready (see ArmFolderPreviewTimer).
+            ArmFolderPreviewTimer(folderPath);
+            return;
+        }
+    } else {
+        // The selection moved off the folder — a pending or elapsed delay
+        // belongs to something no longer selected.
+        CancelFolderPreviewTimer();
+        folderPreviewReadyPath.clear();
+    }
     if (wantFolder || !mediaPath.empty()) {
         if (!previewShown) {
             // Pane sizing is weight-proportional, so plain AddPane would

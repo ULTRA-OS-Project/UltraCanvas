@@ -1763,6 +1763,10 @@ namespace UltraCanvas {
         currentPath = folderPath;
         fileListMode = false;
         fileListPaths.clear();
+        // A new listing starts unfiltered: the name filter belonged to the
+        // listing it was typed against.
+        nameFilter.clear();
+        filterAllEntries.clear();
         CancelScrollAnimations();   // the new folder starts at the top, at once
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
@@ -1796,6 +1800,149 @@ namespace UltraCanvas {
         CancelRename();
         CancelPendingRename();
         ScanFolder();
+    }
+
+    // ===== NAME FILTER (filter-as-you-type) =====
+
+    bool UltraCanvasFilerWidget::EntryMatchesNameFilter(const FilerEntry& e) const {
+        if (nameFilter.empty()) return true;
+        std::string needle = nameFilter;
+        std::transform(needle.begin(), needle.end(), needle.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        std::string name = e.name;
+        std::transform(name.begin(), name.end(), name.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return name.find(needle) != std::string::npos;
+    }
+
+    void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
+        if (nameFilter.empty()) return;
+        entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                     [this](const FilerEntry& e) {
+                                         return !EntryMatchesNameFilter(e);
+                                     }),
+                      entries.end());
+    }
+
+    void UltraCanvasFilerWidget::SetNameFilter(const std::string& filter) {
+        if (nameFilter == filter) return;
+        const bool hadFilter = !nameFilter.empty();
+        nameFilter = filter;
+        if (!hadFilter && !nameFilter.empty()) {
+            // The full listing the filter narrows, kept until it ends so no
+            // keystroke ever rescans the disk.
+            filterAllEntries = entries;
+        }
+
+        // `selection` indexes `entries`, which is rebuilt below — remember it
+        // by path (as ScanFolder does) so the files that stay visible stay
+        // selected.
+        std::unordered_set<std::string> selectedPaths;
+        for (size_t idx : selection)
+            if (idx < entries.size()) selectedPaths.insert(entries[idx].path);
+
+        CancelRename();
+        CancelPendingRename();
+        hoveredIndex = -1;
+        lastClickedIndex = -1;
+
+        if (nameFilter.empty()) {
+            entries = std::move(filterAllEntries);
+            filterAllEntries.clear();
+        } else {
+            entries = filterAllEntries;
+            ApplyNameFilterToEntries();
+        }
+        // The kept listing carries the sort of when the filter was set; the
+        // user may have re-sorted since, so sort what is shown now. The
+        // size-weighted views recompute their recursive sizes for the swapped
+        // listing lazily, exactly as after a rescan.
+        effectiveSizesValid = false;
+        SortEntries();
+
+        std::vector<size_t> restored;
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (selectedPaths.count(entries[i].path)) restored.push_back(i);
+        const bool changed = restored.size() != selectedPaths.size();
+        selection.swap(restored);
+        if (changed) FireSelectionChanged();
+
+        CancelScrollAnimations();   // the narrowed listing starts at the top
+        scrollOffsetX = scrollOffsetY = 0;
+        InvalidateFilerLayout();
+        UpdateFilterEmptyButton();
+        RequestRedraw();
+        // What is listed changed — hosts refresh their folder description
+        // (item counts, status bar) from it, like after a rescan.
+        if (onFolderRefreshed) onFolderRefreshed();
+    }
+
+    void UltraCanvasFilerWidget::SetFilterEmptyAction(const std::string& label,
+                                                      std::function<void()> action) {
+        filterEmptyLabel = label;
+        onFilterEmptyAction = std::move(action);
+        if (filterEmptyButton) filterEmptyButton->SetText(filterEmptyLabel);
+        UpdateFilterEmptyButton();
+    }
+
+    void UltraCanvasFilerWidget::UpdateFilterEmptyButton() {
+        const bool wanted = !nameFilter.empty() && entries.empty() &&
+                            !filterEmptyLabel.empty() &&
+                            static_cast<bool>(onFilterEmptyAction) &&
+                            viewType != FilerViewType::GourceTree &&
+                            viewType != FilerViewType::View3D;
+        if (!wanted) {
+            if (filterEmptyButton) filterEmptyButton->SetVisible(false);
+            return;
+        }
+        if (!filterEmptyButton) {
+            filterEmptyButton = CreateButton(
+                    GetIdentifier() + "-filter-empty", 0, 0, 160, 30,
+                    filterEmptyLabel);
+            ButtonStyle bs;
+            bs.normalColor  = Color(66, 133, 244, 255);
+            bs.hoverColor   = Color(90, 150, 250, 255);
+            bs.pressedColor = Color(52, 112, 214, 255);
+            bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
+                    Colors::White;
+            bs.borderWidth = 0.0f;
+            bs.cornerRadius = 5.0f;
+            bs.fontFamily = style.fontFamily;
+            bs.fontSize = style.fontSize;
+            bs.fontWeight = FontWeight::Bold;
+            filterEmptyButton->SetStyle(bs);
+            // The search field keeps the keyboard while the user types the
+            // filter; the click must not pull the focus away from it.
+            filterEmptyButton->SetAcceptsFocus(false);
+            filterEmptyButton->SetOnClick([this]() {
+                if (onFilterEmptyAction) onFilterEmptyAction();
+            });
+            AddChild(filterEmptyButton);
+        }
+        filterEmptyButton->SetText(filterEmptyLabel);
+        filterEmptyButton->SetVisible(true);
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::PositionFilterEmptyButton(IRenderContext* ctx) {
+        if (!filterEmptyButton || !filterEmptyButton->IsVisible()) return;
+        Rect2Di area = ContentBounds();
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.fontSize;
+        ctx->SetFontStyle(fsty);
+        Size2Di ts = ctx->GetTextLineDimensions(filterEmptyLabel);
+        const int w = std::min(area.width - 16, ts.width + 32);
+        const int h = 30;
+        // Under the "no matches" notice DrawEmptyState centers in the same
+        // area (its icon + gap + message block is ~70px tall, so half of it
+        // plus a margin clears the message); a too-flat area centers instead.
+        int y = area.y + area.height / 2 + 48;
+        if (y + h > area.y + area.height) y = area.y + (area.height - h) / 2;
+        PlaceChildAt(filterEmptyButton,
+                     Rect2Df(area.x + (area.width - w) / 2.0f,
+                             static_cast<float>(y),
+                             static_cast<float>(w), static_cast<float>(h)));
     }
 
     void UltraCanvasFilerWidget::ApplyEntryTypeInfo(FilerEntry& e) const {
@@ -2125,6 +2272,15 @@ namespace UltraCanvas {
             }
         }
 
+        // A live name filter narrows the listing; the full scan is kept so
+        // the filter can be widened or dropped without another disk scan.
+        if (!nameFilter.empty()) {
+            filterAllEntries = entries;
+            ApplyNameFilterToEntries();
+        } else {
+            filterAllEntries.clear();
+        }
+
         SortEntries();
 
         // A delete that wiped out the whole selection left the entry that
@@ -2176,6 +2332,7 @@ namespace UltraCanvas {
         }
 
         InvalidateFilerLayout();
+        UpdateFilterEmptyButton();
         RequestRedraw();
 
         // The folder is on screen — line up its subfolders for the prefetch
@@ -5120,6 +5277,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
+        // The fresh document lands in the shown folder and has to be visible
+        // there (with its rename editor reachable): a file-list (search
+        // result) display returns to the folder first, and an active name
+        // filter ends — a narrowed listing cannot guarantee either.
+        if (fileListMode) SetPath(currentPath);
+        else SetNameFilter("");
         if (onNewDocument && onNewDocument(type, currentPath)) {
             Refresh();
             NotifyFolderModified();
@@ -5147,6 +5310,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        // Same as CreateNewDocument: the fresh folder must be visible in the
+        // folder display, so the search-result display and the name filter
+        // both end here.
+        if (fileListMode) SetPath(currentPath);
+        else SetNameFilter("");
         std::error_code ec;
         if (!fs::is_directory(currentPath, ec)) {
             ReportError("Cannot create a folder here: " + currentPath);
@@ -5846,6 +6014,19 @@ namespace UltraCanvas {
 
         DrawViewContent(ctx, bounds);
 
+        // The name filter's "no matches" action button is a real child
+        // element this self-rendered view must draw itself; placed fresh each
+        // frame so it stays centered through resizes.
+        if (filterEmptyButton && filterEmptyButton->IsVisible()) {
+            PositionFilterEmptyButton(ctx);
+            Rect2Df b = filterEmptyButton->GetBounds();
+            ctx->PushState();
+            ctx->ClipRect(Rect2Dd(lb.x, lb.y, lb.width, lb.height));
+            ctx->Translate(Point2Df(b.x, b.y));
+            filterEmptyButton->Render(ctx, Rect2Df(0, 0, b.width, b.height));
+            ctx->PopState();
+        }
+
         // The inline rename editor is a child element the self-rendered view
         // must draw itself (the widget's Render never paints children). Placed
         // fresh each frame so it tracks scrolling and relayouts of its item.
@@ -5906,6 +6087,12 @@ namespace UltraCanvas {
                 fsty.fontSize = style.fontSize;
                 ctx->SetFontStyle(fsty);
                 ctx->DrawTextInRect("(no folder)", Rect2Dd(bounds));
+            } else if (!nameFilter.empty()) {
+                // The filter hid everything; the host's escalation button
+                // (e.g. "Search in sub folders") is drawn under this by
+                // Render.
+                DrawEmptyState(ctx, bounds,
+                               "No matches for \"" + nameFilter + "\"");
             } else {
                 DrawEmptyState(ctx, bounds,
                                fileListMode ? "No entries" : "Folder is empty!");
@@ -9234,6 +9421,43 @@ namespace UltraCanvas {
     }
 
     // ===== EVENTS =====
+    // ===== TYPE-AHEAD (single-letter keyboard navigation) =====
+    bool UltraCanvasFilerWidget::SelectNextEntryStartingWith(char ch) {
+        if (entries.empty()) return false;
+        const unsigned char wanted =
+                static_cast<unsigned char>(std::tolower(static_cast<unsigned char>(ch)));
+        auto startsWith = [&](const FilerEntry& e) {
+            return !e.name.empty() &&
+                   std::tolower(static_cast<unsigned char>(e.name[0])) == wanted;
+        };
+        const size_t n = entries.size();
+        // Explorer semantics: while the selection already starts with the
+        // character, the same key again moves on to the next such entry
+        // (wrapping); otherwise the hunt starts at the top, so the first
+        // matching entry is selected.
+        size_t begin = 0;
+        if (!selection.empty() && selection.front() < n &&
+            startsWith(entries[selection.front()])) {
+            begin = (selection.front() + 1) % n;
+        }
+        for (size_t off = 0; off < n; ++off) {
+            const size_t i = (begin + off) % n;
+            if (!startsWith(entries[i])) continue;
+            if (selection.size() == 1 && selection.front() == i) {
+                EnsureVisible(i);   // the only match — already selected
+                return true;
+            }
+            selection.clear();
+            selection.push_back(i);
+            lastClickedIndex = static_cast<int>(i);
+            EnsureVisible(i);
+            FireSelectionChanged();
+            RequestRedraw();
+            return true;
+        }
+        return false;
+    }
+
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
@@ -9727,6 +9951,14 @@ namespace UltraCanvas {
                     }
                     default:
                         break;
+                }
+                // Type-ahead: a printable character selects the first entry
+                // whose name starts with it; the same key again walks on to
+                // the next one (see SelectNextEntryStartingWith).
+                if (!event.alt && !event.meta &&
+                    event.character > 32 &&
+                    static_cast<unsigned char>(event.character) < 127) {
+                    if (SelectNextEntryStartingWith(event.character)) return true;
                 }
                 return false;
             }

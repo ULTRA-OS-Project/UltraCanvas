@@ -3,13 +3,18 @@
 // a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, the
 // History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
-// bar (New folder / New file, Cut / Copy / Paste / Rename / Delete, the
-// recursive search field, Sort and
+// bar (the "New folder ▾" split button — its arrow lists the same kinds as
+// the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
+// search field — typing filters the shown folder as-you-type; when nothing
+// matches, a centered "Search in sub folders" button (and the Enter key)
+// escalates to the recursive search —, Sort and
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
 // the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
 // (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
 // the detail pane (shown only while a single previewable file OR a folder is
-// selected; Esc closes it): a selected media file shows in the
+// selected — a folder only once the double-click interval has passed, so a
+// double-click that opens it never flashes its preview; Esc closes it): a
+// selected media file shows in the
 // UltraCanvasMediaViewer, a selected folder shows its content through a second
 // small-thumbnail UltraCanvasFilerWidget — the two share the one pane. Plus a
 // status bar describing the folder and the selection (kept in step with the
@@ -35,8 +40,8 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.11.0
-// Last Modified: 2026-08-26
+// Version: 1.12.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -53,6 +58,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderViews.h"
@@ -165,8 +171,32 @@ private:
     // ===== SEARCH =====
     // Searches the active tab's folder (recursively) for names containing
     // `query` and shows the matches in the tab's current view mode; an empty
-    // query returns the tab to its normal folder display.
+    // query returns the tab to its normal folder display. Wired to the
+    // search field's Enter and to the filer's "Search in sub folders" button.
     void RunSearch(const std::string& query);
+    // Filter-as-you-type: every edit of the search field narrows the active
+    // tab's folder listing to the names containing the text (the filer's
+    // name filter — no disk walk). When nothing matches, the filer shows the
+    // centered "Search in sub folders" button, which escalates to RunSearch.
+    // An empty text ends the filter (and leaves an earlier recursive-result
+    // display).
+    void ApplyLiveSearchFilter(const std::string& text);
+    // Ends every search state of the active tab — the field's text, the live
+    // filter and a recursive-result display — used by the file-creation
+    // commands, whose fresh entry has to be visible in the folder display.
+    void ResetSearchState();
+
+    // ===== NEW ENTRY (the command bar's "New folder ▾" split button) =====
+    // The primary section creates a folder (the old "New folder" button);
+    // the arrow opens ShowNewEntryMenu below. Both creation commands end the
+    // search first (ResetSearchState), so the fresh entry and its rename
+    // editor are on screen.
+    void CreateNewFolderCommand();
+    void CreateNewDocumentCommand(const FilerNewDocumentType& type);
+    // The arrow's menu under the button: the same entries as the filer
+    // context menu's "New >" submenu — Folder (Ctrl+F), then the filer's
+    // document kinds (Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video).
+    void ShowNewEntryMenu();
 
     // ===== HISTORY (the clock button) =====
     // Swaps the tree + folder area for the History view and back. Showing it
@@ -290,6 +320,16 @@ private:
     // the selection is empty or holds several entries. The pointer is into
     // the filer's entry vector — use it immediately, don't keep it.
     const FilerEntry* SingleSelectedEntry() const;
+    // A single click on a folder shows its content in the detail pane, but a
+    // double-click on it OPENS the folder — so the folder preview first
+    // waits out the double-click interval: the click arms this timer, and
+    // only its firing (with the folder still the single selection) scans
+    // the folder into the pane. Opening the folder — or any selection
+    // change — in the meantime cancels it, so a double-click never flashes
+    // the preview. A shown media/file preview is untouched while the timer
+    // runs.
+    void ArmFolderPreviewTimer(const std::string& folderPath);
+    void CancelFolderPreviewTimer();
     // Mirrors the preview toggle into every tab's filer: while the preview is
     // on, deleting the previewed file hands the selection to the neighbouring
     // entry, so the pane shows that file instead of folding away.
@@ -343,6 +383,8 @@ private:
     std::shared_ptr<UltraCanvasTabbedContainer> favoritesTabs; // Files / Folders / Apps
     std::shared_ptr<UltraCanvasFilerWidget>     favoritesFilers[HistoryTabCount];
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
+    std::shared_ptr<UltraCanvasButton>          newButton;       // "New folder ▾" split button
+    std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
     std::shared_ptr<UltraCanvasBreadcrumb>      breadcrumb;
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
@@ -387,6 +429,12 @@ private:
     bool previewShown = false;             // preview pane currently in the split
     bool previewShowsFolder = false;       // pane holds folderPreview, not preview
     int  previewPaneWidth = 0;             // last shown width (px), restored on reopen
+    // Folder-preview double-click guard (see ArmFolderPreviewTimer): the
+    // folder waiting out the delay, and the folder whose delay has elapsed —
+    // UpdatePreviewPane shows a folder only once it is the "ready" one.
+    TimerId folderPreviewDelayTimer = InvalidTimerId;
+    std::string pendingFolderPreviewPath;
+    std::string folderPreviewReadyPath;
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split
     UltraFilerSettings settings;           // persisted application settings
