@@ -35,6 +35,28 @@
   before the caret moves.
 - Added `Tests/TexterMarkdownSpellRangesTest.cpp` (48 checks) covering the
   markdown skip scanner.
+- **CI builds Linux on ARM as well as x86_64.** The build matrix gained an
+  `ubuntu-22.04-arm` row, so every commit is now compiled, unit-tested and
+  packaged for Linux/aarch64 next to the existing x86_64 job — the same 22.04
+  base, so both Linux artifacts keep one glibc floor. Linux joins macOS and
+  Windows in having both architectures gated; until now an ARM-only build
+  break (or an aarch64 codegen difference in the renderer) could only be found
+  by a user on the hardware. The upload is
+  `UltraCanvas-Linux-<ver>-arm64.tar.gz` alongside the x86_64 tarball.
+- The Linux dependency list — apt packages plus the MuPDF, libopusenc and
+  c-ares source builds — moved out of the matrix row into the *Install
+  dependencies (Linux)* step, so the two Linux jobs share one copy instead of
+  drifting apart. The only architecture-dependent part is the multiarch libdir
+  the source builds install into, now read from `dpkg-architecture`. The Rust
+  toolchain step bootstraps `rustup` when the runner image does not preinstall
+  it (the arm64 image ships a smaller toolset), so the Vectorizer plugin gate
+  cannot fail for that reason.
+- `package-linux.sh` is architecture-aware: the package name takes its label
+  from `uname -m` (`x86_64` or `arm64`, matching the artifact naming used for
+  the macOS/Windows ARM builds, overridable with `ARCH=`), and the ImageMagick
+  delegate is copied from the host's own multiarch directory instead of a
+  hard-coded `/usr/lib/x86_64-linux-gnu`. The Linux artifact upload no longer
+  hard-codes `x86_64` in the tarball it looks for.
 
 #### 2026-08-28 *0.3.83*
 - **UltraCanvasFilerWidget: name filter (filter-as-you-type).**

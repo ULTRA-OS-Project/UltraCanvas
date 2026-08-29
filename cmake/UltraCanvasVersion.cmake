@@ -22,6 +22,14 @@
 #   ULTRACLEANER_VERSION        e.g. "0.50"    (Docs/UltraCleaner/CHANGELOG.md)
 #   ULTRACLEANER_VERSION_DOT4   e.g. "0.50.0.0"
 #   ULTRACLEANER_VERSION_COMMA4 e.g. "0,50,0,0"
+#   LADYBIRD_VERSION            e.g. "0.1.0"   (Docs/Ladybird/CHANGELOG.md)
+#   LADYBIRD_VERSION_DOT4       e.g. "0.1.0.0"
+#   LADYBIRD_VERSION_COMMA4     e.g. "0,1,0,0"
+#
+# The Ladybird port is built from its own tree, outside this repository, so
+# nothing here consumes LADYBIRD_VERSION yet; it is set so that tree gets the
+# port's version from the same place everything else does simply by including
+# this module, instead of keeping a second copy of the number.
 #
 # Expected first line of a changelog: `#### YYYY-MM-DD *x.y.z*`
 
@@ -32,6 +40,7 @@ get_filename_component(_ULTRACANVAS_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABS
 set(ULTRACANVAS_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/UltraCanvas/CHANGELOG.md")
 set(ULTRATEXTER_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/Texter/CHANGELOG.md")
 set(ULTRACLEANER_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/UltraCleaner/CHANGELOG.md")
+set(LADYBIRD_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/Docs/Ladybird/CHANGELOG.md")
 
 # Pad a dotted version to exactly four components and emit the dotted and
 # comma-separated forms Windows resource scripts want.
@@ -71,6 +80,7 @@ endfunction()
 _ultracanvas_version_from_changelog("${ULTRACANVAS_CHANGELOG_FILE}" ULTRACANVAS_VERSION)
 _ultracanvas_version_from_changelog("${ULTRATEXTER_CHANGELOG_FILE}" ULTRATEXTER_VERSION)
 _ultracanvas_version_from_changelog("${ULTRACLEANER_CHANGELOG_FILE}" ULTRACLEANER_VERSION)
+_ultracanvas_version_from_changelog("${LADYBIRD_CHANGELOG_FILE}" LADYBIRD_VERSION)
 
 _ultracanvas_version_variants("${ULTRACANVAS_VERSION}"
     ULTRACANVAS_VERSION_DOT4 ULTRACANVAS_VERSION_COMMA4)
@@ -78,6 +88,8 @@ _ultracanvas_version_variants("${ULTRATEXTER_VERSION}"
     ULTRATEXTER_VERSION_DOT4 ULTRATEXTER_VERSION_COMMA4)
 _ultracanvas_version_variants("${ULTRACLEANER_VERSION}"
     ULTRACLEANER_VERSION_DOT4 ULTRACLEANER_VERSION_COMMA4)
+_ultracanvas_version_variants("${LADYBIRD_VERSION}"
+    LADYBIRD_VERSION_DOT4 LADYBIRD_VERSION_COMMA4)
 
 # Re-run the configure step when a changelog gains a new entry, so an
 # already-configured build tree picks the new version up instead of baking in
@@ -92,7 +104,8 @@ set_property(DIRECTORY "${_uc_configure_depends_dir}" APPEND PROPERTY
     CMAKE_CONFIGURE_DEPENDS
         "${ULTRACANVAS_CHANGELOG_FILE}"
         "${ULTRATEXTER_CHANGELOG_FILE}"
-        "${ULTRACLEANER_CHANGELOG_FILE}")
+        "${ULTRACLEANER_CHANGELOG_FILE}"
+        "${LADYBIRD_CHANGELOG_FILE}")
 
 # The Windows resource script and manifest still hold literal version numbers
 # (they are compiled by windres/rc.exe from files on disk, not generated), and
