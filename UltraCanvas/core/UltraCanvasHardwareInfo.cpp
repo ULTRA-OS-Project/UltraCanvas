@@ -104,6 +104,135 @@ void MaskIdentifiersInPlace(HardwareSnapshot& snapshot) {
 
 } // namespace
 
+// ===== x86 FEATURE DETECTION =====
+// Guarded on the architecture, never on the compiler: MSYS2's CLANGARM64
+// toolchain defines __clang__, and a "GCC or MSVC" split would ask an ARM64
+// target for __cpuidex on a CPU that has no CPUID at all.
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+    #define ULTRACANVAS_HARDWAREINFO_HAS_CPUID 1
+#endif
+
+#if defined(ULTRACANVAS_HARDWAREINFO_HAS_CPUID)
+    #if defined(__GNUC__) || defined(__clang__)
+        // GCC's and clang's own header, preferred over hand-written asm because
+        // it gets the 32-bit-PIC EBX save/restore right.
+        #include <cpuid.h>
+    #elif defined(_MSC_VER)
+        #include <intrin.h>
+    #endif
+#endif
+
+namespace HardwareInfoBackend {
+namespace {
+
+#if defined(ULTRACANVAS_HARDWAREINFO_HAS_CPUID)
+// Inside the guard: off x86 the body of ReadX86CpuFeatures is compiled out,
+// which would leave these defined and unused.
+bool CpuIdRaw(unsigned int leaf, unsigned int subleaf, unsigned int out[4]) {
+    #if defined(__GNUC__) || defined(__clang__)
+    return __get_cpuid_count(leaf, subleaf, &out[0], &out[1], &out[2], &out[3]) != 0;
+    #elif defined(_MSC_VER)
+    __cpuidex(reinterpret_cast<int*>(out), static_cast<int>(leaf), static_cast<int>(subleaf));
+    return true;
+    #else
+    (void)leaf; (void)subleaf; (void)out;
+    return false;
+    #endif
+}
+
+bool Bit(unsigned int value, int index) { return (value & (1u << index)) != 0; }
+#endif
+
+} // namespace
+
+bool ReadX86CpuFeatures(X86CpuFeatures& out) {
+#if defined(ULTRACANVAS_HARDWAREINFO_HAS_CPUID)
+    unsigned int registers[4] = {};
+    if (!CpuIdRaw(0, 0, registers)) return false;
+    const unsigned int maxLeaf = registers[0];
+
+    if (maxLeaf >= 1 && CpuIdRaw(1, 0, registers)) {
+        const unsigned int ecx = registers[2];
+        out.sse3    = Bit(ecx, 0);   out.pclmul = Bit(ecx, 1);
+        out.ssse3   = Bit(ecx, 9);   out.fma    = Bit(ecx, 12);
+        out.cx16    = Bit(ecx, 13);  out.sse41  = Bit(ecx, 19);
+        out.sse42   = Bit(ecx, 20);  out.movbe  = Bit(ecx, 22);
+        out.popcnt  = Bit(ecx, 23);  out.aes    = Bit(ecx, 25);
+        out.osxsave = Bit(ecx, 27);  out.avx    = Bit(ecx, 28);
+        out.f16c    = Bit(ecx, 29);
+    }
+    if (maxLeaf >= 7 && CpuIdRaw(7, 0, registers)) {
+        const unsigned int ebx = registers[1];
+        const unsigned int ecx = registers[2];
+        out.bmi1       = Bit(ebx, 3);   out.avx2       = Bit(ebx, 5);
+        out.bmi2       = Bit(ebx, 8);   out.avx512f    = Bit(ebx, 16);
+        out.avx512dq   = Bit(ebx, 17);  out.avx512cd   = Bit(ebx, 28);
+        out.sha        = Bit(ebx, 29);  out.avx512bw   = Bit(ebx, 30);
+        out.avx512vl   = Bit(ebx, 31);
+        out.gfni       = Bit(ecx, 8);   out.vaes       = Bit(ecx, 9);
+        out.vpclmulqdq = Bit(ecx, 10);  out.avx512vnni = Bit(ecx, 11);
+    }
+    if (CpuIdRaw(0x80000000u, 0, registers) && registers[0] >= 0x80000001u &&
+        CpuIdRaw(0x80000001u, 0, registers)) {
+        out.lahf  = Bit(registers[2], 0);
+        out.lzcnt = Bit(registers[2], 5);
+    }
+    return true;
+#else
+    (void)out;
+    return false;
+#endif
+}
+
+int X86MicroarchitectureLevel(const X86CpuFeatures& features) {
+    const bool v2 = features.cx16 && features.lahf && features.popcnt && features.sse3 &&
+                    features.ssse3 && features.sse41 && features.sse42;
+    const bool v3 = v2 && features.avx && features.avx2 && features.bmi1 && features.bmi2 &&
+                    features.f16c && features.fma && features.lzcnt && features.movbe &&
+                    features.osxsave;
+    const bool v4 = v3 && features.avx512f && features.avx512bw && features.avx512cd &&
+                    features.avx512dq && features.avx512vl;
+    if (v4) return 4;
+    if (v3) return 3;
+    if (v2) return 2;
+    return 1;
+}
+
+void AppendX86FeatureNames(const X86CpuFeatures& features, std::vector<std::string>& out) {
+    struct Named { bool present; const char* name; };
+    const Named named[] = {
+        { features.sse3,       "SSE3"       },
+        { features.ssse3,      "SSSE3"      },
+        { features.sse41,      "SSE4.1"     },
+        { features.sse42,      "SSE4.2"     },
+        { features.avx,        "AVX"        },
+        { features.avx2,       "AVX2"       },
+        { features.fma,        "FMA"        },
+        { features.f16c,       "F16C"       },
+        { features.bmi1,       "BMI1"       },
+        { features.bmi2,       "BMI2"       },
+        { features.popcnt,     "POPCNT"     },
+        { features.aes,        "AES"        },
+        { features.pclmul,     "PCLMULQDQ"  },
+        { features.sha,        "SHA"        },
+        // The ones that bite: present on the build machine and absent here is
+        // how a -march=native binary earns an illegal-instruction fault.
+        { features.gfni,       "GFNI"       },
+        { features.vaes,       "VAES"       },
+        { features.vpclmulqdq, "VPCLMULQDQ" },
+        { features.avx512f,    "AVX512F"    },
+        { features.avx512bw,   "AVX512BW"   },
+        { features.avx512cd,   "AVX512CD"   },
+        { features.avx512dq,   "AVX512DQ"   },
+        { features.avx512vl,   "AVX512VL"   },
+        { features.avx512vnni, "AVX512VNNI" }
+    };
+    for (const Named& entry : named)
+        if (entry.present) out.push_back(entry.name);
+}
+
+} // namespace HardwareInfoBackend
+
 // ===== STRUCT METHODS =====
 
 std::string CPUCacheInfo::Describe() const {
@@ -492,6 +621,10 @@ HardwarePropertyGroup BuildCPUGroup(const CPUInfo& cpu) {
     AddRow(group, "Model", cpu.model);
     AddRow(group, "Vendor", cpu.vendor);
     AddRow(group, "Architecture", cpu.architecture);
+    // Directly under the architecture, because that is the row it qualifies.
+    AddRow(group, "Running under", cpu.emulation,
+           "The instruction sets below are the ones this emulator permits, not "
+           "everything the machine's own CPU can execute.");
     AddRow(group, "Socket", cpu.socket);
     AddRow(group, "Stepping", cpu.stepping);
     if (cpu.packages > 1) AddCount(group, "Packages", cpu.packages);
@@ -536,8 +669,15 @@ HardwarePropertyGroup BuildCPUGroup(const CPUInfo& cpu) {
         group.subGroups.push_back(std::move(caches));
     }
 
-    if (!cpu.instructionSets.empty()) {
+    if (!cpu.instructionSets.empty() || cpu.x86MicroarchitectureLevel > 0) {
         auto features = MakeGroup("cpu.isa", "Instruction sets", HardwareCategory::CPU);
+        if (cpu.x86MicroarchitectureLevel > 0)
+            AddRow(features, "Baseline level",
+                   "x86-64-v" + std::to_string(cpu.x86MicroarchitectureLevel),
+                   "The highest psABI level this CPU satisfies: a binary built with "
+                   "-march=x86-64-v" + std::to_string(cpu.x86MicroarchitectureLevel) +
+                   " is guaranteed to run here. Extensions listed below that belong to no "
+                   "level (GFNI, VAES, VPCLMULQDQ, SHA) are picked up only by -march=native.");
         AddRow(features, "Supported", JoinStrings(cpu.instructionSets, ", "));
         group.subGroups.push_back(std::move(features));
     }
@@ -931,6 +1071,9 @@ std::string UltraCanvasHardwareInfo::ToJSON(const HardwareSnapshot& snapshot) {
         value.Set("architecture", cpu.architecture);
         value.Set("socket", cpu.socket);
         value.Set("stepping", cpu.stepping);
+        value.Set("emulation", cpu.emulation);
+        value.Set("x86MicroarchitectureLevel",
+                  static_cast<int64_t>(cpu.x86MicroarchitectureLevel));
         value.Set("packages", static_cast<int64_t>(cpu.packages));
         value.Set("physicalCores", static_cast<int64_t>(cpu.physicalCores));
         value.Set("logicalCores", static_cast<int64_t>(cpu.logicalCores));

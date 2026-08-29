@@ -12,6 +12,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasHardwareInfoBackend.h"
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <cstdio>
@@ -134,6 +135,68 @@ static void TestReportShape() {
     for (const auto& group : groups)
         CHECK(group.id != "usb" && group.id != "bluetooth",
               "an uncaptured category produces no group");
+
+    // A natively-running process says nothing about emulation; one that is
+    // emulated must say so, because the instruction sets then describe the
+    // emulator rather than the machine.
+    auto HasRow = [](const std::vector<HardwarePropertyGroup>& all,
+                     const std::string& name) {
+        for (const auto& group : all)
+            for (const auto& property : group.properties)
+                if (property.name == name) return true;
+        return false;
+    };
+    CHECK(!HasRow(groups, "Running under"), "a native CPU produces no emulation row");
+
+    snapshot.cpu.emulation = "x64 image on an ARM64 machine";
+    const auto emulated = UltraCanvasHardwareInfo::BuildReport(snapshot);
+    CHECK(HasRow(emulated, "Running under"), "an emulated CPU is reported as such");
+}
+
+// The psABI level rules, checked against synthetic feature sets rather than
+// whatever CPU the test happens to run on. These are the cases that matter: a
+// level must not be raised by an extension that belongs to no level, and losing
+// one member of a level must drop the whole level.
+static void TestMicroarchitectureLevel() {
+    std::printf("x86-64 microarchitecture level\n");
+    using UltraCanvas::HardwareInfoBackend::X86CpuFeatures;
+    using UltraCanvas::HardwareInfoBackend::X86MicroarchitectureLevel;
+
+    X86CpuFeatures baseline;
+    CHECK(X86MicroarchitectureLevel(baseline) == 1, "a featureless CPU is v1");
+
+    X86CpuFeatures v2 = baseline;
+    v2.cx16 = v2.lahf = v2.popcnt = v2.sse3 = v2.ssse3 = v2.sse41 = v2.sse42 = true;
+    CHECK(X86MicroarchitectureLevel(v2) == 2, "the v2 feature set is v2");
+
+    X86CpuFeatures v3 = v2;
+    v3.avx = v3.avx2 = v3.bmi1 = v3.bmi2 = v3.f16c = v3.fma = v3.lzcnt = v3.movbe =
+        v3.osxsave = true;
+    CHECK(X86MicroarchitectureLevel(v3) == 3, "the v3 feature set is v3");
+
+    X86CpuFeatures v4 = v3;
+    v4.avx512f = v4.avx512bw = v4.avx512cd = v4.avx512dq = v4.avx512vl = true;
+    CHECK(X86MicroarchitectureLevel(v4) == 4, "the v4 feature set is v4");
+
+    // GFNI, VAES, VPCLMULQDQ and SHA belong to no level: -march=x86-64-vN never
+    // emits them, so finding them must not raise the number a builder is told
+    // to target.
+    X86CpuFeatures v3PlusOptIn = v3;
+    v3PlusOptIn.gfni = v3PlusOptIn.vaes = v3PlusOptIn.vpclmulqdq = v3PlusOptIn.sha = true;
+    CHECK(X86MicroarchitectureLevel(v3PlusOptIn) == 3,
+          "GFNI, VAES, VPCLMULQDQ and SHA do not raise the level");
+
+    X86CpuFeatures v4MinusVL = v4;
+    v4MinusVL.avx512vl = false;
+    CHECK(X86MicroarchitectureLevel(v4MinusVL) == 3, "v4 without AVX512VL falls back to v3");
+
+    X86CpuFeatures v3MinusOsxsave = v3;
+    v3MinusOsxsave.osxsave = false;
+    CHECK(X86MicroarchitectureLevel(v3MinusOsxsave) == 2, "v3 without OSXSAVE falls back to v2");
+
+    X86CpuFeatures v2MinusPopcnt = v2;
+    v2MinusPopcnt.popcnt = false;
+    CHECK(X86MicroarchitectureLevel(v2MinusPopcnt) == 1, "v2 without POPCNT falls back to v1");
 }
 
 static void TestLiveCapture() {
@@ -146,6 +209,18 @@ static void TestLiveCapture() {
     HardwareSnapshot snapshot = UltraCanvasHardwareInfo::Capture();
     CHECK(snapshot.capturedAtUnixSeconds > 0, "the snapshot is stamped");
     CHECK(snapshot.Has(HardwareQuery::CPU), "a full capture reports the CPU as captured");
+
+    // On x86 the shared CPUID detector must have run: a level of 0 there would
+    // mean the architecture guard compiled it out.
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+    CHECK(snapshot.cpu.x86MicroarchitectureLevel >= 1,
+          "an x86 capture reports a microarchitecture level");
+    CHECK(snapshot.cpu.x86MicroarchitectureLevel <= 4, "and it is in range");
+    CHECK(!snapshot.cpu.instructionSets.empty(), "and names the instruction sets it found");
+#else
+    CHECK(snapshot.cpu.x86MicroarchitectureLevel == 0,
+          "a non-x86 capture reports no x86 level");
+#endif
 
     if (UltraCanvasHardwareInfo::IsAvailable()) {
         CHECK(snapshot.cpu.logicalCores >= 1, "at least one logical core is reported");
@@ -228,6 +303,7 @@ int main() {
     TestMasking();
     TestQueryFlags();
     TestCacheHelpers();
+    TestMicroarchitectureLevel();
     TestReportShape();
     TestLiveCapture();
     TestMaskingAppliesToCapture();

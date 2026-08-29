@@ -36,6 +36,30 @@
   sysctl and the IOKit C API. Platforms with no native probe (WASM, Android,
   the BSDs) link a fallback that reports what the C++ runtime knows and says
   what it cannot.
+- **Cross-checked against the Ladybird port's processor-detection findings**
+  (`OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`), which changed three things
+  here. **x86 instruction sets are read from CPUID** — leaf 1, leaf 7 subleaf 0,
+  leaf 0x80000001 — on every platform, sharing the bit assignments and the
+  psABI-level rules that file verified flag-by-flag against `/proc/cpuinfo`.
+  Neither Win32's `IsProcessorFeaturePresent` nor a filtered `/proc/cpuinfo`
+  list names GFNI, VAES or VPCLMULQDQ, which are exactly the VEX-encoded
+  extensions `-march=native` picks up without AVX-512 — so a CPU could hold
+  every feature the panel printed and still refuse the binary, which is how an
+  AVX2-capable Ryzen 5 5500U came to fault on `VGF2P8AFFINEQB`. New
+  `CPUInfo::x86MicroarchitectureLevel` names the highest x86-64 psABI level the
+  machine satisfies, shown as *Baseline level: x86-64-v3*: that is a flag a
+  packager can paste, and GFNI/VAES/VPCLMULQDQ/SHA are listed without raising
+  it, because no `-march=x86-64-vN` emits them. The detection is guarded on the
+  **architecture**, not the compiler, since MSYS2's CLANGARM64 defines
+  `__clang__`.
+- **`CPUInfo::emulation` reports a process that is not running natively** on the
+  CPU it describes — `IsWow64Process2` on Windows, `sysctl.proc_translated`
+  (Rosetta) on macOS — shown as a *Running under* row. Under emulation the two
+  halves of `CPUInfo` describe different things: the model and core counts are
+  the silicon's, the instruction sets are the emulator's, and Windows on ARM
+  offers no AVX-512 at all. That is the gap that reached the field as
+  `lagom-gfx.dll` faulting with `ILLEGAL_INSTRUCTION` on Windows 11 while the
+  same package ran on Windows 10.
 - The module is deliberately separate from **IODeviceManager**: that one
   *operates* peripherals (connect, configure, scan, print — handles, protocol
   drivers, a device lifecycle), this one only *describes* the host and holds

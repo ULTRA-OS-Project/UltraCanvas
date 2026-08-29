@@ -112,6 +112,25 @@ struct CPUInfo {
     std::vector<CPUCoreGroup> coreGroups;   // empty on a uniform CPU
     std::vector<std::string>  instructionSets; // "AVX2", "AES", "NEON", "SVE"
 
+    // Highest x86-64 psABI microarchitecture level the CPU satisfies (1..4);
+    // 0 off x86. It is the actionable form of the list above: -march=x86-64-v<N>
+    // means exactly that feature set, so a build targeting this level is
+    // guaranteed to run here. Extensions outside every level - GFNI, VAES,
+    // VPCLMULQDQ, SHA - are named in `instructionSets` and deliberately do not
+    // raise it, because no -march=x86-64-vN emits them and only -march=native
+    // drags them in.
+    int x86MicroarchitectureLevel = 0;
+
+    // Set when this process is not running natively on the CPU above - "x64
+    // image on an ARM64 machine", "x86_64 image translated by Rosetta". Empty
+    // when native. It matters here because the two halves of this struct then
+    // describe different things: `model` and the core counts come from the
+    // silicon, while `instructionSets` is what the emulator permits (Windows on
+    // ARM offers no AVX-512 at all). A binary built with -march=native on the
+    // build host and run here is the classic way that gap turns into an
+    // illegal-instruction crash.
+    std::string emulation;
+
     // Sensors (present only when the platform exposes them to an unprivileged
     // process; see HardwareSnapshot::warnings when they are missing).
     std::optional<double> temperatureC;
