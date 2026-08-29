@@ -1,3 +1,28 @@
+#### 2026-08-29 *0.3.85*
+- **The CPU line in an ILLEGAL_INSTRUCTION crash now names the feature that is
+  actually missing.** A field report had an AVX2-capable Ryzen 5 5500U fault on
+  `VGF2P8AFFINEQB` while the reporter said `[SSE4.2 AVX AVX2]` — every feature it
+  knew how to print was present, and the one that mattered was not on the list.
+  The cause is `IsProcessorFeaturePresent`: it has PF_ constants for a handful
+  of extensions and none for GFNI, VAES or VPCLMULQDQ, which are the ones a
+  `-march=native` build picks up without needing AVX-512 at all. Detection now
+  reads CPUID directly (leaf 1, leaf 7 subleaf 0, leaf 0x80000001) and prints
+  those three alongside FMA, BMI2, AES, SHA and the AVX-512 family.
+- The summary also names the **highest x86-64 psABI level the machine
+  satisfies** — `(x86-64-v3)` — and the crash text now quotes that level back as
+  the flag to build with. `-march=x86-64-v<N>` means exactly that feature set,
+  so it is a flag the builder can paste rather than a vague "lower the
+  baseline". GFNI, VAES, VPCLMULQDQ and SHA deliberately do not raise the level:
+  they belong to no level, which is precisely why no `-march=x86-64-vN` will
+  emit them and only `-march=native` drags them in.
+- `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` corrects guidance that was
+  actively misleading: it previously said a `C4`/`C5` prefix means "VEX, i.e.
+  AVX/AVX2". VEX also encodes GFNI, VAES, VPCLMULQDQ and BMI, so a CPU can hold
+  every feature in the printed list and still refuse a VEX instruction — exactly
+  what happened here. The section now shows how to decode the bytes with
+  `objdump` instead of guessing from the prefix, works the reported case
+  through, and adds the opt-in-extension cause to the two it already covered.
+
 #### 2026-08-28 *0.3.84*
 - **Spell checking is now switched on and usable in UltraTexter.** The service
   and the `UltraCanvasTextArea` integration already existed, but nothing in the

@@ -47847,12 +47847,13 @@ between opening it and the first flushed line. Go to the next section.
 
 ```
 Ladybird crashed: exception 0xC000001D (ILLEGAL_INSTRUCTION (binary uses CPU
-instructions this machine lacks)) at 0x00007FF8599C3793 in
+instructions this machine lacks)) at 0x00007FF8355D3793 in
 C:\...\Ladybird\bin\lagom-gfx.dll. Windows 11 (10.0 build 26200)
-This CPU: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz [SSE4.2 AVX AVX2]
-Bytes at the fault: 62 F1 7C 48 28 C1 ...
-The binary was built for a CPU this one is not. Rebuild it without
--march=native (or /arch:AVX*) so it targets a baseline this machine has.
+This CPU: AMD Ryzen 5 5500U with Radeon Graphics (x86-64-v3) [SSE4.2 AVX AVX2
+FMA BMI2 AES SHA]
+Bytes at the fault: C4 E3 F9 CE 05 83 D1 03 00 00 C5 F9 D7 C0 3D FF
+The binary was built for a CPU this one is not. Rebuild it with
+-march=x86-64-v3 instead of -march=native (or /arch:AVX*). ...
 ```
 
 Nothing is wrong with the code at that address. The compiler emitted an
@@ -47860,29 +47861,58 @@ instruction the machine will not execute, and the loader was happy to map it —
 the fault only happens when execution reaches it. Which is why this crash tends
 to land in a *graphics* or *image* library: those are where the vector code is.
 
-The reporter prints three things that settle it between them:
+The reporter prints four things that settle it between them:
 
 - **the module** — which library was compiled too aggressively;
-- **this CPU** — the brand string and which instruction sets the machine
-  actually offers, read through `IsProcessorFeaturePresent` so it reports what
-  the OS *permits*, not what the silicon has;
-- **the bytes at the fault** — enough to identify the instruction. A `62`
-  prefix is EVEX, i.e. AVX-512; `C5` or `C4` is VEX, i.e. AVX/AVX2.
+- **the x86-64 level** — the highest psABI microarchitecture level this machine
+  satisfies. It is the actionable number, because `-march=x86-64-v<N>` means
+  exactly that set: a build targeting it is guaranteed to run here;
+- **the feature list** — read from CPUID, covering the extensions that actually
+  break a `-march=native` build;
+- **the bytes at the fault** — enough to identify the instruction.
 
-Two causes, and the CPU line tells you which:
+### Reading the bytes
+
+Do not stop at the prefix. `62` is EVEX and does imply AVX-512, but `C4`/`C5`
+is VEX, which encodes far more than AVX and AVX2 — GFNI, VAES, VPCLMULQDQ and
+BMI are all VEX-encoded. **A CPU can have every feature in the list and still
+refuse a VEX instruction.** Decode it rather than guessing; any disassembler
+will take raw bytes:
+
+```sh
+printf 'C4E3F9CE0583D1030000C5F9D7C0' | ... > f.bin   # bytes, hex, no spaces
+objdump -D -b binary -m i386:x86-64 -M intel f.bin
+```
+
+The example above decodes to `vgf2p8affineqb xmm0, xmm0, [rip+0x3d183], 0` —
+a **GFNI** instruction, on a CPU whose list says `AVX2` and does not say `GFNI`.
+That is the whole bug, and reading `C4` as "AVX2, which this CPU has" would have
+sent you looking in the wrong place.
+
+### The three causes
 
 1. **The build machine had a newer CPU than the target.** `-march=native` bakes
-   in whatever the *builder's* processor supported. Build with an explicit
-   baseline instead — `-march=x86-64-v2` (SSE4.2, POPCNT) is a safe floor for
-   anything that runs Windows 10 or 11; `-march=x86-64-v3` requires AVX2 and
-   excludes a lot of still-current laptops and most virtual machines. Never ship
-   `-march=native` binaries.
-2. **The binary is x64 running under emulation on an ARM64 machine.** The
+   in whatever the *builder's* processor supported. Build with the level the
+   reporter names instead. Never ship `-march=native` binaries.
+2. **An opt-in extension outside every `-march` level.** GFNI, VAES, VPCLMULQDQ
+   and SHA belong to *no* `x86-64-v1..v4` level — no `-march=x86-64-vN` will
+   ever emit them, and nothing but `-march=native` (or an explicit `-mgfni` and
+   friends) picks them up. This is the nastiest version of the bug, because the
+   target CPU can be modern and fully AVX2-capable and still fault. AMD added
+   GFNI in Zen 4; Intel in Ice Lake and Tremont. A Zen 2 or Zen 3 laptop chip
+   has AVX2 and no GFNI.
+3. **The binary is x64 running under emulation on an ARM64 machine.** The
    reporter appends `EMULATED: x64 image on a ARM64 machine` when it detects
    this (via `IsWow64Process2`). Windows on ARM emulates a *subset* of x86:
    AVX-512 is not available at all, and AVX/AVX2 only on recent builds. The fix
    is to ship a native ARM64 build; lowering the baseline only helps if the
    emulator covers what is left.
+
+Picking a level: `-march=x86-64-v2` (SSE4.2, POPCNT) runs on anything that runs
+Windows 10 or 11. `-march=x86-64-v3` adds AVX2, FMA and BMI2 — good performance,
+but it excludes pre-2015 hardware, some current low-power parts and many virtual
+machines. `v4` requires AVX-512 and is not a sensible shipping target. When in
+doubt ship `v2`; when the reporter says `v3`, `v3` is safe *for that machine*.
 
 **This is the failure most likely to be misread as an operating-system
 problem.** "Works on Windows 10, crashes on Windows 11" is what you observe when

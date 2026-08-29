@@ -43,6 +43,7 @@ namespace UltraCanvas {
         char    gCrashAppName[128]          = "UltraCanvas";
         char    gCrashOsVersion[128]        = "";
         char    gCrashCpuSummary[256]       = "";
+        char    gCrashMarchAdvice[64]       = "-march=x86-64-v2";
         bool    gCrashDialogAllowed         = true;
 
         bool EnvFlagSet(const char* name) {
@@ -223,24 +224,125 @@ namespace UltraCanvas {
             return std::string(", EMULATED: ") + image + " image on a " + native + " machine";
         }
 
+        // Feature set read from CPUID rather than IsProcessorFeaturePresent.
+        // The Win32 call knows only a handful of PF_* constants, and the
+        // extensions that actually break a -march=native build are mostly not
+        // among them: a field report had an AVX2-capable Ryzen 5 5500U fault on
+        // VGF2P8AFFINEQB, a GFNI instruction, while the old summary read
+        // "[SSE4.2 AVX AVX2]" and could not name the one thing that was missing.
+        // GFNI, VAES and VPCLMULQDQ are VEX-encoded and need no AVX-512, so a
+        // CPU can have every feature this used to print and still refuse the
+        // binary.
+        struct CpuFeatures {
+            bool sse3 = false, ssse3 = false, sse41 = false, sse42 = false;
+            bool popcnt = false, cx16 = false, movbe = false, lahf = false, lzcnt = false;
+            bool osxsave = false, avx = false, avx2 = false, fma = false, f16c = false;
+            bool bmi1 = false, bmi2 = false;
+            bool aes = false, pclmul = false, sha = false;
+            bool gfni = false, vaes = false, vpclmulqdq = false;
+            bool avx512f = false, avx512bw = false, avx512cd = false;
+            bool avx512dq = false, avx512vl = false, avx512vnni = false;
+        };
+
+#if defined(ULTRACANVAS_HAS_CPUID)
+        // Inside the guard: off x86 the whole body of DetectCpuFeatures() below
+        // is compiled out, which would leave this defined and unused.
+        bool Bit(unsigned int value, int index) {
+            return (value & (1u << index)) != 0;
+        }
+#endif
+
+        CpuFeatures DetectCpuFeatures() {
+            CpuFeatures f;
+#if defined(ULTRACANVAS_HAS_CPUID)
+            unsigned int r[4] = {};
+            if (!CpuIdRaw(0, 0, r)) return f;
+            const unsigned int maxLeaf = r[0];
+
+            if (maxLeaf >= 1 && CpuIdRaw(1, 0, r)) {
+                const unsigned int ecx = r[2];
+                f.sse3   = Bit(ecx, 0);   f.pclmul  = Bit(ecx, 1);
+                f.ssse3  = Bit(ecx, 9);   f.fma     = Bit(ecx, 12);
+                f.cx16   = Bit(ecx, 13);  f.sse41   = Bit(ecx, 19);
+                f.sse42  = Bit(ecx, 20);  f.movbe   = Bit(ecx, 22);
+                f.popcnt = Bit(ecx, 23);  f.aes     = Bit(ecx, 25);
+                f.osxsave= Bit(ecx, 27);  f.avx     = Bit(ecx, 28);
+                f.f16c   = Bit(ecx, 29);
+            }
+            if (maxLeaf >= 7 && CpuIdRaw(7, 0, r)) {
+                const unsigned int ebx = r[1];
+                const unsigned int ecx = r[2];
+                f.bmi1     = Bit(ebx, 3);   f.avx2       = Bit(ebx, 5);
+                f.bmi2     = Bit(ebx, 8);   f.avx512f    = Bit(ebx, 16);
+                f.avx512dq = Bit(ebx, 17);  f.avx512cd   = Bit(ebx, 28);
+                f.sha      = Bit(ebx, 29);  f.avx512bw   = Bit(ebx, 30);
+                f.avx512vl = Bit(ebx, 31);
+                f.gfni     = Bit(ecx, 8);   f.vaes       = Bit(ecx, 9);
+                f.vpclmulqdq = Bit(ecx, 10); f.avx512vnni = Bit(ecx, 11);
+            }
+            if (CpuIdRaw(0x80000000u, 0, r) && r[0] >= 0x80000001u &&
+                CpuIdRaw(0x80000001u, 0, r)) {
+                f.lahf  = Bit(r[2], 0);
+                f.lzcnt = Bit(r[2], 5);
+            }
+#endif
+            return f;
+        }
+
+        // Highest psABI microarchitecture level the CPU satisfies. This is the
+        // actionable number: it is exactly what -march=x86-64-v<N> means, so a
+        // build that targets it is guaranteed to run here. Note GFNI, VAES,
+        // VPCLMULQDQ and SHA belong to *no* level - they are opt-in features
+        // that -march=native picks up from the build machine and no
+        // -march=x86-64-vN will ever emit.
+        int X86_64Level(const CpuFeatures& f) {
+            const bool v2 = f.cx16 && f.lahf && f.popcnt && f.sse3 && f.ssse3 &&
+                            f.sse41 && f.sse42;
+            const bool v3 = v2 && f.avx && f.avx2 && f.bmi1 && f.bmi2 && f.f16c &&
+                            f.fma && f.lzcnt && f.movbe && f.osxsave;
+            const bool v4 = v3 && f.avx512f && f.avx512bw && f.avx512cd &&
+                            f.avx512dq && f.avx512vl;
+            if (v4) return 4;
+            if (v3) return 3;
+            if (v2) return 2;
+            return 1;
+        }
+
         std::string CpuSummary() {
+            const CpuFeatures f = DetectCpuFeatures();
+
             std::string out = CpuBrand();
+#if defined(ULTRACANVAS_HAS_CPUID)
+            out += " (x86-64-v" + std::to_string(X86_64Level(f)) + ")";
+#endif
             out += " [";
-            struct Feature { int id; const char* name; };
-            const Feature features[] = {
-                { PF_SSE4_2_INSTRUCTIONS_AVAILABLE,   "SSE4.2" },
-                { PF_AVX_INSTRUCTIONS_AVAILABLE,      "AVX"    },
-                { PF_AVX2_INSTRUCTIONS_AVAILABLE,     "AVX2"   },
-                { PF_AVX512F_INSTRUCTIONS_AVAILABLE,  "AVX512F"},
+            struct Named { bool present; const char* name; };
+            const Named named[] = {
+                { f.sse42,      "SSE4.2"     },
+                { f.avx,        "AVX"        },
+                { f.avx2,       "AVX2"       },
+                { f.fma,        "FMA"        },
+                { f.bmi2,       "BMI2"       },
+                { f.aes,        "AES"        },
+                { f.sha,        "SHA"        },
+                // The ones that bite. Absent here and present on the build
+                // machine is the whole bug.
+                { f.gfni,       "GFNI"       },
+                { f.vaes,       "VAES"       },
+                { f.vpclmulqdq, "VPCLMULQDQ" },
+                { f.avx512f,    "AVX512F"    },
+                { f.avx512bw,   "AVX512BW"   },
+                { f.avx512vl,   "AVX512VL"   },
+                { f.avx512vnni, "AVX512VNNI" },
             };
             bool first = true;
-            for (const Feature& feature : features) {
-                if (!IsProcessorFeaturePresent(static_cast<DWORD>(feature.id))) continue;
+            for (const Named& entry : named) {
+                if (!entry.present) continue;
                 if (!first) out += " ";
-                out += feature.name;
+                out += entry.name;
                 first = false;
             }
-            if (first) out += "no AVX";
+            if (first) out += "baseline";
             out += "]";
             out += EmulationDescription();
             return out;
@@ -324,9 +426,13 @@ namespace UltraCanvas {
                 FormatBytesAt(address, bytes, sizeof(bytes));
                 std::snprintf(detail, sizeof(detail),
                               "\nThis CPU: %s\nBytes at the fault: %s\nThe binary was built for a "
-                              "CPU this one is not. Rebuild it without -march=native "
-                              "(or /arch:AVX*) so it targets a baseline this machine has.",
-                              gCrashCpuSummary, bytes[0] ? bytes : "<unreadable>");
+                              "CPU this one is not. Rebuild it with %s instead of -march=native "
+                              "(or /arch:AVX*). Note the feature list above is what this machine "
+                              "has: an instruction can be missing from it even when AVX2 is "
+                              "present -- GFNI, VAES and VPCLMULQDQ belong to no -march level and "
+                              "are picked up only from the build machine.",
+                              gCrashCpuSummary, bytes[0] ? bytes : "<unreadable>",
+                              gCrashMarchAdvice);
             }
 
             char message[512];
@@ -511,6 +617,11 @@ namespace UltraCanvas {
         // Captured now, while the process is healthy: CPUID and the feature
         // queries are not things to be doing inside the filter.
         CopyToFixedBuffer(gCrashCpuSummary, sizeof(gCrashCpuSummary), CpuSummary());
+        // Name the level this machine actually satisfies, so the advice is a flag
+        // the builder can paste rather than a generic "lower the baseline".
+        CopyToFixedBuffer(gCrashMarchAdvice, sizeof(gCrashMarchAdvice),
+                          "-march=x86-64-v" +
+                              std::to_string(X86_64Level(DetectCpuFeatures())));
         gCrashDialogAllowed = !DialogsSuppressed();
 
         // Resolve the log path here rather than asking the debug sink for it:
