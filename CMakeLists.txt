@@ -924,6 +924,49 @@ if (BUILD_TESTS)
     add_test(NAME JSONTests COMMAND JSONTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # Hardware inventory tests: formatters, identifier masking, the query
+    # selector, report shape and the invariants a live capture must hold.
+    # Compiles the module and its platform probe only, so it runs headless.
+    if(WIN32)
+        set(_uc_hardwareinfo_backend
+            UltraCanvas/OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp)
+    elseif(APPLE)
+        set(_uc_hardwareinfo_backend
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(_uc_hardwareinfo_backend
+            UltraCanvas/OS/Linux/UltraCanvasLinuxHardwareInfo.cpp)
+    else()
+        # No native probe: the fallback inside the module itself is linked.
+        set(_uc_hardwareinfo_backend "")
+    endif()
+    add_executable(HardwareInfoTests
+        Tests/HardwareInfoTest.cpp
+        UltraCanvas/core/UltraCanvasHardwareInfo.cpp
+        ${_uc_hardwareinfo_backend}
+        UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+        UltraCanvas/third_party/yyjson/yyjson.c
+    )
+    target_include_directories(HardwareInfoTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/third_party/yyjson
+    )
+    target_compile_features(HardwareInfoTests PRIVATE cxx_std_20)
+    if(WIN32)
+        target_link_libraries(HardwareInfoTests PRIVATE
+            iphlpapi wlanapi setupapi bthprops ole32 advapi32 ws2_32)
+    elseif(APPLE)
+        # Named directly rather than through the library's find_library results:
+        # those live in the UltraCanvas/ subdirectory scope, not this one.
+        target_link_libraries(HardwareInfoTests PRIVATE
+            "-framework IOKit" "-framework CoreFoundation")
+    endif()
+    set_target_properties(HardwareInfoTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HardwareInfoTests COMMAND HardwareInfoTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD
     # round-trip plus the mandated negative cases, KDF behaviour and secure
     # buffer semantics. Compiles only UltraCrypt, so it runs headless.

@@ -307,6 +307,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
+    # IOKit + CoreFoundation back the hardware probe
+    # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
+    # storage, USB and Bluetooth, and the CF property readers around it.
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
     endif()
@@ -456,6 +461,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/MOBIEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/TXTEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookViewer.cpp
+
+        # Hardware inventory and sensors (CPU/GPU/NPU/memory/storage/network/
+        # USB/Bluetooth) plus the ready-made system-information panel. The probe
+        # itself lives in OS/<Platform>/UltraCanvas*HardwareInfo.cpp and is
+        # picked up by the platform glob below.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfoPanel.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -1335,6 +1347,14 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             imm32
             dwmapi
             ws2_32  # Winsock select() for host fd-watches (e.g. Ladybird IPC sockets)
+            # Hardware probe (OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp):
+            # network adapters, Wi-Fi association, USB enumeration and the
+            # Bluetooth radios. powrprof is loaded at run time instead, so the
+            # processor-clock query costs no link dependency.
+            iphlpapi
+            wlanapi
+            setupapi
+            bthprops
             ${FONTCONFIG_LIBRARIES}
     )
     if(ULTRACANVAS_ENABLE_GL)
@@ -1361,6 +1381,8 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${COCOA_FRAMEWORK}
             ${QUARTZ_FRAMEWORK}
             ${CORETEXT_FRAMEWORK}
+            ${IOKIT_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)

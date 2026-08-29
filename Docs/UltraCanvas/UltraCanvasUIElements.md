@@ -102,6 +102,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
 | List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
+| System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 
 ## Pickers, dialogs and feedback
 

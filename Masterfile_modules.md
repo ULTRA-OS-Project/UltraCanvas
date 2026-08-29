@@ -80,6 +80,50 @@ the backing implementation can be replaced without affecting callers.
   they need a pixel offset in the paint path first.
   See `Docs/UltraCanvas/UltraCanvasSmoothScroll.md`.
 
+- **UltraCanvasHardwareInfo** (`UltraCanvasHardwareInfo.h`) — read-only
+  inventory and sensors for the machine the application runs on: CPU (cache
+  sizes, hybrid core tiers, instruction sets, temperature, load), GPU, NPU,
+  memory down to the individual module, storage (bus, connector, on-drive
+  cache, temperature, volumes), network interfaces including Wi-Fi
+  association, USB controllers and attached devices, and Bluetooth adapters
+  with their connections. Distinct from **IODeviceManager**, which *operates*
+  peripherals (scanners, cameras, printers: handles, protocols, a device
+  lifecycle) — this module only *describes* the host and holds nothing. Shared
+  logic in `core/UltraCanvasHardwareInfo.cpp`; per-platform probes behind the
+  internal `UltraCanvasHardwareInfoBackend.h` under `OS/<Platform>/` (Linux:
+  procfs/sysfs; Windows: registry, SMBIOS, storage IOCTLs, IP Helper, WLAN,
+  SetupAPI and the Bluetooth API — no COM or WMI; macOS: sysctl and the IOKit
+  C API), with a fallback for platforms that have none. No new third-party
+  dependency on any platform. Public surface:
+  - `Capture(HardwareQuery, forceRefresh)` — one consistent snapshot;
+    `HardwareQuery` is a bit set (`System`/`CPU`/`GPU`/`NPU`/`Memory`/
+    `Storage`/`Network`/`USB`/`Bluetooth`/`Sensors`/`All`) because probing
+    costs differ by orders of magnitude, and `HardwareSnapshot::Has` reports
+    which categories were actually filled.
+  - `RefreshSensors(snapshot)` — re-reads temperatures, clocks, utilisation,
+    free memory and link state in place, never adding or removing a device, so
+    a monitor loop keeps its indices.
+  - Single-category helpers `GetCPU` / `GetMemory` / `GetSystem` / `ListGPUs` /
+    `ListNPUs` / `ListStorageDevices` / `ListNetworkInterfaces` /
+    `ListUSBDevices` / `ListUSBControllers` / `ListBluetoothAdapters`.
+  - `SetOptions` / `GetOptions` (`HardwareInfoOptions`): identifier masking
+    (on by default — serial numbers, MACs and BSSIDs keep only their tail),
+    sensor inclusion, USB hubs, snapshot cache lifetime; `MaskIdentifier`
+    applies the same rule to a caller's own string.
+  - `BuildReport` → `HardwarePropertyGroup` tree, and the `ToText` / `ToJSON`
+    renderings built on it; `FormatBytes` / `FormatFrequencyMHz` /
+    `FormatTemperature` / `FormatBitrateMbps` / `FormatDuration`.
+  - `GetBackendName` (`"sysfs"` / `"win32"` / `"iokit"` / `"null"`),
+    `IsAvailable`. A value that cannot be read never becomes a zero: the
+    reason goes into `HardwareSnapshot::warnings` in words a user can act on.
+  - **UltraCanvasHardwareInfoPanel** (`UltraCanvasHardwareInfoPanel.h`) — the
+    ready-made system-information view, an `UltraCanvasColumnsTreeView` that
+    fills itself from a snapshot: `Refresh`, `RefreshSensors` (updates values
+    in place, so expansion, selection and scroll position survive),
+    `SetQuery`, `SetSnapshot`, `SetSectionsExpanded`, `ToText` / `ToJSON`,
+    `onSnapshotChanged`, and the `CreateHardwareInfoPanel` factory.
+  See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the
