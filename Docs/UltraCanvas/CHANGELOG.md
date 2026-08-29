@@ -23,6 +23,28 @@
   hard-codes `x86_64` in the tarball it looks for.
 
 #### 2026-08-28 *0.3.83*
+- **The XAR renderer matches Xara Designer Pro X19 output much closer now**
+  — three fidelity fixes found by comparing a real Designer Pro file's
+  render against its author's PDF export, pixel by pixel:
+  - Soft shadows composite at their true darkness: the shadow atom record
+    (`TAG_SHADOW`) carries the exact opacity as a double, which Xara's own
+    export uses — the controller record's coarse percentage field made
+    shadows twice as dark (50% instead of 25% in the reference file). The
+    penumbra is a real gaussian blur now: blurring a silhouette equals
+    averaging copies of it shifted over the kernel, so the silhouette
+    renders in up to 64 passes at gaussian-distributed offsets (a
+    deterministic golden-angle spiral), each at the low alpha that
+    accumulates to the shadow darkness — the measured edge falloff matches
+    the reference export point for point, where the previous widened-stroke
+    fake produced a hard edge with dark banding.
+  - QuickShapes (rectangles/ellipses/polygons) render bitmap and contone
+    fills now — Designer Pro's image placeholder is a rectangle QuickShape
+    with a bitmap fill, which previously fell back to a flat colour. The
+    path node's bitmap-fill painter is shared instead of duplicated.
+  - A line-level left indent (`TAG_TEXT_LEFT_INDENT` attached to a text
+    line) shifts that line's origin — indented paragraph blocks rendered
+    flush left before.
+
 - **UltraCanvasFilerWidget: name filter (filter-as-you-type).**
   `SetNameFilter(text)` narrows the displayed listing to the names containing
   the text (case-insensitive) without a disk rescan per keystroke — the full
