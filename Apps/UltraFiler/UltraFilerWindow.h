@@ -1,6 +1,10 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
-// a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, the
+// the folder tab strip at the very top of the window (an
+// UltraCanvasTabbedContainer detached from its pages: the strip is the
+// window's top bar, the pages live in the folder pane of the split below,
+// and the "+" at the end of the tab list opens another tab), then
+// a navigation row (Back / Forward / Up / Refresh, the
 // History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
 // bar (the "New folder ▾" split button — its arrow lists the same kinds as
@@ -9,8 +13,9 @@
 // matches, a centered "Search in sub folders" button (and the Enter key)
 // escalates to the recursive search —, Sort and
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
-// the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
-// (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
+// the lazy folder tree (UltraCanvasTreeView), the folder content display
+// (the tab strip's content host, showing the active tab's
+// UltraCanvasFilerWidget - one per tab) and
 // the detail pane (shown only while a single previewable file OR a folder is
 // selected — a folder only once the double-click interval has passed, so a
 // double-click that opens it never flashes its preview; Esc closes it): a
@@ -40,8 +45,8 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.12.0
-// Last Modified: 2026-08-28
+// Version: 1.13.0
+// Last Modified: 2026-08-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -119,7 +124,8 @@ private:
     void BuildFavoritesView();
 
     // ===== TABS =====
-    // Creates a tab with its own filer widget showing `path`.
+    // Creates a tab with its own filer widget showing `path`. Wired to the
+    // tab strip's "+" button at the end of the tab list.
     void AddNewTab(const std::string& path, bool activate);
     void WireFilerCallbacks(FilerTabState* tab);
     // Refreshes breadcrumb, nav buttons, tree, dropdowns, status bar, window
@@ -367,7 +373,11 @@ private:
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
     std::shared_ptr<UltraCanvasTreeView>        folderTree;
+    // The folder tab strip: the window's topmost bar. Its pages are detached
+    // into `tabContentHost` (in the split's folder pane), so the tabs sit above
+    // the toolbars while the folder they select is displayed below them.
     std::shared_ptr<UltraCanvasTabbedContainer> tabbedContainer;
+    std::shared_ptr<UltraCanvasContainer>       tabContentHost;  // shows the active tab's page
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
     std::shared_ptr<UltraCanvasMediaViewer>     preview;
     // Folder preview: shows the content of a selected folder in the detail

@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
-// Version: 2.2.0
-// Last Modified: 2026-05-31
+// Version: 2.3.0
+// Last Modified: 2026-08-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -179,6 +179,16 @@ namespace UltraCanvas {
         Color newTabButtonIconColor = Color(100, 100, 100);
         std::function<void()> onNewTabRequest = nullptr;
 
+        // ===== DETACHED CONTENT AREA =====
+        // Browser-style layout: the tab strip stands on its own (typically as
+        // the window's topmost bar) while the pages are shown in a container
+        // somewhere else in the element tree. With a host set, tab contents
+        // become children of that host instead of this element: the host's own
+        // layout sizes them, and this element is nothing but the tab bar --
+        // give it a height of GetTabHeight() and let the host take the space
+        // the pages need. Set through SetContentHost().
+        std::shared_ptr<UltraCanvasContainer> contentHost = nullptr;
+
         // ===== SCROLLING =====
         bool enableTabScrolling = true;
         int tabScrollOffset = 0;
@@ -280,6 +290,17 @@ namespace UltraCanvas {
         NewTabButtonPosition GetNewTabButtonPosition() const { return newTabButtonPosition; }
         void SetShowNewTabButton(bool show);
         bool GetShowNewTabButton() const { return showNewTabButton; }
+
+        // ===== DETACHED CONTENT AREA =====
+        // Shows the tab pages inside `host` instead of inside this element, so
+        // the tab strip can live apart from the pages it switches (a browser's
+        // tabs above its toolbars, for instance). Pages that were already added
+        // move over; pass nullptr to take them back. The host displays exactly
+        // one page at a time -- the active tab's, the others are hidden -- so
+        // give it a stretching layout and its pages a growing layout item.
+        void SetContentHost(const std::shared_ptr<UltraCanvasContainer>& host);
+        const std::shared_ptr<UltraCanvasContainer>& GetContentHost() const { return contentHost; }
+        bool IsContentDetached() const { return contentHost != nullptr; }
 
         // ===== TAB CONTEXT MENU =====
         void SetTabContextMenu(std::shared_ptr<UltraCanvasMenu> menu) { tabContextMenu = menu; }
@@ -436,6 +457,11 @@ namespace UltraCanvas {
         Color GetTabTextColor(int index) const;
 
     private:
+        // Parent / unparent a tab page into whichever element owns the pages
+        // right now: this container, or the detached content host.
+        void AttachTabContent(const std::shared_ptr<UltraCanvasUIElement>& content);
+        void DetachTabContent(const std::shared_ptr<UltraCanvasUIElement>& content);
+
         std::string ToLowerCase(const std::string& str) const {
             std::string result = str;
             std::transform(result.begin(), result.end(), result.begin(), ::tolower);

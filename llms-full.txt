@@ -41244,8 +41244,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTabExamples.md
 
 The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in the UltraCanvas framework that provides rich functionality for organizing content in tabs. It features automatic overflow handling with dropdown menus, integrated search capabilities, multiple tab positioning options, and extensive customization possibilities.
 
-**Version:** 1.6.0  
-**Last Modified:** 2025-09-14  
+**Version:** 1.7.0  
+**Last Modified:** 2026-08-29  
 **Author:** UltraCanvas Framework
 
 ## Features
@@ -41260,6 +41260,8 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 - **Keyboard Navigation:** Arrow keys, shortcuts, and search input
 - **Event System:** Comprehensive callbacks for all user interactions
 - **Content Management:** Each tab can contain any UltraCanvas UI element
+- **New Tab Button:** An optional "+" before, after or at the far right of the tab list
+- **Detached Content:** The tab strip can live apart from the pages it switches
 
 ### Enhanced Dropdown Features
 - **Smart Overflow Detection:** Automatically shows dropdown when tabs don't fit
@@ -41332,6 +41334,17 @@ enum class OverflowDropdownPosition {
 > it is automatically deactivated — the overflow button is never shown, and
 > enabling it emits the warning "Overflow dropdown not supported for vertical
 > tabs". Use tab scrolling for vertical layouts instead.
+
+### NewTabButtonPosition
+Where the optional "+" button sits in the tab bar.
+
+```cpp
+enum class NewTabButtonPosition {
+    AfterTabs,  // Right behind the last tab (default) - moves with the list
+    FarRight,   // Pinned to the right end of the tab bar
+    BeforeTabs  // In front of the first tab
+};
+```
 
 ## TabData Structure
 
@@ -41413,6 +41426,70 @@ void SetDropdownSearchThreshold(int threshold) // Default: 15
 void ClearDropdownSearch()
 ```
 
+#### New Tab Button
+```cpp
+void SetShowNewTabButton(bool show)                     // Default: false
+void SetNewTabButtonPosition(NewTabButtonPosition pos)  // Default: AfterTabs
+void SetNewTabButtonWidth(int width)                    // Default: 32
+void SetNewButtonColor(const Color& color)
+std::function<void()> onNewTabRequest;                  // Clicked
+```
+
+`NewTabButtonPosition::AfterTabs` draws the "+" directly behind the last tab
+(so it walks along as tabs are added and removed), `FarRight` pins it to the
+right end of the tab bar, `BeforeTabs` puts it in front of the first tab. The
+space it needs is reserved before the tabs are laid out, so the button never
+overlaps a tab. The callback only reports the click — creating the tab is the
+application's job:
+
+```cpp
+tabs->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+tabs->SetShowNewTabButton(true);
+tabs->onNewTabRequest = [tabs]() {
+    tabs->SetActiveTab(tabs->AddTab("Untitled", MakePage()));
+};
+```
+
+#### Detached Content Area
+```cpp
+void SetContentHost(const std::shared_ptr<UltraCanvasContainer>& host)
+const std::shared_ptr<UltraCanvasContainer>& GetContentHost() const
+bool IsContentDetached() const
+```
+
+By default a tabbed container is tab strip *and* content area in one element.
+`SetContentHost()` splits the two: the pages become children of `host` instead,
+`host`'s own layout sizes them, and the container itself shrinks to nothing but
+the tab bar. That is what a browser-style layout needs — the tab strip as the
+window's topmost bar, with toolbars between it and the pages it switches. Pages
+that were already added move over with the call, so the host may be set before
+or after the tabs; passing `nullptr` takes them back.
+
+The host shows exactly one page at a time (the others are hidden, and hidden
+elements are out of flow), so give it a stretching layout and its pages a
+growing layout item, and give the strip a height of `GetTabHeight()`:
+
+```cpp
+auto tabs = std::make_shared<UltraCanvasTabbedContainer>("tabs", 0, 0, 0, 30);
+tabs->SetTabHeight(30);
+tabs->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+auto pages = std::make_shared<UltraCanvasContainer>("tab-pages");
+pages->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+pages->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+tabs->SetContentHost(pages);
+
+window->AddChild(tabs);          // the strip: the window's top bar
+window->AddChild(toolbar);       // whatever belongs between the two
+window->AddChild(pages);         // the active tab's page
+```
+
+Each page needs `layoutItem.SetFlexGrow(1)` (and `AlignSelf::Stretch`) so it
+fills the host while it is the visible one. UltraFiler's folder tabs are built
+this way — see `Apps/UltraFiler/UltraFilerWindow.cpp`.
+
 ### Query Methods
 
 ```cpp
@@ -41421,6 +41498,9 @@ int GetTabCount() const
 TabPosition GetTabPosition() const
 TabStyle GetTabStyle() const
 TabCloseMode GetCloseMode() const
+NewTabButtonPosition GetNewTabButtonPosition() const
+bool GetShowNewTabButton() const
+bool IsContentDetached() const
 ```
 
 ## Event Callbacks
