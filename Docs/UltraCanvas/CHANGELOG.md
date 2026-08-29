@@ -1,4 +1,4 @@
-#### 2026-08-28 *0.3.84*
+#### 2026-08-29 *0.3.85*
 - **TreeView: a double-click or the Enter key on a lazily-loaded node left it
   empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
   which flips the expansion state without firing `onNodeExpanded` — the
@@ -23,6 +23,8 @@
   `SetShowHiddenFiles` toggle finally has UI. It doubles as the curation
   escape hatch: hidden files ON means "show me everything" and reveals the
   home folder's untouched physical listing.
+
+#### 2026-08-28 *0.3.84*
 - **CI builds Linux on ARM as well as x86_64.** The build matrix gained an
   `ubuntu-22.04-arm` row, so every commit is now compiled, unit-tested and
   packaged for Linux/aarch64 next to the existing x86_64 job — the same 22.04
