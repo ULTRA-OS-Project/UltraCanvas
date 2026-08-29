@@ -110,7 +110,19 @@ the backing implementation can be replaced without affecting callers.
   Wired into `UltraCanvasTextArea` via `SetSpellCheckEnabled`; the byte-range →
   screen-rectangle mapping it needs is the element's own
   `GetCharacterRangeBounds`, which is equally usable for search highlighting,
-  diff marks and comment anchors.
+  diff marks and comment anchors. Two element hooks exist for host
+  applications: `onContextMenu` takes the right-click before the built-in
+  suggestion popup, so an application with its own editor menu splices the
+  suggestions into it; `onPrepareSpellCheck` hands over the exact text about to
+  be checked plus a per-check copy of the options, which is what
+  `SpellCheckOptions::shouldSkipRange` needs — its ranges are byte offsets and
+  go stale on the first edit otherwise.
+  UltraTexter is the reference consumer: **Edit → Spelling**, an editor context
+  menu carrying the suggestions, and a markdown skip scanner
+  (`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` — a dependency-free byte
+  scanner covering fenced and indented code, inline code spans, link and image
+  targets, autolinks, inline HTML, math and YAML front matter, with the
+  application half in `Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp`).
   See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
 
 ### **2. UltraAI**

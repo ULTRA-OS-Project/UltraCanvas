@@ -1,4 +1,40 @@
 #### 2026-08-28 *0.3.84*
+- **Spell checking is now switched on and usable in UltraTexter.** The service
+  and the `UltraCanvasTextArea` integration already existed, but nothing in the
+  application ever turned them on, so no user ever saw a squiggle. UltraTexter
+  now has **Edit → Spelling** with a *Check Spelling* toggle, a *Dictionary*
+  list of the installed languages and *Recheck Document*; both the toggle and
+  the chosen dictionary persist in `config.ini`. The backend is loaded lazily,
+  the first time checking is turned on, so a launch without it costs nothing.
+- **The editor has a real context menu.** Right-clicking inside the text used
+  to do nothing but move the caret — only the tab bar had a menu. It now opens
+  Undo / Redo / Cut / Copy / Paste / Select All with live enabled state, plus
+  the *Spelling* submenu, and when the click lands on a flagged word the
+  suggestions, *Add to Dictionary* and *Ignore* sit at the top of that same
+  menu instead of in a competing popup.
+- **Markdown documents no longer squiggle their own markup.** A new scanner
+  (`Apps/Texter/UltraCanvasMarkdownSpellRanges.h`) keeps fenced and indented
+  code, inline code spans, link and image targets, autolinks, inline HTML, math
+  and YAML front matter out of the check, while the prose around them — link
+  text and image alt text included — is still checked.
+- Added `UltraCanvasTextArea::onContextMenu`, so an application that already
+  shows its own editor menu gets the right-click before the built-in
+  suggestion popup and can splice the suggestions into its own menu.
+- Added `UltraCanvasTextArea::onPrepareSpellCheck`, called with the exact text
+  about to be checked. `SpellCheckOptions::shouldSkipRange` works in byte
+  offsets, so a hook built once went stale on the first edit; it can now be
+  rebuilt per check from the text that check will actually run on.
+- Added `UltraCanvasTextArea::IsPositionInsideSelection()`. A right-click now
+  moves the caret to the click unless it landed inside the selection, so
+  **Paste** acts where the user clicked while **Cut** and **Copy** still act on
+  what is highlighted.
+- Fixed the hit test behind the suggestion menu resolving to column 0 whenever
+  the caret had previously been on another line: moving the caret first made
+  that line the active one, and until the next frame `GetActualLineLayout`
+  still returned the *previous* active line's layout. The menu is now built
+  before the caret moves.
+- Added `Tests/TexterMarkdownSpellRangesTest.cpp` (48 checks) covering the
+  markdown skip scanner.
 - **TreeView: a double-click or the Enter key on a lazily-loaded node left it
   empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
   which flips the expansion state without firing `onNodeExpanded` — the
