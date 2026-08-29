@@ -275,6 +275,38 @@ namespace UltraCanvas {
         return def->tintedPixmap.get();
     }
 
+    // Paint a bitmap / contone fill clipped to a path: emitPath builds the
+    // path on the context, the decoded bitmap maps onto the fill
+    // parallelogram (origin at the fill's top-left so the image's top row
+    // stays at the visual top under the document's global Y-flip). Returns
+    // false — leaving the context untouched — on a degenerate parallelogram
+    // (the transform would be non-invertible and poison the whole surface)
+    // or a decode failure, so callers fall back to the flat approximation.
+    static bool PaintBitmapFillClipped(
+            IRenderContext* ctx, const XARFillAttribute& fill, float scale,
+            float fillAlpha,
+            const std::function<void(IRenderContext*)>& emitPath) {
+        Point2Dd bl = MillipointsToPixels(fill.startPoint, scale);
+        Point2Dd br = MillipointsToPixels(fill.endPoint, scale);
+        Point2Dd tl = MillipointsToPixels(fill.endPoint2, scale);
+        double det = (br.x - bl.x) * (bl.y - tl.y) -
+                     (br.y - bl.y) * (bl.x - tl.x);
+        UCPixmap* pixmap = (std::abs(det) > 1e-6) ? BitmapFillPixmap(fill)
+                                                  : nullptr;
+        if (!pixmap) return false;
+        ctx->PushState();
+        emitPath(ctx);
+        ctx->ClipPath();
+        ctx->ClearPath();
+        ctx->SetAlpha(fillAlpha);
+        ctx->Transform(br.x - bl.x, br.y - bl.y,
+                       bl.x - tl.x, bl.y - tl.y,
+                       tl.x, tl.y);
+        ctx->DrawPixmap(*pixmap, Rect2Dd(0, 0, 1, 1), ImageFitMode::Fill);
+        ctx->PopState();
+        return true;
+    }
+
     void XARPathNode::Render(IRenderContext* ctx, float scale) {
         if (commands.empty()) { XARNode::Render(ctx, scale); return; }
         ctx->PushState();
@@ -282,27 +314,14 @@ namespace UltraCanvas {
 
         if (g_silhouettePaint) {
             // Shadow pass: the node's own geometry in the silhouette paint.
-            // The penumbra is faked with two widened, fainter stroke passes
-            // (widest first) around the hard silhouette.
+            // The penumbra comes from the shadow node's gaussian offset
+            // passes (see XARShadowNode::Render), so the silhouette itself
+            // is a plain hard fill/stroke here.
             const SilhouettePaint& sp = *g_silhouettePaint;
-            float pen = MPtoPx(sp.penumbraMP, scale);
             float w = (isStroked && hasLine) ? line.GetWidthInPixels() * scale
                                              : 0.0f;
             bool fillIt = isFilled && hasFill;
             EmitPath(ctx, scale);
-            ctx->SetLineCap(LineCap::Round);
-            ctx->SetLineJoin(LineJoin::Round);
-            if (pen > 0.5f) {
-                Color soft = sp.color;
-                soft.a = static_cast<uint8_t>(sp.color.a / 6);
-                ctx->SetStrokePaint(soft);
-                ctx->SetStrokeWidth(w + 2.0f * pen);
-                ctx->StrokePathPreserve();
-                soft.a = static_cast<uint8_t>(sp.color.a / 3);
-                ctx->SetStrokePaint(soft);
-                ctx->SetStrokeWidth(w + pen);
-                ctx->StrokePathPreserve();
-            }
             if (fillIt) {
                 ctx->SetFillPaint(sp.color);
                 ctx->FillPathPreserve();
@@ -328,31 +347,8 @@ namespace UltraCanvas {
         bool wantFill = isFilled && hasFill;
         if (wantFill && (fill.type == XARFillType::Bitmap ||
                          fill.type == XARFillType::ContoneBitmap)) {
-            Point2Dd bl = MillipointsToPixels(fill.startPoint, scale);
-            Point2Dd br = MillipointsToPixels(fill.endPoint, scale);
-            Point2Dd tl = MillipointsToPixels(fill.endPoint2, scale);
-            // A degenerate parallelogram would make the transform
-            // non-invertible and poison the whole surface — fall back to the
-            // flat approximation instead.
-            double det = (br.x - bl.x) * (bl.y - tl.y) -
-                         (br.y - bl.y) * (bl.x - tl.x);
-            UCPixmap* pixmap = (std::abs(det) > 1e-6) ? BitmapFillPixmap(fill)
-                                                      : nullptr;
-            if (pixmap) {
-                // Clip to the path and map the bitmap onto the fill
-                // parallelogram: origin at the fill's top-left so the image's
-                // top row stays at the visual top under the document's
-                // global Y-flip.
-                ctx->PushState();
-                EmitPath(ctx, scale);
-                ctx->ClipPath();
-                ctx->ClearPath();
-                ctx->SetAlpha(fillAlpha);
-                ctx->Transform(br.x - bl.x, br.y - bl.y,
-                               bl.x - tl.x, bl.y - tl.y,
-                               tl.x, tl.y);
-                ctx->DrawPixmap(*pixmap, Rect2Dd(0, 0, 1, 1), ImageFitMode::Fill);
-                ctx->PopState();
+            if (PaintBitmapFillClipped(ctx, fill, scale, fillAlpha,
+                                       [&](IRenderContext* c) { EmitPath(c, scale); })) {
                 wantFill = false;   // painted; keep only the stroke below
             }
             // Decode failure falls through to the flat approximation.
@@ -524,7 +520,23 @@ namespace UltraCanvas {
             if (hasTransparency && transparency.type != XARTransparencyType::NoTrans) {
                 fillAlpha = 1.0f - static_cast<float>(transparency.startTransparency) / 255.0f;
             }
-            if (hasFill) { ApplyFillToContext(ctx, fill, scale, fillAlpha); ctx->FillPathPreserve(); }
+            bool wantFill = hasFill;
+            if (wantFill && (fill.type == XARFillType::Bitmap ||
+                             fill.type == XARFillType::ContoneBitmap)) {
+                // QuickShapes take bitmap fills too (Designer Pro's image
+                // placeholder is one); share the path node's painter.
+                auto emit = [&pts](IRenderContext* c) {
+                    c->ClearPath();
+                    c->MoveTo(pts[0].x, pts[0].y);
+                    for (size_t i = 1; i < pts.size(); ++i) c->LineTo(pts[i].x, pts[i].y);
+                    c->ClosePath();
+                };
+                if (PaintBitmapFillClipped(ctx, fill, scale, fillAlpha, emit)) {
+                    wantFill = false;
+                    emit(ctx);   // the clip consumed the path; rebuild for the stroke
+                }
+            }
+            if (wantFill) { ApplyFillToContext(ctx, fill, scale, fillAlpha); ctx->FillPathPreserve(); }
             if (hasLine) { ApplyLineToContext(ctx, line, scale); ctx->StrokePathPreserve(); }
             ctx->ClearPath();
         }
@@ -677,7 +689,11 @@ namespace UltraCanvas {
         switch (textAttr.justification) {
             case XARTextAttribute::Justification::Centre: x = -anchorWidth / 2.0; break;
             case XARTextAttribute::Justification::Right:  x = -anchorWidth; break;
-            default: break;
+            default:
+                // The line's own left indent shifts a left-anchored line;
+                // centre/right lines anchor on the story origin regardless.
+                x += leftIndentMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                break;
         }
 
         size_t wi = 0;
@@ -848,6 +864,53 @@ namespace UltraCanvas {
         // shadow offset, beneath the objects themselves. Nested shadows keep
         // the outermost paint.
         if (!g_silhouettePaint && shadowColor.a > 0) {
+            // The penumbra is a real gaussian blur: blurring the silhouette
+            // equals averaging copies of it shifted over the blur kernel, so
+            // the silhouette renders in several passes at gaussian-
+            // distributed offsets (a deterministic golden-angle spiral,
+            // radii sampled from the radial CDF), each pass at the
+            // over-composited alpha that accumulates to the shadow's
+            // darkness where all passes overlap. Sigma calibrated against a
+            // Designer Pro X19 PDF export: the blur field spans ~3.3 sigma,
+            // and the edge sits at half darkness on the outline.
+            float pen = MPtoPx(blurRadius, scale);
+            double dark = shadowColor.a / 255.0;
+            int passes = 1;
+            if (pen > 0.75f && dark < 0.999) {
+                passes = static_cast<int>(pen * 1.5f);
+                if (passes < 8) passes = 8;
+                if (passes > 64) passes = 64;
+                // Colours composite in 8 bits, so a pass alpha below ~2/255
+                // cannot be expressed; cap the pass count accordingly.
+                int maxPasses = static_cast<int>(std::floor(
+                        std::log(1.0 - dark) / std::log(1.0 - 2.0 / 255.0)));
+                if (maxPasses < 1) maxPasses = 1;
+                if (passes > maxPasses) passes = maxPasses;
+            }
+            // The ideal pass alpha rarely lands on an 8-bit step, so the
+            // passes dither between the two neighbouring steps: k of them
+            // one step higher, spread evenly, make the accumulated product
+            // hit the target darkness.
+            int alphaLo = 255, alphaHi = 255, hiCount = 0;
+            if (passes > 1) {
+                double ideal = 1.0 - std::pow(1.0 - dark, 1.0 / passes);
+                alphaLo = static_cast<int>(std::floor(ideal * 255.0));
+                if (alphaLo < 1) alphaLo = 1;
+                alphaHi = alphaLo < 255 ? alphaLo + 1 : 255;
+                double logLo = std::log(1.0 - alphaLo / 255.0);
+                double logHi = std::log(1.0 - alphaHi / 255.0);
+                if (logHi < logLo) {
+                    double k = (std::log(1.0 - dark) - passes * logLo) /
+                               (logHi - logLo);
+                    hiCount = static_cast<int>(std::lround(k));
+                    if (hiCount < 0) hiCount = 0;
+                    if (hiCount > passes) hiCount = passes;
+                }
+            } else {
+                alphaLo = alphaHi = shadowColor.a;
+            }
+            double sigma = 0.30 * pen;
+
             SilhouettePaint paint{shadowColor, blurRadius};
             ctx->PushState();
             // A glow (type 3) is a symmetric halo; wall/floor shadows are
@@ -856,7 +919,19 @@ namespace UltraCanvas {
                 ctx->Translate(MPtoPx(offsetX, scale), MPtoPx(offsetY, scale));
             }
             g_silhouettePaint = &paint;
-            XARNode::Render(ctx, scale);
+            for (int i = 0; i < passes; ++i) {
+                bool hi = passes > 1 &&
+                          (i + 1) * hiCount / passes != i * hiCount / passes;
+                paint.color.a = static_cast<uint8_t>(hi ? alphaHi : alphaLo);
+                double u = (i + 0.5) / passes;
+                double r = passes > 1
+                        ? sigma * std::sqrt(-2.0 * std::log(1.0 - u)) : 0.0;
+                double angle = i * 2.3999632297286533;   // golden angle
+                ctx->PushState();
+                ctx->Translate(r * std::cos(angle), r * std::sin(angle));
+                XARNode::Render(ctx, scale);
+                ctx->PopState();
+            }
             g_silhouettePaint = nullptr;
             ctx->PopState();
         }
@@ -1395,10 +1470,24 @@ namespace UltraCanvas {
                 // Field boundary inside a list marker; the layout keys off
                 // the marker-to-text transition instead.
                 break;
+            case XARTag::TAG_TEXT_LEFT_INDENT:
+                // A left indent attached to a specific line shifts that
+                // line's origin (Designer Pro writes one per line of an
+                // indented paragraph block). Story-level indents interact
+                // with the ruler/tab model (auto-numbered lists carry them)
+                // which the list layout below already approximates, so those
+                // stay unapplied.
+                if (record.data.size() >= 4) {
+                    if (auto line = std::dynamic_pointer_cast<XARTextLineNode>(CurrentNode())) {
+                        const uint8_t* d = record.data.data();
+                        size_t off = 0;
+                        line->leftIndentMP = ReadInt32(d, off);
+                    }
+                }
+                break;
             case XARTag::TAG_TEXT_CARET:
             case XARTag::TAG_TEXT_STRING_POS:
             case XARTag::TAG_TEXT_TAB:
-            case XARTag::TAG_TEXT_LEFT_INDENT:
             case XARTag::TAG_TEXT_FIRST_INDENT:
             case XARTag::TAG_TEXT_RIGHT_INDENT:
             case XARTag::TAG_TEXT_RULER:
@@ -1448,7 +1537,23 @@ namespace UltraCanvas {
             case XARTag::TAG_SHADOWCONTROLLER: ParseShadowRecord(record); break;
             case XARTag::TAG_SHADOW:
                 // The shadow atom inside the controller; the silhouette is
-                // derived from the shadowed siblings, so nothing to keep.
+                // derived from the shadowed siblings. The atom's body ends
+                // with the shadow darkness as a double (0..1) — Xara's own
+                // PDF export composites the shadow at exactly this opacity
+                // (verified against a Designer Pro X19 export: darkness
+                // 0.251 → 25% black), overriding the controller record's
+                // coarse percentage field.
+                if (record.data.size() >= 24) {
+                    if (auto sh = std::dynamic_pointer_cast<XARShadowNode>(CurrentNode())) {
+                        double darkness = 0.0;
+                        std::memcpy(&darkness,
+                                    record.data.data() + record.data.size() - 8, 8);
+                        if (darkness > 0.0 && darkness <= 1.0) {
+                            sh->shadowColor.a =
+                                    static_cast<uint8_t>(std::lround(darkness * 255.0));
+                        }
+                    }
+                }
                 break;
             case XARTag::TAG_BEVEL: ParseBevelRecord(record); break;
             case XARTag::TAG_BEVATTR_INDENT:

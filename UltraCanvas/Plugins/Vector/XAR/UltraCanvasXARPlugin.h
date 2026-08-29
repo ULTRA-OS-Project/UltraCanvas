@@ -802,6 +802,10 @@ namespace UltraCanvas {
         // True when the line carries the paragraph's TAG_TEXT_EOL — full
         // justification spreads every line of a paragraph except this one.
         bool endsParagraph = false;
+        // Line-level left indent (TAG_TEXT_LEFT_INDENT attached to this
+        // line, millipoints): shifts the line origin right. Indented
+        // paragraph blocks carry one per line.
+        int32_t leftIndentMP = 0;
         // Baseline offset from the story origin (millipoints, negative =
         // down), accumulated from TAG_TEXT_LINE_INFO's per-line step; when
         // absent the renderer falls back to a leading heuristic.

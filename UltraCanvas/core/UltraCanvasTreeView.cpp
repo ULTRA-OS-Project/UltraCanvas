@@ -477,6 +477,12 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::ToggleNode(TreeNode *node) {
+        if (!node) return;
+        if (node->IsExpanded()) CollapseNode(node);
+        else ExpandNode(node);
+    }
+
     void UltraCanvasTreeView::ExpandAll() {
         if (rootNode) {
             ExpandNodeRecursive(rootNode.get());
@@ -1088,20 +1094,10 @@ namespace UltraCanvas {
             // Check if clicking on expand/collapse button
             if (showExpandButtons && clickedNode->HasChildren() &&
                 event.pointer.x >= nodeX && event.pointer.x <= nodeX + 17) {
-                clickedNode->Toggle();
-                UpdateScrollbars();
-
-                if (clickedNode->IsExpanded()) {
-                    if (onNodeExpanded) {
-                        onNodeExpanded(clickedNode);
-                    }
-                    if (showFirstChildOnExpand) {
-                        ExpandFirstChildNode(clickedNode);
-                    }
-                } else if (!clickedNode->IsExpanded() && onNodeCollapsed) {
-                    onNodeCollapsed(clickedNode);
+                ToggleNode(clickedNode);
+                if (clickedNode->IsExpanded() && showFirstChildOnExpand) {
+                    ExpandFirstChildNode(clickedNode);
                 }
-                RequestRedraw();
                 return true;
             }
 
@@ -1171,8 +1167,7 @@ namespace UltraCanvas {
         TreeNode *doubleClickedNode = GetNodeAtY(event.pointer.y);
         if (doubleClickedNode) {
             if (doubleClickedNode->HasChildren()) {
-                doubleClickedNode->Toggle();
-                UpdateScrollbars();
+                ToggleNode(doubleClickedNode);
             }
 
             if (onNodeDoubleClicked) {
@@ -1228,8 +1223,7 @@ namespace UltraCanvas {
                 break;
             case 13: // Enter
                 if (focusedNode->HasChildren()) {
-                    focusedNode->Toggle();
-                    UpdateScrollbars();
+                    ToggleNode(focusedNode);
                 }
                 if (onNodeDoubleClicked) {
                     onNodeDoubleClicked(focusedNode);

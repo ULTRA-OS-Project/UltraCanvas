@@ -35,6 +35,30 @@
   before the caret moves.
 - Added `Tests/TexterMarkdownSpellRangesTest.cpp` (48 checks) covering the
   markdown skip scanner.
+- **TreeView: a double-click or the Enter key on a lazily-loaded node left it
+  empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
+  which flips the expansion state without firing `onNodeExpanded` — the
+  callback a lazily-populated tree loads its children from. The node then sat
+  expanded showing only its "..." placeholder; the UltraFiler's curated Home
+  entry made it visible (double-clicking *Home* showed nothing until
+  something else - navigating into a subfolder, or collapsing and re-opening
+  it with the expand button, which did fire the callback - loaded the
+  children). All toggle gestures - the expand button, double-click, Enter -
+  now go through the new public `UltraCanvasTreeView::ToggleNode()`, which
+  routes into `ExpandNode` / `CollapseNode`, so `onNodeExpanded` /
+  `onNodeCollapsed` fire for every gesture.
+- **The UltraFiler's home folder display is curated like its tree entry.** New
+  `UltraCanvasFilerWidget::SetCuratedHomeFolder(homePath, mainFolders)`: while
+  set, displaying that folder lists only the given main folders — each by its
+  resolved path, so a Documents redirected into OneDrive is listed too — plus
+  the folder's regular files; the profile clutter ("3D Objects", "Saved
+  Games", working folders) stays out, matching the folder tree. The UltraFiler
+  sets it on its tab filers and the folder-preview pane with the same
+  main-folder set the tree shows. Other folders are never affected.
+- New **Display > Hidden files** checkbox in the filer's context menu — the
+  `SetShowHiddenFiles` toggle finally has UI. It doubles as the curation
+  escape hatch: hidden files ON means "show me everything" and reveals the
+  home folder's untouched physical listing.
 - **CI builds Linux on ARM as well as x86_64.** The build matrix gained an
   `ubuntu-22.04-arm` row, so every commit is now compiled, unit-tested and
   packaged for Linux/aarch64 next to the existing x86_64 job — the same 22.04
@@ -59,6 +83,28 @@
   hard-codes `x86_64` in the tarball it looks for.
 
 #### 2026-08-28 *0.3.83*
+- **The XAR renderer matches Xara Designer Pro X19 output much closer now**
+  — three fidelity fixes found by comparing a real Designer Pro file's
+  render against its author's PDF export, pixel by pixel:
+  - Soft shadows composite at their true darkness: the shadow atom record
+    (`TAG_SHADOW`) carries the exact opacity as a double, which Xara's own
+    export uses — the controller record's coarse percentage field made
+    shadows twice as dark (50% instead of 25% in the reference file). The
+    penumbra is a real gaussian blur now: blurring a silhouette equals
+    averaging copies of it shifted over the kernel, so the silhouette
+    renders in up to 64 passes at gaussian-distributed offsets (a
+    deterministic golden-angle spiral), each at the low alpha that
+    accumulates to the shadow darkness — the measured edge falloff matches
+    the reference export point for point, where the previous widened-stroke
+    fake produced a hard edge with dark banding.
+  - QuickShapes (rectangles/ellipses/polygons) render bitmap and contone
+    fills now — Designer Pro's image placeholder is a rectangle QuickShape
+    with a bitmap fill, which previously fell back to a flat colour. The
+    path node's bitmap-fill painter is shared instead of duplicated.
+  - A line-level left indent (`TAG_TEXT_LEFT_INDENT` attached to a text
+    line) shifts that line's origin — indented paragraph blocks rendered
+    flush left before.
+
 - **UltraCanvasFilerWidget: name filter (filter-as-you-type).**
   `SetNameFilter(text)` narrows the displayed listing to the names containing
   the text (case-insensitive) without a disk rescan per keystroke — the full

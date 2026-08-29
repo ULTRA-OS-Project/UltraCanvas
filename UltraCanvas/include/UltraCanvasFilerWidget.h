@@ -426,6 +426,18 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
+        // Curated home-folder display: while set, displaying `homePath` lists
+        // only the given main folders — each by its resolved full path, so a
+        // folder redirected out of the home folder (a Documents moved into
+        // OneDrive) is listed too — plus the folder's regular files; every
+        // other subfolder is left out of the display (it still exists, and
+        // navigating to it by path still works). Show-hidden-files suspends
+        // the curation — that toggle means "show me everything", so it
+        // reveals the untouched physical listing. An empty homePath turns
+        // curation off. Other folders are never affected.
+        void SetCuratedHomeFolder(const std::string& homePath,
+                                  std::vector<std::string> mainFolders);
+
         // Background pre-scan of the shown folder's subfolders (one level), so
         // entering one shows its content from memory instead of waiting for a
         // cold directory scan. On by default; turning it off drops the cache
@@ -839,6 +851,10 @@ namespace UltraCanvas {
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
+        // Curated home display (SetCuratedHomeFolder): the folder whose
+        // listing is curated, and the main folders it shows.
+        std::string curatedHomePath;
+        std::vector<std::string> curatedHomeFolders;
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
         std::string openPathItemLabel = "Open Path";
