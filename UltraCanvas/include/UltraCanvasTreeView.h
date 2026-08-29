@@ -312,6 +312,14 @@ public:
     // ===== EXPANSION MANAGEMENT =====
     void ExpandNode(TreeNode* node);
     void CollapseNode(TreeNode* node);
+    // Expand a collapsed node, collapse an expanded one - through ExpandNode /
+    // CollapseNode, so onNodeExpanded / onNodeCollapsed always fire. Every
+    // user gesture that toggles a node must go through here (or those two):
+    // a bare TreeNode::Toggle() flips the state without notifying, and a
+    // lazily-loaded tree then shows an expanded node with only its "..."
+    // placeholder, because the host never got the callback that loads the
+    // real children.
+    void ToggleNode(TreeNode* node);
     void ExpandAll();
     void CollapseAll();
 

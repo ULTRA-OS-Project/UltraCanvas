@@ -253,12 +253,20 @@ Returns all currently selected nodes.
 
 ### Expansion Management
 
-#### `ExpandNode` / `CollapseNode`
+#### `ExpandNode` / `CollapseNode` / `ToggleNode`
 ```cpp
 void ExpandNode(TreeNode* node)
 void CollapseNode(TreeNode* node)
+void ToggleNode(TreeNode* node)
 ```
-Expands or collapses a specific node.
+Expands or collapses a specific node; `ToggleNode` flips between the two.
+All three fire `onNodeExpanded` / `onNodeCollapsed`, and every built-in
+gesture that toggles a node — the expand button, a double-click, the Enter
+key — goes through them. Hosts that lazily load children in
+`onNodeExpanded` (see below) depend on that: `TreeNode::Expand()` /
+`Collapse()` / `Toggle()` flip the state **without** notifying, so calling
+those directly on a lazily-loaded tree leaves an expanded node showing only
+its placeholder child.
 
 #### `ExpandAll` / `CollapseAll`
 ```cpp

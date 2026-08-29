@@ -107,8 +107,12 @@ components:
     working folder into the tree. The paths come from the platform
     (`SHGetKnownFolderPath`, the macOS home layout, `xdg-user-dirs`), so a
     redirected or localized folder — *Bilder*, a Documents folder moved into
-    OneDrive — is the one listed, under its own icon. Everything left out is
-    still one click away: the folder display lists the whole home folder.
+    OneDrive — is the one listed, under its own icon.
+  - The **folder display is curated the same way**: showing the home folder
+    lists the main folders (wherever they physically live) plus the folder's
+    files, and nothing else. **Display > Hidden files** in the context menu
+    reveals the full physical listing — that toggle means "show me
+    everything".
   - **Cloud Storage** collects the sync folders this machine actually has —
     OneDrive (personal and every business tenant), Google Drive, Dropbox
     (personal and business) and iCloud Drive — instead of leaving them

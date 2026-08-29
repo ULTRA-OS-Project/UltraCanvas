@@ -1,4 +1,28 @@
 #### 2026-08-28 *0.3.84*
+- **TreeView: a double-click or the Enter key on a lazily-loaded node left it
+  empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
+  which flips the expansion state without firing `onNodeExpanded` — the
+  callback a lazily-populated tree loads its children from. The node then sat
+  expanded showing only its "..." placeholder; the UltraFiler's curated Home
+  entry made it visible (double-clicking *Home* showed nothing until
+  something else - navigating into a subfolder, or collapsing and re-opening
+  it with the expand button, which did fire the callback - loaded the
+  children). All toggle gestures - the expand button, double-click, Enter -
+  now go through the new public `UltraCanvasTreeView::ToggleNode()`, which
+  routes into `ExpandNode` / `CollapseNode`, so `onNodeExpanded` /
+  `onNodeCollapsed` fire for every gesture.
+- **The UltraFiler's home folder display is curated like its tree entry.** New
+  `UltraCanvasFilerWidget::SetCuratedHomeFolder(homePath, mainFolders)`: while
+  set, displaying that folder lists only the given main folders — each by its
+  resolved path, so a Documents redirected into OneDrive is listed too — plus
+  the folder's regular files; the profile clutter ("3D Objects", "Saved
+  Games", working folders) stays out, matching the folder tree. The UltraFiler
+  sets it on its tab filers and the folder-preview pane with the same
+  main-folder set the tree shows. Other folders are never affected.
+- New **Display > Hidden files** checkbox in the filer's context menu — the
+  `SetShowHiddenFiles` toggle finally has UI. It doubles as the curation
+  escape hatch: hidden files ON means "show me everything" and reveals the
+  home folder's untouched physical listing.
 - **CI builds Linux on ARM as well as x86_64.** The build matrix gained an
   `ubuntu-22.04-arm` row, so every commit is now compiled, unit-tested and
   packaged for Linux/aarch64 next to the existing x86_64 job — the same 22.04
