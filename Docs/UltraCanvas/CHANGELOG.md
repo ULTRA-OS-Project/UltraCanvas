@@ -1,4 +1,48 @@
 #### 2026-08-29 *0.3.85*
+- **New `UltraCanvasHardwareInfo`: the framework can now describe the machine
+  it runs on.** One read-only capture returns the CPU (cache sizes per level
+  and instance, hybrid performance/efficiency core tiers, instruction sets,
+  temperature and load), the GPUs, the NPU or other AI accelerator, memory
+  down to the individual module (type, MT/s, manufacturer, part number, slot),
+  every drive with its bus, physical connector ("PCIe 4.0 x4 (NVMe)",
+  "SATA 6.0 Gbps", "USB 3.1 Gen 2 (10 Gb/s)"), on-drive cache, temperature and
+  mounted volumes, every network interface including the Wi-Fi association
+  (SSID, access point, band, channel, signal, rate), the USB controllers and
+  everything plugged into them, and the Bluetooth adapters with their live
+  connections. `HardwareQuery` selects categories, because probing costs differ
+  by orders of magnitude; `RefreshSensors()` re-reads only the live values into
+  an existing snapshot and never adds or removes a device, so a monitor loop
+  keeps its indices. A value the platform will not give up never becomes a
+  zero: the reason lands in `HardwareSnapshot::warnings` in words a user can
+  act on ("drive cache size needs ATA IDENTIFY on the block device, which
+  requires root").
+- **Identifiers are masked by default.** Serial numbers, MAC addresses and
+  BSSIDs keep only their tail (`**********3456`, `**:**:**:**:34:56`) unless a
+  caller deliberately opts out — a hardware panel is exactly the screen that
+  gets photographed or pasted into a bug report.
+- **New `UltraCanvasHardwareInfoPanel` element** — a drop-in
+  "System information" view for a settings screen, an about box or an ULTRA OS
+  control panel. It is an `UltraCanvasColumnsTreeView` filled from the report,
+  so none of it is hand-painted; `RefreshSensors()` writes the new numbers into
+  the rows that are already there, leaving the user's expansion, selection and
+  scroll position untouched.
+- Probes are per platform behind an internal backend header, and introduce no
+  new third-party dependency: Linux reads procfs and sysfs (hwmon and thermal
+  zones for temperatures, DMI for memory modules, the wireless extensions for
+  Wi-Fi, `/sys/class/accel` and PCI class 12h for NPUs); Windows uses
+  documented Win32 only — registry, `GetSystemFirmwareTable` for SMBIOS,
+  storage IOCTLs including the Windows 10 temperature query, IP Helper, the
+  WLAN API, SetupAPI and the Bluetooth API, with no COM or WMI; macOS uses
+  sysctl and the IOKit C API. Platforms with no native probe (WASM, Android,
+  the BSDs) link a fallback that reports what the C++ runtime knows and says
+  what it cannot.
+- The module is deliberately separate from **IODeviceManager**: that one
+  *operates* peripherals (connect, configure, scan, print — handles, protocol
+  drivers, a device lifecycle), this one only *describes* the host and holds
+  nothing. See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
+- New `HardwareInfoTests` (`ctest -R HardwareInfoTests`): formatters, masking,
+  the query selector, report shape, and the invariants a live capture must
+  hold on the machine it runs on.
 - **The CPU line in an ILLEGAL_INSTRUCTION crash now names the feature that is
   actually missing.** A field report had an AVX2-capable Ryzen 5 5500U fault on
   `VGF2P8AFFINEQB` while the reporter said `[SSE4.2 AVX AVX2]` — every feature it
