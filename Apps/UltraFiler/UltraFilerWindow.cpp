@@ -92,6 +92,9 @@ namespace {
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
     constexpr int kFilerMinWidth   = 360;
+    // Height of the folder tab strip at the top of the window (one tab high -
+    // the strip carries no content area of its own).
+    constexpr int kTabStripHeight  = 30;
     constexpr int kPreviewMinWidth = 260;
 
     // Delay before a clicked folder's content is shown in the detail pane.
@@ -570,6 +573,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     BuildTabbedContainer();
 
+    // The tab strip is the window's top bar: the tabs name the folders, the
+    // toolbars below them act on whichever one is selected.
+    window->AddChild(tabbedContainer);
     window->AddChild(BuildNavigationRow());
     window->AddChild(BuildCommandBar());
 
@@ -885,17 +891,8 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
     row->SetPadding(6, 8, 2, 8);
 
-    // "+" on the left side of the toolbar opens an additional tab showing the
-    // current folder.
-    auto newTabButton = MakeToolButton("ufl-new-tab", "+", "", 30,
-            [this]() {
-        std::string path = filer ? filer->GetPath() : std::string();
-        if (path.empty()) path = UserHomeDir();
-        AddNewTab(path, true);
-    });
-    newTabButton->SetFontSize(kUiFontSize);
-    row->AddChild(newTabButton);
-
+    // No new-tab button here: the tab strip above carries its own "+" at the
+    // end of the tab list.
     backButton = MakeToolButton("ufl-back", "", "arrow-left.svg", 30,
                                 [this]() { NavigateBack(); });
     forwardButton = MakeToolButton("ufl-forward", "", "arrow-right.svg", 30,
@@ -1854,13 +1851,35 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
 // ===== TABS =====
 
 void UltraFilerWindow::BuildTabbedContainer() {
-    tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ufl-tabs");
+    // The strip alone is this element - it is exactly one tab high and sits at
+    // the top of the window; the pages go into `tabContentHost`, which
+    // BuildSplitLayout puts in the folder pane of the split.
+    tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
+            "ufl-tabs", 0, 0, 0, kTabStripHeight);
     tabbedContainer->fontSize = static_cast<int>(kUiFontSize);
-    tabbedContainer->SetTabHeight(30);
+    tabbedContainer->SetTabHeight(kTabStripHeight);
     tabbedContainer->SetTabMinWidth(90);
     tabbedContainer->SetCloseMode(TabCloseMode::Closable);
-    tabbedContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+    tabbedContainer->tabBarColor = Color(249, 249, 251, 255);
+    tabbedContainer->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    tabContentHost = MakeLayoutBox("ufl-tab-content");
+    tabContentHost->layout.SetFlexColumn()
+                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tabContentHost->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabbedContainer->SetContentHost(tabContentHost);
+
+    // "+" at the end of the tab list opens another tab on the current folder.
+    tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+    tabbedContainer->SetShowNewTabButton(true);
+    tabbedContainer->SetNewButtonColor(Color(249, 249, 251, 255));
+    tabbedContainer->onNewTabRequest = [this]() {
+        std::string path = filer ? filer->GetPath() : std::string();
+        if (path.empty()) path = UserHomeDir();
+        AddNewTab(path, true);
+    };
 
     tabbedContainer->onTabClose = [this](int index) {
         // The last remaining tab stays open.
@@ -1893,6 +1912,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     state->page = MakeLayoutBox("ufl-tab-page-" + suffix);
     state->page->layout.SetFlexColumn()
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // The pages are children of the content host, which shows one at a time:
+    // the visible page takes the whole host, the hidden ones are out of flow.
+    state->page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
     // The home folder's display is curated like the tree's Home entry: its
@@ -2043,6 +2066,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
+    // The strip stays visible while the History / Favorites views replace the
+    // folder display, so picking a tab means going back to browsing.
+    ShowBrowsingView();
     if (index < 0 || index >= (int)tabStates.size()) return;
     FilerTabState* tab = tabStates[index].get();
     if (!tab->filer) return;
@@ -2141,7 +2167,9 @@ void UltraFilerWindow::BuildSplitLayout() {
     split->SetPaneMinSize(1, kFilerMinWidth);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    filerPane->AddChild(tabbedContainer);
+    // The tab strip itself is the window's top bar; this pane shows the page
+    // of whichever tab is active.
+    filerPane->AddChild(tabContentHost);
 
     preview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);

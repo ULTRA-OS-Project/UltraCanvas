@@ -1,3 +1,28 @@
+#### 2026-08-29 *0.3.86*
+- **UltraFiler's folder tabs moved to the top of the window.** The tab strip
+  was inside the split's folder pane, so it started to the right of the folder
+  tree, two toolbars down. It is now the topmost bar of the window, full width,
+  browser style: the tabs name the folders, and the navigation row, the command
+  bar and the folder display below them all act on whichever tab is selected.
+- **The "+" that opens a tab sits at the end of the tab list**, where a browser
+  puts it, instead of being the first icon of the navigation row. That icon is
+  gone from the toolbar; `UltraCanvasTabbedContainer`'s own new-tab button
+  (`SetShowNewTabButton` / `NewTabButtonPosition::AfterTabs` /
+  `onNewTabRequest`) does the work, so the button follows the tabs as they are
+  added, closed and reordered. Clicking a tab while the History or Favorites
+  view is up now returns to the folder display, since the strip stays visible
+  over both.
+- **`UltraCanvasTabbedContainer` can detach its pages from its tab strip:**
+  `SetContentHost(container)` moves the tab contents into a container anywhere
+  else in the element tree, which then sizes them with its own layout, and
+  leaves the tabbed container as nothing but the tab bar (`GetContentHost()`,
+  `IsContentDetached()`; pass `nullptr` to take the pages back). Pages already
+  added move with the call, so the host can be set before or after the tabs.
+  This is what lets a tab strip stand apart from the pages it switches — the
+  layout every browser has and UltraFiler now uses — instead of the strip and
+  the content having to be one block. `Docs/UltraCanvas/UltraCanvasTabExamples.md`
+  documents it, along with the new-tab button, which had no documentation at all.
+
 #### 2026-08-29 *0.3.85*
 - **New `UltraCanvasHardwareInfo`: the framework can now describe the machine
   it runs on.** One read-only capture returns the CPU (cache sizes per level
