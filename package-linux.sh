@@ -5,7 +5,7 @@
 # apps in a single relocatable tree, so the heavy dependency set is paid for once.
 #
 # Resulting layout:
-#   UltraCanvas-Linux-<ver>-x86_64/
+#   UltraCanvas-Linux-<ver>-<arch>/            <- arch: x86_64 or arm64
 #     UltraCanvasDemo  UltraCanvasTexter  UltraFiler ...   <- wrapper scripts
 #     bin/                                                 <- real ELF executables
 #     lib/                                                 <- libUltraCanvas.so + all deps
@@ -18,6 +18,8 @@
 #   BUILDDIR=<dir>   build tree to package (default: cmake-build-release)
 #   OUTPUTDIR=<dir>  where the package/tarball is written (default: dist)
 #   SKIP_BUILD=1     package an existing build without reconfiguring/rebuilding
+#   ARCH=<name>      architecture label in the package name (default: derived
+#                    from `uname -m`, x86_64 or arm64)
 
 set -euo pipefail
 
@@ -25,6 +27,20 @@ PROJECTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILDDIR="${BUILDDIR:-$PROJECTDIR/cmake-build-release}"
 OUTPUTDIR="${OUTPUTDIR:-$PROJECTDIR/dist}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
+
+# Architecture label for the package name, and the Debian multiarch triplet the
+# host's libraries live under. Both are derived from the running machine: this
+# packager bundles the host's own .so files, so it only ever produces a native
+# package (no cross-packaging). The labels match the ones the CI matrix uses for
+# the macOS/Windows arm64 artifacts.
+case "$(uname -m)" in
+    x86_64|amd64)   ARCH="${ARCH:-x86_64}" ;;
+    aarch64|arm64)  ARCH="${ARCH:-arm64}"  ;;
+    *)              ARCH="${ARCH:-$(uname -m)}" ;;
+esac
+MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
+    || gcc -print-multiarch 2>/dev/null \
+    || echo "$(uname -m)-linux-gnu")"
 
 # Apps to include (executable target names, output to the build root).
 APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer)
@@ -61,7 +77,7 @@ if [ -z "$VERSION" ]; then
     echo "Error: could not parse version from Docs/UltraCanvas/CHANGELOG.md" >&2
     exit 1
 fi
-log "=== UltraCanvas portable Linux packager (v$VERSION) ==="
+log "=== UltraCanvas portable Linux packager (v$VERSION, $ARCH) ==="
 
 # --- build (shared) ----------------------------------------------------------
 
@@ -77,7 +93,7 @@ fi
 
 # --- skeleton ----------------------------------------------------------------
 
-PKGNAME="UltraCanvas-Linux-$VERSION-x86_64"
+PKGNAME="UltraCanvas-Linux-$VERSION-$ARCH"
 PKG="$OUTPUTDIR/$PKGNAME"
 rm -rf "$PKG"
 mkdir -p "$PKG"/{bin,lib,etc,share}
@@ -139,10 +155,10 @@ fi
 # --- ImageMagick delegate (used by libvips) ----------------------------------
 
 log "Bundling ImageMagick delegate ..."
-IM_LIBDIR=$(ls -d /usr/lib/x86_64-linux-gnu/ImageMagick-* 2>/dev/null | head -1 || true)
+IM_LIBDIR=$(ls -d "/usr/lib/$MULTIARCH"/ImageMagick-* 2>/dev/null | head -1 || true)
 if [ -n "$IM_LIBDIR" ]; then
-    cp -a /usr/lib/x86_64-linux-gnu/libMagickCore-*.so* "$PKG/lib/" 2>/dev/null || true
-    cp -a /usr/lib/x86_64-linux-gnu/libMagickWand-*.so* "$PKG/lib/" 2>/dev/null || true
+    cp -a "/usr/lib/$MULTIARCH"/libMagickCore-*.so* "$PKG/lib/" 2>/dev/null || true
+    cp -a "/usr/lib/$MULTIARCH"/libMagickWand-*.so* "$PKG/lib/" 2>/dev/null || true
     cp -a "$IM_LIBDIR" "$PKG/lib/"
     log "  modules: $(basename "$IM_LIBDIR")"
 fi
