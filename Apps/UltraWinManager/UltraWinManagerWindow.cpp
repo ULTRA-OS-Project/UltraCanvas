@@ -270,9 +270,13 @@ std::shared_ptr<UltraCanvasContainer> ManagerWindow::BuildProgramsTab() {
             return;
         }
         const std::string lnk = progPaths_[static_cast<size_t>(row)];
+        const std::string env = progEnvs_[static_cast<size_t>(row)];
         RunWorker("Launching…",
-                  [lnk]() {
+                  [lnk, env]() {
+                      // The shortcut only resolves inside the environment
+                      // whose prefix holds it.
                       UltraWinRunOptions opt;
+                      opt.environment = env;
                       UltraWinHandle h = UltraWinInvalidHandle;
                       return UltraWin_RunApp(lnk, opt, &h);
                   },
@@ -293,9 +297,11 @@ std::shared_ptr<UltraCanvasContainer> ManagerWindow::BuildProgramsTab() {
 void ManagerWindow::RefreshPrograms() {
     progModel_->Clear();
     progPaths_.clear();
+    progEnvs_.clear();
     for (const auto& env : UltraWin_ListEnvironments()) {
         for (const auto& p : UltraWin_ListPrograms(env.name)) {
             progPaths_.push_back(p.shortcutPath);
+            progEnvs_.push_back(p.environment);
             progModel_->AddItem(MultiColumnListItem(
                 {p.name, p.category, p.environment}));
         }

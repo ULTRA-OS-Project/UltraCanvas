@@ -80,6 +80,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasListView> progList_;
     std::shared_ptr<UltraCanvas::UltraCanvasMultiColumnListModel> progModel_;
     std::vector<std::string> progPaths_;  // row -> shortcut path
+    std::vector<std::string> progEnvs_;   // row -> owning environment
 
     // VM tab
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> vmStateLabel_;

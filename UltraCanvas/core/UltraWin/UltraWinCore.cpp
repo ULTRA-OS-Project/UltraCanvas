@@ -121,6 +121,16 @@ std::string PrefixPath(const std::string& name) {
     return EnvironmentsRoot() + "/" + name;
 }
 
+std::string EnvironmentForPath(const std::string& hostPath) {
+    std::string root = EnvironmentsRoot() + "/";
+    if (hostPath.compare(0, root.size(), root) != 0) return {};
+    std::string rest = hostPath.substr(root.size());
+    size_t slash = rest.find('/');
+    if (slash == std::string::npos || slash == 0) return {};
+    std::string name = rest.substr(0, slash);
+    return IsValidEnvironmentName(name) ? name : std::string();
+}
+
 std::string FindWineBinary() {
     {
         std::lock_guard<std::mutex> lk(g_mutex);

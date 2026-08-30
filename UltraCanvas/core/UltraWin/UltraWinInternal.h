@@ -70,6 +70,11 @@ std::string EnvironmentsRoot();               // takes g_mutex
 // Absolute prefix path for a validated environment name.
 std::string PrefixPath(const std::string& name);  // takes g_mutex
 
+// The environment whose prefix contains hostPath — the owner of an
+// installed program's files and shortcuts. "" when the path lies outside
+// the environments root (or names no valid environment).
+std::string EnvironmentForPath(const std::string& hostPath);  // takes g_mutex
+
 // Locate the wine binary per config/PATH. Returns empty string when none.
 std::string FindWineBinary();                 // takes g_mutex (config read)
 

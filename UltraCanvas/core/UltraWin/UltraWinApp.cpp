@@ -205,8 +205,15 @@ UltraWinResult UltraWin_RunApp(const std::string& executablePath,
         return UltraWinResult::Error(UltraWinResultCode::WineNotFound,
                                      "no usable wine binary found");
 
-    std::string envName =
-        options.environment.empty() ? "Default" : options.environment;
+    // Environment selection: an explicit option wins; otherwise a path
+    // living INSIDE an environment's prefix (an installed program, its
+    // Start-Menu .lnk, anything under its drive_c) belongs to that
+    // environment — launching it anywhere else would resolve against a
+    // prefix where the program is not installed. Everything else runs in
+    // the shared "Default" environment.
+    std::string envName = options.environment;
+    if (envName.empty()) envName = EnvironmentForPath(executablePath);
+    if (envName.empty()) envName = "Default";
     if (!IsValidEnvironmentName(envName))
         return UltraWinResult::Error(UltraWinResultCode::InvalidArgument,
                                      "invalid environment name: " + envName);
