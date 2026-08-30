@@ -196,6 +196,25 @@ launch/supervision path runs against a stub wine script (via the
 `UltraWinConfig::winePath` override), and the one test that exercises a real
 `wineboot` skips itself when no binary is found.
 
+## UltraWin Manager — the graphical front-end
+
+`UltraWinManager` (built with the framework, `Apps/UltraWinManager/`) is
+the desktop UI over this module — assembled entirely from catalogue
+elements, with every slow UltraWin call on a worker thread:
+
+- **Environments** — the isolated Wine prefixes: their installed
+  components, one-click component installs (winetricks verbs), launching
+  a `.exe`/`.msi` into a chosen environment, deletion (busy-guarded).
+- **Programs** — installed Start-Menu programs across all environments,
+  launchable by double-click or button.
+- **Windows VM** — machine state (provisioned/installed, pid, KVM/TCG,
+  RDP port, home share), provisioning from install media, and
+  start/suspend/resume/stop — the `ultrawin-setup` flow with buttons.
+
+The header always shows the host capability line (Wine, winetricks, QEMU,
+KVM, RemoteApp), and missing engines surface as guidance in the status
+bar, never as silent failures.
+
 ## UltraFiler integration
 
 Double-clicking a `.exe` or `.msi` in UltraFiler launches it through
