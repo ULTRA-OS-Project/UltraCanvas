@@ -67,6 +67,7 @@ if(ANDROID)
     set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
+    set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
     # Image processing: libvips' ~10-library transitive stack is not in a
     # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
@@ -181,6 +182,15 @@ endif()
 option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
 if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraMail)
+endif()
+
+# ===== EMAILCLEANER =====
+# Loads several mail accounts into an analysis database and maps who sends
+# what, when. Builds on the UltraMail engine (accounts + cached bodies), so it
+# is added after it and only when that target exists.
+option(BUILD_EMAILCLEANER "Build the EmailCleaner application" ON)
+if(BUILD_EMAILCLEANER AND TARGET UltraMailEngine)
+    add_subdirectory(Apps/EmailCleaner)
 endif()
 
 # ===== ULTRASOCIAL =====
@@ -614,6 +624,18 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
 endif()
 
+# ===== EMAILCLEANER ENGINE TESTS =====
+# Headless analysis-engine tests (text pipeline, rules, classifier, store on
+# UltraDatabase, ingest over real RFC 5322 messages, analytics); in-tree
+# framework, no display and no network needed.
+option(ULTRACANVAS_BUILD_EMAILCLEANER_TESTS "Build the EmailCleaner engine test suite" OFF)
+if(ULTRACANVAS_BUILD_EMAILCLEANER_TESTS AND TARGET EmailCleanerEngine)
+    enable_testing()
+    add_subdirectory(Tests/EmailCleaner)
+    message(STATUS "")
+    message(STATUS "── EmailCleaner engine test suite enabled (target: EmailCleanerEngineTests) ──")
+endif()
+
 # ===== ULTRASOCIAL ENGINE TESTS =====
 # Headless engine tests (composer, vault, store, connectors against
 # loopback fake servers); in-tree framework.
@@ -888,6 +910,11 @@ endif()
 # The full UI executable is defined alongside the engine in
 # Apps/UltraMail/CMakeLists.txt (target: UltraMail), built whenever
 # BUILD_ULTRAMAIL is ON and the UltraCanvas UI library is available.
+
+# ===== EMAILCLEANER GUI APPLICATION =====
+# Likewise defined alongside its engine in Apps/EmailCleaner/CMakeLists.txt
+# (target: EmailCleaner), built whenever BUILD_EMAILCLEANER is ON and the
+# UltraCanvas UI library is available.
 
 if (BUILD_TESTS)
     # JSONTests below compiles vendored C (yyjson.c); the project() call only

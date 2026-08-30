@@ -1,3 +1,51 @@
+#### 2026-08-30 *0.3.87*
+- **New application: EmailCleaner** (`Apps/EmailCleaner`, target `EmailCleaner`,
+  `BUILD_EMAILCLEANER`). It loads several mail accounts into an **analysis
+  database** and shows the *shape* of a mailbox rather than a list of messages:
+  a **map view** where every sender is a block sized by how much of the mailbox
+  it accounts for and coloured by what it mostly sends, a **timetable** of when
+  each sender writes (weekday x hour, plus traffic over calendar time), and a
+  **detail view** with the keyword evidence behind every verdict. Concept:
+  [`Docs/EmailCleaner/Concept.md`](../EmailCleaner/Concept.md).
+- **It does not fetch mail — UltraMail does.** UltraMail already owns accounts,
+  auto-discovery, the credential vault and the IMAP sync engine, and caches
+  every body at `<data>/mail/<account>/<folder>/<uid>.eml`. EmailCleaner reads
+  that cache and mirrors the account list into its own database; it never
+  writes to UltraMail's tables. `EMAILCLEANER_MAIL_DIR` points it at another
+  mailbox.
+- **Content detection** for the families that fill a mailbox: product
+  advertising, adult content, dating/romance scams, phishing, financial fraud,
+  and messages carrying executable, script or macro-bearing attachments (double
+  extensions like `invoice.pdf.exe` included), plus newsletters and
+  transactional notifications. Two kinds of evidence are combined and both
+  recorded, so the detail view can *explain* a verdict: a weighted keyword rule
+  set, and structural signals a keyword list cannot see — a display name hiding
+  a different address, a `Reply-To` on another domain, a subject in capitals, a
+  machine-generated sender address, the bulk headers.
+- **Both a rule term and the message text run through one normalisation
+  pipeline** (`EmailCleanerText`), which is what makes a short term list hold up
+  against real spam: `V1AGRA`, `v.i.a.g.r.a` and `<b>vi</b>agra` all normalise
+  to `viagra`, and a rule written `no-reply@` still matches after `@` folds to
+  `a`. Inline HTML elements are removed *without* a word boundary (that is the
+  camouflage); block-level ones become one.
+- **Rules are data, not code.** The built-in table is layered under an editable
+  `rules.txt` in the app's data directory (`category | weight | field | phrase`,
+  `*` for no word boundary); a bad line is reported and skipped rather than
+  costing the file. **Re-analyse** re-reads it and re-classifies the stored
+  corpus.
+- **The analysis database** (`EmailCleanerStore`, on UltraDatabase) keeps
+  messages, attachment metadata, keyword hits and per-folder ingest state, and
+  answers the aggregate shapes the views need — sender and domain rollups with
+  their dominant category, the weekday x hour grid, the timeline with empty
+  buckets filled in, category and attachment-type totals, top keywords — so the
+  UI runs no SQL of its own. Attachments and hits are derived data, replaced
+  wholesale on re-analysis; a batch load is one transaction. Time bucketing is
+  UTC, so a timetable does not shift with the reader's timezone.
+- **Headless engine test suite** (`ULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON`,
+  target `EmailCleanerEngineTests`, 104 tests) covering the text pipeline, the
+  rule format, the classifier, the store, the ingest over real RFC 5322
+  messages and the analytics shaping — no display and no network.
+
 #### 2026-08-29 *0.3.86*
 - **UltraFiler's folder tabs moved to the top of the window.** The tab strip
   was inside the split's folder pane, so it started to the right of the folder
