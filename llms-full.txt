@@ -51904,7 +51904,17 @@ UltraWin_ReleaseApp(app);
 
 - `UltraWin_RunApp(path, options, &handle)` forks and execs Wine in its own
   process group, with `WINEPREFIX` set and optional extra environment
-  variables (e.g. a DXVK switch) applied. The path is routed by extension:
+  variables (e.g. a DXVK switch) applied.
+- **Environment selection**, in order: an explicit
+  `UltraWinRunOptions::environment` always wins; otherwise a path living
+  *inside* an environment's prefix (an installed program, its Start-Menu
+  `.lnk`) selects the environment that owns it — the only prefix where
+  that program is actually installed; everything else runs in the shared
+  `Default` environment. UltraFiler adds its own convention on top:
+  double-clicked files get a per-app environment named after the file, so
+  each program keeps an isolated prefix. There is no persistent app→
+  environment registry — the linkage is the prefix that contains the
+  program's files. The path is routed by extension:
   `.exe` (and anything else) runs directly, `.msi` installs through
   `msiexec /i`, and `.lnk` Start-Menu shortcuts resolve through
   `start /wait /unix` — so installers and installed programs launch through
