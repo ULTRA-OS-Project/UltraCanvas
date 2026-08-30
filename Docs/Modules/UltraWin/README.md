@@ -124,7 +124,12 @@ UltraWin_ReleaseApp(app);
 - **Associations** — how a launcher's one-time choice becomes durable:
   `UltraWin_SetAssociation(programPath, env)` /
   `UltraWin_GetAssociation` / `UltraWin_RemoveAssociation`, persisted
-  under the UltraWin data directory and shared by every launcher.
+  under the UltraWin data directory and shared by every launcher. Each
+  entry carries a **file fingerprint** (size + content hash), so a
+  *different* file appearing at the same path — a re-downloaded
+  `setup.exe` in Downloads — makes the stored choice stale and the
+  picker asks again instead of silently reusing the old program's
+  environment.
   `UltraWin_SuggestEnvironment(path)` gives pickers their default: the
   program's own association, else a *sibling* program's association
   (multi-exe applications share one environment), else a name derived

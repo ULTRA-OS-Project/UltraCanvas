@@ -66,12 +66,17 @@ std::vector<UltraWinFolderMapping> UltraWin_ListMappings(
 // decided — no need to ask.
 std::string UltraWin_EnvironmentForPath(const std::string& hostPath);
 
-// The stored environment for a program path; "" when none is stored.
+// The stored environment for a program path; "" when none is stored OR
+// when the file at that path is no longer the one the choice was made
+// for (associations carry a size+content fingerprint, so a re-downloaded
+// setup.exe replacing a deleted one at the same path re-asks instead of
+// silently reusing the old program's environment).
 std::string UltraWin_GetAssociation(const std::string& programPath);
 
-// Remember / forget the environment for a program path. Setting validates
-// the environment name but not its existence (it is created on first
-// launch like everywhere else).
+// Remember / forget the environment for a program path (fingerprinting
+// the file's current content). Setting validates the environment name
+// but not its existence (it is created on first launch like everywhere
+// else).
 UltraWinResult UltraWin_SetAssociation(const std::string& programPath,
                                        const std::string& environment);
 UltraWinResult UltraWin_RemoveAssociation(const std::string& programPath);

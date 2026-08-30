@@ -120,6 +120,33 @@ TEST(suggestion_prefers_own_then_sibling_then_folder) {
     UltraWin_Shutdown();
 }
 
+TEST(association_goes_stale_when_the_file_is_replaced) {
+    // The Downloads case: setup.exe associated, deleted, and a DIFFERENT
+    // installer downloaded to the same path — the stored choice must not
+    // silently apply to the new program.
+    REQUIRE(UltraWin_Initialize(StubConfig()));
+    std::string dl =
+        WriteFile(ScratchRoot() + "/downloads/setup.exe", "INSTALLER ONE");
+    REQUIRE(UltraWin_SetAssociation(dl, "AppOne"));
+    REQUIRE_EQ(UltraWin_GetAssociation(dl), std::string("AppOne"));
+
+    // Different size.
+    WriteFile(dl, "A COMPLETELY DIFFERENT INSTALLER PAYLOAD");
+    REQUIRE_EQ(UltraWin_GetAssociation(dl), std::string(""));
+
+    // Same size, different bytes — the content hash still catches it.
+    REQUIRE(UltraWin_SetAssociation(dl, "AppTwo"));
+    REQUIRE_EQ(UltraWin_GetAssociation(dl), std::string("AppTwo"));
+    WriteFile(dl, "B COMPLETELY DIFFERENT INSTALLER PAYLOAD");
+    REQUIRE_EQ(UltraWin_GetAssociation(dl), std::string(""));
+
+    // Re-choosing after the change works normally.
+    REQUIRE(UltraWin_SetAssociation(dl, "AppThree"));
+    REQUIRE_EQ(UltraWin_GetAssociation(dl), std::string("AppThree"));
+    UltraWin_RemoveAssociation(dl);
+    UltraWin_Shutdown();
+}
+
 TEST(run_selection_order_with_associations) {
     REQUIRE(UltraWin_Initialize(StubConfig()));
     std::string exe = WriteFile(ScratchRoot() + "/portable/app.exe", "MZ");
