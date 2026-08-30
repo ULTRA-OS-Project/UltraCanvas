@@ -115,15 +115,26 @@ UltraWin_ReleaseApp(app);
   process group, with `WINEPREFIX` set and optional extra environment
   variables (e.g. a DXVK switch) applied.
 - **Environment selection**, in order: an explicit
-  `UltraWinRunOptions::environment` always wins; otherwise a path living
-  *inside* an environment's prefix (an installed program, its Start-Menu
-  `.lnk`) selects the environment that owns it — the only prefix where
-  that program is actually installed; everything else runs in the shared
-  `Default` environment. UltraFiler adds its own convention on top:
-  double-clicked files get a per-app environment named after the file, so
-  each program keeps an isolated prefix. There is no persistent app→
-  environment registry — the linkage is the prefix that contains the
-  program's files. The path is routed by extension:
+  `UltraWinRunOptions::environment` always wins; a path living *inside*
+  an environment's prefix (an installed program, its Start-Menu `.lnk`)
+  selects the environment that owns it — the only prefix where that
+  program is actually installed; a **remembered association** (below)
+  covers programs outside any prefix; everything else runs in the shared
+  `Default` environment.
+- **Associations** — how a launcher's one-time choice becomes durable:
+  `UltraWin_SetAssociation(programPath, env)` /
+  `UltraWin_GetAssociation` / `UltraWin_RemoveAssociation`, persisted
+  under the UltraWin data directory and shared by every launcher.
+  `UltraWin_SuggestEnvironment(path)` gives pickers their default: the
+  program's own association, else a *sibling* program's association
+  (multi-exe applications share one environment), else a name derived
+  from the parent folder, else the file name.
+  `UltraWin_EnvironmentForPath` tells a launcher the choice is already
+  made because the program lives inside a prefix.
+- UltraFiler asks **once** per unknown program (a small picker: existing
+  environments + a new-environment name, pre-filled from the suggestion,
+  with "remember for this program" checked) — later double-clicks launch
+  straight through the stored association. The path is routed by extension:
   `.exe` (and anything else) runs directly, `.msi` installs through
   `msiexec /i`, and `.lnk` Start-Menu shortcuts resolve through
   `start /wait /unix` — so installers and installed programs launch through
@@ -228,11 +239,15 @@ bar, never as silent failures.
 ## UltraFiler integration
 
 Double-clicking a `.exe` or `.msi` in UltraFiler launches it through
-`UltraWin_RunApp` in a per-app environment named after the file (created
-automatically on first launch, off the UI thread; installers run through
-msiexec). When Wine is missing, the status bar says how to install it.
-Available only in Linux builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other
-platforms activation behaves as before.
+`UltraWin_RunApp` (installers run through msiexec, off the UI thread).
+For a program whose environment is not already decided (not inside a
+prefix, no stored association) a small picker asks **once** — existing
+environments plus a new-environment name pre-filled from
+`UltraWin_SuggestEnvironment` — and remembers the answer, so every later
+launch is a plain double-click. When Wine is missing, the status bar says
+how to install it. Available only in Linux builds
+(`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation behaves as
+before.
 
 ## The VM tier (Stage 2a — machine backbone)
 

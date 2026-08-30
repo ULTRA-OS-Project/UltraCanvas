@@ -43,6 +43,7 @@
 #include "UltraFilerShare.h"
 #include "UltraFilerPrompt.h"
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
+#include "UltraFilerRunWindowsDialog.h"
 #include "UltraWin/UltraWin.h"
 #endif
 
@@ -1973,19 +1974,34 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
         return;
     }
 
-    // Per-app environment named after the executable, so each program keeps
-    // its own isolated prefix (UltraWin creates it on first launch).
-    std::string envName = fs::path(entry.name).stem().string();
-    for (char& c : envName) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' &&
-            c != '_' && c != '-')
-            c = '_';
+    // Already decided? A program inside an environment's prefix runs
+    // there, and a remembered association covers everything a picker
+    // answered before — both resolve inside UltraWin_RunApp.
+    std::string decided = UltraWin_EnvironmentForPath(entry.path);
+    if (decided.empty()) decided = UltraWin_GetAssociation(entry.path);
+    if (!decided.empty()) {
+        StartWindowsLaunch(entry, decided);
+        return;
     }
-    while (!envName.empty() && envName.front() == '.') envName.erase(0, 1);
-    if (envName.size() > 64) envName.resize(64);
-    if (envName.empty()) envName = "Default";
 
-    const bool firstLaunch = !UltraWin_EnvironmentExists(envName);
+    // First launch of an unknown program: ask once. The suggestion is a
+    // sibling program's environment when one is associated (multi-exe
+    // applications share), else a name derived from folder/file.
+    std::vector<std::string> names;
+    for (const auto& env : UltraWin_ListEnvironments())
+        names.push_back(env.name);
+    ShowRunWindowsDialog(
+        entry.name, names, UltraWin_SuggestEnvironment(entry.path),
+        [this, entry](const std::string& environment, bool remember) {
+            if (remember) UltraWin_SetAssociation(entry.path, environment);
+            StartWindowsLaunch(entry, environment);
+        },
+        window.get());
+}
+
+void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
+                                          const std::string& environment) {
+    const bool firstLaunch = !UltraWin_EnvironmentExists(environment);
     const char* verb =
         entry.extension == "msi" ? "Installing " : "Launching ";
     if (statusLabel)
@@ -2000,9 +2016,9 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
     // alive flag the subfolder probe worker uses.
     auto alive = probeAlive;
     std::thread([this, alive, path = entry.path, name = entry.name,
-                 envName]() {
+                 environment]() {
         UltraWinRunOptions options;
-        options.environment = envName;
+        options.environment = environment;
         UltraWinHandle handle = UltraWinInvalidHandle;
         auto result = UltraWin_RunApp(path, options, &handle);
 
