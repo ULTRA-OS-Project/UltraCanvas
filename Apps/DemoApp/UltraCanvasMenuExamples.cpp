@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasMenuExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.0.2
+// Last Modified: 2026-08-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -90,12 +90,16 @@ namespace UltraCanvas {
         contextWrongClickText->SetText("Can't you read?\nI said <b>Right click</b> not <b>Left click</b>!");
         contextWrongClickPopup->AddChild(contextWrongClickText);
 
-        // Set click handler for button: right-click opens the menu, left-click scolds.
-        contextMenuBtn->onClick = [contextMenu, contextWrongClickPopup, contextMenuBtn, container]() {
+        // UltraCanvasButton never routes a right-click to onClick: it hands it to
+        // onContextMenu and activates only on left-click. So the context menu has
+        // to be wired to onContextMenu, and the scolding popup to onClick.
+        contextMenuBtn->onContextMenu = [contextMenu, container](int windowX, int windowY) {
+            contextMenu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
+        };
+
+        contextMenuBtn->onClick = [contextWrongClickPopup, container]() {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
-            if (ev.button == UCMouseButton::Right) {
-                contextMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
-            } else if (ev.button == UCMouseButton::Left) {
+            if (ev.button == UCMouseButton::Left) {
                 container->GetWindow()->OpenPopup(ev.pointerWindow, *contextWrongClickPopup, PopupElementSettings());
             }
         };

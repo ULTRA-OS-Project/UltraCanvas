@@ -1,3 +1,18 @@
+#### 2026-08-31 *0.3.88*
+- **Demo app, Menu page: the context menu now opens on right-click.** The
+  first element on the page ("Right-Click for Context Menu") wired both the menu
+  and the "wrong button" popup to `onClick` and told them apart by inspecting
+  `GetCurrentEvent().button`. `UltraCanvasButton` never routes a right-click
+  there: it activates on the left button only and hands the right button to
+  `onContextMenu`, so the `UCMouseButton::Right` branch was dead code and no menu
+  ever appeared. The menu is now opened from `onContextMenu` (at the window
+  coordinates it passes) and `onClick` keeps the left-click reminder. The list
+  items further down the page were unaffected — `UltraCanvasLabel` reports every
+  mouse button through `onClick`.
+- `Docs/UltraCanvas/UltraCanvasButtonExamples.md` now documents `onContextMenu`,
+  `onToggle` and `onSecondaryClick`, and states that `onClick` is left-button
+  only, with the right-click wiring spelled out.
+
 #### 2026-08-30 *0.3.87*
 - **New application: EmailCleaner** (`Apps/EmailCleaner`, target `EmailCleaner`,
   `BUILD_EMAILCLEANER`). It loads several mail accounts into an **analysis
