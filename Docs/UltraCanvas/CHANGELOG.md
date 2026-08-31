@@ -62,6 +62,33 @@
   `Tests/UltraMail/CMakeLists.txt` now names `UltraNet` and the core library
   explicitly after the engine, as the EmailCleaner suite already did. A no-op
   in a shared build, where UltraNet is absorbed into the `.so`. 51 tests pass.
+- **Demo app, Menu page: the context menu now opens on right-click.** The
+  first element on the page ("Right-Click for Context Menu") wired both the menu
+  and the "wrong button" popup to `onClick` and told them apart by inspecting
+  `GetCurrentEvent().button`. `UltraCanvasButton` never routes a right-click
+  there: it activates on the left button only and hands the right button to
+  `onContextMenu`, so the `UCMouseButton::Right` branch was dead code and no menu
+  ever appeared. The menu is now opened from `onContextMenu` (at the window
+  coordinates it passes) and `onClick` keeps the left-click reminder. The list
+  items further down the page were unaffected — `UltraCanvasLabel` reports every
+  mouse button through `onClick`.
+- `Docs/UltraCanvas/UltraCanvasButtonExamples.md` now documents `onContextMenu`,
+  `onToggle` and `onSecondaryClick`, and states that `onClick` is left-button
+  only, with the right-click wiring spelled out.
+- **Menu separators have room to breathe.** `MenuStyle::Default()` set
+  `separatorHeight` to 1, and `RenderSeparator` centres a 1px line in that row,
+  so the line touched the items above and below and read as a hairline rather
+  than a divider. The row is now 7px. Texter's menu bar and UltraFiler's context
+  menus use `Default()` without overriding it, so they gain the clearer grouping
+  too.
+- **`MenuStyle::Dark()` and `Flat()` now derive from `Default()`.** They were
+  built on a bare `MenuStyle`, so everything they did not set came from the
+  struct's member defaults instead: item height 28 rather than 24, left padding
+  4 rather than 8, corner radius 4 rather than 0, a drop shadow, the default
+  font size and `separatorHeight` 8 — the same menu changed shape, not just
+  colour, when it changed theme. `Dark()` also gets border, pressed, disabled,
+  shortcut and separator colours suited to a dark background. The demo's Dark
+  and Flat menus, which had no separator at all, now show one.
 
 #### 2026-08-30 *0.3.87*
 - **New application: EmailCleaner** (`Apps/EmailCleaner`, target `EmailCleaner`,
