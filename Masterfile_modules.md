@@ -482,3 +482,104 @@ persisted drive mappings), application launch/supervision, and the
 component installer (winetricks wrapper) are implemented; the VM tier and
 compatibility routing are planned for Stages 2-3. See
 `Docs/Modules/UltraWin/README.md`.
+
+---
+
+### **10. VirtualFS**
+
+Virtual file system — the single place where archive traversal, format
+detection, decompression, entry caching, password handling and RAM disc
+provisioning are implemented, so no application, plugin or sibling module
+opens a ZIP by hand. Files inside an archive are reached as if they were
+regular folders, including archives nested inside archives. Sources under
+`VirtualFS/{include,core,providers,OS/<Platform>}`, target `VirtualFS`,
+header `<VirtualFS/VirtualFS.h>`, `namespace VirtualFS`; see
+`Docs/Modules/VirtualFS/README.md` and the full function list in
+`VirtualFS/VirtualFS_Master_Registry_V1.md`.
+
+Scope is **archives and scratch storage**. Loading and converting a file
+once it has been reached stays in FileLoader; the UltraCanvas-facing
+compression shims live in `UltraCanvasVirtualFSBridge`.
+
+VirtualFS elements must comply with the same rules as UltraNet, UltraCrypt
+and UltraDatabase:
+- Clear structure; call names understandable by their names
+- New formats arrive as an `IVirtualFSProvider`, never as a special case
+  inside the manager
+- Every call returns `VirtualFSResult` (`operator bool` for quick checks,
+  `VirtualFSResultToString()` for messages)
+- Paths use forward slashes and are normalized automatically; archive
+  boundaries are detected by extension against 40+ known formats
+- **Never** write `ZipFile`, `TarArchive` or `Uncompress()` at module level
+  — go through `VirtualFS_*` or `UCVFSBridge::*`
+- A RAM disc always reports its backing; the Windows disk fallback is never
+  presented as memory (see `VirtualFSRamDisk::IsTrueRam()`)
+
+Like UltraNet and UltraCrypt, it encapsulates an open-source library
+(libarchive) so the backing implementation can be replaced without
+affecting callers; the backing library is never visible in a public header.
+
+**Available Functions (Core, Tier 1):**
+- Lifecycle: `VirtualFS_Initialize`, `VirtualFS_Shutdown`,
+  `VirtualFS_IsInitialized`, `VirtualFS_GetVersion`
+- Reading: `VirtualFS_ReadFile`, `VirtualFS_ReadFileString`,
+  `VirtualFS_ReadFilePartial`, `VirtualFS_OpenStream`,
+  `VirtualFS_ExtractToMemory`
+- Listing: `VirtualFS_ListDirectory`, `VirtualFS_ListDirectoryFiltered`,
+  `VirtualFS_ListDirectoryRecursive`, `VirtualFS_EnumerateDirectory`
+- Queries: `VirtualFS_Exists`, `VirtualFS_IsFile`, `VirtualFS_IsDirectory`,
+  `VirtualFS_IsArchive`, `VirtualFS_IsInsideArchive`, `VirtualFS_GetInfo`,
+  `VirtualFS_GetSize`, `VirtualFS_GetType`, `VirtualFS_GetMimeType`,
+  `VirtualFS_DetectFormat`, `VirtualFS_GetArchiveInfo`
+- Extraction: `VirtualFS_ExtractFile`, `VirtualFS_ExtractAll`,
+  `VirtualFS_ExtractFiltered`
+- Writing: `VirtualFS_CreateArchive`, `VirtualFS_AddToArchive`,
+  `VirtualFS_DeleteFromArchive`
+- Validation: `VirtualFS_ValidateArchive`, `VirtualFS_TestArchive`
+- Paths: `VirtualFS_NormalizePath`, `VirtualFS_ResolvePath`,
+  `VirtualFS_JoinPath`, `VirtualFS_GetParentPath`,
+  `VirtualFS_GetFileName`, `VirtualFS_GetExtension`
+- Providers: `VirtualFS_RegisterProvider`, `VirtualFS_UnregisterProvider`,
+  `VirtualFS_GetProviderForPath`, `VirtualFS_GetRegisteredProviders`,
+  `VirtualFS_GetSupportedExtensions`
+- Configuration: `VirtualFS_SetPasswordCallback`,
+  `VirtualFS_SetErrorCallback`, `VirtualFS_GetErrorMessage`,
+  `VirtualFS_SetTempDirectory`, `VirtualFS_GetTempDirectory`,
+  `VirtualFS_SetDefaultEncoding`
+- Cache: `VirtualFS_SetCacheEnabled`, `VirtualFS_SetMaxCacheSize`,
+  `VirtualFS_GetCacheSize`, `VirtualFS_ClearCache`,
+  `VirtualFS_ClearCacheForPath`
+
+**Raw buffer compression** (`VirtualFSCompression.h`) — the compression
+codecs without an archive container, for callers such as the UltraWeb
+bundler and FileLoader: `VirtualFS_CompressBuffer`,
+`VirtualFS_DecompressBuffer`, `VirtualFS_DetectCompressionMethod`,
+`VirtualFS_IsCompressionMethodAvailable`. Methods: `Store`, `Deflate`,
+`Zstd`, `LZ4` (frame format), `Brotli`, each subject to its
+`VIRTUALFS_USE_*` build option.
+
+**RAM discs** (`VirtualFSRamDisk.h`) — OS-visible scratch volumes, backed by
+each platform's own facility (`/dev/shm` tmpfs on Linux, `hdiutil
+attach ram://` on macOS, the ImDisk driver on Windows when installed, an
+overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
+`VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
+`VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
+`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
+user and do not survive a reboot.
+
+**Provider interface** (`IVirtualFSProvider`) — one implementation per
+format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
+read-only, ISO/UDF, CAB, CPIO, DEB, RPM, and the ZIP-derived app bundles);
+CHM (libmspack) and WIM (wimlib) providers are planned. Optional
+`OpenFromMemory()` lets a provider open an archive from a buffer, which is
+how nested archives are traversed without writing a temp file; providers
+that implement it advertise `VirtualFSCapability::MemoryOpen`.
+
+**Implementation status (this branch):** VirtualFSManager, VirtualFSPath,
+the LibArchive provider and the UltraCanvas bridge are complete;
+memory-backed nested archives and the Linux and macOS RAM disc back ends
+are complete. On Windows a true RAM disc requires an ImDisk installation —
+the driver is detected, never bundled — and without it the disc degrades to
+storage-backed and reports itself as such. Regression tests:
+`Tests/VirtualFSPathTest.cpp`, `Tests/VirtualFSDeleteTest.cpp`,
+`Tests/VirtualFSNestedMemoryTest.cpp`, `Tests/VirtualFSRamDiskTest.cpp`.
