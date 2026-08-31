@@ -9,8 +9,15 @@
 // before the button is pressed, not after. "Apply" then repeats the plan in a
 // confirmation dialog and only runs it when the user says yes.
 //
-// The panel is also where the blocklist can be seen and undone, because a
-// block the user cannot take back is not a block, it is a mistake waiting.
+// The panel is also where the blocklist and the verdict corrections can be seen
+// and undone, because a decision the user cannot take back is not a decision,
+// it is a mistake waiting.
+//
+// The second row is the feedback the concept called for: "this is fine" and
+// "this is spam" record what the user says about a sender, and that beats the
+// classifier for their mail from then on. It is deliberately not the same
+// control as Block — "I do not want to hear from them" and "your verdict about
+// them is wrong" are different statements about a sender.
 // Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -34,7 +41,7 @@ namespace EmailCleaner {
 class ActionsPanel {
 public:
     // The height the panel needs; the app reserves this above the detail view.
-    static constexpr float kHeight = 122.0f;
+    static constexpr float kHeight = 152.0f;
 
     // The store is required (the planner reads it, the executor writes it).
     // The backend is the mail side and may be absent — then blocking still
@@ -55,6 +62,10 @@ public:
 
     // Raised after a plan ran, so the app can re-read the corpus and repaint.
     std::function<void(const ActionOutcome&)> onApplied;
+    // A sentence for the status line. Raised for the things that are not a
+    // plan — recording a verdict correction, taking one back — which have no
+    // ActionOutcome to describe.
+    std::function<void(const std::string&)> onStatus;
 
 private:
     ActionRequest CurrentRequest() const;
@@ -62,6 +73,9 @@ private:
     void          Confirm();
     void          Apply(const ActionPlan& plan);
     void          ShowBlocklist();
+    // "This is fine" / "This is spam": ask which category, then record it.
+    void          MarkVerdict(bool wanted);
+    void          ShowOverrides();
 
     AnalysisStore*  store_   = nullptr;
     IActionBackend* backend_ = nullptr;
@@ -81,6 +95,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>  unwantedOnly_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    apply_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    blocklist_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    markFine_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    markSpam_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    overrides_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     verdict_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     summary_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warning_;
 };

@@ -109,6 +109,32 @@ struct AnalyzedMessage {
     // True when the sender was on the blocklist at ingest time.
     bool blocked = false;
 
+    // True when `category` / `score` are the user's correction rather than the
+    // classifier's own verdict, which is then kept in baseCategory / baseScore
+    // so taking the correction back restores it.
+    //
+    // When `overridden` is false the effective verdict *is* the classifier's,
+    // so the base fields need not be set — and the store writes them from
+    // `category` / `score`. That invariant is what lets a message be built by
+    // hand without having to know about any of this.
+    bool            overridden   = false;
+    MessageCategory baseCategory = MessageCategory::Unclassified;
+    double          baseScore    = 0.0;
+
+    // Record the classifier's verdict: the effective one and the base to
+    // restore to are the same thing until a correction is applied.
+    void SetClassifierVerdict(MessageCategory c, double s) {
+        category = baseCategory = c;
+        score = baseScore = s;
+        overridden = false;
+    }
+    // Replace the verdict with the user's correction, keeping the base.
+    void ApplyOverride(MessageCategory c) {
+        category   = c;
+        score      = IsUnwanted(c) ? 100.0 : 0.0;
+        overridden = true;
+    }
+
     std::vector<AttachmentRecord> attachments;
     std::vector<KeywordHit>       hits;
 

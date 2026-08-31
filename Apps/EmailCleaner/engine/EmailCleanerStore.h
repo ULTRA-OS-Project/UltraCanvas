@@ -43,6 +43,25 @@ struct IngestState {
     int         messages  = 0;   // messages ingested for this folder so far
 };
 
+// What the user said about a sender when the classifier got it wrong: "this
+// is fine" (a wanted category) or "this is spam" (an unwanted one). Applies to
+// one address, or to a whole sending domain.
+//
+// Separate from the blocklist on purpose — the two answer different questions.
+// "I do not want to hear from them" and "your verdict about them is wrong" are
+// not the same statement, and a sender can be either, both, or neither.
+struct VerdictOverride {
+    std::string     pattern;                                 // lowercased address or domain
+    bool            isDomain = false;
+    MessageCategory category = MessageCategory::Personal;    // what it should be
+    std::string     reason;                                  // free text, for the list view
+    int64_t         added = 0;                               // epoch seconds
+
+    bool Valid() const { return !pattern.empty(); }
+    // True for the "this is fine" direction.
+    bool Wanted() const { return !IsUnwanted(category); }
+};
+
 // One blocklist entry: a sender address, or a whole sending domain.
 struct BlockEntry {
     std::string pattern;          // lowercased address or domain
@@ -55,6 +74,11 @@ struct BlockEntry {
 
 class AnalysisStore {
 public:
+    // The schema version Open() migrates to. Bumped with every migration step
+    // added in the .cpp, so a test can assert the database matches the code
+    // without a literal that has to be chased each time.
+    static constexpr int kSchemaVersion = 3;
+
     // Register the connection and bring the schema up to date. `databasePath`
     // is a file path (created if absent) or ":memory:". Calling it again with
     // the same name and path is a no-op re-migration and keeps the existing
@@ -149,6 +173,26 @@ public:
     // so the map reflects a block without a re-ingest. Returns rows touched in
     // the result's affectedRows.
     UltraDbResult ApplyBlocklistToMessages();
+
+    // ---- Verdict overrides -------------------------------------------------
+    // The user's correction of a classifier verdict, per sender or per domain.
+    // Purely local, like the blocklist, and reversible.
+    UltraDbResult SetOverride(const VerdictOverride& entry);
+    UltraDbResult RemoveOverride(const std::string& pattern);
+    UltraDbResult ListOverrides(std::vector<VerdictOverride>& out) const;
+
+    // The override that applies to a sender, if any. An address override wins
+    // over a domain one — the more specific statement is the later one the
+    // user made about that exact sender.
+    bool FindOverride(const std::string& senderAddr, const std::string& domain,
+                      VerdictOverride& out) const;
+
+    // Re-stamp category, score and the `overridden` flag on stored messages
+    // from the override table, so a correction shows in the map without a
+    // re-ingest. Messages whose sender has no override are restored to the
+    // classifier's own verdict, which is what makes removing an override undo
+    // it. Returns rows touched in the result's affectedRows.
+    UltraDbResult ApplyOverridesToMessages();
 
     // ---- Unsubscribe -------------------------------------------------------
     // The newest unsubscribe offer seen from a sender (or, for a domain

@@ -1,7 +1,9 @@
 // Apps/EmailCleaner/ui/EmailCleanerDetailView.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.3.0 (Phase 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerDetailView.h"
+
+#include "UltraCanvasButton.h"
 
 #include "EmailCleanerAnalytics.h"
 
@@ -29,7 +31,8 @@ Color ToCanvasColor(const MapColor& color) {
 // ---- MessageRow ------------------------------------------------------------
 
 MessageRow::MessageRow(const std::string& id, float x, float y, float w, float h,
-                       const AnalyzedMessage& message)
+                       const AnalyzedMessage& message,
+                       const std::function<void(const AnalyzedMessage&)>& onAttachments)
     : UltraCanvasContainer(id, x, y, w, h) {
     // A colour chip carries the category, so a list of a hundred rows can be
     // skimmed without reading the label on each.
@@ -39,8 +42,22 @@ MessageRow::MessageRow(const std::string& id, float x, float y, float w, float h
 
     AddChild(CreateLabel(id + ".date", 20, 2, 110, 18, FormatDate(message.date)));
 
+    // The attachment button takes the right end of the row, so the subject
+    // stops short of it rather than running underneath.
+    const bool showAttachments = onAttachments && message.attachmentCount > 0;
+    const float subjectW = w - 144 - (showAttachments ? 130.0f : 0.0f);
+
     std::string headline = message.subject.empty() ? "(no subject)" : message.subject;
-    AddChild(CreateLabel(id + ".subject", 136, 2, w - 144, 18, headline));
+    AddChild(CreateLabel(id + ".subject", 136, 2, subjectW, 18, headline));
+
+    if (showAttachments) {
+        // Just "Attachments": the row's second line already says how many and
+        // how big, and a count in the label only made it too long to read.
+        auto button = CreateButton(id + ".att", w - 126, 6, 120, h - 12, "Attachments");
+        const AnalyzedMessage copy = message;
+        button->onClick = [onAttachments, copy]() { onAttachments(copy); };
+        AddChild(button);
+    }
 
     std::string sub = CategoryLabel(message.category);
     if (message.score > 0.0)
@@ -165,7 +182,8 @@ void DetailView::RebuildMessages() {
     int index = 0;
     for (const AnalyzedMessage& message : list) {
         auto row = std::make_shared<MessageRow>(
-            "ecMessage" + std::to_string(index++), 0, y, width_ - 40, kRowH, message);
+            "ecMessage" + std::to_string(index++), 0, y, width_ - 40, kRowH, message,
+            onOpenAttachments);
         messages_->AddChild(row);
         y += kRowH + 2.0f;
     }

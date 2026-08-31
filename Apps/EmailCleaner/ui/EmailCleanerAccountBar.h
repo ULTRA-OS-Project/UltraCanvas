@@ -49,6 +49,8 @@ public:
     std::function<void()> onScan;
     // "Re-analyse" — run the classifier over the stored corpus again.
     std::function<void()> onReanalyse;
+    // "Rules…" — open the keyword rule editor.
+    std::function<void()> onEditRules;
 
 private:
     void NotifyFilterChanged();

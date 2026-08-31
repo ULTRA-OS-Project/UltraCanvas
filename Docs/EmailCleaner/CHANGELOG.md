@@ -1,3 +1,44 @@
+#### 2026-08-31 *0.3.0*
+- **Your verdict beats the classifier's.** **This is fine** and **This is spam**
+  on the actions strip record what you say about the selected sender or domain,
+  and that decides their mail from then on. Two properties make it safe to use:
+  the classifier's own verdict is kept alongside in the store, so *taking a
+  correction back restores what it actually said*, message by message, rather
+  than leaving a hand-set value with nothing to return to; and an address
+  correction beats a domain one, so "all of this domain is spam except this one
+  address" is sayable. **Corrected senders…** lists them and undoes them.
+- Deliberately **not** the same control as Block. "I do not want to hear from
+  them" and "your verdict about them is wrong" are different statements about a
+  sender, and either can be true without the other — so they are separate
+  tables, separate lists and separate buttons.
+- **The rules are editable where they are used.** **Rules…** opens `rules.txt`
+  in a dialog: your own rules listed, added and removed, seeded with the
+  strongest term behind the current selection, then saved and re-analysed in one
+  step. The 127 built-ins stay out of reach on purpose — they are the floor your
+  rules are layered on, and a rule set you can break is one you can also
+  silently disarm. A phrase typed here goes through the same parse and the same
+  normalisation as a hand-edited line, so the two cannot mean different things.
+- **Attachments can be looked at — except the ones that matter.** A message with
+  attachments carries an **Attachments** button; the index holds metadata only,
+  so the bytes are read back out of the .eml UltraMail cached and opened in
+  `UltraCanvasMediaViewer`. Executable, script and macro-bearing attachments are
+  **not** opened and **not** copied anywhere: nothing is written to disk and no
+  button is offered, only a note saying why. An app whose subject is unwanted
+  mail — one that classifies partly *on* those types — must not be the thing
+  that opens them. The refusal is checked twice, against the index row and
+  against the part the message really carries, so neither a stale index nor a
+  misleading filename gets one through.
+- Schema v3: the override table, plus `base_category` / `base_score` on messages
+  so a correction is reversible. `AnalysisStore::kSchemaVersion` is now one
+  constant the migration list is checked against, so a forgotten bump fails at
+  `Open()` instead of silently.
+- The unwanted-category SQL list is built from the taxonomy instead of written
+  out in three queries, where adding a category would have silently missed one.
+- Engine tests: **181** (was 155), covering the override table, what it does to
+  the corpus, that removing one restores the classifier's verdict, and the
+  attachment refusals — including a stale "harmless" index row and a name that
+  does not match the part.
+
 #### 2026-08-31 *0.2.0*
 - **EmailCleaner can now act on the block you select, not just describe it.**
   An actions strip above the message list offers **Block sender**,

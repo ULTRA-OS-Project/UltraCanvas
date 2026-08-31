@@ -1,5 +1,5 @@
 // Apps/EmailCleaner/ui/EmailCleanerAccountBar.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.3.0 (Phase 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerAccountBar.h"
 
@@ -23,7 +23,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
     root_->AddChild(CreateLabel("ecAccountLabel", cursor, kRowY + 4, 68, 20, "Account"));
     cursor += 72.0f;
 
-    accountPicker_ = CreateDropdown("ecAccountPicker", cursor, kRowY, 220, kControlH);
+    accountPicker_ = CreateDropdown("ecAccountPicker", cursor, kRowY, 190, kControlH);
     accountPicker_->AddItem("All accounts", "");
     accountPicker_->SetSelectedIndex(0, false);
     accountPicker_->onSelectionChanged = [this](int index, const DropdownItem&) {
@@ -33,7 +33,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
         NotifyFilterChanged();
     };
     root_->AddChild(accountPicker_);
-    cursor += 228.0f;
+    cursor += 198.0f;
 
     auto scanButton = CreateButton("ecScan", cursor, kRowY, 110, kControlH, "Load mail");
     scanButton->onClick = [this]() { if (onScan) onScan(); };
@@ -44,7 +44,14 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
                                         "Re-analyse");
     reanalyseButton->onClick = [this]() { if (onReanalyse) onReanalyse(); };
     root_->AddChild(reanalyseButton);
-    cursor += 126.0f;
+    cursor += 118.0f;
+
+    // The rules were always editable — as a text file in the data directory.
+    // This is that file, in a dialog.
+    auto rulesButton = CreateButton("ecRules", cursor, kRowY, 84, kControlH, "Rules…");
+    rulesButton->onClick = [this]() { if (onEditRules) onEditRules(); };
+    root_->AddChild(rulesButton);
+    cursor += 100.0f;
 
     // ---- Filters -----------------------------------------------------------
     root_->AddChild(CreateLabel("ecCategoryLabel", cursor, kRowY + 4, 84, 20, "Category"));
@@ -78,7 +85,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
     cursor += 148.0f;
 
     search_ = CreateTextInput("ecSearch", static_cast<int>(cursor), static_cast<int>(kRowY),
-                              200, static_cast<int>(kControlH));
+                              180, static_cast<int>(kControlH));
     search_->SetPlaceholder("Search subject or sender");
     search_->onTextChanged = [this](const std::string& text) {
         filter_.search = text;

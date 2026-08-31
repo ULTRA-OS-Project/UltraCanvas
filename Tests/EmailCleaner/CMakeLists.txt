@@ -16,6 +16,8 @@ set(EMAILCLEANER_TEST_SOURCES
     test_unsubscribe.cpp
     test_actions.cpp
     test_mailbackend.cpp
+    test_overrides.cpp
+    test_attachments.cpp
 )
 
 add_executable(EmailCleanerEngineTests ${EMAILCLEANER_TEST_SOURCES})
