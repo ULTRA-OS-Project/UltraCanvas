@@ -200,18 +200,30 @@ jobs:
           # pdf_page_label, pdf_apply_redaction, the 7-arg fz_search_page_number).
           # Build 1.23.10 from source to match the version Ubuntu 24.04 packages
           # (what the code is written against). Bundle MuPDF's own third-party libs
-          # EXCEPT freetype/harfbuzz: those are shared with cairo/pango, so using the
-          # SYSTEM copies avoids two FreeType instances in one process. XCFLAGS=-fPIC
-          # so the static archives link into the shared libUltraCanvas.so. The
-          # companion -dev libs below still satisfy the plugin's find_library() probes.
-          sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev
+          # EXCEPT the ones ALSO used by cairo/pango/libvips in the same process:
+          # freetype+harfbuzz (cairo/pango) and libjpeg+openjpeg (libvips). Using the
+          # SYSTEM copies of these avoids two instances of the same library in one
+          # process. Two concrete failures this prevents:
+          #   * libjpeg: MuPDF vendors libjpeg 9 (JPEG_LIB_VERSION=90); without
+          #     USE_SYSTEM_LIBJPEG its global jpeg_CreateDecompress interposes libvips's
+          #     system libjpeg 8 and breaks every JPEG/AVIF thumbnail ("Wrong JPEG
+          #     library version: library is 90, caller expects 80").
+          #   * openjpeg: MuPDF compiles its bundled thirdparty with hidden ELF
+          #     visibility; a hidden opj_* symbol in the app collides with libvips's
+          #     reference to system libopenjp2 ("hidden symbol ... referenced by DSO").
+          # XCFLAGS=-fPIC so the static archives link into the shared libUltraCanvas.so.
+          # The companion -dev libs below satisfy both the plugin's find_library() probes
+          # and MuPDF's USE_SYSTEM_* builds.
+          sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
           MUPDF_VER=1.23.10
           curl -fsSL "https://mupdf.com/downloads/archive/mupdf-${MUPDF_VER}-source.tar.gz" | tar xz
           make -C "mupdf-${MUPDF_VER}-source" -j"$(nproc)" \
-            HAVE_X11=no HAVE_GLUT=no USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes \
+            HAVE_X11=no HAVE_GLUT=no \
+            USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes \
             XCFLAGS=-fPIC build=release
           sudo make -C "mupdf-${MUPDF_VER}-source" \
-            HAVE_X11=no HAVE_GLUT=no USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes \
+            HAVE_X11=no HAVE_GLUT=no \
+            USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes \
             XCFLAGS=-fPIC build=release prefix=/usr install
           # Some MuPDF install targets omit the static third-party archive; make
           # sure find_library(mupdf-third) can see it.
