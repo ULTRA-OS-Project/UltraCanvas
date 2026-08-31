@@ -1,13 +1,14 @@
 // Apps/DemoApp/UltraCanvasTextInputExamples.cpp
 // Implementation of all component example creators
-// Version: 1.1.0
-// Last Modified: 2025-10-21
+// Version: 1.2.0
+// Last Modified: 2026-08-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasPasswordStrengthMeter.h"
 #include "UltraCanvasPasswordRuleLegend.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextArea.h"
 #include <sstream>
@@ -53,15 +54,16 @@ namespace UltraCanvas {
         container->AddChild(multiLineInput);
 
 
-        auto passwordLabel = std::make_shared<UltraCanvasLabel>("PasswordLabel", 20, 280, 200, 20);
-        passwordLabel->SetText("Basic Password Field");
+        auto passwordLabel = std::make_shared<UltraCanvasLabel>("PasswordLabel", 20, 280, 250, 20);
+        passwordLabel->SetText("Basic Password Field (eye reveals text)");
         passwordLabel->SetFontSize(12);
         container->AddChild(passwordLabel);
 
-        // Password Field (Basic)
+        // Password Field (Basic) - the in-field eye button shows the typed text
         auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 20, 305, 300, 30);
         passwordInput->SetInputType(TextInputType::Password);
         passwordInput->SetPlaceholder("Enter password...");
+        passwordInput->SetShowPasswordToggle(true);
         container->AddChild(passwordInput);
 
 
@@ -95,7 +97,9 @@ namespace UltraCanvas {
         //passwordTitle1->SetFontWeight(FontWeight::Bold);
         container->AddChild(passwordTitle1);
 
-        auto passwordInput1 = CreatePasswordInput("Password1", 350, 70, 350, 30);
+        // Reveal ("eye") button on the right of the field: click it to read back the
+        // password in clear text, click again to mask it.
+        auto passwordInput1 = CreateRevealablePasswordInput("Password1", 350, 70, 350, 30);
         passwordInput1->SetPlaceholder("Enter password...");
 
         // Add validation rules
@@ -115,8 +119,10 @@ namespace UltraCanvas {
         container->AddChild(strengthBar);
 
         // Description
-        auto barDescription = std::make_shared<UltraCanvasLabel>("BarDesc", 350, 140, 350, 40);
-        barDescription->SetText("Real-time strength indicator with animated\ncolor transitions (red → yellow → green)");
+        auto barDescription = std::make_shared<UltraCanvasLabel>("BarDesc", 350, 130, 350, 45);
+        barDescription->SetText("Real-time strength indicator with animated\n"
+                                "color transitions (red → yellow → green).\n"
+                                "Click the eye icon in the field to show the password.");
         barDescription->SetFontSize(11);
         barDescription->SetTextColor(Color(100, 100, 100));
         container->AddChild(barDescription);
@@ -153,20 +159,34 @@ namespace UltraCanvas {
 
         // ===== PASSWORD WITH CHECKLIST =====
 
-        auto passwordTitle3 = std::make_shared<UltraCanvasLabel>("PasswordTitle3", 350, 200, 350, 20);
+        auto passwordTitle3 = std::make_shared<UltraCanvasLabel>("PasswordTitle3", 350, 195, 350, 20);
         passwordTitle3->SetText("Password with Requirements Checklist");
 //        passwordTitle3->SetFontSize(14);
 //        passwordTitle3->SetFontWeight(FontWeight::Bold);
         container->AddChild(passwordTitle3);
 
-        auto passwordInput3 = CreatePasswordInput("Password3", 350, 230, 350, 30);
+        auto passwordInput3 = CreatePasswordInput("Password3", 350, 220, 350, 30);
         passwordInput3->SetPlaceholder("Meet all requirements...");
         container->AddChild(passwordInput3);
 
+        // Explicit "Show password" flag instead of the in-field eye icon: an
+        // external control driving the same SetPasswordRevealed() state.
+        auto showPassword3 = UltraCanvasCheckbox::CreateCheckbox(
+                "ShowPassword3", 350, 253, 160, 20, "Show password", false);
+        auto* password3 = passwordInput3.get();
+        showPassword3->onStateChanged = [password3](CheckedState, CheckedState newState) {
+            password3->SetPasswordRevealed(newState == CheckedState::Checked);
+        };
+        container->AddChild(showPassword3);
+
         // Checklist Legend
-        auto ruleLegend = CreateChecklistLegend("RuleLegend", 350, 260, 350, 140);
+        auto ruleLegend = CreateChecklistLegend("RuleLegend", 350, 278, 350, 140);
         ruleLegend->LinkToInput(passwordInput3.get());
         ruleLegend->SetShowMetRules(true);
+        // Size the box to what the rule list actually paints so it cannot spill
+        // over the description below it. SetElementSize() (not SetHeight) so the
+        // CSS height the layout pass uses is updated too.
+        ruleLegend->SetElementSize(Size2Df(350, ruleLegend->GetContentHeight()));
 
         // Setup callbacks for status updates
         ruleLegend->onAllRulesMet = [](bool allMet) {
@@ -182,26 +202,45 @@ namespace UltraCanvas {
         container->AddChild(ruleLegend);
 
         // Description
-        auto checklistDescription = std::make_shared<UltraCanvasLabel>("ChecklistDesc", 350, 410, 350, 40);
-        checklistDescription->SetText("Interactive checklist with ✓/✗ indicators\nshowing real-time validation status");
+        auto checklistDescription = std::make_shared<UltraCanvasLabel>("ChecklistDesc", 350, 415, 350, 45);
+        checklistDescription->SetText("Interactive checklist with ✓/✗ indicators\n"
+                                      "showing real-time validation status.\n"
+                                      "\"Show password\" flag unmasks the field.");
         checklistDescription->SetFontSize(11);
         checklistDescription->SetTextColor(Color(100, 100, 100));
         container->AddChild(checklistDescription);
 
         // ===== COMPLETE PASSWORD SETUP =====
 
-        auto passwordTitle4 = std::make_shared<UltraCanvasLabel>("PasswordTitle4", 350, 480, 450, 25);
+        // Width kept clear of the circular meter's column (x >= 710).
+        auto passwordTitle4 = std::make_shared<UltraCanvasLabel>("PasswordTitle4", 350, 480, 355, 25);
         passwordTitle4->SetText("Complete Setup: Circular Meter + Detailed Legend");
 //        passwordTitle4->SetFontSize(14);
         //passwordTitle4->SetFontWeight(FontWeight::Bold);
         container->AddChild(passwordTitle4);
 
-        auto passwordInput4 = CreatePasswordInput("Password4", 350, 530, 350, 30);
+        // Both reveal controls on one field: the in-field eye icon and the explicit
+        // "Show password" flag below stay in sync.
+        auto passwordInput4 = CreateRevealablePasswordInput("Password4", 350, 510, 350, 30);
         passwordInput4->SetPlaceholder("Create strong password...");
         container->AddChild(passwordInput4);
 
+        auto showPassword4 = UltraCanvasCheckbox::CreateCheckbox(
+                "ShowPassword4", 350, 548, 160, 20, "Show password", false);
+        auto* password4 = passwordInput4.get();
+        auto* showPassword4Ptr = showPassword4.get();
+        showPassword4->onStateChanged = [password4](CheckedState, CheckedState newState) {
+            password4->SetPasswordRevealed(newState == CheckedState::Checked);
+        };
+        // Clicking the eye icon keeps the flag in step (SetPasswordRevealed() ignores
+        // a no-op change, so the two controls cannot ping-pong).
+        passwordInput4->onPasswordVisibilityChanged = [showPassword4Ptr](bool revealed) {
+            showPassword4Ptr->SetChecked(revealed);
+        };
+        container->AddChild(showPassword4);
+
         // Circular Strength Meter
-        auto circularMeter = CreateCircularStrengthMeter("CircularMeter", 710, 510, 70);
+        auto circularMeter = CreateCircularStrengthMeter("CircularMeter", 710, 490, 70);
         circularMeter->LinkToInput(passwordInput4.get());
 
         StrengthMeterConfig circularConfig;
@@ -212,8 +251,9 @@ namespace UltraCanvas {
         container->AddChild(circularMeter);
 
         // Detailed Legend with Strict Rules
+        const float detailedLegendY = 580;
         auto detailedLegend = CreatePasswordRuleLegend("DetailedLegend",
-                                                       350, 610, 435, 280,
+                                                       350, detailedLegendY, 435, 280,
                                                        LegendStyle::Detailed);
         detailedLegend->LinkToInput(passwordInput4.get());
         detailedLegend->SetupStrictRules();  // Use strict validation rules
@@ -223,6 +263,13 @@ namespace UltraCanvas {
         //legendConfig.animateChanges = true;
         legendConfig.showMetRules = true;
         detailedLegend->SetConfig(legendConfig);
+
+        // The 7 strict rules paint taller than the 280px the box used to be given,
+        // and the legend does not clip - the overflowing rows used to land on top of
+        // the description text below. Size the box to its content and place the
+        // description underneath it.
+        const float detailedLegendHeight = detailedLegend->GetContentHeight();
+        detailedLegend->SetElementSize(Size2Df(435, detailedLegendHeight));
 
         // Add callbacks for strength updates
         circularMeter->onStrengthChanged = [](float strength) {
@@ -236,8 +283,10 @@ namespace UltraCanvas {
         container->AddChild(detailedLegend);
 
         // Description
-        auto completeDescription = std::make_shared<UltraCanvasLabel>("CompleteDesc", 350, 910, 435, 60);
+        auto completeDescription = std::make_shared<UltraCanvasLabel>(
+                "CompleteDesc", 350, detailedLegendY + detailedLegendHeight + 12, 435, 80);
         completeDescription->SetText("Professional registration form setup with:\n"
+                                     "• Eye icon and \"Show password\" flag (kept in sync)\n"
                                      "• Circular strength meter with percentage\n"
                                      "• Detailed rule legend with backgrounds\n"
                                      "• Strict validation (12+ chars, no patterns)");
