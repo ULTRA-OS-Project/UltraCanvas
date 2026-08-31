@@ -7,6 +7,7 @@
 
 #include "VirtualFSTypes.h"
 #include <memory>
+#include <vector>
 
 // Shield against X11 macros (see note in VirtualFSTypes.h)
 #pragma push_macro("Success")
@@ -157,6 +158,30 @@ public:
     virtual VirtualFSResult Open(
         const std::string& archivePath,
         const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default()) = 0;
+    
+    /**
+     * @brief Opens an archive held entirely in memory
+     *
+     * Lets the manager traverse a nested archive without first spilling it
+     * to a temp file. Providers that can only work from a real file leave
+     * this unimplemented; callers must fall back to Open() on NotSupported.
+     *
+     * The provider keeps a reference to @p data for as long as the archive
+     * is open, so the buffer must outlive Close() — pass ownership via the
+     * shared_ptr rather than pointing at a caller-owned vector.
+     *
+     * @param data Archive bytes, shared with the provider for the open span
+     * @param displayName Name reported by GetOpenPath() (diagnostics only)
+     * @param options Open options (mode, password, etc.)
+     * @return Success, or NotSupported if this provider needs a real file
+     */
+    virtual VirtualFSResult OpenFromMemory(
+        std::shared_ptr<const std::vector<uint8_t>> data,
+        const std::string& displayName,
+        const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default()) {
+        (void)data; (void)displayName; (void)options;
+        return VirtualFSResult::NotSupported;
+    }
     
     /**
      * @brief Closes the archive and releases resources

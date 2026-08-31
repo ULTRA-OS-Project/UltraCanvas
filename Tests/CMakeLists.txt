@@ -850,6 +850,46 @@ else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
 
+# ===== VIRTUALFS NESTED MEMORY TEST =====
+# Regression test for memory-backed nested archive traversal: an archive
+# inside an archive must be opened straight from its bytes, leaving nothing
+# in the temp directory. Reuses the libarchive probe from the delete test.
+if(LIBARCHIVE_TEST_FOUND)
+    message(STATUS "  Building VirtualFSNestedMemoryTest...")
+
+    add_executable(VirtualFSNestedMemoryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSNestedMemoryTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+    )
+    target_include_directories(VirtualFSNestedMemoryTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSNestedMemoryTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+    )
+    target_link_libraries(VirtualFSNestedMemoryTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSNestedMemoryTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSNestedMemoryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSNestedMemoryTest
+        COMMAND VirtualFSNestedMemoryTest ${CMAKE_BINARY_DIR}/vfsnested-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSNestedMemoryTest")
+else()
+    message(STATUS "  libarchive not found - VirtualFSNestedMemoryTest disabled")
+endif()
+
 # ===== LABEL PLACEMENT TEST =====
 # Session reuse across passes, the spatial index, rotated labels, polyline
 # obstacles, priority, suppression, minimum separation, leader lines, point

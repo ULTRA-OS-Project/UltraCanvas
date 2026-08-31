@@ -91,7 +91,9 @@ App / Module (UltraCanvas, FileDialog, Texter, UltraFiler, ...)
 * Single C-style entrypoint surface (`VirtualFS_*`).
 * `VirtualFSResult` for every operation — explicit error codes with
   human-readable messages.
-* Transparent nested archive support (`/backup.zip/docs/report.7z/data.csv`).
+* Transparent nested archive support (`/backup.zip/docs/report.7z/data.csv`)
+  — the inner archive is opened straight from memory, so nothing is
+  written to the temp directory (see *Nested archives* below).
 * Password callbacks for encrypted archives.
 * Progress callbacks for extraction/creation with cancellation.
 * Entry caching for performance on repeated access.
@@ -154,6 +156,41 @@ UCVFSBridge::ZstdDecompress(compressed, decompressed);
 // Auto-detect format and decompress
 UCVFSBridge::DecompressAuto(unknownData, decompressed);
 ```
+
+---
+
+## Nested archives
+
+Reading `/backup.zip/bundle/inner.7z/docs/report.txt` requires opening
+`inner.7z` while it is still inside `backup.zip`. VirtualFS reads the inner
+archive's bytes from the outer provider and hands them straight to the
+provider that will open it, via
+`IVirtualFSProvider::OpenFromMemory()`:
+
+```cpp
+// Providers that can work from a buffer advertise it:
+if (HasCapability(provider->GetCapabilities(),
+                  VirtualFSCapability::MemoryOpen)) {
+    auto bytes = std::make_shared<std::vector<uint8_t>>(std::move(data));
+    provider->OpenFromMemory(bytes, "/backup.zip/bundle/inner.7z");
+}
+```
+
+The libarchive provider implements this over `archive_read_open_memory()`,
+so **the nested archive never touches the disk**. This matters most when the
+outer archive is password-protected: the decrypted inner archive would
+otherwise sit in the temp directory as plaintext.
+
+A provider that can only open a real path simply does not override
+`OpenFromMemory()` — the default returns `NotSupported` and
+`VirtualFSManager` falls back to extracting a temp file, as before. The
+buffer is held for the whole open span, because libarchive streams are
+forward-only and every operation reopens the archive.
+
+**Limitation:** an archive opened from memory cannot be modified. Write
+operations rewrite the archive through a temp file and rename, which needs a
+real path, so `AddFile()`/`Delete()`/`DeleteEntries()` on a memory-opened
+archive return `NotSupported`.
 
 ---
 

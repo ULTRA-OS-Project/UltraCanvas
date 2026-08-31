@@ -957,6 +957,15 @@ public:
         const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default()) = 0;
         // Opens archive for reading/writing
     
+    virtual VirtualFSResult OpenFromMemory(
+        std::shared_ptr<const std::vector<uint8_t>> data,
+        const std::string& displayName,
+        const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default());
+        // Opens an archive held entirely in memory; used for nested archives
+        // so the inner archive never spills to a temp file.
+        // Optional - default returns NotSupported, callers fall back to Open().
+        // Providers that implement it advertise VirtualFSCapability::MemoryOpen.
+    
     virtual void Close() = 0;
         // Closes archive and releases resources
     
