@@ -1297,6 +1297,17 @@ for the full search order.
 |---|---|---|---|
 | PDF rendering | MuPDF, mujs, gumbo, jbig2dec / openjp2 | MuPDF, mujs, gumbo | MuPDF, mujs, gumbo |
 
+> **Building MuPDF from source (Linux):** MuPDF vendors its own copies of several
+> libraries that also live in the UltraCanvas process via cairo/pango/libvips. Build it
+> with the SYSTEM copies of those to avoid two instances of one library in a single
+> process — i.e.
+> `USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes XCFLAGS=-fPIC`.
+> In particular, MuPDF bundles **libjpeg 9** (`JPEG_LIB_VERSION=90`); without
+> `USE_SYSTEM_LIBJPEG` its `jpeg_CreateDecompress` interposes libvips's system
+> libjpeg 8 and every JPEG/AVIF thumbnail fails with *"Wrong JPEG library version:
+> library is 90, caller expects 80"*. See `.github/workflows/build.yml` for the exact
+> build invocation used by CI.
+
 ### CDR plugin (optional)
 
 | Purpose | Linux | macOS | Windows |
