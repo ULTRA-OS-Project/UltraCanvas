@@ -191,6 +191,14 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `MouseWheel`). This is what makes every existing widget usable immediately.
   Real multi-touch/gesture support (adding a pointer-ID slot to `UCEvent` and
   touch cases to `DispatchEvent`) is a later, deliberate core extension.
+- **Status: both have landed.** `UCEvent` carries `pointerId` (stable per
+  finger) and `touchPointCount`; `DispatchEvent` routes touch events to the
+  element under that finger with bubbling and element-local coordinates, and
+  the Android backend emits `TouchStart/TouchMove/TouchEnd` for every pointer.
+  Single-finger gestures still drive the mouse path unchanged, so existing
+  widgets are unaffected; mouse synthesis stops for the rest of a gesture as
+  soon as a second finger lands. Gesture *recognition* (pinch/rotate → the
+  `PinchZoom` event) is still open — the raw stream it needs now exists.
 - Physical keys: `AKEYCODE_*` → `UCKeys` mapping table (the Linux
   `ConvertXKeyToUCKey`, ~130 cases, is the template).
 - **IME/soft keyboard:** `UCEvent::text` is the UTF-8 delivery channel (XIM
@@ -395,8 +403,8 @@ Process lessons for the Android effort:
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
-- Multi-touch/gesture events in the core event model (pointer IDs,
-  `DispatchEvent` touch path, pinch-zoom).
+- ~~Multi-touch events in the core event model (pointer IDs, `DispatchEvent`
+  touch path)~~ — done; gesture *recognition* (pinch-zoom/rotate) still open.
 - Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.

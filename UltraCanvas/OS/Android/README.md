@@ -55,6 +55,33 @@ mandatory for Android; bionic has no `res_n*`/libresolv).
 - `APP_CMD_PAUSE`/`STOP`/`START`/`RESUME` need no backend work beyond the
   above; `GAINED_FOCUS`/`LOST_FOCUS` map to `WindowFocus`/`WindowBlur`.
 
+## Touch input
+
+Every finger is delivered as `TouchStart` / `TouchMove` / `TouchEnd`, carrying
+`UCEvent::pointerId` (stable for that finger's whole life — ids are reused
+only after it lifts, so never assume 0 is still the finger you saw earlier)
+and `touchPointCount`. The core routes each one to the element under *that*
+finger, with bubbling and element-local `pointer` coordinates, and without any
+hover, cursor or capture handling — a second finger must not disturb the state
+the first one established.
+
+On top of that, the **primary finger is also translated to mouse events**
+(`MouseDown`/`MouseMove`/`MouseUp`, plus synthesized `MouseDoubleClick`), which
+is what makes every existing mouse-written widget work untouched on a
+touchscreen. The two streams are mutually exclusive per gesture:
+
+- One finger → touch events **and** mouse events.
+- The moment a second finger lands → a final `MouseUp` closes the mouse
+  interaction (so no widget is left believing a button is held) and mouse
+  synthesis stays off until *every* finger has lifted. A pinch therefore
+  cannot also drag whatever the first finger happened to be on.
+
+So a widget that only handles mouse events keeps working; one that handles
+touch events sees complete, unambiguous multi-finger input. A widget handling
+both should treat `touchPointCount >= 2` as "this is a gesture, not a click".
+`ACTION_CANCEL` (the system taking the gesture over, e.g. a system-gesture
+swipe) ends every finger with `TouchEnd`, so no widget keeps a dangling touch.
+
 ## Text input (soft keyboard)
 
 The framework-wide "text editing started/stopped" signal is the caret:
@@ -91,5 +118,5 @@ from the NDK sysroot itself (no pkg-config probing), wired through
 
 Full IME (composing text via an `InputConnection` proxy), SAF dialogs +
 `content://` adapter (which also unlocks clipboard images/files), UltraNet
-CA bundle, real multi-touch in the core event model, audio/video/PDF,
-Gradle packaging + a full sysroot CI build.
+CA bundle, gesture recognition on top of the touch stream (pinch/rotate →
+`PinchZoom`), audio/video/PDF, Gradle packaging + a full sysroot CI build.

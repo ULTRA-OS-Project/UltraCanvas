@@ -17,6 +17,7 @@
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
 
+#include <cstddef>
 #include <cstdint>
 
 // NDK types are kept out of this header where an opaque forward declaration
@@ -108,6 +109,16 @@ namespace UltraCanvas {
         int32_t HandleInputEvent(AInputEvent* event);
         int32_t HandleMotionEvent(AInputEvent* event);
         int32_t HandleKeyEvent(AInputEvent* event);
+
+        // Emit one finger's position as a touch event (stable pointer id).
+        void PushTouchEvent(UltraCanvasAndroidWindow* win, AInputEvent* motionEvent,
+                            size_t pointerIndex, UCEventType type);
+
+        // Latched for the rest of the gesture as soon as a second finger
+        // touches down: from then on the gesture is delivered as touch events
+        // only, so a pinch cannot also drag whatever the first finger hit.
+        // Cleared when the last finger lifts.
+        bool multiTouchGesture = false;
 
         void PushWindowEvent(UCEventType type);
 
