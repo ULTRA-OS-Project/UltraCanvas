@@ -103,6 +103,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowsApplication();
+        ~UltraCanvasWindowsApplication() override;
 
         static UltraCanvasWindowsApplication* GetInstance() {
             return instance;

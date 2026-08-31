@@ -40,6 +40,11 @@ click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
 undo/redo, placeholder, max length, validation state, horizontal scrolling and
 multi-byte text. Reproducing even half of that by hand is a week of bugs.
 
+Password fields also get a reveal control: `SetShowPasswordToggle(true)` paints
+an eye button inside the field, and `SetPasswordRevealed()` drives the same state
+from an external "Show password" checkbox. See
+[UltraCanvasTextInputExamples.md](UltraCanvasTextInputExamples.md).
+
 ## Buttons and choices
 
 | You need | Element | Header |

@@ -36,6 +36,13 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: Windows Application created" << std::endl;
     }
 
+    UltraCanvasWindowsApplication::~UltraCanvasWindowsApplication() {
+        // Clear the singleton pointer so GetInstance() returns nullptr once the
+        // app is gone; widget destructors that run later (e.g. at static exit)
+        // then skip CleanupElementReferences instead of locking a dead mutex.
+        if (instance == this) instance = nullptr;
+    }
+
 // ===== INITIALIZATION =====
     bool UltraCanvasWindowsApplication::InitializeNative() {
         if (initialized) {

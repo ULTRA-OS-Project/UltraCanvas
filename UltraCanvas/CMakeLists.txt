@@ -2262,6 +2262,16 @@ if(ULTRACANVAS_PLUGIN_PDF)
     # there — link it only when present.
     if(MUPDF_THIRD_LIBRARY)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${MUPDF_THIRD_LIBRARY})
+        # IMPORTANT: MuPDF must be built with USE_SYSTEM_LIBJPEG=yes (see the from-source build in
+        # .github/workflows/build.yml and Docs/Dependencies.md). MuPDF otherwise vendors its OWN
+        # libjpeg 9 (JPEG_LIB_VERSION=90) into libmupdf-third.a and globally defines jpeg_CreateDecompress;
+        # with -Wl,--export-dynamic (via GTK) that v90 symbol leaks into the process and INTERPOSES
+        # libvips's system libjpeg (v80), so every JPEG/AVIF thumbnail fails with "Wrong JPEG library
+        # version: library is 90, caller expects 80". Using the system libjpeg (as MuPDF already does for
+        # freetype/harfbuzz, which are shared with cairo/pango) leaves a single libjpeg in the process and
+        # removes the conflict at the source. A linker version-script to localize only jpeg_* was tried but
+        # is unusable here: MuPDF compiles its bundled third-party objects with hidden ELF visibility, so
+        # any --version-script trips ld's "hidden symbol referenced by DSO" check on libvips's openjpeg.
     endif()
     foreach(_extra_lib
             MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY

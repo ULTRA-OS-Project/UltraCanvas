@@ -103,6 +103,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasLinuxApplication();
+        ~UltraCanvasLinuxApplication() override;
 
         static UltraCanvasLinuxApplication* GetInstance() {
             return UltraCanvasLinuxApplication::instance;
