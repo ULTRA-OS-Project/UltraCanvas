@@ -1,7 +1,7 @@
 // core/UltraCanvasPasswordRuleLegend.cpp
 // Interactive password requirements checklist component
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.2.0
+// Last Modified: 2026-08-31
 // Author: UltraCanvas Framework
 #include "UltraCanvasPasswordRuleLegend.h"
 #include <string>
@@ -131,6 +131,26 @@ namespace UltraCanvas {
             }
         }
         return unmet;
+    }
+
+    float UltraCanvasPasswordRuleLegend::GetContentHeight() const {
+        // Mirrors the row advances used by the Draw*Style() methods below. All rules
+        // are counted (not just the currently visible ones) so the reported height
+        // stays stable while the user types and rules flip state.
+        int count = static_cast<int>(rules.size());
+        if (count == 0) return 0.0f;
+
+        switch (config.style) {
+            case LegendStyle::Checklist:
+                // Top inset 10, rows advance by spacing + 16, plus one row of text.
+                return static_cast<float>(10 + (count - 1) * (config.itemSpacing + 16) + 16 + 4);
+            case LegendStyle::Bullets:
+                return static_cast<float>(10 + (count - 1) * (config.itemSpacing + 14) + 14 + 4);
+            case LegendStyle::Detailed:
+                // Rows are 30px background boxes starting 5px above the text baseline.
+                return static_cast<float>(15 + (count - 1) * (config.itemSpacing + 35) + 25 + 5);
+        }
+        return 0.0f;
     }
 
     void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {

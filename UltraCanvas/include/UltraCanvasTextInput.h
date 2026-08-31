@@ -1,7 +1,9 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.3
-// Last Modified: 2026-08-24
+// Version: 1.4.0
+// Last Modified: 2026-08-31
+// V1.4.0: Password fields can show an in-field reveal ("eye") button and/or be
+//   toggled programmatically between masked and plain text.
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -335,6 +337,17 @@ private:
     int clearButtonSize = 14;
     Color clearButtonColor = Color(150, 150, 150);
     Color clearButtonHoverColor = Color(200, 50, 50);
+
+    // ===== PASSWORD REVEAL ("EYE") BUTTON =====
+    // Only ever shown for password fields; clicking it flips the mask off so the
+    // user can check what they typed. The reveal state is separate from the
+    // button so an external control ("Show password" checkbox) can drive it too.
+    bool showPasswordToggle = false;
+    bool passwordRevealed = false;
+    bool isPasswordToggleHovered = false;
+    int passwordToggleSize = 18;
+    Color passwordToggleColor = Color(130, 130, 130);
+    Color passwordToggleHoverColor = Color(0, 120, 215);
     
 public:
     // ===== CONSTRUCTORS =====
@@ -358,7 +371,7 @@ public:
     // formatted display text. ALL width/caret/hit-test/scroll geometry must measure
     // this (never GetDisplayText) so the computed positions match what the user sees.
     std::string GetRenderText() const {
-        return passwordMode ? std::string(displayText.length(), '*') : displayText;
+        return (passwordMode && !passwordRevealed) ? std::string(displayText.length(), '*') : displayText;
     }
     
     void SetPlaceholder(const std::string& placeholder) {
@@ -412,6 +425,23 @@ public:
     // ===== CLEAR BUTTON =====
     void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
     bool IsShowClearButton() const { return showClearButton; }
+
+    // ===== PASSWORD REVEAL =====
+    // In-field eye button. Ignored unless the input is in password mode, so it is
+    // safe to switch on before SetInputType().
+    void SetShowPasswordToggle(bool show) { showPasswordToggle = show; UpdateScrollOffset(); RequestRedraw(); }
+    bool IsShowPasswordToggle() const { return showPasswordToggle; }
+
+    // Reveal state, also settable from an external "Show password" control.
+    void SetPasswordRevealed(bool revealed);
+    bool IsPasswordRevealed() const { return passwordRevealed; }
+    void TogglePasswordVisibility() { SetPasswordRevealed(!passwordRevealed); }
+
+    void SetPasswordToggleColors(const Color& normal, const Color& hovered) {
+        passwordToggleColor = normal;
+        passwordToggleHoverColor = hovered;
+        RequestRedraw();
+    }
     
     // ===== FORMATTING =====
     void SetFormatter(const TextFormatter& textFormatter);
@@ -480,6 +510,8 @@ public:
     std::function<void()> onFocusGained;
     std::function<void()> onFocusLost;
     std::function<void()> onCleared;
+    // Fired whenever the password mask is toggled (by the eye button or code).
+    std::function<void(bool)> onPasswordVisibilityChanged;
 
 protected:
     virtual void TextChanged();
@@ -557,6 +589,10 @@ private:
     bool IsClearButtonVisible() const;
     Rect2Di GetClearButtonBounds() const;
     void RenderClearButton(IRenderContext* ctx);
+
+    bool IsPasswordToggleVisible() const;
+    Rect2Di GetPasswordToggleBounds() const;
+    void RenderPasswordToggle(IRenderContext* ctx);
 
     size_t GetTextPositionFromPoint(const Point2Di& point);
     
@@ -649,6 +685,14 @@ inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
     return input;
 }
 
+// Password input that carries the in-field eye button for showing the typed text.
+inline std::shared_ptr<UltraCanvasTextInput> CreateRevealablePasswordInput(
+    const std::string& identifier, int x, int y, int w, int h) {
+    auto input = CreatePasswordInput(identifier, x, y, w, h);
+    input->SetShowPasswordToggle(true);
+    return input;
+}
+
 inline std::shared_ptr<UltraCanvasTextInput> CreateEmailInput(
     const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreateTextInput(identifier, x, y, w, h);
@@ -690,6 +734,7 @@ private:
     TextFormatter formatter = TextFormatter::NoFormat();
     bool readOnly = false;
     int maxLength = -1;
+    bool showPasswordToggle = false;
     
 public:
     TextInputBuilder& SetIdentifier(const std::string& inputId) { identifier = inputId; return *this; }
@@ -702,6 +747,7 @@ public:
     TextInputBuilder& SetFormatter(const TextFormatter& textFormatter) { formatter = textFormatter; return *this; }
     TextInputBuilder& SetReadOnly(bool readonly) { readOnly = readonly; return *this; }
     TextInputBuilder& SetMaxLength(int length) { maxLength = length; return *this; }
+    TextInputBuilder& ShowPasswordToggle(bool show = true) { showPasswordToggle = show; return *this; }
     TextInputBuilder& AddValidationRule(const ValidationRule& rule) { rules.push_back(rule); return *this; }
     TextInputBuilder& Required(const std::string& message = "") { 
         rules.push_back(ValidationRule::Required(message)); return *this; 
@@ -732,6 +778,7 @@ public:
         input->SetFormatter(formatter);
         input->SetReadOnly(readOnly);
         input->SetMaxLength(maxLength);
+        input->SetShowPasswordToggle(showPasswordToggle);
         
         for (const auto& rule : rules) {
             input->AddValidationRule(rule);
