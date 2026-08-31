@@ -223,6 +223,8 @@ namespace UltraCanvas {
             debugOutput << "Light mode activated" << std::endl;
         }));
 
+        darkMenu->AddItem(MenuItemData::Separator());
+
         darkMenu->AddItem(MenuItemData::Action("🎨 Custom Theme", []() {
             debugOutput << "Custom theme" << std::endl;
         }));
@@ -248,6 +250,8 @@ namespace UltraCanvas {
         flatMenu->AddItem(MenuItemData::Action("💻 Desktop View", []() {
             debugOutput << "Desktop view" << std::endl;
         }));
+
+        flatMenu->AddItem(MenuItemData::Separator());
 
         flatMenu->AddItem(MenuItemData::Action("Tablet View", NormalizePath(GetResourcesDir() + "media/icons/tablet48px.png"), []() {
             debugOutput << "Tablet view" << std::endl;
