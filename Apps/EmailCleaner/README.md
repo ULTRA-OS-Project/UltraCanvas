@@ -6,6 +6,8 @@ each sender writes, and the keyword evidence behind every verdict — product
 advertising, adult content, dating and romance scams, phishing, financial
 fraud, and messages carrying executable attachments.
 
+This app versions itself: [`Docs/EmailCleaner/CHANGELOG.md`](../../Docs/EmailCleaner/CHANGELOG.md).
+
 Full concept: [`Docs/EmailCleaner/Concept.md`](../../Docs/EmailCleaner/Concept.md).
 
 > **Status (Phase 1):** the headless **analysis engine** is implemented and

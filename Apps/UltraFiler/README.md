@@ -3,6 +3,8 @@
 A Windows Explorer style file manager built entirely from UltraCanvas
 components:
 
+This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler/CHANGELOG.md).
+
 | Area | Component |
 |---|---|
 | Folder tree (left pane) | `UltraCanvasTreeView` — lazily populated filesystem tree (a curated Home, Cloud Storage, drives / mounted volumes) |
