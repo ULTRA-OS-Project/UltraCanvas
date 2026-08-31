@@ -150,8 +150,9 @@ TEST(Analytics_DomainCapPoolsTheRest) {
     int uid = 1;
     for (int d = 0; d < 6; ++d) {
         for (int i = 0; i < 10; ++i) {
-            batch.push_back(Message("s@d" + std::to_string(d) + ".example", uid++,
+            batch.push_back(Message("s@d" + std::to_string(d) + ".example", uid,
                                     kDay * uid, MessageCategory::Personal));
+            ++uid;
         }
     }
     REQUIRE(store.UpsertMessages(batch));
@@ -177,8 +178,9 @@ TEST(Analytics_SenderCapPoolsWithinADomain) {
     for (int s = 0; s < 5; ++s) {
         const int count = 5 - s;   // 5, 4, 3, 2, 1 messages
         for (int i = 0; i < count; ++i) {
-            batch.push_back(Message("s" + std::to_string(s) + "@one.example", uid++,
+            batch.push_back(Message("s" + std::to_string(s) + "@one.example", uid,
                                     kDay * uid, MessageCategory::Personal));
+            ++uid;
         }
     }
     REQUIRE(store.UpsertMessages(batch));

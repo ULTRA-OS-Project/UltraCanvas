@@ -33,8 +33,8 @@ int main() {
     // points elsewhere when the two apps are not sharing a home (a second
     // profile, or a mailbox copied over for analysis).
     std::string mailDataDir = UserDataDir("UltraMail");
-    if (const char* override = std::getenv("EMAILCLEANER_MAIL_DIR"); override && *override)
-        mailDataDir = override;
+    if (const char* fromEnv = std::getenv("EMAILCLEANER_MAIL_DIR"); fromEnv && *fromEnv)
+        mailDataDir = fromEnv;
 
     EmailCleaner::EmailCleanerApp cleaner;
     if (!cleaner.Initialize(UserDataDir("EmailCleaner"), mailDataDir))
