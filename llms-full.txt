@@ -45407,8 +45407,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeMapExamples.md
 
 # UltraCanvasTreeMapElement Documentation
 
-**Version:** 1.0.1
-**Last Modified:** 2025-04-01
+**Version:** 1.1.0
+**Last Modified:** 2026-08-31
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -45433,10 +45433,25 @@ UltraCanvasUIElement
 - **Multiple layout algorithms:** `Squarified`, `SliceAndDice`, `Strip`, `Spiral`, `Binary`.
 - **Visual styles:** `Flat`, `Raised`, `Sunken`, `Gradient`, `Textured`, `Minimal`.
 - **Color schemes:** `Sequential`, `Diverging`, `Categorical`, `Random`, `Monochrome`, `Custom`.
-- **Drill-down navigation:** click a node to descend into its subtree; navigate back to root.
+- **Drill-down navigation:** double-click a node to descend into its subtree; navigate back to root.
 - **Display toggles:** show/hide labels, values, percentages, and icons per rectangle.
 - **Interaction:** hover tooltips, selection, mouse wheel zoom, panning, animation between states.
 - **Rich callbacks:** drill-down/up, select/deselect, hover, double-click, right-click.
+
+### Mouse interaction
+
+The element hit-tests **what it draws** — the current level's children, laid out
+by the active algorithm, whether or not they are leaves. So a grouped treemap
+(one rectangle per group, with children only visible after drilling in) is just
+as clickable as a flat one.
+
+| Gesture | Effect |
+|---|---|
+| Left click on a rectangle | Selects it and fires `onNodeSelect(name, value)`. |
+| Left click on the background | Clears the selection (`onNodeDeselect`). |
+| Left double-click | Fires `onNodeDoubleClick`, then drills into the node when it has children (`onNodeDrillDown`). |
+| Right click on a rectangle | Fires `onNodeRightClick(name)`. |
+| Wheel / drag | Zoom and pan, when `SetInteractionOptions` enables them. |
 
 ## Header Include
 

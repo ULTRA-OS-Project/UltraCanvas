@@ -37,7 +37,8 @@ std::string LikePattern(const std::string& needle) {
 const char* kMessageColumns =
     "account_id, folder, uid, message_id, sender_name, sender_addr, sender_domain, "
     "subject, date, size_bytes, flags, automated, attachment_count, "
-    "attachment_bytes, category, score";
+    "attachment_bytes, category, score, unsub_mailto, unsub_mailto_subject, "
+    "unsub_url, unsub_one_click, blocked";
 
 AnalyzedMessage RowToMessage(const UltraDbRow& row) {
     AnalyzedMessage m;
@@ -57,6 +58,11 @@ AnalyzedMessage RowToMessage(const UltraDbRow& row) {
     m.attachmentBytes = row["attachment_bytes"].AsInt64();
     m.category        = CategoryFromString(row["category"].AsString());
     m.score           = row["score"].AsDouble();
+    m.unsubMailto        = row["unsub_mailto"].AsString();
+    m.unsubMailtoSubject = row["unsub_mailto_subject"].AsString();
+    m.unsubUrl           = row["unsub_url"].AsString();
+    m.unsubOneClick      = row["unsub_one_click"].AsInt64() != 0;
+    m.blocked            = row["blocked"].AsInt64() != 0;
     return m;
 }
 
@@ -161,6 +167,23 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
           "  last_run INTEGER DEFAULT 0,"
           "  messages INTEGER DEFAULT 0,"
           "  PRIMARY KEY(account_id, folder));" },
+
+        { 2, "unsubscribe offers and the blocklist",
+          // Phase 2. The unsubscribe columns are per message because a sender
+          // can rotate the URL; the rollup query takes the newest non-empty
+          // one. `blocked` is a cached stamp of the blocklist so the map can
+          // shade a blocked sender without joining on every redraw.
+          "ALTER TABLE messages ADD COLUMN unsub_mailto TEXT DEFAULT '';"
+          "ALTER TABLE messages ADD COLUMN unsub_mailto_subject TEXT DEFAULT '';"
+          "ALTER TABLE messages ADD COLUMN unsub_url TEXT DEFAULT '';"
+          "ALTER TABLE messages ADD COLUMN unsub_one_click INTEGER DEFAULT 0;"
+          "ALTER TABLE messages ADD COLUMN blocked INTEGER DEFAULT 0;"
+
+          "CREATE TABLE blocklist("
+          "  pattern TEXT PRIMARY KEY,"
+          "  is_domain INTEGER DEFAULT 0,"
+          "  reason TEXT,"
+          "  added INTEGER DEFAULT 0);" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -216,7 +239,7 @@ namespace {
 UltraDbResult WriteMessage(UltraDbHandle tx, const AnalyzedMessage& m) {
     UltraDbResult r = UltraDb_ExecInTx(tx,
         "INSERT INTO messages(" + std::string(kMessageColumns) + ") "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
         "  message_id = excluded.message_id,"
         "  sender_name = excluded.sender_name,"
@@ -230,11 +253,17 @@ UltraDbResult WriteMessage(UltraDbHandle tx, const AnalyzedMessage& m) {
         "  attachment_count = excluded.attachment_count,"
         "  attachment_bytes = excluded.attachment_bytes,"
         "  category = excluded.category,"
-        "  score = excluded.score",
+        "  score = excluded.score,"
+        "  unsub_mailto = excluded.unsub_mailto,"
+        "  unsub_mailto_subject = excluded.unsub_mailto_subject,"
+        "  unsub_url = excluded.unsub_url,"
+        "  unsub_one_click = excluded.unsub_one_click,"
+        "  blocked = excluded.blocked",
         { m.accountId, m.folder, m.uid, m.messageId, m.senderName, m.senderAddr,
           m.senderDomain, m.subject, m.date, m.sizeBytes, m.flags,
           m.automated ? 1 : 0, m.attachmentCount, m.attachmentBytes,
-          ToString(m.category), m.score });
+          ToString(m.category), m.score, m.unsubMailto, m.unsubMailtoSubject,
+          m.unsubUrl, m.unsubOneClick ? 1 : 0, m.blocked ? 1 : 0 });
     if (!r) return r;
 
     // Attachments and hits are derived data: replace them wholesale so a
@@ -784,6 +813,109 @@ UltraDbResult AnalysisStore::GetTopKeywords(const MessageFilter& filter, int lim
         h.weight   = static_cast<double>(row["n"].AsInt());
         out.push_back(std::move(h));
     }
+    return r;
+}
+
+// ---- Blocklist -------------------------------------------------------------
+
+UltraDbResult AnalysisStore::AddBlock(const BlockEntry& entry) {
+    if (!entry.Valid())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "a block needs a pattern");
+    return UltraDb_Exec(connection_,
+        "INSERT INTO blocklist(pattern, is_domain, reason, added) VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(pattern) DO UPDATE SET "
+        "  is_domain = excluded.is_domain,"
+        "  reason = excluded.reason",
+        { Lower(entry.pattern), entry.isDomain ? 1 : 0, entry.reason, entry.added });
+}
+
+UltraDbResult AnalysisStore::RemoveBlock(const std::string& pattern) {
+    return UltraDb_Exec(connection_, "DELETE FROM blocklist WHERE pattern = ?",
+                        { Lower(pattern) });
+}
+
+UltraDbResult AnalysisStore::ListBlocks(std::vector<BlockEntry>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT pattern, is_domain, reason, added FROM blocklist "
+        "ORDER BY added DESC, pattern", rs);
+    if (!r) return r;
+    for (const UltraDbRow& row : rs) {
+        BlockEntry e;
+        e.pattern  = row["pattern"].AsString();
+        e.isDomain = row["is_domain"].AsInt64() != 0;
+        e.reason   = row["reason"].AsString();
+        e.added    = row["added"].AsInt64();
+        out.push_back(std::move(e));
+    }
+    return r;
+}
+
+bool AnalysisStore::IsBlocked(const std::string& senderAddr,
+                              const std::string& domain) const {
+    // An address block and a domain block are separate patterns; one query
+    // answers both so the ingest can call this per message cheaply.
+    const std::string addr = Lower(senderAddr);
+    const std::string dom  = domain.empty() ? DomainOf(addr) : Lower(domain);
+
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT 1 FROM blocklist WHERE "
+        "  (is_domain = 0 AND pattern = ?) OR (is_domain <> 0 AND pattern = ?) LIMIT 1",
+        { addr, dom }, rs);
+    return r && !rs.Empty();
+}
+
+UltraDbResult AnalysisStore::ApplyBlocklistToMessages() {
+    // Re-stamp every row from its sender's current block state. Done as two
+    // statements rather than per sender: the blocklist is small and this keeps
+    // it to one pass whatever its size.
+    UltraDbResult r = UltraDb_Exec(connection_, "UPDATE messages SET blocked = 0");
+    if (!r) return r;
+    return UltraDb_Exec(connection_,
+        "UPDATE messages SET blocked = 1 WHERE "
+        "  sender_addr IN (SELECT pattern FROM blocklist WHERE is_domain = 0) "
+        "  OR sender_domain IN (SELECT pattern FROM blocklist WHERE is_domain <> 0)");
+}
+
+// ---- Unsubscribe -----------------------------------------------------------
+
+UltraDbResult AnalysisStore::GetUnsubscribeOffer(const MessageFilter& filter,
+                                                 std::string& outMailto,
+                                                 std::string& outMailtoSubject,
+                                                 std::string& outUrl,
+                                                 bool& outOneClick,
+                                                 bool& found) const {
+    outMailto.clear();
+    outMailtoSubject.clear();
+    outUrl.clear();
+    outOneClick = false;
+    found = false;
+
+    UltraDbParams params;
+    const std::string where = BuildWhere(filter, "m", params);
+    const std::string offered =
+        (where.empty() ? " WHERE " : where + " AND ") +
+        "(m.unsub_mailto <> '' OR m.unsub_url <> '')";
+
+    // Newest first: a sender that rotated its unsubscribe URL should be acted
+    // on with the one it used most recently.
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT unsub_mailto, unsub_mailto_subject, unsub_url, unsub_one_click "
+        "FROM messages m" + offered + " ORDER BY m.date DESC, m.uid DESC LIMIT 1",
+        params, rs);
+    if (!r) return r;
+    if (rs.Empty()) return r;
+
+    const UltraDbRow& row = rs.Row(0);
+    outMailto        = row["unsub_mailto"].AsString();
+    outMailtoSubject = row["unsub_mailto_subject"].AsString();
+    outUrl           = row["unsub_url"].AsString();
+    outOneClick      = row["unsub_one_click"].AsInt64() != 0;
+    found = true;
     return r;
 }
 
