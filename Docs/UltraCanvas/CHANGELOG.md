@@ -49,6 +49,19 @@
   and judgement, the planner and executor against a recording backend, and the
   mail backend against a fake `IMailboxProtocolPlugin` — still no display and
   no network.
+- **CI builds the EmailCleaner suite on every row and runs it on Linux**
+  (`ULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON` in both configure steps). It is
+  headless, so building it on macOS and Windows costs seconds and gates what
+  those rows uniquely exercise: the STATIC UltraCanvas link. The Linux
+  `ctest --output-on-failure` step then runs it with everything else.
+- **`UltraMailEngineTests` links again in a static build.** `libultranet.a`'s
+  MIME parser calls `UltraCanvas::Trim` / `Base64Encode` / `Base64Decode`, and
+  GNU ld scans each archive once in place, so the core library has to *follow*
+  UltraNet on the link line — through `UltraMailEngine` it came first, and the
+  target failed with a page of undefined references to those three helpers.
+  `Tests/UltraMail/CMakeLists.txt` now names `UltraNet` and the core library
+  explicitly after the engine, as the EmailCleaner suite already did. A no-op
+  in a shared build, where UltraNet is absorbed into the `.so`. 51 tests pass.
 
 #### 2026-08-30 *0.3.87*
 - **New application: EmailCleaner** (`Apps/EmailCleaner`, target `EmailCleaner`,

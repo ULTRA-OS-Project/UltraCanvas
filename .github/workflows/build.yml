@@ -293,7 +293,8 @@ jobs:
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=OFF \
             -DULTRACANVAS_PLUGIN_XAR=ON \
-            -DULTRACANVAS_BUILD_NET_TESTS=ON 2>&1 | tee configure.log
+            -DULTRACANVAS_BUILD_NET_TESTS=ON \
+            -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
         if: runner.os != 'Windows'
@@ -305,6 +306,7 @@ jobs:
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_SHARED=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
+            -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -377,6 +379,12 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure -R UltraNet
 
+      # ULTRACANVAS_BUILD_EMAILCLEANER_TESTS is on for every row, not just the
+      # Linux one that runs ctest: the suite is headless (no display, no
+      # network), so building it on macOS and Windows costs seconds and gates
+      # the thing those rows uniquely exercise — the STATIC UltraCanvas link,
+      # where the core archive has to follow UltraNet on the link line.
+      #
       # Everything else registered with CTest. Until now only UltraNet ran, so
       # the crypto, authenticator, document and diagram suites — several hundred
       # assertions, including the RFC vectors behind TOTP and the vault's
