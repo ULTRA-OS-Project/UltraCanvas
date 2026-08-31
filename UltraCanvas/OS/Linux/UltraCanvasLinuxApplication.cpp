@@ -38,6 +38,13 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: Linux Application created" << std::endl;
     }
 
+    UltraCanvasLinuxApplication::~UltraCanvasLinuxApplication() {
+        // Clear the singleton pointer so GetInstance() returns nullptr once the
+        // app is gone; widget destructors that run later (e.g. at static exit)
+        // then skip CleanupElementReferences instead of locking a dead mutex.
+        if (instance == this) instance = nullptr;
+    }
+
 // ===== INITIALIZATION =====
     bool UltraCanvasLinuxApplication::InitializeNative() {
         if (initialized) {
