@@ -890,6 +890,47 @@ else()
     message(STATUS "  libarchive not found - VirtualFSNestedMemoryTest disabled")
 endif()
 
+# ===== VIRTUALFS RAM DISC TEST =====
+# OS-visible RAM disc provisioning. Needs no libarchive - the disc is a
+# platform mount, not an archive - but does need the platform back end, so
+# the source is picked the same way VirtualFS/CMakeLists.txt picks it.
+if(WIN32)
+    set(VIRTUALFS_RAMDISK_BACKEND ${ULTRACANVAS_ROOT}/VirtualFS/OS/MSWindows/VirtualFSRamDiskPlatform.cpp)
+elseif(APPLE)
+    set(VIRTUALFS_RAMDISK_BACKEND ${ULTRACANVAS_ROOT}/VirtualFS/OS/MacOS/VirtualFSRamDiskPlatform.cpp)
+elseif(UNIX)
+    set(VIRTUALFS_RAMDISK_BACKEND ${ULTRACANVAS_ROOT}/VirtualFS/OS/Linux/VirtualFSRamDiskPlatform.cpp)
+endif()
+
+if(VIRTUALFS_RAMDISK_BACKEND)
+    message(STATUS "  Building VirtualFSRamDiskTest...")
+
+    add_executable(VirtualFSRamDiskTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSRamDiskTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSRamDisk.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${VIRTUALFS_RAMDISK_BACKEND}
+    )
+    target_include_directories(VirtualFSRamDiskTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+    )
+    target_link_libraries(VirtualFSRamDiskTest PRIVATE pthread)
+    target_compile_features(VirtualFSRamDiskTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSRamDiskTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSRamDiskTest
+        COMMAND VirtualFSRamDiskTest
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSRamDiskTest")
+else()
+    message(STATUS "  No RAM disc back end for this platform - VirtualFSRamDiskTest disabled")
+endif()
+
 # ===== LABEL PLACEMENT TEST =====
 # Session reuse across passes, the spatial index, rotated labels, polyline
 # obstacles, priority, suppression, minimum separation, leader lines, point
