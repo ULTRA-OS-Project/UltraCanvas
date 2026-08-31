@@ -119,7 +119,7 @@ namespace UltraCanvas {
         container->AddChild(strengthBar);
 
         // Description
-        auto barDescription = std::make_shared<UltraCanvasLabel>("BarDesc", 350, 130, 350, 45);
+        auto barDescription = std::make_shared<UltraCanvasLabel>("BarDesc", 350, 130, 350, 58);
         barDescription->SetText("Real-time strength indicator with animated\n"
                                 "color transitions (red → yellow → green).\n"
                                 "Click the eye icon in the field to show the password.");
@@ -202,7 +202,7 @@ namespace UltraCanvas {
         container->AddChild(ruleLegend);
 
         // Description
-        auto checklistDescription = std::make_shared<UltraCanvasLabel>("ChecklistDesc", 350, 415, 350, 45);
+        auto checklistDescription = std::make_shared<UltraCanvasLabel>("ChecklistDesc", 350, 415, 350, 58);
         checklistDescription->SetText("Interactive checklist with ✓/✗ indicators\n"
                                       "showing real-time validation status.\n"
                                       "\"Show password\" flag unmasks the field.");
