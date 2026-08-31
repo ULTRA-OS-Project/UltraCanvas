@@ -1,20 +1,23 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-    Apps/UltraFiler/UltraFiler.manifest
-    Windows Application Manifest for UltraFiler
+    Apps/Texter/UltraTexter.manifest.in
+    Windows Application Manifest for UltraTexter.
+    Template: CMake writes UltraTexter.manifest into the build tree from this
+    file, filling the version in from Docs/Texter/CHANGELOG.md. Edit this file,
+    never the generated one.
     Controls: DPI awareness, UAC level, Common Controls version, compatibility
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
 
     <!-- ===== IDENTITY ===== -->
     <assemblyIdentity
-        version="0.8.0.0"
+        version="@UCRES_VERSION_DOT4@"
         processorArchitecture="*"
-        name="CloverleafUG.UltraFiler"
+        name="CloverleafUG.UltraTexter"
         type="win32"
     />
 
-    <description>UltraFiler - Cross-platform file manager by Cloverleaf UG</description>
+    <description>UltraTexter - Cross-platform text editor by Cloverleaf UG</description>
 
     <!-- ===== UAC: Run as standard user, no elevation needed ===== -->
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -52,11 +55,6 @@
             <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">
                 UTF-8
             </activeCodePage>
-            <!-- Long path support (paths beyond MAX_PATH): a file manager
-                 routinely walks deep directory trees -->
-            <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
-                true
-            </longPathAware>
         </windowsSettings>
     </application>
 

@@ -19,6 +19,25 @@
   headless, so building it on macOS and Windows costs seconds and gates what
   those rows uniquely exercise: the STATIC UltraCanvas link. The Linux
   `ctest --output-on-failure` step then runs it with everything else.
+- **Version setting is fully automatic now; `set-version.sh` is deleted.** The
+  Windows resource pairs are the only files windres reads from disk, so they
+  held the version as a literal and a script had to be remembered and run to
+  refresh them. It was not: UltraTexter's said 1.40 against a 1.41 changelog,
+  and UltraFiler's said 0.8.0 with *three* hand-kept copies (`.rc`,
+  `.manifest`, and `ULTRAFILER_VERSION="0.8.0"` written out in CMakeLists.txt)
+  — and no changelog at all to check them against. All four are templates now
+  (`UltraTexter.{rc,manifest}.in`, `UltraFiler.{rc,manifest}.in`), written into
+  the build tree by `ultracanvas_add_windows_resources()` in the new
+  `cmake/UltraCanvasWinResources.cmake` from the app's own changelog version.
+  The two CMakeLists literals (`ULTRAFILER_VERSION`, `ULTRAAI_APP_VERSION`)
+  now read the same variables. There is nothing left to keep in sync, so the
+  configure-time staleness warning is gone too.
+- Generation deliberately is **not** guarded by `WIN32`: the substitution runs
+  on every platform, so a broken template fails any configure instead of only a
+  Windows build. And the Texter target built from the top-level CMakeLists now
+  embeds those resources as the standalone `Apps/Texter` build already did — it
+  previously had no manifest at all (no DPI awareness, no UTF-8 code page) and
+  no version resource, which is also why nothing in CI ever compiled them.
 - **Every application keeps its own changelog now**, so an app no longer moves
   when the framework releases. `Docs/<App>/CHANGELOG.md` for AnchorPoint,
   EmailCleaner, UltraAI, UltraAuthenticator, UltraFiler, UltraMail, UltraSocial

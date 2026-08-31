@@ -1,22 +1,22 @@
-// Apps/UltraFiler/UltraFiler.rc
-// Windows Resource Script for UltraFiler
-// Embeds: version information, application manifest
-// Built automatically by CMake on WIN32 builds
-// NOTE: the application icon is embedded separately by CMake
-// (ultracanvas_embed_app_icon from media/appicon/UltraFiler.png), so it is
-// intentionally not declared here.
+// Apps/Texter/UltraTexter.rc.in
+// Windows Resource Script for UltraTexter.
+// Embeds: version information, application manifest.
+//
+// Template: CMake writes UltraTexter.rc into the build tree from this file,
+// filling the version in from the first line of Docs/Texter/CHANGELOG.md.
+// Edit this file, never the generated one.
 
 #include <windows.h>
 
 // ===== APPLICATION MANIFEST =====
-// Embeds UltraFiler.manifest directly into the EXE
+// Embeds UltraTexter.manifest directly into the EXE
 // ID 1 = application manifest (required by Windows)
-1 RT_MANIFEST "UltraFiler.manifest"
+1 RT_MANIFEST "UltraTexter.manifest"
 
 // ===== VERSION INFORMATION =====
 VS_VERSION_INFO VERSIONINFO
-    FILEVERSION     0,8,0,0
-    PRODUCTVERSION  0,8,0,0
+    FILEVERSION     @UCRES_VERSION_COMMA4@
+    PRODUCTVERSION  @UCRES_VERSION_COMMA4@
     FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
 #ifdef _DEBUG
     FILEFLAGS       VS_FF_DEBUG
@@ -33,13 +33,13 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "Cloverleaf UG\0"
-            VALUE "FileDescription",  "UltraFiler - Cross-Platform File Manager\0"
-            VALUE "FileVersion",      "0.8.0\0"
-            VALUE "InternalName",     "UltraFiler\0"
+            VALUE "FileDescription",  "UltraCanvasTexter - Cross-Platform Text Editor\0"
+            VALUE "FileVersion",      "@UCRES_VERSION@\0"
+            VALUE "InternalName",     "UltraCanvasTexter\0"
             VALUE "LegalCopyright",   "Copyright (C) 2026 Cloverleaf UG\0"
-            VALUE "OriginalFilename", "UltraFiler.exe\0"
-            VALUE "ProductName",      "UltraFiler\0"
-            VALUE "ProductVersion",   "0.8.0\0"
+            VALUE "OriginalFilename", "UltraCanvasTexter.exe\0"
+            VALUE "ProductName",      "UltraCanvasTexter\0"
+            VALUE "ProductVersion",   "@UCRES_VERSION@\0"
             VALUE "Comments",         "Part of the ULTRA OS ecosystem - ultracanvas.dev\0"
         END
     END

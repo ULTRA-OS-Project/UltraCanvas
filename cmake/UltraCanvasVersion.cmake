@@ -5,8 +5,8 @@
 # package-macos.sh) already parse the changelog directly, which is why the
 # version in a built artefact's file name is always right. Everything compiled
 # *into* the binaries used to carry a hand-maintained copy of the same number,
-# refreshed only when someone remembered to run set-version.sh — so the demo
-# app's info window drifted (it showed 0.3.21 against a 0.3.31 changelog).
+# refreshed only when someone remembered to run a script — so the demo app's
+# info window drifted (it showed 0.3.21 against a 0.3.31 changelog).
 #
 # Including this module makes CMake read the same first changelog line the
 # packaging scripts read, so the displayed version cannot disagree with the
@@ -142,31 +142,9 @@ endif()
 set_property(DIRECTORY "${_uc_configure_depends_dir}" APPEND PROPERTY
     CMAKE_CONFIGURE_DEPENDS ${_ULTRACANVAS_ALL_CHANGELOGS})
 
-# The Windows resource script and manifest still hold literal version numbers
-# (they are compiled by windres/rc.exe from files on disk, not generated), and
-# set-version.sh writes them. Warn — on every platform, so a Linux or macOS
-# configure catches it too — when they have fallen behind the changelog.
-function(_ultracanvas_warn_if_version_stale FILE PATTERN EXPECTED WHAT)
-    if(NOT EXISTS "${FILE}")
-        return()
-    endif()
-    file(STRINGS "${FILE}" _hits REGEX "${PATTERN}")
-    foreach(_line IN LISTS _hits)
-        string(REGEX MATCH "${PATTERN}" _ignored "${_line}")
-        if(NOT CMAKE_MATCH_1 STREQUAL "${EXPECTED}")
-            message(WARNING
-                "${WHAT} is ${CMAKE_MATCH_1} but the changelog says ${EXPECTED}.\n"
-                "  ${FILE}\n"
-                "  Run ./set-version.sh to refresh the Windows resource files.")
-        endif()
-    endforeach()
-endfunction()
-
-_ultracanvas_warn_if_version_stale(
-    "${_ULTRACANVAS_REPO_ROOT}/Apps/Texter/UltraTexter.rc"
-    "^ +FILEVERSION +([0-9,]+)" "${ULTRATEXTER_VERSION_COMMA4}"
-    "UltraTexter.rc FILEVERSION")
-_ultracanvas_warn_if_version_stale(
-    "${_ULTRACANVAS_REPO_ROOT}/Apps/Texter/UltraTexter.manifest"
-    "^        version=\"([0-9.]+)\"" "${ULTRATEXTER_VERSION_DOT4}"
-    "UltraTexter.manifest assembly version")
+# Nothing downstream holds a literal version any more. The two Windows resource
+# pairs that used to (UltraTexter.rc/.manifest, UltraFiler.rc/.manifest) are
+# templates now, written into the build tree by
+# ultracanvas_add_windows_resources() in cmake/UltraCanvasWinResources.cmake
+# from the values above — so there is no staleness left to warn about and no
+# set-version.sh to remember to run.

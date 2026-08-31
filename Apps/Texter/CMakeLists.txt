@@ -9,6 +9,7 @@ cmake_minimum_required(VERSION 3.16)
 # ULTRATEXTER_VERSION is read from the first line of Docs/Texter/CHANGELOG.md.
 # Must be included before project(), which uses it.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWinResources.cmake")
 
 project(UltraTexter
         VERSION ${ULTRATEXTER_VERSION}
@@ -195,17 +196,14 @@ endif()
 if(WIN32)
     target_link_libraries(UltraTexter PRIVATE iconv)
 
-    target_sources(UltraTexter PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/UltraTexter.rc
-    )
-    # Make sure the manifest file is found relative to the .rc file
-    # (windres/rc.exe resolves paths from the .rc file's directory)
-    set_source_files_properties(
-        ${CMAKE_CURRENT_SOURCE_DIR}/UltraTexter.rc
-        PROPERTIES
-            COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}"
-    )
 endif()
+
+# Writes UltraTexter.rc / UltraTexter.manifest into the build tree from the .in
+# templates and the changelog version, and compiles the .rc on Windows. The
+# generation itself is not Windows-only, so a broken template fails a Linux or
+# macOS configure too rather than waiting for a Windows build.
+ultracanvas_add_windows_resources(UltraTexter
+    "${CMAKE_CURRENT_SOURCE_DIR}" UltraTexter "${ULTRATEXTER_VERSION}")
 
 # Link against plugin libraries if available
 if(ULTRACANVAS_PLUGIN_TARGETS)

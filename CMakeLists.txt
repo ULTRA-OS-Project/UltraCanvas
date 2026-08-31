@@ -10,6 +10,7 @@ cmake_minimum_required(VERSION 3.16)
 # line the packaging scripts read for the artefact file names. Must be included
 # before project(), which needs ULTRACANVAS_VERSION.
 include(cmake/UltraCanvasVersion.cmake)
+include(cmake/UltraCanvasWinResources.cmake)
 
 project(UltraCanvasDemoApp
     VERSION ${ULTRACANVAS_VERSION}
@@ -743,6 +744,17 @@ endif()
     ultracanvas_embed_app_icon(UltraCanvasTexter
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Texter.png")
 
+    # Version info + manifest, written from Apps/Texter/UltraTexter.{rc,manifest}.in
+    # and the Texter changelog. Until now only the standalone Apps/Texter build
+    # compiled those, so the Texter built from here had no manifest (no DPI
+    # awareness, no UTF-8 code page) and no version resource at all — and
+    # nothing in CI ever compiled the templates. No collision with the icon .rc
+    # above: that one defines only an ICON, and this target embeds no other
+    # manifest.
+    ultracanvas_add_windows_resources(UltraCanvasTexter
+        "${CMAKE_CURRENT_SOURCE_DIR}/Apps/Texter" UltraTexter
+        "${ULTRATEXTER_VERSION}")
+
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(UltraCanvasTexter PRIVATE
@@ -791,9 +803,11 @@ if (BUILD_ULTRAFILER_APP)
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraFiler PRIVATE
-            # UltraFiler's own version, not the framework's — keep in sync
-            # with UltraFiler.rc and UltraFiler.manifest.
-            ULTRAFILER_VERSION="0.8.0"
+            # UltraFiler's own version, not the framework's: the first line of
+            # Docs/UltraFiler/CHANGELOG.md. The Windows .rc and .manifest are
+            # generated from the same value below, so there is nothing to keep
+            # in sync by hand.
+            ULTRAFILER_VERSION="${ULTRAFILER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/UltraFiler.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
@@ -802,29 +816,19 @@ if (BUILD_ULTRAFILER_APP)
     ultracanvas_embed_app_icon(UltraFiler
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraFiler.png")
 
-    # Embed the application manifest + version info (Windows only). The .rc
-    # ships its own manifest, so do NOT also call
-    # ultracanvas_embed_windows_manifest here (two RT_MANIFEST id=1 resources
-    # would collide at resource link time).
-    if(WIN32)
-        target_sources(UltraFiler PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler/UltraFiler.rc
-        )
-        # windres/rc.exe resolves the manifest path relative to the .rc file's
-        # directory.
-        set_source_files_properties(
-            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler/UltraFiler.rc
-            PROPERTIES
-                COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler"
-        )
-    endif()
-
-    # No ultracanvas_embed_windows_manifest(UltraFiler) here: UltraFiler.rc
-    # above already embeds Apps/UltraFiler/UltraFiler.manifest, which is a
-    # superset of the generated one (UTF-8 code page + long paths, plus DPI
-    # awareness, common controls v6 and segment heap). A second RT_MANIFEST
-    # id=1 resource is a hard error with lld (CLANGARM64), even though GNU ld
-    # let the duplicate through silently.
+    # Version info + manifest: written into the build tree from
+    # Apps/UltraFiler/UltraFiler.{rc,manifest}.in and this app's changelog
+    # version, then compiled into the .exe on Windows. Generation runs on every
+    # platform, so a broken template fails a Linux or macOS configure too.
+    #
+    # Do NOT also call ultracanvas_embed_windows_manifest() here: this .rc
+    # already embeds UltraFiler.manifest, which is a superset of the generated
+    # one (UTF-8 code page + long paths, plus DPI awareness, common controls v6
+    # and segment heap). A second RT_MANIFEST id=1 resource is a hard error with
+    # lld (CLANGARM64), even though GNU ld let the duplicate through silently.
+    ultracanvas_add_windows_resources(UltraFiler
+        "${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler" UltraFiler
+        "${ULTRAFILER_VERSION}")
 
     message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
@@ -909,7 +913,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     target_compile_features(UltraAIApp PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraAIApp PRIVATE
-        ULTRAAI_APP_VERSION="0.1.0"
+        # The first line of Docs/UltraAI/CHANGELOG.md.
+        ULTRAAI_APP_VERSION="${ULTRAAI_VERSION}"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
 

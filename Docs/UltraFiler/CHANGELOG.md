@@ -1,4 +1,4 @@
-#### 2026-08-31 *1.15.0*
+#### 2026-08-31 *0.8.0*
 - **UltraFiler keeps its own changelog from here.** Everything up to and
   including this version shipped as part of a framework release and is recorded
   in [`Docs/UltraCanvas/CHANGELOG.md`](../UltraCanvas/CHANGELOG.md) — nothing

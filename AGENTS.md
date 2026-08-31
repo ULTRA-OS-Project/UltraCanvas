@@ -208,10 +208,17 @@ anywhere else, and never introduce a new literal copy of one:
   files — that would put one change in two places under two numbers.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
-- Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still
-  hold literals, because windres reads them from disk. Run `./set-version.sh`
-  after bumping the UltraTexter version; a CMake configure on any platform
-  warns when they are stale.
+- **Nothing holds a literal version any more, and there is no script to run.**
+  The Windows resource pairs windres reads from disk are templates —
+  `Apps/Texter/UltraTexter.{rc,manifest}.in` and
+  `Apps/UltraFiler/UltraFiler.{rc,manifest}.in` — written into the build tree by
+  `ultracanvas_add_windows_resources()`
+  (`cmake/UltraCanvasWinResources.cmake`) from the app's changelog version. Edit
+  the `.in` file, never the generated one, and use `@UCRES_VERSION@`,
+  `@UCRES_VERSION_DOT4@` or `@UCRES_VERSION_COMMA4@` for the number. Generation
+  is not guarded by `WIN32`, so a broken template fails a Linux or macOS
+  configure too. `set-version.sh` is gone; so is the staleness warning it
+  existed to satisfy.
 
 ## House rules for AI-generated changes
 
