@@ -343,6 +343,10 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_EnvironmentForPath`, `UltraWin_GetAssociation`,
+  `UltraWin_SetAssociation`, `UltraWin_RemoveAssociation`,
+  `UltraWin_SuggestEnvironment` (program→environment linkage: owning
+  prefix, remembered picker choices, and picker defaults)
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
 - `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,

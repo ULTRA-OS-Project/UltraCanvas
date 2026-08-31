@@ -219,6 +219,10 @@ private:
     // create the environment, which takes a while. Status-bar feedback only;
     // when Wine is missing the status bar says how to get it.
     void LaunchWindowsExecutable(const FilerEntry& entry);
+    // Runs the entry in the given environment on a worker thread, with
+    // status-bar feedback (called once the environment is decided).
+    void StartWindowsLaunch(const FilerEntry& entry,
+                            const std::string& environment);
 #endif
     // Remembers a folder the user did something in (opened a file there,
     // created / pasted / renamed / deleted something, ...). Browsing a folder

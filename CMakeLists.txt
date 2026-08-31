@@ -569,6 +569,26 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRAWIN MANAGER =====
+# UltraWin Manager: the graphical front-end for Windows applications on
+# ULTRA OS — environments, installed programs, and the Windows VM.
+option(BUILD_ULTRAWIN_MANAGER "Build the UltraWin Manager application" ON)
+if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
+    add_executable(UltraWinManager
+        Apps/UltraWinManager/main.cpp
+        Apps/UltraWinManager/UltraWinManagerWindow.cpp
+    )
+    target_include_directories(UltraWinManager PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraWinManager
+    )
+    target_link_libraries(UltraWinManager PRIVATE
+        ${ULTRACANVAS_LIBRARY}
+        UltraWin
+    )
+    message(STATUS "  [✓] UltraWinManager - ENABLED")
+endif()
+
 # ===== ULTRAWIN SETUP CLI =====
 # ultrawin-setup: the console driver for the VM tier's real-hardware
 # validation (provision from install media, boot, watch, launch). Plain
@@ -728,6 +748,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerWindow.cpp
             Apps/UltraFiler/UltraFilerSettingsDialog.cpp
             Apps/UltraFiler/UltraFilerPrompt.cpp
+            Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
     )
