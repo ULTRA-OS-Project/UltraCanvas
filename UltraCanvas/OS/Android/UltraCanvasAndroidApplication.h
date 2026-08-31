@@ -67,6 +67,12 @@ namespace UltraCanvas {
         void SetDoubleClickTime(unsigned int milliseconds) { doubleClickTimeMs = milliseconds; }
         void SetDoubleClickDistance(int pixels) { doubleClickDistance = pixels; }
 
+        // Run a nested pump until `isResolved()` returns true, for a modal
+        // Java dialog whose answer arrives on the Java UI thread. Returns
+        // false if the activity is being destroyed instead (no answer will
+        // come). See the .cpp for why only activity commands are processed.
+        bool PumpWhileModal(const std::function<bool()>& isResolved);
+
         // ===== SOFT KEYBOARD =====
         // Driven automatically by UltraCanvasCaret::onTextEditingChanged (a
         // widget claiming the caret shows the keyboard, releasing it hides

@@ -520,6 +520,11 @@ jobs:
       - name: Syntax-check OS/Android against the NDK
         run: scripts/android-syntax-check.sh "$ANDROID_NDK_LATEST_HOME"
 
+      - name: Compile the Android backend's Java against android.jar
+        # UltraCanvasActivity is loaded by name and called over JNI, so no
+        # other build step ever type-checks it (the runner preinstalls an SDK).
+        run: scripts/android-java-check.sh
+
       - name: Configure-only test of the Android CMake arms
         # -DANDROID=1 stands in for the toolchain file (host compilers, host
         # pkg-config deps): validates platform detection, the glue-source

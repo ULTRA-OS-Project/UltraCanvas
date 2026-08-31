@@ -1436,7 +1436,14 @@ FILE: Docs/UltraCanvas/AndroidPortInvestigation.md
 
 # Android Port Investigation
 
-**Status:** Investigation / planning document — no Android code exists yet.
+**Status:** Investigation / planning document. Written before any Android code
+existed; the analysis below is preserved as the original audit, with
+**Status:** notes marking what has since been implemented. The backend now
+lives in `UltraCanvas/OS/Android/` — see its
+[README](../../UltraCanvas/OS/Android/README.md) for what is actually built
+today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
+keyboard, multi-touch, message dialogs); the dependency sysroot, APK packaging,
+SAF file dialogs and full IME remain.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -1648,7 +1655,7 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
 
 | Subsystem | Linux implementation | Android strategy |
 |---|---|---|
-| Native dialogs | 808 lines GTK3, **synchronous** (`gtk_dialog_run` nested loop) returning values | `AlertDialog` / SAF (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`) are **callback-based**. Either the `UltraCanvasNativeDialogs` API gains async variants, or Android uses a nested-loop shim pumping `ALooper` until the Java side posts the result. Additionally SAF yields `content://` URIs, not filesystem paths — downstream code assuming `std::string` paths needs a URI bridge (open via `ContentResolver` → fd → `/proc/self/fd/N`, or copy-to-cache). Phase 1: stub dialogs |
+| Native dialogs | 808 lines GTK3, **synchronous** (`gtk_dialog_run` nested loop) returning values | `AlertDialog` / SAF (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`) are **callback-based**. Either the `UltraCanvasNativeDialogs` API gains async variants, or Android uses a nested-loop shim pumping `ALooper` until the Java side posts the result. Additionally SAF yields `content://` URIs, not filesystem paths — downstream code assuming `std::string` paths needs a URI bridge (open via `ContentResolver` → fd → `/proc/self/fd/N`, or copy-to-cache). Phase 1: stub dialogs. **Status:** the nested-loop shim landed — `UltraCanvasAndroidDialogBridge` shows the dialog through the optional `UltraCanvasActivity` and pumps activity commands (never input) until the Java UI thread posts the result, so the synchronous API is preserved. Message dialogs are done; SAF file dialogs and the `content://` bridge are still open. |
 | Clipboard | 760 lines of X11 selection protocol | JNI `ClipboardManager` — much simpler, text + URI lists |
 | Drag & drop | 960 lines XDnD v5 both directions | No cross-app analogue (outside ChromeOS freeform). `StartNativeFileDrag` → `return false` (default already does this); XDnD file is simply not compiled |
 | Mouse cursors | 238 lines Xcursor/libvips | No-ops |

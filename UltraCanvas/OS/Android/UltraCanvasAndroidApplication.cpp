@@ -34,6 +34,11 @@ namespace UltraCanvas {
     // ===== JNI CACHES (glue thread only; released in ShutdownNative) =====
     namespace {
 
+        // Poll slice for the modal pump. The result is published by another
+        // thread without waking this looper, so this doubles as the worst-case
+        // latency between the user's tap and the dialog call returning.
+        constexpr int kModalPollMs = 32;
+
         // InputMethodManager plumbing for the soft keyboard.
         struct ImeJniCache {
             bool triedInit = false;
@@ -263,6 +268,34 @@ namespace UltraCanvas {
             // The activity is being destroyed underneath us; leave Run().
             Exit();
         }
+    }
+
+    bool UltraCanvasAndroidApplication::PumpWhileModal(
+            const std::function<bool()>& isResolved) {
+        if (!androidApp) return false;
+
+        while (!isResolved()) {
+            if (androidApp->destroyRequested) return false;
+
+            int events = 0;
+            android_poll_source* source = nullptr;
+            const int ident = ALooper_pollOnce(kModalPollMs, nullptr, &events,
+                                               reinterpret_cast<void**>(&source));
+
+            // Activity commands ONLY, for two independent reasons:
+            //
+            // 1. The glue parks the Java main thread inside some commands
+            //    (APP_CMD_TERM_WINDOW waits for this thread to acknowledge the
+            //    surface is released). That is the same thread that owes us
+            //    the dialog result, so ignoring commands here would deadlock
+            //    both threads against each other.
+            // 2. Input is deliberately left queued: no widget may re-enter
+            //    while it is blocked inside its own modal dialog call.
+            if (ident == LOOPER_ID_MAIN && source) {
+                source->process(androidApp, source);
+            }
+        }
+        return true;
     }
 
     // ===== WAKEUP MECHANISM =====
