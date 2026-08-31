@@ -98,6 +98,17 @@ struct AnalyzedMessage {
     MessageCategory category = MessageCategory::Unclassified;
     double          score    = 0.0;  // 0..100 unwanted-ness
 
+    // The sender's unsubscribe offer, as the List-Unsubscribe headers gave it
+    // (RFC 2369 / RFC 8058). Kept per message because a sender can change or
+    // rotate it; the store rolls it up to the newest one per sender.
+    std::string unsubMailto;
+    std::string unsubMailtoSubject;
+    std::string unsubUrl;
+    bool        unsubOneClick = false;
+
+    // True when the sender was on the blocklist at ingest time.
+    bool blocked = false;
+
     std::vector<AttachmentRecord> attachments;
     std::vector<KeywordHit>       hits;
 

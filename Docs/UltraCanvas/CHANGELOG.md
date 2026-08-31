@@ -1,3 +1,55 @@
+#### 2026-08-31 *0.3.88*
+- **EmailCleaner can now act on the block you select, not just describe it.**
+  An actions strip above the message list offers **Block sender**,
+  **Unsubscribe** and **Move to Trash** for the selected sender or domain, in
+  any combination. The split that makes destructive work reviewable is in the
+  engine: `ActionPlanner` is pure and says exactly what *would* happen — which
+  messages, from which folders, whether an unsubscribe offer exists and whether
+  it is worth taking, and what to warn about — and the strip shows that plan
+  continuously as the tick boxes change, so the consequence is on screen before
+  the button is pressed. **Apply** repeats the plan and every warning in a
+  confirmation; `ActionExecutor` then runs it, block first (local, cannot fail
+  outward), then the unsubscribe, then the moves.
+- **Unsubscribing from spam is refused, not offered** (`EmailCleanerUnsubscribe`).
+  An unsubscribe link works for bulk mail you opted into; in a spam, phishing or
+  dating-scam message it is a *liveness probe*, and taking it confirms a human
+  reads the address. So for every unwanted family the advice is refusal —
+  **whether or not the offer is well formed**: a valid RFC 8058 one-click link
+  in a phishing message is more dangerous, not less. Where the offer is genuine,
+  one-click (`POST List-Unsubscribe=One-Click`, https only, no redirects) is
+  preferred, then a `mailto:` the app can send unattended; a bare link is
+  reported for the user to open, never followed. RFC 2369 parsing tolerates
+  missing brackets, odd spacing and commas inside a `?subject=`.
+- **Deleting moves to Trash, and the Trash folder is resolved rather than
+  assumed** (`EmailCleanerMailBackend`, over UltraNet's `IMailboxProtocolPlugin`
+  and its UID MOVE): the IMAP SPECIAL-USE role first, then the names servers
+  actually use (`Trash`, `[Gmail]/Bin`, `Deleted Items`, `Papierkorb`,
+  `Corbeille`, `Papelera`, `Cestino`, ...), matched on the leaf under any
+  delimiter. If none can be identified the move is **refused** — a wrong guess
+  scatters mail into a folder nobody looks in. Resolution happens once per
+  account, not once per message. `unwantedOnly` is on by default for a domain
+  target, and any message the analysis calls wanted is counted in a warning
+  before the confirmation.
+- **The blocklist is local, visible and reversible.** Schema v2 adds the
+  unsubscribe offer columns and a `blocklist` table; blocking changes what the
+  map shows and what the counts say and never touches the server, and every
+  entry can be seen and taken back from **Blocked senders…**.
+- **`UltraCanvasTreeMapElement` responds to clicks.** It has always published
+  `onNodeSelect`, `onNodeDoubleClick` and `onNodeRightClick`, but nothing ever
+  fired them: the chart base turns a mouse press into drag tracking only, and
+  the element had no `OnEvent` of its own. It now selects the block under the
+  pointer on a left click, drills into it on a double click, reports a right
+  click, and clears the selection on a click into the background. Hit-testing
+  was fixed to match: it tests what `RenderChart` draws — the current level's
+  children, laid out and leaf or not — instead of recursing for leaves whose
+  bounds no layout pass had ever set, which is why a grouped treemap could not
+  be clicked at all. This is what makes EmailCleaner's sender map a navigation
+  surface. Version 1.1.0.
+- **EmailCleaner engine tests: 155** (was 104), adding the unsubscribe parsing
+  and judgement, the planner and executor against a recording backend, and the
+  mail backend against a fake `IMailboxProtocolPlugin` — still no display and
+  no network.
+
 #### 2026-08-30 *0.3.87*
 - **New application: EmailCleaner** (`Apps/EmailCleaner`, target `EmailCleaner`,
   `BUILD_EMAILCLEANER`). It loads several mail accounts into an **analysis

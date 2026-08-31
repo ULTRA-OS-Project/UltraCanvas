@@ -1,15 +1,19 @@
 // Apps/EmailCleaner/ui/EmailCleanerApp.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerApp.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
 
+#include "UltraMailCredentialVault.h"
+#include "UltraMailDiscovery.h"
 #include "UltraMailLocalStore.h"
 
 #include <UltraDatabase/UltraDatabase.h>
+#include <UltraNet/UltraNetPlugins.h>
 
+#include <ctime>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -41,7 +45,59 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
     LoadRules();
     ImportAccounts();
     store_.ListAccounts(accounts_);
+    WireMailBackend();
     return true;
+}
+
+void EmailCleanerApp::WireMailBackend() {
+    // Acting on mail needs the same IMAP plug-in UltraMail syncs with. It is a
+    // DSO loaded at start-up, so its absence is a normal state, not an error:
+    // the analysis and the blocklist work without it.
+    imapPlugin_ = UltraNet_GetPlugin("imaps");
+    auto* mailbox = imapPlugin_ ? dynamic_cast<IMailboxProtocolPlugin*>(imapPlugin_.get())
+                                : nullptr;
+    if (!mailbox) {
+        imapPlugin_.reset();
+        backendUnavailable_ = "The IMAP plug-in is not loaded, so EmailCleaner "
+                              "cannot reach the mail server.";
+        return;
+    }
+
+    mailBackend_ = std::make_unique<MailBackend>(*mailbox);
+
+    // One entry per account: where its server is, and the password UltraMail
+    // already holds. An account with neither is simply not registered, and the
+    // backend then refuses its messages by name rather than failing obscurely.
+    UltraMail::CredentialVault vault(mailDataDir_ + "/vault");
+    int usable = 0;
+    for (const StoredAccount& account : accounts_) {
+        if (account.email.empty()) continue;
+        const UltraMail::DiscoveryResult discovered =
+            UltraMail::AutoDiscovery::FromPresets(account.email);
+        if (!discovered.found || !discovered.imap.Valid()) continue;
+
+        std::string password;
+        if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
+
+        MailAccountAccess access;
+        access.accountId    = account.accountId;
+        access.serverUrl    = UltraMail::AutoDiscovery::ImapServerUrl(discovered.imap);
+        access.ownerAddress = account.email;
+        access.options.credentials.username =
+            discovered.imap.username.empty() ? account.email : discovered.imap.username;
+        access.options.credentials.password = password;
+        access.options.useTls      = discovered.imap.security != UltraMail::MailSecurity::None;
+        access.options.implicitTls = discovered.imap.security == UltraMail::MailSecurity::SslTls;
+        mailBackend_->SetAccount(access);
+        ++usable;
+    }
+
+    if (usable == 0) {
+        backendUnavailable_ = "No account has a server and a saved password — "
+                              "set the account up in UltraMail first.";
+    } else {
+        backendUnavailable_.clear();
+    }
 }
 
 void EmailCleanerApp::LoadRules() {
@@ -140,14 +196,31 @@ std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
         // selection, which is what makes the map a navigation surface.
         timetableView_.Refresh(CurrentFilter(), CurrentTitle());
         detailView_.Refresh(CurrentFilter(), CurrentTitle());
+        actionsPanel_.SetTarget(CurrentTarget(), accountBar_.Filter().accountId);
     };
     tabs_->AddTab("Sender map", mapView_.Build(0, 0, pageW, pageH));
 
     timetableView_.SetAnalytics(&analytics_);
     tabs_->AddTab("Timetable", timetableView_.Build(0, 0, pageW, pageH));
 
+    // The Messages page is the detail view with the actions panel above it:
+    // what the selection contains, and what can be done about it, on one page.
     detailView_.SetStore(&store_);
-    tabs_->AddTab("Messages", detailView_.Build(0, 0, pageW, pageH));
+    auto messagesPage = CreateContainer("ecMessagesPage", 0, 0, pageW, pageH);
+
+    actionsPanel_.SetStore(&store_);
+    actionsPanel_.SetBackend(mailBackend_.get());
+    if (!backendUnavailable_.empty())
+        actionsPanel_.SetBackendUnavailableReason(backendUnavailable_);
+    actionsPanel_.onApplied = [this](const ActionOutcome& outcome) {
+        // Acting changes what the corpus looks like, so every view is stale.
+        Refresh();
+        if (!outcome.Describe().empty()) accountBar_.SetStatus(outcome.Describe());
+    };
+    messagesPage->AddChild(actionsPanel_.Build(0, 0, pageW, ActionsPanel::kHeight));
+    messagesPage->AddChild(detailView_.Build(0, ActionsPanel::kHeight, pageW,
+                                             pageH - ActionsPanel::kHeight));
+    tabs_->AddTab("Messages", messagesPage);
 
     window_->AddChild(tabs_);
 
@@ -160,6 +233,15 @@ MessageFilter EmailCleanerApp::CurrentFilter() const {
     if (!selectedSender_.empty())      filter.senderAddr   = selectedSender_;
     else if (!selectedDomain_.empty()) filter.senderDomain = selectedDomain_;
     return filter;
+}
+
+ActionTarget EmailCleanerApp::CurrentTarget() const {
+    ActionTarget target;
+    target.senderAddr = selectedSender_;
+    // A sender target carries its domain too, so a plan can say which domain
+    // it belongs to; a domain-only selection is what makes IsDomain() true.
+    target.domain     = selectedDomain_;
+    return target;
 }
 
 std::string EmailCleanerApp::CurrentTitle() const {
@@ -181,6 +263,7 @@ void EmailCleanerApp::Refresh() {
     mapView_.Refresh(accountBar_.Filter());
     timetableView_.Refresh(CurrentFilter(), CurrentTitle());
     detailView_.Refresh(CurrentFilter(), CurrentTitle());
+    actionsPanel_.SetTarget(CurrentTarget(), accountBar_.Filter().accountId);
 }
 
 void EmailCleanerApp::ScanMailCache() {

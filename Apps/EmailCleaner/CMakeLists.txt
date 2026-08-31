@@ -2,7 +2,7 @@
 # EmailCleaner — loads several mail accounts into an analysis database and maps
 # who sends what, when. Builds the headless analysis engine library and, on top
 # of it, the GUI executable (sender map, timetable, sender detail).
-# Version: 0.1.0
+# Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS
 
 # The engine analyses mail UltraMail has fetched and cached, so it needs the
@@ -24,6 +24,9 @@ set(EMAILCLEANER_ENGINE_SOURCES
     engine/EmailCleanerStore.cpp
     engine/EmailCleanerIngest.cpp
     engine/EmailCleanerAnalytics.cpp
+    engine/EmailCleanerUnsubscribe.cpp
+    engine/EmailCleanerActions.cpp
+    engine/EmailCleanerMailBackend.cpp
 )
 
 add_library(EmailCleanerEngine STATIC ${EMAILCLEANER_ENGINE_SOURCES})
@@ -55,6 +58,7 @@ set(EMAILCLEANER_UI_SOURCES
     ui/EmailCleanerTimetableView.cpp
     ui/EmailCleanerDetailView.cpp
     ui/EmailCleanerAccountBar.cpp
+    ui/EmailCleanerActionsPanel.cpp
 )
 
 add_executable(EmailCleaner main.cpp ${EMAILCLEANER_UI_SOURCES})

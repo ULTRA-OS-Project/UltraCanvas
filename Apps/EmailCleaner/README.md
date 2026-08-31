@@ -61,6 +61,15 @@ Apps/EmailCleaner/
     EmailCleanerAnalytics.{h,cpp}    store aggregates -> view models: the map
                                      hierarchy with its "Other" pooling, the shared
                                      category palette, the summary sentences
+    EmailCleanerUnsubscribe.{h,cpp}  List-Unsubscribe / List-Unsubscribe-Post
+                                     parsing, and the judgement about when taking
+                                     the offer is a good idea (never for spam)
+    EmailCleanerActions.{h,cpp}      ActionPlanner (pure: what *would* happen) and
+                                     ActionExecutor (carries a plan out through
+                                     IActionBackend)
+    EmailCleanerMailBackend.{h,cpp}  the outward half: Trash resolution and the
+                                     UID MOVE, the RFC 8058 one-click POST, the
+                                     unsubscribe mail
   ui/                                UltraCanvas UI layer
     EmailCleanerApp.{h,cpp}          app manager: owns store + ingest + window
     EmailCleanerAccountBar.{h,cpp}   account picker, Load mail / Re-analyse, the
@@ -72,6 +81,9 @@ Apps/EmailCleaner/
                                      UltraCanvasBarChartElement (over time)
     EmailCleanerDetailView.{h,cpp}   selected block: summary, keyword evidence,
                                      attachment types, message list
+    EmailCleanerActionsPanel.{h,cpp} Block / Unsubscribe / Move to Trash for the
+                                     selected block: the live plan preview, the
+                                     confirmation, and the blocklist
   main.cpp                           entry point
   CMakeLists.txt                     EmailCleanerEngine + the EmailCleaner app
 ```
@@ -99,6 +111,33 @@ The strongest category above the decision threshold wins, with the unwanted
 families beating Newsletter and Notification — a bulk sender advertising pills
 is spam, not a newsletter. The 0..100 score always reports unwanted-ness,
 whatever category won, so the map can shade a block by it.
+
+## Acting on a block
+
+Selecting a block on the map arms the actions strip above the message list:
+**Block sender**, **Unsubscribe** and **Move to Trash**, in any combination.
+The strip shows the resulting plan as you tick — how many messages, from where,
+and every warning — and **Apply** repeats the whole thing in a confirmation
+before anything happens.
+
+Three rules the panel will not bend:
+
+- **Unsubscribing from spam is refused.** For every unwanted family the offer
+  is a liveness probe, not a courtesy: taking it confirms a human reads the
+  address. A well-formed RFC 8058 one-click link in a phishing message is more
+  dangerous, not less, so the panel recommends *block and delete* instead.
+  Where the offer is genuine, one-click (https only) is preferred, then a
+  `mailto:` the app sends itself; a bare link is reported for you to open.
+- **Deleting means moving to Trash**, resolved from the account's own folder
+  list (the SPECIAL-USE role first, then `Trash` / `[Gmail]/Bin` /
+  `Deleted Items` / `Papierkorb` / ...). If no Trash can be identified the move
+  is refused rather than guessed at.
+- **Blocking is local and reversible.** It changes what the map shows, never
+  the server, and every entry can be taken back from **Blocked senders…**.
+
+The mail half needs UltraNet's IMAP plug-in and the account's password from
+UltraMail's vault. Without them the panel says which is missing and the local
+half still works.
 
 ## Editing the rules
 

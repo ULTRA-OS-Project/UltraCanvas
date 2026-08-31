@@ -1,7 +1,8 @@
 # EmailCleaner — concept
 
-**Status:** Phase 1 implemented (analysis engine + the three views).
-**Version:** 0.1.0
+**Status:** Phase 2 implemented (analysis engine, the three views, and acting
+on a selected block).
+**Version:** 0.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
 
 ## The problem
@@ -77,6 +78,9 @@ never writes to UltraMail's tables.
 | `EmailCleanerStore` | UltraDatabase | The analysis database and the aggregate queries the views consume. |
 | `EmailCleanerIngest` | Store, Classifier, UltraNet MIME | Raw message in, analysed row out; walks the mail cache. |
 | `EmailCleanerAnalytics` | Store | Shapes aggregates into view models; owns the palette and the summary sentences. |
+| `EmailCleanerUnsubscribe` | Types | Reads `List-Unsubscribe` / `List-Unsubscribe-Post`, and judges whether taking the offer is wise. |
+| `EmailCleanerActions` | Store, Unsubscribe | Plans an action on a selection (pure), and carries the plan out through a backend interface. |
+| `EmailCleanerMailBackend` | Actions, UltraNet | The half that leaves the machine: the Trash move and the unsubscribe request. |
 | `ui/` | UltraCanvas | Draws. Runs no SQL of its own and makes no classification decisions. |
 
 Everything below `ui/` is headless and unit-tested: no display, no network.
@@ -172,12 +176,58 @@ Time bucketing is done in **UTC**, deliberately: a timetable that shifted
 because the reader changed timezone would not be comparable to the one they
 looked at yesterday.
 
-## What Phase 1 leaves out
+## Acting on a block (Phase 2)
 
-- **Acting on what the map shows.** Seeing that one sender is 20% of the
-  mailbox is half the job; unsubscribing, deleting and blocking from the
-  selected block is the other half, and needs write access back through
-  UltraMail's sync engine.
+Seeing that one sender is 20% of the mailbox is half the job. The other half is
+doing something about it, and the selection on the map is what it acts on: an
+actions strip above the message list offers **Block sender**, **Unsubscribe**
+and **Move to Trash**, in any combination.
+
+The shape of it is deliberate, because these are the only irreversible things
+the app does:
+
+**Plan, then execute.** `ActionPlanner` is pure — given the selection and the
+database it says exactly what *would* happen (which messages, from which
+folders, whether an unsubscribe offer exists and whether it is worth taking,
+and what the user should be warned about) without touching anything. The strip
+shows that plan continuously as the tick boxes change, so the consequence is on
+screen before the button is pressed; pressing **Apply** repeats it, with every
+warning, in a confirmation dialog. `ActionExecutor` then runs the plan, block
+first (local, and cannot fail outward), then the unsubscribe, then the moves.
+
+**Unsubscribing from spam is refused, not offered.** This is the judgement the
+`EmailCleanerUnsubscribe` module exists for. An unsubscribe link works for bulk
+mail you once opted into; in a spam, phishing or dating-scam message it is a
+*liveness probe*, and taking it confirms a human reads the address. So for
+every unwanted family the advice is `RefuseSpam` — **whether or not the offer
+is well formed**. A perfectly valid RFC 8058 one-click link in a phishing
+message is more dangerous, not less, and the panel says so instead of acting.
+Where the offer is genuine, one-click (`POST List-Unsubscribe=One-Click`, https
+only) is preferred, then a `mailto:` the app can send unattended; a bare link
+is reported for the user to open, never followed.
+
+**Deleting means moving to Trash**, resolved from the account's own folder
+list — the IMAP SPECIAL-USE `\Trash` role first, then the names servers
+actually use (`Trash`, `[Gmail]/Bin`, `Deleted Items`, `Papierkorb`,
+`Corbeille`, ...). If none can be identified the move is *refused* rather than
+guessed at: a wrong guess scatters mail into a folder nobody looks in. A
+selection is never emptied wholesale either — `unwantedOnly` is on by default
+for a domain target, and any message the analysis calls wanted is counted in a
+warning before the confirmation.
+
+**Blocking is local and reversible.** The blocklist lives in the analysis
+database and changes what the map shows and what the counts say; it never
+touches the server. Every entry can be seen and taken back from **Blocked
+senders…**, because a block the user cannot undo is not a block, it is a
+mistake waiting.
+
+The mail half needs UltraNet's IMAP plug-in and a password from UltraMail's
+vault. When either is missing the panel says which, and the local half still
+works — that is the normal state on a machine where UltraMail has not been set
+up, not an error.
+
+## What Phase 2 leaves out
+
 - **A rule editor in the UI.** Rules are editable as a text file today.
 - **Learning from the user.** Marking a block "this is fine" or "this is spam"
   should adjust future verdicts; today the rules are static.
