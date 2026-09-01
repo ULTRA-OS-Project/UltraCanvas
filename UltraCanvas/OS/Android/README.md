@@ -3,8 +3,9 @@
 The full investigation and phased plan live in
 [`Docs/UltraCanvas/AndroidPortInvestigation.md`](../../../Docs/UltraCanvas/AndroidPortInvestigation.md).
 Implemented here: the window/application backend, lifecycle handling, the
-EGL/GLES context manager, clipboard, soft keyboard and full IME, multi-touch,
-message dialogs, SAF file opening and saving, and APK asset extraction.
+EGL/GLES context manager, clipboard, soft keyboard and full IME, multi-touch
+with pinch/rotate gestures, message dialogs, SAF file opening and saving, and
+APK asset extraction.
 
 **Still open, and it gates everything: the cross-compiled dependency sysroot
 and APK packaging.** No APK can be built until that exists, so none of this has
@@ -165,7 +166,29 @@ touchscreen. The two streams are mutually exclusive per gesture:
   cannot also drag whatever the first finger happened to be on.
 
 So a widget that only handles mouse events keeps working; one that handles
-touch events sees complete, unambiguous multi-finger input. A widget handling
+touch events sees complete, unambiguous multi-finger input.
+
+### Pinch and rotate
+
+Two fingers moving together are recognised **in the core**, not here — the
+touch stream is platform-neutral and so is the geometry, so every future touch
+backend gets this from one implementation. The recogniser emits `PinchZoom` to
+the element under the midpoint between the fingers, carrying:
+
+- `scale` — 1.0 at the start of the gesture, 2.0 when the fingers are twice as
+  far apart as they were.
+- `rotation` — radians, positive clockwise, wrapped to (-π, π].
+- `pointer` — the midpoint, in element-local coordinates as usual.
+
+Both are measured against **the moment the gesture began**, not the previous
+event, so a handler can map them directly onto a zoom or rotation anchored at
+that point without accumulating drift over a long gesture.
+
+The raw `TouchMove` events are still delivered first, so a widget doing its own
+finger tracking has already had its say before any gesture is reported. A third
+finger suspends recognition rather than guessing which pair to measure, and a
+finger landing or lifting re-establishes the baseline instead of reporting the
+discontinuity as a huge jump. A widget handling
 both should treat `touchPointCount >= 2` as "this is a gesture, not a click".
 `ACTION_CANCEL` (the system taking the gesture over, e.g. a system-gesture
 swipe) ends every finger with `TouchEnd`, so no widget keeps a dangling touch.

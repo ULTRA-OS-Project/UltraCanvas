@@ -1442,7 +1442,8 @@ existed; the analysis below is preserved as the original audit, with
 lives in `UltraCanvas/OS/Android/` — see its
 [README](../../UltraCanvas/OS/Android/README.md) for what is actually built
 today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
-keyboard, full IME, multi-touch, message dialogs, SAF file opening); the dependency
+keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
+opening and saving, APK asset extraction); the dependency
 sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
@@ -1872,7 +1873,9 @@ Process lessons for the Android effort:
 
 **Phase 3 — parity extras**
 - ~~Multi-touch events in the core event model (pointer IDs, `DispatchEvent`
-  touch path)~~ — done; gesture *recognition* (pinch-zoom/rotate) still open.
+  touch path), and pinch/rotate recognition on top of it~~ — done. Recognition
+  lives in the core (`UpdateTouchGesture`) rather than the Android backend,
+  since the touch stream and the geometry are both platform-neutral.
 - Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.

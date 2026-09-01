@@ -135,6 +135,26 @@ namespace UltraCanvas {
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
         std::function<void()> eventLoopCallback;
 
+        // ===== TOUCH GESTURE RECOGNITION =====
+        // Backends deliver raw per-finger touches; turning two of them into a
+        // pinch/rotate is pure geometry, so it lives here rather than in each
+        // backend - every touch platform gets it from one implementation.
+        struct TouchPoint {
+            int pointerId = 0;
+            Point2Di position;
+        };
+        std::vector<TouchPoint> activeTouches;
+        bool gestureActive = false;          // two fingers down and moving
+        double gestureBaseDistance = 0.0;    // finger separation when it began
+        double gestureBaseAngle = 0.0;       // finger angle when it began
+        std::weak_ptr<UltraCanvasWindowBase> gestureWindow;
+
+        // Fold a raw touch event into the recogniser and, once two fingers are
+        // moving, dispatch the resulting PinchZoom. Called for TouchStart /
+        // TouchMove / TouchEnd only; PinchZoom itself never re-enters.
+        void UpdateTouchGesture(const UCEvent& touchEvent);
+        void ResetTouchGesture();
+
         UCMouseButton capturedMouseButtonDown = UCMouseButton::NoneButton;
         UCEvent currentEvent;
         std::chrono::steady_clock::time_point lastClickTime;
