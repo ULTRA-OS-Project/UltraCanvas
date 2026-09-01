@@ -425,6 +425,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
+        # Mounted volumes + notification when that set changes. The platform
+        # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
+        # picked up by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVolumeMonitor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
@@ -1273,6 +1277,11 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # null-returning fallback. PUBLIC so an app can ask whether watching is native.
 if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
+# Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
+# PUBLIC so an app can tell a device notification from the polling fallback.
+if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
 endif()
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)

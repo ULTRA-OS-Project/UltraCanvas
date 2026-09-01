@@ -8291,10 +8291,20 @@ namespace UltraCanvas {
         // already polls, so the rest of the machinery is unchanged.
         folderWatcher.Stop();
         nativeWatchActive = false;
+        // Stop() joined the previous backend, so nothing can still be about to
+        // report the folder we just left: whatever sets this from here on
+        // belongs to the watch started below.
+        nativeWatchLost.store(false);
         if (!target.empty()) {
-            nativeWatchActive = folderWatcher.Watch(target, [this]() {
-                folderWatchDirty.store(true);
-            });
+            nativeWatchActive = folderWatcher.Watch(target,
+                    [this]() { folderWatchDirty.store(true); },
+                    // A native watch can die on its own - the volume it is on
+                    // is unmounted, the share drops, the handle is
+                    // invalidated - and until this existed the widget simply
+                    // stopped noticing changes and looked frozen. Flagged
+                    // here, acted on by the UI timer: the recovery re-targets
+                    // the watch machinery, which is the UI thread's to touch.
+                    [this]() { nativeWatchLost.store(true); });
         }
 
         {
@@ -8319,6 +8329,35 @@ namespace UltraCanvas {
         folderWatchDirty.store(false);   // whatever was pending described the old folder
         folderWatchCond.notify_all();
         ArmFolderWatchTimer();
+    }
+
+    void UltraCanvasFilerWidget::HandleLostNativeWatch() {
+        if (!nativeWatchActive) return;
+        // The folder the dead watch was on. Taken before Stop(), which clears
+        // it - and Stop() is what joins the backend's finished thread and
+        // gives back its descriptor / handle.
+        const std::string target = folderWatcher.WatchedPath();
+        folderWatcher.Stop();
+        nativeWatchActive = false;
+
+        {
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            if (folderWatchShutdown) return;
+            // Polled from here on, and deliberately polled even when the
+            // folder is gone: a signature of 0 is what a missing folder
+            // fingerprints to, so the same comparison notices the volume
+            // being plugged back in and re-lists it.
+            folderWatchPath = target;
+            folderWatchIncludeHidden = showHiddenFiles;
+            folderWatchHaveBaseline = false;   // first pass only measures
+            folderWatchSignature = 0;
+            if (!target.empty()) StartFolderWatchWorkerLocked();
+        }
+        folderWatchCond.notify_all();
+        // A watch normally dies *because* something happened to the folder:
+        // list it once now rather than waiting a poll interval to show that
+        // the volume it was on is gone.
+        if (!target.empty()) folderWatchDirty.store(true);
     }
 
     void UltraCanvasFilerWidget::StartFolderWatchWorkerLocked() {
@@ -8400,6 +8439,9 @@ namespace UltraCanvas {
                 : static_cast<unsigned int>(folderWatchIntervalMs);
         folderWatchTimer = app->StartTimer(tick, true,
                                            [this](TimerId) {
+            // The native watch reported itself dead: move to polling before
+            // deciding whether anything needs re-listing.
+            if (nativeWatchLost.exchange(false)) HandleLostNativeWatch();
             if (!folderWatchDirty.load()) return;
             if (IsBusyForAutoRefresh()) return;   // try again on the next tick
             folderWatchDirty.store(false);

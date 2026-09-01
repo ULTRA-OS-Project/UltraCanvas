@@ -299,6 +299,10 @@ public:
     bool IsRootVisible() const { return rootVisible; }
     
     TreeNode* AddNode(const std::string& parentId, const TreeNodeData& nodeData);
+    // Removes the node AND its whole subtree, dropping every pointer the view
+    // holds into any of it (selection, hover, focus) - a node with children is
+    // a normal thing to remove: a drive that was unmounted, a folder deleted
+    // from under the tree.
     void RemoveNode(const std::string& nodeId);
     TreeNode* FindNode(const std::string& nodeId);
     
@@ -455,6 +459,9 @@ protected:
     void  UpdateScrollbars();
 
 private:
+    // `node` and every descendant of it, appended to `out`. Used by RemoveNode
+    // to find the pointers a subtree removal invalidates.
+    static void CollectSubtree(TreeNode* node, std::vector<TreeNode*>& out);
 
     // ===== SCROLLBAR MANAGEMENT =====
     void CreateScrollbar();

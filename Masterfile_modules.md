@@ -55,6 +55,34 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
+  volumes of the machine, and a notification when that set changes: a USB
+  stick, card, optical disc, network share or disk image connected or removed.
+  Core enumeration + polling fallback in `core/UltraCanvasVolumeMonitor.cpp`;
+  per-platform backends under `OS/<Platform>/` (Linux/BSD: `poll()` on
+  `/proc/self/mountinfo`; Windows: `WM_DEVICECHANGE` on a hidden top-level
+  window; macOS: `NSWorkspace` mount notifications). Public surface:
+  - `ListMountedVolumes` — every mounted volume as `MountedVolume`
+    (`path`, `label`, `isSystemRoot`), system root first. **The framework's
+    single volume enumeration**: a drive list anywhere else — a folder tree,
+    a path strip's *Computer* dropdown, a places list — calls this rather than
+    scanning directories of its own, so two lists cannot disagree about what
+    is mounted. Never reads a volume label off the medium (that stalls on an
+    empty optical drive and on every disconnected network mapping).
+  - `ListVolumeRoots` — the same list, mount points only.
+  - `ListPlatformMountPoints` — the platform's own mount table, used by the
+    enumeration to decide whether a directory is really a mount point; empty
+    where no such table is readable.
+  - `UltraCanvasVolumeMonitor` — `Start(onChanged)` / `Stop()` (joins, so no
+    callback survives it), `IsRunning`, `IsNative`, `SetPollIntervalMs` /
+    `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
+    the monitor's thread and must only hand the news over; one insertion
+    produces several callbacks, so the receiver coalesces.
+  Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
+  condition in the **top-level** `CMakeLists.txt`; without it the core file
+  compiles null-returning fallbacks and the monitor polls.
+  See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
   jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a

@@ -226,6 +226,34 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
+  volumes of the machine, and a notification when that set changes: a USB
+  stick, card, optical disc, network share or disk image connected or removed.
+  Core enumeration + polling fallback in `core/UltraCanvasVolumeMonitor.cpp`;
+  per-platform backends under `OS/<Platform>/` (Linux/BSD: `poll()` on
+  `/proc/self/mountinfo`; Windows: `WM_DEVICECHANGE` on a hidden top-level
+  window; macOS: `NSWorkspace` mount notifications). Public surface:
+  - `ListMountedVolumes` — every mounted volume as `MountedVolume`
+    (`path`, `label`, `isSystemRoot`), system root first. **The framework's
+    single volume enumeration**: a drive list anywhere else — a folder tree,
+    a path strip's *Computer* dropdown, a places list — calls this rather than
+    scanning directories of its own, so two lists cannot disagree about what
+    is mounted. Never reads a volume label off the medium (that stalls on an
+    empty optical drive and on every disconnected network mapping).
+  - `ListVolumeRoots` — the same list, mount points only.
+  - `ListPlatformMountPoints` — the platform's own mount table, used by the
+    enumeration to decide whether a directory is really a mount point; empty
+    where no such table is readable.
+  - `UltraCanvasVolumeMonitor` — `Start(onChanged)` / `Stop()` (joins, so no
+    callback survives it), `IsRunning`, `IsNative`, `SetPollIntervalMs` /
+    `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
+    the monitor's thread and must only hand the news over; one insertion
+    produces several callbacks, so the receiver coalesces.
+  Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
+  condition in the **top-level** `CMakeLists.txt`; without it the core file
+  compiles null-returning fallbacks and the monitor polls.
+  See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
 - **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
   smooth scrolling and wheel zoom. Scrolling glides to its target instead of
   jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
@@ -17685,6 +17713,14 @@ has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
 
+A native watch can also die after it started — the volume the folder is on is
+unmounted, the share drops, the handle goes bad. The widget is told (the
+watcher's failure callback) and moves that folder to polling, so it keeps
+noticing changes instead of quietly freezing on a listing that no longer
+exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
+folder even while it is gone, which is what makes the same stick plugged back
+in re-list itself rather than needing a manual refresh.
+
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
 compress dialog, or a file operation waiting on its own dialog. The flag stays
@@ -19289,7 +19325,9 @@ file display needs.
 #include "UltraCanvasFolderWatcher.h"
 
 UltraCanvasFolderWatcher watcher;
-if (!watcher.Watch(folder, [this]() { dirty.store(true); })) {
+if (!watcher.Watch(folder,
+                   [this]() { dirty.store(true); },
+                   [this]() { watchLost.store(true); })) {
     // No backend on this platform — fall back to polling.
 }
 ```
@@ -19308,12 +19346,39 @@ caller's decision, not the filesystem's.
 
 | Call | Meaning |
 |---|---|
-| `Watch(path, onChanged)` | Watch `path`, replacing whatever was watched before. **False** when this build has no native backend, when `path` is empty or has no callback, or when the folder cannot be watched (gone, no permission, out of watch descriptors). |
+| `Watch(path, onChanged, onFailed = nullptr)` | Watch `path`, replacing whatever was watched before. **False** when this build has no native backend, when `path` is empty or has no callback, or when the folder cannot be watched (gone, no permission, out of watch descriptors). |
 | `Stop()` | Stop watching. Joins the backend thread, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice, and safe if `Watch()` failed. |
 | `IsWatching()` / `WatchedPath()` | What is being watched, if anything. |
 | `NativeBackendAvailable()` | *static.* Whether this build has a backend at all. False means every `Watch()` will fail, so a caller can skip trying. |
 
 The destructor calls `Stop()`.
+
+## A watch that dies on its own
+
+`Watch()` succeeding is not a promise that the watch lasts. The volume the
+folder is on is unmounted, the share drops, the folder is deleted, the handle is
+invalidated — and the watch is simply over. Nothing arrives after that, which is
+indistinguishable from a folder nobody is touching: a file display then stops
+noticing changes and looks frozen until the user navigates away. That was a real
+bug — pulling a USB stick while one of its folders was open left the view
+showing a listing that no longer existed.
+
+`onFailed` is how the caller hears about it. It fires **at most once**, from the
+watcher's thread, under the same rules as `onChanged` — hand the news over and
+return. It never fires because of `Stop()` or the destructor, so a caller does
+not have to tell "it broke" apart from "I ended it", and it is safe for it to
+capture the caller.
+
+The answer to it is the same as the answer to `Watch()` returning false: start
+polling the folder. Keep polling it even when it is gone — a missing folder
+fingerprints to a stable value, so the same comparison notices the volume being
+plugged back in. `UltraCanvasFilerWidget::HandleLostNativeWatch()` is the worked
+example.
+
+On Linux the watch is retired by the kernel with `IN_IGNORED` (and `IN_UNMOUNT`
+before it when the filesystem goes away); both arrive whether or not they were
+asked for. `IN_Q_OVERFLOW` is deliberately *not* a failure: events were lost,
+but the watch is alive and a rescan covers it.
 
 ## Backends
 
@@ -19338,7 +19403,8 @@ A caller must handle `Watch()` returning false — it is the normal answer on a
 platform without a backend, and a possible one everywhere (a folder can vanish
 between being listed and being watched). The
 [Filer widget](UltraCanvasFilerWidget.md#watching-the-shown-folder) shows the
-shape: try the watcher, and keep a polling worker for when it says no.
+shape: try the watcher, and keep a polling worker for when it says no — or for
+when it later says the watch is over.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFunnelChart.md
@@ -47831,6 +47897,127 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   app's Info.plist.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
+==============================================================================
+
+# UltraCanvasVolumeMonitor
+
+The mounted volumes of this machine, and a notification when that set changes —
+a USB stick plugged in or pulled out, a card reader, an optical disc, a network
+share mapped or dropped, a disk image attached.
+
+```cpp
+#include "UltraCanvasVolumeMonitor.h"
+
+for (const MountedVolume& v : ListMountedVolumes())
+    AddDriveRow(v.path, v.label);
+
+UltraCanvasVolumeMonitor monitor;
+monitor.Start([this]() { volumesDirty.store(true); });  // background thread!
+```
+
+Two halves that are useful apart. `ListMountedVolumes()` answers *what is
+mounted right now* and is the single enumeration the whole framework uses —
+the folder tree of a file manager, the "Computer" dropdown of a
+[path strip](UltraCanvasBreadcrumbExamples.md), a places list. The monitor says
+*when to ask again*. A caller that only lists at start-up needs the first alone.
+
+## Why one enumeration
+
+The Filer's folder tree and the path strip's drive dropdown used to answer the
+question separately, and disagreed. One scanned `/media` and `/mnt`, the other
+`/media`, `/mnt` and `/Volumes`, and **neither looked at `/run/media`**, where
+udisks2 mounts on Fedora, RHEL, Arch and openSUSE — so on those distributions a
+USB stick was invisible in both places, restart or not. The strip also offered
+any directory it found as a drive, including the empty mount-point folder an
+unmount leaves behind, which then led nowhere.
+
+## The callback runs on the monitor's thread
+
+(On macOS, on the main thread.) It must do nothing but hand the news over — set
+an atomic, post to the UI thread — and return.
+
+One insertion produces **several** callbacks: the device, then the volume, then
+the mount. Coalesce on the receiving side; the monitor deliberately does not
+debounce for you, because how long to wait is the caller's decision.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
+| `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |
+| `Stop()` | Stop reporting. Joins whatever is running, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice. |
+| `IsRunning()` / `IsNative()` | Whether it is watching, and whether the operating system is doing the reporting rather than the fallback thread. |
+| `SetPollIntervalMs(ms)` / `GetPollIntervalMs()` | How often the fallback thread re-lists (default 2000, floor 250). Ignored while a native backend runs; takes effect on the next `Start()`. |
+| `NativeBackendAvailable()` | *static.* Whether this build has a backend at all. |
+
+The destructor calls `Stop()`.
+
+`MountedVolume::label` is derived from the path: the drive letter with its colon
+on Windows (`"C:"`), the mount point's own name elsewhere (`"USB STICK"`). The
+system root is labelled `"/"` — an application that calls it something
+friendlier ("File System", "Computer") supplies that word itself rather than
+having it baked into the framework.
+
+## What it never does
+
+It does not read volume labels off the medium. `GetVolumeInformationW` and
+friends touch the disk, which spins up an empty optical drive and waits out the
+timeout of every disconnected network mapping — seconds of stall on a list that
+is rebuilt on every navigation. The mount table alone answers the question.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately |
+| Windows | `WM_DEVICECHANGE` on a hidden top-level window with its own thread and message loop. It has to be a *real* top-level window: broadcast messages are not delivered to message-only (`HWND_MESSAGE`) windows |
+| macOS | `NSWorkspace` mount / unmount / rename notifications, on its own notification centre (the default one does not carry them) |
+| Android, WebAssembly, anything else | none — `Start()` runs the polling thread instead, so callers never need a fallback of their own |
+
+Platform code lives under `UltraCanvas/OS/<Platform>/`; the core file's only
+operating system calls are the ones the mount test needs. A platform is wired up
+by dropping its backend there and adding it to the
+`ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR` condition in the **top-level**
+`CMakeLists.txt` — that decision is made above the subdirectories because the
+library and `Tests/` both consume it, and without the define the core file
+compiles null-returning fallbacks, so the two scopes disagreeing is a duplicate
+symbol at link time in one direction and a missing one in the other.
+
+## Deciding what is a mount point
+
+Two tests, either of which is enough:
+
+- **The platform's mount table** (`ListPlatformMountPoints()`, also per
+  platform: `/proc/self/mounts` on Linux, `getmntinfo()` on macOS,
+  `GetLogicalDrives()` on Windows). Exact, and touches no volume — which
+  matters, because stat'ing a wedged network mount blocks.
+- **A device that differs from the parent directory's.** Needs no table, but
+  cannot see a mount that shares a device with what it is mounted on — a bind
+  mount from the same filesystem is exactly that.
+
+Neither produces a false positive (a differing device *is* a mount), so the
+union of the two is used. This is what keeps the empty placeholder directories
+udisks and hand-made `/mnt` entries leave behind out of the drive list.
+
+## Where volumes are looked for
+
+`/media` and `/run/media` (both also one level down, for the per-user directory
+udisks creates: `/media/bob/USB STICK`), plus `/Volumes` and `/mnt` flat. On
+Windows the mount table is the drive letters, and there is nothing to scan.
+
+## Reacting to a change
+
+The change notification says only *something moved* — diff the new
+`ListMountedVolumes()` against the last one you saw. UltraFiler's
+`RefreshDriveNodes()` is the worked example: it adds a tree row for every volume
+that appeared, removes the rows of volumes that are gone along with everything
+the tree remembered about them, and moves any tab that was inside a vanished
+volume back to the home folder.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWatefallChartExamples.md

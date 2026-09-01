@@ -59,10 +59,6 @@
 #include <sstream>
 #include <system_error>
 
-#ifndef _WIN32
-#include <sys/stat.h>
-#endif
-
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -282,18 +278,15 @@ namespace {
         return dirs;
     }
 
-#ifndef _WIN32
-    // True when `path` is an actual mount point - its device differs from its
-    // parent's. Keeps unmounted placeholder folders under /media and /mnt from
-    // being shown as drives.
-    bool IsMountPoint(const std::string& path) {
-        struct stat here{}, parent{};
-        if (lstat(path.c_str(), &here) != 0) return false;
-        const std::string up = fs::path(path).parent_path().string();
-        if (up.empty() || lstat(up.c_str(), &parent) != 0) return false;
-        return here.st_dev != parent.st_dev;
+    // What a volume is called in the tree. The framework labels the system
+    // root "/" because it has no business choosing an application's wording;
+    // in a file manager that row is the whole filesystem, and "File System" is
+    // what it has always been called here. Everything else - a drive letter, a
+    // stick's volume name - already reads correctly.
+    std::string DriveNodeLabel(const MountedVolume& volume) {
+        if (volume.path == "/") return "File System";
+        return volume.label.empty() ? volume.path : volume.label;
     }
-#endif
 
     // A plain flex wrapper that must never scroll itself - the filer, the tree
     // and the preview are the only scroll regions of the window.
@@ -440,6 +433,9 @@ namespace {
 // ===== INITIALIZATION =====
 
 UltraFilerWindow::~UltraFilerWindow() {
+    // First: its callback captures the window, and Stop() joins, so after this
+    // no mount notification can reach a window that is being destroyed.
+    volumeMonitor.Stop();
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
     StopSubfolderProbeWorker();
@@ -1321,37 +1317,27 @@ void UltraFilerWindow::BuildFolderTree() {
         cloud->data.visible = false;
     QueueCloudStorageDiscovery();
 
-#ifdef _WIN32
-    // ListDriveRoots() reads the mount table in one call. Probing every letter
-    // with is_directory() instead spins up empty optical drives and waits out
-    // the timeout of each disconnected network mapping before the window shows.
-    for (const std::string& drive : ListDriveRoots()) {
-        std::string label = fs::path(drive).root_name().string();  // "C:"
-        if (label.empty()) label = drive;
-        AddTreeDriveNode(drive, label);
-    }
-#else
-    AddTreeDriveNode("/", "File System");
-    // Removable / additional volumes. Only entries that are really mounted are
-    // shown - an empty placeholder folder left behind under /media or /mnt is
-    // not a drive.
-    for (const std::string base : {std::string("/media"), std::string("/mnt")}) {
-        for (const fs::path& mount : ListSubdirectories(base)) {
-            // /media holds one folder per user with the volumes below it.
-            if (base == "/media") {
-                auto volumes = ListSubdirectories(mount.string());
-                for (const fs::path& vol : volumes)
-                    if (IsMountPoint(vol.string()))
-                        AddTreeDriveNode(vol.string(), vol.filename().string());
-            } else if (IsMountPoint(mount.string())) {
-                AddTreeDriveNode(mount.string(), mount.filename().string());
-            }
-        }
-    }
-#endif
+    // ListMountedVolumes() reads the mount table in one pass (the drive
+    // letters on Windows, the directories volumes are mounted under
+    // elsewhere - /media, /run/media, /Volumes, /mnt). Probing every drive
+    // letter with is_directory() instead spins up empty optical drives and
+    // waits out the timeout of each disconnected network mapping before the
+    // window shows; scanning a hand-picked pair of directories instead of the
+    // framework's list is how /run/media, where udisks2 mounts on Fedora,
+    // RHEL, Arch and openSUSE, used to be missed entirely.
+    //
+    // This is only the first fill: RefreshDriveNodes keeps the rows in step
+    // with what is mounted from here on.
+    for (const MountedVolume& volume : ListMountedVolumes())
+        AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
 
     if (root) root->Expand();
     ApplyTreeColors();
+
+    // From here the drive rows follow the machine: a USB stick, a card, an
+    // optical disc, a network share or a disk image appearing or going away
+    // updates them without a restart (RefreshDriveNodes).
+    StartVolumeMonitor();
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
@@ -1461,6 +1447,90 @@ void UltraFilerWindow::AddTreeDriveNode(const std::string& path,
     if (folderTree->FindNode(path)) treeDriveNodeIds.push_back(path);
 }
 
+void UltraFilerWindow::RefreshDriveNodes() {
+    if (!folderTree) return;
+
+    const std::vector<MountedVolume> volumes = ListMountedVolumes();
+    std::set<std::string> mounted;
+    for (const MountedVolume& volume : volumes) mounted.insert(volume.path);
+
+    // ===== VOLUMES THAT WENT AWAY =====
+    // Copied first: DropDriveNode edits treeDriveNodeIds.
+    std::vector<std::string> gone;
+    for (const std::string& nodeId : treeDriveNodeIds)
+        if (!mounted.count(nodeId)) gone.push_back(nodeId);
+    for (const std::string& path : gone) DropDriveNode(path);
+
+    // ===== VOLUMES THAT APPEARED =====
+    // Appended in the order the enumeration gives them, at the end of the
+    // drive rows. Deliberately not re-sorted: sorting means rebuilding every
+    // drive row, which would collapse a subtree the user has open just
+    // because a stick was plugged in somewhere else.
+    bool added = false;
+    for (const MountedVolume& volume : volumes) {
+        if (folderTree->FindNode(volume.path)) continue;
+        AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
+        added = true;
+    }
+
+    if (!added && gone.empty()) return;   // nothing moved: nothing to repaint
+
+    if (added) {
+        // The new rows need the configured drive background, and a volume can
+        // carry a cloud folder with it (a Google Drive that mounts as its own
+        // drive letter), so the cloud section is asked again as well.
+        ApplyTreeColors();
+        QueueCloudStorageDiscovery();
+    }
+    folderTree->RequestRedraw();
+}
+
+void UltraFilerWindow::DropDriveNode(const std::string& path) {
+    // Tabs first, while the tree still describes where they are: a tab left
+    // inside an unmounted volume shows an empty folder that cannot be left by
+    // going up, because its parent is gone too.
+    const std::string home = UserHomeDir();
+    bool moved = false;
+    for (auto& state : tabStates) {
+        if (!state->filer) continue;
+        if (!IsPathInside(state->filer->GetPath(), path)) continue;
+        if (!home.empty()) state->filer->SetPath(home);
+        moved = true;
+    }
+
+    if (folderTree) folderTree->RemoveNode(path);
+    treeDriveNodeIds.erase(
+            std::remove(treeDriveNodeIds.begin(), treeDriveNodeIds.end(), path),
+            treeDriveNodeIds.end());
+    // Forget that anything under the volume was ever scanned: the same stick
+    // plugged back in is a fresh tree, not the one this window last saw.
+    for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
+        if (IsPathInside(*it, path)) it = treeChildrenLoaded.erase(it);
+        else ++it;
+    }
+
+    if (moved && statusLabel)
+        statusLabel->SetText("\"" + path + "\" is no longer connected");
+}
+
+void UltraFilerWindow::StartVolumeMonitor() {
+    auto alive = probeAlive;
+    volumeMonitor.Start([this, alive]() {
+        // The monitor's thread. One insertion is reported several times over
+        // (the device, then the volume, then the mount), and each report would
+        // otherwise cost a pass over the tree: the flag turns the burst into
+        // one refresh, and is cleared by the pass that answers it.
+        if (volumeRefreshPending.exchange(true)) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) { volumeRefreshPending.store(false); return; }
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            volumeRefreshPending.store(false);
+            RefreshDriveNodes();
+        });
+    });
+}
+
 void UltraFilerWindow::ApplyTreeColors() {
     if (!folderTree) return;
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
@@ -1522,16 +1592,26 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
     // a GVFS mount listing on Linux - and one wedged mount would hold up the
     // window. It runs on its own thread and the section appears when it
     // answers, the way the expand buttons do.
-    if (cloudWorker.joinable()) return;   // runs exactly once, at tree build
+    //
+    // Asked again whenever a volume appears, because a cloud folder can arrive
+    // with one - a Google Drive mounted as its own drive letter is the case
+    // this exists for. The busy flag, not the thread's joinability, is what
+    // keeps two lookups from overlapping; the finished thread of the previous
+    // lookup is joined here rather than left dangling.
+    if (cloudWorkerBusy.exchange(true)) return;
+    if (cloudWorker.joinable()) cloudWorker.join();
     auto alive = probeAlive;
     cloudWorker = std::thread([this, alive]() {
         std::vector<CloudStorageInfo> found = GetCloudStorageFolders();
-        if (found.empty()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
-        if (!app) return;
+        if (found.empty() || !app) {
+            cloudWorkerBusy.store(false);
+            return;
+        }
         app->PostToUIThread([this, alive, found = std::move(found)]() {
             if (!alive->load()) return;   // window destroyed meanwhile
             ApplyCloudStorageFolders(found);
+            cloudWorkerBusy.store(false);
         });
     });
 }
@@ -1548,8 +1628,12 @@ void UltraFilerWindow::ApplyCloudStorageFolders(
     if (found.empty() || !folderTree) return;
     TreeNode* cloud = folderTree->FindNode(kCloudNodeId);
     if (!cloud) return;
-    for (const CloudStorageInfo& c : found)
+    for (const CloudStorageInfo& c : found) {
+        // A re-run answers with the folders that were already there as well;
+        // the tree does not reject a duplicate id, it shows the row twice.
+        if (folderTree->FindNode(c.path)) continue;
         AddTreeFolderNode(kCloudNodeId, c.path, c.label, "cloud.svg");
+    }
     if (cloud->children.empty()) return;   // every folder vanished meanwhile
     // Shown open: a section of two or three entries that has to be unfolded
     // first hides exactly what it was added to surface.
@@ -1779,6 +1863,13 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     unpinItem.enabled = isPinnedEntry;
 
+    // The drive rows follow the machine on their own (RefreshDriveNodes, run
+    // from the volume monitor); this is the manual way to the same pass, for a
+    // mount the platform reports through a channel nothing listens on.
+    MenuItemData refreshDrives = MenuItemData::Action("Refresh drives", [this]() {
+        RefreshDriveNodes();
+    });
+
     MenuStyle style = MenuStyle::Default();
     style.font.fontSize = kUiFontSize;
     treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 160, 0);
@@ -1790,6 +1881,8 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     treeContextMenu->AddItem(MenuItemData::Separator());
     treeContextMenu->AddItem(pinSubmenu);
     treeContextMenu->AddItem(unpinItem);
+    treeContextMenu->AddItem(MenuItemData::Separator());
+    treeContextMenu->AddItem(refreshDrives);
     treeContextMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
 }
 

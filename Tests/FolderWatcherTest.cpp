@@ -139,6 +139,38 @@ int main() {
         const int otherBefore = otherHits.load();
         { std::ofstream(other / "here.txt") << "x"; }
         CHECK(WaitForHit(otherHits, otherBefore), "the new folder is reported");
+
+        // ===== STOP IS NOT A FAILURE =====
+        // The failure callback exists so a caller can fall back to polling
+        // when a watch dies on its own. A Stop() the caller performed is not
+        // that, and reporting it would send every navigation through the
+        // recovery path.
+        std::atomic<int> quietFailures{0};
+        CHECK(watcher.Watch(other.string(), [&otherHits]() { ++otherHits; },
+                            [&quietFailures]() { ++quietFailures; }),
+              "a watch takes a failure callback as well");
+        watcher.Stop();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(quietFailures.load() == 0, "Stop() is not reported as a failure");
+
+        // ===== A WATCH THAT DIES ON ITS OWN =====
+        // Deleting the watched folder is the reachable stand-in for what a
+        // pulled USB stick does to the watch on a folder of that volume: the
+        // descriptor / handle is retired under the watcher. Without this the
+        // caller never hears, and a file display simply stops noticing
+        // changes - which is exactly the bug this callback was added for.
+        const fs::path doomed = dir / "doomed";
+        fs::create_directories(doomed, ec);
+        std::atomic<int> lost{0};
+        CHECK(watcher.Watch(doomed.string(), []() {},
+                            [&lost]() { ++lost; }),
+              "a folder about to be deleted can be watched");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        fs::remove_all(doomed, ec);
+        CHECK(WaitForHit(lost, 0), "losing the watched folder is reported once");
+        const int lostOnce = lost.load();
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        CHECK(lost.load() == lostOnce, "and reported only once");
         watcher.Stop();
     }
 
