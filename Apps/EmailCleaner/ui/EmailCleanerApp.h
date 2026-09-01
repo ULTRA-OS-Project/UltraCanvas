@@ -6,7 +6,7 @@
 // and its sync engine caches the message bodies. EmailCleaner mirrors the
 // account list into its own database and analyses that cache, so the two apps
 // share one mailbox without either reaching into the other's tables.
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -21,9 +21,11 @@
 #include "EmailCleanerMapView.h"
 #include "EmailCleanerTimetableView.h"
 #include "EmailCleanerDetailView.h"
+#include "EmailCleanerActionsPanel.h"
 
 #include "EmailCleanerAnalytics.h"
 #include "EmailCleanerIngest.h"
+#include "EmailCleanerMailBackend.h"
 #include "EmailCleanerStore.h"
 
 #include <memory>
@@ -45,6 +47,11 @@ public:
     void Refresh();
 
 private:
+    // Give the actions panel a way out to the mail server: UltraNet's IMAP
+    // plug-in, plus each account's credentials from UltraMail's vault. When
+    // the plug-in or the credentials are missing the panel says so and the
+    // local half (blocking) still works.
+    void WireMailBackend();
     // Analyse the mail UltraMail has cached for the selected account (or every
     // account when none is selected).
     void ScanMailCache();
@@ -59,6 +66,8 @@ private:
     MessageFilter CurrentFilter() const;
     // What the current selection should be called in a heading.
     std::string   CurrentTitle() const;
+    // The same selection as something to act on.
+    ActionTarget  CurrentTarget() const;
 
     AnalysisStore store_;
     Analytics     analytics_{ store_ };
@@ -73,12 +82,18 @@ private:
     std::string selectedSender_;
     std::string selectedDomain_;
 
+    // Kept alive for as long as the backend refers to it.
+    std::shared_ptr<IUltraNetPlugin>  imapPlugin_;
+    std::unique_ptr<MailBackend>      mailBackend_;
+    std::string                       backendUnavailable_;
+
     std::shared_ptr<UltraCanvas::UltraCanvasWindow>          window_;
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs_;
     AccountBar    accountBar_;
     MapView       mapView_;
     TimetableView timetableView_;
     DetailView    detailView_;
+    ActionsPanel  actionsPanel_;
 };
 
 } // namespace EmailCleaner

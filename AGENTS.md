@@ -151,39 +151,61 @@ given build. See `Docs/Modules/UltraNet/ApiStatus.md`.
 
 ## Versioning
 
-The **first line of a changelog is the single source of truth** for a version:
+The **first line of a changelog is the single source of truth** for a version,
+and **every application keeps its own changelog and versions itself**. The
+framework changelog covers the framework — `UltraCanvas/`, the modules, the
+build system, CI — plus DemoApp, which is the framework's showcase and is named
+`UCDemo-<ULTRACANVAS_VERSION>` by the packaging scripts.
 
 | Changelog | Drives |
 |---|---|
-| `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, DemoApp, UltraFiler, UltraViewer, … |
-| `Docs/Texter/CHANGELOG.md` | UltraTexter |
-| `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
+| `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, the modules, the build system, DemoApp |
+| `Docs/AnchorPoint/CHANGELOG.md` | AnchorPoint |
+| `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
 | `Docs/Ladybird/CHANGELOG.md` | The Ladybird browser port (built from its own tree, outside this repository) |
+| `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
+| `Docs/Texter/CHANGELOG.md` | UltraTexter |
+| `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
+| `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
+| `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
+| `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
+| `Docs/UltraMail/CHANGELOG.md` | UltraMail |
+| `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
+| `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
 changelog — that is the whole bump. Do **not** hand-edit a version number
 anywhere else, and never introduce a new literal copy of one:
 
-- `cmake/UltraCanvasVersion.cmake` parses the first line at configure time and
-  sets `ULTRACANVAS_VERSION` / `ULTRATEXTER_VERSION` / `ULTRACLEANER_VERSION` /
-  `LADYBIRD_VERSION` (plus `_DOT4` / `_COMMA4` variants for Windows resources).
-  It feeds every `project(VERSION …)` and the matching compile definitions.
-  Editing a changelog re-triggers the configure step, so existing build trees
-  follow along. `LADYBIRD_VERSION` has no consumer in this repository — the port
-  builds from its own tree and picks the number up by including the module,
-  rather than keeping a second copy of it.
+- `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
+  configure time and sets one `<PREFIX>_VERSION` per row of the table above —
+  `ULTRACANVAS_VERSION`, `EMAILCLEANER_VERSION`, `ULTRAFILER_VERSION` and the
+  rest — plus `_DOT4` / `_COMMA4` variants for Windows resources. Adding an
+  application is one `_ultracanvas_declare_product()` line there plus its
+  changelog file. It feeds every `project(VERSION …)` and the matching compile
+  definitions. Several of those variables have no consumer yet; they are set
+  anyway so that when an app needs to show its version it reads it from the
+  changelog rather than growing a second copy of the number. Editing a
+  changelog re-triggers the configure step, so existing build trees follow
+  along.
 - Code that displays a version reads those defines —
   `UltraCanvas::versionString` (`UltraCanvasUtils.cpp`, shown in the demo app's
   info window), `UltraCanvasTextEditor::version` (shown in Texter's splash) and
   `ULTRACLEANER_VERSION` (UltraCleaner's window title, header line and
   `--version`).
-- An app with its own changelog versions itself: UltraTexter, UltraCleaner and
-  the Ladybird port do not move when the framework releases, and a change to
-  any of them belongs in its own file. A framework change an app needs still
-  goes in `Docs/UltraCanvas/CHANGELOG.md` — including the Ladybird-driven ones,
-  which land in `UltraCanvas/OS/MSWindows/` and `UltraCanvas/core/` rather than
-  in the port. Cross-reference such a change from the app's changelog when a
-  release depends on it; never describe it in two files with two versions.
+- An app versions itself: it does not move when the framework releases, and a
+  change to it belongs in its own file, not in the framework's. A framework
+  change an app needs still goes in `Docs/UltraCanvas/CHANGELOG.md` — including
+  the Ladybird-driven ones, which land in `UltraCanvas/OS/MSWindows/` and
+  `UltraCanvas/core/` rather than in the port. Cross-reference such a change
+  from the app's changelog when a release depends on it; never describe it in
+  two files with two versions.
+- The app changelogs were split out of the framework's on 2026-08-31.
+  EmailCleaner's two entries were moved across verbatim (framework 0.3.87 and
+  0.3.88 now point at them); every other app's earlier history was left where
+  it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
+  what shipped in each framework release. Do not backfill it into the app
+  files — that would put one change in two places under two numbers.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
 - Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still

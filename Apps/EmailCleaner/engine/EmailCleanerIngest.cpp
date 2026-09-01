@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerIngest.h"
 
+#include "EmailCleanerUnsubscribe.h"
+
 #include <UltraNet/UltraNetMime.h>
 
 #include <algorithm>
@@ -145,6 +147,16 @@ AnalyzedMessage Ingestor::Analyze(const std::string& rawMessage,
     std::string replyToName, replyToAddr;
     ParseAddress(Header(headers, "Reply-To"), replyToName, replyToAddr);
 
+    // The sender's unsubscribe offer, captured now so acting on it later does
+    // not need the raw message back.
+    const UnsubscribeInfo unsub = ParseListUnsubscribe(Header(headers, "List-Unsubscribe"));
+    message.unsubMailto        = unsub.mailto;
+    message.unsubMailtoSubject = unsub.mailtoSubject;
+    message.unsubUrl           = unsub.httpUrl;
+    message.unsubOneClick =
+        ParseListUnsubscribePost(Header(headers, "List-Unsubscribe-Post")) &&
+        !unsub.httpUrl.empty();
+
     std::string body;
     bool bodyIsHtml = false;
     UltraNet_MimeGetDisplayBody(parsed, body, bodyIsHtml);
@@ -180,6 +192,11 @@ AnalyzedMessage Ingestor::Analyze(const std::string& rawMessage,
     message.category = verdict.category;
     message.score    = verdict.score;
     message.hits     = verdict.hits;
+
+    // A blocked sender stays classified as whatever it is — blocking is the
+    // user's decision about a sender, not a re-reading of the content — but
+    // the stamp travels with the row so the map and the filters can use it.
+    message.blocked = store_.IsBlocked(message.senderAddr, message.senderDomain);
     return message;
 }
 

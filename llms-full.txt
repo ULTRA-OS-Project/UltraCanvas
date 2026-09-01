@@ -8659,8 +8659,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 # UltraCanvasButton Documentation
 
-**Version:** 1.0.0  
-**Last Modified:** 2025-01-08  
+**Version:** 1.0.1  
+**Last Modified:** 2026-08-31  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -8795,11 +8795,26 @@ void SetOnClick(std::function<void()> _onClick);
 The button supports the following callback events:
 
 ```cpp
-std::function<void()> onClick;       // Fired when button is clicked
-std::function<void()> onPress;       // Fired when button is pressed down
-std::function<void()> onRelease;     // Fired when button is released
-std::function<void()> onHoverEnter;  // Fired when mouse enters button
-std::function<void()> onHoverLeave;  // Fired when mouse leaves button
+std::function<void()> onClick;           // Fired when the button is clicked (left button only)
+std::function<void()> onPress;           // Fired when button is pressed down
+std::function<void()> onRelease;         // Fired when button is released
+std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's state change
+std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
+std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
+std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverLeave;      // Fired when mouse leaves button
+```
+
+**A right-click never reaches `onClick`.** The button activates on the left
+button only; the right button goes to `onContextMenu` with the click position in
+window coordinates, and is ignored when no `onContextMenu` is set. Inspecting
+`GetCurrentEvent().button` inside `onClick` therefore never yields
+`UCMouseButton::Right` — wire the context menu to `onContextMenu` instead:
+
+```cpp
+button->onContextMenu = [menu, container](int windowX, int windowY) {
+    menu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
+};
 ```
 
 ### Event Usage Example
@@ -8965,6 +8980,7 @@ The button automatically handles:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |
 | 1.0.0 | 2025-01-08 | Initial documentation based on actual implementation |
 
 ==============================================================================
@@ -27548,7 +27564,7 @@ struct MenuStyle {
     int paddingBottom;       // Bottom padding
     int iconSpacing;         // Space between icon and text
     int shortcutSpacing;     // Space before shortcut text
-    int separatorHeight;     // Height of separator items
+    int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
     int borderRadius;        // Corner radius
     
@@ -27579,6 +27595,17 @@ MenuStyle::Dark()
 
 // Minimal flat design
 MenuStyle::Flat()
+```
+
+`Dark()` and `Flat()` are `Default()` with colours (and, for `Flat()`, the
+border, corner radius and shadow) replaced — every metric is shared, so a menu
+keeps its shape when it changes theme. Build your own theme the same way:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.backgroundColor = Color(30, 34, 40, 255);
+style.textColor = Colors::White;
+menu->SetStyle(style);
 ```
 
 ## Core Methods
@@ -42933,8 +42960,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options.
 
-**Version:** 1.1.0  
-**Last Modified:** 2025-01-06  
+**Version:** 1.2.0  
+**Last Modified:** 2026-08-31  
 **Author:** UltraCanvas Framework
 
 ## Key Features
@@ -42956,6 +42983,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 - **Focus Animations**: Optional animated transitions on focus changes
 - **Multiple Styles**: Predefined styles (Default, Material, Flat, Outlined, Underlined)
 - **Password Masking**: Secure text display for password fields
+- **Password Reveal**: Optional in-field eye button (and a settable reveal state) to show the typed password
 
 ## Class Definition
 
@@ -43438,6 +43466,62 @@ textInput->SetAutoCompleteSuggestions(suggestions);
 textInput->SetShowAutoComplete(true);
 ```
 
+## Password Reveal ("Show Password")
+
+Password fields mask what the user types, so they need a way to read it back.
+`UltraCanvasTextInput` offers both of the usual controls, and they share one state.
+
+### In-field eye button
+
+```cpp
+auto passwordInput = CreatePasswordInput("password", 10, 10, 300, 30);
+passwordInput->SetShowPasswordToggle(true);   // eye icon at the right of the field
+
+// or in one step:
+auto revealable = CreateRevealablePasswordInput("password", 10, 10, 300, 30);
+```
+
+The button is only painted for fields in password mode (`TextInputType::Password`),
+so it is safe to switch on before the input type is set. It sits to the left of the
+validation icon, and the text area shrinks so typed text never runs underneath it.
+Clicking it flips the mask; the icon shows a plain eye while the password is hidden
+and a struck-through eye while it is visible.
+
+### Explicit "Show password" flag
+
+Any external control can drive the same state - useful when the form wants a visible
+label rather than an icon:
+
+```cpp
+auto showPassword = UltraCanvasCheckbox::CreateCheckbox(
+        "ShowPassword", 10, 50, 160, 20, "Show password", false);
+
+auto* input = passwordInput.get();
+showPassword->onStateChanged = [input](CheckedState, CheckedState newState) {
+    input->SetPasswordRevealed(newState == CheckedState::Checked);
+};
+```
+
+### API
+
+```cpp
+void SetShowPasswordToggle(bool show);   // show/hide the in-field eye button
+bool IsShowPasswordToggle() const;
+
+void SetPasswordRevealed(bool revealed); // unmask/mask from code
+bool IsPasswordRevealed() const;
+void TogglePasswordVisibility();
+
+void SetPasswordToggleColors(const Color& normal, const Color& hovered);
+
+// Fired by the eye button and by SetPasswordRevealed() alike; a no-op change
+// does not fire, so an eye button and a checkbox can mirror each other safely.
+std::function<void(bool)> onPasswordVisibilityChanged;
+```
+
+`GetText()` always returns the real text; only the painted glyphs change. Reveal
+state is reset automatically when the field is switched away from password mode.
+
 ## Factory Functions
 
 ### Convenience Creation Functions
@@ -43451,6 +43535,9 @@ auto emailInput = CreateEmailInput("email", 10, 50, 200, 30);
 
 // Create password input
 auto passwordInput = CreatePasswordInput("password", 10, 90, 200, 30);
+
+// Create password input carrying the in-field eye ("show password") button
+auto revealablePassword = CreateRevealablePasswordInput("password2", 10, 90, 200, 30);
 
 // Create phone input
 auto phoneInput = CreatePhoneInput("phone", 10, 130, 200, 30);
@@ -43475,6 +43562,7 @@ auto textInput = TextInputBuilder()
     .AddValidationRule(ValidationRule::Email())
     .AddValidationRule(ValidationRule::Required())
     .SetMaxLength(100)
+    .ShowPasswordToggle()   // eye button; only painted for password-type fields
     .Build();
 ```
 
@@ -43530,6 +43618,9 @@ passwordInput->AddValidationRule(ValidationRule::Pattern(
     std::regex(".*[A-Z].*"), "Password must contain uppercase letter"));
 passwordInput->AddValidationRule(ValidationRule::Pattern(
     std::regex(".*[0-9].*"), "Password must contain a number"));
+
+// Let the user check what was typed (see "Password Reveal" above)
+passwordInput->SetShowPasswordToggle(true);
 ```
 
 ### Phone Number Input
@@ -45417,8 +45508,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeMapExamples.md
 
 # UltraCanvasTreeMapElement Documentation
 
-**Version:** 1.0.1
-**Last Modified:** 2025-04-01
+**Version:** 1.1.0
+**Last Modified:** 2026-08-31
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -45443,10 +45534,25 @@ UltraCanvasUIElement
 - **Multiple layout algorithms:** `Squarified`, `SliceAndDice`, `Strip`, `Spiral`, `Binary`.
 - **Visual styles:** `Flat`, `Raised`, `Sunken`, `Gradient`, `Textured`, `Minimal`.
 - **Color schemes:** `Sequential`, `Diverging`, `Categorical`, `Random`, `Monochrome`, `Custom`.
-- **Drill-down navigation:** click a node to descend into its subtree; navigate back to root.
+- **Drill-down navigation:** double-click a node to descend into its subtree; navigate back to root.
 - **Display toggles:** show/hide labels, values, percentages, and icons per rectangle.
 - **Interaction:** hover tooltips, selection, mouse wheel zoom, panning, animation between states.
 - **Rich callbacks:** drill-down/up, select/deselect, hover, double-click, right-click.
+
+### Mouse interaction
+
+The element hit-tests **what it draws** — the current level's children, laid out
+by the active algorithm, whether or not they are leaves. So a grouped treemap
+(one rectangle per group, with children only visible after drilling in) is just
+as clickable as a flat one.
+
+| Gesture | Effect |
+|---|---|
+| Left click on a rectangle | Selects it and fires `onNodeSelect(name, value)`. |
+| Left click on the background | Clears the selection (`onNodeDeselect`). |
+| Left double-click | Fires `onNodeDoubleClick`, then drills into the node when it has children (`onNodeDrillDown`). |
+| Right click on a rectangle | Fires `onNodeRightClick(name)`. |
+| Wheel / drag | Zoom and pan, when `SetInteractionOptions` enables them. |
 
 ## Header Include
 
@@ -46463,6 +46569,11 @@ doc file name. For the prose on a given element, use
 click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
 undo/redo, placeholder, max length, validation state, horizontal scrolling and
 multi-byte text. Reproducing even half of that by hand is a week of bugs.
+
+Password fields also get a reveal control: `SetShowPasswordToggle(true)` paints
+an eye button inside the field, and `SetPasswordRevealed()` drives the same state
+from an external "Show password" checkbox. See
+[UltraCanvasTextInputExamples.md](UltraCanvasTextInputExamples.md).
 
 ## Buttons and choices
 

@@ -4,8 +4,8 @@
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options.
 
-**Version:** 1.1.0  
-**Last Modified:** 2025-01-06  
+**Version:** 1.2.0  
+**Last Modified:** 2026-08-31  
 **Author:** UltraCanvas Framework
 
 ## Key Features
@@ -27,6 +27,7 @@
 - **Focus Animations**: Optional animated transitions on focus changes
 - **Multiple Styles**: Predefined styles (Default, Material, Flat, Outlined, Underlined)
 - **Password Masking**: Secure text display for password fields
+- **Password Reveal**: Optional in-field eye button (and a settable reveal state) to show the typed password
 
 ## Class Definition
 
@@ -509,6 +510,62 @@ textInput->SetAutoCompleteSuggestions(suggestions);
 textInput->SetShowAutoComplete(true);
 ```
 
+## Password Reveal ("Show Password")
+
+Password fields mask what the user types, so they need a way to read it back.
+`UltraCanvasTextInput` offers both of the usual controls, and they share one state.
+
+### In-field eye button
+
+```cpp
+auto passwordInput = CreatePasswordInput("password", 10, 10, 300, 30);
+passwordInput->SetShowPasswordToggle(true);   // eye icon at the right of the field
+
+// or in one step:
+auto revealable = CreateRevealablePasswordInput("password", 10, 10, 300, 30);
+```
+
+The button is only painted for fields in password mode (`TextInputType::Password`),
+so it is safe to switch on before the input type is set. It sits to the left of the
+validation icon, and the text area shrinks so typed text never runs underneath it.
+Clicking it flips the mask; the icon shows a plain eye while the password is hidden
+and a struck-through eye while it is visible.
+
+### Explicit "Show password" flag
+
+Any external control can drive the same state - useful when the form wants a visible
+label rather than an icon:
+
+```cpp
+auto showPassword = UltraCanvasCheckbox::CreateCheckbox(
+        "ShowPassword", 10, 50, 160, 20, "Show password", false);
+
+auto* input = passwordInput.get();
+showPassword->onStateChanged = [input](CheckedState, CheckedState newState) {
+    input->SetPasswordRevealed(newState == CheckedState::Checked);
+};
+```
+
+### API
+
+```cpp
+void SetShowPasswordToggle(bool show);   // show/hide the in-field eye button
+bool IsShowPasswordToggle() const;
+
+void SetPasswordRevealed(bool revealed); // unmask/mask from code
+bool IsPasswordRevealed() const;
+void TogglePasswordVisibility();
+
+void SetPasswordToggleColors(const Color& normal, const Color& hovered);
+
+// Fired by the eye button and by SetPasswordRevealed() alike; a no-op change
+// does not fire, so an eye button and a checkbox can mirror each other safely.
+std::function<void(bool)> onPasswordVisibilityChanged;
+```
+
+`GetText()` always returns the real text; only the painted glyphs change. Reveal
+state is reset automatically when the field is switched away from password mode.
+
 ## Factory Functions
 
 ### Convenience Creation Functions
@@ -522,6 +579,9 @@ auto emailInput = CreateEmailInput("email", 10, 50, 200, 30);
 
 // Create password input
 auto passwordInput = CreatePasswordInput("password", 10, 90, 200, 30);
+
+// Create password input carrying the in-field eye ("show password") button
+auto revealablePassword = CreateRevealablePasswordInput("password2", 10, 90, 200, 30);
 
 // Create phone input
 auto phoneInput = CreatePhoneInput("phone", 10, 130, 200, 30);
@@ -546,6 +606,7 @@ auto textInput = TextInputBuilder()
     .AddValidationRule(ValidationRule::Email())
     .AddValidationRule(ValidationRule::Required())
     .SetMaxLength(100)
+    .ShowPasswordToggle()   // eye button; only painted for password-type fields
     .Build();
 ```
 
@@ -601,6 +662,9 @@ passwordInput->AddValidationRule(ValidationRule::Pattern(
     std::regex(".*[A-Z].*"), "Password must contain uppercase letter"));
 passwordInput->AddValidationRule(ValidationRule::Pattern(
     std::regex(".*[0-9].*"), "Password must contain a number"));
+
+// Let the user check what was typed (see "Password Reveal" above)
+passwordInput->SetShowPasswordToggle(true);
 ```
 
 ### Phone Number Input

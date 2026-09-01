@@ -13,6 +13,9 @@ set(EMAILCLEANER_TEST_SOURCES
     test_store.cpp
     test_ingest.cpp
     test_analytics.cpp
+    test_unsubscribe.cpp
+    test_actions.cpp
+    test_mailbackend.cpp
 )
 
 add_executable(EmailCleanerEngineTests ${EMAILCLEANER_TEST_SOURCES})

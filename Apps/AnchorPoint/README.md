@@ -2,6 +2,8 @@
 
 **Peer-to-peer file sharing — computer to computer, with no server file storage.**
 
+This app versions itself: [`Docs/AnchorPoint/CHANGELOG.md`](../../Docs/AnchorPoint/CHANGELOG.md).
+
 AnchorPoint sends files *directly* between two machines. Bytes never land on a
 server's disk. On a LAN it needs no infrastructure at all; across the internet
 it uses a tiny **signaling** step to help two peers find each other and punch

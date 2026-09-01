@@ -43,6 +43,16 @@ struct IngestState {
     int         messages  = 0;   // messages ingested for this folder so far
 };
 
+// One blocklist entry: a sender address, or a whole sending domain.
+struct BlockEntry {
+    std::string pattern;          // lowercased address or domain
+    bool        isDomain = false;
+    std::string reason;           // why it was blocked, for the list view
+    int64_t     added = 0;        // epoch seconds
+
+    bool Valid() const { return !pattern.empty(); }
+};
+
 class AnalysisStore {
 public:
     // Register the connection and bring the schema up to date. `databasePath`
@@ -124,6 +134,31 @@ public:
     // evidence summary behind a sender or a category.
     UltraDbResult GetTopKeywords(const MessageFilter& filter, int limit,
                                  std::vector<KeywordHit>& out) const;
+
+    // ---- Blocklist ---------------------------------------------------------
+    // Senders the user has decided not to hear from. Purely local: it changes
+    // what the ingest marks and what the map shows, and never touches the
+    // mail server.
+    UltraDbResult AddBlock(const BlockEntry& entry);
+    UltraDbResult RemoveBlock(const std::string& pattern);
+    UltraDbResult ListBlocks(std::vector<BlockEntry>& out) const;
+    // True when the address, or the domain it belongs to, is blocked.
+    bool IsBlocked(const std::string& senderAddr, const std::string& domain) const;
+
+    // Re-stamp the `blocked` flag on stored messages after the list changed,
+    // so the map reflects a block without a re-ingest. Returns rows touched in
+    // the result's affectedRows.
+    UltraDbResult ApplyBlocklistToMessages();
+
+    // ---- Unsubscribe -------------------------------------------------------
+    // The newest unsubscribe offer seen from a sender (or, for a domain
+    // target, from anyone under it). `found` is false when nobody offered one.
+    UltraDbResult GetUnsubscribeOffer(const MessageFilter& filter,
+                                      std::string& outMailto,
+                                      std::string& outMailtoSubject,
+                                      std::string& outUrl,
+                                      bool& outOneClick,
+                                      bool& found) const;
 
     // ---- Ingest bookkeeping ------------------------------------------------
     UltraDbResult UpsertIngestState(const IngestState& state);

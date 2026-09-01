@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasTreeMapElement.h
 // Interactive treemap component with hierarchical data visualization and drill-down navigation
-// Version: 1.0.1
-// Last Modified: 2025-04-01
+// Version: 1.1.0
+// Last Modified: 2026-08-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -270,6 +270,11 @@ namespace UltraCanvas {
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderChart(IRenderContext* ctx) override;
+        // Clicks are what make a treemap a navigation surface: a left click
+        // selects the block under the pointer (onNodeSelect), a double click
+        // drills into it (onNodeDrillDown), a right click reports it. Anything
+        // else falls through to the chart base's pan / zoom handling.
+        bool OnEvent(const UCEvent& event) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
         bool HandleChartMouseWheel(double delta);
         bool HandleChartPan(int dx, int dy);
@@ -299,7 +304,6 @@ namespace UltraCanvas {
         void DrawLeafNodeDetails(IRenderContext* ctx);
 
         std::shared_ptr<TreeMapNode> GetNodeAtPosition(const Point2Di& pos) const;
-        std::shared_ptr<TreeMapNode> FindNodeAtPositionRecursive(std::shared_ptr<TreeMapNode> node, const Point2Dd& pos) const;
         Color GetNodeColor(std::shared_ptr<TreeMapNode> node) const;
         void UpdateColors();
         void UpdateNodeColorsRecursive(std::shared_ptr<TreeMapNode> node);
