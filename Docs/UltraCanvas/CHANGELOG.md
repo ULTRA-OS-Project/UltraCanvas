@@ -1,4 +1,54 @@
 #### 2026-08-31 *0.3.88*
+- **VirtualFS: nested archives no longer spill to a temp file.** Reading
+  `/outer.zip/inner.7z/docs/report.txt` extracted `inner.7z` to the temp
+  directory first, because `IVirtualFSProvider::Open()` only accepted a real
+  path — so every nested traversal left the inner archive's decompressed bytes
+  on disk, including archives decrypted from a password-protected parent, which
+  landed there as plaintext. New optional
+  `IVirtualFSProvider::OpenFromMemory()` takes the bytes directly; the
+  libarchive provider implements it over `archive_read_open_memory()` and
+  advertises the new `VirtualFSCapability::MemoryOpen`.
+  `VirtualFSManager::OpenNestedArchive()` prefers it and falls back to a temp
+  file only when a provider returns `NotSupported`, so providers that need a
+  real path keep working unchanged. libarchive streams are forward-only, so the
+  provider reopened the archive from its path in seven places; those are now a
+  single `Impl::NewReadHandle()` that opens from either source, which is what
+  makes the memory path apply to listing, extraction and validation rather than
+  only to the first read. An archive opened from memory cannot be modified —
+  rewrites go through a temp file and rename, which needs a real path — so
+  `RewriteArchive()` reports `NotSupported` for one. Also fixed: a failed temp
+  write left the partial file behind, and a temp file was written before
+  checking that any provider could handle the format. New regression test
+  `Tests/VirtualFSNestedMemoryTest.cpp` covers nested reads, listing, existence
+  and the cached-provider second read, asserting the temp directory stays empty
+  throughout.
+- **VirtualFS: OS-visible RAM discs** (`VirtualFS/VirtualFSRamDisk.h`). A disc
+  created here is a real mount point — `fopen()`, other processes and the
+  platform file manager all reach it — not an in-process structure. VirtualFS
+  drives the facility each platform already provides rather than shipping a
+  driver: a `0700` directory on the `/dev/shm` tmpfs on Linux, `hdiutil attach
+  ram://` plus `diskutil erasevolume` on macOS, and the ImDisk driver on
+  Windows when it is installed. Windows ships no RAM disc facility of its own,
+  so the back end **detects** ImDisk instead of depending on it and degrades to
+  a `%TEMP%` directory (wiped on destroy) when it is absent or the process is
+  not elevated. That fallback is never disguised: every disc reports its
+  backing, and `VirtualFSRamDisk::IsTrueRam()` tells callers whether bytes can
+  reach persistent storage, so code holding decrypted content can refuse it.
+  Discs are private to the calling user, and disc names are validated against a
+  strict character set before becoming part of a real path so one cannot escape
+  the mount root. `VirtualFS_ListRamDisks()` finds discs left behind by a
+  process that died before destroying them — ImDisk discs included, located by
+  the volume label their name is stamped into — which makes a start-up sweep
+  possible. `VirtualFS_UseRamDiskForTemp()` points the manager's temp directory
+  at a disc; destroying a disc still serving as the temp directory moves the
+  manager off it first, so later temp writes do not fail against a mount that
+  no longer exists. New test `Tests/VirtualFSRamDiskTest.cpp` verifies the disc
+  is reachable through plain stdio, that a Linux disc really is tmpfs rather
+  than a plain directory, the `0700` permissions, name and size validation,
+  duplicate refusal, temp redirection and its unwind, and idempotent destroy.
+  The Linux back end is verified end to end; the macOS and Windows back ends
+  compile for their targets, but their `hdiutil`/`diskutil`/`imdisk`
+  invocations need those platforms to exercise.
 - **EmailCleaner 0.2.0 — acting on a selected block** (block / unsubscribe /
   move to Trash). The app keeps its own changelog now:
   [`Docs/EmailCleaner/CHANGELOG.md`](../EmailCleaner/CHANGELOG.md). Two

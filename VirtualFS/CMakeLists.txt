@@ -129,12 +129,31 @@ set(VIRTUALFS_HEADERS
     include/VirtualFS/VirtualFSProvider.h
     include/VirtualFS/VirtualFSManager.h
     include/VirtualFS/VirtualFSCompression.h
+    include/VirtualFS/VirtualFSRamDisk.h
+    include/VirtualFS/VirtualFSRamDiskPlatform.h
 )
 
 set(VIRTUALFS_SOURCES
     core/VirtualFSManager.cpp
     core/VirtualFSCompression.cpp
+    core/VirtualFSRamDisk.cpp
 )
+
+# RAM disc provisioning is driven entirely by platform facilities (tmpfs,
+# hdiutil, ImDisk), so exactly one back end is compiled per target.
+if(WIN32)
+    list(APPEND VIRTUALFS_SOURCES OS/MSWindows/VirtualFSRamDiskPlatform.cpp)
+    message(STATUS "RAM disc back end: Windows (ImDisk if installed, else disk fallback)")
+elseif(APPLE)
+    list(APPEND VIRTUALFS_SOURCES OS/MacOS/VirtualFSRamDiskPlatform.cpp)
+    message(STATUS "RAM disc back end: macOS (hdiutil ram://)")
+elseif(UNIX)
+    list(APPEND VIRTUALFS_SOURCES OS/Linux/VirtualFSRamDiskPlatform.cpp)
+    message(STATUS "RAM disc back end: Linux (/dev/shm tmpfs)")
+else()
+    message(WARNING "No RAM disc back end for this platform - "
+                    "VirtualFS_CreateRamDisk() will not link")
+endif()
 
 # Add provider sources based on available libraries
 if(LIBARCHIVE_FOUND)

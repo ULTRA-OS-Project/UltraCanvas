@@ -91,7 +91,9 @@ App / Module (UltraCanvas, FileDialog, Texter, UltraFiler, ...)
 * Single C-style entrypoint surface (`VirtualFS_*`).
 * `VirtualFSResult` for every operation — explicit error codes with
   human-readable messages.
-* Transparent nested archive support (`/backup.zip/docs/report.7z/data.csv`).
+* Transparent nested archive support (`/backup.zip/docs/report.7z/data.csv`)
+  — the inner archive is opened straight from memory, so nothing is
+  written to the temp directory (see *Nested archives* below).
 * Password callbacks for encrypted archives.
 * Progress callbacks for extraction/creation with cancellation.
 * Entry caching for performance on repeated access.
@@ -157,6 +159,113 @@ UCVFSBridge::DecompressAuto(unknownData, decompressed);
 
 ---
 
+## Nested archives
+
+Reading `/backup.zip/bundle/inner.7z/docs/report.txt` requires opening
+`inner.7z` while it is still inside `backup.zip`. VirtualFS reads the inner
+archive's bytes from the outer provider and hands them straight to the
+provider that will open it, via
+`IVirtualFSProvider::OpenFromMemory()`:
+
+```cpp
+// Providers that can work from a buffer advertise it:
+if (HasCapability(provider->GetCapabilities(),
+                  VirtualFSCapability::MemoryOpen)) {
+    auto bytes = std::make_shared<std::vector<uint8_t>>(std::move(data));
+    provider->OpenFromMemory(bytes, "/backup.zip/bundle/inner.7z");
+}
+```
+
+The libarchive provider implements this over `archive_read_open_memory()`,
+so **the nested archive never touches the disk**. This matters most when the
+outer archive is password-protected: the decrypted inner archive would
+otherwise sit in the temp directory as plaintext.
+
+A provider that can only open a real path simply does not override
+`OpenFromMemory()` — the default returns `NotSupported` and
+`VirtualFSManager` falls back to extracting a temp file, as before. The
+buffer is held for the whole open span, because libarchive streams are
+forward-only and every operation reopens the archive.
+
+**Limitation:** an archive opened from memory cannot be modified. Write
+operations rewrite the archive through a temp file and rename, which needs a
+real path, so `AddFile()`/`Delete()`/`DeleteEntries()` on a memory-opened
+archive return `NotSupported`.
+
+---
+
+## RAM discs
+
+`VirtualFSRamDisk.h` provisions an **OS-visible** RAM disc: a real mount
+point that `fopen()`, other processes and the platform file manager can all
+reach. VirtualFS does not implement a filesystem to do this - that would
+mean shipping a kernel driver - it drives the facility each platform already
+provides.
+
+```cpp
+#include <VirtualFS/VirtualFSRamDisk.h>
+
+VirtualFSRamDisk disk;
+if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
+        == VirtualFSResult::Success) {
+
+    // A real path: any process, any API, not just VirtualFS_*
+    std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);
+
+    // Send VirtualFS's own temp files there too
+    VirtualFS_UseRamDiskForTemp(disk);
+
+    VirtualFS_DestroyRamDisk(disk);   // contents go with it
+}
+```
+
+| Platform | Mechanism | True RAM? | Privileges | Sizing |
+|---|---|---|---|---|
+| Linux | `/dev/shm` (tmpfs) | Yes | None | Advisory¹ |
+| macOS | `hdiutil attach ram://` + `diskutil erasevolume` | Yes | None | Exact |
+| Windows | ImDisk driver, when installed | Yes | **Admin** | Exact |
+| Windows | `%TEMP%` + wipe on destroy | **No** | None | Advisory |
+
+¹ `/dev/shm` is one shared tmpfs with one global limit; a private quota
+needs root. `capacityBytes` reports the space actually free there.
+
+### Windows has no built-in RAM disc
+
+Every real option on Windows is a third-party kernel driver. Rather than
+depend on one, the back end **detects** ImDisk and falls back to an ordinary
+`%TEMP%` directory when it is absent or the process is not elevated.
+
+That fallback is **not RAM** - it is real storage, wiped on destroy. The
+backing is always reported, never silently substituted:
+
+```cpp
+if (!disk.IsTrueRam()) {
+    // Windows without ImDisk: bytes will reach persistent storage.
+    // Refuse to put decrypted content here, or warn the user.
+}
+```
+
+Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
+distinction matters, so you can warn up front rather than after the fact.
+
+### Privacy and lifetime
+
+Discs are private to the calling user - mode `0700` on POSIX, an ACL
+granting only the current user on Windows. A disc does not survive a reboot,
+and usually not a crash of the creating process either. `VirtualFS_ListRamDisks()`
+finds discs left behind by a process that died before destroying them, which
+makes a start-up sweep possible:
+
+```cpp
+for (auto& stale : VirtualFS_ListRamDisks()) {
+    VirtualFS_DestroyRamDisk(stale);
+}
+```
+
+**Never put the only copy of anything on a RAM disc.**
+
+---
+
 ## Module layout
 
 ```
@@ -166,9 +275,11 @@ VirtualFS/
 │   ├── VirtualFSTypes.h         (enums, structs, callbacks)
 │   ├── VirtualFSPath.h          (path parsing, archive detection)
 │   ├── VirtualFSProvider.h      (IVirtualFSProvider interface)
-│   └── VirtualFSManager.h       (singleton manager)
+│   ├── VirtualFSManager.h       (singleton manager)
+│   └── VirtualFSRamDisk.h       (OS-visible RAM discs)
 ├── core/
-│   └── VirtualFSManager.cpp     (manager implementation)
+│   ├── VirtualFSManager.cpp     (manager implementation)
+│   └── VirtualFSRamDisk.cpp     (RAM disc, platform-independent half)
 ├── providers/
 │   ├── VirtualFSLibArchiveProvider.h/.cpp   (40+ formats)
 │   ├── VirtualFSCHMProvider.h/.cpp          (CHM via libmspack)
@@ -177,7 +288,8 @@ VirtualFS/
 │   ├── UltraCanvasVirtualFSBridge.h         (UltraCanvas API)
 │   └── UltraCanvasVirtualFSBridge.cpp
 ├── OS/<Platform>/
-│   └── VirtualFSPlatform.cpp
+│   ├── VirtualFSPlatform.cpp
+│   └── VirtualFSRamDiskPlatform.cpp   (one per platform)
 └── CMakeLists.txt
 ```
 
@@ -250,6 +362,9 @@ zlib; the affected features are compiled out with a warning.
 | VirtualFSPath | ✅ Complete |
 | LibArchive provider | ✅ Complete |
 | UltraCanvas bridge | ✅ Complete |
+| Memory-backed nested archives | ✅ Complete |
+| RAM discs (Linux / macOS) | ✅ Complete |
+| RAM discs (Windows, ImDisk) | ✅ Complete — driver detected, not bundled |
 | CHM provider (libmspack) | Planned |
 | WIM provider (wimlib) | Planned |
 | Linux / macOS / Windows | ✅ Supported |
