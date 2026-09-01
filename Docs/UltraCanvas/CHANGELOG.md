@@ -1,3 +1,18 @@
+#### 2026-09-01 *0.3.89*
+- **UltraFiler: the Home folder's curation is a setting now — Settings >
+  Display > Home folder.** *Show all content* lists every subfolder of the
+  profile (in the tree the main folders keep their own icons, and a
+  redirected one is listed once, by its real path); *Show only predefined
+  folders* is the curated view — Desktop, Documents, Downloads, Music,
+  Pictures, Videos and nothing else. One setting governs the folder tree's
+  Home entry and the file display of the home folder alike, applies live to
+  every open tab and the folder preview, and is stored as
+  `display.home.content` (`all` / `predefined`). The defaults differ by
+  platform: curated on Windows, whose profiles carry a dozen system folders
+  ("3D Objects", "Saved Games", the sync clients); show-all on Linux and
+  macOS, where the home folder is the user's own. Display > Hidden files in
+  the file display still reveals everything regardless.
+
 #### 2026-08-31 *0.3.88*
 - **VirtualFS: nested archives no longer spill to a temp file.** Reading
   `/outer.zip/inner.7z/docs/report.txt` extracted `inner.7z` to the temp
