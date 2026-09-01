@@ -41,7 +41,10 @@
 // dropped from the front of the last line, which opens with "…".
 // An explicit file list (ShowFileList) is sorted like a folder listing unless
 // SetFileListOrderPreserved() asks for the given order to be kept — for lists
-// whose order is the information, such as a most-recently-used history.
+// whose order is the information, such as a most-recently-used history. A list
+// that is still being produced grows through AppendToFileList(), which stats
+// only the new paths and leaves the scroll position and the selection alone —
+// UltraFiler's sub-folder search shows its matches while the walk runs.
 // A name filter (SetNameFilter) narrows the displayed listing to the entries
 // whose name contains the text, without touching the disk — hosts wire a
 // search field's onTextChanged to it for filter-as-you-type; while the filter
@@ -62,8 +65,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.20.0
-// Last Modified: 2026-08-28
+// Version: 1.21.0
+// Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -375,6 +378,15 @@ namespace UltraCanvas {
         // to let the context menu open an entry's containing folder.
         void ShowFileList(const std::vector<std::string>& paths);
         bool IsShowingFileList() const { return fileListMode; }
+
+        // Adds paths to the file list already on display, stat-ing only the
+        // new ones and leaving the scroll position and the selection alone —
+        // for a list that is still being produced (UltraFiler's sub-folder
+        // search shows its matches while the walk continues). Handing the
+        // whole grown list to ShowFileList() instead would re-stat everything
+        // per batch and jump the view back to the top. Called before any
+        // ShowFileList() it behaves like one.
+        void AppendToFileList(const std::vector<std::string>& paths);
 
         // Show a file list exactly in the order the paths were handed over
         // instead of sorting it — for lists whose order is the information
@@ -1397,6 +1409,9 @@ namespace UltraCanvas {
         // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
+        // The per-entry finishing pass every listing gets: weight, attribute
+        // letters and the info column (compression ratio or infoProvider).
+        void DecorateEntry(FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
         void ApplyEntryTypeInfo(FilerEntry& e) const;

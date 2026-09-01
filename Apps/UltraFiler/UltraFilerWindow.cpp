@@ -1,8 +1,10 @@
 // Apps/UltraFiler/UltraFilerWindow.cpp
 // UltraFiler main window: Windows Explorer style file manager built from the
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
-// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
-// search field and the detail pane: a selected media file shows in the media
+// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a search
+// field with an in-field "Scan sub folder" button — the sub-folder scan it
+// starts runs on a worker thread and feeds its matches into the display while
+// it walks — and the detail pane: a selected media file shows in the media
 // preview (UltraCanvasMediaViewer), a selected folder shows its content
 // through the folder preview (a second UltraCanvasFilerWidget in
 // small-thumbnail mode) — the two share the pane. The toolbar's
@@ -28,8 +30,8 @@
 // colour picked from the strip under a transparent image in the preview is
 // saved the same way. Esc closes the History or Favorites view, or an open
 // media preview.
-// Version: 1.15.0
-// Last Modified: 2026-08-26
+// Version: 1.16.0
+// Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -52,6 +54,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -89,6 +92,20 @@ namespace {
 
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
+
+    // ===== SUB-FOLDER SEARCH LIMITS =====
+    // How many matches one scan collects. The list is held in memory and
+    // stat-ed entry by entry for the display, so a match-everything query on
+    // a whole volume has to stop somewhere.
+    constexpr size_t kMaxSearchResults = 20000;
+    // How deep the walk goes. Symlinks and junctions are never entered, which
+    // rules out the usual endless loops; this is the backstop for a genuinely
+    // (or pathologically) deep tree.
+    constexpr int kMaxSearchDepth = 64;
+    // Minimum distance between two result batches reaching the display. Small
+    // enough to read as "results appearing while it searches", large enough
+    // that the walk is not paced by the re-sort of what is already listed.
+    constexpr int kSearchBatchMs = 200;
 
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
@@ -297,8 +314,10 @@ namespace {
 
     // A plain flex wrapper that must never scroll itself - the filer, the tree
     // and the preview are the only scroll regions of the window.
-    std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
-        auto c = std::make_shared<UltraCanvasContainer>(id);
+    std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id,
+                                                       float width = -1,
+                                                       float height = -1) {
+        auto c = std::make_shared<UltraCanvasContainer>(id, -1, -1, width, height);
         ContainerStyle st;
         st.autoShowScrollbars           = false;
         st.forceShowVerticalScrollbar   = false;
@@ -442,6 +461,8 @@ namespace {
 UltraFilerWindow::~UltraFilerWindow() {
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
+    StopSubfolderSearch();
+    ReapSearchWorkers(true);    // now the search threads are waited for
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
 }
@@ -951,6 +972,11 @@ void UltraFilerWindow::ApplyLiveSearchFilter(const std::string& text) {
     // The filter narrows the folder display, so typing leaves the History /
     // Favorites views.
     ShowBrowsingView();
+    // Editing the query invalidates a scan of the old one — and the folder
+    // filter below is about to take the display back anyway.
+    StopSubfolderSearch();
+    searchStatus.clear();
+    searchQueryText.clear();
     if (!filer) return;
     // Typing filters the folder itself: a recursive-result display from an
     // earlier Enter ends first (SetPath leaves file-list mode and drops the
@@ -968,6 +994,10 @@ void UltraFilerWindow::ResetSearchState() {
     // does not re-enter the filter path.
     if (searchInput) searchInput->SetText("");
     if (FilerTabState* tab = ActiveTabState()) tab->searchQuery.clear();
+    StopSubfolderSearch();
+    searchQueryText.clear();
+    searchStatus.clear();
+    UpdateScanButton();
     if (!filer) return;
     if (filer->IsShowingFileList()) {
         filer->SetOpenPathMenuItemVisible(false);
@@ -1022,52 +1052,270 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
     ShowBrowsingView();
     if (!filer) return;
 
+    // Whatever was being scanned belonged to the previous query.
+    StopSubfolderSearch();
+
     if (query.empty()) {
         // Back to the normal folder display (SetPath leaves file-list mode).
         if (filer->IsShowingFileList()) filer->SetPath(filer->GetPath());
+        searchStatus.clear();
+        searchQueryText.clear();
+        UpdateScanButton();
+        UpdateStatusBar();
         return;
     }
 
     const std::string root = filer->GetPath();
     if (root.empty()) return;
+    FilerTabState* tab = ActiveTabState();
+    if (!tab) return;
 
-    // The recursive results replace the as-you-type folder filter — they are
-    // an explicit file list, not a narrowed folder listing.
+    // Recorded before the display is touched: dropping the name filter below
+    // makes the filer report a refresh, and the handler for that puts the
+    // filer's (now empty) filter text back into the search field unless the
+    // tab is already known to be showing a search.
+    tab->searchQuery = query;
+    searchTab = tab;
+    searchQueryText = query;
+    searchResultsShown = false;
+
+    // The scan results replace the as-you-type folder filter — they are an
+    // explicit file list, not a narrowed folder listing.
     filer->SetNameFilter("");
 
     std::string needle = query;
     std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+    filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+    // An empty result display right away: the folder listing the search was
+    // typed against is not what the search is about, and the first matches
+    // land in this display a moment later.
+    filer->ShowFileList({});
 
-    // Bounded so a match-everything query on a huge tree stays responsive.
-    constexpr size_t kMaxResults = 1000;
-    std::vector<std::string> results;
-    std::error_code ec;
-    fs::recursive_directory_iterator it(
-            root, fs::directory_options::skip_permission_denied, ec), end;
-    for (; !ec && it != end && results.size() < kMaxResults; it.increment(ec)) {
-        const std::string name = it->path().filename().string();
-        if (IsHiddenFileSystemEntry(it->path())) {
-            // Consistent with the folder tree: hidden folders are not entered.
-            std::error_code dec;
-            if (it->is_directory(dec) && !dec) it.disable_recursion_pending();
+    searchState = std::make_shared<SubfolderSearchState>();
+    const uint64_t generation = ++searchGeneration;
+    searchStatus = "Searching \"" + query + "\" ...";
+    UpdateScanButton();
+    UpdateStatusBar();
+
+    auto state = searchState;
+    auto alive = probeAlive;
+    searchWorker = std::thread([this, state, alive, root, needle, generation]() {
+        SubfolderSearchWorkerMain(state, alive, root, needle, generation);
+    });
+}
+
+void UltraFilerWindow::SubfolderSearchWorkerMain(
+        std::shared_ptr<SubfolderSearchState> state,
+        std::shared_ptr<std::atomic<bool>> alive,
+        std::string root, std::string needle, uint64_t generation) {
+    // Hands the batch collected so far to the UI thread. Only one is ever in
+    // flight: a walk over a fast local tree finds matches far quicker than the
+    // display can absorb them, and every posted batch costs a stat per path
+    // plus a re-sort of what is already listed.
+    auto post = [&](bool force) {
+        if (state->drainPosted.exchange(true) && !force) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, state, alive, generation]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            DrainSubfolderSearch(state, generation);
+        });
+    };
+
+    struct PendingDir { fs::path path; int depth; };
+    std::vector<PendingDir> stack;
+    stack.push_back({fs::path(root), 0});
+    auto lastPost = std::chrono::steady_clock::now();
+
+    try {
+        while (!stack.empty() && !state->cancelled.load()) {
+            const PendingDir dir = stack.back();
+            stack.pop_back();
+
+            std::error_code ec;
+            fs::directory_iterator it(
+                    dir.path, fs::directory_options::skip_permission_denied, ec);
+            const fs::directory_iterator end;
+            if (ec) continue;   // vanished, unreadable, not a directory any more
+
+            std::vector<std::string> found;
+            for (; it != end; it.increment(ec)) {
+                if (ec || state->cancelled.load()) break;
+                const fs::path p = it->path();
+                // Consistent with the folder tree: hidden entries are neither
+                // reported nor entered.
+                if (IsHiddenFileSystemEntry(p)) continue;
+                std::error_code dec;
+                // A symlink is never followed — and on Windows a directory
+                // junction is one, which is what kept the old recursive walk
+                // going in circles through the profile's compatibility links.
+                const bool link = it->is_symlink(dec) && !dec;
+                dec.clear();
+                const bool isDir = !link && it->is_directory(dec) && !dec;
+
+                const std::string name = p.filename().string();
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                if (lower.find(needle) != std::string::npos)
+                    found.push_back(p.string());
+
+                if (isDir && dir.depth < kMaxSearchDepth)
+                    stack.push_back({p, dir.depth + 1});
+            }
+
+            state->foldersScanned.fetch_add(1);
+            const size_t total = state->matches.load() + found.size();
+            bool truncated = false;
+            if (total >= kMaxSearchResults) {
+                // Bounded so a match-everything query on a huge tree cannot
+                // grow the result list without end.
+                if (found.size() > kMaxSearchResults - state->matches.load())
+                    found.resize(kMaxSearchResults - state->matches.load());
+                truncated = true;
+            }
+            if (!found.empty()) {
+                std::lock_guard<std::mutex> lk(state->mutex);
+                state->matches.fetch_add(found.size());
+                state->pending.insert(state->pending.end(),
+                                      std::make_move_iterator(found.begin()),
+                                      std::make_move_iterator(found.end()));
+            }
+            if (truncated) { state->truncated.store(true); break; }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now - lastPost >= std::chrono::milliseconds(kSearchBatchMs)) {
+                lastPost = now;
+                post(false);
+            }
+        }
+    } catch (const std::exception&) {
+        // A walk must never take the application down: whatever the platform
+        // layer threw, the search ends with what it has.
+    } catch (...) {
+    }
+
+    state->finished.store(true);
+    post(true);
+}
+
+void UltraFilerWindow::DrainSubfolderSearch(
+        std::shared_ptr<SubfolderSearchState> state, uint64_t generation) {
+    // A batch from a scan that was cancelled or superseded meanwhile.
+    if (!state || state != searchState || generation != searchGeneration) return;
+    state->drainPosted.store(false);
+
+    std::vector<std::string> batch;
+    {
+        std::lock_guard<std::mutex> lk(state->mutex);
+        batch.swap(state->pending);
+    }
+
+    // The results belong to one tab; when the user moves on, the scan has
+    // nothing left to fill and stops (keeping what it already found).
+    if (!searchTab || !IsActiveTab(searchTab) || !searchTab->filer ||
+        searchTab->searchQuery != searchQueryText) {
+        StopSubfolderSearch();
+        return;
+    }
+
+    if (!batch.empty()) {
+        if (searchResultsShown) searchTab->filer->AppendToFileList(batch);
+        else {
+            searchTab->filer->ShowFileList(batch);
+            searchResultsShown = true;
+        }
+    }
+
+    const size_t matches = state->matches.load();
+    const size_t folders = state->foldersScanned.load();
+    const bool done = state->finished.load();
+    const bool truncated = state->truncated.load();
+
+    if (!done) {
+        searchStatus = "Searching \"" + searchQueryText + "\" - "
+                + std::to_string(matches)
+                + (matches == 1 ? " result, " : " results, ")
+                + std::to_string(folders) + " folders scanned";
+    } else {
+        searchStatus = std::to_string(matches)
+                + (matches == 1 ? " result for \"" : " results for \"")
+                + searchQueryText + "\" in " + std::to_string(folders)
+                + (folders == 1 ? " folder" : " folders");
+        if (truncated)
+            searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
+    }
+
+    if (done) {
+        // The worker is on its way out (it posted this batch as its last act).
+        if (searchWorker.joinable()) searchWorker.join();
+        searchState.reset();
+        searchTab = nullptr;   // the results stay; nothing points at the tab
+    }
+    UpdateScanButton();
+    UpdateStatusBar();
+}
+
+void UltraFilerWindow::StopSubfolderSearch() {
+    ReapSearchWorkers(false);
+    if (!searchState && !searchWorker.joinable()) return;
+    const bool wasRunning = static_cast<bool>(searchState);
+    if (searchState) searchState->cancelled.store(true);
+    // Deliberately not joined here: the walk may be inside a directory read
+    // that takes its time (an unresponsive network volume), and making the
+    // window wait for it is exactly the freeze this whole change removes. The
+    // thread is set aside and joined once it reports itself finished — at the
+    // latest when the window closes.
+    if (searchWorker.joinable())
+        retiredSearches.push_back({std::move(searchWorker), searchState});
+    searchState.reset();
+    searchTab = nullptr;
+    // Batches the worker managed to queue before it noticed the cancel are
+    // dropped by the generation bump rather than landing in the next search.
+    ++searchGeneration;
+    if (wasRunning && !searchQueryText.empty()) {
+        searchStatus = "Search for \"" + searchQueryText + "\" stopped";
+        UpdateStatusBar();
+    }
+    UpdateScanButton();
+}
+
+void UltraFilerWindow::ReapSearchWorkers(bool waitForAll) {
+    for (auto it = retiredSearches.begin(); it != retiredSearches.end(); ) {
+        // A worker that has set `finished` is on its way out, so this join
+        // returns immediately; the others are left for the next round.
+        if (!waitForAll && it->state && !it->state->finished.load()) {
+            ++it;
             continue;
         }
-        std::string lower = name;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-        if (lower.find(needle) != std::string::npos)
-            results.push_back(it->path().string());
+        if (it->thread.joinable()) it->thread.join();
+        it = retiredSearches.erase(it);
     }
+}
 
-    if (FilerTabState* tab = ActiveTabState()) tab->searchQuery = query;
-    filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
-    filer->ShowFileList(results);
-    if (statusLabel) {
-        std::string text = std::to_string(results.size())
-                + (results.size() == 1 ? " result for \"" : " results for \"")
-                + query + "\"";
-        if (results.size() >= kMaxResults) text += " (first 1000 shown)";
-        statusLabel->SetText(text);
+void UltraFilerWindow::UpdateScanButton() {
+    if (!scanButton) return;
+    const bool searching = static_cast<bool>(searchState);
+    const bool hasQuery = searchInput && !searchInput->GetText().empty();
+    // Guarded: while a scan runs this is called with every batch of results,
+    // and each set here would invalidate the command bar's layout again.
+    if (searching != scanButtonStops) {
+        scanButtonStops = searching;
+        scanButton->SetText(searching ? "Stop" : "Scan sub folder");
+        scanButton->SetTooltip(searching
+                ? "Stop the sub-folder scan"
+                : "Search every sub folder of this folder (Enter)");
+        // Red while it stops something, the accent blue while it starts it.
+        if (searching) {
+            scanButton->SetColors(Color(208, 74, 66, 255), Color(224, 92, 84, 255),
+                                  Color(184, 60, 52, 255), Color(184, 60, 52, 255));
+        } else {
+            scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
+                                  Color(52, 112, 214, 255), Color(52, 112, 214, 255));
+        }
     }
+    // Nothing to search for and nothing running: the field is a plain search
+    // field again and gets its full width back.
+    scanButton->SetVisible(searching || hasQuery);
 }
 
 // ===== COMMAND BAR (New / clipboard / rename / delete / search / sort / view / preview) =====
@@ -1148,25 +1396,72 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sep2->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep2);
 
-    // Search field. Typing filters the shown folder as-you-type (the
-    // filer's name filter); Enter runs the recursive search under the
-    // current folder — as does the "Search in sub folders" button the
-    // filer centers when the filter matches nothing. An empty field
-    // returns to the normal folder display.
-    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
+    // Search box: the field plus the "Scan sub folder" button sitting inside
+    // it. Typing filters the shown folder as-you-type (the filer's name
+    // filter) and makes the button appear; the button — like Enter, and like
+    // the "Scan sub folder" button the filer centers when the filter
+    // matches nothing — escalates to the sub-folder scan, and reads "Stop"
+    // while that scan runs. An empty field returns to the folder display.
+    // The box carries the border and the white ground the field used to draw
+    // itself, so the two children read as one control.
+    // Fixed width: the field gives way to the button rather than the whole box
+    // growing, so the controls to its right do not shift when it appears.
+    searchBox = MakeLayoutBox("ufl-search-box", 320, 26);
+    searchBox->layout.SetFlexRow().SetFlexGap(3)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    searchBox->SetBackgroundColor(Colors::White);
+    searchBox->SetBorders(1.0f, Color(200, 200, 206, 255), 4.0f);
+    searchBox->SetPadding(1, 3, 1, 1);
+    searchBox->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Center);
+
+    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
     searchInput->SetFontSize(kUiFontSize);
     searchInput->SetPlaceholder("Search");
+    {
+        // Borderless inside the box - the box draws the frame.
+        TextInputStyle st = searchInput->GetStyle();
+        st.fontStyle.fontSize = kUiFontSize;
+        st.borderWidth = 0;
+        st.backgroundColor = Colors::White;
+        searchInput->SetStyle(st);
+    }
     searchInput->onTextChanged = [this](const std::string& text) {
         ApplyLiveSearchFilter(text);
+        UpdateScanButton();
     };
     searchInput->onEnterPressed = [this](const std::string& text) {
         RunSearch(text);
         return true;
     };
     // May give way (shrink) when the bar gets tight - the dropdowns cannot.
-    searchInput->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+    searchInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                            .SetAlignSelf(CSSLayout::AlignSelf::Center);
-    row->AddChild(searchInput);
+    searchBox->AddChild(searchInput);
+
+    // Wide enough for the label at kUiFontSize - a clipped "Scan sub fol…"
+    // is worse than the few pixels the field gives up for it.
+    scanButton = std::make_shared<UltraCanvasButton>(
+            "ufl-scan-sub", 0, 0, 118, 22, "Scan sub folder");
+    scanButton->SetFontSize(kUiFontSize);
+    scanButton->SetCornerRadius(3.0f);
+    scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
+                          Color(52, 112, 214, 255), Color(52, 112, 214, 255));
+    scanButton->SetTextColors(Colors::White);
+    scanButton->SetBorder(0.0f, Colors::Transparent);
+    // The user is typing in the field next to it; clicking must not take the
+    // keyboard away from what they were typing.
+    scanButton->SetAcceptsFocus(false);
+    scanButton->SetOnClick([this]() {
+        if (searchState) StopSubfolderSearch();
+        else if (searchInput) RunSearch(searchInput->GetText());
+    });
+    scanButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    scanButton->SetVisible(false);   // appears with the first typed character
+    searchBox->AddChild(scanButton);
+
+    row->AddChild(searchBox);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
     auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
@@ -1885,8 +2180,16 @@ void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer->onTabClose = [this](int index) {
         // The last remaining tab stays open.
         if (tabStates.size() <= 1) return false;
-        if (index >= 0 && index < (int)tabStates.size())
+        if (index >= 0 && index < (int)tabStates.size()) {
+            // A scan filling this tab has nothing left to fill, and its state
+            // must not outlive the tab it points at.
+            if (searchTab == tabStates[index].get()) {
+                StopSubfolderSearch();
+                searchStatus.clear();
+                searchQueryText.clear();
+            }
             tabStates.erase(tabStates.begin() + index);
+        }
         return true;
     };
     tabbedContainer->onTabChange = [this](int /*oldIndex*/, int newIndex) {
@@ -1956,7 +2259,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     };
     // When the as-you-type filter matches nothing in the folder, the filer
     // centers this escalation: the same recursive search Enter runs.
-    tab->filer->SetFilterEmptyAction("Search in sub folders", [this, tab]() {
+    tab->filer->SetFilterEmptyAction("Scan sub folder", [this, tab]() {
         if (!IsActiveTab(tab) || !tab->filer) return;
         // Copied: RunSearch clears the filer's filter, which would otherwise
         // empty the query out from under the search.
@@ -2073,6 +2376,13 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     if (index < 0 || index >= (int)tabStates.size()) return;
     FilerTabState* tab = tabStates[index].get();
     if (!tab->filer) return;
+    // A scan fills one tab's display; moving to another tab ends it, keeping
+    // whatever it found on the tab it was searching.
+    if (searchTab && searchTab != tab) {
+        StopSubfolderSearch();
+        searchStatus.clear();
+        searchQueryText.clear();
+    }
     filer = tab->filer;
 
     const std::string path = filer->GetPath();
@@ -2088,6 +2398,7 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
                                      : (tab->filer ? tab->filer->GetNameFilter()
                                                    : std::string()));
     }
+    UpdateScanButton();
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
@@ -2588,7 +2899,14 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     const int index = TabIndexOf(tab);
     if (index >= 0) tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
 
-    // Entering a folder ends a search-result display (SetPath leaves it).
+    // Entering a folder ends a search-result display (SetPath leaves it) and
+    // the scan that was filling it.
+    if (searchTab == tab) {
+        StopSubfolderSearch();
+        searchStatus.clear();
+        searchQueryText.clear();
+        UpdateScanButton();
+    }
     tab->searchQuery.clear();
     tab->filer->SetOpenPathMenuItemVisible(false);
 
@@ -2600,6 +2918,7 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     if (!IsActiveTab(tab)) return;
 
     if (searchInput) searchInput->SetText("");
+    UpdateScanButton();   // nothing to search for in the folder just entered
 
     if (breadcrumb) {
         BuildFolderBreadcrumb(breadcrumb.get(), path,
@@ -2691,6 +3010,9 @@ void UltraFilerWindow::UpdateStatusBar() {
     // A live filter changes what the counts describe — say so.
     if (!filer->GetNameFilter().empty())
         text += "    |    filtered by \"" + filer->GetNameFilter() + "\"";
+    // What the sub-folder scan is doing (or found), so the counts are not the
+    // only thing said about a display the search is still filling.
+    if (!searchStatus.empty()) text += "    |    " + searchStatus;
     statusLabel->SetText(text);
 }
 

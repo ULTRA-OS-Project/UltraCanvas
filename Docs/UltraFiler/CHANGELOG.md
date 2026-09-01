@@ -1,3 +1,31 @@
+#### 2026-09-01 *1.16.0*
+- **The sub-folder search runs in the background and shows its matches while
+  it walks.** Pressing "Search in sub folders" started a
+  `recursive_directory_iterator` walk on the **UI thread**: the window stopped
+  answering for as long as the tree took, which on a large volume was long
+  enough for the desktop to report the application as not responding — and the
+  walk followed reparse points, so a Windows profile's compatibility junctions
+  ("Documents and Settings", "All Users") could send it round in circles until
+  it fell over. The scan is now a worker thread with an explicit folder stack:
+  symlinks and junctions are never entered, there is a depth cap on top of
+  that, every directory error is contained rather than thrown, and the walk
+  stops at 20 000 matches. Matches reach the display in batches roughly five
+  times a second through the new
+  `UltraCanvasFilerWidget::AppendToFileList()`, which keeps the scroll
+  position and the selection — so results can be opened while the rest is
+  still being found. The status bar counts matches and scanned folders as they
+  arrive.
+- **A "Scan sub folder" button inside the search field.** It appears as soon
+  as there is something to search for and starts the same scan as Enter; while
+  the scan runs it reads **Stop** and ends it, keeping what was found. The
+  folder display's centered escalation button now carries the same wording.
+  Editing the query, navigating, switching or closing the tab and clearing the
+  field all end a running scan.
+- Fixed: pressing Enter in the search field emptied the field. Dropping the
+  as-you-type filter made the widget report a refresh, and the handler for
+  that copied the widget's (now empty) filter text back into the field,
+  because the tab was not yet marked as showing a search.
+
 #### 2026-08-31 *1.15.0*
 - **UltraFiler keeps its own changelog from here.** Everything up to and
   including this version shipped as part of a framework release and is recorded
