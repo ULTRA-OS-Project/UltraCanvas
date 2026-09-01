@@ -3,10 +3,13 @@
 A Windows Explorer style file manager built entirely from UltraCanvas
 components:
 
+This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler/CHANGELOG.md).
+
 | Area | Component |
 |---|---|
 | Folder tree (left pane) | `UltraCanvasTreeView` — lazily populated filesystem tree (a curated Home, Cloud Storage, drives / mounted volumes) |
-| Folder content (center pane) | `UltraCanvasTabbedContainer` hosting one `UltraCanvasFilerWidget` per tab — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
+| Folder tabs (window top bar) | `UltraCanvasTabbedContainer` with its pages detached into the folder pane (`SetContentHost`), so the tab strip is the topmost bar of the window and its "+" ends the tab list |
+| Folder content (center pane) | one `UltraCanvasFilerWidget` per tab, the active one shown in the tab strip's content host — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
 | Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type and `ShowFileList()` for the recursive search |
@@ -16,10 +19,13 @@ components:
 
 ## Features
 
-- **Tabs:** the "+" button on the left side of the toolbar opens an
-  additional tab showing the current folder. Every tab has its own folder
-  view, Back / Forward history, sort and view settings; tabs can be
-  reordered by dragging and closed (the last one stays open).
+- **Tabs:** the tab strip is the topmost bar of the window — above the
+  toolbars, browser style — and its tabs name the folder each one shows. The
+  **"+" at the end of the tab list** opens an additional tab on the current
+  folder. Every tab has its own folder view, Back / Forward history, sort and
+  view settings; tabs can be reordered by dragging and closed (the last one
+  stays open). The strip stays visible while the History or Favorites view
+  replaces the folder display, so clicking a tab returns to browsing it.
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
   tree with lazy expansion, and the History toggle (see below).

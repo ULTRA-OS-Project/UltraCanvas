@@ -4,10 +4,12 @@
 ```cpp
 // VirtualFS_Master_Registry.md
 // Complete registry of VirtualFS module functions, types, and callbacks
-// Version: 1.1.0
-// Last Modified: 2026-07-07
+// Version: 1.2.0
+// Last Modified: 2026-08-31
 // Author: ULTRA OS Framework
 // 1.1.0: Added Raw Buffer Compression API (VirtualFSCompression.h)
+// 1.2.0: Added RAM disc API (VirtualFSRamDisk.h) and
+//        IVirtualFSProvider::OpenFromMemory() for nested archives
 ```
 
 ---
@@ -901,6 +903,92 @@ void VirtualFS_SetDefaultEncoding(const std::string& encoding);
 
 ---
 
+## **RAM DISC FUNCTIONS**
+*Source: VirtualFSRamDisk.h*
+
+Provisions an **OS-visible** RAM disc: a real mount point that `fopen()`,
+other processes and the platform file manager can all reach. This is not an
+in-process memory filesystem - VirtualFS drives the facility each platform
+already provides rather than implementing one.
+
+| Platform | Mechanism | True RAM? | Privileges | Sizing |
+|---|---|---|---|---|
+| Linux | `/dev/shm` (tmpfs) | Yes | None | Advisory |
+| macOS | `hdiutil attach ram://` + `diskutil erasevolume` | Yes | None | Exact |
+| Windows | ImDisk driver, when installed | Yes | Admin | Exact |
+| Windows | `%TEMP%` + wipe on destroy | **No** | None | Advisory |
+
+Windows ships no RAM disc facility, so the back end detects ImDisk rather
+than depending on it. The fallback is on real storage and is always reported
+as such - never silently substituted.
+
+### **VirtualFSRamDiskBacking**
+```cpp
+enum class VirtualFSRamDiskBacking {
+    None = 0,         // Not created
+    Tmpfs = 1,        // Linux: directory on /dev/shm (true RAM)
+    HdiUtil = 2,      // macOS: hdiutil ram:// device (true RAM)
+    ImDisk = 3,       // Windows: ImDisk virtual disk (true RAM)
+    DiskFallback = 4  // Windows: ordinary storage, wiped on destroy (NOT RAM)
+};
+```
+
+### **VirtualFSRamDisk**
+```cpp
+struct VirtualFSRamDisk {
+    std::string name;                    // Caller-supplied label
+    std::string mountPath;               // Where it is mounted (a real path)
+    uint64_t requestedBytes;             // Size asked for
+    uint64_t capacityBytes;              // Size actually available (0 = unknown)
+    VirtualFSRamDiskBacking backing;     // What is storing the bytes
+    std::string deviceId;                // /dev/diskN (macOS) or drive (Windows)
+
+    bool IsTrueRam() const;   // False for the Windows disk fallback
+    bool IsValid() const;     // True when the handle refers to a live disc
+    explicit operator bool() const;
+};
+```
+
+### **Functions**
+```cpp
+const char* VirtualFSRamDiskBackingToString(VirtualFSRamDiskBacking backing);
+    // Human-readable backing name, for logs and UI
+
+bool VirtualFS_IsTrueRamDiskAvailable();
+    // False on Windows without ImDisk - creation still succeeds there,
+    // but returns a DiskFallback disc
+
+VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking();
+    // The backing VirtualFS_CreateRamDisk() would choose right now, so
+    // callers can warn before creating anything
+
+VirtualFSResult VirtualFS_CreateRamDisk(const std::string& name,
+                                        uint64_t sizeBytes,
+                                        VirtualFSRamDisk& outDisk);
+    // Creates an OS-visible RAM disc, private to the calling user
+    // @param name - [A-Za-z0-9._-] only, max 64 chars, unique per user
+    // @param sizeBytes - requested capacity, must be > 0
+    // Returns: Success, InvalidArgument, AlreadyExists, AccessDenied,
+    //          DiskFull, NotSupported, Error
+
+VirtualFSResult VirtualFS_DestroyRamDisk(VirtualFSRamDisk& disk);
+    // Unmounts and releases the disc; contents are destroyed
+    // Resets the handle on success; reports Success if already gone
+
+std::vector<VirtualFSRamDisk> VirtualFS_ListRamDisks();
+    // This user's discs, including ones leaked by a crashed process
+
+VirtualFSResult VirtualFS_UseRamDiskForTemp(const VirtualFSRamDisk& disk);
+    // Points the VirtualFS temp directory at the disc, so any temp file
+    // VirtualFS still needs lands in memory. Destroying a disc that is
+    // serving as the temp directory moves the manager off it first.
+```
+
+**Lifetime:** a RAM disc does not survive a reboot, and usually not a crash
+of the creating process. Never put the only copy of anything on one.
+
+---
+
 ## **PROVIDER INTERFACE**
 
 ### **IVirtualFSProvider**
@@ -956,6 +1044,15 @@ public:
         const std::string& archivePath,
         const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default()) = 0;
         // Opens archive for reading/writing
+    
+    virtual VirtualFSResult OpenFromMemory(
+        std::shared_ptr<const std::vector<uint8_t>> data,
+        const std::string& displayName,
+        const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default());
+        // Opens an archive held entirely in memory; used for nested archives
+        // so the inner archive never spills to a temp file.
+        // Optional - default returns NotSupported, callers fall back to Open().
+        // Providers that implement it advertise VirtualFSCapability::MemoryOpen.
     
     virtual void Close() = 0;
         // Closes archive and releases resources
@@ -1502,6 +1599,8 @@ install(DIRECTORY include/ DESTINATION include)
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-01-10 | Initial VirtualFS master registry |
+| 1.1.0 | 2026-07-07 | Raw buffer compression API (VirtualFSCompression.h) |
+| 1.2.0 | 2026-08-31 | RAM disc API (VirtualFSRamDisk.h); IVirtualFSProvider::OpenFromMemory() for memory-backed nested archives |
 
 ---
 

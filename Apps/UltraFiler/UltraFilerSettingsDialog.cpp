@@ -1188,4 +1188,8 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     if (state->window) g_dialog = state;   // keeps the widgets alive
 }
 
+void UltraFilerSettingsDialog::Shutdown() {
+    g_dialog.reset();
+}
+
 } // namespace UltraCanvas

@@ -36,6 +36,11 @@ struct VirtualFSLibArchiveProvider::Impl {
     std::string lastError;
     bool isOpen = false;
     bool isWriteMode = false;
+
+    // Set when the archive lives in memory rather than on disk. Held for the
+    // whole open span because libarchive streams are forward-only: every
+    // operation below reopens the archive and re-reads these same bytes.
+    std::shared_ptr<const std::vector<uint8_t>> memoryData;
     
     VirtualFSOpenOptions openOptions;
     VirtualFSArchiveInfo archiveInfo;
@@ -47,6 +52,37 @@ struct VirtualFSLibArchiveProvider::Impl {
     
     ~Impl() {
         CloseArchives();
+    }
+
+    // Creates a configured libarchive read handle over the current source.
+    // libarchive cannot rewind, so each pass over the archive needs a fresh
+    // handle; this keeps the four call sites from drifting apart.
+    // Returns nullptr on failure (caller reads lastError).
+    struct archive* NewReadHandle() {
+        struct archive* a = archive_read_new();
+        if (!a) {
+            lastError = "Failed to create archive reader";
+            return nullptr;
+        }
+
+        archive_read_support_filter_all(a);
+        archive_read_support_format_all(a);
+
+        if (!openOptions.password.empty()) {
+            archive_read_add_passphrase(a, openOptions.password.c_str());
+        }
+
+        const int result = memoryData
+            ? archive_read_open_memory(a, memoryData->data(), memoryData->size())
+            : archive_read_open_filename(a, archivePath.c_str(), 10240);
+
+        if (result != ARCHIVE_OK) {
+            const char* err = archive_error_string(a);
+            lastError = err ? err : "Failed to open archive";
+            archive_read_free(a);
+            return nullptr;
+        }
+        return a;
     }
     
     void CloseArchives() {
@@ -182,29 +218,41 @@ VirtualFSResult VirtualFSLibArchiveProvider::Open(
         return VirtualFSResult::NotFound;
     }
     
-    pImpl->readArchive = archive_read_new();
+    std::error_code ec;
+    const uint64_t archiveSize = std::filesystem::file_size(archivePath, ec);
+    return FinishOpen(options, ec ? 0 : archiveSize);
+}
+
+VirtualFSResult VirtualFSLibArchiveProvider::OpenFromMemory(
+    std::shared_ptr<const std::vector<uint8_t>> data,
+    const std::string& displayName,
+    const VirtualFSOpenOptions& options) {
+    
+    Close();
+    
+    if (!data || data->empty()) {
+        pImpl->lastError = "Empty archive buffer";
+        return VirtualFSResult::InvalidArgument;
+    }
+    
+    // Held past this call: every reopen below re-reads these bytes.
+    pImpl->memoryData = std::move(data);
+    pImpl->archivePath = displayName;
+    pImpl->openOptions = options;
+    
+    return FinishOpen(options, pImpl->memoryData->size());
+}
+
+// Shared tail of Open()/OpenFromMemory(): the source is already recorded on
+// pImpl, so opening and summarising it is identical from here on.
+VirtualFSResult VirtualFSLibArchiveProvider::FinishOpen(
+    const VirtualFSOpenOptions& options,
+    uint64_t archiveSize) {
+    
+    pImpl->readArchive = pImpl->NewReadHandle();
     if (!pImpl->readArchive) {
-        pImpl->lastError = "Failed to create archive reader";
-        return VirtualFSResult::OutOfMemory;
-    }
-    
-    archive_read_support_filter_all(pImpl->readArchive);
-    archive_read_support_format_all(pImpl->readArchive);
-    
-    if (!options.password.empty()) {
-        archive_read_add_passphrase(pImpl->readArchive, options.password.c_str());
-    }
-    
-    int result = archive_read_open_filename(pImpl->readArchive, archivePath.c_str(), 10240);
-    if (result != ARCHIVE_OK) {
-        pImpl->lastError = archive_error_string(pImpl->readArchive);
-        archive_read_free(pImpl->readArchive);
-        pImpl->readArchive = nullptr;
-        
-        if (result == ARCHIVE_FATAL) {
-            return VirtualFSResult::ArchiveCorrupt;
-        }
-        return VirtualFSResult::Error;
+        pImpl->memoryData.reset();
+        return VirtualFSResult::ArchiveCorrupt;
     }
     
     pImpl->isOpen = true;
@@ -213,8 +261,8 @@ VirtualFSResult VirtualFSLibArchiveProvider::Open(
     
     BuildEntryCache();
     
-    pImpl->archiveInfo.path = archivePath;
-    pImpl->archiveInfo.archiveSize = std::filesystem::file_size(archivePath);
+    pImpl->archiveInfo.path = pImpl->archivePath;
+    pImpl->archiveInfo.archiveSize = archiveSize;
     pImpl->archiveInfo.entryCount = pImpl->entryCache.size();
     
     for (const auto& pair : pImpl->entryCache) {
@@ -239,6 +287,7 @@ void VirtualFSLibArchiveProvider::Close() {
     pImpl->CloseArchives();
     ClearEntryCache();
     pImpl->archivePath.clear();
+    pImpl->memoryData.reset();
     pImpl->lastError.clear();
 }
 
@@ -264,15 +313,8 @@ void VirtualFSLibArchiveProvider::BuildEntryCache() {
     if (!pImpl->readArchive) return;
     
     archive_read_free(pImpl->readArchive);
-    pImpl->readArchive = archive_read_new();
-    archive_read_support_filter_all(pImpl->readArchive);
-    archive_read_support_format_all(pImpl->readArchive);
-    
-    if (!pImpl->openOptions.password.empty()) {
-        archive_read_add_passphrase(pImpl->readArchive, pImpl->openOptions.password.c_str());
-    }
-    
-    if (archive_read_open_filename(pImpl->readArchive, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
+    pImpl->readArchive = pImpl->NewReadHandle();
+    if (!pImpl->readArchive) {
         return;
     }
     
@@ -493,17 +535,8 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFile(
         return VirtualFSResult::InvalidArgument;
     }
     
-    struct archive* a = archive_read_new();
-    archive_read_support_filter_all(a);
-    archive_read_support_format_all(a);
-    
-    if (!pImpl->openOptions.password.empty()) {
-        archive_read_add_passphrase(a, pImpl->openOptions.password.c_str());
-    }
-    
-    if (archive_read_open_filename(a, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
-        pImpl->lastError = archive_error_string(a);
-        archive_read_free(a);
+    struct archive* a = pImpl->NewReadHandle();
+    if (!a) {
         return VirtualFSResult::ReadError;
     }
     
@@ -621,15 +654,11 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     
     std::filesystem::create_directories(destDirectory);
     
-    struct archive* a = archive_read_new();
-    struct archive* ext = archive_write_disk_new();
-    
-    archive_read_support_filter_all(a);
-    archive_read_support_format_all(a);
-    
-    if (!pImpl->openOptions.password.empty()) {
-        archive_read_add_passphrase(a, pImpl->openOptions.password.c_str());
+    struct archive* a = pImpl->NewReadHandle();
+    if (!a) {
+        return VirtualFSResult::ReadError;
     }
+    struct archive* ext = archive_write_disk_new();
     
     int flags = ARCHIVE_EXTRACT_TIME;
     if (options.preservePermissions) flags |= ARCHIVE_EXTRACT_PERM;
@@ -637,13 +666,6 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     
     archive_write_disk_set_options(ext, flags);
     archive_write_disk_set_standard_lookup(ext);
-    
-    if (archive_read_open_filename(a, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
-        pImpl->lastError = archive_error_string(a);
-        archive_read_free(a);
-        archive_write_free(ext);
-        return VirtualFSResult::ReadError;
-    }
     
     VirtualFSProgress progress;
     progress.totalFiles = pImpl->entryCache.size();
@@ -1125,17 +1147,15 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
     const std::string& tempPath,
     VirtualFSProgressCallback progressCallback) {
 
-    struct archive* in = archive_read_new();
-    archive_read_support_filter_all(in);
-    archive_read_support_format_all(in);
-
-    if (!pImpl->openOptions.password.empty()) {
-        archive_read_add_passphrase(in, pImpl->openOptions.password.c_str());
+    // Rewrites land on a real file (temp file + rename); an archive opened
+    // from memory has no such file to replace.
+    if (pImpl->memoryData) {
+        pImpl->lastError = "Cannot modify an archive opened from memory";
+        return VirtualFSResult::NotSupported;
     }
 
-    if (archive_read_open_filename(in, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
-        pImpl->lastError = archive_error_string(in);
-        archive_read_free(in);
+    struct archive* in = pImpl->NewReadHandle();
+    if (!in) {
         return VirtualFSResult::ReadError;
     }
 
@@ -1251,12 +1271,8 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
 bool VirtualFSLibArchiveProvider::Validate() {
     if (!pImpl->isOpen) return false;
     
-    struct archive* a = archive_read_new();
-    archive_read_support_filter_all(a);
-    archive_read_support_format_all(a);
-    
-    if (archive_read_open_filename(a, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
-        archive_read_free(a);
+    struct archive* a = pImpl->NewReadHandle();
+    if (!a) {
         return false;
     }
     
@@ -1277,17 +1293,8 @@ bool VirtualFSLibArchiveProvider::Validate() {
 VirtualFSResult VirtualFSLibArchiveProvider::Test(VirtualFSProgressCallback progressCallback) {
     if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
     
-    struct archive* a = archive_read_new();
-    archive_read_support_filter_all(a);
-    archive_read_support_format_all(a);
-    
-    if (!pImpl->openOptions.password.empty()) {
-        archive_read_add_passphrase(a, pImpl->openOptions.password.c_str());
-    }
-    
-    if (archive_read_open_filename(a, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
-        pImpl->lastError = archive_error_string(a);
-        archive_read_free(a);
+    struct archive* a = pImpl->NewReadHandle();
+    if (!a) {
         return VirtualFSResult::ReadError;
     }
     

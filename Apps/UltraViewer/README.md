@@ -5,6 +5,8 @@ full-window [`UltraCanvasMediaViewer`](../../Docs/UltraCanvas/UltraCanvasMediaVi
 that displays every media kind the framework knows and offers full player
 transport controls for video and audio.
 
+This app versions itself: [`Docs/UltraViewer/CHANGELOG.md`](../../Docs/UltraViewer/CHANGELOG.md).
+
 ## What it displays
 
 | Kind | Formats | Displayed through |

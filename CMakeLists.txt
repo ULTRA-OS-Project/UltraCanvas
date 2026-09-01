@@ -67,6 +67,7 @@ if(ANDROID)
     set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
+    set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
     set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
     # Image processing: libvips' ~10-library transitive stack is not in a
     # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
@@ -181,6 +182,15 @@ endif()
 option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
 if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraMail)
+endif()
+
+# ===== EMAILCLEANER =====
+# Loads several mail accounts into an analysis database and maps who sends
+# what, when. Builds on the UltraMail engine (accounts + cached bodies), so it
+# is added after it and only when that target exists.
+option(BUILD_EMAILCLEANER "Build the EmailCleaner application" ON)
+if(BUILD_EMAILCLEANER AND TARGET UltraMailEngine)
+    add_subdirectory(Apps/EmailCleaner)
 endif()
 
 # ===== ULTRASOCIAL =====
@@ -569,6 +579,26 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRAWIN MANAGER =====
+# UltraWin Manager: the graphical front-end for Windows applications on
+# ULTRA OS — environments, installed programs, and the Windows VM.
+option(BUILD_ULTRAWIN_MANAGER "Build the UltraWin Manager application" ON)
+if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
+    add_executable(UltraWinManager
+        Apps/UltraWinManager/main.cpp
+        Apps/UltraWinManager/UltraWinManagerWindow.cpp
+    )
+    target_include_directories(UltraWinManager PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraWinManager
+    )
+    target_link_libraries(UltraWinManager PRIVATE
+        ${ULTRACANVAS_LIBRARY}
+        UltraWin
+    )
+    message(STATUS "  [✓] UltraWinManager - ENABLED")
+endif()
+
 # ===== ULTRAWIN SETUP CLI =====
 # ultrawin-setup: the console driver for the VM tier's real-hardware
 # validation (provision from install media, boot, watch, launch). Plain
@@ -614,6 +644,18 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
 endif()
 
+# ===== EMAILCLEANER ENGINE TESTS =====
+# Headless analysis-engine tests (text pipeline, rules, classifier, store on
+# UltraDatabase, ingest over real RFC 5322 messages, analytics); in-tree
+# framework, no display and no network needed.
+option(ULTRACANVAS_BUILD_EMAILCLEANER_TESTS "Build the EmailCleaner engine test suite" OFF)
+if(ULTRACANVAS_BUILD_EMAILCLEANER_TESTS AND TARGET EmailCleanerEngine)
+    enable_testing()
+    add_subdirectory(Tests/EmailCleaner)
+    message(STATUS "")
+    message(STATUS "── EmailCleaner engine test suite enabled (target: EmailCleanerEngineTests) ──")
+endif()
+
 # ===== ULTRASOCIAL ENGINE TESTS =====
 # Headless engine tests (composer, vault, store, connectors against
 # loopback fake servers); in-tree framework.
@@ -652,6 +694,8 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
             Apps/Texter/UltraCanvasTextEditorDialogs.cpp
             Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
+            Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
+            Apps/Texter/UltraCanvasMarkdownSpellRanges.cpp
             Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
@@ -726,6 +770,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerWindow.cpp
             Apps/UltraFiler/UltraFilerSettingsDialog.cpp
             Apps/UltraFiler/UltraFilerPrompt.cpp
+            Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
     )
@@ -887,6 +932,11 @@ endif()
 # Apps/UltraMail/CMakeLists.txt (target: UltraMail), built whenever
 # BUILD_ULTRAMAIL is ON and the UltraCanvas UI library is available.
 
+# ===== EMAILCLEANER GUI APPLICATION =====
+# Likewise defined alongside its engine in Apps/EmailCleaner/CMakeLists.txt
+# (target: EmailCleaner), built whenever BUILD_EMAILCLEANER is ON and the
+# UltraCanvas UI library is available.
+
 if (BUILD_TESTS)
     # JSONTests below compiles vendored C (yyjson.c); the project() call only
     # declares CXX, so C must be enabled here - the enable_language(C) inside
@@ -920,6 +970,49 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME JSONTests COMMAND JSONTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Hardware inventory tests: formatters, identifier masking, the query
+    # selector, report shape and the invariants a live capture must hold.
+    # Compiles the module and its platform probe only, so it runs headless.
+    if(WIN32)
+        set(_uc_hardwareinfo_backend
+            UltraCanvas/OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp)
+    elseif(APPLE)
+        set(_uc_hardwareinfo_backend
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(_uc_hardwareinfo_backend
+            UltraCanvas/OS/Linux/UltraCanvasLinuxHardwareInfo.cpp)
+    else()
+        # No native probe: the fallback inside the module itself is linked.
+        set(_uc_hardwareinfo_backend "")
+    endif()
+    add_executable(HardwareInfoTests
+        Tests/HardwareInfoTest.cpp
+        UltraCanvas/core/UltraCanvasHardwareInfo.cpp
+        ${_uc_hardwareinfo_backend}
+        UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+        UltraCanvas/third_party/yyjson/yyjson.c
+    )
+    target_include_directories(HardwareInfoTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/third_party/yyjson
+    )
+    target_compile_features(HardwareInfoTests PRIVATE cxx_std_20)
+    if(WIN32)
+        target_link_libraries(HardwareInfoTests PRIVATE
+            iphlpapi wlanapi setupapi bthprops ole32 advapi32 ws2_32)
+    elseif(APPLE)
+        # Named directly rather than through the library's find_library results:
+        # those live in the UltraCanvas/ subdirectory scope, not this one.
+        target_link_libraries(HardwareInfoTests PRIVATE
+            "-framework IOKit" "-framework CoreFoundation")
+    endif()
+    set_target_properties(HardwareInfoTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HardwareInfoTests COMMAND HardwareInfoTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD

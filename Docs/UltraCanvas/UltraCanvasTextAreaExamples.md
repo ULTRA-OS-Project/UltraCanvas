@@ -467,7 +467,19 @@ void SetOnCursorPositionChanged(CursorPositionChangedCallback callback);
 // Selection change
 using SelectionChangedCallback = std::function<void()>;
 void SetOnSelectionChanged(SelectionChangedCallback callback);
+
+// Right-click, before the built-in spell suggestion popup. Return true when
+// the application opened a menu of its own. See Spell Checking below.
+std::function<bool(const UCEvent&)> onContextMenu;
+
+// Called with the exact text about to be spell checked, so content-dependent
+// options can be rebuilt. See Spell Checking below.
+std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 ```
+
+`IsPositionInsideSelection(const Point2Di&)` answers whether an element-local
+point falls inside the current selection — what a context menu needs to decide
+whether opening it should move the caret.
 
 ## Event Handling
 
@@ -610,6 +622,42 @@ options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) {
 };
 ```
 
+Those are byte ranges of the text being checked, so they go stale on the first
+edit. `onPrepareSpellCheck` is called with the exact text about to be checked,
+on the UI thread, and hands over a copy of the options used for that one check —
+which is where a content-dependent hook belongs:
+
+```cpp
+textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string& text) {
+    auto skip = std::make_shared<std::vector<TextByteSpan>>(ScanMarkdownNoSpellRanges(text));
+    options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
+        return SpanCoversRange(*skip, startByte, byteLength);
+    };
+};
+```
+
+### Supplying your own context menu
+
+An application with its own editor context menu sets `onContextMenu` and
+splices the suggestions into it, instead of getting two menus. It is called on
+right-click before the built-in popup; return `true` when handled, `false` to
+fall through to it:
+
+```cpp
+textArea->onContextMenu = [this](const UCEvent& event) -> bool {
+    const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
+                                                              event.pointer.y);
+    // ... build one menu: UltraCanvasSpellChecker::BuildSuggestionMenuItems(*hit, ...)
+    //     first when hit is non-null, then Cut / Copy / Paste ...
+    return true;
+};
+```
+
+The caret moves to the click once the hook returns `true` — not before, or
+`GetSpellErrorAtPosition` would hit-test against the previous caret line's
+layout — so **Paste** acts where the user clicked. A click inside the selection
+keeps it, so **Cut** and **Copy** still act on what is highlighted.
+
 ### Reading and applying results
 
 ```cpp
@@ -639,6 +687,10 @@ const std::vector<SpellError>& GetSpellErrors() const;
 const SpellError* GetSpellErrorAtPosition(int x, int y);
 bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
 bool ShowSpellSuggestionMenu(const UCEvent& event);
+
+// Hooks for a host application
+std::function<bool(const UCEvent&)> onContextMenu;
+std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 ```
 
 ## Character Range Geometry
@@ -696,6 +748,7 @@ bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& re
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
 - **1.5.0**: Added line numbers and word wrap
