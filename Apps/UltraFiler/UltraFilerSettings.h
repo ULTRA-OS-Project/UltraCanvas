@@ -61,6 +61,19 @@ public:
     Color treeDriveBackgroundColor = kDefaultTreeDriveBackgroundColor;
     Color treeSelectedFolderColor  = kDefaultTreeSelectedFolderColor;
 
+    // Display > Home folder: what the Home folder shows - in the folder tree
+    // and in the file display alike. "Predefined only" lists the main user
+    // folders (Desktop, Documents, Downloads, Music, Pictures, Videos) and
+    // nothing else; "all" lists every subfolder. A Windows profile carries a
+    // dozen system folders ("3D Objects", "Saved Games", the sync clients),
+    // so the curated view ships as the default there; a Linux or macOS home
+    // folder is the user's own, so those default to showing everything.
+#if defined(_WIN32) || defined(_WIN64)
+    bool homeShowPredefinedOnly = true;
+#else
+    bool homeShowPredefinedOnly = false;
+#endif
+
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
     // them. Ctrl at the drop always copies and Shift always moves, whichever
@@ -126,6 +139,8 @@ public:
         if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
         it = kv.find("tree.selected.folder.color");
         if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
+        it = kv.find("display.home.content");
+        if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("extras.prompt.application");
@@ -155,6 +170,8 @@ public:
              << FormatColor(treeDriveBackgroundColor) << "\n";
         file << "tree.selected.folder.color = "
              << FormatColor(treeSelectedFolderColor) << "\n";
+        file << "display.home.content = "
+             << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";

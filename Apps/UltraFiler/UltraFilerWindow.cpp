@@ -58,6 +58,7 @@
 #include <fstream>
 #include <sstream>
 #include <system_error>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -248,13 +249,14 @@ namespace {
         return paths;
     }
 
-    // Does the tree show anything below `path`? The home folder answers from
-    // its curated list rather than from the disk: it only ever shows the main
-    // user folders, so a profile holding none of them is a leaf however many
-    // other folders sit in it - and gets no expand button that opens onto
-    // nothing.
-    bool TreeFolderHasChildren(const std::string& path) {
-        if (IsUserHomeDir(path)) return !HomeTreeChildren().empty();
+    // Does the tree show anything below `path`? A CURATED home folder answers
+    // from its curated list rather than from the disk: it only ever shows the
+    // main user folders, so a profile holding none of them is a leaf however
+    // many other folders sit in it - and gets no expand button that opens
+    // onto nothing. With Settings > Display > Home folder on "Show all
+    // content" the home folder answers like any other folder.
+    bool TreeFolderHasChildren(const std::string& path, bool curatedHome) {
+        if (curatedHome && IsUserHomeDir(path)) return !HomeTreeChildren().empty();
         return HasSubdirectories(path);
     }
 
@@ -539,7 +541,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // default application, and a double-clicked subfolder is entered right
     // in the pane.
     folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
-    folderPreview->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
+    // Created before settings.Load(); ApplySettings() right after it applies
+    // the Display > Home folder mode here.
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
     folderPreviewStyle.fontSize = kUiFontSize;
     folderPreviewStyle.smallFontSize = kUiFontSize;
@@ -724,10 +727,59 @@ void UltraFilerWindow::ApplySettings() {
         if (state->filer) state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     if (folderPreview)
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+    // Display > Home folder: curate the home folder's display - every tab and
+    // the folder preview - or show it whole, and keep the tree's Home entry in
+    // step. The widget ignores a SetCuratedHomeFolder that changes nothing, so
+    // re-applying on every unrelated settings change costs no rescans.
+    const bool curatedHome = settings.homeShowPredefinedOnly;
+    const std::string home = UserHomeDir();
+    const std::string curatedPath = curatedHome ? home : std::string();
+    std::vector<std::string> curatedFolders =
+            curatedHome ? HomeCurationPaths() : std::vector<std::string>();
+    for (auto& state : tabStates)
+        if (state->filer)
+            state->filer->SetCuratedHomeFolder(curatedPath, curatedFolders);
+    if (folderPreview)
+        folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
+    if (curatedHomeActive.exchange(curatedHome) != curatedHome)
+        RefreshHomeTreeChildren();
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
     ApplyTreeColors();
+}
+
+// Re-derives the tree's Home children after the Display > Home folder setting
+// flips. The loaded-state of Home AND of everything below it is forgotten:
+// the child nodes are recreated, and a stale "already loaded" entry for one
+// of them would suppress its placeholder and leave it inexpandable.
+void UltraFilerWindow::RefreshHomeTreeChildren() {
+    if (!folderTree) return;
+    const std::string home = UserHomeDir();
+    TreeNode* node = folderTree->FindNode(home);
+    if (!node) return;
+    const bool wasExpanded = node->IsExpanded();
+    while (!node->children.empty())
+        folderTree->RemoveNode(node->children.front()->data.nodeId);
+    for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
+        // Home itself, or a path below it ("/home/me/x", not "/home/mexico").
+        const std::string& key = *it;
+        const bool underHome = key.size() > home.size() &&
+                key.compare(0, home.size(), home) == 0 &&
+                (key[home.size()] == '/' || key[home.size()] == '\\');
+        if (key == home || underHome) it = treeChildrenLoaded.erase(it);
+        else ++it;
+    }
+    if (wasExpanded) {
+        // Repopulate right away: removing the last child demoted the node to
+        // a collapsed leaf, so load the children first, then expand through
+        // the notifying path (its callback early-returns, already loaded).
+        EnsureTreeChildren(node);
+        folderTree->ExpandNode(node);
+    } else {
+        QueueSubfolderProbe(home);
+    }
+    folderTree->RequestRedraw();
 }
 
 void UltraFilerWindow::OpenSettingsDialog() {
@@ -1555,16 +1607,30 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
-    // The home folder is curated, not scanned: it shows the user's main folders
-    // (kHomeTreeFolders) and stops there, so a profile does not spill "3D
-    // Objects", "Saved Games", "Links" and every working folder into the tree.
-    // The paths come from the platform (SHGetKnownFolderPath / xdg-user-dirs),
-    // so a redirected or localized folder - "Bilder", a Documents folder moved
-    // into OneDrive - is the one listed, under its own icon. Everything left
-    // out is still reachable: the folder display lists the whole home folder.
+    // Settings > Display > Home folder decides what the Home entry shows.
+    // Curated ("Show only predefined folders", the Windows default): the main
+    // user folders (kHomeTreeFolders) and nothing else, so a profile does not
+    // spill "3D Objects", "Saved Games" and every working folder into the
+    // tree. The paths come from the platform (SHGetKnownFolderPath /
+    // xdg-user-dirs), so a redirected or localized folder - "Bilder", a
+    // Documents folder moved into OneDrive - is the one listed, under its own
+    // icon. "Show all content" (the Linux / macOS default) lists every
+    // subfolder, with the main folders still carrying their icons and a
+    // redirected one listed once, by its real path.
     std::vector<TreeChild> children;
-    if (IsUserHomeDir(path)) {
+    const bool isHome = IsUserHomeDir(path);
+    if (isHome && settings.homeShowPredefinedOnly) {
         children = HomeTreeChildren();
+    } else if (isHome) {
+        std::unordered_set<std::string> curated;
+        for (const TreeChild& c : HomeTreeChildren()) {
+            curated.insert(FolderIdentityKey(c.path));
+            children.push_back(c);
+        }
+        for (const fs::path& dir : ListSubdirectories(path)) {
+            if (curated.count(FolderIdentityKey(dir.string()))) continue;
+            children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+        }
     } else {
         for (const fs::path& dir : ListSubdirectories(path))
             children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
@@ -1680,8 +1746,9 @@ void UltraFilerWindow::SubfolderProbeWorkerMain() {
             probeQueue.pop_front();
         }
 
-        // The directory open - outside the lock, off the UI thread.
-        const bool has = TreeFolderHasChildren(path);
+        // The directory open - outside the lock, off the UI thread. The home
+        // mode comes through the atomic: `settings` belongs to the UI thread.
+        const bool has = TreeFolderHasChildren(path, curatedHomeActive.load());
         if (!has) continue;   // leaf folder: nothing to change on the node
 
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -2012,10 +2079,12 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
-    // The home folder's display is curated like the tree's Home entry: its
-    // main folders and its files, not the whole profile. Display > Hidden
-    // files reveals the full listing.
-    state->filer->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
+    // Settings > Display > Home folder: when curated (the Windows default),
+    // the home folder's display shows its main folders and its files, not the
+    // whole profile - like the tree's Home entry. Display > Hidden files
+    // always reveals the full listing.
+    if (settings.homeShowPredefinedOnly)
+        state->filer->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
     FilerStyle filerStyle = state->filer->GetStyle();
     filerStyle.fontSize = kUiFontSize;
     filerStyle.smallFontSize = kUiFontSize;

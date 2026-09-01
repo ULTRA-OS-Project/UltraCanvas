@@ -182,6 +182,11 @@ private:
     void StopCloudStorageDiscovery();
     void ApplyCloudStorageFolders(const std::vector<CloudStorageInfo>& found);
 
+    // Re-derives the tree's Home children after Settings > Display > Home
+    // folder flips between "Show all content" and "Show only predefined
+    // folders" (ApplySettings calls it on a change).
+    void RefreshHomeTreeChildren();
+
     // "Does this folder contain subfolders?" costs a directory open each, and a
     // single expansion asks it once per child — on a slow or network volume
     // that froze the window for seconds. The question is answered on a worker
@@ -455,6 +460,9 @@ private:
     // keeps two lookups from running at once.
     std::thread cloudWorker;
     std::atomic<bool> cloudWorkerBusy{false};
+    // Display > Home folder mode, mirrored for the probe worker: `settings`
+    // belongs to the UI thread, the "has subfolders?" probe does not.
+    std::atomic<bool> curatedHomeActive{false};
     // Set by the monitor's thread, cleared by the UI thread that acts on it:
     // one tree pass per burst, however many notifications an insertion makes.
     std::atomic<bool> volumeRefreshPending{false};

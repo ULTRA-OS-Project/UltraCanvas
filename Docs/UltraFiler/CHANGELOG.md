@@ -28,7 +28,7 @@
 - **The Cloud Storage lookup is repeated when a volume appears**, so a Google
   Drive that mounts as its own drive letter reaches the section instead of
   needing a restart. It ran exactly once, at tree build.
-- Requires framework 0.3.89 (`UltraCanvasVolumeMonitor`, the folder watcher's
+- Requires framework 0.3.90 (`UltraCanvasVolumeMonitor`, the folder watcher's
   failure callback, and the `UltraCanvasTreeView::RemoveNode()` fix that
   removing a populated drive row depends on).
 

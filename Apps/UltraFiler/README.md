@@ -107,18 +107,20 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 - **Folder tree:** a **Pinned** section on top — above *Computer*, open, and
   shown only while something is pinned — then *Computer* with Home, **Cloud
   Storage** and the drives / volumes below it.
-  - **Home** is curated, not scanned: it lists the user's main folders —
-    Desktop, Documents, Downloads, Music, Pictures, Videos — and stops there,
-    so a profile does not spill *3D Objects*, *Saved Games*, *Links* and every
-    working folder into the tree. The paths come from the platform
+  - **Home** follows *Settings > Display > Home folder*. Curated (the Windows
+    default), it lists the user's main folders — Desktop, Documents, Downloads,
+    Music, Pictures, Videos — and stops there, so a profile does not spill
+    *3D Objects*, *Saved Games*, *Links* and every working folder into the
+    tree; *Show all content* (the Linux / macOS default) lists every subfolder,
+    with the main folders keeping their icons. The paths come from the platform
     (`SHGetKnownFolderPath`, the macOS home layout, `xdg-user-dirs`), so a
     redirected or localized folder — *Bilder*, a Documents folder moved into
     OneDrive — is the one listed, under its own icon.
-  - The **folder display is curated the same way**: showing the home folder
-    lists the main folders (wherever they physically live) plus the folder's
-    files, and nothing else. **Display > Hidden files** in the context menu
-    reveals the full physical listing — that toggle means "show me
-    everything".
+  - The **folder display follows the same setting**: curated, showing the home
+    folder lists the main folders (wherever they physically live) plus the
+    folder's files, and nothing else. **Display > Hidden files** in the context
+    menu always reveals the full physical listing — that toggle means "show me
+    everything", whatever the setting says.
   - **Cloud Storage** collects the sync folders this machine actually has —
     OneDrive (personal and every business tenant), Google Drive, Dropbox
     (personal and business) and iCloud Drive — instead of leaving them
@@ -226,6 +228,7 @@ running application immediately and is saved to the config file
 | Page | Setting |
 |---|---|
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
+| Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker`. The colour strip under a transparent image in the preview writes to the same setting |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
