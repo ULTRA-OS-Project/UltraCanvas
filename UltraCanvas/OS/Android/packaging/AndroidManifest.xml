@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Template manifest for an UltraCanvas Android app.
+
+    Every attribute below is load-bearing for the backend; the notes say what
+    breaks without it. Copy this into your Gradle project and change the
+    package name, the label, and android.app.lib_name.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="org.ultraos.ultracanvas.demo">
+
+    <!-- Without this every socket call fails with EACCES, which surfaces from
+         UltraNet as an unexplained connection error rather than a permission
+         one. Harmless to keep if the app does no networking. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- The backend renders with Cairo into an ANativeWindow buffer and only
+         uses GLES for UltraCanvasGLSurface elements, so GLES 3 is preferred
+         but not required. Every minSdk-26 device ships ES 3.x anyway. -->
+    <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
+
+    <application
+        android:label="UltraCanvas"
+        android:hasCode="true">
+
+        <!-- android:name is UltraCanvasActivity, NOT android.app.NativeActivity:
+             the subclass supplies the AlertDialog, SAF and IME bridges. A plain
+             NativeActivity still runs, but native dialogs return "cancelled"
+             and the soft keyboard has no InputConnection to compose into.
+
+             android:configChanges is what keeps Run() alive across rotation.
+             Drop any of these values and Android destroys and recreates the
+             activity instead: the glue raises destroyRequested, the app
+             restarts from android_main, and in-memory state is lost. -->
+        <activity
+            android:name="org.ultraos.ultracanvas.UltraCanvasActivity"
+            android:label="UltraCanvas"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"
+            android:exported="true">
+
+            <!-- The .so Gradle built from the repo's CMake, without the "lib"
+                 prefix or the ".so" suffix. NativeActivity dlopens it and
+                 calls android_main() from UltraCanvasAndroidMain.cpp. -->
+            <meta-data android:name="android.app.lib_name"
+                       android:value="ultracanvas_app"/>
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

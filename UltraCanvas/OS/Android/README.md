@@ -3,10 +3,13 @@
 The full investigation and phased plan live in
 [`Docs/UltraCanvas/AndroidPortInvestigation.md`](../../../Docs/UltraCanvas/AndroidPortInvestigation.md).
 Implemented here: the window/application backend, lifecycle handling, the
-EGL/GLES context manager, clipboard, soft keyboard and IME, multi-touch,
-message dialogs and SAF file opening. Still open: the cross-compiled
-dependency sysroot and APK packaging (so none of this has run on a device
-yet), plus saving through SAF — see the notes below.
+EGL/GLES context manager, clipboard, soft keyboard and full IME, multi-touch,
+message dialogs, SAF file opening and saving, and APK asset extraction.
+
+**Still open, and it gates everything: the cross-compiled dependency sysroot
+and APK packaging.** No APK can be built until that exists, so none of this has
+run on a device — it is compiled continuously in CI, not observed. See
+[`packaging/`](packaging/README.md).
 
 ## What is here
 
@@ -16,11 +19,13 @@ yet), plus saving through SAF — see the notes below.
 | `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, jstring→std::string. |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text only (images/files need the SAF `content://` adapter — later phase); change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "no text" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
-| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
+| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile`, `SelectFolder` and input dialogs stay logged "Cancel" stubs — **Dialogs** below explains why the first two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
 | `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog`, the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
 | `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. |
+| `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
+| `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the sysroot blocker that stops one being built today. |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
 | `GLContextManagerEGL_Android.cpp` | EGL + **OpenGL ES** context manager (ES 3 preferred, ES 2 fallback) behind the same `CreateGLContextManagerEGL()` factory symbol the dispatcher uses on Linux. Same offscreen model as the Linux EGL manager: 1×1 pbuffer made current, all real rendering into FBOs (`GLFramebuffer.cpp` compiles against `<GLES3/gl3.h>` on Android, and `ICompositeStrategy.cpp` reads back `GL_RGBA` + swizzles to Cairo's word order, since core GLES has no `GL_BGRA` readback). `GLSurfaceConfig`'s desktop fields (`glVersionMajor/Minor`, `coreProfile`) are ignored. Note: the FBO layer uses ES 3 sized formats (`GL_RGBA8`), so the ES 2 fallback context is best-effort only — every `minSdk 26` device ships ES 3.x. |
 
@@ -52,7 +57,7 @@ mandatory for Android; bionic has no `res_n*`/libresolv).
   manifest **must** keep the activity alive across configuration changes:
 
   ```xml
-  <activity android:name="android.app.NativeActivity"
+  <activity android:name="org.ultraos.ultracanvas.UltraCanvasActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density">
   ```
 
@@ -219,9 +224,18 @@ dependency exists in the sysroot. GL surfaces stay ON: EGL and GLESv3 come
 from the NDK sysroot itself (no pkg-config probing), wired through
 `GLContextManagerEGL_Android.cpp`.
 
+**That sysroot does not exist yet, so no APK can be built and none of this has
+run on a device.** Everything here is compiled in CI against the real NDK, and
+the Java against `android.jar`, so the code is type-checked continuously — but
+treat the runtime behaviour described in this file as designed and reviewed,
+not as observed. `packaging/` holds the manifest and Gradle scaffolding, and
+spells out what the sysroot needs to contain.
+
 ## Still to come (phases 2–3, investigation §7)
 
-Full IME (composing text via an `InputConnection` proxy), SAF dialogs +
-`content://` adapter (which also unlocks clipboard images/files), UltraNet
-CA bundle, gesture recognition on top of the touch stream (pinch/rotate →
-`PinchZoom`), audio/video/PDF, Gradle packaging + a full sysroot CI build.
+The cross-compiled dependency sysroot and a real APK build (the blocker for
+everything below, since nothing can be observed until then), clipboard
+images/files via the `content://` adapter, UltraNet CA bundle, gesture
+recognition on top of the touch stream (pinch/rotate → `PinchZoom`), inline
+IME composition (a cross-platform core change, not an Android one), and
+audio/video/PDF.

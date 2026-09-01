@@ -7,7 +7,7 @@ lives in `UltraCanvas/OS/Android/` — see its
 [README](../../UltraCanvas/OS/Android/README.md) for what is actually built
 today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
 keyboard, full IME, multi-touch, message dialogs, SAF file opening); the dependency
-sysroot and APK packaging remain, so none of it has run on a device yet.
+sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -318,6 +318,13 @@ launch (or lazily) extract needed assets to `getFilesDir()`/`getCacheDir()`
 and keep all existing path-based code working; `SetResourcesDir()`
 (`core/UltraCanvasConfig.cpp`) gains an Android arm pointing there. Direct
 `AAssetManager` streaming can come later where it matters (fonts, icons).
+- **Status: done as described.** `UltraCanvasAndroidAssets.cpp` unpacks
+  `assets/` into `$HOME/share` (where `SetResourcesDir`'s Android arm points)
+  from `android_main`, stamped against the APK's mtime+size so only the first
+  launch after an install or update pays for it. One wrinkle the plan did not
+  anticipate: the NDK's `AAssetDir` API cannot enumerate subdirectories, so the
+  tree walk goes through Java `AssetManager.list()` while file contents still
+  come from the native manager.
 
 ---
 
