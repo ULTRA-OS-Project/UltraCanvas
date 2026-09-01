@@ -8,6 +8,7 @@
 #include "VirtualFSProvider.h"
 #include <map>
 #include <memory>
+#include <vector>
 
 #ifdef VIRTUALFS_HAS_LIBARCHIVE
 
@@ -88,6 +89,7 @@ public:
                VirtualFSCapability::Password |
                VirtualFSCapability::Streaming |
                VirtualFSCapability::LargeFiles |
+               VirtualFSCapability::MemoryOpen |
                VirtualFSCapability::Unicode |
                VirtualFSCapability::Timestamps |
                VirtualFSCapability::Permissions;
@@ -112,6 +114,10 @@ public:
     
     VirtualFSResult Open(
         const std::string& archivePath,
+        const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default()) override;
+    VirtualFSResult OpenFromMemory(
+        std::shared_ptr<const std::vector<uint8_t>> data,
+        const std::string& displayName,
         const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default()) override;
     
     void Close() override;
@@ -211,6 +217,9 @@ public:
     std::string GetLastError() const override;
     
 private:
+    // Shared tail of Open()/OpenFromMemory() once the source is recorded.
+    VirtualFSResult FinishOpen(const VirtualFSOpenOptions& options, uint64_t archiveSize);
+
     struct Impl;
     std::unique_ptr<Impl> pImpl;
     

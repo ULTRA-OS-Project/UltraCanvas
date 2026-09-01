@@ -17,6 +17,7 @@
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
 
+#include <cstddef>
 #include <cstdint>
 
 // NDK types are kept out of this header where an opaque forward declaration
@@ -66,6 +67,12 @@ namespace UltraCanvas {
         void SetDoubleClickTime(unsigned int milliseconds) { doubleClickTimeMs = milliseconds; }
         void SetDoubleClickDistance(int pixels) { doubleClickDistance = pixels; }
 
+        // Run a nested pump until `isResolved()` returns true, for a modal
+        // Java dialog whose answer arrives on the Java UI thread. Returns
+        // false if the activity is being destroyed instead (no answer will
+        // come). See the .cpp for why only activity commands are processed.
+        bool PumpWhileModal(const std::function<bool()>& isResolved);
+
         // ===== SOFT KEYBOARD =====
         // Driven automatically by UltraCanvasCaret::onTextEditingChanged (a
         // widget claiming the caret shows the keyboard, releasing it hides
@@ -75,6 +82,16 @@ namespace UltraCanvas {
         // platform bug.
         void ShowSoftKeyboard();
         void HideSoftKeyboard();
+
+        // ===== IME DELIVERY (called from the Java InputConnection) =====
+        // Text the IME committed - an autocorrected or gesture-typed word, a
+        // CJK candidate - which belongs to no single key.
+        void PushCommittedText(const std::string& utf8);
+        // A key press routed through the Java input view. `codePoint` is
+        // KeyEvent.getUnicodeChar (0 for non-printing); pass down=false for
+        // the release. Shared with the native input path.
+        bool PushKeyEvent(bool down, int32_t keyCode, int32_t metaState,
+                          int32_t codePoint);
 
         // Android has no persistent pointer cursor; both are accepted no-ops.
         bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur) override;
@@ -108,6 +125,16 @@ namespace UltraCanvas {
         int32_t HandleInputEvent(AInputEvent* event);
         int32_t HandleMotionEvent(AInputEvent* event);
         int32_t HandleKeyEvent(AInputEvent* event);
+
+        // Emit one finger's position as a touch event (stable pointer id).
+        void PushTouchEvent(UltraCanvasAndroidWindow* win, AInputEvent* motionEvent,
+                            size_t pointerIndex, UCEventType type);
+
+        // Latched for the rest of the gesture as soon as a second finger
+        // touches down: from then on the gesture is delivered as touch events
+        // only, so a pinch cannot also drag whatever the first finger hit.
+        // Cleared when the last finger lifts.
+        bool multiTouchGesture = false;
 
         void PushWindowEvent(UCEventType type);
 

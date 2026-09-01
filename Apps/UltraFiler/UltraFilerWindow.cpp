@@ -46,6 +46,7 @@
 #include "UltraFilerShare.h"
 #include "UltraFilerPrompt.h"
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
+#include "UltraFilerRunWindowsDialog.h"
 #include "UltraWin/UltraWin.h"
 #endif
 
@@ -93,6 +94,9 @@ namespace {
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
     constexpr int kFilerMinWidth   = 360;
+    // Height of the folder tab strip at the top of the window (one tab high -
+    // the strip carries no content area of its own).
+    constexpr int kTabStripHeight  = 30;
     constexpr int kPreviewMinWidth = 260;
 
     // Delay before a clicked folder's content is shown in the detail pane.
@@ -573,6 +577,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     BuildTabbedContainer();
 
+    // The tab strip is the window's top bar: the tabs name the folders, the
+    // toolbars below them act on whichever one is selected.
+    window->AddChild(tabbedContainer);
     window->AddChild(BuildNavigationRow());
     window->AddChild(BuildCommandBar());
 
@@ -937,17 +944,8 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
     row->SetPadding(6, 8, 2, 8);
 
-    // "+" on the left side of the toolbar opens an additional tab showing the
-    // current folder.
-    auto newTabButton = MakeToolButton("ufl-new-tab", "+", "", 30,
-            [this]() {
-        std::string path = filer ? filer->GetPath() : std::string();
-        if (path.empty()) path = UserHomeDir();
-        AddNewTab(path, true);
-    });
-    newTabButton->SetFontSize(kUiFontSize);
-    row->AddChild(newTabButton);
-
+    // No new-tab button here: the tab strip above carries its own "+" at the
+    // end of the tab list.
     backButton = MakeToolButton("ufl-back", "", "arrow-left.svg", 30,
                                 [this]() { NavigateBack(); });
     forwardButton = MakeToolButton("ufl-forward", "", "arrow-right.svg", 30,
@@ -1921,13 +1919,35 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
 // ===== TABS =====
 
 void UltraFilerWindow::BuildTabbedContainer() {
-    tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ufl-tabs");
+    // The strip alone is this element - it is exactly one tab high and sits at
+    // the top of the window; the pages go into `tabContentHost`, which
+    // BuildSplitLayout puts in the folder pane of the split.
+    tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
+            "ufl-tabs", 0, 0, 0, kTabStripHeight);
     tabbedContainer->fontSize = static_cast<int>(kUiFontSize);
-    tabbedContainer->SetTabHeight(30);
+    tabbedContainer->SetTabHeight(kTabStripHeight);
     tabbedContainer->SetTabMinWidth(90);
     tabbedContainer->SetCloseMode(TabCloseMode::Closable);
-    tabbedContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+    tabbedContainer->tabBarColor = Color(249, 249, 251, 255);
+    tabbedContainer->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    tabContentHost = MakeLayoutBox("ufl-tab-content");
+    tabContentHost->layout.SetFlexColumn()
+                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tabContentHost->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabbedContainer->SetContentHost(tabContentHost);
+
+    // "+" at the end of the tab list opens another tab on the current folder.
+    tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+    tabbedContainer->SetShowNewTabButton(true);
+    tabbedContainer->SetNewButtonColor(Color(249, 249, 251, 255));
+    tabbedContainer->onNewTabRequest = [this]() {
+        std::string path = filer ? filer->GetPath() : std::string();
+        if (path.empty()) path = UserHomeDir();
+        AddNewTab(path, true);
+    };
 
     tabbedContainer->onTabClose = [this](int index) {
         // The last remaining tab stays open.
@@ -1960,6 +1980,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     state->page = MakeLayoutBox("ufl-tab-page-" + suffix);
     state->page->layout.SetFlexColumn()
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // The pages are children of the content host, which shows one at a time:
+    // the visible page takes the whole host, the hidden ones are out of flow.
+    state->page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
     // Settings > Display > Home folder: when curated (the Windows default),
@@ -2112,6 +2136,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
+    // The strip stays visible while the History / Favorites views replace the
+    // folder display, so picking a tab means going back to browsing.
+    ShowBrowsingView();
     if (index < 0 || index >= (int)tabStates.size()) return;
     FilerTabState* tab = tabStates[index].get();
     if (!tab->filer) return;
@@ -2210,7 +2237,9 @@ void UltraFilerWindow::BuildSplitLayout() {
     split->SetPaneMinSize(1, kFilerMinWidth);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    filerPane->AddChild(tabbedContainer);
+    // The tab strip itself is the window's top bar; this pane shows the page
+    // of whichever tab is active.
+    filerPane->AddChild(tabContentHost);
 
     preview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -2360,19 +2389,34 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
         return;
     }
 
-    // Per-app environment named after the executable, so each program keeps
-    // its own isolated prefix (UltraWin creates it on first launch).
-    std::string envName = fs::path(entry.name).stem().string();
-    for (char& c : envName) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' &&
-            c != '_' && c != '-')
-            c = '_';
+    // Already decided? A program inside an environment's prefix runs
+    // there, and a remembered association covers everything a picker
+    // answered before — both resolve inside UltraWin_RunApp.
+    std::string decided = UltraWin_EnvironmentForPath(entry.path);
+    if (decided.empty()) decided = UltraWin_GetAssociation(entry.path);
+    if (!decided.empty()) {
+        StartWindowsLaunch(entry, decided);
+        return;
     }
-    while (!envName.empty() && envName.front() == '.') envName.erase(0, 1);
-    if (envName.size() > 64) envName.resize(64);
-    if (envName.empty()) envName = "Default";
 
-    const bool firstLaunch = !UltraWin_EnvironmentExists(envName);
+    // First launch of an unknown program: ask once. The suggestion is a
+    // sibling program's environment when one is associated (multi-exe
+    // applications share), else a name derived from folder/file.
+    std::vector<std::string> names;
+    for (const auto& env : UltraWin_ListEnvironments())
+        names.push_back(env.name);
+    ShowRunWindowsDialog(
+        entry.name, names, UltraWin_SuggestEnvironment(entry.path),
+        [this, entry](const std::string& environment, bool remember) {
+            if (remember) UltraWin_SetAssociation(entry.path, environment);
+            StartWindowsLaunch(entry, environment);
+        },
+        window.get());
+}
+
+void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
+                                          const std::string& environment) {
+    const bool firstLaunch = !UltraWin_EnvironmentExists(environment);
     const char* verb =
         entry.extension == "msi" ? "Installing " : "Launching ";
     if (statusLabel)
@@ -2387,9 +2431,9 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
     // alive flag the subfolder probe worker uses.
     auto alive = probeAlive;
     std::thread([this, alive, path = entry.path, name = entry.name,
-                 envName]() {
+                 environment]() {
         UltraWinRunOptions options;
-        options.environment = envName;
+        options.environment = environment;
         UltraWinHandle handle = UltraWinInvalidHandle;
         auto result = UltraWin_RunApp(path, options, &handle);
 

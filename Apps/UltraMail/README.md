@@ -3,6 +3,8 @@
 The ULTRA OS mail application. Full concept and design:
 [`Docs/UltraMail/Concept.md`](../../Docs/UltraMail/Concept.md).
 
+This app versions itself: [`Docs/UltraMail/CHANGELOG.md`](../../Docs/UltraMail/CHANGELOG.md).
+
 UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/POP3)
 and **UltraDatabase** (local store) modules.
 

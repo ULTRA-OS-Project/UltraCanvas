@@ -1,7 +1,10 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.3
-// Last Modified: 2026-08-06
+// Version: 1.4.0
+// Last Modified: 2026-08-31
+// V1.4.0: Password fields gained an optional in-field reveal ("eye") button that
+//   flips the mask off, plus SetPasswordRevealed() so an external
+//   "Show password" control can drive the same state.
 // V1.3.3: Typed UTF-8 input is inserted instead of dropped — the printable
 //   filter on event.text kept only ASCII 32..126, so any multi-byte character
 //   (umlauts, accents, CJK, ...) typed into a text field vanished.
@@ -88,10 +91,14 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::SetInputType(TextInputType type) {
         inputType = type;
 
+        // Masking follows the type, so switching a field away from Password also
+        // drops the mask (it used to stick once set).
+        passwordMode = (type == TextInputType::Password);
+        if (!passwordMode) passwordRevealed = false;
+
         // Configure based on type
         switch (type) {
             case TextInputType::Password:
-                passwordMode = true;
                 break;
             case TextInputType::Email:
                 AddValidationRule(ValidationRule::Email());
@@ -334,6 +341,9 @@ namespace UltraCanvas {
 
         // Draw clear button
         RenderClearButton(ctx);
+
+        // Draw the password reveal ("eye") button
+        RenderPasswordToggle(ctx);
     }
 
     void UltraCanvasTextInput::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
@@ -458,11 +468,49 @@ namespace UltraCanvas {
             lastValidationResult.state != ValidationState::NoValidation) {
             rightOffset += 20;
         }
+        // The eye button sits between the validation icon and the clear button.
+        if (IsPasswordToggleVisible()) {
+            rightOffset += passwordToggleSize + 4;
+        }
 
         int btnX = finalBounds.width - rightOffset - clearButtonSize - 2;
         int btnY = (finalBounds.height - clearButtonSize) / 2;
 
         return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
+    }
+
+    bool UltraCanvasTextInput::IsPasswordToggleVisible() const {
+        // Only meaningful for masked fields; shown even when empty so the control
+        // is discoverable before the user starts typing.
+        return showPasswordToggle && passwordMode;
+    }
+
+    Rect2Di UltraCanvasTextInput::GetPasswordToggleBounds() const {
+        if (!IsPasswordToggleVisible()) return Rect2Di(0, 0, 0, 0);
+
+        // Returns element-local coordinates
+        int rightOffset = style.paddingRight;
+        if (showValidationState &&
+            lastValidationResult.state != ValidationState::NoValidation) {
+            rightOffset += 20;
+        }
+
+        int btnX = finalBounds.width - rightOffset - passwordToggleSize - 2;
+        int btnY = (finalBounds.height - passwordToggleSize) / 2;
+
+        return Rect2Di(btnX, btnY, passwordToggleSize, passwordToggleSize);
+    }
+
+    void UltraCanvasTextInput::SetPasswordRevealed(bool revealed) {
+        if (passwordRevealed == revealed) return;
+
+        passwordRevealed = revealed;
+        // The painted glyphs change width when the mask comes off, so the caret
+        // and scroll geometry (which measure GetRenderText()) must be recomputed.
+        UpdateScrollOffset();
+        RequestRedraw();
+
+        if (onPasswordVisibilityChanged) onPasswordVisibilityChanged(passwordRevealed);
     }
 
     Rect2Di UltraCanvasTextInput::GetTextArea() const {
@@ -479,6 +527,10 @@ namespace UltraCanvas {
 
         if (IsClearButtonVisible()) {
             rightReduction += clearButtonSize + 4;
+        }
+
+        if (IsPasswordToggleVisible()) {
+            rightReduction += passwordToggleSize + 4;
         }
 
         return Rect2Di(
@@ -713,6 +765,51 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(1.0f);
     }
 
+    void UltraCanvasTextInput::RenderPasswordToggle(IRenderContext* ctx) {
+        if (!IsPasswordToggleVisible()) return;
+
+        Rect2Di btnBounds = GetPasswordToggleBounds();
+        if (btnBounds.width <= 0) return;
+
+        Color iconColor = isPasswordToggleHovered ? passwordToggleHoverColor : passwordToggleColor;
+
+        double cx = btnBounds.x + btnBounds.width / 2.0;
+        double cy = btnBounds.y + btnBounds.height / 2.0;
+        double halfW = btnBounds.width / 2.0 - 1.0;   // eye half-width
+        double lidH = btnBounds.height / 3.0;         // lid bulge
+
+        ctx->SetStrokePaint(iconColor);
+        ctx->SetStrokeWidth(1.4f);
+        ctx->SetLineCap(LineCap::Round);
+
+        // Almond outline: two mirrored quadratic-ish beziers (upper and lower lid).
+        Point2Dd left(cx - halfW, cy);
+        Point2Dd right(cx + halfW, cy);
+        ctx->DrawBezierCurve(left, Point2Dd(cx - halfW * 0.45, cy - lidH),
+                             Point2Dd(cx + halfW * 0.45, cy - lidH), right);
+        ctx->DrawBezierCurve(left, Point2Dd(cx - halfW * 0.45, cy + lidH),
+                             Point2Dd(cx + halfW * 0.45, cy + lidH), right);
+
+        // Pupil
+        ctx->DrawCircle(Point2Dd(cx, cy), std::max(1.5, lidH * 0.55));
+
+        // Revealed state: strike the eye through, the familiar "click to hide" cue.
+        if (passwordRevealed) {
+            // A background-coloured backing line keeps the slash readable where it
+            // crosses the outline.
+            ctx->SetStrokePaint(GetBackgroundColor());
+            ctx->SetStrokeWidth(3.0f);
+            ctx->DrawLine(Point2Dd(cx - halfW, cy + lidH + 1.5),
+                          Point2Dd(cx + halfW, cy - lidH - 1.5));
+            ctx->SetStrokePaint(iconColor);
+            ctx->SetStrokeWidth(1.4f);
+            ctx->DrawLine(Point2Dd(cx - halfW, cy + lidH + 1.5),
+                          Point2Dd(cx + halfW, cy - lidH - 1.5));
+        }
+
+        ctx->SetStrokeWidth(1.0f);
+    }
+
     void UltraCanvasTextInput::DrawShadow(const Rect2Di &bounds, IRenderContext* ctx) {
         if (!style.showShadow) return;
 
@@ -872,6 +969,15 @@ namespace UltraCanvas {
     bool UltraCanvasTextInput::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.pointer)) return false;
 
+        // Check the password reveal button first - it overlaps no text area
+        if (IsPasswordToggleVisible()) {
+            Rect2Di toggleBounds = GetPasswordToggleBounds();
+            if (toggleBounds.Contains(event.pointer)) {
+                TogglePasswordVisibility();
+                return true;
+            }
+        }
+
         // Check clear button click first
         if (IsClearButtonVisible()) {
             Rect2Di clearBounds = GetClearButtonBounds();
@@ -916,18 +1022,23 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::HandleMouseMove(const UCEvent &event) {
-        // Track clear button hover state
-        if (IsClearButtonVisible()) {
-            Rect2Di clearBounds = GetClearButtonBounds();
-            bool wasHovered = isClearButtonHovered;
-            isClearButtonHovered = clearBounds.Contains(event.pointer);
-            if (wasHovered != isClearButtonHovered) {
-                SetMouseCursor(isClearButtonHovered ? UCMouseCursor::Arrow : UCMouseCursor::Text);
-                RequestRedraw();
-            }
-        } else if (isClearButtonHovered) {
-            isClearButtonHovered = false;
-            SetMouseCursor(UCMouseCursor::Text);
+        // Track in-field button hover state (clear button and password reveal button).
+        // Both are resolved before the cursor is set: they sit side by side, so
+        // deciding the cursor per button would let the one being left overwrite the
+        // arrow the one being entered just asked for.
+        bool wasClearHovered = isClearButtonHovered;
+        bool wasToggleHovered = isPasswordToggleHovered;
+
+        isClearButtonHovered = IsClearButtonVisible() &&
+                               GetClearButtonBounds().Contains(event.pointer);
+        isPasswordToggleHovered = IsPasswordToggleVisible() &&
+                                  GetPasswordToggleBounds().Contains(event.pointer);
+
+        if (wasClearHovered != isClearButtonHovered ||
+            wasToggleHovered != isPasswordToggleHovered) {
+            SetMouseCursor((isClearButtonHovered || isPasswordToggleHovered)
+                           ? UCMouseCursor::Arrow : UCMouseCursor::Text);
+            RequestRedraw();
         }
 
         if (!isDragging) return false;
@@ -1254,6 +1365,7 @@ namespace UltraCanvas {
         UltraCanvasCaret::GetInstance().Hide(this);
         isDragging = false;
         isClearButtonHovered = false;
+        isPasswordToggleHovered = false;
         RequestRedraw();
 
         if (onFocusLost) onFocusLost();

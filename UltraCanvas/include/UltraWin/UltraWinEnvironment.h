@@ -52,6 +52,43 @@ std::vector<UltraWinFolderMapping> UltraWin_ListMappings(
     const std::string& environment);
 
 // ============================================================================
+// Associations — the remembered environment for programs living OUTSIDE
+// any environment (portable apps, downloaded installers). Launchers ask
+// once (a picker), store the answer here, and UltraWin_RunApp consults it
+// automatically on later launches: explicit option → owning prefix →
+// association → Default. Keyed by the program's absolute host path;
+// persisted under the UltraWin data directory, shared by all launchers.
+// ============================================================================
+
+// The environment whose prefix physically contains hostPath (an installed
+// program, its Start-Menu shortcut); "" when the path lies outside every
+// environment. Launchers use it to know a program's environment is already
+// decided — no need to ask.
+std::string UltraWin_EnvironmentForPath(const std::string& hostPath);
+
+// The stored environment for a program path; "" when none is stored OR
+// when the file at that path is no longer the one the choice was made
+// for (associations carry a size+content fingerprint, so a re-downloaded
+// setup.exe replacing a deleted one at the same path re-asks instead of
+// silently reusing the old program's environment).
+std::string UltraWin_GetAssociation(const std::string& programPath);
+
+// Remember / forget the environment for a program path (fingerprinting
+// the file's current content). Setting validates the environment name
+// but not its existence (it is created on first launch like everywhere
+// else).
+UltraWinResult UltraWin_SetAssociation(const std::string& programPath,
+                                       const std::string& environment);
+UltraWinResult UltraWin_RemoveAssociation(const std::string& programPath);
+
+// What a picker should pre-select for a program: its own association,
+// else the association of a sibling program in the same directory (the
+// multi-exe application case), else the parent folder's name, else the
+// file name — the last two sanitized into a valid environment name.
+// Never empty for an absolute path.
+std::string UltraWin_SuggestEnvironment(const std::string& programPath);
+
+// ============================================================================
 // Components — runtime dependencies a Windows application may need inside
 // its environment: VC++ runtimes ("vcrun2019"), core fonts ("corefonts"),
 // .NET ("dotnet48"), Direct3D-to-Vulkan ("dxvk"), … Names are winetricks

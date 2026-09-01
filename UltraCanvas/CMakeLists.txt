@@ -307,6 +307,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
+    # IOKit + CoreFoundation back the hardware probe
+    # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
+    # storage, USB and Bluetooth, and the CF property readers around it.
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
     endif()
@@ -456,6 +461,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/MOBIEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/TXTEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookViewer.cpp
+
+        # Hardware inventory and sensors (CPU/GPU/NPU/memory/storage/network/
+        # USB/Bluetooth) plus the ready-made system-information panel. The probe
+        # itself lives in OS/<Platform>/UltraCanvas*HardwareInfo.cpp and is
+        # picked up by the platform glob below.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfoPanel.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -1335,6 +1347,14 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             imm32
             dwmapi
             ws2_32  # Winsock select() for host fd-watches (e.g. Ladybird IPC sockets)
+            # Hardware probe (OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp):
+            # network adapters, Wi-Fi association, USB enumeration and the
+            # Bluetooth radios. powrprof is loaded at run time instead, so the
+            # processor-clock query costs no link dependency.
+            iphlpapi
+            wlanapi
+            setupapi
+            bthprops
             ${FONTCONFIG_LIBRARIES}
     )
     if(ULTRACANVAS_ENABLE_GL)
@@ -1361,6 +1381,8 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${COCOA_FRAMEWORK}
             ${QUARTZ_FRAMEWORK}
             ${CORETEXT_FRAMEWORK}
+            ${IOKIT_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)
@@ -2015,6 +2037,7 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinComponents.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinQmp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
@@ -2239,6 +2262,16 @@ if(ULTRACANVAS_PLUGIN_PDF)
     # there — link it only when present.
     if(MUPDF_THIRD_LIBRARY)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${MUPDF_THIRD_LIBRARY})
+        # IMPORTANT: MuPDF must be built with USE_SYSTEM_LIBJPEG=yes (see the from-source build in
+        # .github/workflows/build.yml and Docs/Dependencies.md). MuPDF otherwise vendors its OWN
+        # libjpeg 9 (JPEG_LIB_VERSION=90) into libmupdf-third.a and globally defines jpeg_CreateDecompress;
+        # with -Wl,--export-dynamic (via GTK) that v90 symbol leaks into the process and INTERPOSES
+        # libvips's system libjpeg (v80), so every JPEG/AVIF thumbnail fails with "Wrong JPEG library
+        # version: library is 90, caller expects 80". Using the system libjpeg (as MuPDF already does for
+        # freetype/harfbuzz, which are shared with cairo/pango) leaves a single libjpeg in the process and
+        # removes the conflict at the source. A linker version-script to localize only jpeg_* was tried but
+        # is unusable here: MuPDF compiles its bundled third-party objects with hidden ELF visibility, so
+        # any --version-script trips ld's "hidden symbol referenced by DSO" check on libvips's openjpeg.
     endif()
     foreach(_extra_lib
             MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY

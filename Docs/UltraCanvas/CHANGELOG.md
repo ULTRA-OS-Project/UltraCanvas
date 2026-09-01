@@ -14,6 +14,267 @@
   the file display still reveals everything regardless.
 
 #### 2026-08-29 *0.3.85*
+#### 2026-08-31 *0.3.88*
+- **VirtualFS: nested archives no longer spill to a temp file.** Reading
+  `/outer.zip/inner.7z/docs/report.txt` extracted `inner.7z` to the temp
+  directory first, because `IVirtualFSProvider::Open()` only accepted a real
+  path — so every nested traversal left the inner archive's decompressed bytes
+  on disk, including archives decrypted from a password-protected parent, which
+  landed there as plaintext. New optional
+  `IVirtualFSProvider::OpenFromMemory()` takes the bytes directly; the
+  libarchive provider implements it over `archive_read_open_memory()` and
+  advertises the new `VirtualFSCapability::MemoryOpen`.
+  `VirtualFSManager::OpenNestedArchive()` prefers it and falls back to a temp
+  file only when a provider returns `NotSupported`, so providers that need a
+  real path keep working unchanged. libarchive streams are forward-only, so the
+  provider reopened the archive from its path in seven places; those are now a
+  single `Impl::NewReadHandle()` that opens from either source, which is what
+  makes the memory path apply to listing, extraction and validation rather than
+  only to the first read. An archive opened from memory cannot be modified —
+  rewrites go through a temp file and rename, which needs a real path — so
+  `RewriteArchive()` reports `NotSupported` for one. Also fixed: a failed temp
+  write left the partial file behind, and a temp file was written before
+  checking that any provider could handle the format. New regression test
+  `Tests/VirtualFSNestedMemoryTest.cpp` covers nested reads, listing, existence
+  and the cached-provider second read, asserting the temp directory stays empty
+  throughout.
+- **VirtualFS: OS-visible RAM discs** (`VirtualFS/VirtualFSRamDisk.h`). A disc
+  created here is a real mount point — `fopen()`, other processes and the
+  platform file manager all reach it — not an in-process structure. VirtualFS
+  drives the facility each platform already provides rather than shipping a
+  driver: a `0700` directory on the `/dev/shm` tmpfs on Linux, `hdiutil attach
+  ram://` plus `diskutil erasevolume` on macOS, and the ImDisk driver on
+  Windows when it is installed. Windows ships no RAM disc facility of its own,
+  so the back end **detects** ImDisk instead of depending on it and degrades to
+  a `%TEMP%` directory (wiped on destroy) when it is absent or the process is
+  not elevated. That fallback is never disguised: every disc reports its
+  backing, and `VirtualFSRamDisk::IsTrueRam()` tells callers whether bytes can
+  reach persistent storage, so code holding decrypted content can refuse it.
+  Discs are private to the calling user, and disc names are validated against a
+  strict character set before becoming part of a real path so one cannot escape
+  the mount root. `VirtualFS_ListRamDisks()` finds discs left behind by a
+  process that died before destroying them — ImDisk discs included, located by
+  the volume label their name is stamped into — which makes a start-up sweep
+  possible. `VirtualFS_UseRamDiskForTemp()` points the manager's temp directory
+  at a disc; destroying a disc still serving as the temp directory moves the
+  manager off it first, so later temp writes do not fail against a mount that
+  no longer exists. New test `Tests/VirtualFSRamDiskTest.cpp` verifies the disc
+  is reachable through plain stdio, that a Linux disc really is tmpfs rather
+  than a plain directory, the `0700` permissions, name and size validation,
+  duplicate refusal, temp redirection and its unwind, and idempotent destroy.
+  The Linux back end is verified end to end; the macOS and Windows back ends
+  compile for their targets, but their `hdiutil`/`diskutil`/`imdisk`
+  invocations need those platforms to exercise.
+- **EmailCleaner 0.2.0 — acting on a selected block** (block / unsubscribe /
+  move to Trash). The app keeps its own changelog now:
+  [`Docs/EmailCleaner/CHANGELOG.md`](../EmailCleaner/CHANGELOG.md). Two
+  framework changes below carry it.
+- **`UltraCanvasTreeMapElement` responds to clicks.** It has always published
+  `onNodeSelect`, `onNodeDoubleClick` and `onNodeRightClick`, but nothing ever
+  fired them: the chart base turns a mouse press into drag tracking only, and
+  the element had no `OnEvent` of its own. It now selects the block under the
+  pointer on a left click, drills into it on a double click, reports a right
+  click, and clears the selection on a click into the background. Hit-testing
+  was fixed to match: it tests what `RenderChart` draws — the current level's
+  children, laid out and leaf or not — instead of recursing for leaves whose
+  bounds no layout pass had ever set, which is why a grouped treemap could not
+  be clicked at all. This is what makes EmailCleaner's sender map a navigation
+  surface. Version 1.1.0.
+- **CI builds the EmailCleaner suite on every row and runs it on Linux**
+  (`ULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON` in both configure steps). It is
+  headless, so building it on macOS and Windows costs seconds and gates what
+  those rows uniquely exercise: the STATIC UltraCanvas link. The Linux
+  `ctest --output-on-failure` step then runs it with everything else.
+- **Every application keeps its own changelog now**, so an app no longer moves
+  when the framework releases. `Docs/<App>/CHANGELOG.md` for AnchorPoint,
+  EmailCleaner, UltraAI, UltraAuthenticator, UltraFiler, UltraMail, UltraSocial
+  and UltraViewer, plus `Docs/Modules/UltraWin/CHANGELOG.md` for UltraWin —
+  joining Texter, UltraCleaner and Ladybird, which already had one.
+  `cmake/UltraCanvasVersion.cmake` reads the first line of each into
+  `<PREFIX>_VERSION` (`_DOT4` / `_COMMA4` too) through one
+  `_ultracanvas_declare_product()` line apiece, and re-runs configure when any
+  of them changes. DemoApp deliberately stays on this file: it is the
+  framework's showcase and its artefacts are named `UCDemo-<version>` from this
+  changelog, so a second number for it would be the duplication the module
+  exists to prevent. Only EmailCleaner's entries were moved (see 0.3.87 and the
+  top of this entry); everything else stays where it was published, because
+  this file is the record of what shipped in each framework release and
+  describing one change in two files under two versions is what the rules here
+  forbid.
+- **`UltraMailEngineTests` links again in a static build.** `libultranet.a`'s
+  MIME parser calls `UltraCanvas::Trim` / `Base64Encode` / `Base64Decode`, and
+  GNU ld scans each archive once in place, so the core library has to *follow*
+  UltraNet on the link line — through `UltraMailEngine` it came first, and the
+  target failed with a page of undefined references to those three helpers.
+  `Tests/UltraMail/CMakeLists.txt` now names `UltraNet` and the core library
+  explicitly after the engine, as the EmailCleaner suite already did. A no-op
+  in a shared build, where UltraNet is absorbed into the `.so`. 51 tests pass.
+- **Demo app, Menu page: the context menu now opens on right-click.** The
+  first element on the page ("Right-Click for Context Menu") wired both the menu
+  and the "wrong button" popup to `onClick` and told them apart by inspecting
+  `GetCurrentEvent().button`. `UltraCanvasButton` never routes a right-click
+  there: it activates on the left button only and hands the right button to
+  `onContextMenu`, so the `UCMouseButton::Right` branch was dead code and no menu
+  ever appeared. The menu is now opened from `onContextMenu` (at the window
+  coordinates it passes) and `onClick` keeps the left-click reminder. The list
+  items further down the page were unaffected — `UltraCanvasLabel` reports every
+  mouse button through `onClick`.
+- `Docs/UltraCanvas/UltraCanvasButtonExamples.md` now documents `onContextMenu`,
+  `onToggle` and `onSecondaryClick`, and states that `onClick` is left-button
+  only, with the right-click wiring spelled out.
+- **Menu separators have room to breathe.** `MenuStyle::Default()` set
+  `separatorHeight` to 1, and `RenderSeparator` centres a 1px line in that row,
+  so the line touched the items above and below and read as a hairline rather
+  than a divider. The row is now 7px. Texter's menu bar and UltraFiler's context
+  menus use `Default()` without overriding it, so they gain the clearer grouping
+  too.
+- **`MenuStyle::Dark()` and `Flat()` now derive from `Default()`.** They were
+  built on a bare `MenuStyle`, so everything they did not set came from the
+  struct's member defaults instead: item height 28 rather than 24, left padding
+  4 rather than 8, corner radius 4 rather than 0, a drop shadow, the default
+  font size and `separatorHeight` 8 — the same menu changed shape, not just
+  colour, when it changed theme. `Dark()` also gets border, pressed, disabled,
+  shortcut and separator colours suited to a dark background. The demo's Dark
+  and Flat menus, which had no separator at all, now show one.
+
+#### 2026-08-30 *0.3.87*
+- **New application: EmailCleaner** (`Apps/EmailCleaner`, target `EmailCleaner`,
+  `BUILD_EMAILCLEANER`) — a mailbox analysed into a map of who sends what, when.
+  Described in the app's own changelog as **EmailCleaner 0.1.0**:
+  [`Docs/EmailCleaner/CHANGELOG.md`](../EmailCleaner/CHANGELOG.md). This release
+  carried no framework changes of its own.
+
+#### 2026-08-29 *0.3.86*
+- **UltraFiler's folder tabs moved to the top of the window.** The tab strip
+  was inside the split's folder pane, so it started to the right of the folder
+  tree, two toolbars down. It is now the topmost bar of the window, full width,
+  browser style: the tabs name the folders, and the navigation row, the command
+  bar and the folder display below them all act on whichever tab is selected.
+- **The "+" that opens a tab sits at the end of the tab list**, where a browser
+  puts it, instead of being the first icon of the navigation row. That icon is
+  gone from the toolbar; `UltraCanvasTabbedContainer`'s own new-tab button
+  (`SetShowNewTabButton` / `NewTabButtonPosition::AfterTabs` /
+  `onNewTabRequest`) does the work, so the button follows the tabs as they are
+  added, closed and reordered. Clicking a tab while the History or Favorites
+  view is up now returns to the folder display, since the strip stays visible
+  over both.
+- **`UltraCanvasTabbedContainer` can detach its pages from its tab strip:**
+  `SetContentHost(container)` moves the tab contents into a container anywhere
+  else in the element tree, which then sizes them with its own layout, and
+  leaves the tabbed container as nothing but the tab bar (`GetContentHost()`,
+  `IsContentDetached()`; pass `nullptr` to take the pages back). Pages already
+  added move with the call, so the host can be set before or after the tabs.
+  This is what lets a tab strip stand apart from the pages it switches — the
+  layout every browser has and UltraFiler now uses — instead of the strip and
+  the content having to be one block. `Docs/UltraCanvas/UltraCanvasTabExamples.md`
+  documents it, along with the new-tab button, which had no documentation at all.
+
+#### 2026-08-29 *0.3.85*
+- **New `UltraCanvasHardwareInfo`: the framework can now describe the machine
+  it runs on.** One read-only capture returns the CPU (cache sizes per level
+  and instance, hybrid performance/efficiency core tiers, instruction sets,
+  temperature and load), the GPUs, the NPU or other AI accelerator, memory
+  down to the individual module (type, MT/s, manufacturer, part number, slot),
+  every drive with its bus, physical connector ("PCIe 4.0 x4 (NVMe)",
+  "SATA 6.0 Gbps", "USB 3.1 Gen 2 (10 Gb/s)"), on-drive cache, temperature and
+  mounted volumes, every network interface including the Wi-Fi association
+  (SSID, access point, band, channel, signal, rate), the USB controllers and
+  everything plugged into them, and the Bluetooth adapters with their live
+  connections. `HardwareQuery` selects categories, because probing costs differ
+  by orders of magnitude; `RefreshSensors()` re-reads only the live values into
+  an existing snapshot and never adds or removes a device, so a monitor loop
+  keeps its indices. A value the platform will not give up never becomes a
+  zero: the reason lands in `HardwareSnapshot::warnings` in words a user can
+  act on ("drive cache size needs ATA IDENTIFY on the block device, which
+  requires root").
+- **Identifiers are masked by default.** Serial numbers, MAC addresses and
+  BSSIDs keep only their tail (`**********3456`, `**:**:**:**:34:56`) unless a
+  caller deliberately opts out — a hardware panel is exactly the screen that
+  gets photographed or pasted into a bug report.
+- **New `UltraCanvasHardwareInfoPanel` element** — a drop-in
+  "System information" view for a settings screen, an about box or an ULTRA OS
+  control panel. It is an `UltraCanvasColumnsTreeView` filled from the report,
+  so none of it is hand-painted; `RefreshSensors()` writes the new numbers into
+  the rows that are already there, leaving the user's expansion, selection and
+  scroll position untouched.
+- Probes are per platform behind an internal backend header, and introduce no
+  new third-party dependency: Linux reads procfs and sysfs (hwmon and thermal
+  zones for temperatures, DMI for memory modules, the wireless extensions for
+  Wi-Fi, `/sys/class/accel` and PCI class 12h for NPUs); Windows uses
+  documented Win32 only — registry, `GetSystemFirmwareTable` for SMBIOS,
+  storage IOCTLs including the Windows 10 temperature query, IP Helper, the
+  WLAN API, SetupAPI and the Bluetooth API, with no COM or WMI; macOS uses
+  sysctl and the IOKit C API. Platforms with no native probe (WASM, Android,
+  the BSDs) link a fallback that reports what the C++ runtime knows and says
+  what it cannot.
+- The module is deliberately separate from **IODeviceManager**: that one
+  *operates* peripherals (connect, configure, scan, print — handles, protocol
+  drivers, a device lifecycle), this one only *describes* the host and holds
+  nothing. See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
+- New `HardwareInfoTests` (`ctest -R HardwareInfoTests`): formatters, masking,
+  the query selector, report shape, and the invariants a live capture must
+  hold on the machine it runs on.
+- **The CPU line in an ILLEGAL_INSTRUCTION crash now names the feature that is
+  actually missing.** A field report had an AVX2-capable Ryzen 5 5500U fault on
+  `VGF2P8AFFINEQB` while the reporter said `[SSE4.2 AVX AVX2]` — every feature it
+  knew how to print was present, and the one that mattered was not on the list.
+  The cause is `IsProcessorFeaturePresent`: it has PF_ constants for a handful
+  of extensions and none for GFNI, VAES or VPCLMULQDQ, which are the ones a
+  `-march=native` build picks up without needing AVX-512 at all. Detection now
+  reads CPUID directly (leaf 1, leaf 7 subleaf 0, leaf 0x80000001) and prints
+  those three alongside FMA, BMI2, AES, SHA and the AVX-512 family.
+- The summary also names the **highest x86-64 psABI level the machine
+  satisfies** — `(x86-64-v3)` — and the crash text now quotes that level back as
+  the flag to build with. `-march=x86-64-v<N>` means exactly that feature set,
+  so it is a flag the builder can paste rather than a vague "lower the
+  baseline". GFNI, VAES, VPCLMULQDQ and SHA deliberately do not raise the level:
+  they belong to no level, which is precisely why no `-march=x86-64-vN` will
+  emit them and only `-march=native` drags them in.
+- `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` corrects guidance that was
+  actively misleading: it previously said a `C4`/`C5` prefix means "VEX, i.e.
+  AVX/AVX2". VEX also encodes GFNI, VAES, VPCLMULQDQ and BMI, so a CPU can hold
+  every feature in the printed list and still refuse a VEX instruction — exactly
+  what happened here. The section now shows how to decode the bytes with
+  `objdump` instead of guessing from the prefix, works the reported case
+  through, and adds the opt-in-extension cause to the two it already covered.
+
+#### 2026-08-28 *0.3.84*
+- **Spell checking is now switched on and usable in UltraTexter.** The service
+  and the `UltraCanvasTextArea` integration already existed, but nothing in the
+  application ever turned them on, so no user ever saw a squiggle. UltraTexter
+  now has **Edit → Spelling** with a *Check Spelling* toggle, a *Dictionary*
+  list of the installed languages and *Recheck Document*; both the toggle and
+  the chosen dictionary persist in `config.ini`. The backend is loaded lazily,
+  the first time checking is turned on, so a launch without it costs nothing.
+- **The editor has a real context menu.** Right-clicking inside the text used
+  to do nothing but move the caret — only the tab bar had a menu. It now opens
+  Undo / Redo / Cut / Copy / Paste / Select All with live enabled state, plus
+  the *Spelling* submenu, and when the click lands on a flagged word the
+  suggestions, *Add to Dictionary* and *Ignore* sit at the top of that same
+  menu instead of in a competing popup.
+- **Markdown documents no longer squiggle their own markup.** A new scanner
+  (`Apps/Texter/UltraCanvasMarkdownSpellRanges.h`) keeps fenced and indented
+  code, inline code spans, link and image targets, autolinks, inline HTML, math
+  and YAML front matter out of the check, while the prose around them — link
+  text and image alt text included — is still checked.
+- Added `UltraCanvasTextArea::onContextMenu`, so an application that already
+  shows its own editor menu gets the right-click before the built-in
+  suggestion popup and can splice the suggestions into its own menu.
+- Added `UltraCanvasTextArea::onPrepareSpellCheck`, called with the exact text
+  about to be checked. `SpellCheckOptions::shouldSkipRange` works in byte
+  offsets, so a hook built once went stale on the first edit; it can now be
+  rebuilt per check from the text that check will actually run on.
+- Added `UltraCanvasTextArea::IsPositionInsideSelection()`. A right-click now
+  moves the caret to the click unless it landed inside the selection, so
+  **Paste** acts where the user clicked while **Cut** and **Copy** still act on
+  what is highlighted.
+- Fixed the hit test behind the suggestion menu resolving to column 0 whenever
+  the caret had previously been on another line: moving the caret first made
+  that line the active one, and until the next frame `GetActualLineLayout`
+  still returned the *previous* active line's layout. The menu is now built
+  before the caret moves.
+- Added `Tests/TexterMarkdownSpellRangesTest.cpp` (48 checks) covering the
+  markdown skip scanner.
 - **TreeView: a double-click or the Enter key on a lazily-loaded node left it
   empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,
   which flips the expansion state without firing `onNodeExpanded` — the

@@ -251,6 +251,50 @@ the backing implementation can be replaced without affecting callers.
   they need a pixel offset in the paint path first.
   See `Docs/UltraCanvas/UltraCanvasSmoothScroll.md`.
 
+- **UltraCanvasHardwareInfo** (`UltraCanvasHardwareInfo.h`) — read-only
+  inventory and sensors for the machine the application runs on: CPU (cache
+  sizes, hybrid core tiers, instruction sets, temperature, load), GPU, NPU,
+  memory down to the individual module, storage (bus, connector, on-drive
+  cache, temperature, volumes), network interfaces including Wi-Fi
+  association, USB controllers and attached devices, and Bluetooth adapters
+  with their connections. Distinct from **IODeviceManager**, which *operates*
+  peripherals (scanners, cameras, printers: handles, protocols, a device
+  lifecycle) — this module only *describes* the host and holds nothing. Shared
+  logic in `core/UltraCanvasHardwareInfo.cpp`; per-platform probes behind the
+  internal `UltraCanvasHardwareInfoBackend.h` under `OS/<Platform>/` (Linux:
+  procfs/sysfs; Windows: registry, SMBIOS, storage IOCTLs, IP Helper, WLAN,
+  SetupAPI and the Bluetooth API — no COM or WMI; macOS: sysctl and the IOKit
+  C API), with a fallback for platforms that have none. No new third-party
+  dependency on any platform. Public surface:
+  - `Capture(HardwareQuery, forceRefresh)` — one consistent snapshot;
+    `HardwareQuery` is a bit set (`System`/`CPU`/`GPU`/`NPU`/`Memory`/
+    `Storage`/`Network`/`USB`/`Bluetooth`/`Sensors`/`All`) because probing
+    costs differ by orders of magnitude, and `HardwareSnapshot::Has` reports
+    which categories were actually filled.
+  - `RefreshSensors(snapshot)` — re-reads temperatures, clocks, utilisation,
+    free memory and link state in place, never adding or removing a device, so
+    a monitor loop keeps its indices.
+  - Single-category helpers `GetCPU` / `GetMemory` / `GetSystem` / `ListGPUs` /
+    `ListNPUs` / `ListStorageDevices` / `ListNetworkInterfaces` /
+    `ListUSBDevices` / `ListUSBControllers` / `ListBluetoothAdapters`.
+  - `SetOptions` / `GetOptions` (`HardwareInfoOptions`): identifier masking
+    (on by default — serial numbers, MACs and BSSIDs keep only their tail),
+    sensor inclusion, USB hubs, snapshot cache lifetime; `MaskIdentifier`
+    applies the same rule to a caller's own string.
+  - `BuildReport` → `HardwarePropertyGroup` tree, and the `ToText` / `ToJSON`
+    renderings built on it; `FormatBytes` / `FormatFrequencyMHz` /
+    `FormatTemperature` / `FormatBitrateMbps` / `FormatDuration`.
+  - `GetBackendName` (`"sysfs"` / `"win32"` / `"iokit"` / `"null"`),
+    `IsAvailable`. A value that cannot be read never becomes a zero: the
+    reason goes into `HardwareSnapshot::warnings` in words a user can act on.
+  - **UltraCanvasHardwareInfoPanel** (`UltraCanvasHardwareInfoPanel.h`) — the
+    ready-made system-information view, an `UltraCanvasColumnsTreeView` that
+    fills itself from a snapshot: `Refresh`, `RefreshSensors` (updates values
+    in place, so expansion, selection and scroll position survive),
+    `SetQuery`, `SetSnapshot`, `SetSectionsExpanded`, `ToText` / `ToJSON`,
+    `onSnapshotChanged`, and the `CreateHardwareInfoPanel` factory.
+  See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the
@@ -281,7 +325,19 @@ the backing implementation can be replaced without affecting callers.
   Wired into `UltraCanvasTextArea` via `SetSpellCheckEnabled`; the byte-range →
   screen-rectangle mapping it needs is the element's own
   `GetCharacterRangeBounds`, which is equally usable for search highlighting,
-  diff marks and comment anchors.
+  diff marks and comment anchors. Two element hooks exist for host
+  applications: `onContextMenu` takes the right-click before the built-in
+  suggestion popup, so an application with its own editor menu splices the
+  suggestions into it; `onPrepareSpellCheck` hands over the exact text about to
+  be checked plus a per-check copy of the options, which is what
+  `SpellCheckOptions::shouldSkipRange` needs — its ranges are byte offsets and
+  go stale on the first edit otherwise.
+  UltraTexter is the reference consumer: **Edit → Spelling**, an editor context
+  menu carrying the suggestions, and a markdown skip scanner
+  (`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` — a dependency-free byte
+  scanner covering fenced and indented code, inline code spans, link and image
+  targets, autolinks, inline HTML, math and YAML front matter, with the
+  application half in `Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp`).
   See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
 
 ### **2. UltraAI**
@@ -458,6 +514,10 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_EnvironmentForPath`, `UltraWin_GetAssociation`,
+  `UltraWin_SetAssociation`, `UltraWin_RemoveAssociation`,
+  `UltraWin_SuggestEnvironment` (program→environment linkage: owning
+  prefix, remembered picker choices, and picker defaults)
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
 - `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,
@@ -593,6 +653,107 @@ persisted drive mappings), application launch/supervision, and the
 component installer (winetricks wrapper) are implemented; the VM tier and
 compatibility routing are planned for Stages 2-3. See
 `Docs/Modules/UltraWin/README.md`.
+
+---
+
+### **10. VirtualFS**
+
+Virtual file system — the single place where archive traversal, format
+detection, decompression, entry caching, password handling and RAM disc
+provisioning are implemented, so no application, plugin or sibling module
+opens a ZIP by hand. Files inside an archive are reached as if they were
+regular folders, including archives nested inside archives. Sources under
+`VirtualFS/{include,core,providers,OS/<Platform>}`, target `VirtualFS`,
+header `<VirtualFS/VirtualFS.h>`, `namespace VirtualFS`; see
+`Docs/Modules/VirtualFS/README.md` and the full function list in
+`VirtualFS/VirtualFS_Master_Registry_V1.md`.
+
+Scope is **archives and scratch storage**. Loading and converting a file
+once it has been reached stays in FileLoader; the UltraCanvas-facing
+compression shims live in `UltraCanvasVirtualFSBridge`.
+
+VirtualFS elements must comply with the same rules as UltraNet, UltraCrypt
+and UltraDatabase:
+- Clear structure; call names understandable by their names
+- New formats arrive as an `IVirtualFSProvider`, never as a special case
+  inside the manager
+- Every call returns `VirtualFSResult` (`operator bool` for quick checks,
+  `VirtualFSResultToString()` for messages)
+- Paths use forward slashes and are normalized automatically; archive
+  boundaries are detected by extension against 40+ known formats
+- **Never** write `ZipFile`, `TarArchive` or `Uncompress()` at module level
+  — go through `VirtualFS_*` or `UCVFSBridge::*`
+- A RAM disc always reports its backing; the Windows disk fallback is never
+  presented as memory (see `VirtualFSRamDisk::IsTrueRam()`)
+
+Like UltraNet and UltraCrypt, it encapsulates an open-source library
+(libarchive) so the backing implementation can be replaced without
+affecting callers; the backing library is never visible in a public header.
+
+**Available Functions (Core, Tier 1):**
+- Lifecycle: `VirtualFS_Initialize`, `VirtualFS_Shutdown`,
+  `VirtualFS_IsInitialized`, `VirtualFS_GetVersion`
+- Reading: `VirtualFS_ReadFile`, `VirtualFS_ReadFileString`,
+  `VirtualFS_ReadFilePartial`, `VirtualFS_OpenStream`,
+  `VirtualFS_ExtractToMemory`
+- Listing: `VirtualFS_ListDirectory`, `VirtualFS_ListDirectoryFiltered`,
+  `VirtualFS_ListDirectoryRecursive`, `VirtualFS_EnumerateDirectory`
+- Queries: `VirtualFS_Exists`, `VirtualFS_IsFile`, `VirtualFS_IsDirectory`,
+  `VirtualFS_IsArchive`, `VirtualFS_IsInsideArchive`, `VirtualFS_GetInfo`,
+  `VirtualFS_GetSize`, `VirtualFS_GetType`, `VirtualFS_GetMimeType`,
+  `VirtualFS_DetectFormat`, `VirtualFS_GetArchiveInfo`
+- Extraction: `VirtualFS_ExtractFile`, `VirtualFS_ExtractAll`,
+  `VirtualFS_ExtractFiltered`
+- Writing: `VirtualFS_CreateArchive`, `VirtualFS_AddToArchive`,
+  `VirtualFS_DeleteFromArchive`
+- Validation: `VirtualFS_ValidateArchive`, `VirtualFS_TestArchive`
+- Paths: `VirtualFS_NormalizePath`, `VirtualFS_ResolvePath`,
+  `VirtualFS_JoinPath`, `VirtualFS_GetParentPath`,
+  `VirtualFS_GetFileName`, `VirtualFS_GetExtension`
+- Providers: `VirtualFS_RegisterProvider`, `VirtualFS_UnregisterProvider`,
+  `VirtualFS_GetProviderForPath`, `VirtualFS_GetRegisteredProviders`,
+  `VirtualFS_GetSupportedExtensions`
+- Configuration: `VirtualFS_SetPasswordCallback`,
+  `VirtualFS_SetErrorCallback`, `VirtualFS_GetErrorMessage`,
+  `VirtualFS_SetTempDirectory`, `VirtualFS_GetTempDirectory`,
+  `VirtualFS_SetDefaultEncoding`
+- Cache: `VirtualFS_SetCacheEnabled`, `VirtualFS_SetMaxCacheSize`,
+  `VirtualFS_GetCacheSize`, `VirtualFS_ClearCache`,
+  `VirtualFS_ClearCacheForPath`
+
+**Raw buffer compression** (`VirtualFSCompression.h`) — the compression
+codecs without an archive container, for callers such as the UltraWeb
+bundler and FileLoader: `VirtualFS_CompressBuffer`,
+`VirtualFS_DecompressBuffer`, `VirtualFS_DetectCompressionMethod`,
+`VirtualFS_IsCompressionMethodAvailable`. Methods: `Store`, `Deflate`,
+`Zstd`, `LZ4` (frame format), `Brotli`, each subject to its
+`VIRTUALFS_USE_*` build option.
+
+**RAM discs** (`VirtualFSRamDisk.h`) — OS-visible scratch volumes, backed by
+each platform's own facility (`/dev/shm` tmpfs on Linux, `hdiutil
+attach ram://` on macOS, the ImDisk driver on Windows when installed, an
+overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
+`VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
+`VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
+`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
+user and do not survive a reboot.
+
+**Provider interface** (`IVirtualFSProvider`) — one implementation per
+format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
+read-only, ISO/UDF, CAB, CPIO, DEB, RPM, and the ZIP-derived app bundles);
+CHM (libmspack) and WIM (wimlib) providers are planned. Optional
+`OpenFromMemory()` lets a provider open an archive from a buffer, which is
+how nested archives are traversed without writing a temp file; providers
+that implement it advertise `VirtualFSCapability::MemoryOpen`.
+
+**Implementation status (this branch):** VirtualFSManager, VirtualFSPath,
+the LibArchive provider and the UltraCanvas bridge are complete;
+memory-backed nested archives and the Linux and macOS RAM disc back ends
+are complete. On Windows a true RAM disc requires an ImDisk installation —
+the driver is detected, never bundled — and without it the disc degrades to
+storage-backed and reports itself as such. Regression tests:
+`Tests/VirtualFSPathTest.cpp`, `Tests/VirtualFSDeleteTest.cpp`,
+`Tests/VirtualFSNestedMemoryTest.cpp`, `Tests/VirtualFSRamDiskTest.cpp`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -1237,6 +1398,17 @@ for the full search order.
 |---|---|---|---|
 | PDF rendering | MuPDF, mujs, gumbo, jbig2dec / openjp2 | MuPDF, mujs, gumbo | MuPDF, mujs, gumbo |
 
+> **Building MuPDF from source (Linux):** MuPDF vendors its own copies of several
+> libraries that also live in the UltraCanvas process via cairo/pango/libvips. Build it
+> with the SYSTEM copies of those to avoid two instances of one library in a single
+> process — i.e.
+> `USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes XCFLAGS=-fPIC`.
+> In particular, MuPDF bundles **libjpeg 9** (`JPEG_LIB_VERSION=90`); without
+> `USE_SYSTEM_LIBJPEG` its `jpeg_CreateDecompress` interposes libvips's system
+> libjpeg 8 and every JPEG/AVIF thumbnail fails with *"Wrong JPEG library version:
+> library is 90, caller expects 80"*. See `.github/workflows/build.yml` for the exact
+> build invocation used by CI.
+
 ### CDR plugin (optional)
 
 | Purpose | Linux | macOS | Windows |
@@ -1365,7 +1537,15 @@ FILE: Docs/UltraCanvas/AndroidPortInvestigation.md
 
 # Android Port Investigation
 
-**Status:** Investigation / planning document — no Android code exists yet.
+**Status:** Investigation / planning document. Written before any Android code
+existed; the analysis below is preserved as the original audit, with
+**Status:** notes marking what has since been implemented. The backend now
+lives in `UltraCanvas/OS/Android/` — see its
+[README](../../UltraCanvas/OS/Android/README.md) for what is actually built
+today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
+keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
+opening and saving, APK asset extraction); the dependency
+sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -1556,6 +1736,14 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `MouseWheel`). This is what makes every existing widget usable immediately.
   Real multi-touch/gesture support (adding a pointer-ID slot to `UCEvent` and
   touch cases to `DispatchEvent`) is a later, deliberate core extension.
+- **Status: both have landed.** `UCEvent` carries `pointerId` (stable per
+  finger) and `touchPointCount`; `DispatchEvent` routes touch events to the
+  element under that finger with bubbling and element-local coordinates, and
+  the Android backend emits `TouchStart/TouchMove/TouchEnd` for every pointer.
+  Single-finger gestures still drive the mouse path unchanged, so existing
+  widgets are unaffected; mouse synthesis stops for the rest of a gesture as
+  soon as a second finger lands. Gesture *recognition* (pinch/rotate → the
+  `PinchZoom` event) is still open — the raw stream it needs now exists.
 - Physical keys: `AKEYCODE_*` → `UCKeys` mapping table (the Linux
   `ConvertXKeyToUCKey`, ~130 cases, is the template).
 - **IME/soft keyboard:** `UCEvent::text` is the UTF-8 delivery channel (XIM
@@ -1564,12 +1752,22 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   keyboard: a new hook is needed so that focusing a text widget calls
   `showSoftInput`/`hideSoftInput` via JNI. Composing (pre-edit) text has no
   representation and can be deferred.
+- **Status: done, as analysed.** The missing hook became
+  `UltraCanvasCaret::onTextEditingChanged` — the caret already *is* the
+  framework's "text editing started/stopped" signal, so no new widget-level
+  API was needed. `UltraCanvasActivity` hosts an invisible focusable view whose
+  `InputConnection` gives the IME an editor to compose into (autocorrect,
+  suggestions, gesture typing, CJK candidates); commits arrive as
+  `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
+  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
+  it is a cross-platform capability (core text model + rendering + every
+  backend), not an Android gap — Linux shows no inline pre-edit either.
 
 ### 3.5 Desktop services with no Android analogue
 
 | Subsystem | Linux implementation | Android strategy |
 |---|---|---|
-| Native dialogs | 808 lines GTK3, **synchronous** (`gtk_dialog_run` nested loop) returning values | `AlertDialog` / SAF (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`) are **callback-based**. Either the `UltraCanvasNativeDialogs` API gains async variants, or Android uses a nested-loop shim pumping `ALooper` until the Java side posts the result. Additionally SAF yields `content://` URIs, not filesystem paths — downstream code assuming `std::string` paths needs a URI bridge (open via `ContentResolver` → fd → `/proc/self/fd/N`, or copy-to-cache). Phase 1: stub dialogs |
+| Native dialogs | 808 lines GTK3, **synchronous** (`gtk_dialog_run` nested loop) returning values | `AlertDialog` / SAF (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`) are **callback-based**. Either the `UltraCanvasNativeDialogs` API gains async variants, or Android uses a nested-loop shim pumping `ALooper` until the Java side posts the result. Additionally SAF yields `content://` URIs, not filesystem paths — downstream code assuming `std::string` paths needs a URI bridge (open via `ContentResolver` → fd → `/proc/self/fd/N`, or copy-to-cache). Phase 1: stub dialogs. **Status:** the nested-loop shim landed — `UltraCanvasAndroidDialogBridge` shows the dialog through the optional `UltraCanvasActivity` and pumps activity commands (never input) until the Java UI thread posts the result, so the synchronous API is preserved. Message dialogs and SAF **opening** are done (documents are copied into the app cache so path-based callers keep working). Saving goes through the new `UltraCanvasNativeDialogs::SaveContent(data, size, options)`, which takes the bytes up front (`ACTION_CREATE_DOCUMENT` + `ContentResolver`); the old path-returning `SaveFile` stays a stub because nothing signals when the caller finished writing, so its data could never reach the URI. `SelectFolder` remains a stub: a tree URI has no single-path equivalent. |
 | Clipboard | 760 lines of X11 selection protocol | JNI `ClipboardManager` — much simpler, text + URI lists |
 | Drag & drop | 960 lines XDnD v5 both directions | No cross-app analogue (outside ChromeOS freeform). `StartNativeFileDrag` → `return false` (default already does this); XDnD file is simply not compiled |
 | Mouse cursors | 238 lines Xcursor/libvips | No-ops |
@@ -1603,6 +1801,14 @@ no `CMAKE_CROSSCOMPILING` handling; every core dependency is found via system
 pkg-config. The port needs a prebuilt Android sysroot (vcpkg's
 `arm64-android` triplet is the first thing to evaluate; Conan or hand-rolled
 meson cross-files are the fallback) with `PKG_CONFIG_LIBDIR` pointed at it.
+
+**Status: the vcpkg route is written but unproven.**
+`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below and
+`scripts/android-bootstrap-sysroot.sh` drives vcpkg with the NDK chainloaded.
+Neither has ever been run — the environment they were written in has no NDK and
+no route to download one — so this is the plan encoded, not a working sysroot.
+**This remains the one blocker between "compiles in CI" and "runs on a
+device".**
 
 ### 4.1 Irreducible core stack (must cross-compile)
 
@@ -1658,6 +1864,13 @@ launch (or lazily) extract needed assets to `getFilesDir()`/`getCacheDir()`
 and keep all existing path-based code working; `SetResourcesDir()`
 (`core/UltraCanvasConfig.cpp`) gains an Android arm pointing there. Direct
 `AAssetManager` streaming can come later where it matters (fonts, icons).
+- **Status: done as described.** `UltraCanvasAndroidAssets.cpp` unpacks
+  `assets/` into `$HOME/share` (where `SetResourcesDir`'s Android arm points)
+  from `android_main`, stamped against the APK's mtime+size so only the first
+  launch after an install or update pays for it. One wrinkle the plan did not
+  anticipate: the NDK's `AAssetDir` API cannot enumerate subdirectories, so the
+  tree walk goes through Java `AssetManager.list()` while file contents still
+  come from the native manager.
 
 ---
 
@@ -1760,8 +1973,10 @@ Process lessons for the Android effort:
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
-- Multi-touch/gesture events in the core event model (pointer IDs,
-  `DispatchEvent` touch path, pinch-zoom).
+- ~~Multi-touch events in the core event model (pointer IDs, `DispatchEvent`
+  touch path), and pinch/rotate recognition on top of it~~ — done. Recognition
+  lives in the core (`UpdateTouchGesture`) rather than the Android backend,
+  since the touch stream and the geometry are both platform-neutral.
 - Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
@@ -8487,8 +8702,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 # UltraCanvasButton Documentation
 
-**Version:** 1.0.0  
-**Last Modified:** 2025-01-08  
+**Version:** 1.0.1  
+**Last Modified:** 2026-08-31  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -8623,11 +8838,26 @@ void SetOnClick(std::function<void()> _onClick);
 The button supports the following callback events:
 
 ```cpp
-std::function<void()> onClick;       // Fired when button is clicked
-std::function<void()> onPress;       // Fired when button is pressed down
-std::function<void()> onRelease;     // Fired when button is released
-std::function<void()> onHoverEnter;  // Fired when mouse enters button
-std::function<void()> onHoverLeave;  // Fired when mouse leaves button
+std::function<void()> onClick;           // Fired when the button is clicked (left button only)
+std::function<void()> onPress;           // Fired when button is pressed down
+std::function<void()> onRelease;         // Fired when button is released
+std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's state change
+std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
+std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
+std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverLeave;      // Fired when mouse leaves button
+```
+
+**A right-click never reaches `onClick`.** The button activates on the left
+button only; the right button goes to `onContextMenu` with the click position in
+window coordinates, and is ignored when no `onContextMenu` is set. Inspecting
+`GetCurrentEvent().button` inside `onClick` therefore never yields
+`UCMouseButton::Right` — wire the context menu to `onContextMenu` instead:
+
+```cpp
+button->onContextMenu = [menu, container](int windowX, int windowY) {
+    menu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
+};
 ```
 
 ### Event Usage Example
@@ -8793,6 +9023,7 @@ The button automatically handles:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |
 | 1.0.0 | 2025-01-08 | Initial documentation based on actual implementation |
 
 ==============================================================================
@@ -21999,6 +22230,272 @@ See `Apps/DemoApp/UltraCanvasGroupBoxExamples.cpp` for a showcase of all frame
 styles, title alignments, and the checkable / collapsible behaviours.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHardwareInfo.md
+==============================================================================
+
+# UltraCanvasHardwareInfo — the machine, described
+
+`UltraCanvasHardwareInfo` answers "what is this computer made of, and how is it
+doing?": CPU (with cache sizes and temperature), GPU, NPU, memory (down to the
+individual module), storage (with connector, on-drive cache and temperature),
+network interfaces including Wi-Fi association, USB controllers and everything
+plugged into them, and Bluetooth adapters with their live connections.
+
+Everything here is a **read**. Nothing is opened, configured, claimed or
+operated.
+
+Headers: `UltraCanvasHardwareInfo.h` (the data and the API),
+`UltraCanvasHardwareInfoPanel.h` (a ready-made view).
+
+## Why this is not part of IODeviceManager
+
+The two modules sound adjacent and are not. **IODeviceManager** operates
+peripherals: it enumerates scanners, cameras and printers, connects to one,
+configures it, transfers data and disconnects — handles, ownership, protocol
+drivers (SANE, TWAIN, WIA, ONVIF, V4L2, CUPS), hot-plug callbacks, a device
+lifecycle. **UltraCanvasHardwareInfo** describes the host: an inventory plus the
+sensors that report on it, with no handle to hold and nothing to release.
+
+They differ in every dimension that matters for a module boundary:
+
+| | IODeviceManager | UltraCanvasHardwareInfo |
+|---|---|---|
+| Verb | connect, configure, scan, capture, print | read |
+| State | live device handles, sessions, callbacks | none — a value snapshot |
+| Failure | a device error the caller must handle | a missing value with a reason |
+| Dependencies | vendor SDKs and protocol stacks | the OS's own interfaces only |
+| Caller | a scanning or capture workflow | a settings screen, an about box, a support bundle |
+
+Folding the inventory into the device manager would put a permanently-loaded
+read-only service behind a singleton that owns driver stacks, and would make
+"show me the CPU temperature" depend on SANE being installed. They do meet in
+one place — a USB device appears in both — and there the split is still clean:
+this module reports *that a device is attached and what it is*; IODeviceManager
+is what you use to *talk to it*.
+
+## Quick start
+
+```cpp
+#include "UltraCanvasHardwareInfo.h"
+using namespace UltraCanvas;
+
+HardwareSnapshot machine = UltraCanvasHardwareInfo::Capture();
+
+std::printf("%s, %d cores / %d threads\n",
+            machine.cpu.model.c_str(), machine.cpu.physicalCores, machine.cpu.logicalCores);
+std::printf("L3 cache: %s\n",
+            UltraCanvasHardwareInfo::FormatBytes(machine.cpu.TotalCacheSize(3)).c_str());
+if (machine.cpu.temperatureC)
+    std::printf("CPU is at %s\n",
+                UltraCanvasHardwareInfo::FormatTemperature(*machine.cpu.temperatureC).c_str());
+
+for (const auto& drive : machine.storage) {
+    std::string line = drive.model + "  " +
+                       UltraCanvasHardwareInfo::FormatBytes(drive.capacityBytes) + "  " +
+                       drive.connector;
+    if (drive.temperatureC)
+        line += "  " + UltraCanvasHardwareInfo::FormatTemperature(*drive.temperatureC);
+    std::printf("%s\n", line.c_str());
+}
+```
+
+Or ask for one category:
+
+```cpp
+CPUInfo cpu = UltraCanvasHardwareInfo::GetCPU();
+std::vector<GPUInfo> adapters = UltraCanvasHardwareInfo::ListGPUs();
+std::vector<USBDeviceInfo> plugged = UltraCanvasHardwareInfo::ListUSBDevices();
+```
+
+## Capturing
+
+```cpp
+static HardwareSnapshot Capture(HardwareQuery what = HardwareQuery::All,
+                                bool forceRefresh = false);
+static void RefreshSensors(HardwareSnapshot& snapshot);
+```
+
+`HardwareQuery` is a bit set — `System`, `CPU`, `GPU`, `NPU`, `Memory`,
+`Storage`, `Network`, `USB`, `Bluetooth`, plus `Sensors` — because probing costs
+differ by orders of magnitude: reading the CPU topology is microseconds, walking
+the USB tree is milliseconds.
+
+```cpp
+auto quick = UltraCanvasHardwareInfo::Capture(HardwareQuery::CPU |
+                                              HardwareQuery::Memory |
+                                              HardwareQuery::Sensors);
+```
+
+`snapshot.Has(HardwareQuery::USB)` tells you whether a category was actually
+filled, so an empty vector never has to be read as "no such hardware".
+
+**`RefreshSensors` is the call a monitor loop makes.** It re-reads temperatures,
+clocks, utilisation, free memory and link state into an existing snapshot
+without walking the device trees again, and it never adds or removes a device —
+indices into `storage`, `network` and `usbDevices` stay valid across it.
+
+Snapshots are cached for `HardwareInfoOptions::cacheLifetimeMs` (2 s by
+default), so several widgets asking at once cost one probe. `forceRefresh`
+bypasses that.
+
+## Options
+
+```cpp
+HardwareInfoOptions options;
+options.maskIdentifiers = true;   // default
+options.includeSensors  = true;   // default
+options.includeUsbHubs  = false;  // default
+options.cacheLifetimeMs = 2000;   // default; 0 disables caching
+UltraCanvasHardwareInfo::SetOptions(options);
+```
+
+**Identifiers are masked by default.** Serial numbers, MAC addresses and BSSIDs
+identify the machine and its owner's network, and a hardware panel is exactly
+the kind of screen that gets photographed or pasted into a bug report. Masking
+keeps the last four characters of a serial (`**********3456`) and the last two
+octets of an address (`**:**:**:**:34:56`) — enough to tell two drives apart,
+not enough to identify the machine. `UltraCanvasHardwareInfo::MaskIdentifier`
+applies the same rule to a string of your own. Turning masking off is a
+deliberate call, and it clears the snapshot cache so nothing masked is reused.
+
+## What a snapshot holds
+
+| Struct | Notable fields |
+|---|---|
+| `SystemInfo` | host name, OS and kernel, vendor/model, mainboard, firmware, chassis, uptime |
+| `CPUInfo` | vendor, model, architecture, packages/cores/threads, base/max/current clock, `caches`, `coreGroups` (hybrid P/E tiers), `instructionSets`, `temperatureC`, `loadPercent` |
+| `CPUCacheInfo` | level, type, size, line size, associativity, `instanceCount`, `sharedByLogicalCores`, `Describe()` |
+| `GPUInfo` | vendor, model, driver, PCI ids, `kind` (integrated/discrete/virtual/software), VRAM, compute units, clock, temperature, utilisation |
+| `NPUInfo` | vendor, model, driver, `runtime` (OpenVINO / DirectML / Core ML / RKNN …), integrated flag |
+| `MemoryInfo` | installed / available / used, swap, page size, slots, `modules` |
+| `MemoryModuleInfo` | slot locator, type (DDR4/DDR5/LPDDR5), form factor, manufacturer, part and serial numbers, configured and rated MT/s, width and ECC, voltage |
+| `StorageDeviceInfo` | device path, model, firmware, serial, `bus`, `media`, `connector`, capacity, on-drive `cacheBytes`, rotation, sector sizes, `temperatureC`, `volumes` |
+| `NetworkInterfaceInfo` | name, description, MAC, driver, `type`, up/carrier, link speed, MTU, IPv4/IPv6, counters, `wifi` |
+| `WiFiInfo` | SSID, BSSID, security, standard, band, channel, frequency, signal (% and dBm), TX/RX rate |
+| `USBControllerInfo` / `USBDeviceInfo` | controller name, USB version, port count / VID:PID, names, class, speed, port path, bus power, hub flag, parent index |
+| `BluetoothAdapterInfo` / `BluetoothDeviceInfo` | adapter name, address, power, discoverability / device name, address, class, paired, connected, RSSI, battery |
+
+Optional readings use `std::optional`, so "0 °C" is never confused with "not
+reported".
+
+### `warnings` is part of the answer
+
+A capture always returns a snapshot. When a value cannot be read, the reason
+goes into `snapshot.warnings` in words a user can act on:
+
+```
+Drive cache size is unavailable: reading it needs ATA IDENTIFY on the block
+device, which requires root (try the disk group or run as root).
+```
+
+The panel shows those under a **Notes** section. Prefer them to inventing a
+placeholder.
+
+## Platform coverage
+
+Backends live in `OS/<Platform>/UltraCanvas*HardwareInfo.cpp` behind the
+internal `UltraCanvasHardwareInfoBackend.h`. `GetBackendName()` returns
+`"sysfs"`, `"win32"`, `"iokit"` or `"null"`.
+
+| | Linux (`sysfs`) | Windows (`win32`) | macOS (`iokit`) |
+|---|---|---|---|
+| System, board, firmware | DMI under `/sys/class/dmi/id` | registry + SMBIOS | sysctl + device tree |
+| CPU topology, caches | `/proc/cpuinfo`, `cpu*/cache` | `GetLogicalProcessorInformationEx` | `hw.*` sysctls |
+| CPU clocks | `cpufreq` | `CallNtPowerInformation` | `hw.cpufrequency*` (Intel), perf levels (Apple Silicon) |
+| CPU temperature | ✅ hwmon / thermal zones | ✖ needs WMI | ✖ private frameworks |
+| Hybrid P/E cores | ✅ | ✅ (efficiency class) | ✅ (performance levels) |
+| Memory totals | ✅ | ✅ | ✅ |
+| Memory modules | root only (DMI) | ✅ `GetSystemFirmwareTable` | ✖ |
+| GPU | ✅ DRM + PCI | ✅ display class registry | ✅ IOKit |
+| GPU temperature / load | ✅ amdgpu, hwmon | ✖ vendor libraries | ✖ |
+| NPU | ✅ `/sys/class/accel`, PCI class 12h | ✅ compute-accelerator class | ✅ Neural Engine service |
+| Storage inventory | ✅ | ✅ storage IOCTLs | ✅ IOMedia |
+| Storage connector | ✅ PCIe gen/width, SATA speed, USB speed | bus type | interconnect + location |
+| Storage temperature | ✅ nvme / drivetemp hwmon | ✅ temperature IOCTL (Win10 1709+) | ✖ |
+| Drive cache size | root only (ATA IDENTIFY) | ✖ | ✖ |
+| Network | ✅ | ✅ IP Helper | ✅ getifaddrs |
+| Wi-Fi association | ✅ wireless extensions | ✅ WLAN API (incl. security, PHY) | ✖ needs CoreWLAN |
+| USB tree | ✅ full, with speed and power | ✅ names, class, location | ✅ names, speed, class |
+| Bluetooth adapters | ✅ | ✅ | ✅ |
+| Bluetooth devices | live connections only | ✅ paired and connected | ✖ needs IOBluetooth |
+
+Everything marked ✖ produces a warning naming the interface that would be
+needed, not a zero. Platforms without a native backend (WASM, Android, the
+BSDs) link a fallback that reports what the C++ runtime knows and says so.
+
+No new third-party dependency is introduced on any platform: the Linux backend
+reads procfs and sysfs, Windows uses documented Win32 (registry, SMBIOS,
+storage IOCTLs, IP Helper, WLAN, SetupAPI, Bluetooth — no COM or WMI), and
+macOS uses sysctl and the IOKit C API.
+
+## Displaying it: `UltraCanvasHardwareInfoPanel`
+
+A system-information view, ready to drop into a settings screen, an about box
+or an OS control panel. It is an `UltraCanvasColumnsTreeView` that fills itself
+from a snapshot — nothing in it is hand-painted.
+
+```cpp
+#include "UltraCanvasHardwareInfoPanel.h"
+
+auto panel = CreateHardwareInfoPanel("SystemInfo", 0, 0, 640, 480);
+window->AddChild(panel);
+
+// Live temperatures and clocks, without disturbing the user's place in the tree.
+auto* app = UltraCanvasApplication::GetInstance();
+TimerId sensorTimer = app->StartTimer(2000, /*periodic*/ true,
+                                      [panel](TimerId) { panel->RefreshSensors(); });
+```
+
+| Call | Does |
+|---|---|
+| `Refresh(force)` | re-probes and rebuilds, keeping open sections open |
+| `RefreshSensors()` | re-reads live values into the existing rows — expansion, selection and scroll position all survive |
+| `SetQuery(what)` | narrows what is shown (a storage-only panel, say) |
+| `SetSnapshot(snapshot)` | shows a snapshot captured elsewhere — another thread, or a saved support bundle |
+| `SetSectionsExpanded(bool)` | whether top-level categories start open |
+| `ToText()` / `ToJSON()` | export what is on screen |
+| `onSnapshotChanged` | fires after every capture |
+
+Categories are section rows; each device (drive, adapter, USB device, memory
+module) is a foldable row of its own; long values carry the full form on the
+tooltip.
+
+## Exporting
+
+```cpp
+std::string report = UltraCanvasHardwareInfo::ToText(machine);   // for a text box or a log
+std::string json   = UltraCanvasHardwareInfo::ToJSON(machine);   // for a support bundle
+```
+
+`ToText` and the panel are both renderings of
+`BuildReport(snapshot)` → `std::vector<HardwarePropertyGroup>`, so a third
+rendering of your own starts from the same rows and cannot drift from them.
+`ToJSON` serialises the snapshot with real types (byte counts as numbers, not
+formatted strings) through `UltraCanvasJSON`, so it round-trips.
+
+## Formatting helpers
+
+`FormatBytes`, `FormatFrequencyMHz`, `FormatTemperature`, `FormatBitrateMbps`
+and `FormatDuration` are the ones the report itself uses — use them so a value
+you format by hand reads the same as the rest of the panel.
+
+## Threading
+
+Capture is safe to call from any thread; the options and the snapshot cache are
+mutex-guarded. A capture takes single-digit milliseconds for CPU and memory and
+tens of milliseconds for a full sweep with a large USB tree, so a UI that
+refreshes on a timer should either narrow the query or capture on a worker
+thread and hand the result to the panel with `SetSnapshot`.
+
+## Testing
+
+`Tests/HardwareInfoTest.cpp` (`ctest -R HardwareInfoTests`) covers the
+formatters, masking, the query selector, report shape, and the invariants a live
+capture must hold on the machine it runs on — cores ≥ 1, physical ≤ logical,
+available memory ≤ installed, a narrowed query touching nothing else, a sensor
+refresh preserving the device lists, and the JSON export parsing back.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasHeatmapChart.md
 ==============================================================================
 
@@ -27110,7 +27607,7 @@ struct MenuStyle {
     int paddingBottom;       // Bottom padding
     int iconSpacing;         // Space between icon and text
     int shortcutSpacing;     // Space before shortcut text
-    int separatorHeight;     // Height of separator items
+    int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
     int borderRadius;        // Corner radius
     
@@ -27141,6 +27638,17 @@ MenuStyle::Dark()
 
 // Minimal flat design
 MenuStyle::Flat()
+```
+
+`Dark()` and `Flat()` are `Default()` with colours (and, for `Flat()`, the
+border, corner radius and shadow) replaced — every metric is shared, so a menu
+keeps its shape when it changes theme. Build your own theme the same way:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.backgroundColor = Color(30, 34, 40, 255);
+style.textColor = Colors::White;
+menu->SetStyle(style);
 ```
 
 ## Core Methods
@@ -39496,12 +40004,75 @@ textArea->SetSpellCheckEnabled(true);
 That is the whole integration: the element queues on every edit, drains and
 draws while rendering, and offers suggestions on right-click.
 
+### Taking over the right-click menu
+
+An application that already shows a context menu in its editor does not want
+the element's suggestion popup opening on top of it. Set
+`onContextMenu` and build one menu with the suggestions spliced in:
+
+```cpp
+textArea->onContextMenu = [this](const UCEvent& event) -> bool {
+    std::vector<MenuItemData> items;
+
+    if (const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
+                                                                  event.pointer.y)) {
+        // Copy it: applying a suggestion rebuilds the list `hit` points into.
+        const SpellError error = *hit;
+        for (MenuItemData& item : UltraCanvasSpellChecker::BuildSuggestionMenuItems(
+                 error,
+                 [this, error](const std::string& word) {
+                     textArea->ApplySpellSuggestion(error, word);
+                 })) {
+            items.push_back(std::move(item));
+        }
+        items.push_back(MenuItemData::Separator());
+    }
+
+    items.push_back(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", [this]{ Cut(); }));
+    // ... the rest of the application's edit commands ...
+
+    // build and open the menu, then:
+    return true;    // false falls through to the element's own popup
+};
+```
+
+The hook runs before the built-in popup. The caret moves to the click once the
+hook returns `true` — not before, or the hit test above would resolve against
+the previous caret line's layout — so a `Paste` entry acts where the user
+clicked. A click inside the selection keeps it, so `Cut` and `Copy` still act on
+what is highlighted, and `HasSelection()` inside the hook already reflects that.
+
+### Skipping regions the check should not see
+
+`SpellCheckOptions::shouldSkipRange` takes byte ranges of the text being
+checked, so its ranges have to be recomputed whenever the text changes.
+`onPrepareSpellCheck` is called with the exact text about to be checked, on the
+UI thread, and hands over a copy of the options for that one check:
+
+```cpp
+textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string& text) {
+    auto skip = std::make_shared<std::vector<TextByteSpan>>(ScanMarkdownNoSpellRanges(text));
+    options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
+        return SpanCoversRange(*skip, startByte, byteLength);
+    };
+};
+```
+
+Capture the precomputed ranges by value: the predicate itself runs on the
+worker thread and must not read anything the UI thread can change.
+
+UltraTexter does exactly this for markdown documents — see
+`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` for a scanner that covers fenced
+and indented code, inline code spans, link and image targets, autolinks, inline
+HTML, math and YAML front matter.
+
 ## Testing
 
 | Test | What it covers |
 |---|---|
 | `Tests/SpellCheckerTest.cpp` | Tokenizer, skip rules, language names, dictionary, async queue, shutdown. Framework-independent |
 | `Tests/TextAreaSpellCheckTest.cpp` | The element: results reaching it, byte-offset → screen-rectangle mapping, applying a suggestion. Needs a display; runs under Xvfb |
+| `Tests/TexterMarkdownSpellRangesTest.cpp` | UltraTexter's markdown skip scanner: what counts as code, a link target, math or front matter. No dictionary or display needed |
 
 Both skip rather than fail when no dictionary (or no display) is present.
 
@@ -41169,8 +41740,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTabExamples.md
 
 The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in the UltraCanvas framework that provides rich functionality for organizing content in tabs. It features automatic overflow handling with dropdown menus, integrated search capabilities, multiple tab positioning options, and extensive customization possibilities.
 
-**Version:** 1.6.0  
-**Last Modified:** 2025-09-14  
+**Version:** 1.7.0  
+**Last Modified:** 2026-08-29  
 **Author:** UltraCanvas Framework
 
 ## Features
@@ -41185,6 +41756,8 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 - **Keyboard Navigation:** Arrow keys, shortcuts, and search input
 - **Event System:** Comprehensive callbacks for all user interactions
 - **Content Management:** Each tab can contain any UltraCanvas UI element
+- **New Tab Button:** An optional "+" before, after or at the far right of the tab list
+- **Detached Content:** The tab strip can live apart from the pages it switches
 
 ### Enhanced Dropdown Features
 - **Smart Overflow Detection:** Automatically shows dropdown when tabs don't fit
@@ -41257,6 +41830,17 @@ enum class OverflowDropdownPosition {
 > it is automatically deactivated — the overflow button is never shown, and
 > enabling it emits the warning "Overflow dropdown not supported for vertical
 > tabs". Use tab scrolling for vertical layouts instead.
+
+### NewTabButtonPosition
+Where the optional "+" button sits in the tab bar.
+
+```cpp
+enum class NewTabButtonPosition {
+    AfterTabs,  // Right behind the last tab (default) - moves with the list
+    FarRight,   // Pinned to the right end of the tab bar
+    BeforeTabs  // In front of the first tab
+};
+```
 
 ## TabData Structure
 
@@ -41338,6 +41922,70 @@ void SetDropdownSearchThreshold(int threshold) // Default: 15
 void ClearDropdownSearch()
 ```
 
+#### New Tab Button
+```cpp
+void SetShowNewTabButton(bool show)                     // Default: false
+void SetNewTabButtonPosition(NewTabButtonPosition pos)  // Default: AfterTabs
+void SetNewTabButtonWidth(int width)                    // Default: 32
+void SetNewButtonColor(const Color& color)
+std::function<void()> onNewTabRequest;                  // Clicked
+```
+
+`NewTabButtonPosition::AfterTabs` draws the "+" directly behind the last tab
+(so it walks along as tabs are added and removed), `FarRight` pins it to the
+right end of the tab bar, `BeforeTabs` puts it in front of the first tab. The
+space it needs is reserved before the tabs are laid out, so the button never
+overlaps a tab. The callback only reports the click — creating the tab is the
+application's job:
+
+```cpp
+tabs->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+tabs->SetShowNewTabButton(true);
+tabs->onNewTabRequest = [tabs]() {
+    tabs->SetActiveTab(tabs->AddTab("Untitled", MakePage()));
+};
+```
+
+#### Detached Content Area
+```cpp
+void SetContentHost(const std::shared_ptr<UltraCanvasContainer>& host)
+const std::shared_ptr<UltraCanvasContainer>& GetContentHost() const
+bool IsContentDetached() const
+```
+
+By default a tabbed container is tab strip *and* content area in one element.
+`SetContentHost()` splits the two: the pages become children of `host` instead,
+`host`'s own layout sizes them, and the container itself shrinks to nothing but
+the tab bar. That is what a browser-style layout needs — the tab strip as the
+window's topmost bar, with toolbars between it and the pages it switches. Pages
+that were already added move over with the call, so the host may be set before
+or after the tabs; passing `nullptr` takes them back.
+
+The host shows exactly one page at a time (the others are hidden, and hidden
+elements are out of flow), so give it a stretching layout and its pages a
+growing layout item, and give the strip a height of `GetTabHeight()`:
+
+```cpp
+auto tabs = std::make_shared<UltraCanvasTabbedContainer>("tabs", 0, 0, 0, 30);
+tabs->SetTabHeight(30);
+tabs->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+auto pages = std::make_shared<UltraCanvasContainer>("tab-pages");
+pages->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+pages->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+tabs->SetContentHost(pages);
+
+window->AddChild(tabs);          // the strip: the window's top bar
+window->AddChild(toolbar);       // whatever belongs between the two
+window->AddChild(pages);         // the active tab's page
+```
+
+Each page needs `layoutItem.SetFlexGrow(1)` (and `AlignSelf::Stretch`) so it
+fills the host while it is the visible one. UltraFiler's folder tabs are built
+this way — see `Apps/UltraFiler/UltraFilerWindow.cpp`.
+
 ### Query Methods
 
 ```cpp
@@ -41346,6 +41994,9 @@ int GetTabCount() const
 TabPosition GetTabPosition() const
 TabStyle GetTabStyle() const
 TabCloseMode GetCloseMode() const
+NewTabButtonPosition GetNewTabButtonPosition() const
+bool GetShowNewTabButton() const
+bool IsContentDetached() const
 ```
 
 ## Event Callbacks
@@ -42055,7 +42706,19 @@ void SetOnCursorPositionChanged(CursorPositionChangedCallback callback);
 // Selection change
 using SelectionChangedCallback = std::function<void()>;
 void SetOnSelectionChanged(SelectionChangedCallback callback);
+
+// Right-click, before the built-in spell suggestion popup. Return true when
+// the application opened a menu of its own. See Spell Checking below.
+std::function<bool(const UCEvent&)> onContextMenu;
+
+// Called with the exact text about to be spell checked, so content-dependent
+// options can be rebuilt. See Spell Checking below.
+std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 ```
+
+`IsPositionInsideSelection(const Point2Di&)` answers whether an element-local
+point falls inside the current selection — what a context menu needs to decide
+whether opening it should move the caret.
 
 ## Event Handling
 
@@ -42198,6 +42861,42 @@ options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) {
 };
 ```
 
+Those are byte ranges of the text being checked, so they go stale on the first
+edit. `onPrepareSpellCheck` is called with the exact text about to be checked,
+on the UI thread, and hands over a copy of the options used for that one check —
+which is where a content-dependent hook belongs:
+
+```cpp
+textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string& text) {
+    auto skip = std::make_shared<std::vector<TextByteSpan>>(ScanMarkdownNoSpellRanges(text));
+    options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
+        return SpanCoversRange(*skip, startByte, byteLength);
+    };
+};
+```
+
+### Supplying your own context menu
+
+An application with its own editor context menu sets `onContextMenu` and
+splices the suggestions into it, instead of getting two menus. It is called on
+right-click before the built-in popup; return `true` when handled, `false` to
+fall through to it:
+
+```cpp
+textArea->onContextMenu = [this](const UCEvent& event) -> bool {
+    const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
+                                                              event.pointer.y);
+    // ... build one menu: UltraCanvasSpellChecker::BuildSuggestionMenuItems(*hit, ...)
+    //     first when hit is non-null, then Cut / Copy / Paste ...
+    return true;
+};
+```
+
+The caret moves to the click once the hook returns `true` — not before, or
+`GetSpellErrorAtPosition` would hit-test against the previous caret line's
+layout — so **Paste** acts where the user clicked. A click inside the selection
+keeps it, so **Cut** and **Copy** still act on what is highlighted.
+
 ### Reading and applying results
 
 ```cpp
@@ -42227,6 +42926,10 @@ const std::vector<SpellError>& GetSpellErrors() const;
 const SpellError* GetSpellErrorAtPosition(int x, int y);
 bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
 bool ShowSpellSuggestionMenu(const UCEvent& event);
+
+// Hooks for a host application
+std::function<bool(const UCEvent&)> onContextMenu;
+std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 ```
 
 ## Character Range Geometry
@@ -42284,6 +42987,7 @@ bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& re
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
 - **1.5.0**: Added line numbers and word wrap
@@ -42299,8 +43003,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options.
 
-**Version:** 1.1.0  
-**Last Modified:** 2025-01-06  
+**Version:** 1.2.0  
+**Last Modified:** 2026-08-31  
 **Author:** UltraCanvas Framework
 
 ## Key Features
@@ -42322,6 +43026,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 - **Focus Animations**: Optional animated transitions on focus changes
 - **Multiple Styles**: Predefined styles (Default, Material, Flat, Outlined, Underlined)
 - **Password Masking**: Secure text display for password fields
+- **Password Reveal**: Optional in-field eye button (and a settable reveal state) to show the typed password
 
 ## Class Definition
 
@@ -42804,6 +43509,62 @@ textInput->SetAutoCompleteSuggestions(suggestions);
 textInput->SetShowAutoComplete(true);
 ```
 
+## Password Reveal ("Show Password")
+
+Password fields mask what the user types, so they need a way to read it back.
+`UltraCanvasTextInput` offers both of the usual controls, and they share one state.
+
+### In-field eye button
+
+```cpp
+auto passwordInput = CreatePasswordInput("password", 10, 10, 300, 30);
+passwordInput->SetShowPasswordToggle(true);   // eye icon at the right of the field
+
+// or in one step:
+auto revealable = CreateRevealablePasswordInput("password", 10, 10, 300, 30);
+```
+
+The button is only painted for fields in password mode (`TextInputType::Password`),
+so it is safe to switch on before the input type is set. It sits to the left of the
+validation icon, and the text area shrinks so typed text never runs underneath it.
+Clicking it flips the mask; the icon shows a plain eye while the password is hidden
+and a struck-through eye while it is visible.
+
+### Explicit "Show password" flag
+
+Any external control can drive the same state - useful when the form wants a visible
+label rather than an icon:
+
+```cpp
+auto showPassword = UltraCanvasCheckbox::CreateCheckbox(
+        "ShowPassword", 10, 50, 160, 20, "Show password", false);
+
+auto* input = passwordInput.get();
+showPassword->onStateChanged = [input](CheckedState, CheckedState newState) {
+    input->SetPasswordRevealed(newState == CheckedState::Checked);
+};
+```
+
+### API
+
+```cpp
+void SetShowPasswordToggle(bool show);   // show/hide the in-field eye button
+bool IsShowPasswordToggle() const;
+
+void SetPasswordRevealed(bool revealed); // unmask/mask from code
+bool IsPasswordRevealed() const;
+void TogglePasswordVisibility();
+
+void SetPasswordToggleColors(const Color& normal, const Color& hovered);
+
+// Fired by the eye button and by SetPasswordRevealed() alike; a no-op change
+// does not fire, so an eye button and a checkbox can mirror each other safely.
+std::function<void(bool)> onPasswordVisibilityChanged;
+```
+
+`GetText()` always returns the real text; only the painted glyphs change. Reveal
+state is reset automatically when the field is switched away from password mode.
+
 ## Factory Functions
 
 ### Convenience Creation Functions
@@ -42817,6 +43578,9 @@ auto emailInput = CreateEmailInput("email", 10, 50, 200, 30);
 
 // Create password input
 auto passwordInput = CreatePasswordInput("password", 10, 90, 200, 30);
+
+// Create password input carrying the in-field eye ("show password") button
+auto revealablePassword = CreateRevealablePasswordInput("password2", 10, 90, 200, 30);
 
 // Create phone input
 auto phoneInput = CreatePhoneInput("phone", 10, 130, 200, 30);
@@ -42841,6 +43605,7 @@ auto textInput = TextInputBuilder()
     .AddValidationRule(ValidationRule::Email())
     .AddValidationRule(ValidationRule::Required())
     .SetMaxLength(100)
+    .ShowPasswordToggle()   // eye button; only painted for password-type fields
     .Build();
 ```
 
@@ -42896,6 +43661,9 @@ passwordInput->AddValidationRule(ValidationRule::Pattern(
     std::regex(".*[A-Z].*"), "Password must contain uppercase letter"));
 passwordInput->AddValidationRule(ValidationRule::Pattern(
     std::regex(".*[0-9].*"), "Password must contain a number"));
+
+// Let the user check what was typed (see "Password Reveal" above)
+passwordInput->SetShowPasswordToggle(true);
 ```
 
 ### Phone Number Input
@@ -44783,8 +45551,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeMapExamples.md
 
 # UltraCanvasTreeMapElement Documentation
 
-**Version:** 1.0.1
-**Last Modified:** 2025-04-01
+**Version:** 1.1.0
+**Last Modified:** 2026-08-31
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -44809,10 +45577,25 @@ UltraCanvasUIElement
 - **Multiple layout algorithms:** `Squarified`, `SliceAndDice`, `Strip`, `Spiral`, `Binary`.
 - **Visual styles:** `Flat`, `Raised`, `Sunken`, `Gradient`, `Textured`, `Minimal`.
 - **Color schemes:** `Sequential`, `Diverging`, `Categorical`, `Random`, `Monochrome`, `Custom`.
-- **Drill-down navigation:** click a node to descend into its subtree; navigate back to root.
+- **Drill-down navigation:** double-click a node to descend into its subtree; navigate back to root.
 - **Display toggles:** show/hide labels, values, percentages, and icons per rectangle.
 - **Interaction:** hover tooltips, selection, mouse wheel zoom, panning, animation between states.
 - **Rich callbacks:** drill-down/up, select/deselect, hover, double-click, right-click.
+
+### Mouse interaction
+
+The element hit-tests **what it draws** — the current level's children, laid out
+by the active algorithm, whether or not they are leaves. So a grouped treemap
+(one rectangle per group, with children only visible after drilling in) is just
+as clickable as a flat one.
+
+| Gesture | Effect |
+|---|---|
+| Left click on a rectangle | Selects it and fires `onNodeSelect(name, value)`. |
+| Left click on the background | Clears the selection (`onNodeDeselect`). |
+| Left double-click | Fires `onNodeDoubleClick`, then drills into the node when it has children (`onNodeDrillDown`). |
+| Right click on a rectangle | Fires `onNodeRightClick(name)`. |
+| Wheel / drag | Zoom and pan, when `SetInteractionOptions` enables them. |
 
 ## Header Include
 
@@ -45830,6 +46613,11 @@ click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
 undo/redo, placeholder, max length, validation state, horizontal scrolling and
 multi-byte text. Reproducing even half of that by hand is a week of bugs.
 
+Password fields also get a reveal control: `SetShowPasswordToggle(true)` paints
+an eye button inside the field, and `SetPasswordRevealed()` drives the same state
+from an external "Show password" checkbox. See
+[UltraCanvasTextInputExamples.md](UltraCanvasTextInputExamples.md).
+
 ## Buttons and choices
 
 | You need | Element | Header |
@@ -45892,6 +46680,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
 | List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
+| System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 
 ## Pickers, dialogs and feedback
 
@@ -47719,12 +48508,13 @@ between opening it and the first flushed line. Go to the next section.
 
 ```
 Ladybird crashed: exception 0xC000001D (ILLEGAL_INSTRUCTION (binary uses CPU
-instructions this machine lacks)) at 0x00007FF8599C3793 in
+instructions this machine lacks)) at 0x00007FF8355D3793 in
 C:\...\Ladybird\bin\lagom-gfx.dll. Windows 11 (10.0 build 26200)
-This CPU: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz [SSE4.2 AVX AVX2]
-Bytes at the fault: 62 F1 7C 48 28 C1 ...
-The binary was built for a CPU this one is not. Rebuild it without
--march=native (or /arch:AVX*) so it targets a baseline this machine has.
+This CPU: AMD Ryzen 5 5500U with Radeon Graphics (x86-64-v3) [SSE4.2 AVX AVX2
+FMA BMI2 AES SHA]
+Bytes at the fault: C4 E3 F9 CE 05 83 D1 03 00 00 C5 F9 D7 C0 3D FF
+The binary was built for a CPU this one is not. Rebuild it with
+-march=x86-64-v3 instead of -march=native (or /arch:AVX*). ...
 ```
 
 Nothing is wrong with the code at that address. The compiler emitted an
@@ -47732,29 +48522,58 @@ instruction the machine will not execute, and the loader was happy to map it —
 the fault only happens when execution reaches it. Which is why this crash tends
 to land in a *graphics* or *image* library: those are where the vector code is.
 
-The reporter prints three things that settle it between them:
+The reporter prints four things that settle it between them:
 
 - **the module** — which library was compiled too aggressively;
-- **this CPU** — the brand string and which instruction sets the machine
-  actually offers, read through `IsProcessorFeaturePresent` so it reports what
-  the OS *permits*, not what the silicon has;
-- **the bytes at the fault** — enough to identify the instruction. A `62`
-  prefix is EVEX, i.e. AVX-512; `C5` or `C4` is VEX, i.e. AVX/AVX2.
+- **the x86-64 level** — the highest psABI microarchitecture level this machine
+  satisfies. It is the actionable number, because `-march=x86-64-v<N>` means
+  exactly that set: a build targeting it is guaranteed to run here;
+- **the feature list** — read from CPUID, covering the extensions that actually
+  break a `-march=native` build;
+- **the bytes at the fault** — enough to identify the instruction.
 
-Two causes, and the CPU line tells you which:
+### Reading the bytes
+
+Do not stop at the prefix. `62` is EVEX and does imply AVX-512, but `C4`/`C5`
+is VEX, which encodes far more than AVX and AVX2 — GFNI, VAES, VPCLMULQDQ and
+BMI are all VEX-encoded. **A CPU can have every feature in the list and still
+refuse a VEX instruction.** Decode it rather than guessing; any disassembler
+will take raw bytes:
+
+```sh
+printf 'C4E3F9CE0583D1030000C5F9D7C0' | ... > f.bin   # bytes, hex, no spaces
+objdump -D -b binary -m i386:x86-64 -M intel f.bin
+```
+
+The example above decodes to `vgf2p8affineqb xmm0, xmm0, [rip+0x3d183], 0` —
+a **GFNI** instruction, on a CPU whose list says `AVX2` and does not say `GFNI`.
+That is the whole bug, and reading `C4` as "AVX2, which this CPU has" would have
+sent you looking in the wrong place.
+
+### The three causes
 
 1. **The build machine had a newer CPU than the target.** `-march=native` bakes
-   in whatever the *builder's* processor supported. Build with an explicit
-   baseline instead — `-march=x86-64-v2` (SSE4.2, POPCNT) is a safe floor for
-   anything that runs Windows 10 or 11; `-march=x86-64-v3` requires AVX2 and
-   excludes a lot of still-current laptops and most virtual machines. Never ship
-   `-march=native` binaries.
-2. **The binary is x64 running under emulation on an ARM64 machine.** The
+   in whatever the *builder's* processor supported. Build with the level the
+   reporter names instead. Never ship `-march=native` binaries.
+2. **An opt-in extension outside every `-march` level.** GFNI, VAES, VPCLMULQDQ
+   and SHA belong to *no* `x86-64-v1..v4` level — no `-march=x86-64-vN` will
+   ever emit them, and nothing but `-march=native` (or an explicit `-mgfni` and
+   friends) picks them up. This is the nastiest version of the bug, because the
+   target CPU can be modern and fully AVX2-capable and still fault. AMD added
+   GFNI in Zen 4; Intel in Ice Lake and Tremont. A Zen 2 or Zen 3 laptop chip
+   has AVX2 and no GFNI.
+3. **The binary is x64 running under emulation on an ARM64 machine.** The
    reporter appends `EMULATED: x64 image on a ARM64 machine` when it detects
    this (via `IsWow64Process2`). Windows on ARM emulates a *subset* of x86:
    AVX-512 is not available at all, and AVX/AVX2 only on recent builds. The fix
    is to ship a native ARM64 build; lowering the baseline only helps if the
    emulator covers what is left.
+
+Picking a level: `-march=x86-64-v2` (SSE4.2, POPCNT) runs on anything that runs
+Windows 10 or 11. `-march=x86-64-v3` adds AVX2, FMA and BMI2 — good performance,
+but it excludes pre-2015 hardware, some current low-power parts and many virtual
+machines. `v4` requires AVX-512 and is not a sensible shipping target. When in
+doubt ship `v2`; when the reporter says `v3`, `v3` is safe *for that machine*.
 
 **This is the failure most likely to be misread as an operating-system
 problem.** "Works on Windows 10, crashes on Windows 11" is what you observe when
@@ -53240,7 +54059,33 @@ UltraWin_ReleaseApp(app);
 
 - `UltraWin_RunApp(path, options, &handle)` forks and execs Wine in its own
   process group, with `WINEPREFIX` set and optional extra environment
-  variables (e.g. a DXVK switch) applied. The path is routed by extension:
+  variables (e.g. a DXVK switch) applied.
+- **Environment selection**, in order: an explicit
+  `UltraWinRunOptions::environment` always wins; a path living *inside*
+  an environment's prefix (an installed program, its Start-Menu `.lnk`)
+  selects the environment that owns it — the only prefix where that
+  program is actually installed; a **remembered association** (below)
+  covers programs outside any prefix; everything else runs in the shared
+  `Default` environment.
+- **Associations** — how a launcher's one-time choice becomes durable:
+  `UltraWin_SetAssociation(programPath, env)` /
+  `UltraWin_GetAssociation` / `UltraWin_RemoveAssociation`, persisted
+  under the UltraWin data directory and shared by every launcher. Each
+  entry carries a **file fingerprint** (size + content hash), so a
+  *different* file appearing at the same path — a re-downloaded
+  `setup.exe` in Downloads — makes the stored choice stale and the
+  picker asks again instead of silently reusing the old program's
+  environment.
+  `UltraWin_SuggestEnvironment(path)` gives pickers their default: the
+  program's own association, else a *sibling* program's association
+  (multi-exe applications share one environment), else a name derived
+  from the parent folder, else the file name.
+  `UltraWin_EnvironmentForPath` tells a launcher the choice is already
+  made because the program lives inside a prefix.
+- UltraFiler asks **once** per unknown program (a small picker: existing
+  environments + a new-environment name, pre-filled from the suggestion,
+  with "remember for this program" checked) — later double-clicks launch
+  straight through the stored association. The path is routed by extension:
   `.exe` (and anything else) runs directly, `.msi` installs through
   `msiexec /i`, and `.lnk` Start-Menu shortcuts resolve through
   `start /wait /unix` — so installers and installed programs launch through
@@ -53323,14 +54168,37 @@ launch/supervision path runs against a stub wine script (via the
 `UltraWinConfig::winePath` override), and the one test that exercises a real
 `wineboot` skips itself when no binary is found.
 
+## UltraWin Manager — the graphical front-end
+
+`UltraWinManager` (built with the framework, `Apps/UltraWinManager/`) is
+the desktop UI over this module — assembled entirely from catalogue
+elements, with every slow UltraWin call on a worker thread:
+
+- **Environments** — the isolated Wine prefixes: their installed
+  components, one-click component installs (winetricks verbs), launching
+  a `.exe`/`.msi` into a chosen environment, deletion (busy-guarded).
+- **Programs** — installed Start-Menu programs across all environments,
+  launchable by double-click or button.
+- **Windows VM** — machine state (provisioned/installed, pid, KVM/TCG,
+  RDP port, home share), provisioning from install media, and
+  start/suspend/resume/stop — the `ultrawin-setup` flow with buttons.
+
+The header always shows the host capability line (Wine, winetricks, QEMU,
+KVM, RemoteApp), and missing engines surface as guidance in the status
+bar, never as silent failures.
+
 ## UltraFiler integration
 
 Double-clicking a `.exe` or `.msi` in UltraFiler launches it through
-`UltraWin_RunApp` in a per-app environment named after the file (created
-automatically on first launch, off the UI thread; installers run through
-msiexec). When Wine is missing, the status bar says how to install it.
-Available only in Linux builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other
-platforms activation behaves as before.
+`UltraWin_RunApp` (installers run through msiexec, off the UI thread).
+For a program whose environment is not already decided (not inside a
+prefix, no stored association) a small picker asks **once** — existing
+environments plus a new-environment name pre-filled from
+`UltraWin_SuggestEnvironment` — and remembers the answer, so every later
+launch is a plain double-click. When Wine is missing, the status bar says
+how to install it. Available only in Linux builds
+(`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation behaves as
+before.
 
 ## The VM tier (Stage 2a — machine backbone)
 
@@ -54345,7 +55213,9 @@ App / Module (UltraCanvas, FileDialog, Texter, UltraFiler, ...)
 * Single C-style entrypoint surface (`VirtualFS_*`).
 * `VirtualFSResult` for every operation — explicit error codes with
   human-readable messages.
-* Transparent nested archive support (`/backup.zip/docs/report.7z/data.csv`).
+* Transparent nested archive support (`/backup.zip/docs/report.7z/data.csv`)
+  — the inner archive is opened straight from memory, so nothing is
+  written to the temp directory (see *Nested archives* below).
 * Password callbacks for encrypted archives.
 * Progress callbacks for extraction/creation with cancellation.
 * Entry caching for performance on repeated access.
@@ -54411,6 +55281,113 @@ UCVFSBridge::DecompressAuto(unknownData, decompressed);
 
 ---
 
+## Nested archives
+
+Reading `/backup.zip/bundle/inner.7z/docs/report.txt` requires opening
+`inner.7z` while it is still inside `backup.zip`. VirtualFS reads the inner
+archive's bytes from the outer provider and hands them straight to the
+provider that will open it, via
+`IVirtualFSProvider::OpenFromMemory()`:
+
+```cpp
+// Providers that can work from a buffer advertise it:
+if (HasCapability(provider->GetCapabilities(),
+                  VirtualFSCapability::MemoryOpen)) {
+    auto bytes = std::make_shared<std::vector<uint8_t>>(std::move(data));
+    provider->OpenFromMemory(bytes, "/backup.zip/bundle/inner.7z");
+}
+```
+
+The libarchive provider implements this over `archive_read_open_memory()`,
+so **the nested archive never touches the disk**. This matters most when the
+outer archive is password-protected: the decrypted inner archive would
+otherwise sit in the temp directory as plaintext.
+
+A provider that can only open a real path simply does not override
+`OpenFromMemory()` — the default returns `NotSupported` and
+`VirtualFSManager` falls back to extracting a temp file, as before. The
+buffer is held for the whole open span, because libarchive streams are
+forward-only and every operation reopens the archive.
+
+**Limitation:** an archive opened from memory cannot be modified. Write
+operations rewrite the archive through a temp file and rename, which needs a
+real path, so `AddFile()`/`Delete()`/`DeleteEntries()` on a memory-opened
+archive return `NotSupported`.
+
+---
+
+## RAM discs
+
+`VirtualFSRamDisk.h` provisions an **OS-visible** RAM disc: a real mount
+point that `fopen()`, other processes and the platform file manager can all
+reach. VirtualFS does not implement a filesystem to do this - that would
+mean shipping a kernel driver - it drives the facility each platform already
+provides.
+
+```cpp
+#include <VirtualFS/VirtualFSRamDisk.h>
+
+VirtualFSRamDisk disk;
+if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
+        == VirtualFSResult::Success) {
+
+    // A real path: any process, any API, not just VirtualFS_*
+    std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);
+
+    // Send VirtualFS's own temp files there too
+    VirtualFS_UseRamDiskForTemp(disk);
+
+    VirtualFS_DestroyRamDisk(disk);   // contents go with it
+}
+```
+
+| Platform | Mechanism | True RAM? | Privileges | Sizing |
+|---|---|---|---|---|
+| Linux | `/dev/shm` (tmpfs) | Yes | None | Advisory¹ |
+| macOS | `hdiutil attach ram://` + `diskutil erasevolume` | Yes | None | Exact |
+| Windows | ImDisk driver, when installed | Yes | **Admin** | Exact |
+| Windows | `%TEMP%` + wipe on destroy | **No** | None | Advisory |
+
+¹ `/dev/shm` is one shared tmpfs with one global limit; a private quota
+needs root. `capacityBytes` reports the space actually free there.
+
+### Windows has no built-in RAM disc
+
+Every real option on Windows is a third-party kernel driver. Rather than
+depend on one, the back end **detects** ImDisk and falls back to an ordinary
+`%TEMP%` directory when it is absent or the process is not elevated.
+
+That fallback is **not RAM** - it is real storage, wiped on destroy. The
+backing is always reported, never silently substituted:
+
+```cpp
+if (!disk.IsTrueRam()) {
+    // Windows without ImDisk: bytes will reach persistent storage.
+    // Refuse to put decrypted content here, or warn the user.
+}
+```
+
+Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
+distinction matters, so you can warn up front rather than after the fact.
+
+### Privacy and lifetime
+
+Discs are private to the calling user - mode `0700` on POSIX, an ACL
+granting only the current user on Windows. A disc does not survive a reboot,
+and usually not a crash of the creating process either. `VirtualFS_ListRamDisks()`
+finds discs left behind by a process that died before destroying them, which
+makes a start-up sweep possible:
+
+```cpp
+for (auto& stale : VirtualFS_ListRamDisks()) {
+    VirtualFS_DestroyRamDisk(stale);
+}
+```
+
+**Never put the only copy of anything on a RAM disc.**
+
+---
+
 ## Module layout
 
 ```
@@ -54420,9 +55397,11 @@ VirtualFS/
 │   ├── VirtualFSTypes.h         (enums, structs, callbacks)
 │   ├── VirtualFSPath.h          (path parsing, archive detection)
 │   ├── VirtualFSProvider.h      (IVirtualFSProvider interface)
-│   └── VirtualFSManager.h       (singleton manager)
+│   ├── VirtualFSManager.h       (singleton manager)
+│   └── VirtualFSRamDisk.h       (OS-visible RAM discs)
 ├── core/
-│   └── VirtualFSManager.cpp     (manager implementation)
+│   ├── VirtualFSManager.cpp     (manager implementation)
+│   └── VirtualFSRamDisk.cpp     (RAM disc, platform-independent half)
 ├── providers/
 │   ├── VirtualFSLibArchiveProvider.h/.cpp   (40+ formats)
 │   ├── VirtualFSCHMProvider.h/.cpp          (CHM via libmspack)
@@ -54431,7 +55410,8 @@ VirtualFS/
 │   ├── UltraCanvasVirtualFSBridge.h         (UltraCanvas API)
 │   └── UltraCanvasVirtualFSBridge.cpp
 ├── OS/<Platform>/
-│   └── VirtualFSPlatform.cpp
+│   ├── VirtualFSPlatform.cpp
+│   └── VirtualFSRamDiskPlatform.cpp   (one per platform)
 └── CMakeLists.txt
 ```
 
@@ -54504,6 +55484,9 @@ zlib; the affected features are compiled out with a warning.
 | VirtualFSPath | ✅ Complete |
 | LibArchive provider | ✅ Complete |
 | UltraCanvas bridge | ✅ Complete |
+| Memory-backed nested archives | ✅ Complete |
+| RAM discs (Linux / macOS) | ✅ Complete |
+| RAM discs (Windows, ImDisk) | ✅ Complete — driver detected, not bundled |
 | CHM provider (libmspack) | Planned |
 | WIM provider (wimlib) | Planned |
 | Linux / macOS / Windows | ✅ Supported |

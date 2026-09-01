@@ -108,6 +108,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasMacOSApplication();
+        ~UltraCanvasMacOSApplication() override;
 
         static UltraCanvasMacOSApplication* GetInstance() {
             return instance;

@@ -28,6 +28,11 @@ public:
                      std::function<void()> onClearHistory = {},
                      std::function<void()> onClearFavorites = {},
                      std::function<void()> onClearFolderViews = {});
+
+    // Releases the retained settings-dialog widget tree. Call during app
+    // shutdown so it is torn down while the application is still alive, rather
+    // than at static-destruction time when the Application singleton is gone.
+    static void Shutdown();
 };
 
 } // namespace UltraCanvas

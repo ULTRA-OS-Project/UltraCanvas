@@ -70,6 +70,11 @@ std::string EnvironmentsRoot();               // takes g_mutex
 // Absolute prefix path for a validated environment name.
 std::string PrefixPath(const std::string& name);  // takes g_mutex
 
+// The environment whose prefix contains hostPath — the owner of an
+// installed program's files and shortcuts. "" when the path lies outside
+// the environments root (or names no valid environment).
+std::string EnvironmentForPath(const std::string& hostPath);  // takes g_mutex
+
 // Locate the wine binary per config/PATH. Returns empty string when none.
 std::string FindWineBinary();                 // takes g_mutex (config read)
 
@@ -120,6 +125,10 @@ std::string ResolveWineElfBinary(const std::string& winePath);
 
 // Winetricks verb charset: [a-z0-9][a-z0-9._+=-]*, max 64. (Pure.)
 bool IsValidComponentName(const std::string& name);
+
+// Any string into the environment-name charset ([A-Za-z0-9._-], no
+// leading dot, max 64) — may return "" for degenerate input. (Pure.)
+std::string SanitizeEnvironmentName(const std::string& raw);
 
 // Best-effort `wine --version` (cached after first success).
 std::string ProbeWineVersion(const std::string& winePath);

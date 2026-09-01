@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 2.0.2
-// Last Modified: 2026-07-12
+// Version: 2.1.0
+// Last Modified: 2026-08-29
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -62,7 +62,9 @@ namespace UltraCanvas {
 
         // Arrange ONLY the active tab's content into the content area so its subtree
         // lays out at the right size. Inactive contents are hidden and skipped.
-        if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
+        // A detached host owns its children's layout, so there is nothing to do
+        // here beyond the visibility switch UpdateContentVisibility() just made.
+        if (!contentHost && activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
             if (auto* content = tabs[activeTabIndex]->content.get()) {
                 Rect2Di cb = GetContentAreaBounds();
                 // Drop any stale (indefinite-height) measurement / grid-track state cached on
@@ -155,7 +157,7 @@ namespace UltraCanvas {
         tab->content = content;
 
         if (content) {
-            AddChild(content);
+            AttachTabContent(content);
             content->SetVisible(false);
         }
 
@@ -179,7 +181,7 @@ namespace UltraCanvas {
         }
 
         if (tabs[index]->content) {
-            RemoveChild(tabs[index]->content);
+            DetachTabContent(tabs[index]->content);
         }
 
         tabs.erase(tabs.begin() + index);
@@ -207,13 +209,41 @@ namespace UltraCanvas {
         if (index < 0 || index >= (int)tabs.size()) return;
         if (tabs[index]->content == content) return;
         if (tabs[index]->content) {
-            RemoveChild(tabs[index]->content);
+            DetachTabContent(tabs[index]->content);
         }
         tabs[index]->content = content;
         if (content) {
-            AddChild(content);
+            AttachTabContent(content);
             content->SetVisible(activeTabIndex == index);
         }
+        InvalidateTabbar();
+    }
+
+    // ===== DETACHED CONTENT AREA =====
+
+    void UltraCanvasTabbedContainer::AttachTabContent(
+            const std::shared_ptr<UltraCanvasUIElement>& content) {
+        if (!content) return;
+        if (contentHost) contentHost->AddChild(content);
+        else AddChild(content);
+    }
+
+    void UltraCanvasTabbedContainer::DetachTabContent(
+            const std::shared_ptr<UltraCanvasUIElement>& content) {
+        if (!content) return;
+        if (contentHost) contentHost->RemoveChild(content);
+        else RemoveChild(content);
+    }
+
+    void UltraCanvasTabbedContainer::SetContentHost(
+            const std::shared_ptr<UltraCanvasContainer>& host) {
+        if (contentHost == host) return;
+        // Hand the pages that already exist over to their new owner, so the host
+        // can be set either before or after the tabs are added.
+        for (auto& tab : tabs) DetachTabContent(tab->content);
+        contentHost = host;
+        for (auto& tab : tabs) AttachTabContent(tab->content);
+        UpdateContentVisibility();
         InvalidateTabbar();
     }
 
@@ -239,7 +269,14 @@ namespace UltraCanvas {
         // positions and render blank. Doing it here guarantees a correct layout the
         // instant the tab changes, against the current content-area bounds.
         if (auto* content = tabs[index]->content.get()) {
-            if (GetWidth() > 0 && GetHeight() > 0) {
+            if (contentHost) {
+                // The host lays its children out itself; the page only has to
+                // drop the measurements it cached while it was hidden, and the
+                // host has to be told to run its layout again.
+                content->InvalidateSubtree();
+                contentHost->InvalidateLayout();
+                contentHost->RequestRedraw();
+            } else if (GetWidth() > 0 && GetHeight() > 0) {
                 content->InvalidateSubtree();
                 CSSLayout::LayoutContext lctx;
                 if (auto* w = GetWindow()) {
@@ -527,7 +564,8 @@ namespace UltraCanvas {
         // Layout is computed deterministically in Arrange(); Render only paints.
         ctx->PushState();
         // ctx is already translated to element origin by the parent container.
-        RenderContentArea(ctx, dirtyRect);
+        // A detached container paints the tab bar only - the host paints the pages.
+        if (!contentHost) RenderContentArea(ctx, dirtyRect);
         RenderTabBar(ctx);
         ctx->PopState();
 
@@ -1487,6 +1525,10 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::PositionTabContent(int index) {
         if (index < 0 || index >= (int)tabs.size()) return;
 
+        // A detached host places its own children; this container must not
+        // overwrite the bounds the host's layout gave them.
+        if (contentHost) return;
+
         auto content = tabs[index]->content.get();
         if (!content) return;
 
@@ -1650,6 +1692,10 @@ namespace UltraCanvas {
     Rect2Di UltraCanvasTabbedContainer::GetContentAreaBounds() {
         Rect2Di bounds = GetBounds();
         int verticalTabWidth;
+
+        // Detached: the pages live in the content host, so this element holds
+        // nothing but the tab bar and has no content area of its own.
+        if (contentHost) return Rect2Di(0, 0, 0, 0);
 
         switch (tabPosition) {
             case TabPosition::Top:

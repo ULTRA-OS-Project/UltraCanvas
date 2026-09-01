@@ -1,0 +1,70 @@
+// Template app/build.gradle for an UltraCanvas Android app.
+//
+// NEVER RUN: the cross-compiled dependency sysroot it points at does not exist
+// yet (see README.md in this directory). Treat this as a checklist of the
+// settings the backend needs, not as a working build file.
+
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'org.ultraos.ultracanvas.demo'
+    // API 26 is the backend's floor: ClipDescription.getTimestamp (clipboard
+    // change detection) and the SAF behaviour it relies on are 26+.
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'org.ultraos.ultracanvas.demo'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+
+        externalNativeBuild {
+            cmake {
+                // arm64 only to start with. Every extra ABI multiplies both
+                // build time and the sysroot you must cross-compile.
+                abiFilters 'arm64-v8a'
+                arguments '-DANDROID_PLATFORM=android-26',
+                          '-DANDROID_STL=c++_shared',
+                          // Point pkg-config at the cross-compiled sysroot.
+                          // THIS IS THE PART THAT DOES NOT EXIST YET.
+                          "-DCMAKE_FIND_ROOT_PATH=${project.properties['ultracanvas.sysroot'] ?: ''}"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            // The repository's root CMakeLists. Its `if(ANDROID)` block
+            // already defaults the desktop apps, plugins, libvips, audio,
+            // video, database and VirtualFS off, so only the core library and
+            // your app are built.
+            path '../../../../../CMakeLists.txt'
+            version '3.22.1+'
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+            // UltraCanvasActivity lives in the framework tree rather than
+            // being copied into every app.
+            java.srcDirs += '../../java'
+            // Anything the app loads by path at runtime. Unpacked to
+            // $HOME/share on first launch by UltraCanvasAndroidAssets.cpp.
+            assets.srcDirs = ['src/main/assets']
+            // The cross-compiled cairo/pango/glib/... .so files.
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    packagingOptions {
+        // The dependency .so files are already stripped and must not be
+        // re-compressed, or dlopen cannot mmap them directly.
+        jniLibs {
+            useLegacyPackaging false
+        }
+    }
+}

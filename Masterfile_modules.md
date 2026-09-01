@@ -80,6 +80,50 @@ the backing implementation can be replaced without affecting callers.
   they need a pixel offset in the paint path first.
   See `Docs/UltraCanvas/UltraCanvasSmoothScroll.md`.
 
+- **UltraCanvasHardwareInfo** (`UltraCanvasHardwareInfo.h`) — read-only
+  inventory and sensors for the machine the application runs on: CPU (cache
+  sizes, hybrid core tiers, instruction sets, temperature, load), GPU, NPU,
+  memory down to the individual module, storage (bus, connector, on-drive
+  cache, temperature, volumes), network interfaces including Wi-Fi
+  association, USB controllers and attached devices, and Bluetooth adapters
+  with their connections. Distinct from **IODeviceManager**, which *operates*
+  peripherals (scanners, cameras, printers: handles, protocols, a device
+  lifecycle) — this module only *describes* the host and holds nothing. Shared
+  logic in `core/UltraCanvasHardwareInfo.cpp`; per-platform probes behind the
+  internal `UltraCanvasHardwareInfoBackend.h` under `OS/<Platform>/` (Linux:
+  procfs/sysfs; Windows: registry, SMBIOS, storage IOCTLs, IP Helper, WLAN,
+  SetupAPI and the Bluetooth API — no COM or WMI; macOS: sysctl and the IOKit
+  C API), with a fallback for platforms that have none. No new third-party
+  dependency on any platform. Public surface:
+  - `Capture(HardwareQuery, forceRefresh)` — one consistent snapshot;
+    `HardwareQuery` is a bit set (`System`/`CPU`/`GPU`/`NPU`/`Memory`/
+    `Storage`/`Network`/`USB`/`Bluetooth`/`Sensors`/`All`) because probing
+    costs differ by orders of magnitude, and `HardwareSnapshot::Has` reports
+    which categories were actually filled.
+  - `RefreshSensors(snapshot)` — re-reads temperatures, clocks, utilisation,
+    free memory and link state in place, never adding or removing a device, so
+    a monitor loop keeps its indices.
+  - Single-category helpers `GetCPU` / `GetMemory` / `GetSystem` / `ListGPUs` /
+    `ListNPUs` / `ListStorageDevices` / `ListNetworkInterfaces` /
+    `ListUSBDevices` / `ListUSBControllers` / `ListBluetoothAdapters`.
+  - `SetOptions` / `GetOptions` (`HardwareInfoOptions`): identifier masking
+    (on by default — serial numbers, MACs and BSSIDs keep only their tail),
+    sensor inclusion, USB hubs, snapshot cache lifetime; `MaskIdentifier`
+    applies the same rule to a caller's own string.
+  - `BuildReport` → `HardwarePropertyGroup` tree, and the `ToText` / `ToJSON`
+    renderings built on it; `FormatBytes` / `FormatFrequencyMHz` /
+    `FormatTemperature` / `FormatBitrateMbps` / `FormatDuration`.
+  - `GetBackendName` (`"sysfs"` / `"win32"` / `"iokit"` / `"null"`),
+    `IsAvailable`. A value that cannot be read never becomes a zero: the
+    reason goes into `HardwareSnapshot::warnings` in words a user can act on.
+  - **UltraCanvasHardwareInfoPanel** (`UltraCanvasHardwareInfoPanel.h`) — the
+    ready-made system-information view, an `UltraCanvasColumnsTreeView` that
+    fills itself from a snapshot: `Refresh`, `RefreshSensors` (updates values
+    in place, so expansion, selection and scroll position survive),
+    `SetQuery`, `SetSnapshot`, `SetSectionsExpanded`, `ToText` / `ToJSON`,
+    `onSnapshotChanged`, and the `CreateHardwareInfoPanel` factory.
+  See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the
@@ -110,7 +154,19 @@ the backing implementation can be replaced without affecting callers.
   Wired into `UltraCanvasTextArea` via `SetSpellCheckEnabled`; the byte-range →
   screen-rectangle mapping it needs is the element's own
   `GetCharacterRangeBounds`, which is equally usable for search highlighting,
-  diff marks and comment anchors.
+  diff marks and comment anchors. Two element hooks exist for host
+  applications: `onContextMenu` takes the right-click before the built-in
+  suggestion popup, so an application with its own editor menu splices the
+  suggestions into it; `onPrepareSpellCheck` hands over the exact text about to
+  be checked plus a per-check copy of the options, which is what
+  `SpellCheckOptions::shouldSkipRange` needs — its ranges are byte offsets and
+  go stale on the first edit otherwise.
+  UltraTexter is the reference consumer: **Edit → Spelling**, an editor context
+  menu carrying the suggestions, and a markdown skip scanner
+  (`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` — a dependency-free byte
+  scanner covering fenced and indented code, inline code spans, link and image
+  targets, autolinks, inline HTML, math and YAML front matter, with the
+  application half in `Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp`).
   See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
 
 ### **2. UltraAI**
@@ -287,6 +343,10 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_EnvironmentForPath`, `UltraWin_GetAssociation`,
+  `UltraWin_SetAssociation`, `UltraWin_RemoveAssociation`,
+  `UltraWin_SuggestEnvironment` (program→environment linkage: owning
+  prefix, remembered picker choices, and picker defaults)
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
 - `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,
@@ -422,3 +482,104 @@ persisted drive mappings), application launch/supervision, and the
 component installer (winetricks wrapper) are implemented; the VM tier and
 compatibility routing are planned for Stages 2-3. See
 `Docs/Modules/UltraWin/README.md`.
+
+---
+
+### **10. VirtualFS**
+
+Virtual file system — the single place where archive traversal, format
+detection, decompression, entry caching, password handling and RAM disc
+provisioning are implemented, so no application, plugin or sibling module
+opens a ZIP by hand. Files inside an archive are reached as if they were
+regular folders, including archives nested inside archives. Sources under
+`VirtualFS/{include,core,providers,OS/<Platform>}`, target `VirtualFS`,
+header `<VirtualFS/VirtualFS.h>`, `namespace VirtualFS`; see
+`Docs/Modules/VirtualFS/README.md` and the full function list in
+`VirtualFS/VirtualFS_Master_Registry_V1.md`.
+
+Scope is **archives and scratch storage**. Loading and converting a file
+once it has been reached stays in FileLoader; the UltraCanvas-facing
+compression shims live in `UltraCanvasVirtualFSBridge`.
+
+VirtualFS elements must comply with the same rules as UltraNet, UltraCrypt
+and UltraDatabase:
+- Clear structure; call names understandable by their names
+- New formats arrive as an `IVirtualFSProvider`, never as a special case
+  inside the manager
+- Every call returns `VirtualFSResult` (`operator bool` for quick checks,
+  `VirtualFSResultToString()` for messages)
+- Paths use forward slashes and are normalized automatically; archive
+  boundaries are detected by extension against 40+ known formats
+- **Never** write `ZipFile`, `TarArchive` or `Uncompress()` at module level
+  — go through `VirtualFS_*` or `UCVFSBridge::*`
+- A RAM disc always reports its backing; the Windows disk fallback is never
+  presented as memory (see `VirtualFSRamDisk::IsTrueRam()`)
+
+Like UltraNet and UltraCrypt, it encapsulates an open-source library
+(libarchive) so the backing implementation can be replaced without
+affecting callers; the backing library is never visible in a public header.
+
+**Available Functions (Core, Tier 1):**
+- Lifecycle: `VirtualFS_Initialize`, `VirtualFS_Shutdown`,
+  `VirtualFS_IsInitialized`, `VirtualFS_GetVersion`
+- Reading: `VirtualFS_ReadFile`, `VirtualFS_ReadFileString`,
+  `VirtualFS_ReadFilePartial`, `VirtualFS_OpenStream`,
+  `VirtualFS_ExtractToMemory`
+- Listing: `VirtualFS_ListDirectory`, `VirtualFS_ListDirectoryFiltered`,
+  `VirtualFS_ListDirectoryRecursive`, `VirtualFS_EnumerateDirectory`
+- Queries: `VirtualFS_Exists`, `VirtualFS_IsFile`, `VirtualFS_IsDirectory`,
+  `VirtualFS_IsArchive`, `VirtualFS_IsInsideArchive`, `VirtualFS_GetInfo`,
+  `VirtualFS_GetSize`, `VirtualFS_GetType`, `VirtualFS_GetMimeType`,
+  `VirtualFS_DetectFormat`, `VirtualFS_GetArchiveInfo`
+- Extraction: `VirtualFS_ExtractFile`, `VirtualFS_ExtractAll`,
+  `VirtualFS_ExtractFiltered`
+- Writing: `VirtualFS_CreateArchive`, `VirtualFS_AddToArchive`,
+  `VirtualFS_DeleteFromArchive`
+- Validation: `VirtualFS_ValidateArchive`, `VirtualFS_TestArchive`
+- Paths: `VirtualFS_NormalizePath`, `VirtualFS_ResolvePath`,
+  `VirtualFS_JoinPath`, `VirtualFS_GetParentPath`,
+  `VirtualFS_GetFileName`, `VirtualFS_GetExtension`
+- Providers: `VirtualFS_RegisterProvider`, `VirtualFS_UnregisterProvider`,
+  `VirtualFS_GetProviderForPath`, `VirtualFS_GetRegisteredProviders`,
+  `VirtualFS_GetSupportedExtensions`
+- Configuration: `VirtualFS_SetPasswordCallback`,
+  `VirtualFS_SetErrorCallback`, `VirtualFS_GetErrorMessage`,
+  `VirtualFS_SetTempDirectory`, `VirtualFS_GetTempDirectory`,
+  `VirtualFS_SetDefaultEncoding`
+- Cache: `VirtualFS_SetCacheEnabled`, `VirtualFS_SetMaxCacheSize`,
+  `VirtualFS_GetCacheSize`, `VirtualFS_ClearCache`,
+  `VirtualFS_ClearCacheForPath`
+
+**Raw buffer compression** (`VirtualFSCompression.h`) — the compression
+codecs without an archive container, for callers such as the UltraWeb
+bundler and FileLoader: `VirtualFS_CompressBuffer`,
+`VirtualFS_DecompressBuffer`, `VirtualFS_DetectCompressionMethod`,
+`VirtualFS_IsCompressionMethodAvailable`. Methods: `Store`, `Deflate`,
+`Zstd`, `LZ4` (frame format), `Brotli`, each subject to its
+`VIRTUALFS_USE_*` build option.
+
+**RAM discs** (`VirtualFSRamDisk.h`) — OS-visible scratch volumes, backed by
+each platform's own facility (`/dev/shm` tmpfs on Linux, `hdiutil
+attach ram://` on macOS, the ImDisk driver on Windows when installed, an
+overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
+`VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
+`VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
+`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
+user and do not survive a reboot.
+
+**Provider interface** (`IVirtualFSProvider`) — one implementation per
+format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
+read-only, ISO/UDF, CAB, CPIO, DEB, RPM, and the ZIP-derived app bundles);
+CHM (libmspack) and WIM (wimlib) providers are planned. Optional
+`OpenFromMemory()` lets a provider open an archive from a buffer, which is
+how nested archives are traversed without writing a temp file; providers
+that implement it advertise `VirtualFSCapability::MemoryOpen`.
+
+**Implementation status (this branch):** VirtualFSManager, VirtualFSPath,
+the LibArchive provider and the UltraCanvas bridge are complete;
+memory-backed nested archives and the Linux and macOS RAM disc back ends
+are complete. On Windows a true RAM disc requires an ImDisk installation —
+the driver is detected, never bundled — and without it the disc degrades to
+storage-backed and reports itself as such. Regression tests:
+`Tests/VirtualFSPathTest.cpp`, `Tests/VirtualFSDeleteTest.cpp`,
+`Tests/VirtualFSNestedMemoryTest.cpp`, `Tests/VirtualFSRamDiskTest.cpp`.

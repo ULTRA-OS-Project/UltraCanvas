@@ -1,6 +1,14 @@
 # Android Port Investigation
 
-**Status:** Investigation / planning document — no Android code exists yet.
+**Status:** Investigation / planning document. Written before any Android code
+existed; the analysis below is preserved as the original audit, with
+**Status:** notes marking what has since been implemented. The backend now
+lives in `UltraCanvas/OS/Android/` — see its
+[README](../../UltraCanvas/OS/Android/README.md) for what is actually built
+today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
+keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
+opening and saving, APK asset extraction); the dependency
+sysroot and APK packaging remain, so none of it has run on a device yet — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -191,6 +199,14 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `MouseWheel`). This is what makes every existing widget usable immediately.
   Real multi-touch/gesture support (adding a pointer-ID slot to `UCEvent` and
   touch cases to `DispatchEvent`) is a later, deliberate core extension.
+- **Status: both have landed.** `UCEvent` carries `pointerId` (stable per
+  finger) and `touchPointCount`; `DispatchEvent` routes touch events to the
+  element under that finger with bubbling and element-local coordinates, and
+  the Android backend emits `TouchStart/TouchMove/TouchEnd` for every pointer.
+  Single-finger gestures still drive the mouse path unchanged, so existing
+  widgets are unaffected; mouse synthesis stops for the rest of a gesture as
+  soon as a second finger lands. Gesture *recognition* (pinch/rotate → the
+  `PinchZoom` event) is still open — the raw stream it needs now exists.
 - Physical keys: `AKEYCODE_*` → `UCKeys` mapping table (the Linux
   `ConvertXKeyToUCKey`, ~130 cases, is the template).
 - **IME/soft keyboard:** `UCEvent::text` is the UTF-8 delivery channel (XIM
@@ -199,12 +215,22 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   keyboard: a new hook is needed so that focusing a text widget calls
   `showSoftInput`/`hideSoftInput` via JNI. Composing (pre-edit) text has no
   representation and can be deferred.
+- **Status: done, as analysed.** The missing hook became
+  `UltraCanvasCaret::onTextEditingChanged` — the caret already *is* the
+  framework's "text editing started/stopped" signal, so no new widget-level
+  API was needed. `UltraCanvasActivity` hosts an invisible focusable view whose
+  `InputConnection` gives the IME an editor to compose into (autocorrect,
+  suggestions, gesture typing, CJK candidates); commits arrive as
+  `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
+  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
+  it is a cross-platform capability (core text model + rendering + every
+  backend), not an Android gap — Linux shows no inline pre-edit either.
 
 ### 3.5 Desktop services with no Android analogue
 
 | Subsystem | Linux implementation | Android strategy |
 |---|---|---|
-| Native dialogs | 808 lines GTK3, **synchronous** (`gtk_dialog_run` nested loop) returning values | `AlertDialog` / SAF (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`) are **callback-based**. Either the `UltraCanvasNativeDialogs` API gains async variants, or Android uses a nested-loop shim pumping `ALooper` until the Java side posts the result. Additionally SAF yields `content://` URIs, not filesystem paths — downstream code assuming `std::string` paths needs a URI bridge (open via `ContentResolver` → fd → `/proc/self/fd/N`, or copy-to-cache). Phase 1: stub dialogs |
+| Native dialogs | 808 lines GTK3, **synchronous** (`gtk_dialog_run` nested loop) returning values | `AlertDialog` / SAF (`ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`) are **callback-based**. Either the `UltraCanvasNativeDialogs` API gains async variants, or Android uses a nested-loop shim pumping `ALooper` until the Java side posts the result. Additionally SAF yields `content://` URIs, not filesystem paths — downstream code assuming `std::string` paths needs a URI bridge (open via `ContentResolver` → fd → `/proc/self/fd/N`, or copy-to-cache). Phase 1: stub dialogs. **Status:** the nested-loop shim landed — `UltraCanvasAndroidDialogBridge` shows the dialog through the optional `UltraCanvasActivity` and pumps activity commands (never input) until the Java UI thread posts the result, so the synchronous API is preserved. Message dialogs and SAF **opening** are done (documents are copied into the app cache so path-based callers keep working). Saving goes through the new `UltraCanvasNativeDialogs::SaveContent(data, size, options)`, which takes the bytes up front (`ACTION_CREATE_DOCUMENT` + `ContentResolver`); the old path-returning `SaveFile` stays a stub because nothing signals when the caller finished writing, so its data could never reach the URI. `SelectFolder` remains a stub: a tree URI has no single-path equivalent. |
 | Clipboard | 760 lines of X11 selection protocol | JNI `ClipboardManager` — much simpler, text + URI lists |
 | Drag & drop | 960 lines XDnD v5 both directions | No cross-app analogue (outside ChromeOS freeform). `StartNativeFileDrag` → `return false` (default already does this); XDnD file is simply not compiled |
 | Mouse cursors | 238 lines Xcursor/libvips | No-ops |
@@ -238,6 +264,14 @@ no `CMAKE_CROSSCOMPILING` handling; every core dependency is found via system
 pkg-config. The port needs a prebuilt Android sysroot (vcpkg's
 `arm64-android` triplet is the first thing to evaluate; Conan or hand-rolled
 meson cross-files are the fallback) with `PKG_CONFIG_LIBDIR` pointed at it.
+
+**Status: the vcpkg route is written but unproven.**
+`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below and
+`scripts/android-bootstrap-sysroot.sh` drives vcpkg with the NDK chainloaded.
+Neither has ever been run — the environment they were written in has no NDK and
+no route to download one — so this is the plan encoded, not a working sysroot.
+**This remains the one blocker between "compiles in CI" and "runs on a
+device".**
 
 ### 4.1 Irreducible core stack (must cross-compile)
 
@@ -293,6 +327,13 @@ launch (or lazily) extract needed assets to `getFilesDir()`/`getCacheDir()`
 and keep all existing path-based code working; `SetResourcesDir()`
 (`core/UltraCanvasConfig.cpp`) gains an Android arm pointing there. Direct
 `AAssetManager` streaming can come later where it matters (fonts, icons).
+- **Status: done as described.** `UltraCanvasAndroidAssets.cpp` unpacks
+  `assets/` into `$HOME/share` (where `SetResourcesDir`'s Android arm points)
+  from `android_main`, stamped against the APK's mtime+size so only the first
+  launch after an install or update pays for it. One wrinkle the plan did not
+  anticipate: the NDK's `AAssetDir` API cannot enumerate subdirectories, so the
+  tree walk goes through Java `AssetManager.list()` while file contents still
+  come from the native manager.
 
 ---
 
@@ -395,8 +436,10 @@ Process lessons for the Android effort:
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
-- Multi-touch/gesture events in the core event model (pointer IDs,
-  `DispatchEvent` touch path, pinch-zoom).
+- ~~Multi-touch events in the core event model (pointer IDs, `DispatchEvent`
+  touch path), and pinch/rotate recognition on top of it~~ — done. Recognition
+  lives in the core (`UpdateTouchGesture`) rather than the Android backend,
+  since the touch stream and the geometry are both platform-neutral.
 - Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
