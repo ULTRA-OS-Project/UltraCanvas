@@ -1,4 +1,4 @@
-#### 2026-09-01 *0.3.89*
+#### 2026-09-01 *0.3.90*
 - **UltraCanvasFilerWidget: a file list can now grow while it is produced.**
   `AppendToFileList(paths)` adds paths to the list already on display, stat-ing
   only the new ones and leaving the scroll position and the selection where
@@ -10,6 +10,21 @@
   [`Docs/UltraFiler/CHANGELOG.md`](../UltraFiler/CHANGELOG.md) 1.16.0). The
   per-entry finishing pass every listing gets (weight, attribute letters, the
   info column) moved into `DecorateEntry()` so both paths share it.
+
+#### 2026-09-01 *0.3.89*
+- **UltraFiler: the Home folder's curation is a setting now — Settings >
+  Display > Home folder.** *Show all content* lists every subfolder of the
+  profile (in the tree the main folders keep their own icons, and a
+  redirected one is listed once, by its real path); *Show only predefined
+  folders* is the curated view — Desktop, Documents, Downloads, Music,
+  Pictures, Videos and nothing else. One setting governs the folder tree's
+  Home entry and the file display of the home folder alike, applies live to
+  every open tab and the folder preview, and is stored as
+  `display.home.content` (`all` / `predefined`). The defaults differ by
+  platform: curated on Windows, whose profiles carry a dozen system folders
+  ("3D Objects", "Saved Games", the sync clients); show-all on Linux and
+  macOS, where the home folder is the user's own. Display > Hidden files in
+  the file display still reveals everything regardless.
 
 #### 2026-08-31 *0.3.88*
 - **VirtualFS: nested archives no longer spill to a temp file.** Reading
