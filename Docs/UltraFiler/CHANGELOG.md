@@ -4,7 +4,7 @@
   dialogs are the Windows crash reporter's view of one thing: a C++ exception
   thrown where nothing could catch it — inside the window procedure, where an
   event handler on x64 cannot unwind back to `main()`'s `try`/`catch`, or on a
-  background thread. Framework 0.3.89 catches the first at the window
+  background thread. Framework 0.3.90 catches the first at the window
   procedure and guards the filer widget's workers; this version does the same
   for UltraFiler's own threads. The subfolder probe that decides which tree
   folders get an expand button, the cloud-storage discovery and the Windows

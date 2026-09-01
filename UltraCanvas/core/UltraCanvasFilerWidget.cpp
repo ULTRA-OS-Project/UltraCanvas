@@ -2474,6 +2474,10 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::SetCuratedHomeFolder(const std::string& homePath,
                                                       std::vector<std::string> mainFolders) {
+        // Hosts re-apply their settings wholesale; only a real change is
+        // worth the rescan a Refresh costs.
+        if (curatedHomePath == homePath && curatedHomeFolders == mainFolders)
+            return;
         curatedHomePath = homePath;
         curatedHomeFolders = std::move(mainFolders);
         Refresh();
