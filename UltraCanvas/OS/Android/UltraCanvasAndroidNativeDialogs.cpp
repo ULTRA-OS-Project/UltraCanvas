@@ -317,6 +317,33 @@ namespace UltraCanvas {
         return {};
     }
 
+    // The supported way to save on Android: the content comes with the call,
+    // so there is no window between "user chose a destination" and "bytes
+    // exist" for the answer to get lost in.
+    bool UltraCanvasNativeDialogs::SaveContent(const void* data, std::size_t size,
+                                               const FileDialogOptions& options) {
+        if (!data && size > 0) return false;
+
+        std::string name = options.defaultFileName;
+        if (name.empty()) name = "document";
+
+        // SAF wants the new document's MIME type; derive it from the name the
+        // app suggested, since that is where the intended format shows.
+        const char* mime = nullptr;
+        const std::size_t dot = name.find_last_of('.');
+        if (dot != std::string::npos && dot + 1 < name.size()) {
+            mime = MimeForExtension(name.substr(dot + 1));
+        }
+
+        auto outcome = AndroidDialogs::ShowSaveDocument(
+                mime ? mime : "application/octet-stream", name, data, size);
+        if (!outcome.bridged) {
+            StubDialog("SaveContent", options.title);
+            return false;
+        }
+        return outcome.result == AndroidDialogs::JavaResult::Positive;
+    }
+
     // Likewise: ACTION_OPEN_DOCUMENT_TREE yields a tree URI that callers would
     // enumerate and write through, which no single filesystem path can stand
     // in for.

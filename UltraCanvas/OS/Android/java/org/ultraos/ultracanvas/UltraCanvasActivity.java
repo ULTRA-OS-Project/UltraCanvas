@@ -179,6 +179,44 @@ public class UltraCanvasActivity extends NativeActivity {
         });
     }
 
+    /**
+     * Launch the system "create document" picker and write `content` to
+     * whatever the user chooses. Called from the native (glue) thread, which
+     * blocks until nativeOnDialogResult arrives.
+     *
+     * The bytes come in up front because SAF has no path to hand back: the new
+     * document is reachable only through its content:// URI and this app's
+     * ContentResolver, so the write has to happen on this side.
+     */
+    public void showSaveDocument(final int requestId, final String mimeType,
+                                 final String suggestedName, final byte[] content) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType(mimeType != null && mimeType.length() > 0
+                                   ? mimeType : "application/octet-stream");
+                    if (suggestedName != null && suggestedName.length() > 0) {
+                        intent.putExtra(Intent.EXTRA_TITLE, suggestedName);
+                    }
+                    pendingPickRequestId = requestId;
+                    pendingSaveContent = content;
+                    startActivityForResult(intent, requestId);
+                } catch (Throwable t) {
+                    pendingPickRequestId = 0;
+                    pendingSaveContent = null;
+                    nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                }
+            }
+        });
+    }
+
+    // Non-null exactly while a showSaveDocument request is outstanding, which
+    // is also how onActivityResult tells a save from an open.
+    private byte[] pendingSaveContent;
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode != pendingPickRequestId || pendingPickRequestId == 0) {
@@ -186,10 +224,33 @@ public class UltraCanvasActivity extends NativeActivity {
             return;
         }
         final int requestId = pendingPickRequestId;
+        final byte[] saveContent = pendingSaveContent;
         pendingPickRequestId = 0;
+        pendingSaveContent = null;
 
         if (resultCode != RESULT_OK || data == null) {
             nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+            return;
+        }
+
+        if (saveContent != null) {
+            final Uri target = data.getData();
+            if (target == null) {
+                nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                return;
+            }
+            // Writing can be slow (a large document, a cloud provider), so it
+            // stays off the UI thread. The native thread is parked in its pump
+            // regardless.
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    boolean ok = writeToUri(target, saveContent);
+                    nativeOnDialogResult(requestId,
+                                         ok ? RESULT_POSITIVE : RESULT_CANCEL,
+                                         ok ? displayNameOf(target) : null);
+                }
+            }, "UltraCanvas-SAF-save").start();
             return;
         }
 
@@ -266,6 +327,34 @@ public class UltraCanvasActivity extends NativeActivity {
         } finally {
             closeQuietly(in);
             closeQuietly(out);
+        }
+    }
+
+    /**
+     * Write bytes to a document the user just created. Returns false if any
+     * part of it failed, so the caller never reports a save that did not
+     * happen.
+     */
+    private boolean writeToUri(Uri uri, byte[] content) {
+        OutputStream out = null;
+        try {
+            out = getContentResolver().openOutputStream(uri, "wt");
+            if (out == null) return false;
+            out.write(content);
+            out.flush();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            // The provider only sees the document as complete once the stream
+            // is closed, so a failure to close is a failed save.
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (Throwable t) {
+                    return false;
+                }
+            }
         }
     }
 

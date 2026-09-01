@@ -84,9 +84,9 @@ neither native dialogs nor composed text input can ship with no Java at all.
 
 Message dialogs (`ShowInfo` / `ShowWarning` / `ShowError` / `ShowQuestion` /
 `ShowMessage` / `Confirm` / `ConfirmYesNo`) and **opening** files
-(`OpenFile` / `OpenMultipleFiles`) go through it for real. `SaveFile`,
-`SelectFolder` and the input dialogs are still stubs — see below for why the
-first two are not merely unfinished.
+(`OpenFile` / `OpenMultipleFiles`) go through it for real, as does saving via
+`SaveContent`. `SaveFile`, `SelectFolder` and the input dialogs are still
+stubs — see below for why the first two are not merely unfinished.
 
 ### Opening files: SAF, and why you get a copy
 
@@ -105,47 +105,38 @@ Filters are mapped extension → MIME type, since SAF filters by MIME. Any
 unmapped extension or a wildcard widens the picker to everything rather than
 risk hiding a file the user asked for.
 
-### Why `SaveFile` and `SelectFolder` are still stubs
+### Saving: use `SaveContent`, not `SaveFile`
 
-Not oversights — both are blocked on the *shape* of the cross-platform API,
-not on Android:
+`SaveFile` is still a stub on Android, and cannot be anything else. Its
+contract — hand back a path, let the caller write to it afterwards — has no
+Android implementation: SAF yields a `content://` URI rather than a path, and
+nothing tells the framework when the caller has finished writing, so there is
+no moment at which the bytes could be delivered to the document
+(`NotifyRecentFile` fires *before* the caller writes one). A bridged `SaveFile`
+would silently drop the user's work.
 
-- **`SaveFile`** returns a path and then returns; the caller writes to it
-  afterwards and nothing tells us when it has finished. Opening survives this
-  because a copy is a complete answer at return time. Saving would need that
-  copy pushed back to the `content://` URI at a commit point this API cannot
-  express (`NotifyRecentFile` fires *before* the caller writes a byte), so a
-  bridged `SaveFile` would silently drop the user's work. Closing this needs a
-  cross-platform decision — a save variant that takes the bytes, or an explicit
-  commit call — so it stays an honest stub rather than a plausible-looking one
-  that loses data.
-- **`SelectFolder`** would return a tree URI that callers enumerate and write
-  through; no single filesystem path can stand in for that.
+`UltraCanvasNativeDialogs::SaveContent(data, size, options)` closes that gap by
+taking the content up front, which removes the ambiguity entirely:
 
-**How a synchronous API survives an asynchronous platform:** the framework's
-dialog calls return the answer (`ShowQuestion(...) -> DialogResult`), while
-every Android dialog is asynchronous and lives on the Java UI thread. The
-bridge asks the activity to show the dialog and then blocks the calling thread
-in `PumpWhileModal` until the answer arrives. That is safe here precisely
-because the framework does *not* run on the Java main thread — it has
-android_native_app_glue's own thread — so the UI thread stays free to run the
-dialog and deliver the result. Blocking the same way on a desktop UI thread
-would freeze the app.
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export").SetDefaultFileName("notes.txt");
+bool saved = UltraCanvasNativeDialogs::SaveContent(text, opts);
+```
 
-While blocked, the pump processes **activity commands only**, and both halves
-of that matter:
+On Android it runs `ACTION_CREATE_DOCUMENT` and writes through the
+`ContentResolver`; on every desktop backend it is exactly `SaveFile()` followed
+by a write, so portable code can call it everywhere. It reports success only if
+the user chose a destination *and* the stream closed cleanly — a provider only
+sees the document as complete on close, so a failed close is a failed save.
 
-- Commands *must* be processed: the glue parks the Java main thread inside some
-  of them (`APP_CMD_TERM_WINDOW` waits for the native thread to acknowledge the
-  surface is gone). That is the very thread that owes us the dialog result, so
-  ignoring commands would deadlock the two threads against each other.
-- Input must *not* be: a widget is sitting inside its own dialog call, and
-  re-entering it with fresh input is exactly the reentrancy a modal dialog
-  exists to prevent. Input stays queued until the dialog returns.
+The MIME type SAF needs is derived from `defaultFileName`'s extension. Content
+is passed to Java as a `byte[]`, so it is briefly held twice; this API suits
+documents, not multi-gigabyte exports.
 
-Every path out of the Java dialog — button, back button, dismissal, even a
-failure to show it — delivers exactly one result, because anything less leaves
-the native thread pumping forever.
+**`SelectFolder`** remains a stub: `ACTION_OPEN_DOCUMENT_TREE` returns a tree
+URI that callers would enumerate and write through, which no single filesystem
+path can stand in for.
 
 ## Touch input
 

@@ -68,6 +68,17 @@ namespace AndroidDialogs {
     JavaDialogOutcome ShowOpenDocument(const std::string& mimeTypesCsv,
                                        bool allowMultiple);
 
+    // Launch the system "create document" picker and, once the user chooses a
+    // destination, write `data` to it. Blocks until both have happened.
+    //
+    // The bytes are handed over up front rather than through a path, because
+    // SAF has no path to give: the document is only reachable through its
+    // content:// URI and the app's ContentResolver. That is the whole reason
+    // UltraCanvasNativeDialogs::SaveContent exists alongside SaveFile.
+    JavaDialogOutcome ShowSaveDocument(const std::string& mimeType,
+                                       const std::string& suggestedName,
+                                       const void* data, std::size_t size);
+
 } // namespace AndroidDialogs
 } // namespace UltraCanvas
 

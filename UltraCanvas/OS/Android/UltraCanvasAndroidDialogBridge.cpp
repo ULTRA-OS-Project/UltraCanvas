@@ -14,6 +14,7 @@
 #include "UltraCanvasDebug.h"
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 
 namespace UltraCanvas {
@@ -162,6 +163,56 @@ namespace AndroidDialogs {
         env->DeleteLocalRef(jMime);
 
         if (AndroidJni::ClearException(env, "showOpenDocument")) {
+            g_pending.resolved.store(true, std::memory_order_release);
+            return outcome;
+        }
+
+        return WaitForResult(app);
+    }
+
+    JavaDialogOutcome ShowSaveDocument(const std::string& mimeType,
+                                       const std::string& suggestedName,
+                                       const void* data, std::size_t size) {
+        JavaDialogOutcome outcome;
+
+        auto* app = UltraCanvasAndroidApplication::GetInstance();
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        if (!app || !env || !activity) return outcome;
+        // JNI arrays are jint-sized; a document that large is not something
+        // this "hand the bytes over" API should be attempting anyway.
+        if (size > static_cast<std::size_t>(INT32_MAX)) return outcome;
+
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID midShow = env->GetMethodID(activityClass, "showSaveDocument",
+                "(ILjava/lang/String;Ljava/lang/String;[B)V");
+        env->DeleteLocalRef(activityClass);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();   // plain NativeActivity: caller falls back
+            return outcome;
+        }
+
+        jbyteArray content = env->NewByteArray(static_cast<jsize>(size));
+        if (!content) {
+            env->ExceptionClear();   // OOM for a document too big to copy
+            return outcome;
+        }
+        if (size > 0) {
+            env->SetByteArrayRegion(content, 0, static_cast<jsize>(size),
+                                    static_cast<const jbyte*>(data));
+        }
+
+        const int requestId = BeginRequest();
+
+        jstring jMime = env->NewStringUTF(mimeType.c_str());
+        jstring jName = env->NewStringUTF(suggestedName.c_str());
+        env->CallVoidMethod(activity, midShow, static_cast<jint>(requestId),
+                            jMime, jName, content);
+        env->DeleteLocalRef(jMime);
+        env->DeleteLocalRef(jName);
+        env->DeleteLocalRef(content);
+
+        if (AndroidJni::ClearException(env, "showSaveDocument")) {
             g_pending.resolved.store(true, std::memory_order_release);
             return outcome;
         }
