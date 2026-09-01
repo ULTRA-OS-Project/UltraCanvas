@@ -54,6 +54,31 @@ namespace AndroidDialogs {
                                   const char* negativeLabel,
                                   const char* neutralLabel);
 
+    // Launch the system document picker (SAF) and block until the user picks
+    // or cancels. `mimeTypesCsv` narrows the picker ("image/png,image/jpeg");
+    // empty offers everything.
+    //
+    // On success `value` is the newline-separated list of paths the chosen
+    // documents were COPIED to inside the app cache. SAF yields content://
+    // URIs, which no POSIX call can open, so copying is what lets the
+    // path-based framework API keep working with any provider - including
+    // ones streaming from the network with no underlying file. Callers
+    // therefore read a snapshot: writes to these paths do not reach the
+    // original document.
+    JavaDialogOutcome ShowOpenDocument(const std::string& mimeTypesCsv,
+                                       bool allowMultiple);
+
+    // Launch the system "create document" picker and, once the user chooses a
+    // destination, write `data` to it. Blocks until both have happened.
+    //
+    // The bytes are handed over up front rather than through a path, because
+    // SAF has no path to give: the document is only reachable through its
+    // content:// URI and the app's ContentResolver. That is the whole reason
+    // UltraCanvasNativeDialogs::SaveContent exists alongside SaveFile.
+    JavaDialogOutcome ShowSaveDocument(const std::string& mimeType,
+                                       const std::string& suggestedName,
+                                       const void* data, std::size_t size);
+
 } // namespace AndroidDialogs
 } // namespace UltraCanvas
 

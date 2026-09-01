@@ -353,4 +353,31 @@ namespace UltraCanvas {
         });
     }
 
+#if !defined(__ANDROID__)
+    // The shared desktop definition of a UltraCanvasNativeDialogs static.
+    //
+    // It lives here rather than being copied into each OS/<platform> dialogs
+    // file because on every desktop backend it is the same two steps - ask for
+    // a path, write the bytes - and there is nothing platform-specific left to
+    // vary. Android needs a genuinely different implementation (the Storage
+    // Access Framework never yields a path), so it defines its own in
+    // OS/Android/UltraCanvasAndroidNativeDialogs.cpp and this one is compiled
+    // out.
+    bool UltraCanvasNativeDialogs::SaveContent(const void* data, std::size_t size,
+                                               const FileDialogOptions& options) {
+        if (!data && size > 0) return false;
+
+        const std::string path = SaveFile(options);
+        if (path.empty()) return false;   // user cancelled
+
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) return false;
+        if (size > 0) {
+            out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
+        }
+        out.close();
+        return out.good();
+    }
+#endif
+
 } // namespace UltraCanvas
