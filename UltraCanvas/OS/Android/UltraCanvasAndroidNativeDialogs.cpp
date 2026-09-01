@@ -15,6 +15,10 @@
 #include "UltraCanvasAndroidDialogBridge.h"
 #include "UltraCanvasDebug.h"
 
+#include <algorithm>
+#include <cctype>
+#include <optional>
+
 namespace UltraCanvas {
 
     namespace {
@@ -105,6 +109,87 @@ namespace UltraCanvas {
             }
         }
 
+        // SAF filters by MIME type; the framework's filters are extensions.
+        // Only the common families are worth mapping - anything unmapped
+        // simply widens the picker rather than hiding files the user wants.
+        const char* MimeForExtension(std::string ext) {
+            if (!ext.empty() && ext.front() == '.') ext.erase(0, 1);
+            for (char& c : ext) c = static_cast<char>(std::tolower(
+                    static_cast<unsigned char>(c)));
+
+            if (ext == "png")  return "image/png";
+            if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+            if (ext == "gif")  return "image/gif";
+            if (ext == "webp") return "image/webp";
+            if (ext == "bmp")  return "image/bmp";
+            if (ext == "svg")  return "image/svg+xml";
+            if (ext == "tif" || ext == "tiff") return "image/tiff";
+            if (ext == "pdf")  return "application/pdf";
+            if (ext == "json") return "application/json";
+            if (ext == "xml")  return "text/xml";
+            if (ext == "html" || ext == "htm") return "text/html";
+            if (ext == "csv")  return "text/csv";
+            if (ext == "txt" || ext == "log" || ext == "md") return "text/plain";
+            if (ext == "zip")  return "application/zip";
+            if (ext == "mp3")  return "audio/mpeg";
+            if (ext == "wav")  return "audio/wav";
+            if (ext == "ogg")  return "audio/ogg";
+            if (ext == "mp4")  return "video/mp4";
+            if (ext == "webm") return "video/webm";
+            return nullptr;
+        }
+
+        // "image/png,image/jpeg", or empty to offer every file. Empty is also
+        // the answer when any extension is unmapped or a wildcard is present:
+        // a picker that hides a file the user asked for is worse than one
+        // that shows too much.
+        std::string MimeCsvFor(const std::vector<FileFilter>& filters) {
+            std::vector<std::string> types;
+            for (const auto& filter : filters) {
+                for (const auto& ext : filter.extensions) {
+                    if (ext == "*" || ext == "*.*" || ext.empty()) return {};
+                    const char* mime = MimeForExtension(ext);
+                    if (!mime) return {};
+                    if (std::find(types.begin(), types.end(), mime) == types.end()) {
+                        types.emplace_back(mime);
+                    }
+                }
+            }
+            std::string csv;
+            for (const auto& type : types) {
+                if (!csv.empty()) csv += ',';
+                csv += type;
+            }
+            return csv;
+        }
+
+        std::vector<std::string> SplitLines(const std::string& text) {
+            std::vector<std::string> lines;
+            std::size_t start = 0;
+            while (start <= text.size()) {
+                const std::size_t end = text.find('\n', start);
+                if (end == std::string::npos) {
+                    if (start < text.size()) lines.push_back(text.substr(start));
+                    break;
+                }
+                if (end > start) lines.push_back(text.substr(start, end - start));
+                start = end + 1;
+            }
+            return lines;
+        }
+
+        // Returns the picked paths, or nullopt when there is no Java bridge.
+        std::optional<std::vector<std::string>> PickDocuments(
+                const std::vector<FileFilter>& filters, bool allowMultiple) {
+            auto outcome = AndroidDialogs::ShowOpenDocument(MimeCsvFor(filters),
+                                                            allowMultiple);
+            if (!outcome.bridged) return std::nullopt;
+            if (outcome.result != AndroidDialogs::JavaResult::Positive) {
+                return std::vector<std::string>{};   // user cancelled
+            }
+            return SplitLines(outcome.value);
+        }
+
         DialogResult ShowOrStub(const char* what, const std::string& message,
                                 const std::string& title,
                                 DialogType type, DialogButtons buttons) {
@@ -176,30 +261,50 @@ namespace UltraCanvas {
     // ===== FILE DIALOGS =====
 
     std::string UltraCanvasNativeDialogs::OpenFile(
-            const std::string& title, const std::vector<FileFilter>&,
+            const std::string& title, const std::vector<FileFilter>& filters,
             const std::string&, UltraCanvasWindowBase*) {
-        StubDialog("OpenFile", title);
-        return {};
+        auto picked = PickDocuments(filters, false);
+        if (!picked) {
+            StubDialog("OpenFile", title);
+            return {};
+        }
+        return picked->empty() ? std::string() : picked->front();
     }
 
     std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions& options) {
-        StubDialog("OpenFile", options.title);
-        return {};
+        return OpenFile(options.title, options.filters,
+                        options.initialDirectory, options.parentWindow);
     }
 
     std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
-            const std::string& title, const std::vector<FileFilter>&,
+            const std::string& title, const std::vector<FileFilter>& filters,
             const std::string&, UltraCanvasWindowBase*) {
-        StubDialog("OpenMultipleFiles", title);
-        return {};
+        auto picked = PickDocuments(filters, true);
+        if (!picked) {
+            StubDialog("OpenMultipleFiles", title);
+            return {};
+        }
+        return *picked;
     }
 
     std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
             const FileDialogOptions& options) {
-        StubDialog("OpenMultipleFiles", options.title);
-        return {};
+        return OpenMultipleFiles(options.title, options.filters,
+                                 options.initialDirectory, options.parentWindow);
     }
 
+    // Saving cannot be bridged the way opening is, and the reason is the API
+    // shape rather than anything Android-specific. SaveFile() hands back a
+    // path and returns; the caller writes to it afterwards, and nothing tells
+    // us when it is done. Opening survives that because a copy of the document
+    // is a complete answer at return time. For saving, the copy would have to
+    // be pushed back to the content:// URI at a commit point this API has no
+    // way to express (NotifyRecentFile fires before the caller writes a byte),
+    // so a bridged SaveFile would silently drop the user's data.
+    //
+    // Closing this needs a cross-platform API decision - a save variant that
+    // takes the bytes, or an explicit commit call - so it is deliberately
+    // still a stub rather than a plausible-looking one that loses work.
     std::string UltraCanvasNativeDialogs::SaveFile(
             const std::string& title, const std::vector<FileFilter>&,
             const std::string&, const std::string&, UltraCanvasWindowBase*) {
@@ -212,6 +317,9 @@ namespace UltraCanvas {
         return {};
     }
 
+    // Likewise: ACTION_OPEN_DOCUMENT_TREE yields a tree URI that callers would
+    // enumerate and write through, which no single filesystem path can stand
+    // in for.
     std::string UltraCanvasNativeDialogs::SelectFolder(
             const std::string& title, const std::string&, UltraCanvasWindowBase*) {
         StubDialog("SelectFolder", title);

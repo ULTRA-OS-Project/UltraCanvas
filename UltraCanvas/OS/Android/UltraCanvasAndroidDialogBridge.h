@@ -54,6 +54,20 @@ namespace AndroidDialogs {
                                   const char* negativeLabel,
                                   const char* neutralLabel);
 
+    // Launch the system document picker (SAF) and block until the user picks
+    // or cancels. `mimeTypesCsv` narrows the picker ("image/png,image/jpeg");
+    // empty offers everything.
+    //
+    // On success `value` is the newline-separated list of paths the chosen
+    // documents were COPIED to inside the app cache. SAF yields content://
+    // URIs, which no POSIX call can open, so copying is what lets the
+    // path-based framework API keep working with any provider - including
+    // ones streaming from the network with no underlying file. Callers
+    // therefore read a snapshot: writes to these paths do not reach the
+    // original document.
+    JavaDialogOutcome ShowOpenDocument(const std::string& mimeTypesCsv,
+                                       bool allowMultiple);
+
 } // namespace AndroidDialogs
 } // namespace UltraCanvas
 

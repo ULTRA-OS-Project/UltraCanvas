@@ -77,8 +77,44 @@ back to the "cancelled" stub when they are absent, so an app that never opens a
 native dialog needs no Java at all.
 
 Message dialogs (`ShowInfo` / `ShowWarning` / `ShowError` / `ShowQuestion` /
-`ShowMessage` / `Confirm` / `ConfirmYesNo`) go through it for real. File and
-input dialogs are still stubs pending the SAF adapter.
+`ShowMessage` / `Confirm` / `ConfirmYesNo`) and **opening** files
+(`OpenFile` / `OpenMultipleFiles`) go through it for real. `SaveFile`,
+`SelectFolder` and the input dialogs are still stubs — see below for why the
+first two are not merely unfinished.
+
+### Opening files: SAF, and why you get a copy
+
+`OpenFile` launches the system document picker (`ACTION_OPEN_DOCUMENT`), which
+answers with a `content://` URI. No POSIX call can open one, and the
+framework's API is path-based — callers `fopen` whatever the dialog returns.
+So the Java side **copies the chosen document into the app cache** and returns
+that path. Copying is the only approach that works for every provider,
+including ones streaming from the network with no underlying file, and the
+copy runs off the UI thread (the native thread is parked in its pump anyway).
+
+The consequence to know about: callers read a *snapshot*. Edits written back
+to that path stay in the cache and never reach the original document.
+
+Filters are mapped extension → MIME type, since SAF filters by MIME. Any
+unmapped extension or a wildcard widens the picker to everything rather than
+risk hiding a file the user asked for.
+
+### Why `SaveFile` and `SelectFolder` are still stubs
+
+Not oversights — both are blocked on the *shape* of the cross-platform API,
+not on Android:
+
+- **`SaveFile`** returns a path and then returns; the caller writes to it
+  afterwards and nothing tells us when it has finished. Opening survives this
+  because a copy is a complete answer at return time. Saving would need that
+  copy pushed back to the `content://` URI at a commit point this API cannot
+  express (`NotifyRecentFile` fires *before* the caller writes a byte), so a
+  bridged `SaveFile` would silently drop the user's work. Closing this needs a
+  cross-platform decision — a save variant that takes the bytes, or an explicit
+  commit call — so it stays an honest stub rather than a plausible-looking one
+  that loses data.
+- **`SelectFolder`** would return a tree URI that callers enumerate and write
+  through; no single filesystem path can stand in for that.
 
 **How a synchronous API survives an asynchronous platform:** the framework's
 dialog calls return the answer (`ShowQuestion(...) -> DialogResult`), while

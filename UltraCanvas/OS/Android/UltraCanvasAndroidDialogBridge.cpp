@@ -59,6 +59,39 @@ namespace AndroidDialogs {
             return label ? env->NewStringUTF(label) : nullptr;
         }
 
+        // Claim the result slot for a dialog about to be shown.
+        int BeginRequest() {
+            std::lock_guard<std::mutex> lock(g_pending.mutex);
+            const int requestId = g_nextRequestId++;
+            g_pending.requestId = requestId;
+            g_pending.result = JavaResult::Cancel;
+            g_pending.value.clear();
+            g_pending.resolved.store(false, std::memory_order_release);
+            return requestId;
+        }
+
+        // Pump activity commands until the Java side answers. Returns a
+        // bridged=false outcome if the activity is being destroyed instead.
+        JavaDialogOutcome WaitForResult(UltraCanvasAndroidApplication* app) {
+            JavaDialogOutcome outcome;
+            const bool answered = app->PumpWhileModal([] {
+                return g_pending.resolved.load(std::memory_order_acquire);
+            });
+            if (!answered) {
+                // Nothing will arrive now; make sure a late result cannot
+                // resolve a future dialog's slot.
+                std::lock_guard<std::mutex> lock(g_pending.mutex);
+                g_pending.requestId = 0;
+                g_pending.resolved.store(true, std::memory_order_release);
+                return outcome;
+            }
+            std::lock_guard<std::mutex> lock(g_pending.mutex);
+            outcome.bridged = true;
+            outcome.result = g_pending.result;
+            outcome.value = g_pending.value;
+            return outcome;
+        }
+
     } // namespace
 
     JavaDialogOutcome ShowMessage(const std::string& title,
@@ -77,15 +110,7 @@ namespace AndroidDialogs {
         jmethodID midShow = FindShowMessageMethod(env, activity);
         if (!midShow) return outcome;   // plain NativeActivity: caller falls back
 
-        int requestId;
-        {
-            std::lock_guard<std::mutex> lock(g_pending.mutex);
-            requestId = g_nextRequestId++;
-            g_pending.requestId = requestId;
-            g_pending.result = JavaResult::Cancel;
-            g_pending.value.clear();
-            g_pending.resolved.store(false, std::memory_order_release);
-        }
+        const int requestId = BeginRequest();
 
         jstring jTitle = env->NewStringUTF(title.c_str());
         jstring jMessage = env->NewStringUTF(message.c_str());
@@ -108,21 +133,40 @@ namespace AndroidDialogs {
             return outcome;
         }
 
-        const bool answered = app->PumpWhileModal([] {
-            return g_pending.resolved.load(std::memory_order_acquire);
-        });
-        if (!answered) {
-            // Activity being destroyed: stop waiting for a result that will
-            // never come and let the caller take its cancel path.
+        return WaitForResult(app);
+    }
+
+    JavaDialogOutcome ShowOpenDocument(const std::string& mimeTypesCsv,
+                                       bool allowMultiple) {
+        JavaDialogOutcome outcome;
+
+        auto* app = UltraCanvasAndroidApplication::GetInstance();
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        if (!app || !env || !activity) return outcome;
+
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID midShow = env->GetMethodID(activityClass, "showOpenDocument",
+                                             "(ILjava/lang/String;Z)V");
+        env->DeleteLocalRef(activityClass);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();   // plain NativeActivity: caller falls back
+            return outcome;
+        }
+
+        const int requestId = BeginRequest();
+
+        jstring jMime = env->NewStringUTF(mimeTypesCsv.c_str());
+        env->CallVoidMethod(activity, midShow, static_cast<jint>(requestId), jMime,
+                            static_cast<jboolean>(allowMultiple));
+        env->DeleteLocalRef(jMime);
+
+        if (AndroidJni::ClearException(env, "showOpenDocument")) {
             g_pending.resolved.store(true, std::memory_order_release);
             return outcome;
         }
 
-        std::lock_guard<std::mutex> lock(g_pending.mutex);
-        outcome.bridged = true;
-        outcome.result = g_pending.result;
-        outcome.value = g_pending.value;
-        return outcome;
+        return WaitForResult(app);
     }
 
 } // namespace AndroidDialogs
