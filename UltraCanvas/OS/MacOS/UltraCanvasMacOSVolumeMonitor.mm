@@ -11,6 +11,14 @@
 //
 // No DiskArbitration dependency: AppKit is already linked, and the workspace
 // notifications carry exactly the events a volume list cares about.
+//
+// Written to be correct with AND without ARC. The CMake rule that means to
+// give OS/MacOS/*.mm `-fobjc-arc` passes an unexpanded glob PATTERN to
+// set_source_files_properties, which matches no file - so this directory is
+// in fact compiled with manual retain/release, where an autoreleased object
+// stored in a member is a dangling pointer as soon as the pool drains. That
+// mismatch compiles cleanly either way, so nothing catches it but a crash;
+// the ownership below is therefore explicit rather than assumed.
 // Version: 1.0.0
 // Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
@@ -19,6 +27,18 @@
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+
+// Ownership of the Objective-C objects this file keeps in C++ members. Under
+// ARC the compiler already holds them; without it they must be retained by
+// hand, because everything a convenience constructor hands back is
+// autoreleased.
+#if __has_feature(objc_arc)
+#define ULTRACANVAS_OBJC_RETAIN(object)  (object)
+#define ULTRACANVAS_OBJC_RELEASE(object) ((void)0)
+#else
+#define ULTRACANVAS_OBJC_RETAIN(object)  [(object) retain]
+#define ULTRACANVAS_OBJC_RELEASE(object) [(object) release]
+#endif
 
 #include <atomic>
 #include <functional>
@@ -81,7 +101,9 @@ namespace UltraCanvas {
                     state.reset();
                     return false;
                 }
-                observers = added;
+                // `added` is autoreleased: without ARC this member would be
+                // dangling by the time Stop() reads it.
+                observers = ULTRACANVAS_OBJC_RETAIN(added);
                 return true;
             }
 
@@ -94,6 +116,9 @@ namespace UltraCanvas {
                     NSNotificationCenter* centre =
                             [[NSWorkspace sharedWorkspace] notificationCenter];
                     for (id token in observers) [centre removeObserver:token];
+                    // The centre held the tokens; the array held them too, and
+                    // this gives back the reference Start() took.
+                    ULTRACANVAS_OBJC_RELEASE(observers);
                     observers = nil;
                 }
                 state.reset();   // the blocks hold their own reference
