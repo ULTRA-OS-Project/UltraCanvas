@@ -83,6 +83,16 @@ namespace UltraCanvas {
         void ShowSoftKeyboard();
         void HideSoftKeyboard();
 
+        // ===== IME DELIVERY (called from the Java InputConnection) =====
+        // Text the IME committed - an autocorrected or gesture-typed word, a
+        // CJK candidate - which belongs to no single key.
+        void PushCommittedText(const std::string& utf8);
+        // A key press routed through the Java input view. `codePoint` is
+        // KeyEvent.getUnicodeChar (0 for non-printing); pass down=false for
+        // the release. Shared with the native input path.
+        bool PushKeyEvent(bool down, int32_t keyCode, int32_t metaState,
+                          int32_t codePoint);
+
         // Android has no persistent pointer cursor; both are accepted no-ops.
         bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur) override;
         bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur,

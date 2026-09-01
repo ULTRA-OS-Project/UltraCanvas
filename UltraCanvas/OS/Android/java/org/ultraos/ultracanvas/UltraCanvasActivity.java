@@ -31,6 +31,16 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
 
+import android.content.Context;
+import android.text.InputType;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -305,10 +315,168 @@ public class UltraCanvasActivity extends NativeActivity {
         try { c.close(); } catch (Throwable ignored) { }
     }
 
+    // ===== TEXT INPUT (soft keyboard + IME) =====
+
+    private InputView inputView;
+
+    /**
+     * Raise the soft keyboard against our input view. Called over JNI from
+     * UltraCanvasAndroidApplication::ShowSoftKeyboard when a widget starts
+     * text editing.
+     *
+     * Focus has to move to the input view for the IME to bind to its
+     * InputConnection - that binding is what turns a dumb key stream into
+     * autocorrect, suggestions, gesture typing and CJK composition. While it
+     * holds focus the view forwards key events to the native side itself, so
+     * a hardware keyboard keeps working exactly as before.
+     */
+    public void showKeyboard() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                InputView view = ensureInputView();
+                if (view == null) return;
+                view.requestFocus();
+                InputMethodManager imm = (InputMethodManager)
+                        getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.showSoftInput(view, 0);
+            }
+        });
+    }
+
+    /** Lower the soft keyboard and release the input view's focus. */
+    public void hideKeyboard() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (inputView == null) return;
+                InputMethodManager imm = (InputMethodManager)
+                        getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.hideSoftInputFromWindow(inputView.getWindowToken(), 0);
+                }
+                inputView.clearFocus();
+            }
+        });
+    }
+
+    /** UI thread only. */
+    private InputView ensureInputView() {
+        if (inputView != null) return inputView;
+        try {
+            inputView = new InputView(this);
+            // Zero-sized and transparent: it exists purely to own the IME
+            // session, and must never cover the NativeActivity's surface.
+            addContentView(inputView, new ViewGroup.LayoutParams(0, 0));
+        } catch (Throwable t) {
+            inputView = null;
+        }
+        return inputView;
+    }
+
+    /**
+     * An invisible, focusable editor. NativeActivity's own surface view is not
+     * an editor, so without this the IME has nothing to attach to.
+     */
+    private final class InputView extends View {
+        InputView(Context context) {
+            super(context);
+            setFocusable(true);
+            setFocusableInTouchMode(true);
+        }
+
+        @Override
+        public boolean onCheckIsTextEditor() {
+            return true;
+        }
+
+        @Override
+        public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+            outAttrs.inputType = InputType.TYPE_CLASS_TEXT
+                               | InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+            // No "Done" action and no full-screen editor: the app draws its
+            // own text, so the IME must not take the screen over with an
+            // extract view that the user would edit instead.
+            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                                | EditorInfo.IME_FLAG_NO_FULLSCREEN
+                                | EditorInfo.IME_ACTION_NONE;
+            return new UltraCanvasInputConnection(this);
+        }
+
+        // While this view holds focus it is the one receiving key events, so
+        // it has to forward them or a hardware keyboard would go dead during
+        // text editing.
+        @Override
+        public boolean onKeyDown(int keyCode, KeyEvent event) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyDown(keyCode, event);
+            nativeOnJavaKeyEvent(true, keyCode, event.getMetaState(),
+                                 event.getUnicodeChar(event.getMetaState()));
+            return true;
+        }
+
+        @Override
+        public boolean onKeyUp(int keyCode, KeyEvent event) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyUp(keyCode, event);
+            nativeOnJavaKeyEvent(false, keyCode, event.getMetaState(), 0);
+            return true;
+        }
+    }
+
+    /**
+     * Feeds the IME's output to the native side.
+     *
+     * Composition (setComposingText) is deliberately left to the superclass's
+     * local buffer and never forwarded: the framework has no inline preedit
+     * concept on any platform, and the IME shows candidates in its own UI.
+     * Only committed text crosses into the app.
+     */
+    private final class UltraCanvasInputConnection extends BaseInputConnection {
+        UltraCanvasInputConnection(View targetView) {
+            // fullEditor=true keeps a local Editable, which is what lets the
+            // IME read back context for autocorrect and suggestions.
+            super(targetView, true);
+        }
+
+        @Override
+        public boolean commitText(CharSequence text, int newCursorPosition) {
+            if (text != null && text.length() > 0) {
+                nativeOnCommitText(text.toString());
+            }
+            return super.commitText(text, newCursorPosition);
+        }
+
+        @Override
+        public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+            nativeOnDeleteSurroundingText(beforeLength, afterLength);
+            return super.deleteSurroundingText(beforeLength, afterLength);
+        }
+
+        @Override
+        public boolean sendKeyEvent(KeyEvent event) {
+            if (event != null) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    nativeOnJavaKeyEvent(true, event.getKeyCode(),
+                                         event.getMetaState(),
+                                         event.getUnicodeChar(event.getMetaState()));
+                } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                    nativeOnJavaKeyEvent(false, event.getKeyCode(),
+                                         event.getMetaState(), 0);
+                }
+            }
+            return true;
+        }
+    }
+
     /**
      * Delivers a dialog outcome to the waiting native thread. Implemented in
      * UltraCanvasAndroidDialogBridge.cpp; resolved by name against the native
      * library NativeActivity already loaded for us.
      */
     private static native void nativeOnDialogResult(int requestId, int result, String value);
+
+    // Implemented in UltraCanvasAndroidTextInput.cpp.
+    private static native void nativeOnCommitText(String text);
+    private static native void nativeOnJavaKeyEvent(boolean down, int keyCode,
+                                                    int metaState, int codePoint);
+    private static native void nativeOnDeleteSurroundingText(int before, int after);
 }

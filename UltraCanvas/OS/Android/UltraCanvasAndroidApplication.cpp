@@ -98,6 +98,21 @@ namespace UltraCanvas {
             return true;
         }
 
+        // Call a no-argument void method on the activity. Returns false when
+        // this app runs a plain NativeActivity (method absent), which is the
+        // caller's cue to take the NDK-only path.
+        bool CallActivityVoid(JNIEnv* env, jobject activity, const char* name) {
+            jclass activityClass = env->GetObjectClass(activity);
+            jmethodID mid = env->GetMethodID(activityClass, name, "()V");
+            env->DeleteLocalRef(activityClass);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();   // NoSuchMethodError: expected
+                return false;
+            }
+            env->CallVoidMethod(activity, mid);
+            return !AndroidJni::ClearException(env, name);
+        }
+
         // Not cached across calls: the decor view can be replaced on
         // configuration changes.
         jobject GetDecorView(JNIEnv* env, jobject activity) {
@@ -189,8 +204,17 @@ namespace UltraCanvas {
     void UltraCanvasAndroidApplication::ShowSoftKeyboard() {
         JNIEnv* env = AndroidJni::GetEnv();
         jobject activity = AndroidJni::GetActivity();
-        if (!env || !activity || !EnsureImeJni(env, activity)) return;
+        if (!env || !activity) return;
 
+        // Preferred: UltraCanvasActivity focuses its input view first, so the
+        // IME binds to our InputConnection and delivers composed words rather
+        // than bare key events (see UltraCanvasAndroidTextInput.cpp).
+        if (CallActivityVoid(env, activity, "showKeyboard")) return;
+
+        // Plain NativeActivity: raise the keyboard against the decor view.
+        // Committed keys still arrive through the native input queue; the
+        // IME just has no editor to compose into.
+        if (!EnsureImeJni(env, activity)) return;
         jobject decor = GetDecorView(env, activity);
         if (!decor) return;
         env->CallBooleanMethod(imeJni.imm, imeJni.midShowSoftInput, decor, 0);
@@ -201,8 +225,11 @@ namespace UltraCanvas {
     void UltraCanvasAndroidApplication::HideSoftKeyboard() {
         JNIEnv* env = AndroidJni::GetEnv();
         jobject activity = AndroidJni::GetActivity();
-        if (!env || !activity || !EnsureImeJni(env, activity)) return;
+        if (!env || !activity) return;
 
+        if (CallActivityVoid(env, activity, "hideKeyboard")) return;
+
+        if (!EnsureImeJni(env, activity)) return;
         jobject decor = GetDecorView(env, activity);
         if (!decor) return;
         jobject token = env->CallObjectMethod(decor, imeJni.midGetWindowToken);
@@ -591,14 +618,28 @@ namespace UltraCanvas {
             return 0;
         }
 
+        const int32_t codePoint =
+                (action == AKEY_EVENT_ACTION_DOWN)
+                        ? GetUnicodeCharacter(AInputEvent_getDeviceId(keyEvent),
+                                              keyCode, metaState)
+                        : 0;
+        return PushKeyEvent(action == AKEY_EVENT_ACTION_DOWN, keyCode, metaState,
+                            codePoint) ? 1 : 0;
+    }
+
+    bool UltraCanvasAndroidApplication::PushKeyEvent(bool down, int32_t keyCode,
+                                                     int32_t metaState,
+                                                     int32_t codePoint) {
+        auto* win = GetPrimaryWindow();
+        if (!win) return false;
+
         UCKeys ucKey = ConvertAndroidKeyToUCKey(keyCode);
         if (ucKey == UCKeys::Unknown) {
-            return 0;   // let the system handle volume, camera, ... keys
+            return false;   // let the system handle volume, camera, ... keys
         }
 
         UCEvent event;
-        event.type = (action == AKEY_EVENT_ACTION_DOWN) ? UCEventType::KeyDown
-                                                        : UCEventType::KeyUp;
+        event.type = down ? UCEventType::KeyDown : UCEventType::KeyUp;
         event.targetWindow = win->GetWindowWeakPtr();
         event.nativeWindowHandle = win->GetNativeHandle();
         event.nativeKeyCode = keyCode;
@@ -609,8 +650,6 @@ namespace UltraCanvas {
         event.meta = (metaState & AMETA_META_ON) != 0;
 
         if (event.type == UCEventType::KeyDown && !event.ctrl && !event.alt) {
-            const int32_t codePoint = GetUnicodeCharacter(
-                    AInputEvent_getDeviceId(keyEvent), keyCode, metaState);
             if (codePoint >= 32 && codePoint != 127) {
                 // UTF-8 encode into event.text (the field text widgets
                 // prefer); event.character keeps the ASCII subset.
@@ -643,7 +682,27 @@ namespace UltraCanvas {
         }
 
         PushEvent(event);
-        return 1;
+        return true;
+    }
+
+    void UltraCanvasAndroidApplication::PushCommittedText(const std::string& utf8) {
+        auto* win = GetPrimaryWindow();
+        if (!win || utf8.empty()) return;
+
+        // What the IME finally settled on - a word replaced by autocorrect, a
+        // gesture-typed word, a CJK candidate. It corresponds to no key, so
+        // virtualKey stays Unknown and only `text` carries meaning; that is
+        // the same shape the Linux backend delivers for Xutf8LookupString
+        // results, which is why text widgets already handle it.
+        UCEvent event;
+        event.type = UCEventType::KeyDown;
+        event.targetWindow = win->GetWindowWeakPtr();
+        event.nativeWindowHandle = win->GetNativeHandle();
+        event.text = utf8;
+        if (utf8.size() == 1 && static_cast<unsigned char>(utf8[0]) < 0x80) {
+            event.character = utf8[0];
+        }
+        PushEvent(event);
     }
 
     int32_t UltraCanvasAndroidApplication::GetUnicodeCharacter(int32_t deviceId,

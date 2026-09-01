@@ -6,9 +6,9 @@ existed; the analysis below is preserved as the original audit, with
 lives in `UltraCanvas/OS/Android/` — see its
 [README](../../UltraCanvas/OS/Android/README.md) for what is actually built
 today. Phases 0–3 are largely done (backend, lifecycle, GLES, clipboard, soft
-keyboard, multi-touch, message dialogs, SAF file opening); the dependency
-sysroot, APK packaging, full IME and saving through SAF remain — the last of
-those blocked on a cross-platform API decision, see §3.5.
+keyboard, full IME, multi-touch, message dialogs, SAF file opening); the dependency
+sysroot, APK packaging and saving through SAF remain — the last blocked on a
+cross-platform API decision, see §3.5.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -215,6 +215,16 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   keyboard: a new hook is needed so that focusing a text widget calls
   `showSoftInput`/`hideSoftInput` via JNI. Composing (pre-edit) text has no
   representation and can be deferred.
+- **Status: done, as analysed.** The missing hook became
+  `UltraCanvasCaret::onTextEditingChanged` — the caret already *is* the
+  framework's "text editing started/stopped" signal, so no new widget-level
+  API was needed. `UltraCanvasActivity` hosts an invisible focusable view whose
+  `InputConnection` gives the IME an editor to compose into (autocorrect,
+  suggestions, gesture typing, CJK candidates); commits arrive as
+  `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
+  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
+  it is a cross-platform capability (core text model + rendering + every
+  backend), not an Android gap — Linux shows no inline pre-edit either.
 
 ### 3.5 Desktop services with no Android analogue
 
