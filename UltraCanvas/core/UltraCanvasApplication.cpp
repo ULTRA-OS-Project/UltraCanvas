@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <iostream>
 #include <fstream>
@@ -1221,6 +1222,15 @@ namespace UltraCanvas {
                 } else {
                     DispatchEventToElement(targetWindow, event);
                 }
+
+                // Widgets see the raw fingers first, then any gesture they
+                // add up to: a handler that tracks touches itself has already
+                // had its say by the time PinchZoom arrives.
+                if (event.type == UCEventType::TouchStart ||
+                    event.type == UCEventType::TouchMove ||
+                    event.type == UCEventType::TouchEnd) {
+                    UpdateTouchGesture(event);
+                }
                 goto finish;
             }
 
@@ -1364,6 +1374,114 @@ namespace UltraCanvas {
         }
 
         return elem->OnEvent(event);
+    }
+
+    // ===== TOUCH GESTURE RECOGNITION =====
+
+    void UltraCanvasApplicationBase::ResetTouchGesture() {
+        activeTouches.clear();
+        gestureActive = false;
+        gestureBaseDistance = 0.0;
+        gestureBaseAngle = 0.0;
+        gestureWindow.reset();
+    }
+
+    void UltraCanvasApplicationBase::UpdateTouchGesture(const UCEvent& touchEvent) {
+        auto window = touchEvent.targetWindow.lock();
+        if (!window) return;
+
+        // Fingers on a different window are a different gesture entirely.
+        if (!gestureWindow.expired() && gestureWindow.lock() != window) {
+            ResetTouchGesture();
+        }
+        gestureWindow = window;
+
+        auto existing = std::find_if(activeTouches.begin(), activeTouches.end(),
+                [&](const TouchPoint& p) { return p.pointerId == touchEvent.pointerId; });
+
+        switch (touchEvent.type) {
+            case UCEventType::TouchStart:
+                if (existing == activeTouches.end()) {
+                    // A pointer id is reused once its finger lifts, so a start
+                    // for an id we already hold means we missed the end.
+                    activeTouches.push_back({touchEvent.pointerId, touchEvent.pointerWindow});
+                } else {
+                    existing->position = touchEvent.pointerWindow;
+                }
+                // A finger landing or leaving changes the geometry the gesture
+                // was measured against; re-baseline rather than report a jump.
+                gestureActive = false;
+                return;
+
+            case UCEventType::TouchEnd:
+                if (existing != activeTouches.end()) activeTouches.erase(existing);
+                gestureActive = false;
+                if (activeTouches.empty()) ResetTouchGesture();
+                return;
+
+            case UCEventType::TouchMove:
+                if (existing == activeTouches.end()) {
+                    activeTouches.push_back({touchEvent.pointerId, touchEvent.pointerWindow});
+                } else {
+                    existing->position = touchEvent.pointerWindow;
+                }
+                break;
+
+            default:
+                return;
+        }
+
+        // Exactly two fingers: more than that is a gesture this does not model
+        // (and reporting a pinch from an arbitrary pair would be worse than
+        // reporting nothing).
+        if (activeTouches.size() != 2) {
+            gestureActive = false;
+            return;
+        }
+
+        const Point2Di& a = activeTouches[0].position;
+        const Point2Di& b = activeTouches[1].position;
+        const double dx = static_cast<double>(b.x) - a.x;
+        const double dy = static_cast<double>(b.y) - a.y;
+        const double distance = std::sqrt(dx * dx + dy * dy);
+        const double angle = std::atan2(dy, dx);
+
+        // Below this the fingers are close enough that the scale ratio becomes
+        // wildly unstable (and at zero it is a division by zero).
+        constexpr double kMinBaseDistance = 20.0;
+
+        if (!gestureActive) {
+            if (distance < kMinBaseDistance) return;
+            gestureBaseDistance = distance;
+            gestureBaseAngle = angle;
+            gestureActive = true;
+            return;   // nothing has changed yet: this frame IS the baseline
+        }
+
+        UCEvent gesture = touchEvent;
+        gesture.type = UCEventType::PinchZoom;
+        gesture.pointerWindow = Point2Di((a.x + b.x) / 2, (a.y + b.y) / 2);
+        gesture.pointer = gesture.pointerWindow;
+        gesture.pointerGlobal = gesture.pointerWindow;
+        gesture.touchPointCount = static_cast<int>(activeTouches.size());
+        gesture.scale = static_cast<float>(distance / gestureBaseDistance);
+
+        // Wrap into (-pi, pi] so a gesture crossing the angle discontinuity
+        // reports a small rotation rather than a full turn. Spelled out
+        // rather than using M_PI, which MSVC only defines with
+        // _USE_MATH_DEFINES set before <cmath>.
+        constexpr double kPi = 3.14159265358979323846;
+        double rotation = angle - gestureBaseAngle;
+        while (rotation > kPi) rotation -= 2.0 * kPi;
+        while (rotation <= -kPi) rotation += 2.0 * kPi;
+        gesture.rotation = static_cast<float>(rotation);
+
+        auto* target = static_cast<UltraCanvasWindow*>(window.get());
+        if (UltraCanvasUIElement* under = target->FindElementAtPoint(gesture.pointerWindow)) {
+            HandleEventWithBubbling(under, gesture);
+        } else {
+            DispatchEventToElement(target, gesture);
+        }
     }
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {
