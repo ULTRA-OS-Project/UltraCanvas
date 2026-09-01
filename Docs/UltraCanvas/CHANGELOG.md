@@ -1,3 +1,30 @@
+#### 2026-09-01 *0.3.89*
+- **Windows: a C++ exception thrown while handling an event no longer kills
+  the process.** The window procedure runs inside a callback the kernel
+  dispatched, and on x64 the unwinder cannot walk back across that boundary,
+  so an exception thrown by any event handler below it (a click on a folder, a
+  hover, a key) never reached the application's `try`/`catch` around `Run()`.
+  Instead the process died, reported by the crash filter as
+  `STATUS_BAD_FUNCTION_TABLE` (0xC00000FF) in ntdll or as the bare GCC throw
+  code (0x20474343) in KERNELBASE, with the error text lost; UltraFiler showed
+  that dialog twice on opening one particular folder and then closed.
+  `StaticWndProc` now catches what escapes `ProcessWindowMessage` /
+  `HandleMessage` and hands it to the new `ReportWindowsEventException()`
+  (`UltraCanvasWindowsDiagnostics.h`): the event is abandoned, the error is
+  written to the log every time and shown in a message box once per process —
+  the same outcome the same exception has on the other platforms. The crash
+  reporter names the two codes above (plus `BAD_STACK`) and, for any escaped
+  C++ exception, says that the address shown is the unwinder rather than the
+  throw and how to capture the error text with `ULTRACANVAS_DEBUG_LOG`.
+- **Filer widget: a throwing decoder no longer ends the process.** Nothing
+  catches an exception that leaves a `std::thread`, and the filer's four
+  workers (thumbnails and text previews, folder statistics and media probes,
+  the folder fingerprint, the listing prefetch) each open files the user
+  pointed at. Every job now runs under a guard (`RunGuarded`) that logs the
+  job, the file and the error text and lets the worker go on: the file costs
+  its thumbnail, statistic or fingerprint, not the user their file manager.
+  See UltraFiler 1.15.1, which does the same for its own threads.
+
 #### 2026-08-31 *0.3.88*
 - **VirtualFS: nested archives no longer spill to a temp file.** Reading
   `/outer.zip/inner.7z/docs/report.txt` extracted `inner.7z` to the temp

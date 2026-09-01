@@ -71,6 +71,17 @@ namespace UltraCanvas {
     // the reason reaches the user rather than only the (possibly disabled) log.
     void ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 
+    // Reports a C++ exception that escaped an event handler on the UI thread
+    // -- thrown somewhere below the window procedure, which runs inside a
+    // callback the kernel dispatched. On x64 the unwinder cannot cross that
+    // boundary, so without a catch at the window procedure the process dies
+    // with STATUS_BAD_FUNCTION_TABLE (0xC00000FF) or the bare GCC throw code
+    // (0x20474343) in the crash reporter, and the error text is lost. `where`
+    // names the event, `what` is the exception text. Logged every time; shown
+    // in a message box once per process, because the handler that threw is
+    // usually hit again by the very next event of the same kind.
+    void ReportWindowsEventException(const std::string& where, const std::string& what);
+
     // Formats a Win32 error code as "<code> (<FormatMessage text>)".
     std::string DescribeWin32Error(unsigned long error);
 
