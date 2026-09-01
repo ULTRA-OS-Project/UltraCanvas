@@ -264,6 +264,14 @@ pkg-config. The port needs a prebuilt Android sysroot (vcpkg's
 `arm64-android` triplet is the first thing to evaluate; Conan or hand-rolled
 meson cross-files are the fallback) with `PKG_CONFIG_LIBDIR` pointed at it.
 
+**Status: the vcpkg route is written but unproven.**
+`UltraCanvas/OS/Android/packaging/vcpkg.json` lists the dependencies below and
+`scripts/android-bootstrap-sysroot.sh` drives vcpkg with the NDK chainloaded.
+Neither has ever been run — the environment they were written in has no NDK and
+no route to download one — so this is the plan encoded, not a working sysroot.
+**This remains the one blocker between "compiles in CI" and "runs on a
+device".**
+
 ### 4.1 Irreducible core stack (must cross-compile)
 
 | Dependency | Android notes |
