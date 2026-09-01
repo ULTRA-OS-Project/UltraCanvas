@@ -1,3 +1,18 @@
+#### 2026-08-29 *0.3.86*
+- **UltraFiler: the Home folder's curation is a setting now — Settings >
+  Display > Home folder.** *Show all content* lists every subfolder of the
+  profile (the main folders keep their own icons, and a redirected one is
+  listed once, by its real path); *Show only predefined folders* is the
+  curated view 0.3.85 introduced — Desktop, Documents, Downloads, Music,
+  Pictures, Videos and nothing else. One setting governs the folder tree's
+  Home entry and the file display of the home folder alike, applies live to
+  every open tab and the folder preview, and is stored as
+  `display.home.content` (`all` / `predefined`). The defaults differ by
+  platform: curated on Windows, whose profiles carry a dozen system folders
+  ("3D Objects", "Saved Games", the sync clients); show-all on Linux and
+  macOS, where the home folder is the user's own. Display > Hidden files in
+  the file display still reveals everything regardless.
+
 #### 2026-08-29 *0.3.85*
 - **TreeView: a double-click or the Enter key on a lazily-loaded node left it
   empty.** Both gestures toggled the node with a bare `TreeNode::Toggle()`,

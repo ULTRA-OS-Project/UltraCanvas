@@ -49,6 +49,7 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
+    constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
@@ -69,6 +70,11 @@ namespace {
         // Display > Treeview: the colour boxes that open the picker popup.
         std::shared_ptr<UltraCanvasButton> driveColorBox;
         std::shared_ptr<UltraCanvasButton> selectedColorBox;
+
+        // Display > Home folder: what the Home folder shows.
+        std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
+        std::shared_ptr<UltraCanvasRadio>  homePredefinedRadio;
+        UltraCanvasRadioGroup              homeContentGroup;
 
         // Display > PDF Inventory: thumbnail width mode + the two sliders.
         std::shared_ptr<UltraCanvasRadio>  pdfAbsoluteRadio;
@@ -456,6 +462,56 @@ namespace {
             if (onChange) onChange(static_cast<int>(v + 0.5f));
         };
         return slider;
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildHomeFolderPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-home");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-home-title", "Home folder", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-home-caption",
+                "What the Home folder shows, in the folder tree and in the "
+                "file display:"));
+
+        const bool predefined = d->settings->homeShowPredefinedOnly;
+
+        d->homeAllRadio = UltraCanvasRadio::Create(
+                "ufl-set-home-all", -1, -1,
+                "Show all content", !predefined);
+        d->homePredefinedRadio = UltraCanvasRadio::Create(
+                "ufl-set-home-predefined", -1, -1,
+                "Show only predefined folders", predefined);
+        // Explicit sizes: content measuring needs a render context, which the
+        // dialog does not have while it is first laid out.
+        for (auto& radio : {d->homeAllRadio, d->homePredefinedRadio}) {
+            radio->size.width  = CSSLayout::Dimension::Px(520);
+            radio->size.height = CSSLayout::Dimension::Px(22);
+            radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        }
+        d->homeContentGroup.AddRadioButton(d->homeAllRadio);
+        d->homeContentGroup.AddRadioButton(d->homePredefinedRadio);
+        d->homeContentGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->homeShowPredefinedOnly =
+                    (selected == d->homePredefinedRadio);
+            ApplyAndSave(d);
+        };
+        page->AddChild(d->homeAllRadio);
+        page->AddChild(d->homePredefinedRadio);
+
+        page->AddChild(MakeLabel("ufl-set-home-note1",
+                "Predefined folders: Desktop, Documents, Downloads, Music, "
+                "Pictures, Videos -"));
+        page->AddChild(MakeLabel("ufl-set-home-note2",
+                "resolved through the platform, so a redirected or localized "
+                "folder counts."));
+        page->AddChild(MakeLabel("ufl-set-home-note3",
+                "Display > Hidden files in the file display always reveals "
+                "everything."));
+        return page;
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildPdfInventoryPage(DialogState* d) {
@@ -965,6 +1021,11 @@ namespace {
         treeview.text = "Treeview";
         d->tree->AddNode(kPageDisplay, treeview);
 
+        TreeNodeData homeFolder;
+        homeFolder.nodeId = kPageHomeFolder;
+        homeFolder.text = "Home folder";
+        d->tree->AddNode(kPageDisplay, homeFolder);
+
         TreeNodeData pdfInventory;
         pdfInventory.nodeId = kPagePdfInventory;
         pdfInventory.text = "PDF Inventory";
@@ -1022,6 +1083,12 @@ namespace {
                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageTreeview] = treeviewPage;
         d->pageArea->AddChild(treeviewPage);
+
+        auto homeFolderPage = BuildHomeFolderPage(d);
+        homeFolderPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageHomeFolder] = homeFolderPage;
+        d->pageArea->AddChild(homeFolderPage);
 
         auto pdfInventoryPage = BuildPdfInventoryPage(d);
         pdfInventoryPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
