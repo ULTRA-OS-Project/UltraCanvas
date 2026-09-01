@@ -1,0 +1,60 @@
+// OS/Android/UltraCanvasAndroidDialogBridge.h
+// Sync-over-async bridge to the Java dialogs in UltraCanvasActivity.
+//
+// The framework's dialog API is synchronous (ShowQuestion returns the answer),
+// while every Android dialog is asynchronous and lives on the Java UI thread.
+// The bridge closes that gap: it asks the activity to show the dialog, then
+// pumps activity commands on the glue thread until the answer arrives. That is
+// safe here in a way it would not be on a desktop UI thread - the framework
+// runs on android_native_app_glue's own thread, so the Java main thread stays
+// free to run the dialog and deliver the result.
+//
+// Version: 1.0.0
+// Last Modified: 2026-08-23
+// Author: UltraCanvas Framework
+
+#pragma once
+
+#ifndef ULTRACANVAS_ANDROID_DIALOG_BRIDGE_H
+#define ULTRACANVAS_ANDROID_DIALOG_BRIDGE_H
+
+#include <string>
+
+namespace UltraCanvas {
+namespace AndroidDialogs {
+
+    // Which button ended the dialog. Keep in sync with the RESULT_* constants
+    // in UltraCanvasActivity.java.
+    enum class JavaResult {
+        Cancel   = 0,   // back button / dismissed / no UltraCanvasActivity
+        Positive = 1,
+        Negative = 2,
+        Neutral  = 3
+    };
+
+    // Keep in sync with the ICON_* constants in UltraCanvasActivity.java.
+    enum class JavaIcon { None = 0, Info = 1, Alert = 2 };
+
+    struct JavaDialogOutcome {
+        // false: this app runs a plain NativeActivity (no UltraCanvasActivity),
+        // so nothing was shown and the caller must take its fallback path.
+        bool bridged = false;
+        JavaResult result = JavaResult::Cancel;
+        std::string value;
+    };
+
+    // Show a modal AlertDialog and block until the user answers. A null label
+    // omits that button. Returns bridged=false immediately when the Java
+    // activity has no bridge method, or when the activity is being destroyed
+    // while waiting.
+    JavaDialogOutcome ShowMessage(const std::string& title,
+                                  const std::string& message,
+                                  JavaIcon icon,
+                                  const char* positiveLabel,
+                                  const char* negativeLabel,
+                                  const char* neutralLabel);
+
+} // namespace AndroidDialogs
+} // namespace UltraCanvas
+
+#endif // ULTRACANVAS_ANDROID_DIALOG_BRIDGE_H

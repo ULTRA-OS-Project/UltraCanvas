@@ -34,6 +34,11 @@ namespace UltraCanvas {
     // ===== JNI CACHES (glue thread only; released in ShutdownNative) =====
     namespace {
 
+        // Poll slice for the modal pump. The result is published by another
+        // thread without waking this looper, so this doubles as the worst-case
+        // latency between the user's tap and the dialog call returning.
+        constexpr int kModalPollMs = 32;
+
         // InputMethodManager plumbing for the soft keyboard.
         struct ImeJniCache {
             bool triedInit = false;
@@ -265,6 +270,34 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasAndroidApplication::PumpWhileModal(
+            const std::function<bool()>& isResolved) {
+        if (!androidApp) return false;
+
+        while (!isResolved()) {
+            if (androidApp->destroyRequested) return false;
+
+            int events = 0;
+            android_poll_source* source = nullptr;
+            const int ident = ALooper_pollOnce(kModalPollMs, nullptr, &events,
+                                               reinterpret_cast<void**>(&source));
+
+            // Activity commands ONLY, for two independent reasons:
+            //
+            // 1. The glue parks the Java main thread inside some commands
+            //    (APP_CMD_TERM_WINDOW waits for this thread to acknowledge the
+            //    surface is released). That is the same thread that owes us
+            //    the dialog result, so ignoring commands here would deadlock
+            //    both threads against each other.
+            // 2. Input is deliberately left queued: no widget may re-enter
+            //    while it is blocked inside its own modal dialog call.
+            if (ident == LOOPER_ID_MAIN && source) {
+                source->process(androidApp, source);
+            }
+        }
+        return true;
+    }
+
     // ===== WAKEUP MECHANISM =====
     // ALooper_wake() is thread-safe and targets the glue thread's looper
     // directly, so no eventfd bookkeeping is needed.
@@ -324,6 +357,10 @@ namespace UltraCanvas {
             case APP_CMD_TERM_WINDOW: {
                 auto* win = GetPrimaryWindow();
                 if (win) win->HandleNativeSurfaceDestroyed();
+                // Backgrounding can swallow the gesture's final UP/CANCEL,
+                // which would otherwise leave the latch set and mouse
+                // synthesis dead for the rest of the process.
+                multiTouchGesture = false;
                 break;
             }
             case APP_CMD_WINDOW_RESIZED:
@@ -369,17 +406,102 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasAndroidApplication::PushTouchEvent(UltraCanvasAndroidWindow* win,
+                                                       AInputEvent* motionEvent,
+                                                       size_t pointerIndex,
+                                                       UCEventType type) {
+        const int physX = static_cast<int>(
+                std::lround(AMotionEvent_getX(motionEvent, pointerIndex)));
+        const int physY = static_cast<int>(
+                std::lround(AMotionEvent_getY(motionEvent, pointerIndex)));
+
+        UCEvent event;
+        event.type = type;
+        event.targetWindow = win->GetWindowWeakPtr();
+        event.nativeWindowHandle = win->GetNativeHandle();
+        event.pointerWindow = win->PhysicalToLogical(Point2Di{physX, physY});
+        event.pointer = event.pointerWindow;
+        event.pointerGlobal = event.pointerWindow;   // single fullscreen surface
+        event.pressure = AMotionEvent_getPressure(motionEvent, pointerIndex);
+        // The stable per-finger id, NOT the index: indices shift when an
+        // earlier finger lifts, ids stay put for the finger's whole life.
+        event.pointerId = AMotionEvent_getPointerId(motionEvent, pointerIndex);
+        event.touchPointCount =
+                static_cast<int>(AMotionEvent_getPointerCount(motionEvent));
+        PushEvent(event);
+    }
+
     int32_t UltraCanvasAndroidApplication::HandleMotionEvent(AInputEvent* motionEvent) {
         auto* win = GetPrimaryWindow();
         if (!win) return 0;
 
         const int32_t action = AMotionEvent_getAction(motionEvent);
         const int32_t maskedAction = action & AMOTION_EVENT_ACTION_MASK;
+        const size_t pointerCount = AMotionEvent_getPointerCount(motionEvent);
+        const size_t actionIndex =
+                static_cast<size_t>((action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK)
+                                    >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT);
 
-        // Pointer 0 only: the primary finger (or the mouse) is translated to
-        // mouse events so every existing widget works. Real multi-touch is a
-        // deliberate core extension for a later phase (UCEvent has no
-        // pointer-ID slot yet).
+        // ---- Pass 1: every finger, as touch events ----
+        switch (maskedAction) {
+            case AMOTION_EVENT_ACTION_DOWN:
+                PushTouchEvent(win, motionEvent, 0, UCEventType::TouchStart);
+                break;
+            case AMOTION_EVENT_ACTION_POINTER_DOWN:
+                PushTouchEvent(win, motionEvent, actionIndex, UCEventType::TouchStart);
+                break;
+            case AMOTION_EVENT_ACTION_MOVE:
+                // A MOVE batches new positions for ALL fingers at once.
+                for (size_t i = 0; i < pointerCount; ++i) {
+                    PushTouchEvent(win, motionEvent, i, UCEventType::TouchMove);
+                }
+                break;
+            case AMOTION_EVENT_ACTION_POINTER_UP:
+                PushTouchEvent(win, motionEvent, actionIndex, UCEventType::TouchEnd);
+                break;
+            case AMOTION_EVENT_ACTION_UP:
+            case AMOTION_EVENT_ACTION_CANCEL:
+                // Last finger of the gesture (CANCEL: the system took the
+                // gesture over - a system-gesture swipe, say). End every
+                // finger still down so no widget keeps a dangling touch.
+                for (size_t i = 0; i < pointerCount; ++i) {
+                    PushTouchEvent(win, motionEvent, i, UCEventType::TouchEnd);
+                }
+                break;
+            default:
+                break;   // SCROLL / HOVER_MOVE are pointer input, not touches
+        }
+
+        // ---- Pass 2: the primary finger, as mouse events ----
+        // Every existing widget is written against the mouse, so a
+        // single-finger gesture keeps driving the mouse path unchanged. Once a
+        // second finger joins, the gesture belongs to whoever handles touch:
+        // mouse synthesis stops (after one MouseUp, so nothing is left holding
+        // a button) and stays off until every finger has lifted.
+        if (maskedAction == AMOTION_EVENT_ACTION_POINTER_DOWN && !multiTouchGesture) {
+            multiTouchGesture = true;
+            UCEvent cancelMouse;
+            cancelMouse.type = UCEventType::MouseUp;
+            cancelMouse.targetWindow = win->GetWindowWeakPtr();
+            cancelMouse.nativeWindowHandle = win->GetNativeHandle();
+            cancelMouse.pointerWindow = win->PhysicalToLogical(Point2Di{
+                    static_cast<int>(std::lround(AMotionEvent_getX(motionEvent, 0))),
+                    static_cast<int>(std::lround(AMotionEvent_getY(motionEvent, 0)))});
+            cancelMouse.pointer = cancelMouse.pointerWindow;
+            cancelMouse.pointerGlobal = cancelMouse.pointerWindow;
+            cancelMouse.button = UCMouseButton::Left;
+            PushEvent(cancelMouse);
+            return 1;
+        }
+        if (maskedAction == AMOTION_EVENT_ACTION_UP ||
+            maskedAction == AMOTION_EVENT_ACTION_CANCEL) {
+            const bool wasMultiTouch = multiTouchGesture;
+            multiTouchGesture = false;      // gesture over: next DOWN starts fresh
+            if (wasMultiTouch) return 1;    // mouse interaction already ended
+        } else if (multiTouchGesture) {
+            return 1;                       // touch-only for the rest of this gesture
+        }
+
         const int physX = static_cast<int>(std::lround(AMotionEvent_getX(motionEvent, 0)));
         const int physY = static_cast<int>(std::lround(AMotionEvent_getY(motionEvent, 0)));
 
@@ -438,8 +560,9 @@ namespace UltraCanvas {
                 break;
             }
             default:
-                // Secondary-finger transitions (POINTER_DOWN/UP) and other
-                // actions are ignored in the touch→mouse translation.
+                // POINTER_UP (a non-primary finger lifting) and anything else
+                // has no mouse equivalent; it was already delivered as a touch
+                // event above.
                 return 0;
         }
 

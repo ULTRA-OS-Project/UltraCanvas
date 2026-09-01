@@ -1207,6 +1207,23 @@ namespace UltraCanvas {
                 }
             }
 
+            // Touch events go straight to the element under that finger. No
+            // hover, cursor or capture handling: those are pointer concepts a
+            // finger has no equivalent for, and a second finger must not
+            // disturb the state the first one established. Backends that
+            // synthesise mouse events from single-finger touches (Android)
+            // keep every existing widget working through the mouse path.
+            if (event.IsTouchEvent()) {
+                UltraCanvasUIElement* touched =
+                        targetWindow->FindElementAtPoint(event.pointerWindow);
+                if (touched) {
+                    HandleEventWithBubbling(touched, event);
+                } else {
+                    DispatchEventToElement(targetWindow, event);
+                }
+                goto finish;
+            }
+
             if (event.type == UCEventType::MouseWheel && elementUnderPointer) {
                 HandleEventWithBubbling(elementUnderPointer, event);
                 goto finish;
@@ -1335,7 +1352,8 @@ namespace UltraCanvas {
 //        if (event.type != UCEventType::MouseMove) {
 //            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
 //        }
-        if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
+        if (event.IsMouseEvent() || event.IsDragEvent() || event.IsTouchEvent()
+            || event.type == UCEventType::MouseEnter) {
             event.pointer = elem->MapToLocal(event.pointerWindow, nullptr);
         }
 
