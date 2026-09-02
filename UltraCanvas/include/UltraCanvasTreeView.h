@@ -330,6 +330,13 @@ public:
     // ===== VISUAL PROPERTIES =====
     void SetRowHeight(int height) { rowHeight = height; UpdateScrollbars(); }
     int GetRowHeight() const { return rowHeight; }
+
+    // Restyle the vertical scrollbar after construction. The style was
+    // previously only consumed once, inside CreateScrollbar(), so callers had
+    // no way to change the track size / colours later. Re-applies to the live
+    // scrollbar and re-measures so a new trackSize takes effect immediately.
+    void SetVerticalScrollbarStyle(const ScrollbarStyle& style);
+    const ScrollbarStyle& GetVerticalScrollbarStyle() const { return scrollbarStyle; }
     
     void SetIndentSize(int size) { indentSize = size; }
     int GetIndentSize() const { return indentSize; }

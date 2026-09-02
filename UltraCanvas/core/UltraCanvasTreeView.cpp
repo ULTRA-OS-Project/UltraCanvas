@@ -874,8 +874,22 @@ namespace UltraCanvas {
 
     int UltraCanvasTreeView::GetTotalVisibleHeight() {
         if (!rootNode) return 0;
-        const int rootRow = rootVisible ? 1 : 0;   // a hidden root occupies no row
-        return (rootRow + rootNode->GetVisibleChildCount()) * rowHeight;
+        if (rootVisible) {
+            return (1 + rootNode->GetVisibleChildCount()) * rowHeight;
+        }
+        // A hidden root never enters the Expanded state, yet Render() and
+        // GetNodeAtY() always walk its children as the top level. Mirror that
+        // here instead of calling rootNode->GetVisibleChildCount(), which gates
+        // on the (never-expanded) root and would report zero content — leaving
+        // maxScrollY at 0 so the scrollbar and wheel scrolling never engaged.
+        int count = 0;
+        for (const auto &child : rootNode->children) {
+            if (child->data.visible) {
+                count++;
+                count += child->GetVisibleChildCount();
+            }
+        }
+        return count * rowHeight;
     }
 
     int UltraCanvasTreeView::GetNodeDisplayY(TreeNode *node) {
@@ -1105,9 +1119,14 @@ namespace UltraCanvas {
 
         TreeNode *clickedNode = GetNodeAtY(event.pointer.y);
         if (clickedNode) {
-            // nodeX in element-local space
+            // nodeX in element-local space. node->level is absolute depth from
+            // the root, but Render() draws a hidden root's children as the top
+            // level (display level 0) — so mirror that offset here, otherwise
+            // the expand-button hit box lands one indent too far right (over the
+            // node icon instead of the "+").
             int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
-            int nodeX = localContentX + clickedNode->level * indentSize;
+            int displayLevel = clickedNode->level - (rootVisible ? 0 : 1);
+            int nodeX = localContentX + displayLevel * indentSize;
 
             // Check if clicking on expand/collapse button
             if (showExpandButtons && clickedNode->HasChildren() &&
@@ -1408,5 +1427,16 @@ namespace UltraCanvas {
         };
         verticalScrollbar->SetStyle(scrollbarStyle);
         verticalScrollbar->SetVisible(false);
+    }
+
+    void UltraCanvasTreeView::SetVerticalScrollbarStyle(const ScrollbarStyle& style) {
+        scrollbarStyle = style;
+        if (verticalScrollbar) {
+            verticalScrollbar->SetStyle(scrollbarStyle);
+        }
+        // The track size feeds row width (rows shrink by sbWidth) and the
+        // scrollbar's own bounds, both resolved in UpdateScrollbars().
+        UpdateScrollbars();
+        RequestRedraw();
     }
 }

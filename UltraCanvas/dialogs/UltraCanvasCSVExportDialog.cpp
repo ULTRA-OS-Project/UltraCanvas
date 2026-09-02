@@ -23,6 +23,9 @@ void UltraCanvasCSVExportDialog::Initialize(UltraCanvasSpreadsheet* source,
     config.height = 560;
     config.resizable = true;
     config.buttons = DialogButtons::NoButtons;  // custom Export/Cancel below
+    // Custom type: skip the built-in icon/message/footer layout so its
+    // grow-section can't compete with our own flex content.
+    config.dialogType = DialogType::Custom;
 
     CreateDialog(config);
     BuildLayout();

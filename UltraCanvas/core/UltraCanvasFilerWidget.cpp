@@ -139,6 +139,30 @@ namespace UltraCanvas {
         // so it is short - and it costs one atomic read per tick.
         constexpr unsigned int kNativeWatchApplyIntervalMs = 200;
 
+        // Runs one unit of background work so that an exception it throws is
+        // logged and the worker goes on to its next job. Nothing catches an
+        // exception that leaves a std::thread: the process ends, and on
+        // Windows all the user sees is the crash-reporter dialog with an
+        // unwinder address in ntdll (0xC00000FF / 0x20474343) - the throw and
+        // its text are lost. Every job a filer worker runs opens a file the
+        // user pointed at, and one file that makes a decoder throw must cost
+        // that file its thumbnail, not the user their file manager. `job`
+        // names the work and `path` the file it was on: the two facts the
+        // log line needs.
+        template <typename Fn>
+        void RunGuarded(const char* job, const std::string& path, Fn&& fn) {
+            try {
+                fn();
+            } catch (const std::exception& e) {
+                debugOutput << "UltraCanvasFilerWidget: " << job << " failed for \""
+                            << path << "\": " << e.what() << std::endl;
+            } catch (...) {
+                debugOutput << "UltraCanvasFilerWidget: " << job << " failed for \""
+                            << path << "\": exception of a non-std::exception type"
+                            << std::endl;
+            }
+        }
+
         // ===== RESIZABLE COLUMNS =====
         // Narrowest a column can be dragged; the Name column keeps more so it
         // never collapses to the icon.
@@ -6983,8 +7007,11 @@ namespace UltraCanvas {
             if (!textPath.empty()) {
                 // Reading + un-wrapping a document, outside the lock.
                 TextPreviewSnippet snippet;
-                const bool readable = ExtractTextPreview(
-                        textPath, snippet.lines, snippet.tabular);
+                bool readable = false;
+                RunGuarded("text preview", textPath, [&]() {
+                    readable = ExtractTextPreview(textPath, snippet.lines,
+                                                  snippet.tabular);
+                });
                 bool textReport = false;
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
@@ -7009,7 +7036,10 @@ namespace UltraCanvas {
             // Which producer runs is decided by the file itself, not by the
             // entry: the request may name an entry's explicit thumbnail image
             // rather than the entry's own file.
+            // A throw out of a decoder leaves `pm` empty: the slot is marked
+            // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
+            RunGuarded("thumbnail decode", req.path, [&]() {
             if (NativeFileIconAvailable(req.path)) {
                 // The icon embedded in an executable (or an .ico file),
                 // extracted by the OS shell at the nearest embedded size.
@@ -7043,16 +7073,20 @@ namespace UltraCanvas {
                     break;
                 }
             }
+            });
 
             // "Compressed thumbnails": deflate here on the worker so the UI
             // thread never pays for compression; the slot then holds the
-            // blob instead of the raw pixmap.
+            // blob instead of the raw pixmap. (Should compression throw, the
+            // slot keeps the raw pixmap instead.)
             std::shared_ptr<std::vector<uint8_t>> blob;
             if (pm && compressedThumbs.load()) {
-                std::vector<uint8_t> v = QoiCompressPixmap(*pm);
-                if (!v.empty()) {
-                    blob = std::make_shared<std::vector<uint8_t>>(std::move(v));
-                }
+                RunGuarded("thumbnail compression", req.path, [&]() {
+                    std::vector<uint8_t> v = QoiCompressPixmap(*pm);
+                    if (!v.empty()) {
+                        blob = std::make_shared<std::vector<uint8_t>>(std::move(v));
+                    }
+                });
             }
 
             bool report = false;
@@ -8006,6 +8040,7 @@ namespace UltraCanvas {
 
             if (haveMedia) {
                 std::string out;
+                RunGuarded("media probe", media.path, [&]() {
                 if (media.isImage) {
                     int w = 0, h = 0;
                     if (!ProbeImageDimensions(media.path, w, h)) {
@@ -8027,6 +8062,7 @@ namespace UltraCanvas {
                         }
                     }
                 }
+                });
                 bool report = false;
                 {
                     std::lock_guard<std::mutex> lk(statsMutex);
@@ -8046,10 +8082,11 @@ namespace UltraCanvas {
 
             if (!aspectPath.empty()) {
                 int w = 0, h = 0;
-                const float aspect =
-                        (ProbeImageDimensions(aspectPath, w, h) && w > 0 && h > 0)
-                            ? static_cast<float>(w) / static_cast<float>(h)
-                            : 0.0f;
+                float aspect = 0.0f;
+                RunGuarded("image size probe", aspectPath, [&]() {
+                    if (ProbeImageDimensions(aspectPath, w, h) && w > 0 && h > 0)
+                        aspect = static_cast<float>(w) / static_cast<float>(h);
+                });
                 bool report = false;
                 {
                     std::lock_guard<std::mutex> lk(statsMutex);
@@ -8074,6 +8111,11 @@ namespace UltraCanvas {
             st.ready = true;
             std::error_code ec;
             if (fs::is_directory(path, ec)) {
+                // Guarded although every call takes an error_code: the
+                // iterator still builds a path object per entry, and a
+                // subtree the walk cannot represent must end the count, not
+                // the process. Whatever was counted up to there is reported.
+                RunGuarded("folder size walk", path, [&]() {
                 uint64_t visited = 0;
                 for (fs::recursive_directory_iterator rit(
                          path, fs::directory_options::skip_permission_denied, ec), end;
@@ -8089,6 +8131,7 @@ namespace UltraCanvas {
                         if (!fec) st.bytes += sz;
                     }
                 }
+                });
             }
 
             bool report = false;
@@ -8400,7 +8443,12 @@ namespace UltraCanvas {
             }
             if (path.empty()) continue;
 
-            const uint64_t now = FolderSignature(path, includeHidden);
+            // A fingerprint that cannot be taken reads as 0, the same as a
+            // folder that is gone: nothing is reported until it works again.
+            uint64_t now = 0;
+            RunGuarded("folder fingerprint", path, [&]() {
+                now = FolderSignature(path, includeHidden);
+            });
 
             std::lock_guard<std::mutex> lk(folderWatchMutex);
             if (folderWatchShutdown) return;
@@ -8515,7 +8563,14 @@ namespace UltraCanvas {
 
             PrefetchedListing listing;
             listing.dirMtime = st.st_mtime;
-            ScanRealDirectory(path, true, listing.entries);
+            bool scanned = false;
+            RunGuarded("folder prefetch", path, [&]() {
+                ScanRealDirectory(path, true, listing.entries);
+                scanned = true;
+            });
+            // A listing the scan could not finish is not cached: SetPath
+            // would show it as the folder's full content.
+            if (!scanned) continue;
             listing.when = std::chrono::steady_clock::now();
 
             // An oversized listing is not stored — the scan already warmed

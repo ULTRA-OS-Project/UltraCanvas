@@ -38,6 +38,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
@@ -229,11 +230,14 @@ namespace {
     // of a profile folder out of the tree - and UF_HIDDEN on macOS.
     bool HasSubdirectories(const std::string& path) {
         std::error_code ec;
-        fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
-        if (ec) return false;
-        for (const fs::directory_entry& e : it) {
+        // Stepped with the error_code overload: the range-for's operator++
+        // throws filesystem_error when a read fails part-way through (a
+        // removable or network drive going away), and this runs on the probe
+        // worker thread, where a throw ends the process.
+        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+                 end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
                 return true;
         }
         return false;
@@ -264,12 +268,11 @@ namespace {
     std::vector<fs::path> ListSubdirectories(const std::string& path) {
         std::vector<fs::path> dirs;
         std::error_code ec;
-        fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
-        if (ec) return dirs;
-        for (const fs::directory_entry& e : it) {
+        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+                 end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
-                dirs.push_back(e.path());
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
+                dirs.push_back(it->path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
             std::string an = a.filename().string(), bn = b.filename().string();
@@ -1329,6 +1332,12 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->SetLineStyle(TreeLineStyle::NoLine);
     folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
 
+    // Slim the vertical scrollbar to half its default width (6px) so it reads
+    // as a thin sidebar accent rather than a full control.
+    ScrollbarStyle treeScrollbarStyle = folderTree->GetVerticalScrollbarStyle();
+    treeScrollbarStyle.trackSize = 6;
+    folderTree->SetVerticalScrollbarStyle(treeScrollbarStyle);
+
     // A hidden root carries the two top-level sections, so "Pinned" can sit
     // ABOVE "Computer" instead of inside it. Neither the root nor the section
     // headers are folders - never let EnsureTreeChildren scan them as paths.
@@ -1668,7 +1677,20 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
     if (cloudWorker.joinable()) cloudWorker.join();
     auto alive = probeAlive;
     cloudWorker = std::thread([this, alive]() {
-        std::vector<CloudStorageInfo> found = GetCloudStorageFolders();
+        // An exception leaving a std::thread ends the process; a provider
+        // whose registry or config cannot be read costs the Cloud section.
+        std::vector<CloudStorageInfo> found;
+        try {
+            found = GetCloudStorageFolders();
+        } catch (const std::exception& e) {
+            debugOutput << "UltraFiler: cloud storage discovery failed: "
+                        << e.what() << std::endl;
+            return;
+        } catch (...) {
+            debugOutput << "UltraFiler: cloud storage discovery failed" << std::endl;
+            return;
+        }
+        if (found.empty()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (found.empty() || !app) {
             cloudWorkerBusy.store(false);
@@ -1748,7 +1770,18 @@ void UltraFilerWindow::SubfolderProbeWorkerMain() {
 
         // The directory open - outside the lock, off the UI thread. The home
         // mode comes through the atomic: `settings` belongs to the UI thread.
-        const bool has = TreeFolderHasChildren(path, curatedHomeActive.load());
+        // A throw here would end the process (nothing catches what leaves a
+        // std::thread); a folder that cannot be read is shown as a leaf.
+        bool has = false;
+        try {
+            has = TreeFolderHasChildren(path, curatedHomeActive.load());
+        } catch (const std::exception& e) {
+            debugOutput << "UltraFiler: subfolder probe failed for \"" << path
+                        << "\": " << e.what() << std::endl;
+        } catch (...) {
+            debugOutput << "UltraFiler: subfolder probe failed for \"" << path
+                        << "\"" << std::endl;
+        }
         if (!has) continue;   // leaf folder: nothing to change on the node
 
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -2528,7 +2561,14 @@ void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
         UltraWinRunOptions options;
         options.environment = environment;
         UltraWinHandle handle = UltraWinInvalidHandle;
-        auto result = UltraWin_RunApp(path, options, &handle);
+        UltraWinResult result;
+        try {
+            result = UltraWin_RunApp(path, options, &handle);
+        } catch (const std::exception& e) {
+            // Off the UI thread: reported through the status line below
+            // rather than by ending the process.
+            result = UltraWinResult::Error(UltraWinResultCode::LaunchFailed, e.what());
+        }
 
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;

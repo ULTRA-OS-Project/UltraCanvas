@@ -27,6 +27,9 @@ void UltraFilerRunWindowsDialog::Initialize(
     cfg.height = 250;
     cfg.resizable = false;
     cfg.buttons = DialogButtons::NoButtons;
+    // Custom type: skip the built-in icon/message/footer layout so its
+    // grow-section can't eat the space our own controls need.
+    cfg.dialogType = DialogType::Custom;
     CreateDialog(cfg);
 
     layout.SetFlexColumn();
