@@ -8,6 +8,7 @@
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsEncoding.h"   // Base64 / Base32 (RFC 4648)
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -94,8 +95,10 @@ namespace UltraCanvas {
                                const std::string& workingDirectory,
                                std::string& outError);
 
-    std::vector<uint8_t> Base64Decode(const std::string& input);
-    std::string Base64Encode(const std::vector<uint8_t>& in, bool wrap = true);
+    // Base64Encode / Base64Decode / Base32Encode / Base32Decode are declared in
+    // UltraCanvasUtilsEncoding.h (included above) and compiled into the
+    // UltraCanvasEncoding library, so headless modules can link them without
+    // the platform glue in UltraCanvasUtils.cpp.
 
     inline std::string LTrimWhitespace(std::string s) {
         std::string result = s;

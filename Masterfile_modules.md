@@ -379,9 +379,12 @@ backing library is never visible in a public header.
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
-- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base64Encode`,
-  `UltraCrypt_Base64Decode`, `UltraCrypt_Base32Encode`,
-  `UltraCrypt_Base32Decode`
+- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base32Decode` (into a
+  secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
+  `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
+  (`UltraCanvasUtilsEncoding.h`, compiled into the `UltraCanvasEncoding`
+  library that both the framework and UltraCrypt link); UltraCrypt's former
+  copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 

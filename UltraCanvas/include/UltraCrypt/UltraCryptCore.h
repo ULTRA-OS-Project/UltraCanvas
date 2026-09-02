@@ -326,20 +326,17 @@ UltraCryptResult UltraCrypt_RandomUInt32(uint32_t bound, uint32_t& out);
 UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out);
 
 // ============================================================================
-// Base16 / Base32 / Base64 (RFC 4648)
+// Base32 into a secure buffer
 // ============================================================================
-// These are encodings, not cryptography, and may move to DataFormats/ later.
-// They live here for now because no other home exists and secrets pass through
-// them — Base32 in particular carries TOTP seeds, which is why the decoder
-// yields a secure buffer rather than a plain vector.
-std::string      UltraCrypt_Base64Encode(const void* data, size_t size);
-UltraCryptResult UltraCrypt_Base64Decode(const std::string& text,
-                                         std::vector<uint8_t>& out);
-
-std::string      UltraCrypt_Base32Encode(const void* data, size_t size,
-                                         bool pad = true);
-// Strict RFC 4648: rejects characters outside the alphabet. Case-insensitive,
-// and ASCII spaces are ignored so a seed can be typed in readable groups.
+// The RFC 4648 codecs — Base32 and Base64, encode and decode — live in
+// UltraCanvasUtils (include "UltraCanvasUtilsEncoding.h"). They are encodings,
+// not cryptography, and the copies that used to sit here were exactly that:
+// copies. What remains is the one crypto-relevant variant: decoding a TOTP
+// seed straight into a zeroizing buffer, with every intermediate wiped, so the
+// seed never survives in an ordinary std::vector.
+//
+// Same rules as UltraCanvas::Base32Decode, which does the work: strict
+// RFC 4648, case-insensitive, ASCII spaces ignored, padding optional.
 UltraCryptResult UltraCrypt_Base32Decode(const std::string& text,
                                          UltraCryptSecureBuffer& out);
 
