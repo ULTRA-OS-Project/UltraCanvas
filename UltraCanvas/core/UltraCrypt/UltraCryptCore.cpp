@@ -11,7 +11,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
-#include "UltraCanvasUtilsEncoding.h"
+#include "UltraCanvasTextUtils.h"
 
 #include <cstring>
 #include <fstream>
@@ -1061,7 +1061,7 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
 // ============================================================================
 // Base32 into a secure buffer
 // ============================================================================
-// The RFC 4648 codecs live in UltraCanvasUtils (UltraCanvasUtilsEncoding.h);
+// The RFC 4648 codecs live in UltraCanvasUtils (UltraCanvasTextUtils.h);
 // the Base64 pair and the Base32 encoder that used to be here were duplicates
 // and are gone. This is the one variant that belongs to a crypto module: the
 // decoded bytes are a TOTP seed, so they go straight into a zeroizing buffer

@@ -12,7 +12,7 @@
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
-#include "UltraCanvasUtilsEncoding.h"
+#include "UltraCanvasTextUtils.h"
 
 #include <cstdio>
 #include <cstring>
@@ -486,7 +486,7 @@ static void TestHkdf() {
 }
 
 // ===== Base32 / Base64 (RFC 4648) =====
-// The codecs live in UltraCanvasUtils (UltraCanvasUtilsEncoding.h). UltraCrypt
+// The codecs live in UltraCanvasUtils (UltraCanvasTextUtils.h). UltraCrypt
 // keeps one wrapper, UltraCrypt_Base32Decode, which decodes into a zeroizing
 // buffer by calling them. The RFC vectors are run through both, so a change to
 // either the codec or the wrapper is caught here.

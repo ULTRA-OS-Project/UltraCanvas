@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "OtpAuthUri.h"
 
-#include "UltraCanvasUtilsEncoding.h"
+#include "UltraCanvasTextUtils.h"
 
 #include <cstdlib>
 #include <cstring>

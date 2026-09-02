@@ -329,7 +329,7 @@ UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out);
 // Base32 into a secure buffer
 // ============================================================================
 // The RFC 4648 codecs — Base32 and Base64, encode and decode — live in
-// UltraCanvasUtils (include "UltraCanvasUtilsEncoding.h"). They are encodings,
+// UltraCanvasUtils (include "UltraCanvasTextUtils.h"). They are encodings,
 // not cryptography, and the copies that used to sit here were exactly that:
 // copies. What remains is the one crypto-relevant variant: decoding a TOTP
 // seed straight into a zeroizing buffer, with every intermediate wiped, so the

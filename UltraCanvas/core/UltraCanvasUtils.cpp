@@ -91,25 +91,9 @@ namespace UltraCanvas {
 #endif
     }
 
-    std::string ToLowerCase(const std::string &str) {
-        std::string result = str;
-        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-        return result;
-    }
-
-    bool StartsWith(const std::string &str, const std::string &prefix) {
-        return str.substr(0, prefix.length()) == prefix;
-    }
-
-    std::vector<std::string> Split(const std::string& str, char delimiter) {
-        std::vector<std::string> result;
-        std::stringstream ss(str);
-        std::string item;
-        while (std::getline(ss, item, delimiter)) {
-            if (!item.empty()) result.push_back(item);
-        }
-        return result;
-    }
+    // ToLowerCase / StartsWith / Trim / Split and the Base64 codecs live in
+    // UltraCanvasTextUtils.cpp so that headless modules can link them without
+    // this file's platform glue.
 
     Color ParseColor(const std::string &colorStr) {
         if (colorStr.empty() || colorStr == "none") {
@@ -447,10 +431,7 @@ namespace UltraCanvas {
         return buffer.str();
     }
 
-    // Base64Encode / Base64Decode moved to UltraCanvasUtilsEncoding.cpp so that
-    // headless modules can link them without this file's platform glue.
-
-        std::string FormatFileSize(size_t bytes) {
+    std::string FormatFileSize(size_t bytes) {
         std::ostringstream oss;
         if (bytes >= 1024 * 1024 * 1024) {
             oss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
@@ -745,12 +726,5 @@ namespace UltraCanvas {
 #endif
 #endif
         return folders;
-    }
-
-    std::string Trim(const std::string& s, const std::string& strippedChars) {
-        const size_t a = s.find_first_not_of(strippedChars);
-        if (a == std::string::npos) return {};
-        const size_t b = s.find_last_not_of(strippedChars);
-        return s.substr(a, b - a + 1);
     }
 }

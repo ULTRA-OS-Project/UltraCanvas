@@ -382,9 +382,9 @@ backing library is never visible in a public header.
 - `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base32Decode` (into a
   secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
   `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
-  (`UltraCanvasUtilsEncoding.h`, compiled into the `UltraCanvasEncoding`
-  library that both the framework and UltraCrypt link); UltraCrypt's former
-  copies were removed.
+  (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  UltraCrypt's former copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 

@@ -1,13 +1,15 @@
-// core/UltraCanvasUtilsEncoding.cpp
-// RFC 4648 Base64 and Base32. See the header for why this is a separate file.
+// core/UltraCanvasTextUtils.cpp
+// Standalone text utilities. See the header for why this is a separate file.
 //
-// The Base64 pair is moved verbatim from UltraCanvasUtils.cpp; behaviour is
-// unchanged. The Base32 pair is moved from UltraCryptCore.cpp, which previously
-// carried its own copy of both codecs.
+// Everything here is moved verbatim: the string helpers and the Base64 pair
+// from UltraCanvasUtils.cpp, the Base32 pair from UltraCryptCore.cpp (which
+// previously carried its own copy of both codecs). Behaviour is unchanged.
 //
 // Version: 1.0.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "UltraCanvasUtilsEncoding.h"
+#include "UltraCanvasTextUtils.h"
+
+#include <sstream>
 
 namespace UltraCanvas {
 
@@ -25,6 +27,37 @@ int Base32Value(char c) {
 }
 
 } // namespace
+
+// ===========================================================================
+// Strings
+// ===========================================================================
+
+std::string ToLowerCase(const std::string& str) {
+    std::string result = str;
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+    return result;
+}
+
+bool StartsWith(const std::string& str, const std::string& prefix) {
+    return str.substr(0, prefix.length()) == prefix;
+}
+
+std::string Trim(const std::string& s, const std::string& strippedChars) {
+    const size_t a = s.find_first_not_of(strippedChars);
+    if (a == std::string::npos) return {};
+    const size_t b = s.find_last_not_of(strippedChars);
+    return s.substr(a, b - a + 1);
+}
+
+std::vector<std::string> Split(const std::string& str, char delimiter) {
+    std::vector<std::string> result;
+    std::stringstream ss(str);
+    std::string item;
+    while (std::getline(ss, item, delimiter)) {
+        if (!item.empty()) result.push_back(item);
+    }
+    return result;
+}
 
 // ===========================================================================
 // Base64
