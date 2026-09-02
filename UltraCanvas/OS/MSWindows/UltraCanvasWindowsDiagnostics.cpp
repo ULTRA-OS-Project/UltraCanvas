@@ -18,6 +18,7 @@
 #define PROCESSOR_ARCHITECTURE_ARM64 12
 #endif
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -101,9 +102,25 @@ namespace UltraCanvas {
                 case EXCEPTION_BREAKPOINT:               return "BREAKPOINT";
                 case 0xC0000142:                         return "DLL_INIT_FAILED";
                 case 0xC0000409:                         return "STACK_BUFFER_OVERRUN / __fastfail";
-                case 0xE06D7363:                         return "unhandled C++ exception";
+                case 0xE06D7363:                         return "unhandled C++ exception (MSVC)";
+                // libgcc raises C++ exceptions through SEH under this code
+                // ('GCC ' in ASCII); it reaches the filter only when nothing
+                // on the throwing thread could catch it.
+                case 0x20474343:                         return "unhandled C++ exception (GCC)";
+                // Raised by ntdll while unwinding: a frame it cannot walk,
+                // typically the kernel-callback boundary under a window
+                // procedure, or a corrupted stack.
+                case 0xC00000FF:                         return "BAD_FUNCTION_TABLE (unwind failed)";
+                case 0xC0000028:                         return "BAD_STACK (unwind failed)";
                 default:                                 return "unknown exception code";
             }
+        }
+
+        // The three codes an escaped C++ exception shows up as. The faulting
+        // address of any of them is inside ntdll / KERNELBASE, never at the
+        // throw, so the report has to say where to look instead.
+        bool IsEscapedCppException(DWORD code) {
+            return code == 0x20474343 || code == 0xE06D7363 || code == 0xC00000FF;
         }
 
         // ===== CPU / EMULATION =====
@@ -421,7 +438,14 @@ namespace UltraCanvas {
             // above all, which runs this filter on the stack that just ran out —
             // keeps to the small buffer and the short message.
             char detail[384] = "";
-            if (code == EXCEPTION_ILLEGAL_INSTRUCTION || code == EXCEPTION_PRIV_INSTRUCTION) {
+            if (IsEscapedCppException(code)) {
+                std::snprintf(detail, sizeof(detail),
+                              "\nA C++ exception was thrown where nothing could catch it: on a "
+                              "background thread, or inside a window-procedure callback. The "
+                              "address above is the unwinder, not the throw. Set "
+                              "ULTRACANVAS_DEBUG_LOG to a file path and reproduce: the log names "
+                              "the operation, the file and the error text.");
+            } else if (code == EXCEPTION_ILLEGAL_INSTRUCTION || code == EXCEPTION_PRIV_INSTRUCTION) {
                 char bytes[64] = "";
                 FormatBytesAt(address, bytes, sizeof(bytes));
                 std::snprintf(detail, sizeof(detail),
@@ -645,6 +669,26 @@ namespace UltraCanvas {
         }
 
         SetUnhandledExceptionFilter(UnhandledExceptionReporter);
+    }
+
+    void ReportWindowsEventException(const std::string& where, const std::string& what) {
+        debugOutput << "UltraCanvas: exception escaped the " << where
+                    << " handler: " << what << std::endl;
+
+        // Once per process: the handler that threw is normally hit again by
+        // the next event of the same kind (every mouse move, every repaint),
+        // and a dialog per event would be a storm the user cannot get out of.
+        static std::atomic<bool> reported{false};
+        if (reported.exchange(true)) return;
+        if (DialogsSuppressed()) return;
+
+        const std::string message =
+                std::string(gCrashAppName) + ": an error occurred while handling " + where +
+                ":\n\n" + what +
+                "\n\nThe operation was abandoned. Further errors of this kind are only "
+                "written to the log (set ULTRACANVAS_DEBUG_LOG to a file path).";
+        MessageBoxA(nullptr, message.c_str(), gCrashAppName,
+                    MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
     }
 
     void ReportWindowsStartupFailure(const std::string& stage, const std::string& detail) {
