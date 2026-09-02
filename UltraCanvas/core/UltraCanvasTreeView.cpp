@@ -359,19 +359,37 @@ namespace UltraCanvas {
 
         TreeNode *node = rootNode->FindDescendant(nodeId);
         if (node && node->parent) {
+            // RemoveChild destroys the whole subtree, not just this node, so
+            // every pointer the view holds into ANY of it has to go - not only
+            // the ones aimed at the node named here. Removing a populated node
+            // (a drive whose folders had been expanded, an unmounted volume)
+            // and then hovering the tree used to dereference a child that no
+            // longer existed.
+            std::vector<TreeNode *> doomed;
+            CollectSubtree(node, doomed);
+            const auto inSubtree = [&doomed](const TreeNode *candidate) {
+                return std::find(doomed.begin(), doomed.end(), candidate) != doomed.end();
+            };
+
             node->parent->RemoveChild(nodeId);
 
-            // Clear selection if removed node was selected
             selectedNodes.erase(
-                    std::remove(selectedNodes.begin(), selectedNodes.end(), node),
+                    std::remove_if(selectedNodes.begin(), selectedNodes.end(), inSubtree),
                     selectedNodes.end()
             );
-
-            if (hoveredNode == node) hoveredNode = nullptr;
-            if (focusedNode == node) focusedNode = nullptr;
+            if (inSubtree(hoveredNode)) hoveredNode = nullptr;
+            if (inSubtree(focusedNode)) focusedNode = nullptr;
 
             UpdateScrollbars();
         }
+    }
+
+    void UltraCanvasTreeView::CollectSubtree(TreeNode *node,
+                                             std::vector<TreeNode *> &out) {
+        if (!node) return;
+        out.push_back(node);
+        for (const std::unique_ptr<TreeNode> &child : node->children)
+            CollectSubtree(child.get(), out);
     }
 
     TreeNode *UltraCanvasTreeView::FindNode(const std::string &nodeId) {

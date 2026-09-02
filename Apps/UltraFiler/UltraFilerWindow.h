@@ -66,6 +66,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
+#include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
@@ -146,6 +147,24 @@ private:
     // Scans `node`'s subfolders into real child nodes (once per node) and drops
     // the placeholder that stood for them.
     void EnsureTreeChildren(TreeNode* node);
+    // Brings the drive rows back in line with what is actually mounted: a row
+    // is added for every volume that appeared and removed for every one that
+    // is gone, together with everything the tree remembers about it. Any tab
+    // that was inside a volume that went away is moved to the home folder, so
+    // nothing keeps showing a folder that no longer exists.
+    //
+    // Driven by the volume monitor (StartVolumeMonitor), which is what makes a
+    // USB stick plugged in while UltraFiler is running appear without a
+    // restart - the tree used to be enumerated exactly once, at start-up.
+    // Cheap and idempotent: calling it when nothing changed does nothing.
+    void RefreshDriveNodes();
+    // Takes one drive row out of the tree and out of the bookkeeping that
+    // would otherwise keep it from ever being scanned again.
+    void DropDriveNode(const std::string& path);
+    // Starts watching for mounts and unmounts. The monitor reports from its
+    // own thread, so the refresh is posted back to the UI thread, and a burst
+    // of notifications from one insertion is collapsed into a single pass.
+    void StartVolumeMonitor();
     // Adds a drive node (a drive root on Windows, "File System" or a mounted
     // volume elsewhere) under `parentId` and remembers it as a drive, so the
     // configured drive background colour reaches it - now and after every
@@ -480,8 +499,12 @@ private:
     std::condition_variable probeCond;
     std::thread probeWorker;
     bool probeShutdown = false;
-    // One-shot "which cloud folders exist?" lookup (QueueCloudStorageDiscovery).
+    // "Which cloud folders exist?" lookup (QueueCloudStorageDiscovery). Re-run
+    // when a volume appears - a Google Drive mounted as a virtual drive letter
+    // arrives with it - so the flag, not the thread's joinability, is what
+    // keeps two lookups from running at once.
     std::thread cloudWorker;
+    std::atomic<bool> cloudWorkerBusy{false};
     // Background sub-folder search (see RunSearch). `searchState` is null while
     // no scan runs; `searchGeneration` is bumped for every scan started or
     // stopped, so batches queued by an abandoned one are dropped on arrival.
@@ -502,6 +525,15 @@ private:
     // Display > Home folder mode, mirrored for the probe worker: `settings`
     // belongs to the UI thread, the "has subfolders?" probe does not.
     std::atomic<bool> curatedHomeActive{false};
+    // Set by the monitor's thread, cleared by the UI thread that acts on it:
+    // one tree pass per burst, however many notifications an insertion makes.
+    std::atomic<bool> volumeRefreshPending{false};
+    // Mounts and unmounts (see RefreshDriveNodes). Stopped first thing in the
+    // destructor: its callback captures the window, and Stop() joins, so
+    // nothing can report into a window that is going away. Declared after the
+    // flag its callback touches, so even the implicit Stop() in its own
+    // destructor runs while that flag is still alive.
+    UltraCanvasVolumeMonitor volumeMonitor;
     // Cleared on destruction so results still in flight drop instead of
     // reaching a half-destroyed window.
     std::shared_ptr<std::atomic<bool>> probeAlive =

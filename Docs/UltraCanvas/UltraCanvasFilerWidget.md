@@ -738,6 +738,14 @@ has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
 
+A native watch can also die after it started — the volume the folder is on is
+unmounted, the share drops, the handle goes bad. The widget is told (the
+watcher's failure callback) and moves that folder to polling, so it keeps
+noticing changes instead of quietly freezing on a listing that no longer
+exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
+folder even while it is gone, which is what makes the same stick plugged back
+in re-list itself rather than needing a manual refresh.
+
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
 compress dialog, or a file operation waiting on its own dialog. The flag stays

@@ -182,6 +182,49 @@ add_test(NAME FolderWatcherTest COMMAND FolderWatcherTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FolderWatcherTest")
 
+# ===== VOLUME MONITOR TEST =====
+# Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
+# built from its own sources, needs no display and does not link UltraCanvas.
+# Mounting a filesystem needs privileges a test does not have, so the test
+# checks the volume list and the monitor's lifetime rather than a real
+# insertion - on the polling path as well as the native one.
+message(STATUS "  Building VolumeMonitorTest...")
+
+set(VOLUME_MONITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/VolumeMonitorTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasVolumeMonitor.cpp
+)
+# macOS is deliberately left on the polling path HERE only: its backend is
+# Objective-C++ and linking AppKit into a standalone test buys nothing the
+# library build does not already cover. Everywhere else the backend source and
+# the define are chosen together, because the core file emits its fallback
+# definitions only when the define is absent.
+set(VOLUME_MONITOR_NATIVE OFF)
+if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR AND NOT APPLE)
+    set(VOLUME_MONITOR_NATIVE ON)
+    if(WIN32)
+        list(APPEND VOLUME_MONITOR_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsVolumeMonitor.cpp)
+    else()
+        list(APPEND VOLUME_MONITOR_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxVolumeMonitor.cpp)
+    endif()
+endif()
+
+add_executable(VolumeMonitorTest ${VOLUME_MONITOR_SOURCES})
+target_include_directories(VolumeMonitorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VolumeMonitorTest PRIVATE cxx_std_20)
+if(VOLUME_MONITOR_NATIVE)
+    target_compile_definitions(VolumeMonitorTest PRIVATE ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+endif()
+target_link_libraries(VolumeMonitorTest PRIVATE Threads::Threads)
+set_target_properties(VolumeMonitorTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VolumeMonitorTest COMMAND VolumeMonitorTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VolumeMonitorTest")
+
 # ===== SPELL CHECKER TEST =====
 # The spell service, tokenizer and Hunspell backend are framework-independent,
 # so the test builds straight from the sources. The WASM backend stub supplies

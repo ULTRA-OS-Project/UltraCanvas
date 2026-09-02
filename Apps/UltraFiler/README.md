@@ -139,7 +139,26 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     the section is hidden entirely when there is nothing to show, and the
     lookup runs off the UI thread, so the window never waits for it. Like the
     drive roots, the cloud roots keep *Delete* disabled in the context menu —
-    deleting one would sync the deletion to every other device.
+    deleting one would sync the deletion to every other device. The lookup is
+    repeated when a volume appears, because a cloud folder can arrive with one
+    (that Google Drive mounted as its own drive letter).
+  - **The drives follow the machine.** A USB stick, a card, an optical disc, a
+    network share or a disk image connected while UltraFiler is running gets
+    its row straight away, and loses it again when it is removed — the tree is
+    not the start-up snapshot it used to be. The operating system reports the
+    change (`UltraCanvasVolumeMonitor`: `WM_DEVICECHANGE` on Windows,
+    `/proc/self/mountinfo` on Linux, `NSWorkspace` on macOS), so there is
+    nothing polling in the background. A tab left inside a volume that went
+    away is moved back to the home folder rather than showing a listing that
+    no longer exists, and the status bar says which volume disconnected.
+    *Refresh drives* in the tree's context menu runs the same pass by hand.
+  - Volumes are looked for where each platform puts them: the drive letters on
+    Windows, and `/media`, `/run/media` (both also one level down, for the
+    per-user directory udisks creates), `/Volumes` and `/mnt` elsewhere.
+    `/run/media` is the udisks2 location on Fedora, RHEL, Arch and openSUSE,
+    and `/Volumes` is where every removable volume on macOS lands — neither
+    used to be looked at, so on those systems a stick was missing from the
+    tree even after a restart.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps

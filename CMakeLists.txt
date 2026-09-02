@@ -152,6 +152,16 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
 endif()
 
+# Same decision, same reasons, for the volume monitor (UltraCanvasVolumeMonitor:
+# WM_DEVICECHANGE / poll() on /proc/self/mountinfo / NSWorkspace mount
+# notifications). macOS is included here where it is absent above, because a
+# workspace notification needs no API the folder watcher was missing. Without
+# the define the core file compiles a null-returning fallback and the monitor
+# polls the volume list instead - correct, just slower to notice.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
+endif()
+
 add_subdirectory(UltraCanvas)
 
 # ===== BUILD ULTRAAI MODULE =====

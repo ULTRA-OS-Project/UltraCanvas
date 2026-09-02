@@ -1120,6 +1120,12 @@ namespace UltraCanvas {
         // Point the watch at the folder the widget now shows (empty = nothing
         // to watch: an archive interior, a file list, no folder at all).
         void WatchFolder(const std::string& path);
+        // A native watch died on its own (its volume was unmounted, its handle
+        // went bad): let it go and poll the same folder instead, so the
+        // display keeps noticing changes - including the volume coming back.
+        // Runs on the UI thread, driven by the flag the watcher's failure
+        // callback sets.
+        void HandleLostNativeWatch();
         // True while an interaction owns the view and a rescan would disturb
         // it (an open rename editor, a drag, a file operation and its dialog).
         bool IsBusyForAutoRefresh() const;
@@ -1138,7 +1144,8 @@ namespace UltraCanvas {
         // picks the flag up; where no backend exists Watch() fails and the
         // polling path runs exactly as before.
         UltraCanvasFolderWatcher folderWatcher;
-        bool nativeWatchActive = false;
+        bool nativeWatchActive = false;           // UI thread only
+        std::atomic<bool> nativeWatchLost{false}; // watcher thread -> UI timer
         std::thread             folderWatchWorker;
         mutable std::mutex      folderWatchMutex;
         std::condition_variable folderWatchCond;
