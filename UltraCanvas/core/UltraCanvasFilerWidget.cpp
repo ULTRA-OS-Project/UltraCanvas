@@ -40,8 +40,8 @@
 // file's own text for text, documents and spreadsheets. Each kind can be
 // switched off individually (Display > Preview), which drops its entries back
 // to the plain type glyph and stops the widget from reading those files.
-// Version: 1.19.2
-// Last Modified: 2026-08-27
+// Version: 1.20.0
+// Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -1812,6 +1812,64 @@ namespace UltraCanvas {
         ScanFolder();
     }
 
+    void UltraCanvasFilerWidget::AppendToFileList(const std::vector<std::string>& paths) {
+        if (!fileListMode) { ShowFileList(paths); return; }
+        if (paths.empty()) return;
+
+        // Only the new paths are stat-ed, and what is already on screen is
+        // left where it is: this runs once per batch of a search that is
+        // still walking the tree, so re-scanning the whole list per batch
+        // would cost O(n^2) stats and reset the scroll under the user.
+        std::vector<FilerEntry> added;
+        added.reserve(paths.size());
+        for (const std::string& p : paths) {
+            FilerEntry e;
+            if (!StatEntryForPath(p, e)) continue;
+            if (e.isHidden && !showHiddenFiles) continue;
+            DecorateEntry(e);
+            added.push_back(std::move(e));
+        }
+        fileListPaths.insert(fileListPaths.end(), paths.begin(), paths.end());
+        if (added.empty()) return;
+
+        // The selection is held by index, and the sort below moves the
+        // entries around - remember it by path and put it back afterwards.
+        std::unordered_set<std::string> selectedPaths;
+        for (size_t i : selection)
+            if (i < entries.size()) selectedPaths.insert(entries[i].path);
+
+        if (!nameFilter.empty()) {
+            // A filtered display keeps the unfiltered list beside it so the
+            // filter can be widened without a rescan - the new entries join
+            // both, and only the matching ones become visible.
+            filterAllEntries.insert(filterAllEntries.end(),
+                                    added.begin(), added.end());
+            for (FilerEntry& e : added)
+                if (EntryMatchesNameFilter(e)) entries.push_back(std::move(e));
+        } else {
+            for (FilerEntry& e : added) entries.push_back(std::move(e));
+        }
+
+        effectiveSizesValid = false;
+        SortEntries();
+
+        std::vector<size_t> restored;
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (selectedPaths.count(entries[i].path)) restored.push_back(i);
+        const bool changed = restored.size() != selectedPaths.size();
+        selection.swap(restored);
+        if (changed) FireSelectionChanged();
+
+        // Deliberately no scroll reset: the point of appending is that the
+        // user can already work with the results while more arrive.
+        if (nameTruncated.size() != entries.size())
+            nameTruncated.assign(entries.size(), 0);
+        InvalidateFilerLayout();
+        UpdateFilterEmptyButton();
+        RequestRedraw();
+        if (onFolderRefreshed) onFolderRefreshed();
+    }
+
     void UltraCanvasFilerWidget::SetFileListOrderPreserved(bool preserved) {
         if (preserveFileListOrder == preserved) return;
         preserveFileListOrder = preserved;
@@ -2019,6 +2077,29 @@ namespace UltraCanvas {
         }
         ApplyEntryTypeInfo(e);
         return true;
+    }
+
+    void UltraCanvasFilerWidget::DecorateEntry(FilerEntry& e) const {
+        e.effectiveSize = e.size;
+
+        std::string attr;
+        if (e.isDirectory) attr += 'D';
+        if (e.isSymlink)   attr += 'L';
+        if (e.isReadOnly)  attr += 'R';
+        if (e.isHidden)    attr += 'H';
+        if (e.isArchive)   attr += 'A';
+        e.attributes = attr;
+
+        if (e.compressedSize > 0 && e.size > 0 && e.compressedSize <= e.size) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.0f%% compressed",
+                     100.0 * (1.0 - double(e.compressedSize) / double(e.size)));
+            e.info = buf;
+        }
+        if (infoProvider) {
+            std::string s = infoProvider(e);
+            if (!s.empty()) e.info = s;
+        }
     }
 
     void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
@@ -2273,28 +2354,7 @@ namespace UltraCanvas {
             }
         }
 
-        for (FilerEntry& e : entries) {
-            e.effectiveSize = e.size;
-
-            std::string attr;
-            if (e.isDirectory) attr += 'D';
-            if (e.isSymlink)   attr += 'L';
-            if (e.isReadOnly)  attr += 'R';
-            if (e.isHidden)    attr += 'H';
-            if (e.isArchive)   attr += 'A';
-            e.attributes = attr;
-
-            if (e.compressedSize > 0 && e.size > 0 && e.compressedSize <= e.size) {
-                char buf[32];
-                snprintf(buf, sizeof(buf), "%.0f%% compressed",
-                         100.0 * (1.0 - double(e.compressedSize) / double(e.size)));
-                e.info = buf;
-            }
-            if (infoProvider) {
-                std::string s = infoProvider(e);
-                if (!s.empty()) e.info = s;
-            }
-        }
+        for (FilerEntry& e : entries) DecorateEntry(e);
 
         // A live name filter narrows the listing; the full scan is kept so
         // the filter can be widened or dropped without another disk scan.

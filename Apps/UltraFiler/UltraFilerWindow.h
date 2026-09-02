@@ -10,8 +10,9 @@
 // bar (the "New folder ▾" split button — its arrow lists the same kinds as
 // the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
 // search field — typing filters the shown folder as-you-type; when nothing
-// matches, a centered "Search in sub folders" button (and the Enter key)
-// escalates to the recursive search —, Sort and
+// matches, a centered "Scan sub folder" button (and the Enter key, and the
+// button inside the search field) escalates to the background sub-folder
+// scan whose matches appear while it runs —, Sort and
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
 // the lazy folder tree (UltraCanvasTreeView), the folder content display
 // (the tab strip's content host, showing the active tab's
@@ -45,8 +46,8 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.13.0
-// Last Modified: 2026-08-29
+// Version: 1.14.0
+// Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -73,6 +74,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -199,22 +201,63 @@ private:
     void SubfolderProbeWorkerMain();
 
     // ===== SEARCH =====
-    // Searches the active tab's folder (recursively) for names containing
-    // `query` and shows the matches in the tab's current view mode; an empty
-    // query returns the tab to its normal folder display. Wired to the
-    // search field's Enter and to the filer's "Search in sub folders" button.
+    // Starts a sub-folder scan of the active tab's folder for names containing
+    // `query`; an empty query returns the tab to its normal folder display.
+    // The walk runs on a worker thread and its matches reach the display in
+    // batches while it goes on (see SubfolderSearchWorkerMain) — the scan used
+    // to run on the UI thread, which froze the window for as long as the tree
+    // took and, on a large volume, long enough for the user to conclude the
+    // application had died. Wired to the search field's Enter, to its in-field
+    // "Scan sub folder" button and to the filer's centered "Scan sub folder"
+    // button.
     void RunSearch(const std::string& query);
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's
     // name filter — no disk walk). When nothing matches, the filer shows the
-    // centered "Search in sub folders" button, which escalates to RunSearch.
+    // centered "Scan sub folder" button, which escalates to RunSearch.
     // An empty text ends the filter (and leaves an earlier recursive-result
     // display).
     void ApplyLiveSearchFilter(const std::string& text);
     // Ends every search state of the active tab — the field's text, the live
-    // filter and a recursive-result display — used by the file-creation
+    // filter, a running scan and a result display — used by the file-creation
     // commands, whose fresh entry has to be visible in the folder display.
     void ResetSearchState();
+
+    // ===== SUB-FOLDER SEARCH (background, incremental) =====
+    // Everything the worker and the UI thread share about one scan. Held by
+    // shared_ptr so a cancelled or superseded scan can be dropped without
+    // waiting for its thread, and so a batch still queued for the UI thread
+    // can tell which scan it belongs to.
+    struct SubfolderSearchState {
+        std::mutex mutex;
+        std::vector<std::string> pending;      // matches not yet on screen
+        std::atomic<bool> cancelled{false};
+        std::atomic<bool> drainPosted{false};  // one batch in flight at a time
+        std::atomic<bool> finished{false};     // the walk ran out of folders
+        std::atomic<bool> truncated{false};    // stopped at kMaxSearchResults
+        std::atomic<size_t> matches{0};
+        std::atomic<size_t> foldersScanned{0};
+    };
+    // The walk itself: an explicit folder stack (no recursive iterator, whose
+    // errors are awkward to contain), symlinks and junctions never entered so
+    // a reparse-point loop cannot run forever, and a depth cap on top of that.
+    void SubfolderSearchWorkerMain(std::shared_ptr<SubfolderSearchState> state,
+                                   std::shared_ptr<std::atomic<bool>> alive,
+                                   std::string root, std::string needle,
+                                   uint64_t generation);
+    // Moves what the worker has found onto the display (UI thread), refreshes
+    // the status line and, when the walk is done, retires the worker.
+    void DrainSubfolderSearch(std::shared_ptr<SubfolderSearchState> state,
+                              uint64_t generation);
+    // Cancels a running scan; the results found so far stay on screen. The
+    // worker is set aside rather than waited for (see StopSubfolderSearch).
+    void StopSubfolderSearch();
+    // Joins the workers of cancelled scans: the ones that have finished, or
+    // all of them when `waitForAll` (window shutdown).
+    void ReapSearchWorkers(bool waitForAll);
+    // The search field's in-field button: "Scan sub folder" while there is
+    // something to search for, "Stop" while a scan runs.
+    void UpdateScanButton();
 
     // ===== NEW ENTRY (the command bar's "New folder ▾" split button) =====
     // The primary section creates a folder (the old "New folder" button);
@@ -425,7 +468,9 @@ private:
     std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
     std::shared_ptr<UltraCanvasBreadcrumb>      breadcrumb;
+    std::shared_ptr<UltraCanvasContainer>       searchBox;    // field + in-field button
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
+    std::shared_ptr<UltraCanvasButton>          scanButton;   // "Scan sub folder" / "Stop"
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
@@ -460,6 +505,23 @@ private:
     // keeps two lookups from running at once.
     std::thread cloudWorker;
     std::atomic<bool> cloudWorkerBusy{false};
+    // Background sub-folder search (see RunSearch). `searchState` is null while
+    // no scan runs; `searchGeneration` is bumped for every scan started or
+    // stopped, so batches queued by an abandoned one are dropped on arrival.
+    std::thread searchWorker;
+    std::shared_ptr<SubfolderSearchState> searchState;
+    uint64_t searchGeneration = 0;
+    FilerTabState* searchTab = nullptr;    // tab the results belong to
+    std::string searchQueryText;           // query of the running / last scan
+    std::string searchStatus;              // what the status bar says about it
+    bool searchResultsShown = false;       // first batch already on display
+    bool scanButtonStops = false;          // the in-field button reads "Stop"
+    // Workers of cancelled scans, waiting to be joined (ReapSearchWorkers).
+    struct RetiredSearch {
+        std::thread thread;
+        std::shared_ptr<SubfolderSearchState> state;
+    };
+    std::vector<RetiredSearch> retiredSearches;
     // Display > Home folder mode, mirrored for the probe worker: `settings`
     // belongs to the UI thread, the "has subfolders?" probe does not.
     std::atomic<bool> curatedHomeActive{false};

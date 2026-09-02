@@ -12,7 +12,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 | Folder content (center pane) | one `UltraCanvasFilerWidget` per tab, the active one shown in the tab strip's content host — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
-| Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type and `ShowFileList()` for the recursive search |
+| Search field | a container holding an `UltraCanvasTextInput` — driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type — and the in-field **Scan sub folder** `UltraCanvasButton`, which starts the background sub-folder scan whose matches arrive through `ShowFileList()` / `AppendToFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
 | Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
@@ -31,15 +31,24 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   tree with lazy expansion, and the History toggle (see below).
 - **Search:** typing in the field filters the shown folder **as-you-type**
   (case-insensitive name filter, no disk walk; the status bar notes the
-  filter). When nothing in the folder matches, a centered **Search in sub
-  folders** button appears in the folder display; it — like **Enter** in the
-  field — searches the current folder recursively for names containing the
-  text (case-insensitive, up to 1000 matches). The recursive matches are
-  displayed in the tab's current view mode, with a *Path* column after the
-  name in Details view, and the context menu's first entry, **Open path (in
-  new tab)**, opens the selected match's folder in a new tab. Clearing the
-  field (or navigating anywhere) returns to the normal folder display. Each
-  tab keeps its own search.
+  filter). A **Scan sub folder** button appears *inside* the search field as
+  soon as there is something to search for; it — like **Enter** in the field,
+  and like the centered **Scan sub folder** button the folder display shows
+  when nothing in the folder matches — scans the current folder and everything
+  under it for names containing the text (case-insensitive, up to 20 000
+  matches).
+  The scan runs on a worker thread and its matches appear **while it walks**,
+  in batches, so the window stays usable and results can be opened before it
+  finishes; the status bar counts matches and scanned folders as they come in.
+  While a scan runs the in-field button reads **Stop** and ends it, keeping
+  what was found. Symlinks and directory junctions are never entered (a
+  reparse-point loop cannot make the scan run forever) and hidden entries are
+  skipped, as in the folder tree. The matches are displayed in the tab's
+  current view mode, with a *Path* column after the name in Details view, and
+  the context menu's first entry, **Open path (in new tab)**, opens the
+  selected match's folder in a new tab. Clearing the field, editing the query,
+  navigating, switching tabs or closing the tab ends the scan and returns to
+  the normal folder display. Each tab keeps its own search.
 - **Type-ahead:** a letter typed anywhere outside a text field selects the
   first entry in the visible listing whose name starts with it; pressing the
   same letter again walks on to the next such entry (wrapping), Explorer

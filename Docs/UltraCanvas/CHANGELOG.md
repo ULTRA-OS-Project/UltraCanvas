@@ -1,4 +1,4 @@
-#### 2026-09-01 *0.3.90*
+#### 2026-09-01 *0.3.91*
 - **New: `UltraCanvasVolumeMonitor`** (`UltraCanvas/{include,core}/UltraCanvasVolumeMonitor.h/.cpp`,
   backends under `OS/<Platform>/`) — the mounted volumes of the machine, and a
   notification when that set changes. `ListMountedVolumes()` / `ListVolumeRoots()`
@@ -44,6 +44,19 @@
   pointers when they aimed at the named node itself, so removing a populated
   node — an unmounted drive, a deleted folder that had been expanded — and then
   hovering the tree dereferenced a child that no longer existed.
+
+#### 2026-09-01 *0.3.90*
+- **UltraCanvasFilerWidget: a file list can now grow while it is produced.**
+  `AppendToFileList(paths)` adds paths to the list already on display, stat-ing
+  only the new ones and leaving the scroll position and the selection where
+  they are; before, the only way to extend a result list was to hand the whole
+  grown list back to `ShowFileList()`, which re-stat-ed everything already
+  listed once per batch and jumped the view back to the top. This is what lets
+  a search show its matches while it is still walking the disk — UltraFiler's
+  sub-folder scan does exactly that (see
+  [`Docs/UltraFiler/CHANGELOG.md`](../UltraFiler/CHANGELOG.md) 1.16.0). The
+  per-entry finishing pass every listing gets (weight, attribute letters, the
+  info column) moved into `DecorateEntry()` so both paths share it.
 - **Windows: a C++ exception thrown while handling an event no longer kills
   the process.** The window procedure runs inside a callback the kernel
   dispatched, and on x64 the unwinder cannot walk back across that boundary,

@@ -18041,6 +18041,26 @@ filer->onOpenPath = [this](const FilerEntry& e) {
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
 
+### Growing a file list while it is produced
+
+`AppendToFileList(paths)` adds to the list already on display. Only the new
+paths are stat-ed, and the scroll position and the selection stay where they
+are — so a search that is still walking the disk can show what it has found
+so far and keep adding to it:
+
+```cpp
+filer->ShowFileList({});                 // empty result display, at once
+// ... on the UI thread, per batch the worker delivers:
+filer->AppendToFileList(batch);          // grows the list, view stays put
+```
+
+Handing the whole grown list to `ShowFileList()` per batch would instead
+re-stat every path already listed (O(n²) over the search) and jump the view
+back to the top each time. Called before any `ShowFileList()`,
+`AppendToFileList()` behaves like one. The list is sorted like a folder
+listing after every batch unless `SetFileListOrderPreserved(true)` keeps the
+given order.
+
 ## Name filter (filter-as-you-type)
 
 `SetNameFilter(text)` narrows the displayed listing to the entries whose name
@@ -18068,16 +18088,17 @@ When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
 ```cpp
-filer->SetFilterEmptyAction("Search in sub folders", [this]() {
-    RunRecursiveSearch(filer->GetNameFilter());   // e.g. ShowFileList(matches)
+filer->SetFilterEmptyAction("Scan sub folder", [this]() {
+    StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```
 
 The button (a real `UltraCanvasButton` child) appears only while a filter is
 active, matches nothing, and both a label and a callback are set; an empty
 label removes it. The UltraFiler uses exactly this pair: typing in its search
-field filters the shown folder, and the button — like Enter in the field —
-escalates to the recursive subfolder search.
+field filters the shown folder, and the button — like Enter in the field, and
+like the button inside the field — escalates to the background sub-folder
+scan, which feeds its matches in through `AppendToFileList()` while it runs.
 
 ## Callbacks
 
