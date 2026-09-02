@@ -14,6 +14,8 @@
 #include "UltraCanvasWindowsDiagnostics.h"
 #include <iostream>
 #include <algorithm>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <sstream>
 #include <pango/pangocairo.h>
@@ -357,6 +359,46 @@ namespace UltraCanvas {
 
 // ===== WNDPROC =====
 
+    namespace {
+        // The event a window message stands for, for the log line and the
+        // dialog of ReportWindowsEventException: "mouse move" tells the reader
+        // more than "message 0x0200".
+        std::string DescribeWindowMessage(UINT msg) {
+            switch (msg) {
+                case WM_PAINT:         return "paint";
+                case WM_SIZE:          return "resize";
+                case WM_MOUSEMOVE:     return "mouse move";
+                case WM_LBUTTONDOWN:   return "left button press";
+                case WM_LBUTTONUP:     return "left button release";
+                case WM_LBUTTONDBLCLK: return "left double-click";
+                case WM_RBUTTONDOWN:   return "right button press";
+                case WM_RBUTTONUP:     return "right button release";
+                case WM_MBUTTONDOWN:   return "middle button press";
+                case WM_MBUTTONUP:     return "middle button release";
+                case WM_MOUSEWHEEL:    return "mouse wheel";
+                case WM_MOUSEHWHEEL:   return "horizontal mouse wheel";
+                case WM_MOUSELEAVE:    return "mouse leave";
+                case WM_KEYDOWN:       return "key press";
+                case WM_KEYUP:         return "key release";
+                case WM_SYSKEYDOWN:    return "system key press";
+                case WM_SYSKEYUP:      return "system key release";
+                case WM_CHAR:          return "character input";
+                case WM_SETFOCUS:      return "focus gained";
+                case WM_KILLFOCUS:     return "focus lost";
+                case WM_TIMER:         return "timer";
+                case WM_CLOSE:         return "window close";
+                case WM_DPICHANGED:    return "DPI change";
+                case WM_SETCURSOR:     return "cursor selection";
+                default: {
+                    char buffer[40];
+                    std::snprintf(buffer, sizeof(buffer), "window message 0x%04X",
+                                  static_cast<unsigned>(msg));
+                    return buffer;
+                }
+            }
+        }
+    } // namespace
+
     LRESULT CALLBACK UltraCanvasWindowsApplication::StaticWndProc(
             HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
@@ -372,14 +414,36 @@ namespace UltraCanvas {
                 GetWindowLongPtrW(hwnd, GWLP_USERDATA));
         }
 
-        // Let the application convert messages to UCEvents
-        if (instance) {
-            instance->ProcessWindowMessage(hwnd, msg, wParam, lParam);
-        }
+        // No C++ exception may leave this function. user32 calls it from a
+        // callback the kernel dispatched (KiUserCallbackDispatcher), and on
+        // x64 the unwinder cannot walk back across that boundary: an
+        // exception thrown by any event handler below -- a click on a folder,
+        // a hover, a key -- never reaches the application's try/catch around
+        // Run(). Instead the process dies, reported by the crash filter as
+        // STATUS_BAD_FUNCTION_TABLE (0xC00000FF) in ntdll or as the bare GCC
+        // throw code (0x20474343) in KERNELBASE, with the error text lost.
+        // Caught here it becomes a logged, reported error and an abandoned
+        // event, which is what the same exception is on the other platforms.
+        try {
+            // Let the application convert messages to UCEvents
+            if (instance) {
+                instance->ProcessWindowMessage(hwnd, msg, wParam, lParam);
+            }
 
-        // Let the window handle its own messages
-        if (window) {
-            return window->HandleMessage(hwnd, msg, wParam, lParam);
+            // Let the window handle its own messages
+            if (window) {
+                return window->HandleMessage(hwnd, msg, wParam, lParam);
+            }
+        } catch (const std::exception& e) {
+            ReportWindowsEventException(DescribeWindowMessage(msg), e.what());
+            // Handled as far as Windows is concerned: DefWindowProc would act
+            // on the message itself (WM_CLOSE destroys the window), which
+            // the abandoned handler did not decide.
+            if (window) return 0;
+        } catch (...) {
+            ReportWindowsEventException(DescribeWindowMessage(msg),
+                                        "exception of a non-std::exception type");
+            if (window) return 0;
         }
 
         return DefWindowProcW(hwnd, msg, wParam, lParam);
