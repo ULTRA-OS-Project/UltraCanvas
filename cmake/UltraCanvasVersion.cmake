@@ -142,10 +142,12 @@ endif()
 set_property(DIRECTORY "${_uc_configure_depends_dir}" APPEND PROPERTY
     CMAKE_CONFIGURE_DEPENDS ${_ULTRACANVAS_ALL_CHANGELOGS})
 
-# The Windows resource script and manifest still hold literal version numbers
+# The Windows resource scripts and manifests still hold literal version numbers
 # (they are compiled by windres/rc.exe from files on disk, not generated), and
 # set-version.sh writes them. Warn — on every platform, so a Linux or macOS
-# configure catches it too — when they have fallen behind the changelog.
+# configure catches it too — when they have fallen behind the changelog. Every
+# other copy of a version is gone: what a binary displays comes from the
+# <PREFIX>_VERSION definitions above, which are read from the changelogs here.
 function(_ultracanvas_warn_if_version_stale FILE PATTERN EXPECTED WHAT)
     if(NOT EXISTS "${FILE}")
         return()
@@ -170,3 +172,11 @@ _ultracanvas_warn_if_version_stale(
     "${_ULTRACANVAS_REPO_ROOT}/Apps/Texter/UltraTexter.manifest"
     "^        version=\"([0-9.]+)\"" "${ULTRATEXTER_VERSION_DOT4}"
     "UltraTexter.manifest assembly version")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/UltraFiler/UltraFiler.rc"
+    "^ +FILEVERSION +([0-9,]+)" "${ULTRAFILER_VERSION_COMMA4}"
+    "UltraFiler.rc FILEVERSION")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/UltraFiler/UltraFiler.manifest"
+    "^        version=\"([0-9.]+)\"" "${ULTRAFILER_VERSION_DOT4}"
+    "UltraFiler.manifest assembly version")

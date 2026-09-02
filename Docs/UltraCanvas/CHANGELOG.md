@@ -32,6 +32,14 @@
   one the FileLoader's dialogs are built from) before it is written off, so a
   format arriving with a plugin the application registers is classified without
   the widget having to be taught about it.
+- **`set-version.sh` and the configure-time staleness warning now cover
+  UltraFiler's Windows resource files** as well as UltraTexter's, and the
+  script derives both from their changelogs instead of hard-coding one app's
+  two-component version format. The `.rc` and `.manifest` of those two are the
+  only literal copies of a version left in the tree; everything a binary
+  displays comes from the `<PREFIX>_VERSION` definitions
+  `cmake/UltraCanvasVersion.cmake` reads out of the changelogs. What UltraFiler
+  did with its copy is in its own changelog (UltraFiler 1.17.1).
 - **Xara and CorelDRAW files show a real thumbnail again.** Xara documents
   (`.xar`, `.web`, `.wix`) carry a GIF/JPEG/PNG preview among the first records
   of the file head and the ZIP-based CorelDRAW documents (`.cdr`, `.cdt`, X4
