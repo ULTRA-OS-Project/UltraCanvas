@@ -340,8 +340,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
         # Kept out of UltraCanvasUtils.cpp so that file stays linkable on
-        # its own (the Tests targets compile it directly for Trim()); this
-        # one needs UltraCanvasJSON for the Dropbox configuration.
+        # its own; this one needs UltraCanvasJSON for the Dropbox
+        # configuration. (The plain text helpers live in the
+        # UltraCanvasTextUtils library, linked below.)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCloudStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGitRepository.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
@@ -1460,6 +1461,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${TINYXML2_LIBRARIES}
         ${ZBAR_LIBRARIES}
         fmt::fmt
+        UltraCanvasTextUtils
     # PRIVATE
     #     grapheme
 )
@@ -1601,6 +1603,20 @@ endif()
 
 # ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
 # ===== ULTRACRYPT =====
+# Standalone text utilities (Trim/Split/ToLowerCase..., RFC 4648
+# Base32/Base64), split out of UltraCanvasUtils so that headless consumers —
+# UltraCrypt above all, and the Tests targets — can link one definition of each
+# helper without the platform glue in UltraCanvasUtils.cpp. Both the UltraCanvas
+# library and UltraCrypt link this, so an application that links both still
+# gets exactly one copy of every symbol.
+add_library(UltraCanvasTextUtils STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextUtils.cpp)
+target_include_directories(UltraCanvasTextUtils PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(UltraCanvasTextUtils PUBLIC cxx_std_20)
+set_target_properties(UltraCanvasTextUtils PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Cryptographic services (Masterfile_modules.md §8). Deliberately free of any
 # UI dependency so headless consumers — UltraVault, UltraDatabase, tools — can
 # link it without pulling in the widget layer.
@@ -1611,6 +1627,8 @@ target_include_directories(UltraCrypt PUBLIC
     $<INSTALL_INTERFACE:include/ultracanvas>)
 target_compile_features(UltraCrypt PUBLIC cxx_std_20)
 set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# The secure Base32 decoder delegates to the shared codec in UltraCanvasTextUtils.
+target_link_libraries(UltraCrypt PUBLIC UltraCanvasTextUtils)
 if(SODIUM_FOUND)
     target_compile_definitions(UltraCrypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
     target_include_directories(UltraCrypt PRIVATE ${SODIUM_INCLUDE_DIRS})

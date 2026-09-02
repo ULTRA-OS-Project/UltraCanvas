@@ -12,6 +12,7 @@
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCanvasTextUtils.h"
 
 #include <cstdio>
 #include <cstring>
@@ -485,6 +486,10 @@ static void TestHkdf() {
 }
 
 // ===== Base32 / Base64 (RFC 4648) =====
+// The codecs live in UltraCanvasUtils (UltraCanvasTextUtils.h). UltraCrypt
+// keeps one wrapper, UltraCrypt_Base32Decode, which decodes into a zeroizing
+// buffer by calling them. The RFC vectors are run through both, so a change to
+// either the codec or the wrapper is caught here.
 static void TestEncodings() {
     std::printf("Base32 / Base64 (RFC 4648 vectors)\n");
     const char* inputs[]  = {"", "f", "fo", "foo", "foob", "fooba", "foobar"};
@@ -494,34 +499,38 @@ static void TestEncodings() {
 
     for (int i = 0; i < 7; ++i) {
         const std::string in = inputs[i];
+        const std::vector<uint8_t> bytes(in.begin(), in.end());
+
         ++g_checks;
-        const std::string got64 = UltraCrypt_Base64Encode(in.data(), in.size());
+        const std::string got64 = UltraCanvas::Base64Encode(bytes, /*wrap=*/false);
         if (got64 != base64[i]) {
             ++g_failures;
             std::printf("  FAIL: base64(\"%s\") expected %s got %s\n",
                         in.c_str(), base64[i], got64.c_str());
         }
         ++g_checks;
-        const std::string got32 = UltraCrypt_Base32Encode(in.data(), in.size());
+        const std::string got32 = UltraCanvas::Base32Encode(bytes);
         if (got32 != base32[i]) {
             ++g_failures;
             std::printf("  FAIL: base32(\"%s\") expected %s got %s\n",
                         in.c_str(), base32[i], got32.c_str());
         }
 
-        std::vector<uint8_t> back64;
-        UltraCrypt_Base64Decode(base64[i], back64);
-        Check(std::string(back64.begin(), back64.end()) == in,
-              "base64 round-trips \"" + in + "\"");
+        const std::vector<uint8_t> back64 = UltraCanvas::Base64Decode(base64[i]);
+        Check(back64 == bytes, "base64 round-trips \"" + in + "\"");
 
-        UltraCryptSecureBuffer back32;
-        UltraCrypt_Base32Decode(base32[i], back32);
+        std::vector<uint8_t> back32;
+        Check(UltraCanvas::Base32Decode(base32[i], back32) && back32 == bytes,
+              "base32 round-trips \"" + in + "\"");
+
+        UltraCryptSecureBuffer secure;
+        UltraCrypt_Base32Decode(base32[i], secure);
         // Guard the compare: memcmp with a null pointer is undefined even for
         // a zero length, and an empty decode legitimately yields no buffer.
-        Check(back32.GetSize() == in.size() &&
+        Check(secure.GetSize() == in.size() &&
                   (in.empty() ||
-                   std::memcmp(back32.Data(), in.data(), in.size()) == 0),
-              "base32 round-trips \"" + in + "\"");
+                   std::memcmp(secure.Data(), in.data(), in.size()) == 0),
+              "the secure-buffer wrapper round-trips \"" + in + "\"");
     }
 
     // Seeds are commonly shown lower-case, in space-separated groups, unpadded.
@@ -531,15 +540,20 @@ static void TestEncodings() {
     Check(seed.GetSize() == 6 && std::memcmp(seed.Data(), "foobar", 6) == 0,
           "a loosely typed seed decodes correctly");
 
+    // Strictness, through both entry points.
+    std::vector<uint8_t> junk;
+    Check(!UltraCanvas::Base32Decode("MZXW6YTB1", junk),
+          "the codec rejects a character outside the alphabet");
+    Check(!UltraCanvas::Base32Decode("MZXW6===Y", junk),
+          "the codec rejects data after padding");
     UltraCryptSecureBuffer bad;
     auto r = UltraCrypt_Base32Decode("MZXW6YTB1", bad);
     Check(!r && r.code == UltraCryptResultCode::InvalidArgument,
-          "base32 rejects a character outside the alphabet");
-    Check(bad.IsEmpty(), "a rejected base32 decode yields nothing");
+          "the wrapper reports a rejected decode as InvalidArgument");
+    Check(bad.IsEmpty(), "a rejected secure decode yields nothing");
 
-    std::vector<uint8_t> bad64;
-    Check(!UltraCrypt_Base64Decode("Zm9v!", bad64),
-          "base64 rejects a character outside the alphabet");
+    // Base64Decode is lenient by long-standing contract (it skips characters it
+    // does not recognise), so there is deliberately no rejection case for it.
 }
 
 int main() {

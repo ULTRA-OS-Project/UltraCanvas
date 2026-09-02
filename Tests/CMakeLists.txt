@@ -321,9 +321,9 @@ add_executable(HTMLReaderTest
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
-    # Trim() lives in UltraCanvasUtils.cpp; without it this target fails to
-    # link, which is why BUILD_TESTS could not be switched on.
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasUtils.cpp
+    # Trim() lives in UltraCanvasTextUtils.cpp (platform-free); without it
+    # this target fails to link.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(HTMLReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(HTMLReaderTest PRIVATE cxx_std_20)
@@ -372,8 +372,8 @@ add_executable(EBookEngineTest
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
-    # Trim() lives in UltraCanvasUtils.cpp; see HTMLReaderTest above.
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasUtils.cpp
+    # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(EBookEngineTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -410,8 +410,8 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
-        # Trim() lives in UltraCanvasUtils.cpp; see HTMLReaderTest above.
-        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasUtils.cpp
+        # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasTextUtils.cpp
     )
     target_include_directories(WordFormatsTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}

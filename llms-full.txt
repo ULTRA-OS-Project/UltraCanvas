@@ -626,9 +626,12 @@ backing library is never visible in a public header.
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
-- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base64Encode`,
-  `UltraCrypt_Base64Decode`, `UltraCrypt_Base32Encode`,
-  `UltraCrypt_Base32Decode`
+- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base32Decode` (into a
+  secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
+  `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
+  (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  UltraCrypt's former copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 
@@ -2937,7 +2940,7 @@ are NUL-padded).
 | Offset | Size | Field | Meaning |
 |---|---|---|---|
 | 0 | 1 | Record version | `1` |
-| 1 | 1 | Hash algorithm | `0` = SHA-256 (default), `1` = BLAKE3-256. (MD5 is deliberately **not** assigned a code point — it is collision-broken and a forged file with a matching MD5 is practical today. SHA-256 fills the same role securely.) |
+| 1 | 1 | Hash algorithm | `0` = SHA-256. This is the only assigned code point; readers reject any other value. A future algorithm would arrive with a record-version bump, not a new code point — the same one-algorithm rule applied to the cipher and KDF. (BLAKE3-256 was once pencilled in as `1` and dropped: it is in neither libsodium nor OpenSSL, is not FIPS-approved, and the creation hash is computed once per file, so its software speed buys nothing over hardware-accelerated SHA-256. MD5 is deliberately **not** assigned a code point — it is collision-broken and a forged file with a matching MD5 is practical today.) |
 | 2 | 2 | Reserved | `0x0000` |
 | 4 | 16 | File UUID | Random, generated once at creation; the primary key under which the SuperVault service stores this file's record. |
 | 20 | 32 | Owner ID | SuperVault account of the creator — the person contacted to confirm each open request. |
@@ -52235,8 +52238,9 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, and the RFC 4648 Base32/Base64
-companions. First consumer: the UCD document encryption envelope
+Argon2id key derivation and HKDF-SHA-256/512. (The RFC 4648 Base32/Base64
+codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
+Base32 decoder.) First consumer: the UCD document encryption envelope
 (`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
 `Tests/UCDCryptoEnvelopeTests.cpp`), which replaced the broken encryption
 described in §1.1.
@@ -52252,8 +52256,8 @@ accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
 
-**Not yet implemented:** BLAKE3-256 (§3.1 row 10, optional) and the public-key
-surface (§2, no consumer).
+**Not yet implemented:** the public-key surface (§2, no consumer). BLAKE3-256,
+once listed as optional, has been dropped altogether (§9).
 
 ---
 
@@ -52385,7 +52389,7 @@ Derived from the consumer table in §1 — nothing here is speculative:
 | 7 | Argon2id | UCD v2 recommended KDF, UltraVault, authenticator store |
 | 8 | PBKDF2-HMAC-SHA256 | UCD v2 fallback KDF |
 | 9 | HKDF-SHA256 | UCD v2 §4.4 SuperVault subkey derivation |
-| 10 | BLAKE3-256 | UCD v2 `SVLT` hash algorithm `1` (**optional** — `0` = SHA-256 is the default) |
+| 10 | ~~BLAKE3-256~~ | **Dropped** (§9): the UCD v2 `SVLT` hash algorithm field is SHA-256 only |
 | 11 | CSPRNG | Salts, nonces, file UUIDs |
 | 12 | Constant-time compare | Every MAC/tag check |
 | 13 | Secure memory (zeroize, page-lock) | Authenticator seeds, vault master keys |
@@ -52407,7 +52411,7 @@ OpenSSL 3.0.13, libsodium 1.0.18, mbedTLS 2.28.8.
 | 7 | Argon2id | ❌ **needs OpenSSL 3.2+** | ✅ native | ❌ |
 | 8 | PBKDF2-HMAC-SHA256 | ✅ | ❌ (offers scrypt instead) | ✅ |
 | 9 | HKDF-SHA256 | ✅ | ⚠️ dedicated API is 1.0.19+ — **built on HMAC** | ✅ |
-| 10 | BLAKE3-256 | ❌ | ❌ | ❌ |
+| 10 | ~~BLAKE3-256~~ (dropped, §9) | ❌ | ❌ | ❌ |
 | 11 | CSPRNG | ✅ `RAND_bytes` | ✅ `randombytes_buf` | ✅ CTR-DRBG |
 | 12 | Constant-time compare | ✅ `CRYPTO_memcmp` | ✅ `sodium_memcmp` | ✅ |
 | 13 | Secure memory | ⚠️ `OPENSSL_cleanse`; secure heap is opt-in and awkward | ✅ **best in class** — `sodium_malloc` (guard pages), `sodium_mlock`, `sodium_memzero` | ❌ none |
@@ -52469,7 +52473,7 @@ symmetric in cost:**
 | libsodium: no SHA-384 | **drop it** — no consumer needs it (it was speculative in §5.2) | None |
 | libsodium: HKDF in 1.0.18 | implement over HMAC-SHA256 (~30 lines) | Low — RFC 5869 vectors |
 | **libsodium: no software AES-GCM** | **write or vendor a constant-time AES-GCM** | **High — precisely the thing that must never be hand-rolled; vendoring one means shipping a second crypto library** |
-| any: no BLAKE3 | defer; UCD writers emit `SVLT` algorithm `0` (SHA-256) | None |
+| any: no BLAKE3 | **dropped from the spec** — `SVLT` hash algorithm is SHA-256 only | None |
 
 PBKDF2, HKDF and SHA-1 are all safe to implement given a correct HMAC — they
 are constructions *over* a primitive, with official test vectors, not new
@@ -52775,8 +52779,9 @@ enum class UltraCryptHashAlgorithm : uint8_t {
     SHA1,        // LEGACY: HMAC-SHA-1 (TOTP) only; see allowLegacy below
     SHA256,
     SHA512,      // SHA-384 deliberately absent: no consumer needs it (§3.6)
-    BLAKE2b256,
-    BLAKE3_256   // UCD v2 SVLT alg 1; may report NotSupported (see §3.1)
+    // No BLAKE variants. BLAKE3 was dropped with the SVLT hash ruling (§9);
+    // BLAKE2b-256 is available from libsodium should diversity from SHA-2
+    // ever be wanted, but nothing asks for it.
 };
 
 struct UltraCryptHashOptions {
@@ -52975,28 +52980,54 @@ UltraCryptResult UltraCrypt_RandomUInt32(uint32_t bound, uint32_t& out);
 UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out);
 ```
 
-### 5.7 Companion encodings — placement to be decided
+### 5.7 Companion encodings — resolved: they live in UltraCanvasUtils
 
 TOTP provisioning needs **Base32** (RFC 4648) and several consumers want
-**Base64**. These are encodings, not cryptography, so they arguably belong in
-`DataFormats/` alongside UltraCanvasJSON rather than here. They are listed for
-completeness because no home exists today and secrets pass through them, which
-means the implementations need the same care about intermediate copies:
+**Base64**. These are encodings, not cryptography, and the ruling was that they
+belong with the framework's other utilities: `UltraCanvas::Base64Encode` /
+`Base64Decode` were already declared in `UltraCanvasUtils.h`, and
+`UltraCanvas::Base32Encode` / `Base32Decode` now sit beside them. The copies
+UltraCrypt used to carry (`UltraCrypt_Base64Encode`, `UltraCrypt_Base64Decode`,
+`UltraCrypt_Base32Encode`) are gone.
+
+Two details follow from UltraCrypt being headless:
+
+- The codecs are declared in `UltraCanvasTextUtils.h` (which
+  `UltraCanvasUtils.h` includes) and compiled into the small
+  `UltraCanvasTextUtils` static library, together with the framework's other
+  platform-free string helpers (`Trim`, `Split`, `ToLowerCase`, `StartsWith`,
+  the whitespace trims). `UltraCanvasUtils.cpp` itself is platform glue —
+  process launching, `<windows.h>` — that a headless module cannot compile.
+  Both the UltraCanvas library and UltraCrypt link that library, so each symbol
+  exists exactly once even in an application that links both; UltraCrypt
+  includes only `UltraCanvasTextUtils.h`, never `UltraCanvasUtils.h`.
+- UltraCrypt keeps one function in this area, `UltraCrypt_Base32Decode`, which
+  decodes into an `UltraCryptSecureBuffer` and wipes the intermediate on every
+  path. It *calls* `UltraCanvas::Base32Decode`; it is a destination, not a
+  second implementation. It stays in UltraCrypt because its dominant use is
+  decoding a TOTP seed, and `Base32Decode`'s failure contract — leaving the
+  partial output in place rather than clearing it — exists precisely so this
+  wrapper can zero it with `UltraCrypt_SecureZero`, which Utils cannot call
+  without inverting the dependency.
 
 ```cpp
-std::string      UltraCrypt_Base64Encode(const void* data, size_t size);
-UltraCryptResult UltraCrypt_Base64Decode(const std::string& text,
-                                         std::vector<uint8_t>& out);
+// UltraCanvasTextUtils.h (also reachable via UltraCanvasUtils.h)
+std::vector<uint8_t> Base64Decode(const std::string& input);           // lenient
+std::string          Base64Encode(const std::vector<uint8_t>& in, bool wrap = true);
+std::string          Base32Encode(const std::vector<uint8_t>& in, bool pad = true);
+std::string          Base32Encode(const uint8_t* data, size_t size, bool pad = true);
+bool                 Base32Decode(const std::string& input, std::vector<uint8_t>& out); // strict
 
-std::string      UltraCrypt_Base32Encode(const void* data, size_t size,
-                                         bool pad = true);
-// Strict RFC 4648: rejects non-alphabet characters. Case-insensitive.
+// UltraCryptCore.h — the one crypto-relevant variant
 UltraCryptResult UltraCrypt_Base32Decode(const std::string& text,
                                          UltraCryptSecureBuffer& out);
 ```
 
-Note the asymmetry: `UltraCrypt_Base32Decode` yields a secure buffer because
-its dominant use is decoding a TOTP seed.
+`Base32Decode` is strict (any character outside the alphabet, or data after
+padding, fails) while `Base64Decode` keeps its long-standing lenient contract;
+the asymmetry is deliberate, because the Base32 consumer is the `otpauth://`
+parser, which must refuse a malformed seed rather than silently produce a
+different one.
 
 ---
 
@@ -53086,9 +53117,9 @@ is part of the deliverable, not a follow-up:
 | Stage | Contents |
 |---|---|
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
-| **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF and Base32/64 |
+| **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
-| **4** | Optional additions as needed: BLAKE3-256, XChaCha20-Poly1305 at volume, public-key surface |
+| **4** | Optional additions as needed: XChaCha20-Poly1305 at volume, public-key surface |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.
@@ -53102,27 +53133,39 @@ storage layer and the UCD v2 format.
 - ~~Backend choice~~ — **libsodium** (§3.5), settled by the single-cipher ruling.
 - ~~UCD default cipher~~ — **XChaCha20-Poly1305 only**, with Argon2id as the
   only KDF (§3.5–3.6). The spec has been updated accordingly.
+- ~~Companion encodings~~ — **UltraCanvasUtils.** Base32 joins the existing
+  Base64 there; UltraCrypt's copies are removed and it keeps only the
+  secure-buffer Base32 decoder, which delegates (§5.7).
+- ~~SHA-1 exposure~~ — **yes, exposed.** `UltraCryptHashAlgorithm::SHA1` stays
+  available for hashing behind `allowLegacy`, and HMAC-SHA-1 is ungated, as
+  RFC 6238 TOTP requires.
+- ~~`UltraCanvasDocument`'s dormant encryption~~ — **leave it.** The file is
+  out of the build and likely to be deleted; its encryption path was already
+  superseded by `UCDCryptoEnvelope` (§1.1). Nothing further is to be done to it.
+- ~~Naming convention~~ — **keep the `UltraCrypt_` prefix** and the global
+  namespace, matching UltraNet and UltraDatabase. The framework accepts having
+  both patterns.
+- ~~libsodium linkage~~ — **keep linking the distro package.** Consequence,
+  stated so nobody rediscovers it: Ubuntu's 1.0.18 lacks `crypto_kdf_hkdf_*`,
+  so HKDF remains this module's own RFC 5869 construction over
+  `UltraCrypt_Hmac`, tested against the RFC vectors.
 
-**Still open:**
+- ~~BLAKE3-256 as UCD v2 `SVLT` hash algorithm `1`~~ — **collapsed to
+  SHA-256 only.** Code point `1` has been removed from `UCD-FileFormat-v2.md`;
+  `0` = SHA-256 is the sole assigned value and readers reject anything else. A
+  future algorithm would arrive with a record-version bump, consistent with the
+  one-algorithm principle already applied to the cipher and KDF. The evidence
+  the ruling rested on, kept so nobody has to redo the comparison:
 
-1. Do the companion encodings (§5.7) belong in UltraCrypt or in
-   `DataFormats/` alongside UltraCanvasJSON?
-2. Should `UltraCryptHashAlgorithm::SHA1` be exposed at all outside the HMAC
-   path, even behind `allowLegacy`?
-3. Is BLAKE3-256 worth keeping as UCD v2 `SVLT` hash algorithm `1`, or should
-   that field also collapse to SHA-256 only, consistent with the
-   one-algorithm principle applied to the cipher and KDF?
-4. Confirm the disposition of `UltraCanvasDocument`'s dormant encryption code
-   (§1.1): rewrite against UltraCrypt, or delete the entry points?
-5. Confirm the global-namespace + `UltraCrypt_` prefix convention (§4), chosen
-   to match UltraNet and UltraDatabase. UltraAI and the UltraVault design use
-   a named namespace instead, so the framework currently has both patterns.
-6. Is vendoring libsodium under `UltraCanvas/third_party/` preferred to
-   linking the distro package? Vendoring pins the version and guarantees
-   1.0.19+ (so HKDF comes from the library rather than our own construction);
-   linking keeps builds smaller and inherits distro security updates.
+  | | SHA-256 only | BLAKE3-256 as code point `1` |
+  |---|---|---|
+  | Availability | Already in libsodium (`crypto_hash_sha256`), already used by this module | In neither libsodium (which has BLAKE2b) nor OpenSSL 3.0; would mean vendoring the reference C implementation and registering a new third-party dependency |
+  | Standardisation | FIPS 180-4 | None — a 2020 design with a single reference implementation |
+  | Speed | Hardware-accelerated on every current x86 (SHA-NI) and ARMv8 CPU; the creation hash is computed once per document, so throughput is irrelevant | Fastest *software* hash available, but that headline compares against software SHA-256, not accelerated SHA-256 |
+  | SuperVault service | One algorithm to implement and verify server-side | Two, plus a negotiation surface; every reader must handle a code point no writer may ever emit |
+  | Diversity from SHA-2, if ever wanted | — | BLAKE2b-256 gives the same property for free from libsodium |
 
----
+**Still open:** nothing. New questions go here.
 
 ## See also
 

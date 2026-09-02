@@ -8,6 +8,7 @@
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasTextUtils.h"   // Trim/Split/ToLowerCase..., Base64 / Base32
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -22,10 +23,10 @@
 
 namespace UltraCanvas {
     extern const char* versionString;
-    std::string ToLowerCase(const std::string &str);
-    bool StartsWith(const std::string& str, const std::string& prefix);
-    std::string Trim(const std::string& str, const std::string& strippedChars = " \t\r\n");
-    std::vector<std::string> Split(const std::string& str, char delimiter);
+    // ToLowerCase, StartsWith, Trim, Split, L/R/TrimWhitespace and the Base64 /
+    // Base32 codecs are declared in UltraCanvasTextUtils.h (included above):
+    // platform-free text helpers compiled into the UltraCanvasTextUtils
+    // library, so headless modules can link them without this file's glue.
     Color ParseColor(const std::string& colorStr);
     std::string GetFileExtension(const std::string& filePath);
     std::string LoadFile(const std::string& filePath);
@@ -93,33 +94,6 @@ namespace UltraCanvas {
     bool LaunchDetachedProcess(const std::vector<std::string>& argv,
                                const std::string& workingDirectory,
                                std::string& outError);
-
-    std::vector<uint8_t> Base64Decode(const std::string& input);
-    std::string Base64Encode(const std::vector<uint8_t>& in, bool wrap = true);
-
-    inline std::string LTrimWhitespace(std::string s) {
-        std::string result = s;
-        // NOTE: iterate `result` consistently. Mixing s.begin() with result.end()
-        // walks off the end of a different allocation (heap overflow), since `s`
-        // and `result` are distinct string objects.
-        result.erase(result.begin(), std::find_if(result.begin(), result.end(), [](unsigned char ch) {
-            return !std::isspace(ch);
-        }));
-        return result;
-    }
-
-// Trim from the end (in place)
-    inline std::string RTrimWhitespace(std::string s) {
-        std::string result = s;
-        result.erase(std::find_if(result.rbegin(), result.rend(), [](unsigned char ch) {
-            return !std::isspace(ch);
-        }).base(), result.end());
-        return result;
-    }
-
-    inline std::string TrimWhitespace(std::string s) {
-        return LTrimWhitespace(RTrimWhitespace(s));
-    }
 
     template <typename Func, typename... Args>
     void measureExecutionTime(const std::string& logPrefix, Func&& func, Args&&... args) {
