@@ -1333,6 +1333,12 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->SetLineStyle(TreeLineStyle::NoLine);
     folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
 
+    // Slim the vertical scrollbar to half its default width (6px) so it reads
+    // as a thin sidebar accent rather than a full control.
+    ScrollbarStyle treeScrollbarStyle = folderTree->GetVerticalScrollbarStyle();
+    treeScrollbarStyle.trackSize = 6;
+    folderTree->SetVerticalScrollbarStyle(treeScrollbarStyle);
+
     // A hidden root carries the two top-level sections, so "Pinned" can sit
     // ABOVE "Computer" instead of inside it. Neither the root nor the section
     // headers are folders - never let EnsureTreeChildren scan them as paths.
