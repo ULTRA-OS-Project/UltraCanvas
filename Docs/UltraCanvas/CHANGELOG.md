@@ -1,3 +1,50 @@
+#### 2026-09-01 *0.3.91*
+- **New: `UltraCanvasVolumeMonitor`** (`UltraCanvas/{include,core}/UltraCanvasVolumeMonitor.h/.cpp`,
+  backends under `OS/<Platform>/`) — the mounted volumes of the machine, and a
+  notification when that set changes. `ListMountedVolumes()` / `ListVolumeRoots()`
+  are now the framework's single volume enumeration, and the monitor reports a
+  mount or unmount through the operating system's own channel: `poll()` on
+  `/proc/self/mountinfo` (Linux/BSD), `WM_DEVICECHANGE` on a hidden top-level
+  window (Windows — a message-only window does not receive the broadcast), and
+  `NSWorkspace` mount notifications (macOS). Where no backend exists the monitor
+  polls the volume list on a background thread, so `Start()` succeeds
+  everywhere and callers need no fallback of their own. Documented in
+  `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`; new test
+  `Tests/VolumeMonitorTest.cpp`.
+- **Drive lists were wrong on three platforms.** `ListDriveRoots()` (the path
+  strip's *Computer* dropdown) and UltraFiler's folder tree enumerated volumes
+  separately and disagreed: one scanned `/media`, `/mnt` and `/Volumes`, the
+  other `/media` and `/mnt`, and **neither looked at `/run/media`** — where
+  udisks2 mounts on Fedora, RHEL, Arch and openSUSE — so on those systems a USB
+  stick was invisible in both, restart or not. macOS mounts every removable
+  volume under `/Volumes`, which the tree never scanned, so a stick never
+  appeared there at all. `ListDriveRoots()` also offered any directory it found
+  as a drive, including the empty mount-point folder an unmount leaves behind.
+  Both now call the one enumeration, which covers `/media`, `/run/media`
+  (each also one level down, for the per-user directory udisks creates),
+  `/Volumes` and `/mnt`, and tests each candidate against the platform's mount
+  table (`/proc/self/mounts`, `getmntinfo()`, `GetLogicalDrives()`) as well as
+  the device-differs-from-parent check — the table sees a bind mount from the
+  same filesystem, which the device check cannot.
+- **`UltraCanvasFolderWatcher` reports a watch that dies on its own.** New
+  optional third argument to `Watch()`: a failure callback, fired at most once
+  and never as a result of `Stop()`. A watch ends silently when its volume is
+  unmounted, the share drops or the handle is invalidated — on Linux the kernel
+  retires the descriptor with `IN_IGNORED`/`IN_UNMOUNT`, on Windows the
+  overlapped read fails — and the backends parked on it forever while the
+  caller kept believing it was watched. Both backends now detect it and report.
+- **`UltraCanvasFilerWidget` recovers from a lost watch.** It falls back to
+  the fingerprint worker for that folder instead of quietly ceasing to notice
+  changes — pulling a USB stick while one of its folders was open left the view
+  frozen on a listing that no longer existed until the user navigated away. It
+  keeps polling the folder while it is gone, so the same stick plugged back in
+  re-lists itself. `IsFolderWatchNative()` reports `false` after the fallback.
+- **`UltraCanvasTreeView::RemoveNode()` left dangling pointers.** It destroys
+  the node's whole subtree but only dropped the view's selection / hover / focus
+  pointers when they aimed at the named node itself, so removing a populated
+  node — an unmounted drive, a deleted folder that had been expanded — and then
+  hovering the tree dereferenced a child that no longer existed.
+
 #### 2026-09-01 *0.3.90*
 - **UltraCanvasFilerWidget: a file list can now grow while it is produced.**
   `AppendToFileList(paths)` adds paths to the list already on display, stat-ing
