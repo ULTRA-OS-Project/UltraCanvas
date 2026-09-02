@@ -58,6 +58,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
@@ -230,10 +231,31 @@ namespace UltraCanvas {
                 {"tiff", {"TIFF", FilerFileCategory::Image}},
                 {"qoi",  {"QOI",  FilerFileCategory::Image}},
                 {"ico",  {"Icon", FilerFileCategory::Image}},
+                // Vector: every format the FileLoader inventory reports for
+                // MediaFormatCategory::Vector - the image pipeline's own
+                // (svg/svgz, and eps/ps where the libvips build has a
+                // PostScript loader) plus the whole load and save matrix of
+                // the vector graphics plugins. An extension no table here
+                // knows still lands in the right category through
+                // RegisteredCategoryForExtension below; these entries only
+                // give the well-known ones a proper name.
                 {"svg",  {"SVG",  FilerFileCategory::Vector}},
+                {"svgz", {"SVG (compressed)", FilerFileCategory::Vector}},
                 {"eps",  {"EPS",  FilerFileCategory::Vector}},
+                {"epsf", {"EPS",  FilerFileCategory::Vector}},
+                {"ps",   {"PostScript", FilerFileCategory::Vector}},
+                {"ai",   {"Illustrator", FilerFileCategory::Vector}},
                 {"cdr",  {"CorelDRAW", FilerFileCategory::Vector}},
+                {"cdt",  {"CorelDRAW Template", FilerFileCategory::Vector}},
+                {"cmx",  {"Corel Metafile", FilerFileCategory::Vector}},
+                {"ccx",  {"Corel Exchange", FilerFileCategory::Vector}},
                 {"xar",  {"Xara", FilerFileCategory::Vector}},
+                {"web",  {"Xara Web", FilerFileCategory::Vector}},
+                {"wix",  {"Xara Web", FilerFileCategory::Vector}},
+                {"emf",  {"Enhanced Metafile", FilerFileCategory::Vector}},
+                {"wmf",  {"Windows Metafile", FilerFileCategory::Vector}},
+                {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector}},
+                {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector}},
                 {"stl",  {"STL",  FilerFileCategory::Model3D}},
                 {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
                 {"ply",  {"PLY",  FilerFileCategory::Model3D}},
@@ -306,6 +328,66 @@ namespace UltraCanvas {
                 {"dll",  {"Library", FilerFileCategory::Executable}},
             };
             return m;
+        }
+
+        // ===== FOLLOW THE FILE LOADER'S FORMAT INVENTORY =====
+        // The table above names the formats; the inventory the FileLoader
+        // offers decides which ones exist in this build - it is assembled
+        // from the installed libvips and from whatever graphics, document and
+        // media plugins the application registered, so it grows with the
+        // application while a table compiled into the widget cannot. An
+        // extension the table does not list is therefore looked up there
+        // before it is written off as "some file": that is what keeps a
+        // vector format the host can open from being displayed as a nameless
+        // blob with no preview.
+        //
+        // Built once, on the first miss: assembling the inventory probes
+        // libvips per format, far too much to repeat per directory entry.
+        // Plugins register at start-up, before any folder is listed.
+        FilerFileCategory CategoryFromMediaCategory(MediaFormatCategory c) {
+            switch (c) {
+                case MediaFormatCategory::Bitmap:      return FilerFileCategory::Image;
+                case MediaFormatCategory::Vector:      return FilerFileCategory::Vector;
+                case MediaFormatCategory::Model3D:     return FilerFileCategory::Model3D;
+                case MediaFormatCategory::Document:    return FilerFileCategory::Document;
+                case MediaFormatCategory::Spreadsheet: return FilerFileCategory::Spreadsheet;
+                case MediaFormatCategory::Audio:       return FilerFileCategory::Audio;
+                case MediaFormatCategory::Video:       return FilerFileCategory::Video;
+            }
+            return FilerFileCategory::Other;
+        }
+
+        bool RegisteredCategoryForExtension(const std::string& ext,
+                                            FilerFileCategory& out) {
+            static std::map<std::string, FilerFileCategory> byExtension;
+            static std::mutex mutex;
+            static bool built = false;
+            if (ext.empty()) return false;
+            std::lock_guard<std::mutex> lk(mutex);
+            if (!built) {
+                for (const MediaFormatInfo& f : UltraCanvasSupportedFormats::GetAll()) {
+                    const FilerFileCategory c = CategoryFromMediaCategory(f.category);
+                    byExtension.emplace(f.extension, c);
+                    for (const std::string& alias : f.aliases)
+                        byExtension.emplace(alias, c);
+                }
+                built = true;
+            }
+            auto it = byExtension.find(ext);
+            if (it == byExtension.end()) return false;
+            out = it->second;
+            return true;
+        }
+
+        // The file category of an extension: the table first (it also carries
+        // the type name), the registered formats after it.
+        FilerFileCategory FilerCategoryForExtension(const std::string& ext) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(ext);
+            if (it != m.end()) return it->second.category;
+            FilerFileCategory c = FilerFileCategory::Other;
+            if (RegisteredCategoryForExtension(ext, c)) return c;
+            return FilerFileCategory::Other;
         }
 
         const char* CategoryNoun(FilerFileCategory c) {
@@ -481,10 +563,7 @@ namespace UltraCanvas {
         // thumbnail image rather than the entry itself).
         FilerPreviewType PreviewTypeForPath(const std::string& path) {
             const std::string ext = LowerExtension(path);
-            const auto& m = ExtensionTypeMap();
-            auto it = m.find(ext);
-            return PreviewTypeForFile(ext, it != m.end() ? it->second.category
-                                                         : FilerFileCategory::Other);
+            return PreviewTypeForFile(ext, FilerCategoryForExtension(ext));
         }
 
         // True when this build can render a PDF page into a preview.
@@ -557,6 +636,23 @@ namespace UltraCanvas {
             (void)path; (void)w; (void)h; (void)scale;
             return nullptr;
 #endif
+        }
+
+        // ===== EMBEDDED PREVIEW (vector documents) =====
+        // Xara and the ZIP-based CorelDRAW files carry a preview bitmap of
+        // the drawing; decoding it costs a read and a normal image decode,
+        // which is the whole reason these formats can have a thumbnail at all
+        // without a renderer that needs a window. Runs on the thumbnail
+        // workers like every other producer here.
+        std::shared_ptr<UCPixmap> RenderEmbeddedPreviewPixmap(const std::string& path,
+                                                              int w, int h,
+                                                              ImageFitMode fit,
+                                                              float scale) {
+            std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+            if (bytes.empty()) return nullptr;
+            auto img = UCImage::LoadFromMemory(bytes);
+            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
+            return img->GetPixmap(w, h, fit, scale);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -2041,11 +2137,17 @@ namespace UltraCanvas {
             e.typeName = std::string(it->second.label) + " "
                          + CategoryNoun(it->second.category);
         } else {
-            e.category = FilerFileCategory::Other;
+            // Not in the table: a format one of the registered plugins knows
+            // still gets its real category (and with it its colour, its
+            // grouping and the preview switch that governs it) - only the
+            // pretty name falls back to the extension.
+            e.category = FilerCategoryForExtension(e.extension);
             std::string upper = e.extension;
             std::transform(upper.begin(), upper.end(), upper.begin(),
                            [](unsigned char c) { return std::toupper(c); });
-            e.typeName = upper.empty() ? "File" : upper + " File";
+            e.typeName = upper.empty()
+                                 ? "File"
+                                 : upper + " " + CategoryNoun(e.category);
         }
         if (e.category == FilerFileCategory::Archive) e.isArchive = true;
     }
@@ -6542,11 +6644,21 @@ namespace UltraCanvas {
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::Bitmaps:
-            case FilerPreviewType::VectorGraphics:
-                // The Image/Vector categories are wider than what the image
-                // pipeline decodes (cdr/xar render through graphics plugins).
+                // The Image category is wider than what the image pipeline
+                // decodes.
                 return ImagePipelineLoadsExtension(e.extension) ? e.path
                                                                 : std::string{};
+            case FilerPreviewType::VectorGraphics:
+                // svg/svgz rasterize through the built-in SVG renderer, and
+                // eps/ps through libvips where that build has a PostScript
+                // loader. The rest of the Vector category has no renderer
+                // that works without a window - but Xara and the ZIP-based
+                // CorelDRAW documents carry a preview bitmap of their own,
+                // which the workers extract and decode like any other image.
+                // What is left (emf/wmf/dxf/dwg/ai) keeps the type glyph.
+                return (ImagePipelineLoadsExtension(e.extension) ||
+                        FormatCarriesEmbeddedPreview(e.extension))
+                               ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
             // clip), decoded by the same background workers. Without a video
             // backend the capture fails once, the slot is marked Failed and the
@@ -7011,6 +7123,23 @@ namespace UltraCanvas {
                 case FilerPreviewType::Models3D:
                     pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
                     break;
+                case FilerPreviewType::VectorGraphics: {
+                    // The image pipeline first (svg/svgz, and eps/ps on a
+                    // libvips build with a PostScript loader); a format it
+                    // does not rasterize - or one it fails on - falls back to
+                    // the preview bitmap the document carries.
+                    const std::string ext = LowerExtension(req.path);
+                    if (ImagePipelineLoadsExtension(ext)) {
+                        auto img = UCImage::Get(req.path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
+                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                    }
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
+                                                         req.fit, req.scale);
+                    }
+                    break;
+                }
                 default: {
                     auto img = UCImage::Get(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
@@ -7036,6 +7165,7 @@ namespace UltraCanvas {
             }
 
             bool report = false;
+            bool producedNothing = false;
             {
                 std::lock_guard<std::mutex> lk(thumbMutex);
                 thumbPathsInFlight.erase(req.path);
@@ -7079,9 +7209,18 @@ namespace UltraCanvas {
                         slot.state = ThumbState::Failed;   // don't retry-loop
                         slot.pixmap = nullptr;
                         slot.qoi = nullptr;
+                        producedNothing = true;
                     }
                     report = true;
                 }
+            }
+            // A tile that silently keeps its type glyph is indistinguishable
+            // from one whose preview kind is switched off, so name the file
+            // that produced nothing: when a whole folder of pictures loses its
+            // thumbnails, this log is what says where it went.
+            if (producedNothing) {
+                debugOutput << "UltraCanvasFilerWidget: no thumbnail produced for \""
+                            << req.path << "\"" << std::endl;
             }
             // A sibling worker may be parked on a queued request for the
             // path just released.

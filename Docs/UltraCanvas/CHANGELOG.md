@@ -1,3 +1,52 @@
+#### 2026-09-02 *0.3.92*
+- **The filer showed the type glyph instead of every thumbnail whenever the
+  libvips capability probe came back empty.** Before decoding anything the
+  widget asks `UltraCanvasSupportedFormats::CanImagePipelineLoad()` whether the
+  image pipeline handles the extension at all, and that answer is cached per
+  extension for the life of the process. It was assembled purely from runtime
+  probes, so any build where the probe could not speak answered *no format
+  loads* — and every picture in every folder silently fell back to its
+  coloured "PNG"/"JPG" glyph while `UCImage::Get()` went on decoding the very
+  same files perfectly for the viewer and the preview pane. Two ways the probe
+  went quiet, both of which leave a working libvips behind: `VIPS_INIT` returns
+  non-zero on an ABI mismatch between the headers and the installed library,
+  and the loader suffix list — collected once from the registered
+  `VipsForeignLoad` subclasses — was latched even when it came back empty,
+  which it does when the loader classes are not registered yet. The suffix list
+  is now only cached once it holds something (and is collected under a lock),
+  and the answer starts from the format table the `UCImage` load path
+  implements, so a probe that cannot contribute can no longer subtract: worst
+  case one decode is attempted and fails, instead of the picture disappearing
+  with nothing to show why.
+- **A thumbnail that produces nothing now says so in the log** —
+  `UltraCanvasFilerWidget: no thumbnail produced for "<path>"`. A failed decode
+  leaves exactly the tile a switched-off preview kind leaves, which is why the
+  regression above could look like a display setting rather than a fault.
+- **Vector graphics: the filer now covers the same formats as the FileLoader.**
+  It classified only `svg`, `eps`, `cdr` and `xar` as vector files; everything
+  else the vector plugins load or write — `svgz`, `epsf`, `ps`, `ai`, `cdt`,
+  `cmx`, `ccx`, `web`, `wix`, `emf`, `wmf`, `dxf`, `dwg` — was listed as a
+  nameless "file", outside the Vector category, its colour, its grouping and
+  its Display > Preview switch. All of them are named now, and an extension no
+  table in the widget knows is looked up in the runtime format inventory (the
+  one the FileLoader's dialogs are built from) before it is written off, so a
+  format arriving with a plugin the application registers is classified without
+  the widget having to be taught about it.
+- **Xara and CorelDRAW files show a real thumbnail again.** Xara documents
+  (`.xar`, `.web`, `.wix`) carry a GIF/JPEG/PNG preview among the first records
+  of the file head and the ZIP-based CorelDRAW documents (`.cdr`, `.cdt`, X4
+  and newer) carry one as `previews/thumbnail.png`; both decode like any
+  bitmap, which is how these formats get a thumbnail at all without a renderer
+  that works off the UI thread. The XAR half existed and was lost in a
+  file-level overwrite (`579a55c`); it is back, generalised over both families
+  and moved out of the widget into `UltraCanvasEmbeddedPreview.h`
+  (`FormatCarriesEmbeddedPreview`, `ExtractEmbeddedPreviewBytes`) so it is
+  reusable and testable — `Tests/EmbeddedPreviewTest.cpp` runs it over the
+  repository's own sample documents. `svgz` rasterizes through the SVG
+  renderer like `svg`. `emf`, `wmf`, `dxf`, `dwg`, `ai` and the older
+  RIFF-based `.cdr` still keep their glyph: there is no renderer for them that
+  a background worker can drive.
+
 #### 2026-09-02 *0.3.91*
 - **Filer tile captions read PascalCase names as the words they are made of.**
   `UltraCanvasTexter.exe` under a thumbnail wrapped as *UltraCanva* /

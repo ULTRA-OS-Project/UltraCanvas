@@ -357,7 +357,7 @@ filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, eps, cdr, xar | the rendered drawing (formats the image pipeline can rasterize) |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix) and the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps). The rest (emf, wmf, dxf, dwg, ai, older RIFF cdr) has no renderer that works without a window and keeps its glyph |
 | `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -376,6 +376,11 @@ Notes:
   thumbnails, in the same viewport-driven order (visible tiles first, then one
   screen of prefetch), so no preview ever blocks a frame. Image work has
   priority over reading text.
+- A preview that comes back empty marks the file as failed (it is not retried)
+  and the tile keeps its glyph — indistinguishable, on screen, from a kind that
+  is simply switched off. The worker therefore logs
+  `no thumbnail produced for "<path>"` for each such file, which is what names
+  the cause when a whole folder loses its previews.
 - Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
   a page is legible — from roughly a 40 px box up. The small icon column of the
   Details and List rows keeps the type glyph, so a folder listing does not read
@@ -388,6 +393,42 @@ Notes:
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
+
+### Embedded preview bitmaps
+
+Most vector formats have no renderer that works without a window, so a
+background worker cannot rasterize them. Two families do not need one: Xara
+documents (`.xar`, `.web`, `.wix`) store a GIF/JPEG/PNG preview among the first
+records of the file head, and the ZIP-based CorelDRAW documents (`.cdr`,
+`.cdt`, X4 and newer) keep one as `previews/thumbnail.png`. Both are ordinary
+images once lifted out, so they decode on the thumbnail workers like any
+bitmap.
+
+The extraction is plain file parsing — no graphics plugin, no render context —
+and lives in `UltraCanvasEmbeddedPreview.h`, so anything else that wants the
+same picture can use it:
+
+```cpp
+if (FormatCarriesEmbeddedPreview(path)) {               // asks about the format
+    std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+    if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);
+}
+```
+
+`ExtractEmbeddedPreviewBytes` returns an empty vector for a file that carries
+no preview, an older RIFF-based `.cdr`, or a document too damaged to parse — it
+never throws, so a worker can hand it any file the user points at.
+
+### File types the FileLoader knows
+
+The widget's own extension table names the well-known formats. An extension it
+does not list is looked up in the runtime format inventory
+(`UltraCanvasSupportedFormats`, the same inventory the FileLoader's dialogs are
+built from) before the entry is written off as "some file", so a format that
+arrives with a graphics, document or media plugin the application registered
+lands in its real `FilerFileCategory` — and with it gets the right colour, the
+right grouping, and the Display > Preview switch that governs it. The inventory
+is consulted once and cached, so it costs nothing per directory entry.
 
 ### Native application icons (Windows)
 

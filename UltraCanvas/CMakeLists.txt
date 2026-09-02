@@ -422,6 +422,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
+        # Preview bitmaps vector documents (Xara, ZIP-based CorelDRAW)
+        # carry inside themselves - what the filer thumbnails them from.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedPreview.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
