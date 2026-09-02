@@ -37,7 +37,8 @@
 // do not fit their column show the full name in a tooltip. In the tile-shaped
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
 // further lines (FilerStyle::captionMaxLines, 2 by default), broken between
-// whole words wherever the width allows one; what does not fit even then is
+// whole words wherever the width allows one — the words of a PascalCase name
+// included ("UltraCanvas" / "Texter.exe"); what does not fit even then is
 // dropped from the front of the last line, which opens with "…".
 // An explicit file list (ShowFileList) is sorted like a folder listing unless
 // SetFileListOrderPreserved() asks for the given order to be kept — for lists
@@ -65,8 +66,8 @@
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.21.0
-// Last Modified: 2026-09-01
+// Version: 1.22.0
+// Last Modified: 2026-09-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -319,6 +320,12 @@ namespace UltraCanvas {
         // 0 derives it from smallFontSize.
         int captionBreakTolerance = 3;
         int captionOverflowSlack  = 0;
+        // A name written in PascalCase / camelCase counts as the words it is
+        // made of: a line may end right before an upper-case letter that
+        // opens a new word, so "UltraCanvasTexter.exe" wraps as "UltraCanvas"
+        // / "Texter.exe" instead of "UltraCanva" / "sTexter.exe". Off, only
+        // the separators (space, -, _, ., …) end a word.
+        bool captionCamelCaseBreaks = true;
 
         // Thumbnail tile edge for the four thumbnail view types.
         int thumbnailSmall     = 72;
@@ -1623,8 +1630,10 @@ namespace UltraCanvas {
         // Breaks `text` into at most `maxLines` lines that each fit `maxWidth`,
         // for the captions of the tile-shaped views (UltraCanvasTextWrapping.h
         // does the work; these bind it to the context's font and the style).
-        // Breaks land after a separator (space, -, _, .) or between whole
-        // words; a word is only broken apart when it has to be — never for
+        // Breaks land after a separator (space, -, _, .), before the capital
+        // that opens the next word of a PascalCase name (see
+        // captionCamelCaseBreaks) or between whole words; a word is only
+        // broken apart when it has to be — never for
         // the sake of the last character or three of it, and a line may use
         // captionOverflowSlack pixels of the caption's inset to keep one
         // whole. When the text still does not fit, the head of what is left

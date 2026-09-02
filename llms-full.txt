@@ -17137,6 +17137,17 @@ being cut off after one:
   `FilerStyle::captionBreakTolerance` characters or fewer on either side of the
   break: cutting `CoderBox` into `CoderBo` / `x` gains the line one character
   and costs a readable name.
+- A name written in **PascalCase / camelCase** counts as the words it is made
+  of: an upper-case letter that opens a new word — one following a lower-case
+  letter or a digit, or the last capital of an acronym before a lower-case
+  letter (`PDF` / `Viewer`) — is a break opportunity like a space, so the line
+  ends *before* it rather than one letter later
+  (`FilerStyle::captionCamelCaseBreaks`, on by default; ASCII letters):
+
+  ```
+  UltraCanvas           UltraCanva
+  Texter.exe       not  sTexter.exe
+  ```
 - A line may run `FilerStyle::captionOverflowSlack` pixels past the caption
   width to keep a word (or a whole last line) in one piece. The caption is
   inset from the tile edge, so those pixels are free:
@@ -17148,7 +17159,7 @@ being cut off after one:
 
 - Characters beat typography: when keeping the words whole would push part of
   the name off the caption, the name is re-broken with mid-word breaks allowed
-  and the version showing more of it wins.
+  (and the case rule off) and the version showing more of it wins.
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
   restores the old single-line caption).
 - A name that fits its lines completely is broken **balanced**, not greedily:
@@ -18129,9 +18140,9 @@ scan, which feeds its matches in through `AppendToFileList()` while it runs.
 `SetStyle(FilerStyle)` controls colors (background, selection, hover, bars,
 grid lines, icon-menu), fonts, row heights, thumbnail tile sizes and paddings —
 see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. `captionHeight`,
-`captionMaxLines`, `captionLineHeight`, `captionBreakTolerance` and
-`captionOverflowSlack` size the tile caption and its name wrapping (see
-[Long names](#long-names)):
+`captionMaxLines`, `captionLineHeight`, `captionBreakTolerance`,
+`captionOverflowSlack` and `captionCamelCaseBreaks` size the tile caption and
+its name wrapping (see [Long names](#long-names)):
 
 ```cpp
 FilerStyle s = filer->GetStyle();
@@ -18139,6 +18150,7 @@ s.captionMaxLines = 3;        // let tile names run over up to three lines
 s.captionLineHeight = 16;     // 0 = derived from smallFontSize
 s.captionBreakTolerance = 3;  // never split a word for 3 characters or fewer
 s.captionOverflowSlack = 0;   // 0 = derived from smallFontSize
+s.captionCamelCaseBreaks = true; // "UltraCanvas" / "Texter.exe", not "UltraCanva" / "sTexter.exe"
 filer->SetStyle(s);
 ```
 

@@ -1,3 +1,31 @@
+#### 2026-09-02 *0.3.91*
+- **Filer tile captions read PascalCase names as the words they are made of.**
+  `UltraCanvasTexter.exe` under a thumbnail wrapped as *UltraCanva* /
+  *sTexter.exe* and `UltraCanvasDemo.exe` as *UltraCanva* / *sDemo.exe*: with
+  no separator anywhere in the name, the line ran to the pixel the name
+  stopped fitting, one letter past where the next word starts. An upper-case
+  letter that opens a new word — one following a lower-case letter or a digit,
+  or the last capital of an acronym before a lower-case letter (`PDF` /
+  `Viewer`) — is now a break opportunity like a space: the line ends before
+  it (*UltraCanvas* / *Texter.exe*), a word missing its last letter or two is
+  pulled up whole into the caption's slack as before, and a caption with room
+  for more lines shows the words one per line (*Ultra* / *Canvas* /
+  *Texter.exe*), balanced like any other name. `TextWrapping::Options::
+  camelCaseBreaks` / `FilerStyle::captionCamelCaseBreaks` (on by default)
+  switch the rule off; the "content beats typography" re-break that rescues a
+  name the tidy breaks would cut short drops it along with the word rule, so a
+  name never shows less of itself for the sake of a capital. ASCII letters
+  only. `Tests/TextWrapTest.cpp` covers the two reported names, the acronym
+  rule and the boundary table.
+- **The Filer widget wraps its captions through `UltraCanvasTextWrapping.h`
+  again.** The *Ladybird updates* commit of 2026-08-27 carried a stale copy of
+  `UltraCanvasFilerWidget.cpp` that put the pre-0.3.79 wrapper back — the
+  header still declared `CaptionWrapOptions()` / `CaptionOverflowSlack()`, but
+  nothing defined them, and the whole-word rule, the overflow slack and the
+  content-beats-typography re-break of 0.3.79 were not in effect in the widget
+  (the header and its test suite were untouched). The widget binds to the
+  shared wrapper as 0.3.79 intended, so the rules above — and the new one —
+  are what the tiles draw.
 #### 2026-09-01 *0.3.91*
 - **New: `UltraCanvasVolumeMonitor`** (`UltraCanvas/{include,core}/UltraCanvasVolumeMonitor.h/.cpp`,
   backends under `OS/<Platform>/`) — the mounted volumes of the machine, and a

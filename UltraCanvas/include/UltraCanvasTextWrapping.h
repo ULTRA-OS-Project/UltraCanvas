@@ -11,6 +11,11 @@
 //     word has to be split — a break that would leave `breakTolerance`
 //     characters or fewer on either side of it ("CoderBo" / "x") buys almost
 //     no room and is never taken;
+//   * a name written in PascalCase / camelCase is read as the words it is
+//     made of: an upper-case letter that opens a new word ("UltraCanvas" /
+//     "Texter.exe", "PDF" / "Viewer") is a break opportunity like a space,
+//     so a line ends before it rather than one letter later ("UltraCanva" /
+//     "sTexter.exe") — see `camelCaseBreaks`;
 //   * a line may run `overflowSlack` pixels past its width to keep a word (or
 //     a whole last line) intact, which is what the inset around a caption is
 //     there for;
@@ -18,8 +23,8 @@
 //     are allowed again — content beats typography (see Wrap);
 //   * text that fits its lines completely is re-broken balanced, so the lines
 //     come out near equal instead of the first taking all it can hold.
-// Version: 1.0.0
-// Last Modified: 2026-08-27
+// Version: 1.1.0
+// Last Modified: 2026-09-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,6 +45,12 @@ namespace TextWrapping {
         // How far a line may exceed lineWidth to keep a word — or the whole
         // last line — in one piece. 0 keeps every line strictly inside.
         int overflowSlack  = 0;
+        // Read a PascalCase / camelCase name as the words it is made of: a
+        // line may end right before an upper-case letter that opens a new
+        // word (see IsCaseBoundary), so "UltraCanvasTexter.exe" breaks as
+        // "UltraCanvas" / "Texter.exe" instead of "UltraCanva" / "sTexter.exe".
+        // Off, only the separators of IsBreakChar end a word.
+        bool camelCaseBreaks = true;
     };
 
     // ===== UTF-8 HELPERS =====
@@ -71,6 +82,30 @@ namespace TextWrapping {
     inline bool IsBreakChar(char c) {
         return c == ' ' || c == '-' || c == '_' || c == '.' || c == ',' ||
                c == ';' || c == '(' || c == ')' || c == '[' || c == ']';
+    }
+
+    // A word start inside a PascalCase / camelCase name: s[p] is an upper-case
+    // letter that follows a lower-case letter or a digit ("Ultra|Canvas",
+    // "mp4|Player"), or that ends a run of capitals before a lower-case letter
+    // ("PDF|Viewer" — the last capital of an acronym opens the next word).
+    // ASCII letters only: a caption does not need a wide-character case
+    // table, and names in other scripts still break at their separators.
+    inline bool IsAsciiUpper(char c) { return c >= 'A' && c <= 'Z'; }
+    inline bool IsAsciiLower(char c) { return c >= 'a' && c <= 'z'; }
+    inline bool IsAsciiDigit(char c) { return c >= '0' && c <= '9'; }
+    inline bool IsCaseBoundary(const std::string& s, size_t p) {
+        if (p == 0 || p >= s.size() || !IsAsciiUpper(s[p])) return false;
+        const char prev = s[p - 1];
+        if (IsAsciiLower(prev) || IsAsciiDigit(prev)) return true;
+        return IsAsciiUpper(prev) && p + 1 < s.size() && IsAsciiLower(s[p + 1]);
+    }
+
+    // Whether a line may end right before s[p]: after a separator, or — with
+    // camelCaseBreaks — at a case boundary. Both kinds rank the same, so the
+    // last one a line can hold is the one taken.
+    inline bool IsBreakOpportunity(const std::string& s, size_t p, bool camelCase) {
+        if (p == 0 || p >= s.size()) return false;
+        return IsBreakChar(s[p - 1]) || (camelCase && IsCaseBoundary(s, p));
     }
 
     // Code points a wrapped text still shows (its "…" marker included, which
@@ -135,6 +170,7 @@ namespace TextWrapping {
         const int    slack     = std::max(0, opt.overflowSlack);
         const size_t tolerance = opt.breakTolerance > 0
                                  ? static_cast<size_t>(opt.breakTolerance) : 0;
+        const bool   camel     = opt.camelCaseBreaks;
 
         std::string rest = text;
         for (int line = 0; line < maxLines && !rest.empty(); ++line) {
@@ -176,22 +212,31 @@ namespace TextWrapping {
                 lo = bounds.size() > 1 ? 1 : lo;
             }
 
+            // A word ends at a separator or, in a PascalCase name, where the
+            // next capital opens the following word ("UltraCanvas|Texter").
+            auto wordEndsAt = [&](size_t p) {
+                return IsBreakChar(rest[p]) || (camel && IsCaseBoundary(rest, p));
+            };
+
             size_t cut = fit;
-            if (fit < rest.size() && !IsBreakChar(rest[fit])) {
+            if (fit < rest.size() && !wordEndsAt(fit)) {
                 // The line ends inside a word. Where does that word end, and
                 // how much of it would have to move to the next line?
                 size_t wordEnd = fit;
-                while (wordEnd < rest.size() && !IsBreakChar(rest[wordEnd])) ++wordEnd;
+                while (wordEnd < rest.size() && !wordEndsAt(wordEnd)) ++wordEnd;
                 // The separator behind the word closes the line (break chars
-                // are ASCII, so stepping over one byte is safe).
-                const size_t wholeWord = wordEnd < rest.size() ? wordEnd + 1 : wordEnd;
+                // are ASCII, so stepping over one byte is safe); a capital
+                // that ends the word already belongs to the next one.
+                const size_t wholeWord =
+                        (wordEnd < rest.size() && IsBreakChar(rest[wordEnd]))
+                        ? wordEnd + 1 : wordEnd;
                 const size_t pushedDown = Utf8Count(rest, fit, wordEnd);
 
-                // Last separator on the line — where the word would start over
-                // if it moved down as a whole.
+                // Last word start on the line — where the word would start
+                // over if it moved down as a whole.
                 size_t sep = 0;
                 for (size_t i = fit; i > 0; --i) {
-                    if (IsBreakChar(rest[i - 1])) { sep = i; break; }
+                    if (IsBreakOpportunity(rest, i, camel)) { sep = i; break; }
                 }
                 const size_t keptHere = Utf8Count(rest, sep, fit);
 
@@ -268,12 +313,16 @@ namespace TextWrapping {
 
         bool truncated = false;
         lines = WrapGreedy(measure, text, o, &truncated);
-        if (truncated && o.breakTolerance > 0) {
+        if (truncated && (o.breakTolerance > 0 || o.camelCaseBreaks)) {
             // Keeping the words whole cost part of the text: re-break it with
-            // mid-word breaks allowed and keep that instead when it fits the
-            // lines, or still shows more of the text than the tidy break did.
+            // mid-word breaks allowed — and the words of a PascalCase name no
+            // longer counted as words, since a line that backs off to one of
+            // their capitals is what pushed the text out — and keep that
+            // instead when it fits the lines, or still shows more of the text
+            // than the tidy break did.
             Options relaxed = o;
             relaxed.breakTolerance = 0;
+            relaxed.camelCaseBreaks = false;
             bool cut = false;
             std::vector<std::string> alt = WrapGreedy(measure, text, relaxed, &cut);
             if (!cut || RetainedCount(alt) > RetainedCount(lines)) {
