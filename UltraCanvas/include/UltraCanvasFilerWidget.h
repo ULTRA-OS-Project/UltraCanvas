@@ -59,11 +59,11 @@
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
 // Which file kinds show a real content preview instead of their type glyph is
 // selectable per kind (Display > Thumbnails: Bitmaps, Vector graphics, 3D,
-// PDF, Text, Docs, Spreadsheets, Videos, Audio — all on by default), so a
-// folder full of expensive files can be browsed with only the cheap previews
-// switched on. Display > Detail view carries the same nine switches for the
+// PDF, Text, Docs, Spreadsheets, Videos, Audio, Fonts — all on by default), so
+// a folder full of expensive files can be browsed with only the cheap previews
+// switched on. Display > Detail view carries the same ten switches for the
 // detail pane a host opens beside the display, and both sets take per-format
-// exceptions, so one format can be excluded while its kind stays on. The nine
+// exceptions, so one format can be excluded while its kind stays on. The ten
 // kinds cover every media category the FileLoader inventory reports, which is
 // what lets GetPreviewableFormats() list every format this build can open.
 // The context menu's "Open with >" lists the applications the OS registers
@@ -193,6 +193,7 @@ namespace UltraCanvas {
         Spreadsheet,
         Archive,
         Executable,
+        Font,          // font definition files (ttf, otf, woff, ...)
         Other
     };
 
@@ -225,7 +226,11 @@ namespace UltraCanvas {
     // the per-format lists be complete. Audio is the one kind with no
     // thumbnail producer at all (nothing here reads cover art yet); its
     // switches govern the detail view, where a host's viewer does play the
-    // file, and its Thumbnails rows report themselves as unsupported.
+    // file, and its Thumbnails rows report themselves as unsupported. Fonts
+    // is the opposite case, and the one kind that lines up exactly with its
+    // FilerFileCategory: a font file has no viewer yet, but FreeType
+    // rasterizes a line of its own glyphs for the tile without the font
+    // having to be installed (see UltraCanvasFontFile.h).
     enum class FilerPreviewType : uint32_t {
         NonePreview    = 0,
         Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
@@ -236,10 +241,11 @@ namespace UltraCanvas {
         Docs           = 1u << 5,   // odt / doc / docx / rtf / md / html / tex
         Spreadsheets   = 1u << 6,   // ods / xls / xlsx / csv / tsv
         Videos         = 1u << 7,   // poster frame of the clip
-        Audio          = 1u << 8    // mp3 / flac / wav / ... (detail view only)
+        Audio          = 1u << 8,   // mp3 / flac / wav / ... (detail view only)
+        Fonts          = 1u << 9    // ttf / otf / woff / ... — its own glyphs
     };
     // Every previewable kind — the default of both switch sets.
-    constexpr uint32_t kFilerAllPreviewTypes = 0x1FFu;
+    constexpr uint32_t kFilerAllPreviewTypes = 0x3FFu;
 
     // ===== ONE FORMAT OF THE "LIST OF FILES" =====
     // What GetPreviewableFormats() reports: every file format the two switch

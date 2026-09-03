@@ -111,6 +111,7 @@ namespace UltraCanvas {
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
         void LoadBundledFontsNative() override;
+        bool RegisterFontFileNative(const std::string& fontFilePath) override;
 
     private:
         // The single top-level window the activity surface backs (the first

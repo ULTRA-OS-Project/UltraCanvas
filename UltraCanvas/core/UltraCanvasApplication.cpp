@@ -23,6 +23,10 @@
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
 #endif
+#if defined(ULTRACANVAS_HAS_PANGOFT2)
+#include <pango/pangofc-fontmap.h>
+#endif
+#include <pango/pangocairo.h>
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
@@ -460,6 +464,87 @@ namespace UltraCanvas {
 #endif
     }
 
+
+    // ===== RUNTIME FONT REGISTRATION =====
+
+    void RefreshFontConfiguration() {
+#if !defined(__APPLE__)
+        // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
+        // (and therefore Pango) searches is materialised by FcConfigBuildFonts.
+        if (FcConfig* cfg = FcConfigGetCurrent()) FcConfigBuildFonts(cfg);
+#endif
+#if defined(ULTRACANVAS_HAS_PANGOFT2)
+        // The font map caches what it has already matched, and every live
+        // PangoContext holds a reference to it - so replacing the default map
+        // would leave existing windows on the old one. config_changed clears
+        // the caches of the map in place instead, which is what makes a
+        // just-registered family resolvable in the very next layout.
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (fontMap && PANGO_IS_FC_FONT_MAP(fontMap)) {
+            pango_fc_font_map_config_changed(PANGO_FC_FONT_MAP(fontMap));
+            return;
+        }
+#endif
+        // No FontConfig-backed map to signal - macOS, where PangoCoreTextFontMap
+        // enumerates the installed families once when it is constructed, and any
+        // build without PangoFT2. The only way to see a newly registered family
+        // is then a new map: dropping the default has the next
+        // pango_cairo_font_map_get_default() build one. Contexts that already
+        // exist keep the map they hold until their surface is recreated.
+        pango_cairo_font_map_set_default(nullptr);
+    }
+
+    bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {
+        if (fontFilePath.empty()) return false;
+
+        std::error_code ec;
+        if (!std::filesystem::exists(fontFilePath, ec) || ec) {
+            debugOutput << "UltraCanvas: RegisterFontFile: no such file: "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+
+        // Resolved so that two spellings of one file - a relative path and an
+        // absolute one, a symlink and its target - are recognised as the same
+        // registration rather than handed to the platform twice.
+        std::string key = std::filesystem::weakly_canonical(fontFilePath, ec).string();
+        if (ec || key.empty()) key = fontFilePath;
+
+        {
+            std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+            if (std::find(registeredFontFiles_.begin(), registeredFontFiles_.end(),
+                          key) != registeredFontFiles_.end()) {
+                return true;
+            }
+        }
+
+        if (!RegisterFontFileNative(fontFilePath)) {
+            debugOutput << "UltraCanvas: RegisterFontFile: platform rejected "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        RefreshFontConfiguration();
+
+        std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+        registeredFontFiles_.push_back(std::move(key));
+        return true;
+    }
+
+    bool UltraCanvasApplicationBase::IsFontFileRegistered(
+            const std::string& fontFilePath) const {
+        if (fontFilePath.empty()) return false;
+        std::error_code ec;
+        std::string key = std::filesystem::weakly_canonical(fontFilePath, ec).string();
+        if (ec || key.empty()) key = fontFilePath;
+        std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+        return std::find(registeredFontFiles_.begin(), registeredFontFiles_.end(),
+                         key) != registeredFontFiles_.end();
+    }
+
+    std::vector<std::string> UltraCanvasApplicationBase::GetRegisteredFontFiles() const {
+        std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+        return registeredFontFiles_;
+    }
 
     FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
         if (!cachedSystemFontStyle_.has_value()) {

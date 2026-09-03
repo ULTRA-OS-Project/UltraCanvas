@@ -62,6 +62,7 @@
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasEmbeddedPreview.h"
+#include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
@@ -330,6 +331,18 @@ namespace UltraCanvas {
                 {"rpm",  {"RPM Package", FilerFileCategory::Executable}},
                 {"so",   {"Shared Library", FilerFileCategory::Executable}},
                 {"dll",  {"Library", FilerFileCategory::Executable}},
+                {"ttf",  {"TrueType Font", FilerFileCategory::Font}},
+                {"ttc",  {"TrueType Collection", FilerFileCategory::Font}},
+                {"otf",  {"OpenType Font", FilerFileCategory::Font}},
+                {"otc",  {"OpenType Collection", FilerFileCategory::Font}},
+                {"woff", {"Web Font", FilerFileCategory::Font}},
+                {"woff2",{"Web Font 2", FilerFileCategory::Font}},
+                {"pfb",  {"Type 1 Font", FilerFileCategory::Font}},
+                {"pfa",  {"Type 1 Font", FilerFileCategory::Font}},
+                {"bdf",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"pcf",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"fon",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"fnt",  {"Bitmap Font", FilerFileCategory::Font}},
             };
             return m;
         }
@@ -357,6 +370,7 @@ namespace UltraCanvas {
                 case MediaFormatCategory::Spreadsheet: return FilerFileCategory::Spreadsheet;
                 case MediaFormatCategory::Audio:       return FilerFileCategory::Audio;
                 case MediaFormatCategory::Video:       return FilerFileCategory::Video;
+                case MediaFormatCategory::Font:        return FilerFileCategory::Font;
             }
             return FilerFileCategory::Other;
         }
@@ -407,6 +421,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Spreadsheet: return "Spreadsheet";
                 case FilerFileCategory::Archive:     return "Archive";
                 case FilerFileCategory::Executable:  return "Program";
+                case FilerFileCategory::Font:        return "Font";
                 default:                             return "File";
             }
         }
@@ -424,6 +439,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Spreadsheet: return Color(46, 125, 50, 255);
                 case FilerFileCategory::Archive:     return Color(141, 110, 99, 255);
                 case FilerFileCategory::Executable:  return Color(84, 110, 122, 255);
+                case FilerFileCategory::Font:        return Color(216, 67, 21, 255);
                 default:                             return Color(158, 158, 158, 255);
             }
         }
@@ -560,6 +576,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Document:    return FilerPreviewType::Docs;
                 case FilerFileCategory::Text:        return FilerPreviewType::Text;
                 case FilerFileCategory::Spreadsheet: return FilerPreviewType::Spreadsheets;
+                case FilerFileCategory::Font:        return FilerPreviewType::Fonts;
                 default:                             return FilerPreviewType::NonePreview;
             }
         }
@@ -633,6 +650,11 @@ namespace UltraCanvas {
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
                     return ext == "stl";
+                // FreeType is a hard dependency, so a specimen can always be
+                // rasterized - except for the two web formats, which need the
+                // zlib / Brotli support the installed FreeType may lack.
+                case FilerPreviewType::Fonts:
+                    return ext != "woff" && ext != "woff2";
                 case FilerPreviewType::PDF:
                     return PdfPreviewAvailable();
                 case FilerPreviewType::Videos:
@@ -2891,6 +2913,7 @@ namespace UltraCanvas {
             case FilerPreviewType::Spreadsheets:   return "Spreadsheets";
             case FilerPreviewType::Videos:         return "Videos";
             case FilerPreviewType::Audio:          return "Audio";
+            case FilerPreviewType::Fonts:          return "Fonts";
             default:                               return "";
         }
     }
@@ -2902,7 +2925,7 @@ namespace UltraCanvas {
             FilerPreviewType::Models3D,     FilerPreviewType::PDF,
             FilerPreviewType::Text,         FilerPreviewType::Docs,
             FilerPreviewType::Spreadsheets, FilerPreviewType::Videos,
-            FilerPreviewType::Audio,
+            FilerPreviewType::Audio,        FilerPreviewType::Fonts,
         };
         return types;
     }
@@ -2955,6 +2978,10 @@ namespace UltraCanvas {
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::PDF:
             case FilerPreviewType::Models3D:
+            // A specimen shrunk into the icon column of a Details row is a
+            // smear of ink that says nothing about the face; the type glyph
+            // with "TTF" on it says more.
+            case FilerPreviewType::Fonts:
                 return rect.width >= kContentPreviewMinEdge &&
                        rect.height >= kContentPreviewMinEdge;
             default:
@@ -6935,6 +6962,13 @@ namespace UltraCanvas {
             case FilerPreviewType::Models3D:
                 return UltraCanvasSTLLoader::HasSTLExtension(e.path)
                                ? e.path : std::string{};
+            // A line of the font's own glyphs, rasterized by FreeType. The
+            // font does not have to be installed for this, so a folder of
+            // downloaded fonts previews as readily as one of photos; a
+            // format this FreeType cannot open (WOFF2 without Brotli) fails
+            // once and the tile keeps its glyph.
+            case FilerPreviewType::Fonts:
+                return e.path;
             // Text, Docs and Spreadsheets have no image to decode: they
             // preview through AcquireTextPreview instead.
             default:
@@ -7384,6 +7418,9 @@ namespace UltraCanvas {
                     break;
                 case FilerPreviewType::Models3D:
                     pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
+                    break;
+                case FilerPreviewType::Fonts:
+                    pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
                     break;
                 case FilerPreviewType::VectorGraphics: {
                     // The image pipeline first (svg/svgz, and eps/ps on a

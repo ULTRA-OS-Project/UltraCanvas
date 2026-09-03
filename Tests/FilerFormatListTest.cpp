@@ -48,6 +48,7 @@ std::set<FilerPreviewType> KindsFor(MediaFormatCategory category) {
             return {FilerPreviewType::Spreadsheets};
         case MediaFormatCategory::Audio:   return {FilerPreviewType::Audio};
         case MediaFormatCategory::Video:   return {FilerPreviewType::Videos};
+        case MediaFormatCategory::Font:    return {FilerPreviewType::Fonts};
     }
     return {};
 }

@@ -55,6 +55,37 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
+  file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
+  document rather than as something to render text with: its name records are
+  metadata, and a line of its own glyphs is a thumbnail. Implemented in
+  `core/UltraCanvasFontFile.cpp` on FreeType alone — no fontconfig, no Pango,
+  no render context and no installed font, with one `FT_Library` per call so
+  the whole surface is safe on background threads (which is what lets the
+  filer thumbnail a folder of fonts). Public surface:
+  - `IsFontFileExtension` / `FontFormatForExtension` / `FontFormatName` —
+    recognition by extension, before a file is opened.
+  - `ReadFontFileInfo` — `FontFileInfo` (container format, file size, face
+    count) with one `FontFaceInfo` per face: the decoded name records
+    (family, subfamily, full/PostScript name, version, copyright, trademark,
+    manufacturer, designer, license, license URL, sample text) plus glyph
+    count, units per em, scalable / fixed-width / kerning / bold / italic and
+    the strike sizes of a bitmap face. Never throws on a malformed file.
+  - `RenderFontSpecimenPixmap` (+ `FontSpecimenOptions`) — a ready-to-draw
+    `UCPixmap` card carrying a line of the font's own glyphs, fitted to the
+    box; a symbol face with no Latin glyphs falls back to its own first
+    glyphs. No shaping: glyph lookup plus kerning, which is what is possible
+    without a registered font and a Pango context.
+
+  Registration for actual text rendering is the application's, not this
+  module's: `UltraCanvasApplicationBase::RegisterFontFile` /
+  `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
+  process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
+  FontConfig on Windows, CoreText process scope on macOS), followed by
+  `RefreshFontConfiguration()` so the new family resolves in the next layout.
+  Process-private and permanent: there is no unregister.
+  See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.

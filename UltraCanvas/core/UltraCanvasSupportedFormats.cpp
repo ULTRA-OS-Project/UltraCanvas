@@ -17,6 +17,10 @@
 //                  (Opus encode/decode), LAME (MP3 encode). AAC stays absent.
 //   Video        — the platform backend's demuxer/muxer matrix (GStreamer /
 //                  Media Foundation / AVFoundation).
+//   Font         — FreeType, a hard dependency, so the list is fixed. "Load"
+//                  means UltraCanvasFontFile can read the name records and
+//                  rasterize a specimen, not that the image pipeline decodes
+//                  it (CanImagePipelineLoad stays false for every font).
 // Version: 1.0.0
 // Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
@@ -316,6 +320,33 @@ namespace {
 #endif
     }
 
+    // ---- Fonts: FreeType is a hard dependency of the framework, so every
+    // build reads these. "Load" here means what UltraCanvasFontFile does -
+    // read the name records and rasterize a specimen - not that the format
+    // goes through the image pipeline; CanImagePipelineLoad still says no
+    // for all of them. WOFF and WOFF2 depend on the zlib/Brotli support the
+    // installed FreeType was built with, which is why they carry a note. ----
+    void AddFontFormats(std::vector<MediaFormatInfo>& out) {
+        out.push_back({ "ttf", { "ttc" }, "TrueType font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "" });
+        out.push_back({ "otf", { "otc" }, "OpenType font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "" });
+        out.push_back({ "pfb", { "pfa" }, "PostScript Type 1 font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "" });
+        out.push_back({ "woff", {}, "Web Open Font Format",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "needs a FreeType built with zlib" });
+        out.push_back({ "woff2", {}, "Web Open Font Format 2",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "needs a FreeType built with Brotli" });
+        out.push_back({ "bdf", { "pcf", "fnt", "fon" }, "Bitmap font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "fixed strikes only - no outlines" });
+    }
+
     // ---- Video: per-platform backend demuxer/muxer matrix ----
     void AddVideoFormats(std::vector<MediaFormatInfo>& out) {
 #ifdef ULTRACANVAS_ENABLE_VIDEO
@@ -474,6 +505,7 @@ namespace {
         AddSpreadsheetFormats(out);
         AddAudioFormats(out);
         AddVideoFormats(out);
+        AddFontFormats(out);
         AddRegisteredGraphicsPlugins(out);
         return out;
     }
@@ -551,6 +583,7 @@ namespace {
             case MediaFormatCategory::Spreadsheet: return "Spreadsheets";
             case MediaFormatCategory::Audio:       return "Audio";
             case MediaFormatCategory::Video:       return "Video";
+            case MediaFormatCategory::Font:        return "Fonts";
         }
         return "Unknown";
     }

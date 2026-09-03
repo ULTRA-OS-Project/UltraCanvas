@@ -1,3 +1,74 @@
+#### 2026-09-03 *0.3.95*
+- **Font definition files can be previewed and read.** Fonts were the one
+  document class the framework consumed but could never show: they went into
+  the text pipeline by family name and never came back out as something a file
+  manager could display, so a `.ttf` was a nameless blob with a generic glyph
+  on it. `UltraCanvasFontFile` (`include/UltraCanvasFontFile.h`,
+  `core/UltraCanvasFontFile.cpp`) reads one as a document instead.
+  `ReadFontFileInfo()` returns the container format, the face count and, per
+  face, the decoded name records (family, subfamily, full and PostScript name,
+  version, copyright, trademark, manufacturer, designer, license and its URL,
+  the font's own sample text) alongside glyph count, units per em and the
+  scalable / fixed-width / kerning / bold / italic flags.
+  `RenderFontSpecimenPixmap()` rasterizes a card carrying a line of the font's
+  own glyphs, fitted to the box it is given. Both go straight at the file with
+  FreeType — no fontconfig, no Pango, no render context, and above all no
+  requirement that the font be installed, which is the whole point: a folder of
+  fonts someone just downloaded has to preview before any of them is. Each call
+  owns its `FT_Library`, so the surface is safe to run concurrently on
+  background threads. The name table stores every string once per platform,
+  encoding and language it was built for; the records are scored and the best
+  one per name id kept, preferring Windows Unicode US-English, and the
+  typographic names (ids 16/17) win over the legacy ones so a split-weight
+  family reads as "Ubuntu" / "Light" rather than "Ubuntu Light" / "Regular".
+  There is no shaping — glyph lookup plus kerning — which is enough for a Latin
+  specimen and is all that is possible without a registered font and a Pango
+  context; a symbol or icon face with no glyph for the sample characters falls
+  back to drawing its own first glyphs rather than an empty card. The default
+  sample follows the shape of the box — "AaBbCc" where it is at least twice as
+  wide as it is tall, "Ag" otherwise — because a six-glyph line in a square
+  tile is fitted by its width and comes out too small to read the letterforms
+  off, which is the whole point of a specimen.
+- **The filer thumbnails fonts.** `ttf`, `ttc`, `otf`, `otc`, `woff`, `woff2`,
+  `pfa`, `pfb`, `bdf`, `pcf`, `fon` and `fnt` are now a file category of their
+  own (`FilerFileCategory::Font`, with its own type names and colour) and a
+  preview kind of their own (`FilerPreviewType::Fonts`), rendered on the same
+  background workers as photos and video poster frames and carried by the
+  Display ▸ Thumbnails and Display ▸ Detail view switch sets released just
+  before it — per kind and per format, on by default like the rest. Fonts is
+  the mirror image of the Audio kind those switches introduced: Audio has a
+  detail view and no thumbnail producer, Fonts has a thumbnail producer and,
+  so far, no viewer. Like PDF
+  pages and 3D models the specimen is only drawn from about a 40 px box up, so
+  the icon column of a Details row keeps the type glyph instead of showing a
+  smear of ink. `MediaFormatCategory::Font` puts the same formats in the
+  framework-wide inventory, so a file dialog can build a font filter from
+  `GetLoadExtensions(MediaFormatCategory::Font)`; they are listed as loadable
+  there and stay excluded from `CanImagePipelineLoad()`, so a font is never
+  handed to a raster decoder by mistake.
+- **A font file can be made usable for text rendering without installing it.**
+  `UltraCanvasApplicationBase::RegisterFontFile()` adds a file's faces to this
+  process by name — FontConfig on Linux, Android and WASM, GDI
+  `AddFontResourceExW(FR_PRIVATE)` plus FontConfig on Windows (Pango is pinned
+  to its FontConfig backend there), CoreText process scope on macOS — with
+  `IsFontFileRegistered()` and `GetRegisteredFontFiles()` alongside it. Until
+  now the only font registration the framework had was the hardcoded bundled
+  list in `LoadBundledFontsNative()`, so an application that shipped a font of
+  its own, or opened a document that embedded one, had nothing to call. Pair it
+  with `ReadFontFileInfo()` to learn the family name to ask for. Registration is
+  process-private, and permanent for the life of the process: neither
+  FontConfig nor the framework can withdraw one file's faces from a running text
+  stack without discarding every application font, so there is deliberately no
+  unregister. A successful registration is followed by the new
+  `RefreshFontConfiguration()`, which rebuilds the FontConfig FontSet and
+  signals Pango's default font map with `pango_fc_font_map_config_changed()` so
+  the family resolves in the very next layout rather than only in windows
+  created afterwards — the reason the build now links `pangoft2` (a module of
+  Pango itself, so no new dependency; where it is absent, and on macOS, the
+  default font map is dropped instead and surfaces created later pick the font
+  up). Covered by `Tests/FontFileTest.cpp`, which runs against the framework's
+  own bundled Ubuntu faces and so needs no installed font.
+
 #### 2026-09-03 *0.3.94*
 - **The filer decides per file format what gets a thumbnail — and, now, what
   gets a detail view.** `Display > Preview` gated thumbnails only, in eight

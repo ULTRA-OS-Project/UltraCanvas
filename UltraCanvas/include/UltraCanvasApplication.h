@@ -62,6 +62,16 @@ namespace UltraCanvas {
     // first thing by UltraCanvasApplicationBase::Initialize().
     void SetupBundledFontconfig();
 
+    // Tells the text stack that the set of available fonts just changed.
+    // A font file added after start-up is invisible to Pango until this is
+    // called: on the fontconfig platforms the FontSet has to be rebuilt and
+    // the default font map told its configuration moved, and on macOS the
+    // CoreText-backed map enumerates the installed families once when it is
+    // created, so the default is dropped and rebuilt on next use. Called for
+    // you by UltraCanvasApplicationBase::RegisterFontFile(); call it directly
+    // only after registering a font behind the framework's back.
+    void RefreshFontConfiguration();
+
     // Watches a file descriptor from within the UltraCanvas event loop. Added so a
     // host integration (e.g. Ladybird's IPC to its WebContent process) can have its
     // sockets serviced by the same wait the toolkit already runs, instead of needing
@@ -164,6 +174,11 @@ namespace UltraCanvas {
         // Cached system font styles
         std::optional<FontStyle> cachedSystemFontStyle_;
         std::optional<FontStyle> cachedMonospacedFontStyle_;
+
+        // Font files handed to RegisterFontFile(), by resolved path, so a
+        // second call for the same file does not register it twice.
+        mutable std::mutex registeredFontsMutex_;
+        std::vector<std::string> registeredFontFiles_;
 
         // Keyboard state
         bool keyStates[256];
@@ -295,6 +310,37 @@ namespace UltraCanvas {
         FontStyle GetSystemFontStyle();
         FontStyle GetDefaultMonospacedFontStyle();
 
+        // ===== RUNTIME FONT REGISTRATION =====
+        // Makes the faces in a font file usable by name for the rest of this
+        // process - after this returns true, a FontStyle naming one of the
+        // file's families renders with it. The registration is private to the
+        // process: nothing is installed for the user or for other
+        // applications, and it lasts until the process exits.
+        //
+        // Use it for fonts an application ships or downloads rather than
+        // requires to be installed - a document that embeds its fonts, a
+        // theme that comes with one, a font manager previewing a candidate
+        // before it is installed. Read the family names to ask for out of the
+        // file itself with ReadFontFileInfo() (UltraCanvasFontFile.h), which
+        // needs no registration and answers before this is called.
+        //
+        // Registering the same file twice is a no-op that returns true.
+        // There is no unregister: neither fontconfig nor the framework can
+        // withdraw one file's faces from a running text stack without
+        // discarding every application font, so a registration is for the
+        // life of the process. Call from the UI thread - it changes global
+        // font state that layout reads.
+        //
+        // Returns false when the file does not exist or the platform's font
+        // system rejects it (a corrupt file, or a format it does not accept).
+        bool RegisterFontFile(const std::string& fontFilePath);
+
+        // True when this path was registered by RegisterFontFile() already.
+        bool IsFontFileRegistered(const std::string& fontFilePath) const;
+
+        // Every font file registered so far, in registration order.
+        std::vector<std::string> GetRegisteredFontFiles() const;
+
         // Application icon
         void SetDefaultWindowIcon(const std::string& iconPath) { defaultWindowIconPath = iconPath; }
         std::string GetDefaultWindowIcon() const { return defaultWindowIconPath; }
@@ -359,6 +405,13 @@ namespace UltraCanvas {
         // per-platform via FontConfig + GDI (Windows) / FontConfig (Linux) /
         // CoreText (macOS, monospace only).
         virtual void LoadBundledFontsNative() = 0;
+
+        // Hand one font file to the platform's font system, process-privately
+        // (FontConfig on Linux/Android/WASM, GDI + FontConfig on Windows,
+        // CoreText on macOS). Called by RegisterFontFile(), which does the
+        // existence check, the duplicate check and the cache refresh around
+        // it. Returns false when the platform rejects the file.
+        virtual bool RegisterFontFileNative(const std::string& fontFilePath) = 0;
 
         // Platform-specific wakeup mechanism for cross-thread signaling
         virtual void WakeUpEventLoop() = 0;

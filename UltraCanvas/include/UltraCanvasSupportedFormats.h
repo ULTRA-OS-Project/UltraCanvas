@@ -25,6 +25,7 @@ namespace UltraCanvas {
         Spreadsheet,   // ods, xlsx, csv, tsv
         Audio,
         Video,
+        Font,          // font definition files (ttf, otf, woff, ...)
     };
 
     struct MediaFormatInfo {
