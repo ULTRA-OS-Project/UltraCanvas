@@ -1,6 +1,6 @@
 #### 2026-09-03 *1.18.0*
 - **Settings > Display > Thumbnails and Settings > Display > Detail view: two
-  lists of files.** Each page shows the eight file kinds as one checkbox each
+  lists of files.** Each page shows the nine file kinds as one checkbox each
   and, under every kind, the individual formats belonging to it — so a single
   format (an EPS on a slow share, a PSD that takes a second to decode) can be
   excluded without losing the thumbnails of everything else in its kind. A
@@ -10,10 +10,18 @@
   The file display's own `Display > Thumbnails` and `Display > Detail view`
   submenus keep the quick per-kind switches and end with *File formats…*,
   which opens the matching page. It is all one setting: a switch flipped in
-  either place is saved to `config.ini` (`display.thumbnails.kinds`,
-  `display.thumbnails.formats.off`, `display.detailview.kinds`,
+  either place is saved to `config.ini` (`display.thumbnails.kinds.off`,
+  `display.thumbnails.formats.off`, `display.detailview.kinds.off`,
   `display.detailview.formats.off`) and applied to every file display of the
   window — each tab, the folder preview, and the History and Favorites lists.
+- **The lists hold every format this build can open.** They are built from the
+  FileLoader's own inventory (plus the file display's format table), so what
+  the application can open and what the lists can switch cannot drift apart —
+  audio files, which had fallen through entirely, are in both lists now, and
+  the *Audio* group of *Detail view* is what turns the player pane on and off.
+  Both settings are persisted as what is switched **off**, so a format or a
+  kind a later version adds arrives switched on rather than missing from an
+  existing `config.ini`.
 - **The detail pane follows those switches.** It used to open for whatever the
   media viewer could show, which is why switching a kind off left the pane
   showing the very files whose thumbnails had just been switched off. A

@@ -96,6 +96,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <set>
 #include <sys/stat.h>
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
@@ -555,6 +556,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Vector:      return FilerPreviewType::VectorGraphics;
                 case FilerFileCategory::Model3D:     return FilerPreviewType::Models3D;
                 case FilerFileCategory::Video:       return FilerPreviewType::Videos;
+                case FilerFileCategory::Audio:       return FilerPreviewType::Audio;
                 case FilerFileCategory::Document:    return FilerPreviewType::Docs;
                 case FilerFileCategory::Text:        return FilerPreviewType::Text;
                 case FilerFileCategory::Spreadsheet: return FilerPreviewType::Spreadsheets;
@@ -601,6 +603,23 @@ namespace UltraCanvas {
             return ext;
         }
 
+        // Whether a text-shaped preview (Text / Docs / Spreadsheets) can be
+        // read out of this format at all. Everything in those kinds is either
+        // plain text already or has a reader in ExtractTextPreview below —
+        // except these, which are ZIP or record containers nothing here
+        // unpacks: reading their head yields a few bytes of container magic,
+        // which is neither a page of text nor an honest "no preview". Naming
+        // them in one place keeps the format lists' "this build cannot render
+        // it" and the extractor's answer the same fact.
+        bool TextPreviewReadable(const std::string& ext) {
+            static const std::set<std::string> containersWithoutReader = {
+                "xls",      // OLE2 workbook (the reader covers xlsx / ods)
+                "epub", "fb2.zip",   // ZIP e-book containers
+                "mobi", "prc", "azw", "azw3",   // Mobipocket record files
+            };
+            return containersWithoutReader.find(ext) == containersWithoutReader.end();
+        }
+
         // Whether THIS build can produce a thumbnail for the format at all —
         // the same question ThumbSourceFor answers per entry, asked of a bare
         // extension so a settings list can grey out what no switch can turn
@@ -622,11 +641,18 @@ namespace UltraCanvas {
 #else
                     return false;
 #endif
-                // Text-shaped kinds are read, not decoded: always available.
+                // Text-shaped kinds are read, not decoded - but only where
+                // there is something readable to find.
                 case FilerPreviewType::Text:
                 case FilerPreviewType::Docs:
                 case FilerPreviewType::Spreadsheets:
-                    return true;
+                    return TextPreviewReadable(ext);
+                // Audio files have no picture in them that anything here
+                // reads (cover art is not extracted yet), so no switch can
+                // give them a thumbnail. They are listed all the same: the
+                // detail view does play them, and a row that says so is what
+                // explains the missing tile.
+                case FilerPreviewType::Audio:
                 default:
                     return false;
             }
@@ -1202,8 +1228,11 @@ namespace UltraCanvas {
             }
             // Everything else in the Text / Docs kinds is plain text already
             // (txt, log, json, xml, yaml, markdown, LaTeX, source code, ...).
-            // Binary formats we have no reader for (xls, epub) come back empty
-            // from ReadFileHead and fall back to the glyph.
+            // The container formats no reader here unpacks are refused rather
+            // than read as text: their head is a few bytes of ZIP or record
+            // magic before the first NUL, which would draw a "page" holding
+            // "PK" instead of leaving the honest type glyph.
+            if (!TextPreviewReadable(ext)) return false;
             const std::string head = ReadFileHead(path, kPreviewReadBytes);
             if (head.empty()) return false;
             SplitPreviewLines(head, lines);
@@ -2861,6 +2890,7 @@ namespace UltraCanvas {
             case FilerPreviewType::Docs:           return "Docs";
             case FilerPreviewType::Spreadsheets:   return "Spreadsheets";
             case FilerPreviewType::Videos:         return "Videos";
+            case FilerPreviewType::Audio:          return "Audio";
             default:                               return "";
         }
     }
@@ -2872,6 +2902,7 @@ namespace UltraCanvas {
             FilerPreviewType::Models3D,     FilerPreviewType::PDF,
             FilerPreviewType::Text,         FilerPreviewType::Docs,
             FilerPreviewType::Spreadsheets, FilerPreviewType::Videos,
+            FilerPreviewType::Audio,
         };
         return types;
     }
@@ -9701,7 +9732,7 @@ namespace UltraCanvas {
 
             // Thumbnails > which file kinds show their content instead of
             // the plain type glyph, and Detail view > which kinds the host
-            // may open its detail pane for. The same eight kinds in both, all
+            // may open its detail pane for. The same nine kinds in both, all
             // on by default; the per-format lists behind them are the
             // application's (UltraFiler: Settings > Display > Thumbnails /
             // Detail view), because a hundred formats do not belong in a menu.

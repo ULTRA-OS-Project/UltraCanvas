@@ -4,7 +4,7 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.5.0
+// Version: 1.6.0
 // Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #pragma once
@@ -84,7 +84,9 @@ public:
     // beside it opens for, as FilerPreviewType bitmasks; plus the per-format
     // exceptions of each - the extensions ticked off in the two lists of
     // files. Everything is on by default, so a fresh installation previews
-    // whatever the build can.
+    // whatever the build can, and both are persisted as what is switched OFF
+    // (see FormatDisabledKinds) so a kind or a format the framework learns
+    // about later starts on rather than absent.
     uint32_t thumbnailKinds  = kFilerAllPreviewTypes;
     uint32_t detailViewKinds = kFilerAllPreviewTypes;
     std::vector<std::string> disabledThumbnailFormats;
@@ -157,12 +159,12 @@ public:
         if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
         it = kv.find("display.home.content");
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
-        it = kv.find("display.thumbnails.kinds");
-        if (it != kv.end()) thumbnailKinds = ParseKindMask(it->second);
+        it = kv.find("display.thumbnails.kinds.off");
+        if (it != kv.end()) thumbnailKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.thumbnails.formats.off");
         if (it != kv.end()) disabledThumbnailFormats = ParseList(it->second);
-        it = kv.find("display.detailview.kinds");
-        if (it != kv.end()) detailViewKinds = ParseKindMask(it->second);
+        it = kv.find("display.detailview.kinds.off");
+        if (it != kv.end()) detailViewKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.detailview.formats.off");
         if (it != kv.end()) disabledDetailViewFormats = ParseList(it->second);
         it = kv.find("handling.dragdrop.drop.on.folder");
@@ -196,12 +198,12 @@ public:
              << FormatColor(treeSelectedFolderColor) << "\n";
         file << "display.home.content = "
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
-        file << "display.thumbnails.kinds = " << FormatKindMask(thumbnailKinds)
-             << "\n";
+        file << "display.thumbnails.kinds.off = "
+             << FormatDisabledKinds(thumbnailKinds) << "\n";
         file << "display.thumbnails.formats.off = "
              << FormatList(disabledThumbnailFormats) << "\n";
-        file << "display.detailview.kinds = " << FormatKindMask(detailViewKinds)
-             << "\n";
+        file << "display.detailview.kinds.off = "
+             << FormatDisabledKinds(detailViewKinds) << "\n";
         file << "display.detailview.formats.off = "
              << FormatList(disabledDetailViewFormats) << "\n";
         file << "handling.dragdrop.drop.on.folder = "
@@ -226,27 +228,33 @@ public:
             {"docs",         FilerPreviewType::Docs},
             {"spreadsheets", FilerPreviewType::Spreadsheets},
             {"videos",       FilerPreviewType::Videos},
+            {"audio",        FilerPreviewType::Audio},
         };
         return names;
     }
 
-    static std::string FormatKindMask(uint32_t mask) {
+    // Stored as the kinds that are switched OFF, not the ones that are on:
+    // a kind the framework adds later is then enabled by default instead of
+    // silently missing from an existing config file - the same reason the
+    // per-format lists hold exceptions rather than an allow-list. An empty
+    // value means everything is on.
+    static std::string FormatDisabledKinds(uint32_t mask) {
         std::string out;
         for (const KindName& k : KindNames()) {
-            if ((mask & static_cast<uint32_t>(k.kind)) == 0) continue;
+            if ((mask & static_cast<uint32_t>(k.kind)) != 0) continue;
             if (!out.empty()) out += ',';
             out += k.name;
         }
-        return out.empty() ? std::string("none") : out;
+        return out;
     }
 
-    static uint32_t ParseKindMask(const std::string& text) {
-        uint32_t mask = 0;
+    static uint32_t ParseEnabledKinds(const std::string& text) {
+        uint32_t off = 0;
         for (const std::string& token : ParseList(text)) {
             for (const KindName& k : KindNames())
-                if (token == k.name) mask |= static_cast<uint32_t>(k.kind);
+                if (token == k.name) off |= static_cast<uint32_t>(k.kind);
         }
-        return mask;
+        return kFilerAllPreviewTypes & ~off;
     }
 
     // "a, b,c" -> {"a","b","c"}, trimmed and lowercased; empty entries and

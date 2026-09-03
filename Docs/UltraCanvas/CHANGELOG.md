@@ -1,7 +1,7 @@
 #### 2026-09-03 *0.3.94*
 - **The filer decides per file format what gets a thumbnail — and, now, what
   gets a detail view.** `Display > Preview` gated thumbnails only, in eight
-  coarse kinds, and nothing gated the detail pane a host opens beside the
+  coarse kinds (nine now — see the next entry), and nothing gated the detail pane a host opens beside the
   display: that pane asked `UltraCanvasMediaViewer::IsSupportedMedia()` alone,
   so a CorelDRAW or Xara file that had a thumbnail still had no preview, and an
   EPS had neither. The submenu is now `Display > Thumbnails`, `Display > Detail
@@ -22,6 +22,24 @@
   `formatListMenuProvider` lets the host hang its own entry into those lists at
   the end of both submenus, and `onDisplayFormatsChanged` fires whenever any of
   the four sets changes, whoever changed it.
+- **Every format the FileLoader knows is in those lists.** The kinds skipped
+  audio entirely — `FilerFileCategory::Audio` mapped to no preview kind — so
+  the mp3s a build can play appeared in neither list and their detail pane
+  could not be switched off. `FilerPreviewType::Audio` closes that: the nine
+  kinds now cover all seven `MediaFormatCategory` values, so every format the
+  FileLoader inventory reports is filed under exactly one of them.
+  `FilerFormatListTest` asserts precisely that — present, and under the kind
+  its media category belongs to — for every extension and alias the inventory
+  reports. Audio has no thumbnail producer (nothing here reads cover art), so
+  its rows report themselves unsupported; its switches govern the detail view,
+  where a host's viewer does play the file.
+- **The "can this build render it" answer stopped over-promising.** Text,
+  Docs and Spreadsheets claimed a preview for every format in them, including
+  the ZIP and record containers no reader here unpacks (xls, epub, mobi, prc,
+  azw, azw3, fb2.zip). Worse than the wrong claim: the extractor did read
+  them, and since a head-of-file read stops at the first NUL, an epub drew a
+  miniature page holding `PK` instead of keeping its type glyph. Both now go
+  through one answer, `TextPreviewReadable()`.
 - **EPS, PostScript and old Illustrator files thumbnail from the preview they
   carry.** Nothing here rasterizes PostScript — that needs an interpreter, and
   a libvips build with the delegate is the exception, not the rule — so an

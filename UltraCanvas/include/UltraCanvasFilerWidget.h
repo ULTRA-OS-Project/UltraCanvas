@@ -59,11 +59,13 @@
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
 // Which file kinds show a real content preview instead of their type glyph is
 // selectable per kind (Display > Thumbnails: Bitmaps, Vector graphics, 3D,
-// PDF, Text, Docs, Spreadsheets, Videos — all on by default), so a folder full
-// of expensive files can be browsed with only the cheap previews switched on.
-// Display > Detail view carries the same eight switches for the detail pane a
-// host opens beside the display, and both sets take per-format exceptions, so
-// one format can be excluded while its kind stays on.
+// PDF, Text, Docs, Spreadsheets, Videos, Audio — all on by default), so a
+// folder full of expensive files can be browsed with only the cheap previews
+// switched on. Display > Detail view carries the same nine switches for the
+// detail pane a host opens beside the display, and both sets take per-format
+// exceptions, so one format can be excluded while its kind stays on. The nine
+// kinds cover every media category the FileLoader inventory reports, which is
+// what lets GetPreviewableFormats() list every format this build can open.
 // The context menu's "Open with >" lists the applications the OS registers
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
 // background), the host's own entries, and an "Other application…" picker;
@@ -217,7 +219,13 @@ namespace UltraCanvas {
     // The kinds are grouped by what the preview costs to produce, not by
     // FilerFileCategory: PDF is split out of Documents because it renders a
     // page, and CSV / TSV count as Spreadsheets because they preview as a
-    // cell grid (their file category stays Text).
+    // cell grid (their file category stays Text). Together they cover every
+    // MediaFormatCategory the FileLoader inventory reports, so every format
+    // this build can open belongs to exactly one of them — which is what lets
+    // the per-format lists be complete. Audio is the one kind with no
+    // thumbnail producer at all (nothing here reads cover art yet); its
+    // switches govern the detail view, where a host's viewer does play the
+    // file, and its Thumbnails rows report themselves as unsupported.
     enum class FilerPreviewType : uint32_t {
         NonePreview    = 0,
         Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
@@ -227,10 +235,11 @@ namespace UltraCanvas {
         Text           = 1u << 4,   // txt / log / json / xml / source code / ...
         Docs           = 1u << 5,   // odt / doc / docx / rtf / md / html / tex
         Spreadsheets   = 1u << 6,   // ods / xls / xlsx / csv / tsv
-        Videos         = 1u << 7    // poster frame of the clip
+        Videos         = 1u << 7,   // poster frame of the clip
+        Audio          = 1u << 8    // mp3 / flac / wav / ... (detail view only)
     };
     // Every previewable kind — the default of both switch sets.
-    constexpr uint32_t kFilerAllPreviewTypes = 0xFFu;
+    constexpr uint32_t kFilerAllPreviewTypes = 0x1FFu;
 
     // ===== ONE FORMAT OF THE "LIST OF FILES" =====
     // What GetPreviewableFormats() reports: every file format the two switch

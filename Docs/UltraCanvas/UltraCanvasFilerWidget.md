@@ -362,7 +362,7 @@ filer->SetThumbnailKinds(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
 
 filer->SetThumbnailKinds(kFilerAllPreviewTypes);            // back to the default
 
-// The same eight switches for the host's detail pane:
+// The same nine switches for the host's detail pane:
 filer->SetDetailViewKind(FilerPreviewType::Videos, false);
 if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 ```
@@ -374,9 +374,10 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
+| `Audio` | Audio | mp3, flac, wav, ogg, m4a, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
 
 Notes:
 
@@ -432,7 +433,15 @@ default like every other one.
 `GetPreviewableFormats()` is what such a list of files is built from: every
 format the switches can address, in menu order (by kind, then by extension),
 each with the readable label and whether **this build** can produce a thumbnail
-for it at all:
+for it at all.
+
+The list is complete with respect to the FileLoader: every format
+`UltraCanvasFileLoader::GetSupportedFormats()` reports for this build — its
+canonical extension and every alias — appears in it, filed under the preview
+kind of its media category. That is what the nine kinds are for: they cover
+all seven `MediaFormatCategory` values (Documents split three ways), so a
+format the application can open always has a switch. `FilerFormatListTest`
+holds the widget to it.
 
 ```cpp
 for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats()) {
@@ -442,6 +451,14 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
     // offering a switch that changes nothing.
 }
 ```
+
+`thumbnailSupported` answers for the format in **this** build, and it answers
+honestly: false for audio (nothing reads cover art), for the vector formats
+with no renderer and no embedded preview (emf, wmf, dxf, dwg), for PDF without
+the plugin, for video without a backend, and for the container formats no
+reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
+ones are refused by the text-preview extractor too, so the tile keeps its type
+glyph instead of drawing a "page" holding the file's ZIP magic.
 
 `onDisplayFormatsChanged` fires after any of the four sets changes, whoever
 changed it (the Display menu included) — that is where an application saves

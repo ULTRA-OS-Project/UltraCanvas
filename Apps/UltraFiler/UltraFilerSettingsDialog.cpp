@@ -490,8 +490,10 @@ namespace {
 
     // ===== DISPLAY > THUMBNAILS / DISPLAY > DETAIL VIEW =====
     // The two "list of files" pages. Both show the same thing for a different
-    // display feature: the eight file kinds as one checkbox each, and under
-    // every kind the individual formats belonging to it. A format the build
+    // display feature: the nine file kinds as one checkbox each, and under
+    // every kind the individual formats belonging to it - between them they
+    // hold every format the FileLoader inventory reports for this build. A
+    // format the build
     // cannot show at all (no PostScript loader, no PDF plugin, no video
     // backend, a format the media viewer has no view for) is listed too, but
     // greyed: seeing that eps is unsupported here is what explains the missing
