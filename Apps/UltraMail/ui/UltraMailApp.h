@@ -53,9 +53,11 @@ private:
     void ShowAttachments(const ParsedMessage& message);
     // Materialise an attachment to the cache and open it in a MediaViewer window.
     void OpenAttachment(const Attachment& attachment);
-    // Save an attachment (Phase 2: writes to the cache dir; a Save-As dialog
-    // follows once the file-dialog wiring lands).
+    // Save an attachment to a location the user picks, through the framework's
+    // file dialog (UltraCanvasFileLoader::SaveFileDialog).
     void SaveAttachment(const Attachment& attachment);
+    // Where the Save-As dialog starts: Downloads, else home, else ".".
+    static std::string DefaultSaveDirectory();
     // Demo path (ULTRAMAIL_DEMO=1): build a message with an attachment so the
     // strip and viewer can be exercised without a live sync.
     void ShowDemoAttachments();

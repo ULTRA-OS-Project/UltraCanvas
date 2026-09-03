@@ -3,7 +3,7 @@
 // list (for the selected folder) | preview (headers + body + attachments). The
 // list is driven by LocalStore; the preview decodes the cached .eml body via
 // the MIME codec and shows attachments through the AttachmentStrip.
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -52,6 +52,9 @@ public:
 
     // Delegated to the app (writes to cache + opens in UltraCanvasMediaViewer).
     std::function<void(const Attachment&)> onOpenAttachment;
+    // Raised by the attachment strip's "Save As…" entry. Without it that menu
+    // item does nothing at all.
+    std::function<void(const Attachment&)> onSaveAttachment;
 
     // Delegated to the app: build a reply for the selected message.
     std::function<void(const SourceMessage&, const std::string& selfName,

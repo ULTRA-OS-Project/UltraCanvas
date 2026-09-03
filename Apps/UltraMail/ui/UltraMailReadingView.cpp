@@ -1,5 +1,5 @@
 // Apps/UltraMail/ui/UltraMailReadingView.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailReadingView.h"
 
@@ -7,10 +7,10 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasFileLoader.h"
 
 #include <ctime>
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -137,6 +137,7 @@ std::shared_ptr<UltraCanvasContainer> ReadingView::Build() {
     attWrap->AddChild(attachmentStrip_.Build());
     previewPane_->AddChild(attWrap);
     attachmentStrip_.onOpen = [this](const Attachment& a) { if (onOpenAttachment) onOpenAttachment(a); };
+    attachmentStrip_.onSaveAs = [this](const Attachment& a) { if (onSaveAttachment) onSaveAttachment(a); };
 
     root_->AddChild(previewPane_);
 
@@ -246,24 +247,33 @@ void ReadingView::SelectMessage(const MessageEnvelope& env) {
     if (hdrSubject_) hdrSubject_->SetText(env.subject.empty() ? "(no subject)" : env.subject);
     if (hdrDate_)    hdrDate_->SetText(FormatShortDate(env.date));
 
-    // Load the cached body (.eml) and decode it.
+    // Load the cached body (.eml) through the framework's file loader and decode
+    // it. A cached body is never compressed, but LoadFile is the framework's
+    // byte-level read and — unlike a bare ifstream — it reports why a read
+    // failed, so an unreadable file says so instead of looking undownloaded.
     fs::path path = fs::path(mailDir_) / env.accountId / SanitizeFolder(env.folder)
                   / (std::to_string(env.uid) + ".eml");
     std::error_code ec;
-    if (fs::exists(path, ec)) {
-        std::ifstream is(path, std::ios::binary);
-        std::string raw((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+    if (!fs::exists(path, ec)) {
+        RenderBody("(message body not downloaded yet)", false);
+        attachmentStrip_.SetAttachments({});
+        current_.body.clear();
+        current_.attachments.clear();
+    } else if (auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path.string());
+               !loaded.success) {
+        RenderBody("(this message's body could not be read)\n\n"
+                   + (loaded.error.empty() ? path.string() : loaded.error), false);
+        attachmentStrip_.SetAttachments({});
+        current_.body.clear();
+        current_.attachments.clear();
+    } else {
+        const std::string raw(loaded.bytes.begin(), loaded.bytes.end());
         ParsedMessage pm = MimeCodec::Parse(raw);
         RenderBody(pm.body, pm.bodyIsHtml);
         attachmentStrip_.SetAttachments(pm.attachments);
         // Reply quoting works from text; reduce HTML to text for the captured copy.
         current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
         current_.attachments = pm.attachments;
-    } else {
-        RenderBody("(message body not downloaded)", false);
-        attachmentStrip_.SetAttachments({});
-        current_.body.clear();
-        current_.attachments.clear();
     }
 
     // Capture the selection for a possible Reply.

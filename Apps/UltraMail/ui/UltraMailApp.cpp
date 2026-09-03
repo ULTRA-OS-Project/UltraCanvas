@@ -17,6 +17,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 
 #include <UltraNet/UltraNetCore.h>
@@ -203,6 +204,7 @@ void UltraMailApp::OpenReadingView() {
     readingView_.SetMailDir(mailDir_);
     readingView_.SetAccounts(accounts_);
     readingView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
+    readingView_.onSaveAttachment = [this](const Attachment& a) { SaveAttachment(a); };
     readingView_.onReply = [this](const SourceMessage& src, const std::string& selfName,
                                   const std::string& selfAddr) {
         OpenComposer(Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false));
@@ -563,19 +565,54 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
 }
 
 void UltraMailApp::SaveAttachment(const Attachment& attachment) {
-    // Phase 2: persist into the cache directory. A native Save-As dialog
-    // (UltraCanvasFileLoader) replaces this once wired.
-    AttachmentCache cache(cacheDir_);
-    const std::string path = cache.Write(attachment);
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    const std::string suggested =
+        AttachmentCache::SanitizeFilename(attachment.filename, attachment.mediaType);
     const std::string name = attachment.filename.empty() ? std::string("The attachment")
                                                          : "\"" + attachment.filename + "\"";
-    if (path.empty())
-        AlertError(parent, name + " could not be saved.",
-                   "It could not be written to " + cacheDir_
-                   + ". Check that the folder exists and is writable.");
-    else
-        AlertSuccess(parent, name + " was saved.", path);
+
+    // Let the user choose where it goes, through the framework's file dialog.
+    UltraCanvas::FileDialogOptions opts;
+    opts.SetTitle("Save attachment as…")
+        .SetInitialDirectory(DefaultSaveDirectory())
+        .SetDefaultFileName(suggested)
+        .SetParentWindow(parent);
+    // Offer the attachment's own type first, then an unrestricted choice.
+    if (const std::string ext = std::filesystem::path(suggested).extension().string();
+        ext.size() > 1)
+        opts.AddFilter(attachment.mediaType.empty() ? ("*" + ext) : attachment.mediaType,
+                       ext.substr(1));
+    opts.AddFilter("All files", "*");
+
+    const std::string cacheDir = cacheDir_;
+    UltraCanvas::UltraCanvasFileLoader::SaveFileDialog(
+        opts,
+        [attachment, cacheDir, parent, name](UltraCanvas::DialogResult result,
+                                             const std::string& destPath) {
+            if (result != UltraCanvas::DialogResult::OK || destPath.empty())
+                return;   // the user cancelled — nothing to report
+            AttachmentCache cache(cacheDir);
+            if (cache.SaveAs(attachment, destPath)) {
+                UltraCanvas::UltraCanvasFileLoader::NotifyRecentFile(destPath);
+                AlertSuccess(parent, name + " was saved.", destPath);
+            } else {
+                AlertError(parent, name + " could not be saved.",
+                           "It could not be written to " + destPath
+                           + ". Check that the folder exists and is writable.");
+            }
+        });
+}
+
+std::string UltraMailApp::DefaultSaveDirectory() {
+    // The user's Downloads folder when it exists, else their home, else the
+    // working directory — the same order a browser's save dialog uses.
+    if (const char* home = std::getenv("HOME"); home && *home) {
+        std::error_code ec;
+        const std::filesystem::path downloads = std::filesystem::path(home) / "Downloads";
+        if (std::filesystem::is_directory(downloads, ec)) return downloads.string();
+        return home;
+    }
+    return ".";
 }
 
 void UltraMailApp::ShowDemoAttachments() {
@@ -607,6 +644,11 @@ void UltraMailApp::ShowDemoAttachments() {
     if (const char* open = std::getenv("ULTRAMAIL_DEMO_OPEN");
         open && *open == '1' && !parsed.attachments.empty())
         OpenAttachment(parsed.attachments.front());
+    // Demo path: exercise the Save-As dialog without driving the chip's
+    // context menu (the strip's "Save As…" entry calls the same method).
+    if (const char* save = std::getenv("ULTRAMAIL_DEMO_SAVE");
+        save && *save == '1' && !parsed.attachments.empty())
+        SaveAttachment(parsed.attachments.front());
 }
 
 void UltraMailApp::Refresh() {

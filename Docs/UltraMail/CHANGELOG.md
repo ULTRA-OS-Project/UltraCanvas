@@ -1,3 +1,28 @@
+#### 2026-09-03 *0.3.0*
+- **"Save As…" on an attachment now works.** The reading view's attachment strip
+  raised its `onSaveAs` callback into nothing — the menu entry was inert — and
+  `SaveAttachment()` ignored where the user wanted the file, writing blindly
+  into the attachment cache instead. The strip's callback is now wired, and
+  saving goes through `UltraCanvasFileLoader::SaveFileDialog`: the user picks
+  the destination, the file is written there via the `AttachmentCache::SaveAs()`
+  the engine already provided, the path is registered with the platform's
+  recent-documents list, and the result is reported. The dialog opens on
+  Downloads (falling back to home), pre-fills the sanitised attachment name, and
+  offers the attachment's own media type as a filter.
+- UltraMail now uses the framework's file loader at all: it previously called
+  `UltraCanvasFileLoader` nowhere, while every other application in the tree
+  uses it. `ULTRAMAIL_DEMO_SAVE=1` exercises the save dialog, matching the
+  existing `ULTRAMAIL_DEMO_OPEN` demo path.
+- Cached message bodies are read through `UltraCanvasFileLoader::LoadFile()`
+  rather than a bare `ifstream`. A body that exists but cannot be read now says
+  so and shows the reason, instead of being indistinguishable from one that was
+  never downloaded — the "not downloaded" text now reads "not downloaded yet".
+- Note on modules: plain local file and directory work continues to use
+  `std::filesystem`, matching every other application in the tree. VirtualFS is
+  the transparent-archive module (ZIP/7z/TAR as folders), not a filesystem
+  wrapper, so it is not the right tool for writing the mail store; the file
+  loader already routes through it for transparent decompression.
+
 #### 2026-09-03 *0.2.0*
 - **Failures are now reported instead of swallowed.** UltraMail used to fail
   silently almost everywhere: a rejected password, an untrusted certificate, an
