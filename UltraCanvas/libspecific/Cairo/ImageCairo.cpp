@@ -1127,20 +1127,22 @@ namespace UltraCanvas {
             return nullptr;   // keep iterating over all subclasses
         }
 
-        const std::vector<std::string>& LoaderSuffixes() {
-            // Collected once, but only after vips has been initialized —
-            // before that the base type does not exist yet and the (empty)
-            // result must not be cached.
+        std::mutex g_loaderSuffixMutex;
+
+        // Collected once, but only after vips has registered its loader
+        // classes. An empty result is never cached: before vips_init the base
+        // type does not exist at all, and a build whose loaders arrive as
+        // modules can have the type without any subclass yet - latching that
+        // would answer "no format loads" for the rest of the process, which
+        // silently costs every caller its image previews.
+        bool LoaderSuffixMatches(const std::string& wanted) {
             static std::vector<std::string> suffixes;
-            static bool collected = false;
-            if (!collected) {
+            std::lock_guard<std::mutex> lk(g_loaderSuffixMutex);
+            if (suffixes.empty()) {
                 GType base = g_type_from_name("VipsForeignLoad");
-                if (base) {
-                    vips_type_map_all(base, CollectLoaderSuffixes, &suffixes);
-                    collected = true;
-                }
+                if (base) vips_type_map_all(base, CollectLoaderSuffixes, &suffixes);
             }
-            return suffixes;
+            return std::find(suffixes.begin(), suffixes.end(), wanted) != suffixes.end();
         }
     }
 
@@ -1149,8 +1151,7 @@ namespace UltraCanvas {
         std::string wanted = extensionWithDot;
         std::transform(wanted.begin(), wanted.end(), wanted.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        const auto& suffixes = LoaderSuffixes();
-        return std::find(suffixes.begin(), suffixes.end(), wanted) != suffixes.end();
+        return LoaderSuffixMatches(wanted);
     }
 
     bool VipsHasMagickLoadFallback() {

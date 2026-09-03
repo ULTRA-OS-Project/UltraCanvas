@@ -1,3 +1,19 @@
+#### 2026-09-02 *1.17.1*
+- **UltraFiler called itself 0.8.0.** The window title, the `--version` output
+  and the Windows file properties all came from a literal in the build files
+  that was last edited when the app was at 0.8.0 — so every release since
+  reported a version thirteen entries out of date, and the number a bug report
+  quoted said nothing about which build it came from. The version now comes
+  from the first line of this changelog like every other application's
+  (`cmake/UltraCanvasVersion.cmake` already read it and already exported
+  `ULTRAFILER_VERSION`; nothing consumed it). `UltraFiler.rc` and
+  `UltraFiler.manifest` carry the matching number: those two are compiled from
+  disk by windres, so they stay literal — but `./set-version.sh` now writes
+  them and a CMake configure on any platform warns when they fall behind
+  (framework 0.3.92).
+- Thumbnails and vector graphics: see framework 0.3.92. The filer widget is
+  framework code, so the fixes are described there.
+
 #### 2026-09-01 *1.17.0*
 - **Drives connected while UltraFiler is running now appear in the tree.** The
   drive rows were enumerated exactly once, at start-up, and there was no path

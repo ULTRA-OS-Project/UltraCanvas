@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <mutex>
 #include <set>
 
 namespace UltraCanvas {
@@ -91,6 +92,17 @@ namespace {
             { "fits", {},                 "Flexible Image Transport System" },
         };
         return candidates;
+    }
+
+    // True for an extension (or alias) of the table above - "the UCImage load
+    // path implements this format", independently of any runtime probe.
+    bool IsKnownRasterCandidate(const std::string& ext) {
+        for (const BitmapCandidate& c : BitmapCandidates()) {
+            if (ext == c.ext) return true;
+            for (const std::string& alias : c.aliases)
+                if (ext == alias) return true;
+        }
+        return false;
     }
 
     // ---- Bitmap: probe the candidate formats against the installed libvips ----
@@ -447,6 +459,14 @@ namespace {
     }
 
     std::vector<MediaFormatInfo> UltraCanvasSupportedFormats::GetAll() {
+        // Assembling the inventory probes libvips, the media backends and the
+        // engine registries. Callers are no longer all on the UI thread - the
+        // filer classifies the entries of a folder it scans in the background
+        // from here - so the assembly is serialized: everything it reads is
+        // populated at start-up, but two threads walking those registries at
+        // once is not something they are built for.
+        static std::mutex inventoryMutex;
+        std::lock_guard<std::mutex> lk(inventoryMutex);
         std::vector<MediaFormatInfo> out;
         AddBitmapFormats(out);
         AddVectorFormats(out);
@@ -499,20 +519,24 @@ namespace {
         // SVG bypasses libvips: UCImage routes it to the built-in SVG renderer.
         if (ext == "svg" || ext == "svgz") return true;
 #ifdef HAS_LIBVIPS
+        // The candidate table is what the UCImage load path implements, and it
+        // is the answer whenever the libvips probes cannot contribute one.
+        // This must never collapse to "nothing loads": callers use it to decide
+        // whether to attempt a decode at all, so a probe that comes back empty
+        // would silently strip every image preview in the application while
+        // UCImage::Get goes on decoding the very same files. Two ways that
+        // happened: VIPS_INIT reports non-zero on an ABI mismatch between the
+        // headers and the installed libvips even though the library works, and
+        // the loader suffix list reads empty when the loader classes are not
+        // registered yet. Attempting a decode that then fails costs one read;
+        // not attempting it loses the picture with nothing to show why.
+        if (IsKnownRasterCandidate(ext)) return true;
         if (!EnsureImageSubsystem()) return false;
-        if (VipsCanLoad("." + ext)) return true;
-        // magickload advertises no suffixes (it content-sniffs), so it only
-        // counts for extensions known to be raster formats — never for
-        // arbitrary files (that is exactly the mis-dispatch this API guards
-        // against).
-        if (VipsHasMagickLoadFallback()) {
-            for (const BitmapCandidate& c : BitmapCandidates()) {
-                if (ext == c.ext) return true;
-                for (const std::string& alias : c.aliases)
-                    if (ext == alias) return true;
-            }
-        }
-        return false;
+        // Past the table, only a loader vips actually advertises counts:
+        // handing it an arbitrary extension is exactly the mis-dispatch this
+        // API guards against. (magickload advertises no suffixes at all - it
+        // content-sniffs - so it could only ever confirm the table above.)
+        return VipsCanLoad("." + ext);
 #else
         return ext == "png";   // cairo's native PNG reader
 #endif

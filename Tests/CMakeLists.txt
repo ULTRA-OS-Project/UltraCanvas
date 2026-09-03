@@ -1386,3 +1386,28 @@ endif()
 # add_test(NAME AnotherTest COMMAND AnotherTest)
 
 message(STATUS "")
+
+# ===== EMBEDDED PREVIEW TEST =====
+# The preview bitmap Xara and ZIP-based CorelDRAW documents carry inside
+# themselves - what the filer thumbnails them from - plus the image
+# pipeline's own "can this extension load" answer, whose collapse to "no"
+# is what silently strips every thumbnail in a folder.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building EmbeddedPreviewTest...")
+    add_executable(EmbeddedPreviewTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedPreviewTest.cpp
+    )
+    target_include_directories(EmbeddedPreviewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EmbeddedPreviewTest PRIVATE cxx_std_20)
+    target_compile_definitions(EmbeddedPreviewTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(EmbeddedPreviewTest PRIVATE UltraCanvas)
+    set_target_properties(EmbeddedPreviewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EmbeddedPreviewTest COMMAND EmbeddedPreviewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EmbeddedPreviewTest")
+else()
+    message(STATUS "  EmbeddedPreviewTest skipped (UltraCanvas target not present)")
+endif()

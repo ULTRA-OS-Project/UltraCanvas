@@ -801,9 +801,12 @@ if (BUILD_ULTRAFILER_APP)
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraFiler PRIVATE
-            # UltraFiler's own version, not the framework's — keep in sync
-            # with UltraFiler.rc and UltraFiler.manifest.
-            ULTRAFILER_VERSION="0.8.0"
+            # UltraFiler's own version, not the framework's: read from
+            # Docs/UltraFiler/CHANGELOG.md by cmake/UltraCanvasVersion.cmake,
+            # never written out again here. The literal that used to stand
+            # here was last touched at 0.8.0 and went on titling the window
+            # "UltraFiler 0.8.0" through every release since.
+            ULTRAFILER_VERSION="${ULTRAFILER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/UltraFiler.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )

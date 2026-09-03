@@ -208,10 +208,13 @@ anywhere else, and never introduce a new literal copy of one:
   files — that would put one change in two places under two numbers.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
-- Only `Apps/Texter/UltraTexter.rc` and `Apps/Texter/UltraTexter.manifest` still
-  hold literals, because windres reads them from disk. Run `./set-version.sh`
-  after bumping the UltraTexter version; a CMake configure on any platform
-  warns when they are stale.
+- Only the Windows resource files still hold literals, because windres reads
+  them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
+  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
+  bumping either app's version; a CMake configure on any platform warns when
+  they are stale. Nothing else may hold a literal — UltraFiler's compile
+  definition did, and titled its window `UltraFiler 0.8.0` for thirteen
+  releases while its changelog said 1.17.0.
 
 ## House rules for AI-generated changes
 
