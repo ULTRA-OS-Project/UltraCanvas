@@ -5,6 +5,7 @@
 // Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #include "UltraCanvasEmbeddedPreview.h"
+#include "UltraCanvasUtils.h"     // PathFromUtf8: paths are UTF-8 everywhere
 #include "UltraCanvasZipPackage.h"
 
 #include <algorithm>
@@ -55,7 +56,10 @@ namespace UltraCanvas {
         // preview bytes are lifted out directly: no XAR renderer involved,
         // and nothing to configure.
         std::vector<uint8_t> ExtractXaraPreview(const std::string& path) {
-            std::ifstream f(path, std::ios::binary);
+            // Paths are UTF-8 throughout the framework; on Windows a plain
+            // std::ifstream(std::string) would interpret them in the ANSI code
+            // page and fail to open anything outside it.
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
             if (!f.is_open()) return {};
             static const uint8_t kSig[8] = {'X', 'A', 'R', 'A', 0xA3, 0xA3, 0x0D, 0x0A};
             uint8_t sig[8];
@@ -248,7 +252,7 @@ namespace UltraCanvas {
         }
 
         std::vector<uint8_t> ExtractPostScriptPreview(const std::string& path) {
-            std::ifstream f(path, std::ios::binary);
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
             if (!f.is_open()) return {};
             // The DOS header, when present, names where the PostScript starts;
             // an EPSI preview then lives inside that section.

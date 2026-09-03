@@ -586,7 +586,7 @@ namespace UltraCanvas {
         // bytes is cheaper than a failed parse, and it is what lets the PDF
         // renderer produce a thumbnail for a format nothing else can draw.
         bool FileStartsWithPdfSignature(const std::string& path) {
-            std::ifstream f(path, std::ios::binary);
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
             if (!f.is_open()) return false;
             char sig[5] = {0};
             f.read(sig, 4);
