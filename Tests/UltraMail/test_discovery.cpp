@@ -25,6 +25,24 @@ TEST(email_domain_and_localpart) {
     REQUIRE_EQ(EmailLocalPart("erika@example.com"), std::string("erika"));
 }
 
+TEST(looks_like_email_address_accepts_real_addresses) {
+    REQUIRE(LooksLikeEmailAddress("erika@example.com"));
+    REQUIRE(LooksLikeEmailAddress("Erika.Example+mail@mail.example.co.uk"));
+    REQUIRE(LooksLikeEmailAddress("a@b.c"));
+}
+
+TEST(looks_like_email_address_rejects_typos) {
+    REQUIRE(!LooksLikeEmailAddress(""));
+    REQUIRE(!LooksLikeEmailAddress("erika"));            // no @
+    REQUIRE(!LooksLikeEmailAddress("@example.com"));     // empty local part
+    REQUIRE(!LooksLikeEmailAddress("erika@"));           // empty domain
+    REQUIRE(!LooksLikeEmailAddress("erika@example"));    // no dot in domain
+    REQUIRE(!LooksLikeEmailAddress("erika@.com"));       // leading dot
+    REQUIRE(!LooksLikeEmailAddress("erika@example."));   // trailing dot
+    REQUIRE(!LooksLikeEmailAddress("a@b@example.com"));  // two @
+    REQUIRE(!LooksLikeEmailAddress("erika @example.com"));  // whitespace
+}
+
 // ---- presets ---------------------------------------------------------------
 
 TEST(presets_gmail) {

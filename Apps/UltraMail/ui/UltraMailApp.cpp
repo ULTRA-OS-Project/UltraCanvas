@@ -1,7 +1,9 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
+
+#include "UltraMailAlerts.h"
 
 #include "UltraMailAttachmentCache.h"
 #include "UltraMailDiscovery.h"
@@ -48,21 +50,30 @@ std::string UltraMailApp::SlugFromEmail(const std::string& email) {
     return slug;
 }
 
-bool UltraMailApp::Initialize(const std::string& dataDir) {
+bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError) {
     std::error_code ec;
     std::filesystem::create_directories(dataDir, ec);
+    if (ec && outError) *outError = ec.message();
     const std::string dbPath = dataDir + "/mail.db";
 
     UltraDbResult opened = store_.Open("ultramail", dbPath);
-    if (!opened) return false;
+    if (!opened) {
+        if (outError) *outError = DetailLine(opened);
+        return false;
+    }
 
     dataDir_  = dataDir;
     cacheDir_ = dataDir + "/cache";
     mailDir_  = dataDir + "/mail";
 
-    // The address book + outbox are global (account-independent) stores.
-    contacts_.Open("ultramail-contacts", dataDir + "/contacts.db");
-    outbox_.Open("ultramail-outbox", dataDir + "/outbox.db");
+    // The address book + outbox are global (account-independent) stores. A
+    // failure here is not fatal — the rest of the client still works — but it
+    // must not be silent: remember it so the feature that needs the store can
+    // say what went wrong instead of doing nothing.
+    if (UltraDbResult c = contacts_.Open("ultramail-contacts", dataDir + "/contacts.db"); !c)
+        contactsError_ = DetailLine(c);
+    if (UltraDbResult o = outbox_.Open("ultramail-outbox", dataDir + "/outbox.db"); !o)
+        outboxError_ = DetailLine(o);
 
     // Bring up the UltraNet plug-in registry so the SMTP / IMAP DSOs load if
     // they are on the plug-in path (ULTRAMAIL_PLUGIN_DIR overrides the default).
@@ -223,12 +234,33 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
         return s;
     };
 
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    // ---- Validation before anything is queued -----------------------------
+    if (draft.to.empty() && draft.cc.empty() && draft.bcc.empty()) {
+        AlertWarning(parent, "This message has no recipient.",
+                     "Add at least one address in To, Cc or Bcc before sending.");
+        return;
+    }
+    if (!outbox_.IsOpen()) {
+        AlertError(parent, "The message could not be queued for sending.",
+                   outboxError_.empty()
+                       ? "UltraMail's outbox database is not available."
+                       : outboxError_);
+        return;
+    }
+
     DiscoveryResult disc = AutoDiscovery::FromPresets(draft.fromAddr);
     const std::string smtpUrl = disc.found ? AutoDiscovery::SmtpServerUrl(disc.smtp) : "";
 
     // Always queue to the persistent outbox first (survives restarts / offline).
     int64_t id = 0;
-    outbox_.Enqueue(SlugFromEmail(draft.fromAddr), smtpUrl, draft, id);
+    if (UltraDbResult q = outbox_.Enqueue(SlugFromEmail(draft.fromAddr), smtpUrl, draft, id); !q) {
+        AlertError(parent, "The message could not be queued for sending, so it "
+                           "has not been saved.",
+                   DetailLine(q));
+        return;
+    }
 
     // Remember the people we write to.
     for (const auto& addr : draft.to) ContactCollector::Collect(contacts_, "", addr);
@@ -238,25 +270,75 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
     auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
     IMailProtocolPlugin* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
 
-    std::string msg;
     if (smtp && !smtpUrl.empty()) {
         CredentialVault vault(dataDir_ + "/vault");
         Outbox ob(outbox_);
         auto stats = ob.Flush(*smtp, [&vault](const std::string& acc) {
             std::string p; vault.Retrieve(acc, p); return p;
         });
-        if (stats.sent > 0)
-            msg = "Message sent to " + join(draft.to) + ".";
-        else
-            msg = "Send failed — the message is queued in the outbox and will be retried.";
-    } else {
-        int n = 0; outbox_.PendingCount(n);
-        msg = "Message queued in the outbox (" + std::to_string(n) + " pending).\n"
-              "It will be sent once the SMTP plug-in is on the path and you are online"
-              + (smtpUrl.empty() ? "." : (" (" + smtpUrl + ")."));
+        if (stats.sent > 0) {
+            AlertSuccess(parent, "Message sent to " + join(draft.to) + ".");
+            return;
+        }
+        // Failed: say why. The reason came back from SMTP in stats.lastFailure
+        // and is also persisted as the outbox row's last_error.
+        const std::string why    = FriendlyMessage(stats.lastFailure);
+        const std::string detail = DetailLine(stats.lastFailure);
+        const std::string summary =
+            "The message could not be sent, so it is waiting in the outbox.\n" + why;
+        if (IsRetryable(stats.lastFailure)) {
+            const std::string from = draft.fromAddr;
+            AlertErrorRetry(parent, summary, detail,
+                            [this, from]() { RetryOutbox(from); });
+        } else {
+            AlertError(parent, summary, detail);
+        }
+        return;
     }
-    UltraCanvas::UltraCanvasDialogManager::ShowInformation(
-        msg, "UltraMail", nullptr, window_ ? window_.get() : nullptr);
+
+    // No SMTP plug-in / no server: queued, not failed — a warning, not an error.
+    int n = 0; outbox_.PendingCount(n);
+    AlertWarning(parent,
+        "The message is queued in the outbox (" + std::to_string(n) + " pending) "
+        "but was not sent yet.",
+        smtp ? "No outgoing (SMTP) server is known for " + draft.fromAddr + "."
+             : "The SMTP plug-in is not loaded, so UltraMail cannot reach a mail "
+               "server yet. It will be sent once the plug-in is on the plug-in "
+               "path and you are online"
+               + (smtpUrl.empty() ? "." : (" (" + smtpUrl + ").")));
+}
+
+void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    DiscoveryResult disc = AutoDiscovery::FromPresets(fromAddr);
+    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
+    auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
+    if (!smtp) {
+        AlertError(parent, "The message could not be sent.",
+                   "The SMTP plug-in is no longer loaded.");
+        return;
+    }
+
+    CredentialVault vault(dataDir_ + "/vault");
+    Outbox ob(outbox_);
+    auto stats = ob.Flush(*smtp, [&vault](const std::string& acc) {
+        std::string p; vault.Retrieve(acc, p); return p;
+    });
+    if (stats.failed == 0) {
+        AlertSuccess(parent, "The outbox was sent (" + std::to_string(stats.sent)
+                             + " message" + (stats.sent == 1 ? "" : "s") + ").");
+        return;
+    }
+    const std::string why = FriendlyMessage(stats.lastFailure);
+    if (IsRetryable(stats.lastFailure)) {
+        AlertErrorRetry(parent, "Still could not send.\n" + why,
+                        DetailLine(stats.lastFailure),
+                        [this, fromAddr]() { RetryOutbox(fromAddr); });
+    } else {
+        AlertError(parent, "Still could not send.\n" + why,
+                   DetailLine(stats.lastFailure));
+    }
 }
 
 void UltraMailApp::SeedDemoMail() {
@@ -371,16 +453,43 @@ void UltraMailApp::RunDueSyncs() {
         const std::string aid = acc.accountId;
         // onDone keeps `svc` alive until the worker thread finishes; it marshals
         // the follow-up work back to the UI thread.
-        svc->SyncInBackground(aid, acc.serverUrl, opts, [this, svc, aid](SyncOutcome) {
-            if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
-                app->PostToUIThread([this, aid]() { CollectContacts(aid, "INBOX"); Refresh(); });
+        // The outcome carries the reason a sync failed (bad password, untrusted
+        // certificate, unreachable host). Marshal it to the UI thread and say
+        // so — once per run of failures, so a broken server does not raise an
+        // alert on every timer tick.
+        svc->SyncInBackground(aid, acc.serverUrl, opts,
+                              [this, svc, aid, email](SyncOutcome outcome) {
+            auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+            if (!app) return;
+            app->PostToUIThread([this, aid, email, outcome]() {
+                if (!outcome) {
+                    if (!syncErrorReported_) {
+                        syncErrorReported_ = true;
+                        AlertError(window_ ? window_.get() : nullptr,
+                                   "New mail could not be fetched for "
+                                   + (email.empty() ? aid : email) + ".",
+                                   outcome.message);
+                    }
+                    return;
+                }
+                syncErrorReported_ = false;   // recovered: arm the next report
+                CollectContacts(aid, "INBOX");
+                Refresh();
+            });
         });
         scheduler_.MarkSynced(acc.accountId, now);
     }
 }
 
 void UltraMailApp::OpenContacts() {
-    if (!contacts_.IsOpen()) return;
+    if (!contacts_.IsOpen()) {
+        AlertError(window_ ? window_.get() : nullptr,
+                   "The address book could not be opened.",
+                   contactsError_.empty()
+                       ? "UltraMail's contacts database is not available."
+                       : contactsError_);
+        return;
+    }
     WindowConfig cfg;
     cfg.title  = "Contacts";
     cfg.width  = 640;
@@ -427,7 +536,15 @@ void UltraMailApp::ShowAttachments(const ParsedMessage& message) {
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     AttachmentCache cache(cacheDir_);
     const std::string path = cache.Write(attachment);
-    if (path.empty()) return;
+    if (path.empty()) {
+        AlertError(window_ ? window_.get() : nullptr,
+                   "The attachment could not be opened.",
+                   "\"" + (attachment.filename.empty() ? std::string("(unnamed)")
+                                                       : attachment.filename)
+                   + "\" could not be written to the attachment cache in "
+                   + cacheDir_ + ". Check that the folder exists and is writable.");
+        return;
+    }
 
     WindowConfig cfg;
     cfg.title  = attachment.filename.empty() ? "Attachment" : attachment.filename;
@@ -449,7 +566,16 @@ void UltraMailApp::SaveAttachment(const Attachment& attachment) {
     // Phase 2: persist into the cache directory. A native Save-As dialog
     // (UltraCanvasFileLoader) replaces this once wired.
     AttachmentCache cache(cacheDir_);
-    cache.Write(attachment);
+    const std::string path = cache.Write(attachment);
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    const std::string name = attachment.filename.empty() ? std::string("The attachment")
+                                                         : "\"" + attachment.filename + "\"";
+    if (path.empty())
+        AlertError(parent, name + " could not be saved.",
+                   "It could not be written to " + cacheDir_
+                   + ". Check that the folder exists and is writable.");
+    else
+        AlertSuccess(parent, name + " was saved.", path);
 }
 
 void UltraMailApp::ShowDemoAttachments() {
@@ -502,16 +628,28 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     a.displayName = draft.displayName.empty() ? LocalPart(draft.email) : draft.displayName;
     a.shortName   = LocalPart(draft.email);
 
-    if (!store_.UpsertAccount(a)) return;
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    if (UltraDbResult up = store_.UpsertAccount(a); !up) {
+        AlertError(parent, "The account could not be saved.", DetailLine(up));
+        return;
+    }
 
     // Auto-discover the server settings from the address (offline provider
     // presets; the wizard's network autoconfig + login verify run in the
     // engine's AutoDiscovery::Discover).
     DiscoveryResult disc = AutoDiscovery::FromPresets(draft.email);
 
-    // Store the password out of the config, in the credential vault.
+    // Store the password out of the config, in the credential vault. If that
+    // fails the account still works, but every later sync would be rejected
+    // for no visible reason — so warn now, while the user can act on it.
     CredentialVault vault(dataDir_ + "/vault");
-    if (!draft.password.empty()) vault.Store(a.accountId, draft.password);
+    if (!draft.password.empty() && !vault.Store(a.accountId, draft.password)) {
+        AlertWarning(parent, "The account was added, but its password could not "
+                             "be saved to the credential vault.",
+                     "UltraMail will ask for it again. Check that "
+                     + dataDir_ + "/vault is writable.");
+    }
 
     // Seed the inbox so the tile + rollups have somewhere to hang; real folders
     // arrive from the first IMAP sync (SyncEngine).
@@ -523,19 +661,22 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
 
     Refresh();
 
-    // Report what discovery found.
-    std::string msg;
+    // Report what discovery found. Success is a success alert; a failed
+    // auto-detect leaves the account unable to send or receive, so it is a
+    // warning that names the consequence rather than an informational note.
     if (disc.found) {
-        msg = "Account ready — settings detected (" + disc.displayName + ").\n"
-              "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap) + "\n"
-              "Outgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
-        if (disc.imap.oauth) msg += "\nSign-in: OAuth2 (browser)";
+        std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
+                           + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
+        if (disc.imap.oauth) detail += "\nSign-in: OAuth2 (browser)";
+        AlertSuccess(parent, "Account ready — settings detected ("
+                             + disc.displayName + ").", detail);
     } else {
-        msg = "Account added. Server settings could not be auto-detected from "
-              "the address — network autoconfig or manual setup will follow.";
+        AlertWarning(parent,
+            "The account was added, but its server settings could not be "
+            "detected from the address.",
+            "UltraMail cannot send or receive for " + draft.email
+            + " until the incoming and outgoing servers are set up.");
     }
-    UltraCanvas::UltraCanvasDialogManager::ShowInformation(
-        msg, "UltraMail", nullptr, window_ ? window_.get() : nullptr);
 }
 
 } // namespace UltraMail

@@ -2,7 +2,7 @@
 // The UltraMail application manager: owns the local store, the account list and
 // the main window, and wires the Toolbox, the account info-tile bar and the
 // account-setup wizard together. Texter-style app-composition class.
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -32,8 +32,10 @@ namespace UltraMail {
 class UltraMailApp {
 public:
     // Open the local store under `dataDir` (created if absent) and load the
-    // account list. Returns false if the store cannot be opened.
-    bool Initialize(const std::string& dataDir);
+    // account list. Returns false if the store cannot be opened; `outError`,
+    // when given, receives the database diagnostic so main() can show it
+    // instead of exiting silently.
+    bool Initialize(const std::string& dataDir, std::string* outError = nullptr);
 
     // Create the main window with the info-tile bar and the Toolbox grid.
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> CreateMainWindow();
@@ -72,6 +74,8 @@ private:
     void OpenComposer(const Draft& draft);
     // Attempt to send a draft via the SMTP plug-in; report the outcome.
     void HandleSendDraft(const Draft& draft);
+    // Re-flush the outbox after a failed send (the Retry button's action).
+    void RetryOutbox(const std::string& fromAddr);
 
     // Auto-collect senders of a folder's messages into the address book.
     void CollectContacts(const std::string& accountId, const std::string& folder);
@@ -86,6 +90,14 @@ private:
     OutboxStore outbox_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
+    // Non-empty when a store the app needs could not be opened; the matching
+    // entry point alerts instead of returning silently.
+    std::string contactsError_;
+    std::string outboxError_;
+    // Set once a background sync has alerted, so a broken server does not raise
+    // an alert on every timer tick.
+    bool syncErrorReported_ = false;
+
     std::string dataDir_;
     std::string cacheDir_;
     std::string mailDir_;

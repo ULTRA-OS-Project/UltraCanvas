@@ -3,8 +3,8 @@
 # (account / folder / message store on UltraDatabase) and, on top of it, the
 # UltraMail GUI executable (Toolbox, account wizard, reading view, composer,
 # contacts) linking the UltraCanvas UI library.
-# Version: 0.2.0
-# Last Modified: 2026-07-08
+# Version: 0.3.0
+# Last Modified: 2026-09-03
 # Author: UltraCanvas Framework / ULTRA OS
 
 # The engine depends only on UltraDatabase, so it builds and tests headlessly.
@@ -82,6 +82,7 @@ endif()
 
 set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailApp.cpp
+    ui/UltraMailAlerts.cpp
     ui/UltraMailToolbox.cpp
     ui/UltraMailInfoTileBar.cpp
     ui/UltraMailAccountWizard.cpp
