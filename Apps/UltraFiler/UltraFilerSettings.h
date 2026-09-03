@@ -4,19 +4,24 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.4.0
-// Last Modified: 2026-08-25
+// Version: 1.6.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, kFilerAllPreviewTypes
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -73,6 +78,19 @@ public:
 #else
     bool homeShowPredefinedOnly = false;
 #endif
+
+    // Display > Thumbnails and Display > Detail view: which file kinds may
+    // show a thumbnail in the file display, and which ones the detail pane
+    // beside it opens for, as FilerPreviewType bitmasks; plus the per-format
+    // exceptions of each - the extensions ticked off in the two lists of
+    // files. Everything is on by default, so a fresh installation previews
+    // whatever the build can, and both are persisted as what is switched OFF
+    // (see FormatDisabledKinds) so a kind or a format the framework learns
+    // about later starts on rather than absent.
+    uint32_t thumbnailKinds  = kFilerAllPreviewTypes;
+    uint32_t detailViewKinds = kFilerAllPreviewTypes;
+    std::vector<std::string> disabledThumbnailFormats;
+    std::vector<std::string> disabledDetailViewFormats;
 
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
@@ -141,6 +159,14 @@ public:
         if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
         it = kv.find("display.home.content");
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
+        it = kv.find("display.thumbnails.kinds.off");
+        if (it != kv.end()) thumbnailKinds = ParseEnabledKinds(it->second);
+        it = kv.find("display.thumbnails.formats.off");
+        if (it != kv.end()) disabledThumbnailFormats = ParseList(it->second);
+        it = kv.find("display.detailview.kinds.off");
+        if (it != kv.end()) detailViewKinds = ParseEnabledKinds(it->second);
+        it = kv.find("display.detailview.formats.off");
+        if (it != kv.end()) disabledDetailViewFormats = ParseList(it->second);
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("extras.prompt.application");
@@ -172,10 +198,87 @@ public:
              << FormatColor(treeSelectedFolderColor) << "\n";
         file << "display.home.content = "
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
+        file << "display.thumbnails.kinds.off = "
+             << FormatDisabledKinds(thumbnailKinds) << "\n";
+        file << "display.thumbnails.formats.off = "
+             << FormatList(disabledThumbnailFormats) << "\n";
+        file << "display.detailview.kinds.off = "
+             << FormatDisabledKinds(detailViewKinds) << "\n";
+        file << "display.detailview.formats.off = "
+             << FormatList(disabledDetailViewFormats) << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
+    }
+
+    // ===== PREVIEW KIND NAMES =====
+    // The config file names the kinds instead of storing a number, so the
+    // file stays readable and a kind added later cannot silently change the
+    // meaning of an old mask.
+    struct KindName { const char* name; FilerPreviewType kind; };
+
+    static const std::vector<KindName>& KindNames() {
+        static const std::vector<KindName> names = {
+            {"bitmaps",      FilerPreviewType::Bitmaps},
+            {"vector",       FilerPreviewType::VectorGraphics},
+            {"3d",           FilerPreviewType::Models3D},
+            {"pdf",          FilerPreviewType::PDF},
+            {"text",         FilerPreviewType::Text},
+            {"docs",         FilerPreviewType::Docs},
+            {"spreadsheets", FilerPreviewType::Spreadsheets},
+            {"videos",       FilerPreviewType::Videos},
+            {"audio",        FilerPreviewType::Audio},
+        };
+        return names;
+    }
+
+    // Stored as the kinds that are switched OFF, not the ones that are on:
+    // a kind the framework adds later is then enabled by default instead of
+    // silently missing from an existing config file - the same reason the
+    // per-format lists hold exceptions rather than an allow-list. An empty
+    // value means everything is on.
+    static std::string FormatDisabledKinds(uint32_t mask) {
+        std::string out;
+        for (const KindName& k : KindNames()) {
+            if ((mask & static_cast<uint32_t>(k.kind)) != 0) continue;
+            if (!out.empty()) out += ',';
+            out += k.name;
+        }
+        return out;
+    }
+
+    static uint32_t ParseEnabledKinds(const std::string& text) {
+        uint32_t off = 0;
+        for (const std::string& token : ParseList(text)) {
+            for (const KindName& k : KindNames())
+                if (token == k.name) off |= static_cast<uint32_t>(k.kind);
+        }
+        return kFilerAllPreviewTypes & ~off;
+    }
+
+    // "a, b,c" -> {"a","b","c"}, trimmed and lowercased; empty entries and
+    // the "none" placeholder written for an empty mask are dropped.
+    static std::vector<std::string> ParseList(const std::string& text) {
+        std::vector<std::string> out;
+        std::istringstream is(text);
+        std::string token;
+        while (std::getline(is, token, ',')) {
+            token = Trim(token);
+            std::transform(token.begin(), token.end(), token.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (!token.empty() && token != "none") out.push_back(token);
+        }
+        return out;
+    }
+
+    static std::string FormatList(const std::vector<std::string>& items) {
+        std::string out;
+        for (const std::string& item : items) {
+            if (!out.empty()) out += ',';
+            out += item;
+        }
+        return out;
     }
 
 private:
