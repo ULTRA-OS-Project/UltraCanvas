@@ -1,8 +1,10 @@
 // core/UltraCanvasSplashScreen.cpp
 // Reusable splash screen component
-// Version: 1.0.2 - Splash is no longer modal; modal flag was hiding
-//                 native dialogs that opened while the splash was up
-// Last Modified: 2026-04-30
+// Version: 1.2.0 - Optional release date under the version; optional
+//                 attribution block ("GUI by" / logo / name); configurable
+//                 logo sizes and type scale, for hosts that credit the
+//                 toolkit under their own branding
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplashScreen.h"
@@ -12,6 +14,16 @@
 #include "UltraCanvasUtils.h"
 
 namespace UltraCanvas {
+
+    namespace {
+        // A label's box grows with its font, so raising the type scale cannot
+        // clip the text. At the default font size this returns exactly the
+        // height the splash has always used, leaving existing callers alone.
+        float SplashLabelHeight(int fontSize, int defaultFontSize, float defaultHeight) {
+            if (fontSize <= defaultFontSize) return defaultHeight;
+            return defaultHeight * (float)fontSize / (float)defaultFontSize;
+        }
+    }
 
     UltraCanvasSplashScreen::~UltraCanvasSplashScreen() {
         Close();
@@ -41,6 +53,10 @@ namespace UltraCanvas {
             return;
         }
 
+        // Default-constructed config: the reference type scale the label box
+        // heights below are proportioned against.
+        static const SplashScreenConfig defaults{};
+
         // Build layout: column flex, items horizontally stretched to container.
         window->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         window->SetPadding(20);
@@ -50,7 +66,9 @@ namespace UltraCanvas {
 
         // Logo image
         if (!config.imagePath.empty()) {
-            auto logo = std::make_shared<UltraCanvasImageElement>("SplashLogo", 250, 250);
+            auto logo = std::make_shared<UltraCanvasImageElement>("SplashLogo",
+                                                                  (float)config.logoSize,
+                                                                  (float)config.logoSize);
             logo->LoadFromFile(config.imagePath);
             logo->SetFitMode(ImageFitMode::Contain);
             logo->SetMargin(0, 0, 12, 0);
@@ -60,8 +78,10 @@ namespace UltraCanvas {
 
         // Title
         if (!config.title.empty()) {
-            auto titleLabel = std::make_shared<UltraCanvasLabel>("SplashTitle", 300, 25, config.title);
-            titleLabel->SetFontSize(20);
+            auto titleLabel = std::make_shared<UltraCanvasLabel>("SplashTitle", 300,
+                    SplashLabelHeight(config.titleFontSize, defaults.titleFontSize, 25.0f),
+                    config.title);
+            titleLabel->SetFontSize((float)config.titleFontSize);
             titleLabel->SetFontWeight(FontWeight::Bold);
             titleLabel->SetAlignment(TextAlignment::Center);
             titleLabel->SetMargin(0, 0, 4, 0);
@@ -70,12 +90,63 @@ namespace UltraCanvas {
 
         // Version
         if (!config.version.empty()) {
-            auto versionLabel = std::make_shared<UltraCanvasLabel>("SplashVersion", 300, 20, "Version " + config.version);
-            versionLabel->SetFontSize(11);
-            versionLabel->SetTextColor(Color(100, 100, 100));
+            auto versionLabel = std::make_shared<UltraCanvasLabel>("SplashVersion", 300,
+                    SplashLabelHeight(config.versionFontSize, defaults.versionFontSize, 20.0f),
+                    "Version " + config.version);
+            versionLabel->SetFontSize((float)config.versionFontSize);
+            versionLabel->SetTextColor(config.secondaryTextColor);
             versionLabel->SetAlignment(TextAlignment::Center);
-            versionLabel->SetMargin(0, 0, 10, 0);
+            // A date underneath belongs to the same block, so the gap after
+            // the version closes up and the date carries the block's margin.
+            versionLabel->SetMargin(0, 0, config.versionDate.empty() ? 10 : 2, 0);
             window->AddChild(versionLabel);
+        }
+
+        // Release date, under the version and in the same quiet tier.
+        if (!config.versionDate.empty()) {
+            auto dateLabel = std::make_shared<UltraCanvasLabel>("SplashVersionDate", 300,
+                    SplashLabelHeight(config.versionFontSize, defaults.versionFontSize, 20.0f),
+                    config.versionDate);
+            dateLabel->SetFontSize((float)config.versionFontSize);
+            dateLabel->SetTextColor(config.secondaryTextColor);
+            dateLabel->SetAlignment(TextAlignment::Center);
+            dateLabel->SetMargin(0, 0, 10, 0);
+            window->AddChild(dateLabel);
+        }
+
+        // Attribution block: a caption, a logo and the credited name, e.g.
+        // "GUI by" / the UltraCanvas logo / "Ultra Canvas". Any part may be
+        // omitted; omitting all three leaves the splash exactly as it was.
+        if (!config.attributionText.empty()) {
+            auto attributionLabel = std::make_shared<UltraCanvasLabel>("SplashAttribution", 300,
+                    SplashLabelHeight(config.attributionFontSize, defaults.attributionFontSize, 20.0f),
+                    config.attributionText);
+            attributionLabel->SetFontSize((float)config.attributionFontSize);
+            attributionLabel->SetAlignment(TextAlignment::Center);
+            attributionLabel->SetMargin(0, 0, 8, 0);
+            window->AddChild(attributionLabel);
+        }
+
+        if (!config.attributionImagePath.empty()) {
+            auto attributionLogo = std::make_shared<UltraCanvasImageElement>("SplashAttributionLogo",
+                                                                            (float)config.attributionLogoSize,
+                                                                            (float)config.attributionLogoSize);
+            attributionLogo->LoadFromFile(config.attributionImagePath);
+            attributionLogo->SetFitMode(ImageFitMode::Contain);
+            attributionLogo->SetMargin(0, 0, 6, 0);
+            window->AddChild(attributionLogo);
+            attributionLogo->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        }
+
+        if (!config.attributionName.empty()) {
+            auto attributionName = std::make_shared<UltraCanvasLabel>("SplashAttributionName", 300,
+                    SplashLabelHeight(config.attributionNameFontSize, defaults.attributionNameFontSize, 20.0f),
+                    config.attributionName);
+            attributionName->SetFontSize((float)config.attributionNameFontSize);
+            attributionName->SetTextColor(config.secondaryTextColor);
+            attributionName->SetAlignment(TextAlignment::Center);
+            attributionName->SetMargin(0, 0, 10, 0);
+            window->AddChild(attributionName);
         }
 
         // Website URL

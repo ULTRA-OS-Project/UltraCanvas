@@ -1,6 +1,6 @@
 // include/UltraCanvasSplashScreen.h
 // Reusable splash screen component
-// Version: 1.0.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -21,8 +21,37 @@ namespace UltraCanvas {
         std::string imagePath;
         std::string title;
         std::string version;
+
+        // The date that version shipped, drawn under the version line. Comes
+        // from <PREFIX>_VERSION_DATE — the date on the same changelog line the
+        // version came from — so two builds of one release agree; a build
+        // clock would not. Any string is accepted; the format is the caller's.
+        std::string versionDate;
+
+        // Attribution block, drawn between the version and the website line:
+        // a caption, a logo and the name of whoever is being credited — e.g.
+        // "GUI by" / the UltraCanvas logo / "Ultra Canvas". Each part is
+        // optional; leave all three empty for no attribution at all.
+        std::string attributionText;
+        std::string attributionImagePath;
+        std::string attributionName;
+
         std::string websiteURL;
         std::string websiteDisplay;
+
+        int logoSize = 250;            // Main logo box, square, in pixels
+        int attributionLogoSize = 90;  // Attribution logo box, square, in pixels
+
+        // Type scale. The defaults reproduce the layout every existing splash
+        // already has; a host with its own design raises the ones it needs.
+        int titleFontSize = 20;
+        int versionFontSize = 11;
+        int attributionFontSize = 13;
+        int attributionNameFontSize = 11;
+
+        // The two secondary lines — the version and the attributed name.
+        Color secondaryTextColor = Color(100, 100, 100);
+
         int width = 400;
         int height = 300;
         unsigned int showTimeout = 0;  // Auto-close after this duration (0 = no timeout)

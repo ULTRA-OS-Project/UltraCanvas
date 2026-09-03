@@ -1,3 +1,48 @@
+#### 2026-09-03 *0.3.93*
+- **The splash screen can credit the toolkit the host is built on.**
+  `SplashScreenConfig` grew an attribution block — `attributionText`,
+  `attributionImagePath` and `attributionName` — drawn between the version line
+  and the website link, so an application whose UI is UltraCanvas but whose
+  branding is its own can say so: "GUI by" / the UltraCanvas hexagon / "Ultra
+  Canvas". The Ladybird port is the first caller; the alternative was the port
+  painting its own borderless window, which is exactly the hand-rolled UI the
+  house rules exist to prevent. Each of the three fields is independent and each
+  is omitted when empty, so a splash that sets none of them renders exactly as
+  it did before.
+- **The splash can show a release date under the version.** `versionDate` is a
+  new `SplashScreenConfig` field, drawn on its own line under the version in
+  the same size and colour, and `cmake/UltraCanvasVersion.cmake` now hands out
+  the date to put in it: alongside every `<PREFIX>_VERSION` it sets
+  `<PREFIX>_VERSION_DATE`, taken from the `YYYY-MM-DD` on the same changelog
+  line the version was already parsed out of. That is the date the release
+  shipped, which is the one worth showing — a `__DATE__` build stamp gives two
+  builds of one release two different dates, and makes a bug reported against
+  "0.1.0 of 3 September" impossible to identify. No changelog is touched and no
+  version moves; the module simply keeps the half of the line it used to throw
+  away.
+- **Splash logo sizes are configurable.** `logoSize` (default 250) and
+  `attributionLogoSize` (default 90) replace the hard-coded 250 px logo box.
+  Both are square boxes the image is fitted inside — `ImageFitMode::Contain` is
+  unchanged, so a non-square logo still keeps its aspect ratio, and the default
+  reproduces the previous layout.
+- **`UltraCanvasSplashScreen` now has a component doc** —
+  `Docs/UltraCanvas/UltraCanvasSplashScreen.md`, and a row in the UI element
+  catalogue. It was the one startup-time window with neither, which is how the
+  two-phase startup it wants (silent work before `Show()`, anything that opens a
+  window in `onSplashClosed`) stayed folded into Texter's `main.cpp` instead of
+  being written down where the next caller would find it.
+- **New shared asset: `media/appicon/Ladybird.png`,** the Ladybird mark on its
+  gradient disc, at 512 x 512 with transparency outside the disc so it serves as
+  a window icon as well as a splash logo. It is generated rather than hand-drawn
+  — `scripts/make_ladybird_icon.py` holds the geometry, stroke weight and
+  gradient stops — so it can be re-cut at another size without tracing it again.
+  See `Docs/Ladybird/SplashScreen.md`, which is how the port wires the splash
+  up: the assets it ships, and where the call goes in its startup.
+- **`Docs/Ladybird/` is in the LLM docs corpus.** It held only a changelog,
+  which `generate_llms_txt.py` excludes by name, so the directory was invisible
+  to `llms.txt` — and its first piece of developer documentation would have
+  been too. It is on the `APP_DOC_DIRS` allowlist now.
+
 #### 2026-09-02 *0.3.92*
 - **The filer showed the type glyph instead of every thumbnail whenever the
   libvips capability probe came back empty.** Before decoding anything the
