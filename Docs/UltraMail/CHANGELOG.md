@@ -32,6 +32,11 @@
 - Alert helpers take an optional completion callback, so the add-account flow
   shows the discovery result and *then* asks for the master password instead of
   stacking one dialog under the other.
+- Linking UltraVault pulls in UltraCrypt, which exposed a latent link-time
+  collision in the framework's text utilities that broke the Windows build of
+  both UltraMail and EmailCleaner. The fix is a framework change and is recorded
+  in [`Docs/UltraCanvas/CHANGELOG.md`](../UltraCanvas/CHANGELOG.md) *0.3.93*;
+  this release depends on it.
 
 #### 2026-09-03 *0.3.0*
 - **"Save As…" on an attachment now works.** The reading view's attachment strip
