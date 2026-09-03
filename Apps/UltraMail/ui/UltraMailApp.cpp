@@ -33,6 +33,10 @@ using namespace UltraCanvas;
 
 namespace UltraMail {
 
+namespace {
+constexpr float kHeaderHeight = 44.0f;   // title + action buttons row
+} // namespace
+
 std::string UltraMailApp::LocalPart(const std::string& email) {
     auto at = email.find('@');
     return at == std::string::npos ? email : email.substr(0, at);
@@ -97,15 +101,17 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
 
     // ===== Account view (everything below is hidden while the start page shows) =====
 
-    // Header line.
-    auto title = CreateLabel("umTitle", 16, 8, 400, 28, "UltraMail");
+    // Header row. The title is an in-flow block the full height of the row, so
+    // the info-tile bar and the Toolbox grid stack below it; the action
+    // buttons sit on top of it at fixed positions. (Margins are not part of the
+    // block flow, so the row height is what keeps the bar clear of the title.)
+    auto title = CreateLabel("umTitle", 0, 0, 400, kHeaderHeight, "UltraMail");
+    title->SetPadding(0, 0, 0, 16);
     window_->AddChild(title);
     accountView_.push_back(title);
 
-    // Account info-tile bar, below the header row (the header and the action
-    // buttons occupy the first 44 px).
+    // Account info-tile bar, below the header row.
     auto bar = infoBar_.Build();
-    bar->SetMargin(44, 0, 0, 0);
     window_->AddChild(bar);
     accountView_.push_back(bar);
     infoBar_.onAccountClicked     = [](const std::string&) { /* Phase 2: open account */ };
