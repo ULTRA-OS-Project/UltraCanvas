@@ -614,3 +614,22 @@ the driver is detected, never bundled — and without it the disc degrades to
 storage-backed and reports itself as such. Regression tests:
 `Tests/VirtualFSPathTest.cpp`, `Tests/VirtualFSDeleteTest.cpp`,
 `Tests/VirtualFSNestedMemoryTest.cpp`, `Tests/VirtualFSRamDiskTest.cpp`.
+
+---
+
+### **11. UltraCloud**
+
+Cloud storage — the single home for cloud accounts, the default account, and
+"upload this and give me a share link", so no application talks to a cloud
+provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
+(Verify / List / MakeDirectory / Upload / Download / CreateShareLink);
+v0.1 ships Nextcloud / ownCloud (WebDAV + OCS share API, password and expiry
+on links), generic WebDAV (links through a public web-folder URL) and an
+in-memory demo provider; Dropbox, OneDrive and Google Drive follow over OAuth2.
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
+(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
+HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+`UltraCloudUI` holds the shared add-account and link-picker dialogs.
+Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
+and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
+see `Docs/Modules/UltraCloud/README.md`.

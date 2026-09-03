@@ -12,6 +12,8 @@
 #include "UltraMailContactCollector.h"
 #include "UltraMailSyncService.h"
 
+#include <UltraCloud/UltraCloudMemory.h>
+
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
@@ -78,6 +80,12 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
     // The address book + outbox are global (account-independent) stores.
     contacts_.Open("ultramail-contacts", dataDir + "/contacts.db");
     outbox_.Open("ultramail-outbox", dataDir + "/outbox.db");
+
+    // Cloud storage accounts (UltraCloud) for "Attach cloud link".
+    UltraCloud::RegisterBuiltInProviders();
+    cloudAccounts_.Open("ultramail-cloud", dataDir + "/cloud.db");
+    cloudSecrets_ = std::make_unique<UltraCloud::FileSecretStore>(dataDir + "/cloud-vault");
+    cloud_ = std::make_unique<UltraCloud::CloudService>(cloudAccounts_, *cloudSecrets_);
 
     // Bring up the UltraNet plug-in registry so the SMTP / IMAP DSOs load if
     // they are on the plug-in path (ULTRAMAIL_PLUGIN_DIR overrides the default).
@@ -152,6 +160,13 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         d.subject = "Hello from UltraMail";
         d.body = "This message was queued through the persistent outbox.";
         HandleSendDraft(d);
+    }
+    // Demo path: an in-memory cloud account with files, then a compose window
+    // (exercises Attach file / Attach cloud link without a server).
+    if (const char* dcl = std::getenv("ULTRAMAIL_DEMO_CLOUD"); dcl && *dcl) {
+        SeedDemoCloud();
+        OpenComposer(Composer::NewMessage("Erika Example", "erika@example.com"));
+        if (*dcl == '2') composeView_.OpenCloudLinkPicker();   // =2: picker open too
     }
     // Demo path: open a reply-prefilled compose window.
     if (const char* dcomp = std::getenv("ULTRAMAIL_DEMO_COMPOSE"); dcomp && *dcomp == '1') {
@@ -260,6 +275,8 @@ void UltraMailApp::OpenComposer(const Draft& draft) {
     auto win = CreateWindow(cfg);
 
     composeView_.SetDraft(draft);
+    composeView_.SetParentWindow(win.get());
+    composeView_.SetCloud(cloud_.get());
     composeView_.onSend   = [this](const Draft& d) { HandleSendDraft(d); };
     composeView_.onCancel = []() { /* window stays; close via title bar */ };
     win->AddChild(composeView_.Build());
@@ -381,6 +398,23 @@ void UltraMailApp::SeedDemoMail() {
 
     // Auto-collect the senders into the address book.
     CollectContacts("erika", "INBOX");
+}
+
+void UltraMailApp::SeedDemoCloud() {
+    if (!cloud_) return;
+    UltraCloud::Account a;
+    a.providerId  = "memory";
+    a.username    = "erika";
+    a.displayName = "Erika's demo cloud";
+    a.isDefault   = true;
+    if (!cloud_->AddAccount(a, {}, /*verify=*/false)) return;
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/Documents", -1);
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/Documents/Q3 report.pdf", 482'113, "Sep 02, 2026");
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/Documents/Meeting notes.md", 3'201, "Sep 03, 2026");
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/Photos", -1);
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/Photos/team.jpg", 1'904'774, "Aug 28, 2026");
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/Shared from ULTRA OS", -1);
+    UltraCloud::MemoryProvider::Seed(a.accountId, "/invoice-4711.pdf", 88'320, "Aug 30, 2026");
 }
 
 void UltraMailApp::CollectContacts(const std::string& accountId, const std::string& folder) {

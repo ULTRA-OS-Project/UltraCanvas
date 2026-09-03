@@ -224,7 +224,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   UltraMail sends `multipart/alternative` with a generated HTML part
   (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
   the plain-text source. A "plain text only" toggle is one click.
-- **Attachments** — add via button (`CreateFileDialog`) or drag & drop;
+- **Attachments** — "Attach file…" (file dialog; drag & drop later) and
+  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
   shown as a chip strip with sizes and a total-size warning.
 - **Signatures** — per account, appended automatically, editable in
   settings.
