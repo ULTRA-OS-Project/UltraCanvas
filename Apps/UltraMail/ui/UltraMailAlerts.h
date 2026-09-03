@@ -44,14 +44,19 @@ bool IsRetryable(const UltraNetResult& result);
 // All are non-blocking and titled "UltraMail". `detail` is optional and is
 // drawn as the alert's secondary line.
 
+// `onDismissed`, when given, runs after the user closes the alert — so a flow
+// can show one thing at a time instead of stacking a second dialog on top.
 void AlertError(UltraCanvas::UltraCanvasWindowBase* parent,
-                const std::string& summary, const std::string& detail = "");
+                const std::string& summary, const std::string& detail = "",
+                std::function<void()> onDismissed = nullptr);
 
 void AlertWarning(UltraCanvas::UltraCanvasWindowBase* parent,
-                  const std::string& summary, const std::string& detail = "");
+                  const std::string& summary, const std::string& detail = "",
+                  std::function<void()> onDismissed = nullptr);
 
 void AlertSuccess(UltraCanvas::UltraCanvasWindowBase* parent,
-                  const std::string& summary, const std::string& detail = "");
+                  const std::string& summary, const std::string& detail = "",
+                  std::function<void()> onDismissed = nullptr);
 
 // An error alert offering Retry / Cancel. `onRetry` runs only when the user
 // chooses Retry.

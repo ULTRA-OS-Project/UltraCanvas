@@ -88,31 +88,37 @@ bool IsRetryable(const UltraNetResult& result) {
 namespace {
 
 void ShowAlert(AlertSeverity severity, UltraCanvasWindowBase* parent,
-               const std::string& summary, const std::string& detail) {
+               const std::string& summary, const std::string& detail,
+               std::function<void()> onDismissed) {
     AlertOptions opts;
     opts.severity = severity;
     opts.message  = summary;
     opts.details  = detail;
     opts.title    = "UltraMail";
     opts.parent   = parent;
+    if (onDismissed)
+        opts.onResult = [onDismissed](DialogResult) { onDismissed(); };
     UltraCanvasAlert::Show(opts);
 }
 
 } // namespace
 
 void AlertError(UltraCanvasWindowBase* parent,
-                const std::string& summary, const std::string& detail) {
-    ShowAlert(AlertSeverity::Error, parent, summary, detail);
+                const std::string& summary, const std::string& detail,
+                std::function<void()> onDismissed) {
+    ShowAlert(AlertSeverity::Error, parent, summary, detail, std::move(onDismissed));
 }
 
 void AlertWarning(UltraCanvasWindowBase* parent,
-                  const std::string& summary, const std::string& detail) {
-    ShowAlert(AlertSeverity::Warning, parent, summary, detail);
+                  const std::string& summary, const std::string& detail,
+                  std::function<void()> onDismissed) {
+    ShowAlert(AlertSeverity::Warning, parent, summary, detail, std::move(onDismissed));
 }
 
 void AlertSuccess(UltraCanvasWindowBase* parent,
-                  const std::string& summary, const std::string& detail) {
-    ShowAlert(AlertSeverity::Successful, parent, summary, detail);
+                  const std::string& summary, const std::string& detail,
+                  std::function<void()> onDismissed) {
+    ShowAlert(AlertSeverity::Successful, parent, summary, detail, std::move(onDismissed));
 }
 
 void AlertErrorRetry(UltraCanvasWindowBase* parent,

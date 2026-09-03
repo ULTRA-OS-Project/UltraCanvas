@@ -3,7 +3,7 @@
 # (account / folder / message store on UltraDatabase) and, on top of it, the
 # UltraMail GUI executable (Toolbox, account wizard, reading view, composer,
 # contacts) linking the UltraCanvas UI library.
-# Version: 0.3.0
+# Version: 0.4.0
 # Last Modified: 2026-09-03
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -39,6 +39,11 @@ target_compile_features(UltraMailEngine PUBLIC cxx_std_20)
 target_include_directories(UltraMailEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
+# Mail-account passwords live in UltraVault (Argon2id + XChaCha20-Poly1305 via
+# UltraCrypt), not in a format of UltraMail's own.
+if(TARGET UltraVault)
+    target_link_libraries(UltraMailEngine PUBLIC UltraVault)
+endif()
 # UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on.
 # With a STATIC UltraCanvas we link the UltraNet archive directly. With a SHARED
 # UltraCanvas, UltraNet is absorbed into (and exported by) libultracanvas — link
@@ -90,6 +95,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailContactsView.cpp
     ui/UltraMailReadingView.cpp
     ui/UltraMailComposeWindow.cpp
+    ui/UltraMailPassphraseDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})

@@ -2,7 +2,7 @@
 // The UltraMail application manager: owns the local store, the account list and
 // the main window, and wires the Toolbox, the account info-tile bar and the
 // account-setup wizard together. Texter-style app-composition class.
-// Version: 0.2.0 (Phase 2)
+// Version: 0.4.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -13,16 +13,19 @@
 #include "UltraMailContactsView.h"
 #include "UltraMailReadingView.h"
 #include "UltraMailComposeWindow.h"
+#include "UltraMailPassphraseDialog.h"
 
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
+#include "UltraMailCredentialVault.h"
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,6 +39,9 @@ public:
     // when given, receives the database diagnostic so main() can show it
     // instead of exiting silently.
     bool Initialize(const std::string& dataDir, std::string* outError = nullptr);
+
+    // Wipes the vault's derived key from memory when the app goes away.
+    ~UltraMailApp();
 
     // Create the main window with the info-tile bar and the Toolbox grid.
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> CreateMainWindow();
@@ -78,6 +84,18 @@ private:
     void HandleSendDraft(const Draft& draft);
     // Re-flush the outbox after a failed send (the Retry button's action).
     void RetryOutbox(const std::string& fromAddr);
+    // Flush the outbox with the vault open and report the outcome. Split out
+    // of HandleSendDraft because unlocking is answered through a dialog, so the
+    // send continues in a callback rather than in line.
+    void FlushAndReport(const Draft& draft,
+                        UltraCanvas::UltraCanvasWindowBase* parent,
+                        const std::string& recipients);
+
+    // Run `onUnlocked` with the credential vault open, prompting for the master
+    // password first when it is still locked (and re-prompting on a wrong one).
+    // `onUnlocked` does not run if the user cancels or the vault cannot open.
+    void EnsureVaultUnlocked(std::function<void()> onUnlocked,
+                             const std::string& errorText = {});
 
     // Auto-collect senders of a folder's messages into the address book.
     void CollectContacts(const std::string& accountId, const std::string& folder);
@@ -86,6 +104,10 @@ private:
     void StartBackgroundSync();
     // Sync any accounts the scheduler reports as due (called from the timer).
     void RunDueSyncs();
+
+    // Session-lifetime: the master password is entered once, and the derived
+    // key lives only while the app runs.
+    CredentialVault vault_{""};
 
     LocalStore store_;
     ContactStore contacts_;

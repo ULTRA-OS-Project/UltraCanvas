@@ -1,3 +1,38 @@
+#### 2026-09-03 *0.4.0*
+- **Mail account passwords now live in UltraVault.** The 0.1 credential vault
+  XOR-ed each secret against a 32-byte key it wrote to `vault.key` **in the same
+  directory as the ciphertext** — anyone who could read the vault folder could
+  recover every mail password, and the file permissions were the only real
+  control. Secrets now go through `UltraVault`
+  (`UltraCanvas/include/UltraVault`), the framework's credential module, whose
+  file backend derives its key from a passphrase with Argon2id and seals the
+  store with XChaCha20-Poly1305 via UltraCrypt, authenticating the header so
+  tampering with the stored cost parameters is detected rather than obeyed.
+  UltraMail no longer implements a secret format of its own — the same module
+  UltraNet, UltraDatabase and UltraAI resolve credentials through.
+- **A master password guards the vault.** It is the passphrase the key is
+  derived from and is never written to disk, so the stored secrets genuinely
+  cannot be read without the user. UltraMail asks for it once per session —
+  with confirmation the first time, when there is no vault yet — through the
+  new `ui/UltraMailPassphraseDialog`. Cancelling leaves the vault locked rather
+  than falling back to something weaker.
+- Secrets under the 0.1 format are migrated on the first successful unlock and
+  the old `creds.dat` / `vault.key` are deleted — but only once every secret is
+  safely in the new vault, so a partial migration loses nothing.
+- `CredentialVault` reports *why* an unlock failed (`VaultStatus`): a wrong
+  master password re-prompts with the reason shown in the dialog, while a build
+  without libsodium says so and stops instead of appearing to work. A wrong
+  passphrase and a tampered vault are deliberately indistinguishable — that is
+  UltraVault's no-oracle rule, and the message covers both.
+- The vault is now a session-lifetime member of `UltraMailApp` (it was
+  constructed per call site), and its derived key is wiped on shutdown. Sending
+  and adding an account unlock in the foreground; the background sync timer
+  never raises a password prompt over what the user is doing — it skips the
+  round and says once that mail is not being fetched while the vault is locked.
+- Alert helpers take an optional completion callback, so the add-account flow
+  shows the discovery result and *then* asks for the master password instead of
+  stacking one dialog under the other.
+
 #### 2026-09-03 *0.3.0*
 - **"Save As…" on an attachment now works.** The reading view's attachment strip
   raised its `onSaveAs` callback into nothing — the menu entry was inert — and

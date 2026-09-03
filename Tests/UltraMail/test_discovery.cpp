@@ -10,10 +10,14 @@
 
 #include "UltraMailCredentialVault.h"
 
+#include <UltraNet/UltraNetMime.h>
+
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace UltraMail;
@@ -132,11 +136,43 @@ TEST(server_url_construction) {
 }
 
 // ---- credential vault ------------------------------------------------------
+// The vault is UltraVault-backed and stays locked until the master password is
+// supplied, so every test unlocks first. UltraVault is a per-process singleton:
+// each Unlock() reconfigures it, so tests must not assume two vaults are open
+// at once.
+
+namespace {
+const std::string kMaster = "correct horse battery staple";
+}
+
+TEST(credential_vault_locked_until_unlocked) {
+    fs::path dir = fs::temp_directory_path() / "ultramail_vault_locked";
+    fs::remove_all(dir);
+    CredentialVault vault(dir.string());
+
+    // Nothing works before the master password is given — and nothing is
+    // silently dropped: Store() reports the failure.
+    REQUIRE(!vault.IsUnlocked());
+    REQUIRE(!vault.Store("erika", "s3cr3t-p@ss"));
+    std::string got;
+    REQUIRE(!vault.Retrieve("erika", got));
+    REQUIRE(!vault.Has("erika"));
+
+    // An empty passphrase is refused: it would derive a reproducible key.
+    REQUIRE(vault.Unlock("") != VaultStatus::Ok);
+    REQUIRE(!vault.IsUnlocked());
+
+    vault.Lock();
+    fs::remove_all(dir);
+}
 
 TEST(credential_vault_roundtrip) {
     fs::path dir = fs::temp_directory_path() / "ultramail_vault_test";
     fs::remove_all(dir);
     CredentialVault vault(dir.string());
+
+    REQUIRE_EQ(static_cast<int>(vault.Unlock(kMaster)), static_cast<int>(VaultStatus::Ok));
+    REQUIRE(vault.IsUnlocked());
 
     REQUIRE(!vault.Has("erika"));
     REQUIRE(vault.Store("erika", "s3cr3t-p@ss"));
@@ -146,22 +182,102 @@ TEST(credential_vault_roundtrip) {
     REQUIRE(vault.Retrieve("erika", got));
     REQUIRE_EQ(got, std::string("s3cr3t-p@ss"));
 
-    // The stored file must not contain the plaintext secret.
-    std::ifstream is((dir / "creds.dat"));
+    // The vault file must not contain the plaintext secret.
+    std::ifstream is(vault.VaultPath(), std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
     REQUIRE(content.find("s3cr3t-p@ss") == std::string::npos);
+
+    // The 0.1 key file must not be recreated — the key is derived, not stored.
+    REQUIRE(!fs::exists(dir / "vault.key"));
 
     REQUIRE(vault.Remove("erika"));
     REQUIRE(!vault.Has("erika"));
 
+    vault.Lock();
     fs::remove_all(dir);
 }
 
 TEST(credential_vault_persists_across_instances) {
     fs::path dir = fs::temp_directory_path() / "ultramail_vault_persist";
     fs::remove_all(dir);
-    { CredentialVault v(dir.string()); REQUIRE(v.Store("acc", "token-xyz")); }
-    { CredentialVault v(dir.string()); std::string got;
-      REQUIRE(v.Retrieve("acc", got)); REQUIRE_EQ(got, std::string("token-xyz")); }
+    {
+        CredentialVault v(dir.string());
+        REQUIRE_EQ(static_cast<int>(v.Unlock(kMaster)), static_cast<int>(VaultStatus::Ok));
+        REQUIRE(v.Store("acc", "token-xyz"));
+        v.Lock();
+    }
+    {
+        CredentialVault v(dir.string());
+        REQUIRE(v.Exists());
+        REQUIRE_EQ(static_cast<int>(v.Unlock(kMaster)), static_cast<int>(VaultStatus::Ok));
+        std::string got;
+        REQUIRE(v.Retrieve("acc", got));
+        REQUIRE_EQ(got, std::string("token-xyz"));
+        v.Lock();
+    }
+    fs::remove_all(dir);
+}
+
+TEST(credential_vault_wrong_master_password_is_refused) {
+    fs::path dir = fs::temp_directory_path() / "ultramail_vault_wrong";
+    fs::remove_all(dir);
+    {
+        CredentialVault v(dir.string());
+        REQUIRE_EQ(static_cast<int>(v.Unlock(kMaster)), static_cast<int>(VaultStatus::Ok));
+        REQUIRE(v.Store("acc", "token-xyz"));
+        v.Lock();
+    }
+    {
+        CredentialVault v(dir.string());
+        REQUIRE_EQ(static_cast<int>(v.Unlock("not the master password")),
+                   static_cast<int>(VaultStatus::WrongPassphrase));
+        REQUIRE(!v.IsUnlocked());
+        std::string got;
+        REQUIRE(!v.Retrieve("acc", got));
+    }
+    fs::remove_all(dir);
+}
+
+// A 0.1-format vault (XOR against a key file beside the data) is carried into
+// UltraVault on the first unlock, and its files are removed.
+TEST(credential_vault_migrates_legacy_format) {
+    fs::path dir = fs::temp_directory_path() / "ultramail_vault_migrate";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+
+    // Reproduce the 0.1 on-disk format: base64(account) TAB base64(xor(secret)).
+    const std::vector<uint8_t> key(32, 0x5A);
+    {
+        std::ofstream ks(dir / "vault.key", std::ios::binary);
+        ks.write(reinterpret_cast<const char*>(key.data()),
+                 static_cast<std::streamsize>(key.size()));
+    }
+    auto xorWith = [&key](const std::string& in) {
+        std::string out = in;
+        for (std::size_t i = 0; i < out.size(); ++i)
+            out[i] = static_cast<char>(static_cast<uint8_t>(out[i]) ^ key[i % key.size()]);
+        return out;
+    };
+    auto b64 = [](const std::string& in) {
+        return UltraNet_Base64Encode(std::vector<uint8_t>(in.begin(), in.end()), false);
+    };
+    {
+        std::ofstream os(dir / "creds.dat");
+        os << b64("legacy-acc") << '\t' << b64(xorWith("old-password")) << '\n';
+    }
+
+    CredentialVault vault(dir.string());
+    REQUIRE_EQ(static_cast<int>(vault.Unlock(kMaster)), static_cast<int>(VaultStatus::Ok));
+
+    // The secret came across...
+    std::string got;
+    REQUIRE(vault.Retrieve("legacy-acc", got));
+    REQUIRE_EQ(got, std::string("old-password"));
+
+    // ...and the weak files are gone.
+    REQUIRE(!fs::exists(dir / "creds.dat"));
+    REQUIRE(!fs::exists(dir / "vault.key"));
+
+    vault.Lock();
     fs::remove_all(dir);
 }
