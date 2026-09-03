@@ -39,10 +39,13 @@
 // pipeline for bitmaps and vectors, poster frame for videos, first page for
 // PDFs, a shaded software render for 3D models and a miniature page of the
 // file's own text for text, documents and spreadsheets. Each kind can be
-// switched off individually (Display > Preview), which drops its entries back
-// to the plain type glyph and stops the widget from reading those files.
-// Version: 1.21.0
-// Last Modified: 2026-09-02
+// switched off individually (Display > Thumbnails), which drops its entries
+// back to the plain type glyph and stops the widget from reading those files;
+// a single format can be switched off inside a kind, and Display > Detail view
+// carries the same switches for the detail pane a host opens beside the
+// display.
+// Version: 1.23.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -537,7 +540,8 @@ namespace UltraCanvas {
 
         // ===== SELECTIVE PREVIEWS =====
         // The preview kind a file belongs to — what a content preview for it
-        // would cost to produce, and therefore which Display > Preview switch
+        // would cost to produce, and therefore which Display > Thumbnails and
+        // Display > Detail view switch
         // governs it. The extension decides first because the kinds do not
         // line up with FilerFileCategory one to one: PDF is its own kind
         // (it renders a page) and CSV / TSV preview as a cell grid like the
@@ -573,6 +577,59 @@ namespace UltraCanvas {
 #else
             return false;
 #endif
+        }
+
+        // A PDF wearing another extension: every Illustrator file since CS2 is
+        // one, and so is the occasional .ai a converter wrote. Reading four
+        // bytes is cheaper than a failed parse, and it is what lets the PDF
+        // renderer produce a thumbnail for a format nothing else can draw.
+        bool FileStartsWithPdfSignature(const std::string& path) {
+            std::ifstream f(path, std::ios::binary);
+            if (!f.is_open()) return false;
+            char sig[5] = {0};
+            f.read(sig, 4);
+            return f.gcount() == 4 && std::memcmp(sig, "%PDF", 4) == 0;
+        }
+
+        // An extension as the format switches store it: lowercase, no dot, so
+        // ".EPS", "EPS" and "eps" address the same format.
+        std::string NormalizedFormatExtension(const std::string& extension) {
+            std::string ext = extension;
+            if (!ext.empty() && ext.front() == '.') ext.erase(0, 1);
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return ext;
+        }
+
+        // Whether THIS build can produce a thumbnail for the format at all —
+        // the same question ThumbSourceFor answers per entry, asked of a bare
+        // extension so a settings list can grey out what no switch can turn
+        // on (no PostScript loader, no PDF plugin, no video backend).
+        bool ThumbnailProducibleFor(const std::string& ext, FilerPreviewType kind) {
+            switch (kind) {
+                case FilerPreviewType::Bitmaps:
+                    return ImagePipelineLoadsExtension(ext);
+                case FilerPreviewType::VectorGraphics:
+                    return ImagePipelineLoadsExtension(ext) ||
+                           FormatCarriesEmbeddedPreview(ext);
+                case FilerPreviewType::Models3D:
+                    return ext == "stl";
+                case FilerPreviewType::PDF:
+                    return PdfPreviewAvailable();
+                case FilerPreviewType::Videos:
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+                    return true;
+#else
+                    return false;
+#endif
+                // Text-shaped kinds are read, not decoded: always available.
+                case FilerPreviewType::Text:
+                case FilerPreviewType::Docs:
+                case FilerPreviewType::Spreadsheets:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         // Straight (non-premultiplied) RGBA rows into a fresh pixmap. The
@@ -2682,22 +2739,184 @@ namespace UltraCanvas {
         return PreviewTypeForFile(e.extension, e.category);
     }
 
-    bool UltraCanvasFilerWidget::PreviewEnabledFor(const FilerEntry& e) const {
+    bool UltraCanvasFilerWidget::PreviewAllowed(
+            const FilerEntry& e, uint32_t kinds,
+            const std::set<std::string>& disabled) {
         const FilerPreviewType type = PreviewTypeOf(e);
         // Entries of no preview kind (folders, audio, archives, programs) are
         // never gated: a host that attached an explicit thumbnail to one still
-        // gets it drawn.
+        // gets it drawn, and a folder is always worth a detail pane.
         if (type == FilerPreviewType::NonePreview) return true;
-        return (previewTypes & static_cast<uint32_t>(type)) != 0;
+        if ((kinds & static_cast<uint32_t>(type)) == 0) return false;
+        return disabled.find(e.extension) == disabled.end();
     }
 
-    void UltraCanvasFilerWidget::SetPreviewType(FilerPreviewType type, bool on) {
+    bool UltraCanvasFilerWidget::ThumbnailEnabledFor(const FilerEntry& e) const {
+        return PreviewAllowed(e, thumbnailKinds, disabledThumbnailFormats);
+    }
+
+    bool UltraCanvasFilerWidget::DetailViewEnabledFor(const FilerEntry& e) const {
+        return PreviewAllowed(e, detailViewKinds, disabledDetailViewFormats);
+    }
+
+    void UltraCanvasFilerWidget::SetThumbnailKind(FilerPreviewType type, bool on) {
         const uint32_t bit = static_cast<uint32_t>(type);
-        SetPreviewTypes(on ? (previewTypes | bit) : (previewTypes & ~bit));
+        SetThumbnailKinds(on ? (thumbnailKinds | bit) : (thumbnailKinds & ~bit));
     }
 
-    bool UltraCanvasFilerWidget::IsPreviewTypeEnabled(FilerPreviewType type) const {
-        return (previewTypes & static_cast<uint32_t>(type)) != 0;
+    bool UltraCanvasFilerWidget::IsThumbnailKindEnabled(FilerPreviewType type) const {
+        return (thumbnailKinds & static_cast<uint32_t>(type)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetDetailViewKind(FilerPreviewType type, bool on) {
+        const uint32_t bit = static_cast<uint32_t>(type);
+        SetDetailViewKinds(on ? (detailViewKinds | bit) : (detailViewKinds & ~bit));
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailViewKindEnabled(FilerPreviewType type) const {
+        return (detailViewKinds & static_cast<uint32_t>(type)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetThumbnailFormatEnabled(
+            const std::string& extension, bool on) {
+        const std::string ext = NormalizedFormatExtension(extension);
+        if (ext.empty()) return;
+        const bool changed = on ? (disabledThumbnailFormats.erase(ext) > 0)
+                                : disabledThumbnailFormats.insert(ext).second;
+        if (!changed) return;
+        // A tile that falls back to the type glyph fills its square again, so
+        // the shrink-to-image row heights of the thumbnail grid change with it.
+        InvalidateFilerLayout();
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::IsThumbnailFormatEnabled(
+            const std::string& extension) const {
+        const std::string ext = NormalizedFormatExtension(extension);
+        return disabledThumbnailFormats.find(ext) == disabledThumbnailFormats.end();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailViewFormatEnabled(
+            const std::string& extension, bool on) {
+        const std::string ext = NormalizedFormatExtension(extension);
+        if (ext.empty()) return;
+        const bool changed = on ? (disabledDetailViewFormats.erase(ext) > 0)
+                                : disabledDetailViewFormats.insert(ext).second;
+        if (!changed) return;
+        // Nothing of this widget is drawn from it — the host reads the answer
+        // when its selection changes — so there is nothing to repaint here.
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailViewFormatEnabled(
+            const std::string& extension) const {
+        const std::string ext = NormalizedFormatExtension(extension);
+        return disabledDetailViewFormats.find(ext) == disabledDetailViewFormats.end();
+    }
+
+    std::vector<std::string>
+    UltraCanvasFilerWidget::GetDisabledThumbnailFormats() const {
+        return {disabledThumbnailFormats.begin(), disabledThumbnailFormats.end()};
+    }
+
+    void UltraCanvasFilerWidget::SetDisabledThumbnailFormats(
+            const std::vector<std::string>& exts) {
+        std::set<std::string> next;
+        for (const std::string& e : exts) {
+            const std::string ext = NormalizedFormatExtension(e);
+            if (!ext.empty()) next.insert(ext);
+        }
+        if (next == disabledThumbnailFormats) return;
+        disabledThumbnailFormats = std::move(next);
+        InvalidateFilerLayout();
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    std::vector<std::string>
+    UltraCanvasFilerWidget::GetDisabledDetailViewFormats() const {
+        return {disabledDetailViewFormats.begin(), disabledDetailViewFormats.end()};
+    }
+
+    void UltraCanvasFilerWidget::SetDisabledDetailViewFormats(
+            const std::vector<std::string>& exts) {
+        std::set<std::string> next;
+        for (const std::string& e : exts) {
+            const std::string ext = NormalizedFormatExtension(e);
+            if (!ext.empty()) next.insert(ext);
+        }
+        if (next == disabledDetailViewFormats) return;
+        disabledDetailViewFormats = std::move(next);
+        NotifyDisplayFormatsChanged();
+    }
+
+    const char* UltraCanvasFilerWidget::PreviewTypeLabel(FilerPreviewType type) {
+        switch (type) {
+            case FilerPreviewType::Bitmaps:        return "Bitmaps";
+            case FilerPreviewType::VectorGraphics: return "Vector graphics";
+            case FilerPreviewType::Models3D:       return "3D";
+            case FilerPreviewType::PDF:            return "PDF";
+            case FilerPreviewType::Text:           return "Text";
+            case FilerPreviewType::Docs:           return "Docs";
+            case FilerPreviewType::Spreadsheets:   return "Spreadsheets";
+            case FilerPreviewType::Videos:         return "Videos";
+            default:                               return "";
+        }
+    }
+
+    const std::vector<FilerPreviewType>&
+    UltraCanvasFilerWidget::AllPreviewTypes() {
+        static const std::vector<FilerPreviewType> types = {
+            FilerPreviewType::Bitmaps,      FilerPreviewType::VectorGraphics,
+            FilerPreviewType::Models3D,     FilerPreviewType::PDF,
+            FilerPreviewType::Text,         FilerPreviewType::Docs,
+            FilerPreviewType::Spreadsheets, FilerPreviewType::Videos,
+        };
+        return types;
+    }
+
+    // ===== THE "LIST OF FILES" =====
+    std::vector<FilerFormatInfo> UltraCanvasFilerWidget::GetPreviewableFormats() {
+        std::map<std::string, FilerFormatInfo> byExtension;
+        auto add = [&byExtension](const std::string& ext, const std::string& label,
+                                  FilerFileCategory category) {
+            if (ext.empty() || byExtension.count(ext)) return;
+            const FilerPreviewType kind = PreviewTypeForFile(ext, category);
+            if (kind == FilerPreviewType::NonePreview) return;
+            FilerFormatInfo info;
+            info.extension = ext;
+            info.label     = label;
+            info.kind      = kind;
+            info.thumbnailSupported = ThumbnailProducibleFor(ext, kind);
+            byExtension.emplace(ext, std::move(info));
+        };
+        // The widget's own table first — it carries the readable names — then
+        // whatever else the FileLoader inventory reports for this build, so a
+        // format a plugin registered is listed without the widget knowing it.
+        for (const auto& [ext, info] : ExtensionTypeMap())
+            add(ext, info.label, info.category);
+        for (const MediaFormatInfo& f : UltraCanvasSupportedFormats::GetAll()) {
+            const FilerFileCategory c = CategoryFromMediaCategory(f.category);
+            add(f.extension, f.description, c);
+            for (const std::string& alias : f.aliases) add(alias, f.description, c);
+        }
+        std::vector<FilerFormatInfo> out;
+        out.reserve(byExtension.size());
+        for (auto& [ext, info] : byExtension) out.push_back(info);
+        // Grouped by kind (the order the enum declares), extensions sorted
+        // inside each group — the order a settings list wants to show.
+        std::stable_sort(out.begin(), out.end(),
+                         [](const FilerFormatInfo& a, const FilerFormatInfo& b) {
+            if (a.kind != b.kind)
+                return static_cast<uint32_t>(a.kind) < static_cast<uint32_t>(b.kind);
+            return a.extension < b.extension;
+        });
+        return out;
+    }
+
+    void UltraCanvasFilerWidget::NotifyDisplayFormatsChanged() {
+        if (onDisplayFormatsChanged) onDisplayFormatsChanged();
     }
 
     bool UltraCanvasFilerWidget::PreviewFitsRect(const FilerEntry& e,
@@ -2714,14 +2933,22 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasFilerWidget::SetPreviewTypes(uint32_t mask) {
+    void UltraCanvasFilerWidget::SetThumbnailKinds(uint32_t mask) {
         mask &= kFilerAllPreviewTypes;
-        if (previewTypes == mask) return;
-        previewTypes = mask;
+        if (thumbnailKinds == mask) return;
+        thumbnailKinds = mask;
         // A tile that falls back to the type glyph fills its square again, so
         // the shrink-to-image row heights of the thumbnail grid change with it.
         InvalidateFilerLayout();
         RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailViewKinds(uint32_t mask) {
+        mask &= kFilerAllPreviewTypes;
+        if (detailViewKinds == mask) return;
+        detailViewKinds = mask;
+        NotifyDisplayFormatsChanged();
     }
 
     int UltraCanvasFilerWidget::DatasetLineCount() const {
@@ -6633,14 +6860,15 @@ namespace UltraCanvas {
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
         // Executables show their embedded application icon (Windows .exe /
         // .dll / .ico — Explorer-style). Not a content preview, so it is not
-        // gated by the Display > Preview toggles; an explicit thumbnail
+        // gated by the Display > Thumbnails toggles; an explicit thumbnail
         // still wins below. On platforms without an extractor this is false
         // for every path.
         if (!e.isDirectory && e.thumbnailPath.empty() &&
             NativeFileIconAvailable(e.path))
             return e.path;
-        // Display > Preview: a switched-off kind is never read at all.
-        if (!PreviewEnabledFor(e)) return {};
+        // Display > Thumbnails: a switched-off kind (or format) is never read
+        // at all.
+        if (!ThumbnailEnabledFor(e)) return {};
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::Bitmaps:
@@ -6652,10 +6880,13 @@ namespace UltraCanvas {
                 // svg/svgz rasterize through the built-in SVG renderer, and
                 // eps/ps through libvips where that build has a PostScript
                 // loader. The rest of the Vector category has no renderer
-                // that works without a window - but Xara and the ZIP-based
-                // CorelDRAW documents carry a preview bitmap of their own,
-                // which the workers extract and decode like any other image.
-                // What is left (emf/wmf/dxf/dwg/ai) keeps the type glyph.
+                // that works without a window - but Xara, the ZIP-based
+                // CorelDRAW documents and the PostScript formats carry a
+                // preview bitmap of their own, which the workers extract and
+                // decode like any other image (and a PDF-compatible .ai is
+                // rendered as the PDF it is). What is left - emf, wmf, dxf,
+                // dwg, an EPS written without a preview - keeps the type
+                // glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
@@ -6955,7 +7186,7 @@ namespace UltraCanvas {
         // Vectors scale to fill the tile, everything else draws a glyph — and
         // so does a bitmap whose preview kind is switched off.
         if (e.category != FilerFileCategory::Image) return 0.0f;
-        if (!PreviewEnabledFor(e)) return 0.0f;
+        if (!ThumbnailEnabledFor(e)) return 0.0f;
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
@@ -7138,6 +7369,14 @@ namespace UltraCanvas {
                         pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
                                                          req.fit, req.scale);
                     }
+                    // PDF-compatible Illustrator files (CS2 and newer) carry
+                    // no EPS preview but are a PDF from the first byte, so
+                    // the page renderer draws them like any document.
+                    if (!pm && PdfPreviewAvailable() &&
+                        FileStartsWithPdfSignature(req.path)) {
+                        pm = RenderPdfPreviewPixmap(req.path, req.w, req.h,
+                                                    req.scale);
+                    }
                     break;
                 }
                 default: {
@@ -7271,7 +7510,7 @@ namespace UltraCanvas {
         // finished. Only where a page would be legible at all: the icon
         // column of the Details and List rows keeps the type glyph.
         if (thumb.empty() && !e.isDirectory && rect.width >= kContentPreviewMinEdge &&
-            rect.height >= kContentPreviewMinEdge && PreviewEnabledFor(e)) {
+            rect.height >= kContentPreviewMinEdge && ThumbnailEnabledFor(e)) {
             const FilerPreviewType kind = PreviewTypeOf(e);
             if (kind == FilerPreviewType::Text || kind == FilerPreviewType::Docs ||
                 kind == FilerPreviewType::Spreadsheets) {
@@ -9460,31 +9699,46 @@ namespace UltraCanvas {
                         [this, f](bool on) { SetDatasetField(f, on); }));
             }
 
-            // Preview > which file kinds show their content instead of the
-            // plain type glyph. All on by default.
-            std::vector<MenuItemData> previewItems;
-            struct PreviewOption { const char* label; FilerPreviewType type; };
-            static const PreviewOption previewOptions[] = {
-                {"Bitmaps",         FilerPreviewType::Bitmaps},
-                {"Vector graphics", FilerPreviewType::VectorGraphics},
-                {"3D",              FilerPreviewType::Models3D},
-                {"PDF",             FilerPreviewType::PDF},
-                {"Text",            FilerPreviewType::Text},
-                {"Docs",            FilerPreviewType::Docs},
-                {"Spreadsheets",    FilerPreviewType::Spreadsheets},
-                {"Videos",          FilerPreviewType::Videos},
-            };
-            for (const PreviewOption& o : previewOptions) {
-                FilerPreviewType t = o.type;
-                previewItems.push_back(MenuItemData::Checkbox(
-                        o.label, IsPreviewTypeEnabled(t),
-                        [this, t](bool on) { SetPreviewType(t, on); }));
+            // Thumbnails > which file kinds show their content instead of
+            // the plain type glyph, and Detail view > which kinds the host
+            // may open its detail pane for. The same eight kinds in both, all
+            // on by default; the per-format lists behind them are the
+            // application's (UltraFiler: Settings > Display > Thumbnails /
+            // Detail view), because a hundred formats do not belong in a menu.
+            std::vector<MenuItemData> thumbnailItems;
+            std::vector<MenuItemData> detailViewItems;
+            for (FilerPreviewType t : AllPreviewTypes()) {
+                thumbnailItems.push_back(MenuItemData::Checkbox(
+                        PreviewTypeLabel(t), IsThumbnailKindEnabled(t),
+                        [this, t](bool on) { SetThumbnailKind(t, on); }));
+                detailViewItems.push_back(MenuItemData::Checkbox(
+                        PreviewTypeLabel(t), IsDetailViewKindEnabled(t),
+                        [this, t](bool on) { SetDetailViewKind(t, on); }));
+            }
+            // The host's own entry point into the per-format lists, appended
+            // to both submenus when it installed one (UltraFiler opens the
+            // matching settings page).
+            if (formatListMenuProvider) {
+                std::vector<MenuItemData> extra =
+                        formatListMenuProvider(FilerPreviewTarget::Thumbnails);
+                if (!extra.empty()) {
+                    thumbnailItems.push_back(MenuItemData::Separator());
+                    for (MenuItemData& item : extra)
+                        thumbnailItems.push_back(std::move(item));
+                }
+                extra = formatListMenuProvider(FilerPreviewTarget::DetailView);
+                if (!extra.empty()) {
+                    detailViewItems.push_back(MenuItemData::Separator());
+                    for (MenuItemData& item : extra)
+                        detailViewItems.push_back(std::move(item));
+                }
             }
 
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
-            displayItems.push_back(MenuItemData::Submenu("Preview", previewItems));
+            displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
+            displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,

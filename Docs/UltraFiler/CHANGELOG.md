@@ -1,3 +1,28 @@
+#### 2026-09-03 *1.18.0*
+- **Settings > Display > Thumbnails and Settings > Display > Detail view: two
+  lists of files.** Each page shows the eight file kinds as one checkbox each
+  and, under every kind, the individual formats belonging to it — so a single
+  format (an EPS on a slow share, a PSD that takes a second to decode) can be
+  excluded without losing the thumbnails of everything else in its kind. A
+  format this build cannot show is listed but greyed, because seeing that
+  `dxf` is unsupported here is what explains a missing thumbnail, which an
+  omitted row would not. Both pages carry *Everything on* / *Everything off*.
+  The file display's own `Display > Thumbnails` and `Display > Detail view`
+  submenus keep the quick per-kind switches and end with *File formats…*,
+  which opens the matching page. It is all one setting: a switch flipped in
+  either place is saved to `config.ini` (`display.thumbnails.kinds`,
+  `display.thumbnails.formats.off`, `display.detailview.kinds`,
+  `display.detailview.formats.off`) and applied to every file display of the
+  window — each tab, the folder preview, and the History and Favorites lists.
+- **The detail pane follows those switches.** It used to open for whatever the
+  media viewer could show, which is why switching a kind off left the pane
+  showing the very files whose thumbnails had just been switched off. A
+  double-click follows the same rule: a file the detail view is switched off
+  for opens in its application instead of in the pane.
+- **EPS files have thumbnails and a detail view; CorelDRAW and Xara files have
+  a detail view.** See framework 0.3.94 — the filer widget and the media viewer
+  are framework code, so the work is described there.
+
 #### 2026-09-02 *1.17.1*
 - **UltraFiler called itself 0.8.0.** The window title, the `--version` output
   and the Windows file properties all came from a literal in the build files

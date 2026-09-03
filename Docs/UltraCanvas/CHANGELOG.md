@@ -1,3 +1,47 @@
+#### 2026-09-03 *0.3.94*
+- **The filer decides per file format what gets a thumbnail — and, now, what
+  gets a detail view.** `Display > Preview` gated thumbnails only, in eight
+  coarse kinds, and nothing gated the detail pane a host opens beside the
+  display: that pane asked `UltraCanvasMediaViewer::IsSupportedMedia()` alone,
+  so a CorelDRAW or Xara file that had a thumbnail still had no preview, and an
+  EPS had neither. The submenu is now `Display > Thumbnails`, `Display > Detail
+  view` sits beside it with the same eight switches, and each set additionally
+  takes **per-format exceptions** — one extension switched off while its kind
+  stays on. New API: `SetThumbnailKind(s)` / `IsThumbnailKindEnabled` /
+  `GetThumbnailKinds`, the same for the detail view,
+  `SetThumbnailFormatEnabled` / `SetDetailViewFormatEnabled` (plus the
+  `GetDisabled…Formats` / `SetDisabled…Formats` pairs an application persists),
+  `ThumbnailEnabledFor(entry)` and `DetailViewEnabledFor(entry)`. The old
+  `SetPreviewType(s)` / `IsPreviewTypeEnabled` / `GetPreviewTypes` are replaced
+  by the thumbnail half of that set — same enum, same bit values.
+  `GetPreviewableFormats()` reports every format the switches address (its
+  extension, readable label, kind, and whether this build can produce a
+  thumbnail for it at all), which is what a settings page builds its list of
+  files from without repeating the widget's tables; `PreviewTypeLabel()` and
+  `AllPreviewTypes()` give it the menu wording and order.
+  `formatListMenuProvider` lets the host hang its own entry into those lists at
+  the end of both submenus, and `onDisplayFormatsChanged` fires whenever any of
+  the four sets changes, whoever changed it.
+- **EPS, PostScript and old Illustrator files thumbnail from the preview they
+  carry.** Nothing here rasterizes PostScript — that needs an interpreter, and
+  a libvips build with the delegate is the exception, not the rule — so an
+  `.eps` showed the same bare glyph in every build.
+  `UltraCanvasEmbeddedPreview` now reads both preview mechanisms the EPSF
+  specification defines: the TIFF section of a DOS EPS binary header, and the
+  hex-encoded EPSI preview in the comment block, which is converted to a
+  greyscale PGM (its samples are ink coverage, so 0 is white). A
+  PDF-compatible `.ai` — every Illustrator file since CS2 — is recognised from
+  its `%PDF` signature and rendered by the PDF plugin like the document it is.
+  `EmbeddedPreviewTest` covers both mechanisms against files it writes itself,
+  including the polarity of the greyscale it produces.
+- **The media viewer shows a vector document it cannot rasterize.** A new
+  `MediaKind::Vector` covers Xara (`.xar/.web/.wix`), CorelDRAW (`.cdr/.cdt`)
+  and PostScript (`.eps/.epsf/.epsi/.ps/.ai`): `IsSupportedMedia()` accepts
+  them, and `LoadCurrent()` shows the file rasterized where the image pipeline
+  can do it and the embedded preview bitmap otherwise — the same treatment a
+  `*.ucd` container already got. A file that carries no preview says so in the
+  info bar rather than leaving an empty pane.
+
 #### 2026-09-03 *0.3.93*
 - **The splash screen can credit the toolkit the host is built on.**
   `SplashScreenConfig` grew an attribution block — `attributionText`,

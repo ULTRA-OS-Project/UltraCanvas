@@ -196,5 +196,4 @@
 
 ## Applications
 
-- [Ladybird splash screen](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/Ladybird/SplashScreen.md): The panel the Ladybird port shows while it starts: the Ladybird mark, the product name, the port's version and release date, and the line crediting the toolkit the browser's UI is built on. It stays up for two seconds…
 - [UltraAuthenticator — Feasibility Investigation & Security Analysis](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md): This document answers two questions:

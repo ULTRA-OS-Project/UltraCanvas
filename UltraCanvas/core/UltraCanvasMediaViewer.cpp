@@ -1,8 +1,12 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.5.0
-// Last Modified: 2026-08-23
+// Version: 1.6.0
+// Last Modified: 2026-09-03
+// V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
+//   EPS/PostScript) are shown from the preview bitmap they carry inside
+//   themselves, the way a *.ucd container is - so a file manager's detail pane
+//   shows the drawing instead of folding away.
 // V1.5.0: CloseFile() shows nothing and lets go of the file - playback stops and
 //   every display backend releases its document, so a host preview pane can move,
 //   rename or delete the file it was just showing. StopPlayback() alone never
@@ -30,6 +34,8 @@
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
+#include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
+#include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "Documents/eBook/TXTEngine.h" // RegisterBuiltinEBookEngines (idempotent)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -1220,6 +1226,16 @@ bool UltraCanvasMediaViewer::IsUCDFile(const std::string& path) {
     return LowerExt(path) == "ucd";
 }
 
+bool UltraCanvasMediaViewer::IsVectorDocumentFile(const std::string& path) {
+    // The vector formats that carry a preview bitmap of the drawing inside
+    // themselves. Nothing here rasterizes the drawing - that needs a renderer
+    // with a window - so the preview IS the display, exactly as for a *.ucd
+    // container. A format the image pipeline can rasterize (SVG, and EPS on a
+    // libvips build with a PostScript loader) is still shown from the file
+    // itself; the embedded preview is the fallback (see LoadCurrent).
+    return FormatCarriesEmbeddedPreview(path);
+}
+
 // Image / vector formats the image pipeline can rasterize. Kept in one place
 // because both ClassifyFile() and IsSupportedMedia() need the same list.
 static const std::vector<std::string>& ImageExtensions() {
@@ -1292,6 +1308,9 @@ bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsUCDFile(path))         return MediaKind::UCDoc;
+    // Before the text check: an EPS is PostScript source, and its own drawing
+    // is the more useful answer to "what is in this file".
+    if (IsVectorDocumentFile(path)) return MediaKind::Vector;
     if (IsDocumentFile(path))    return MediaKind::Document;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
@@ -1313,7 +1332,7 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     // Documents / spreadsheets / 3D models / e-books / UCD containers / text /
     // video / audio (video & audio gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
-           IsEBookFile(path) || IsUCDFile(path) ||
+           IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -1697,6 +1716,35 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
             ta->SetHighlightSyntax(false);
             ta->SetDisplayOnly(true);
             ta->SetText(ucdDetails);
+        }
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::Vector) {
+        // A vector document nothing here can rasterize (Xara, CorelDRAW, EPS
+        // and the rest of PostScript). Shown the way a *.ucd container is:
+        // the preview bitmap the file carries inside itself - the only
+        // picture of the drawing obtainable without a renderer that needs a
+        // window. Where the image pipeline DOES rasterize the format (a
+        // libvips build with a PostScript loader), that is the better picture
+        // and is tried first.
+        ShowView(MediaKind::Image);
+        std::shared_ptr<UCImage> img;
+        const std::string ext = LowerExt(path);
+        if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
+            img = UCImage::Get(path);
+        if (!img || !img->IsValid()) {
+            std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+            if (!bytes.empty()) img = UCImage::LoadFromMemory(bytes);
+        }
+        if (img && img->IsValid()) {
+            surface->ShowImage(img, transition, transitionDurationMs, animated);
+        } else {
+            // No preview stored, and no renderer for the drawing: say so
+            // rather than leaving an empty pane the user has to interpret.
+            surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+            if (infoLabel)
+                infoLabel->SetText(BaseName(path) +
+                        " - no preview stored in this vector document");
         }
         handled = true;
     }

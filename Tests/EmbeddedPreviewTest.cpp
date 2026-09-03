@@ -1,19 +1,23 @@
 // Tests/EmbeddedPreviewTest.cpp
 // The preview bitmap vector documents carry inside themselves - what the
-// filer thumbnails a Xara or CorelDRAW file from, since neither has a
-// renderer that works without a window.
+// filer thumbnails a Xara, CorelDRAW or PostScript file from, since none of
+// them has a renderer that works without a window.
 //
-// Checks the format gate, the two extractors against the repository's own
-// sample documents, and that what comes out really is a decodable image.
-// Version: 1.0.0
-// Last Modified: 2026-09-02
+// Checks the format gate, the extractors against the repository's own sample
+// documents and against EPS files written here, and that what comes out
+// really is a decodable image.
+// Version: 1.1.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 
+#include <cstdint>
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -67,6 +71,117 @@ void CheckSamples(const fs::path& dir, const std::string& extension) {
     Check(seen > 0, dir.string() + ": samples found");
 }
 
+// ===== EPS SAMPLES WRITTEN FOR THE TEST =====
+// The repository carries no EPS files, and the two preview mechanisms are
+// exactly specified, so the samples are written here: what goes in is known
+// byte for byte, which is what makes the polarity check below meaningful.
+
+void WriteFile(const fs::path& path, const std::vector<uint8_t>& bytes) {
+    std::ofstream f(path, std::ios::binary);
+    f.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+}
+
+void Append(std::vector<uint8_t>& out, const std::string& text) {
+    out.insert(out.end(), text.begin(), text.end());
+}
+
+// An ASCII EPS with an EPSI preview: 4x2 samples, 8 bits each, ink coverage
+// (0 = white). The two rows are mirror images of each other.
+std::vector<uint8_t> MakeEpsiSample() {
+    std::vector<uint8_t> out;
+    Append(out, "%!PS-Adobe-3.0 EPSF-3.0\n");
+    Append(out, "%%BoundingBox: 0 0 4 2\n");
+    Append(out, "%%BeginPreview: 4 2 8 2\n");
+    Append(out, "% 004080FF\n");
+    Append(out, "% FF804000\n");
+    Append(out, "%%EndPreview\n");
+    Append(out, "%%EndComments\n");
+    Append(out, "0 0 moveto 4 2 lineto stroke\n");
+    Append(out, "%%EOF\n");
+    return out;
+}
+
+// A DOS EPS binary: the 30-byte header, then the PostScript, then a TIFF
+// section. The TIFF is a stand-in - the extractor hands the bytes to the
+// image pipeline untouched, so what this checks is that the right slice
+// comes back.
+std::vector<uint8_t> MakeDosEpsSample(const std::vector<uint8_t>& tiff) {
+    const std::string ps = "%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 4 2\n";
+    const uint32_t psOffset = 30;
+    const uint32_t psLength = static_cast<uint32_t>(ps.size());
+    const uint32_t tiffOffset = psOffset + psLength;
+    const uint32_t tiffLength = static_cast<uint32_t>(tiff.size());
+    std::vector<uint8_t> out(30, 0);
+    out[0] = 0xC5; out[1] = 0xD0; out[2] = 0xD3; out[3] = 0xC6;
+    auto put32 = [&out](int at, uint32_t v) {
+        out[at]     = static_cast<uint8_t>(v & 0xFF);
+        out[at + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+        out[at + 2] = static_cast<uint8_t>((v >> 16) & 0xFF);
+        out[at + 3] = static_cast<uint8_t>((v >> 24) & 0xFF);
+    };
+    put32(4, psOffset);
+    put32(8, psLength);
+    put32(12, 0);            // no Windows Metafile section
+    put32(16, 0);
+    put32(20, tiffOffset);
+    put32(24, tiffLength);
+    Append(out, ps);
+    out.insert(out.end(), tiff.begin(), tiff.end());
+    return out;
+}
+
+void CheckPostScriptPreviews(const fs::path& dir) {
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (ec) {
+        std::cout << "  [SKIP] cannot write to " << dir.string() << "\n";
+        return;
+    }
+
+    // ----- EPSI (the hex preview in the comment block) -----
+    const fs::path epsi = dir / "epsi-sample.eps";
+    WriteFile(epsi, MakeEpsiSample());
+    std::vector<uint8_t> preview = ExtractEmbeddedPreviewBytes(epsi.string());
+    Check(!preview.empty(), "eps: the EPSI preview is found");
+    const std::string header = "P5\n4 2\n255\n";
+    const bool headerOk = preview.size() == header.size() + 8 &&
+            std::equal(header.begin(), header.end(), preview.begin());
+    Check(headerOk, "eps: it comes out as a 4x2 greyscale PGM");
+    if (headerOk) {
+        const uint8_t* px = preview.data() + header.size();
+        // Ink coverage inverted into grey: 0x00 is white, 0xFF is black.
+        Check(px[0] == 255 && px[1] == 191 && px[2] == 127 && px[3] == 0,
+              "eps: the first row runs white to black");
+        Check(px[4] == 0 && px[5] == 127 && px[6] == 191 && px[7] == 255,
+              "eps: the second row runs black to white");
+    }
+    auto img = UCImage::LoadFromMemory(preview);
+    Check(img && img->GetWidth() == 4 && img->GetHeight() == 2,
+          "eps: the PGM decodes through the image pipeline");
+
+    // ----- DOS EPS binary header (the TIFF section) -----
+    const std::vector<uint8_t> tiff = {'I', 'I', 0x2A, 0x00, 0x08, 0x00,
+                                       0x00, 0x00, 0x01, 0x02, 0x03, 0x04};
+    const fs::path dos = dir / "dos-sample.eps";
+    WriteFile(dos, MakeDosEpsSample(tiff));
+    preview = ExtractEmbeddedPreviewBytes(dos.string());
+    Check(preview == tiff, "eps: the TIFF section comes back byte for byte");
+
+    // ----- A plain EPS carries nothing -----
+    const fs::path plain = dir / "plain-sample.eps";
+    WriteFile(plain, std::vector<uint8_t>{});
+    {
+        std::ofstream f(plain);
+        f << "%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 4 2\n"
+             "0 0 moveto 4 2 lineto stroke\n%%EOF\n";
+    }
+    Check(ExtractEmbeddedPreviewBytes(plain.string()).empty(),
+          "eps: a file without a preview yields none");
+
+    fs::remove_all(dir, ec);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -81,6 +196,10 @@ int main(int argc, char** argv) {
     Check(FormatCarriesEmbeddedPreview("wix"), "a bare extension is accepted");
     Check(FormatCarriesEmbeddedPreview("/tmp/a.b/logo.cdr"), "cdr carries one");
     Check(FormatCarriesEmbeddedPreview("template.cdt"), "cdt carries one");
+    Check(FormatCarriesEmbeddedPreview("figure.eps"), "eps carries one");
+    Check(FormatCarriesEmbeddedPreview("figure.EPSF"), "epsf carries one");
+    Check(FormatCarriesEmbeddedPreview("page.ps"), "ps carries one");
+    Check(FormatCarriesEmbeddedPreview("artwork.ai"), "ai carries one");
     Check(!FormatCarriesEmbeddedPreview("photo.png"), "png does not");
     Check(!FormatCarriesEmbeddedPreview("drawing.svg"), "svg does not");
     Check(!FormatCarriesEmbeddedPreview(""), "the empty path does not");
@@ -96,6 +215,9 @@ int main(int argc, char** argv) {
 
     std::cout << "\n=== CorelDRAW documents ===\n";
     CheckSamples(root / "cdr", "cdr");
+
+    std::cout << "\n=== PostScript documents (EPSI and DOS EPS) ===\n";
+    CheckPostScriptPreviews(fs::temp_directory_path() / "uc-eps-preview-test");
 
     // The filer decides whether to try at all from the format inventory; a
     // regression there is what silently strips every thumbnail.

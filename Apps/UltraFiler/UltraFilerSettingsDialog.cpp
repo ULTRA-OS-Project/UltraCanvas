@@ -4,7 +4,10 @@
 // background and selected-folder highlight, each shown as a colour box that
 // opens the colour picker in a popup window), Display > PDF Inventory (the
 // width of the page thumbnails in the preview's PDF page inventory - a fixed
-// pixel width or a share of the preview's width, set with a slider), Media
+// pixel width or a share of the preview's width, set with a slider),
+// Display > Thumbnails and Display > Detail view (the list of files: which
+// file kinds, and which individual formats inside them, are drawn as a
+// thumbnail in the file display / opened in the detail pane beside it), Media
 // Viewer > Transparent Images (the backdrop behind transparent images —
 // checkered pattern or a preset colour chosen with the colour picker),
 // Handling > Drag & Drop (what
@@ -13,8 +16,8 @@
 // stored with "Save app") and History & Favorites (clearing the
 // recently-used lists and the pinned entries). Changes apply live and are
 // saved immediately.
-// Version: 1.6.0
-// Last Modified: 2026-08-25
+// Version: 1.7.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -22,11 +25,14 @@
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasColorPicker.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasTextInput.h"
@@ -51,6 +57,8 @@ namespace {
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
+    constexpr const char* kPageThumbnails = "display/thumbnails";
+    constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
     constexpr const char* kPageHandling = "handling";
@@ -75,6 +83,22 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
         std::shared_ptr<UltraCanvasRadio>  homePredefinedRadio;
         UltraCanvasRadioGroup              homeContentGroup;
+
+        // Display > Thumbnails / Display > Detail view: the kind checkboxes
+        // and the per-format ones of each page, kept so the two "Everything
+        // on / off" buttons (and a kind switch) can re-sync the page.
+        struct FormatRow {
+            std::string      extension;
+            FilerPreviewType kind = FilerPreviewType::NonePreview;
+            bool             supported = false;   // this build can show it
+            std::shared_ptr<UltraCanvasCheckbox> box;
+        };
+        struct FormatSwitchPage {
+            std::vector<std::shared_ptr<UltraCanvasCheckbox>> kindBoxes;
+            std::vector<FormatRow> formatRows;
+        };
+        FormatSwitchPage thumbnailPage;
+        FormatSwitchPage detailViewPage;
 
         // Display > PDF Inventory: thumbnail width mode + the two sliders.
         std::shared_ptr<UltraCanvasRadio>  pdfAbsoluteRadio;
@@ -462,6 +486,228 @@ namespace {
             if (onChange) onChange(static_cast<int>(v + 0.5f));
         };
         return slider;
+    }
+
+    // ===== DISPLAY > THUMBNAILS / DISPLAY > DETAIL VIEW =====
+    // The two "list of files" pages. Both show the same thing for a different
+    // display feature: the eight file kinds as one checkbox each, and under
+    // every kind the individual formats belonging to it. A format the build
+    // cannot show at all (no PostScript loader, no PDF plugin, no video
+    // backend, a format the media viewer has no view for) is listed too, but
+    // greyed: seeing that eps is unsupported here is what explains the missing
+    // thumbnail, which an omitted entry would not.
+
+    DialogState::FormatSwitchPage& PageState(DialogState* d,
+                                             FilerPreviewTarget target) {
+        return target == FilerPreviewTarget::Thumbnails ? d->thumbnailPage
+                                                        : d->detailViewPage;
+    }
+
+    uint32_t& KindMask(DialogState* d, FilerPreviewTarget target) {
+        return target == FilerPreviewTarget::Thumbnails
+                       ? d->settings->thumbnailKinds
+                       : d->settings->detailViewKinds;
+    }
+
+    std::vector<std::string>& DisabledFormats(DialogState* d,
+                                              FilerPreviewTarget target) {
+        return target == FilerPreviewTarget::Thumbnails
+                       ? d->settings->disabledThumbnailFormats
+                       : d->settings->disabledDetailViewFormats;
+    }
+
+    bool FormatIsOff(const std::vector<std::string>& off, const std::string& ext) {
+        return std::find(off.begin(), off.end(), ext) != off.end();
+    }
+
+    void SetFormatOff(std::vector<std::string>& off, const std::string& ext,
+                      bool switchedOff) {
+        auto it = std::find(off.begin(), off.end(), ext);
+        if (switchedOff && it == off.end()) {
+            off.push_back(ext);
+            std::sort(off.begin(), off.end());
+        } else if (!switchedOff && it != off.end()) {
+            off.erase(it);
+        }
+    }
+
+    // Whether this build can show the format in the display the page governs.
+    bool FormatSupportedFor(const FilerFormatInfo& info,
+                            FilerPreviewTarget target) {
+        if (target == FilerPreviewTarget::Thumbnails) return info.thumbnailSupported;
+        // The detail pane is the media viewer, so it decides for itself; the
+        // extension is dressed as a file name because that is what it takes.
+        return UltraCanvasMediaViewer::IsSupportedMedia("file." + info.extension);
+    }
+
+    // Pushes the settings back onto the page's controls: after a kind switch
+    // (which greys the formats under it) and after the two bulk buttons.
+    void RefreshFormatPage(DialogState* d, FilerPreviewTarget target) {
+        if (!d->settings) return;
+        DialogState::FormatSwitchPage& page = PageState(d, target);
+        const uint32_t mask = KindMask(d, target);
+        const std::vector<std::string>& off = DisabledFormats(d, target);
+        const std::vector<FilerPreviewType>& kinds =
+                UltraCanvasFilerWidget::AllPreviewTypes();
+        for (size_t i = 0; i < page.kindBoxes.size() && i < kinds.size(); ++i) {
+            const bool on = (mask & static_cast<uint32_t>(kinds[i])) != 0;
+            page.kindBoxes[i]->SetChecked(on);
+            page.kindBoxes[i]->RequestRedraw();
+        }
+        for (DialogState::FormatRow& row : page.formatRows) {
+            if (!row.box) continue;
+            const bool kindOn = (mask & static_cast<uint32_t>(row.kind)) != 0;
+            row.box->SetChecked(!FormatIsOff(off, row.extension));
+            row.box->SetDisabled(!row.supported || !kindOn);
+            row.box->RequestRedraw();
+        }
+    }
+
+    std::shared_ptr<UltraCanvasCheckbox> MakeFormatCheckbox(
+            const std::string& id, const std::string& text, int width,
+            bool checked, std::function<void(bool)> onChange) {
+        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0,
+                static_cast<float>(width), 20.0f, text);
+        box->SetFontSize(kFontSize);
+        box->SetChecked(checked);
+        // Explicit sizes: content measuring needs a render context, which the
+        // dialog does not have while it is first laid out.
+        box->size.width  = CSSLayout::Dimension::Px(width);
+        box->size.height = CSSLayout::Dimension::Px(20);
+        box->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        box->onStateChanged = [onChange](CheckedState, CheckedState now) {
+            if (onChange) onChange(now == CheckedState::Checked);
+        };
+        return box;
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildFormatSwitchPage(
+            DialogState* d, FilerPreviewTarget target) {
+        const bool thumbnails = target == FilerPreviewTarget::Thumbnails;
+        const std::string idBase = thumbnails ? "ufl-set-thumb" : "ufl-set-detail";
+
+        auto page = std::make_shared<UltraCanvasContainer>(idBase + "-page");
+        page->layout.SetFlexColumn().SetFlexGap(4)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+        // The list is longer than the window, so the page scrolls vertically -
+        // and only vertically: the vertical bar narrows the viewport, which
+        // would otherwise fabricate a horizontal overflow of its own width.
+        {
+            ContainerStyle cs;
+            cs.autoShowHorizontalScrollbar = false;
+            page->SetContainerStyle(cs);
+        }
+
+        page->AddChild(MakeLabel(idBase + "-title",
+                thumbnails ? "Thumbnails" : "Detail view", 12.0f));
+        page->AddChild(MakeLabel(idBase + "-caption", thumbnails
+                ? "Which files the display draws a thumbnail of, rendered from "
+                  "the file itself."
+                : "Which files the detail pane opens when one of them is "
+                  "selected."));
+        page->AddChild(MakeLabel(idBase + "-caption2", thumbnails
+                ? "A kind switched off - or one format ticked off under it - "
+                  "keeps its type glyph"
+                : "A kind switched off - or one format ticked off under it - "
+                  "leaves the whole width"));
+        page->AddChild(MakeLabel(idBase + "-caption3", thumbnails
+                ? "and is not read at all. Greyed formats: nothing in this "
+                  "build renders them."
+                : "to the file display. Greyed: this build has no view for "
+                  "them."));
+
+        auto buttons = std::make_shared<UltraCanvasContainer>(idBase + "-buttons");
+        buttons->layout.SetFlexRow().SetFlexGap(8)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        buttons->size.width  = CSSLayout::Dimension::Px(460);
+        buttons->size.height = CSSLayout::Dimension::Px(36);
+        buttons->AddChild(MakeButton(idBase + "-all-on", "Everything on", 120,
+                [d, target]() {
+            if (!d->settings) return;
+            KindMask(d, target) = kFilerAllPreviewTypes;
+            DisabledFormats(d, target).clear();
+            RefreshFormatPage(d, target);
+            ApplyAndSave(d);
+        }));
+        buttons->AddChild(MakeButton(idBase + "-all-off", "Everything off", 120,
+                [d, target]() {
+            if (!d->settings) return;
+            KindMask(d, target) = 0;
+            RefreshFormatPage(d, target);
+            ApplyAndSave(d);
+        }));
+        page->AddChild(buttons);
+
+        DialogState::FormatSwitchPage& state = PageState(d, target);
+        state.kindBoxes.clear();
+        state.formatRows.clear();
+
+        const std::vector<FilerFormatInfo> formats =
+                UltraCanvasFilerWidget::GetPreviewableFormats();
+        const uint32_t mask = KindMask(d, target);
+        const std::vector<std::string>& off = DisabledFormats(d, target);
+
+        int rowIndex = 0;
+        for (FilerPreviewType kind : UltraCanvasFilerWidget::AllPreviewTypes()) {
+            const std::string kindId = idBase + "-kind-" +
+                    std::to_string(static_cast<uint32_t>(kind));
+            auto kindBox = MakeFormatCheckbox(kindId,
+                    UltraCanvasFilerWidget::PreviewTypeLabel(kind), 300,
+                    (mask & static_cast<uint32_t>(kind)) != 0,
+                    [d, target, kind](bool on) {
+                if (!d->settings) return;
+                uint32_t& m = KindMask(d, target);
+                const uint32_t bit = static_cast<uint32_t>(kind);
+                m = on ? (m | bit) : (m & ~bit);
+                RefreshFormatPage(d, target);   // greys the formats under it
+                ApplyAndSave(d);
+            });
+            kindBox->SetFontSize(kFontSize + 1.0f);
+            state.kindBoxes.push_back(kindBox);
+            page->AddChild(kindBox);
+
+            // The formats of this kind, four to a row so the page stays a
+            // page instead of a hundred-line column.
+            std::shared_ptr<UltraCanvasContainer> row;
+            int inRow = 0;
+            for (const FilerFormatInfo& info : formats) {
+                if (info.kind != kind) continue;
+                if (!row || inRow == 4) {
+                    row = std::make_shared<UltraCanvasContainer>(
+                            idBase + "-row-" + std::to_string(rowIndex++));
+                    row->layout.SetFlexRow().SetFlexGap(6)
+                               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+                    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                    row->size.width  = CSSLayout::Dimension::Px(470);
+                    row->size.height = CSSLayout::Dimension::Px(22);
+                    row->SetPadding(0, 0, 0, 18);   // indented under the kind
+                    page->AddChild(row);
+                    inRow = 0;
+                }
+                DialogState::FormatRow entry;
+                entry.extension = info.extension;
+                entry.kind      = info.kind;
+                entry.supported = FormatSupportedFor(info, target);
+                const std::string ext = info.extension;
+                entry.box = MakeFormatCheckbox(idBase + "-fmt-" + ext, ext, 106,
+                        !FormatIsOff(off, ext), [d, target, ext](bool on) {
+                    if (!d->settings) return;
+                    SetFormatOff(DisabledFormats(d, target), ext, !on);
+                    ApplyAndSave(d);
+                });
+                entry.box->SetTooltip(entry.supported
+                        ? info.label
+                        : info.label + " - not supported by this build");
+                entry.box->SetDisabled(!entry.supported ||
+                        (mask & static_cast<uint32_t>(kind)) == 0);
+                row->AddChild(entry.box);
+                state.formatRows.push_back(entry);
+                ++inRow;
+            }
+        }
+        return page;
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildHomeFolderPage(DialogState* d) {
@@ -1031,6 +1277,16 @@ namespace {
         pdfInventory.text = "PDF Inventory";
         d->tree->AddNode(kPageDisplay, pdfInventory);
 
+        TreeNodeData thumbnails;
+        thumbnails.nodeId = kPageThumbnails;
+        thumbnails.text = "Thumbnails";
+        d->tree->AddNode(kPageDisplay, thumbnails);
+
+        TreeNodeData detailView;
+        detailView.nodeId = kPageDetailView;
+        detailView.text = "Detail view";
+        d->tree->AddNode(kPageDisplay, detailView);
+
         TreeNodeData mediaViewer;
         mediaViewer.nodeId = kPageMediaViewer;
         mediaViewer.text = "Media Viewer";
@@ -1095,6 +1351,18 @@ namespace {
                                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPagePdfInventory] = pdfInventoryPage;
         d->pageArea->AddChild(pdfInventoryPage);
+
+        auto thumbnailsPage = BuildFormatSwitchPage(d, FilerPreviewTarget::Thumbnails);
+        thumbnailsPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageThumbnails] = thumbnailsPage;
+        d->pageArea->AddChild(thumbnailsPage);
+
+        auto detailViewPage = BuildFormatSwitchPage(d, FilerPreviewTarget::DetailView);
+        detailViewPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageDetailView] = detailViewPage;
+        d->pageArea->AddChild(detailViewPage);
 
         auto transparentPage = BuildTransparentImagesPage(d);
         transparentPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -1171,9 +1439,24 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
                                     std::function<void()> onChanged,
                                     std::function<void()> onClearHistory,
                                     std::function<void()> onClearFavorites,
-                                    std::function<void()> onClearFolderViews) {
-    // Raise the already open window instead of opening a second one.
+                                    std::function<void()> onClearFolderViews,
+                                    Page initialPage) {
+    const char* pageId = nullptr;
+    switch (initialPage) {
+        case Page::Thumbnails: pageId = kPageThumbnails; break;
+        case Page::DetailView: pageId = kPageDetailView; break;
+        default: break;
+    }
+    // Raise the already open window instead of opening a second one - on the
+    // page that was asked for, so the Display menu's "File formats..." always
+    // lands there.
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
+        if (pageId) {
+            if (TreeNode* node = g_dialog->tree ? g_dialog->tree->FindNode(pageId)
+                                                : nullptr)
+                g_dialog->tree->SelectNode(node);
+            ShowPage(g_dialog.get(), pageId);
+        }
         g_dialog->window->Show();
         return;
     }
@@ -1185,7 +1468,13 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     state->onClearFavorites = std::move(onClearFavorites);
     state->onClearFolderViews = std::move(onClearFolderViews);
     BuildDialog(state.get(), parent);
-    if (state->window) g_dialog = state;   // keeps the widgets alive
+    if (!state->window) return;
+    g_dialog = state;   // keeps the widgets alive
+    if (pageId) {
+        if (TreeNode* node = state->tree ? state->tree->FindNode(pageId) : nullptr)
+            state->tree->SelectNode(node);
+        ShowPage(state.get(), pageId);
+    }
 }
 
 void UltraFilerSettingsDialog::Shutdown() {

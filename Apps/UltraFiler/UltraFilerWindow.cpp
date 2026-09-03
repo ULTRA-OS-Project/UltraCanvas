@@ -30,8 +30,8 @@
 // colour picked from the strip under a transparent image in the preview is
 // saved the same way. Esc closes the History or Favorites view, or an open
 // media preview.
-// Version: 1.16.0
-// Last Modified: 2026-09-01
+// Version: 1.17.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -587,6 +587,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreview->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
+    WireDisplayFormatCallbacks(folderPreview.get());
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
     // the recently used files / folders / applications behind the clock button.
@@ -731,6 +732,55 @@ void UltraFilerWindow::RefreshVisibleListing() {
 
 // ===== SETTINGS =====
 
+std::vector<UltraCanvasFilerWidget*> UltraFilerWindow::AllFilers() const {
+    std::vector<UltraCanvasFilerWidget*> out;
+    for (const auto& state : tabStates)
+        if (state->filer) out.push_back(state->filer.get());
+    if (folderPreview) out.push_back(folderPreview.get());
+    for (const auto& f : historyFilers)   if (f) out.push_back(f.get());
+    for (const auto& f : favoritesFilers) if (f) out.push_back(f.get());
+    return out;
+}
+
+void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
+    if (!source || applyingDisplayFormats) return;
+    settings.thumbnailKinds  = source->GetThumbnailKinds();
+    settings.detailViewKinds = source->GetDetailViewKinds();
+    settings.disabledThumbnailFormats  = source->GetDisabledThumbnailFormats();
+    settings.disabledDetailViewFormats = source->GetDisabledDetailViewFormats();
+    settings.Save();
+    ApplySettings();
+}
+
+bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
+    if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return false;
+    // Settings > Display > Detail view. Any file display answers the same -
+    // they all carry the same switches - so the active tab's is used, and a
+    // window without one falls back to "the viewer decides".
+    return !filer || filer->DetailViewEnabledFor(entry);
+}
+
+std::vector<MenuItemData> UltraFilerWindow::BuildFormatListMenuItems(
+        FilerPreviewTarget target) {
+    const auto page = target == FilerPreviewTarget::Thumbnails
+                              ? UltraFilerSettingsDialog::Page::Thumbnails
+                              : UltraFilerSettingsDialog::Page::DetailView;
+    std::vector<MenuItemData> items;
+    items.push_back(MenuItemData::Action("File formats…",
+            [this, page]() { OpenSettingsDialog(page); }));
+    return items;
+}
+
+void UltraFilerWindow::WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->formatListMenuProvider = [this](FilerPreviewTarget t) {
+        return BuildFormatListMenuItems(t);
+    };
+    target->onDisplayFormatsChanged = [this, target]() {
+        AdoptDisplayFormats(target);
+    };
+}
+
 void UltraFilerWindow::ApplySettings() {
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
@@ -768,6 +818,23 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Thumbnails / Display > Detail view: which files are worth a
+    // thumbnail and which ones the detail pane opens for. Every file display
+    // of the window carries the same switches, so the setting holds wherever
+    // the user is looking - and the flag keeps the widgets' own change hooks
+    // from writing the setting straight back.
+    applyingDisplayFormats = true;
+    for (UltraCanvasFilerWidget* f : AllFilers()) {
+        f->SetThumbnailKinds(settings.thumbnailKinds);
+        f->SetDetailViewKinds(settings.detailViewKinds);
+        f->SetDisabledThumbnailFormats(settings.disabledThumbnailFormats);
+        f->SetDisabledDetailViewFormats(settings.disabledDetailViewFormats);
+    }
+    applyingDisplayFormats = false;
+    // The detail pane may have been showing a file kind that was just switched
+    // off - or may now be allowed to open for what is selected. (A no-op
+    // before the split exists, i.e. on the call during start-up.)
+    UpdatePreviewPane();
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
@@ -807,7 +874,7 @@ void UltraFilerWindow::RefreshHomeTreeChildren() {
     folderTree->RequestRedraw();
 }
 
-void UltraFilerWindow::OpenSettingsDialog() {
+void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
     UltraFilerSettingsDialog::Show(window.get(), &settings,
             [this]() { ApplySettings(); },
             [this]() {   // Clear History
@@ -827,7 +894,8 @@ void UltraFilerWindow::OpenSettingsDialog() {
     },
             [this]() {   // Clear Folder views
         folderViews.ClearAll();
-    });
+    },
+            page);
 }
 
 // ===== EXTRAS EXTENSION (filer context menus: Open prompt + Pin / Unpin) =====
@@ -2497,7 +2565,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             return;
         }
 #endif
-        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
+        if (!CanShowInDetailView(entry)) {
             // Not previewable: run it / open it, Explorer-style. The widget
             // launches executables directly (scripts through its Run-or-Open
             // dialog) and everything else with the OS default application;
@@ -2563,6 +2631,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    WireDisplayFormatCallbacks(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -2767,6 +2836,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        WireDisplayFormatCallbacks(histFiler.get());
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -3002,6 +3072,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        WireDisplayFormatCallbacks(favFiler.get());
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;
@@ -3302,7 +3373,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
     if (previewEnabled) {
         if (const FilerEntry* e = SingleSelectedEntry()) {
             if (e->isDirectory) folderPath = e->path;
-            else if (UltraCanvasMediaViewer::IsSupportedMedia(e->path))
+            else if (CanShowInDetailView(*e))
                 mediaPath = e->path;
         }
     }
