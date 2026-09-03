@@ -180,7 +180,11 @@ anywhere else, and never introduce a new literal copy of one:
 - `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
   configure time and sets one `<PREFIX>_VERSION` per row of the table above —
   `ULTRACANVAS_VERSION`, `EMAILCLEANER_VERSION`, `ULTRAFILER_VERSION` and the
-  rest — plus `_DOT4` / `_COMMA4` variants for Windows resources. Adding an
+  rest — plus `_DOT4` / `_COMMA4` variants for Windows resources and
+  `<PREFIX>_VERSION_DATE`, the date on that same changelog line. An
+  application that shows when its version shipped takes it from there: it is
+  the release's date, so every build of one release agrees, which a build
+  clock would not. Adding an
   application is one `_ultracanvas_declare_product()` line there plus its
   changelog file. It feeds every `project(VERSION …)` and the matching compile
   definitions. Several of those variables have no consumer yet; they are set

@@ -1,8 +1,9 @@
 // core/UltraCanvasSplashScreen.cpp
 // Reusable splash screen component
-// Version: 1.1.0 - Optional attribution block ("GUI by" / logo / name), plus
-//                 configurable logo sizes and type scale, for hosts that
-//                 credit the toolkit under their own branding
+// Version: 1.2.0 - Optional release date under the version; optional
+//                 attribution block ("GUI by" / logo / name); configurable
+//                 logo sizes and type scale, for hosts that credit the
+//                 toolkit under their own branding
 // Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 
@@ -95,8 +96,22 @@ namespace UltraCanvas {
             versionLabel->SetFontSize((float)config.versionFontSize);
             versionLabel->SetTextColor(config.secondaryTextColor);
             versionLabel->SetAlignment(TextAlignment::Center);
-            versionLabel->SetMargin(0, 0, 10, 0);
+            // A date underneath belongs to the same block, so the gap after
+            // the version closes up and the date carries the block's margin.
+            versionLabel->SetMargin(0, 0, config.versionDate.empty() ? 10 : 2, 0);
             window->AddChild(versionLabel);
+        }
+
+        // Release date, under the version and in the same quiet tier.
+        if (!config.versionDate.empty()) {
+            auto dateLabel = std::make_shared<UltraCanvasLabel>("SplashVersionDate", 300,
+                    SplashLabelHeight(config.versionFontSize, defaults.versionFontSize, 20.0f),
+                    config.versionDate);
+            dateLabel->SetFontSize((float)config.versionFontSize);
+            dateLabel->SetTextColor(config.secondaryTextColor);
+            dateLabel->SetAlignment(TextAlignment::Center);
+            dateLabel->SetMargin(0, 0, 10, 0);
+            window->AddChild(dateLabel);
         }
 
         // Attribution block: a caption, a logo and the credited name, e.g.

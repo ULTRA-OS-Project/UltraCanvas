@@ -9,6 +9,17 @@
   house rules exist to prevent. Each of the three fields is independent and each
   is omitted when empty, so a splash that sets none of them renders exactly as
   it did before.
+- **The splash can show a release date under the version.** `versionDate` is a
+  new `SplashScreenConfig` field, drawn on its own line under the version in
+  the same size and colour, and `cmake/UltraCanvasVersion.cmake` now hands out
+  the date to put in it: alongside every `<PREFIX>_VERSION` it sets
+  `<PREFIX>_VERSION_DATE`, taken from the `YYYY-MM-DD` on the same changelog
+  line the version was already parsed out of. That is the date the release
+  shipped, which is the one worth showing — a `__DATE__` build stamp gives two
+  builds of one release two different dates, and makes a bug reported against
+  "0.1.0 of 3 September" impossible to identify. No changelog is touched and no
+  version moves; the module simply keeps the half of the line it used to throw
+  away.
 - **Splash logo sizes are configurable.** `logoSize` (default 250) and
   `attributionLogoSize` (default 90) replace the hard-coded 250 px logo box.
   Both are square boxes the image is fitted inside — `ImageFitMode::Contain` is

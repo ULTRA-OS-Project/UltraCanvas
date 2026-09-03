@@ -1,6 +1,6 @@
 // include/UltraCanvasSplashScreen.h
 // Reusable splash screen component
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -21,6 +21,12 @@ namespace UltraCanvas {
         std::string imagePath;
         std::string title;
         std::string version;
+
+        // The date that version shipped, drawn under the version line. Comes
+        // from <PREFIX>_VERSION_DATE — the date on the same changelog line the
+        // version came from — so two builds of one release agree; a build
+        // clock would not. Any string is accepted; the format is the caller's.
+        std::string versionDate;
 
         // Attribution block, drawn between the version and the website line:
         // a caption, a logo and the name of whoever is being credited — e.g.

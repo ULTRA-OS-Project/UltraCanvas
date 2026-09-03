@@ -1,22 +1,22 @@
 # Ladybird splash screen
 
 The panel the Ladybird port shows while it starts: the Ladybird mark, the
-product name, the port's version, and the line crediting the toolkit the
-browser's UI is built on. It stays up for **two seconds** and closes early if
+product name, the port's version and release date, and the line crediting the
+toolkit the browser's UI is built on. It stays up for **two seconds** and closes early if
 the user clicks it.
 
 ```
-        ┌──────────────────────┐   440 x 600, white, thin black border
+        ┌──────────────────────┐   440 x 640, white, thin black border
         │                      │
         │         ◍            │   media/appicon/Ladybird.png   (250 px box)
         │                      │
-        │      Ladybird        │   title,            28 pt bold
-        │     Version 0.1.0    │   LADYBIRD_VERSION, 14 pt
-        │       GUI by         │   attributionText,  14 pt
+        │      Ladybird        │   title,                 28 pt bold
+        │     Version 0.1.0    │   LADYBIRD_VERSION,      14 pt
+        │      2026-08-28      │   LADYBIRD_VERSION_DATE, 14 pt
+        │       GUI by         │   attributionText,       14 pt
         │                      │
         │         ⬡            │   media/images/UltraCanvas-logo.png (100 px)
-        │     Ultra Canvas     │   attributionName,  12 pt
-        │                      │
+        │     Ultra Canvas     │   attributionName,       12 pt
         └──────────────────────┘
 ```
 
@@ -44,7 +44,7 @@ UltraCanvasSplashScreen splash;               // must outlive the two seconds
 
 SplashScreenConfig config;
 config.width       = 440;
-config.height      = 600;
+config.height      = 640;
 config.showTimeout = 2000;                    // two seconds, then it closes itself
 
 config.imagePath     = NormalizePath(GetResourcesDir() + "media/appicon/Ladybird.png");
@@ -52,6 +52,7 @@ config.logoSize      = 250;
 config.title         = "Ladybird";
 config.titleFontSize = 28;
 config.version       = LADYBIRD_VERSION;      // rendered as "Version 0.1.0"
+config.versionDate   = LADYBIRD_VERSION_DATE; // the release date, "2026-08-28"
 
 config.attributionText      = "GUI by";
 config.attributionImagePath = NormalizePath(GetResourcesDir() + "media/images/UltraCanvas-logo.png");
@@ -75,21 +76,28 @@ it is not fighting an always-on-top window for the foreground, and is repeated
 inline behind `if (!splash.IsVisible())` for the case where the splash could
 not be created at all. The component doc spells that pattern out.
 
-## The version number
+## The version number and its date
 
-`config.version` must come from `LADYBIRD_VERSION`, which
-`cmake/UltraCanvasVersion.cmake` parses out of the first line of
-[`CHANGELOG.md`](CHANGELOG.md) in this directory. The port's CMake already gets
-it by including that module; pass it to the compiler and read it here:
+Both come from the same place: the first line of
+[`CHANGELOG.md`](CHANGELOG.md) in this directory, which
+`cmake/UltraCanvasVersion.cmake` parses into `LADYBIRD_VERSION` and
+`LADYBIRD_VERSION_DATE`. The port's CMake already gets them by including that
+module; pass them to the compiler and read them here:
 
 ```cmake
 include(${ULTRACANVAS_REPO}/cmake/UltraCanvasVersion.cmake)
-target_compile_definitions(ladybird PRIVATE LADYBIRD_VERSION="${LADYBIRD_VERSION}")
+target_compile_definitions(ladybird PRIVATE
+    LADYBIRD_VERSION="${LADYBIRD_VERSION}"
+    LADYBIRD_VERSION_DATE="${LADYBIRD_VERSION_DATE}")
 ```
 
-Do not write the number into the source. Releasing the port is one new line at
-the top of the changelog, and the splash follows it; a literal here is a second
+Do not write either into the source. Releasing the port is one new line at the
+top of the changelog, and the splash follows it; a literal here is a second
 copy that will drift, which is the whole reason the module exists.
+
+The date shown is **when that release shipped**, not when the build ran. A
+`__DATE__` stamp would give two builds of one release two different dates and
+make a reported "version 0.1.0 of 3 September" impossible to identify.
 
 ## Assets
 

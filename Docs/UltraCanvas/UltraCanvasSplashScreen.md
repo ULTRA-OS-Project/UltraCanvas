@@ -1,8 +1,8 @@
 # UltraCanvasSplashScreen
 
 The window an application puts up while it starts: a borderless, always-on-top
-panel holding a logo, the product name, its version, an optional attribution
-block and an optional website link. It closes when its timeout expires or when
+panel holding a logo, the product name, its version and release date, an
+optional attribution block and an optional website link. It closes when its timeout expires or when
 the user clicks it, whichever comes first.
 
 ```cpp
@@ -20,10 +20,11 @@ UltraCanvasSplashScreen splash;
 
 SplashScreenConfig config;
 config.width       = 440;
-config.height      = 600;
+config.height      = 640;
 config.imagePath   = NormalizePath(GetResourcesDir() + "media/appicon/Ladybird.png");
 config.title       = "Ladybird";
 config.version     = LADYBIRD_VERSION;
+config.versionDate = LADYBIRD_VERSION_DATE;      // "2026-08-28"
 config.showTimeout = 2000;                       // 2 seconds
 
 config.attributionText      = "GUI by";
@@ -48,6 +49,7 @@ every element it describes is omitted when its field is empty.
 | `imagePath` | The main logo, drawn at the top and centred. Any format the image pipeline loads. Omit for a text-only splash. |
 | `title` | Product name, bold, at `titleFontSize`. Also becomes the window title. |
 | `version` | Rendered as `Version <value>`, so pass `"1.40"`, not `"Version 1.40"`. Take it from the compile definition the changelog feeds (see [Versioning](../../AGENTS.md#versioning)) — never from a literal. |
+| `versionDate` | The date that version shipped, on its own line under the version, in the same size and colour. Comes from `<PREFIX>_VERSION_DATE`, which `cmake/UltraCanvasVersion.cmake` reads off the same changelog line as the version — so every build of one release shows the same date, which a build clock would not. Rendered verbatim, so a caller wanting `28 August 2026` rather than `2026-08-28` formats it itself. |
 | `attributionText` | Caption above the attribution logo, e.g. `"GUI by"`. |
 | `attributionImagePath` | Logo of whoever is being credited — for an UltraCanvas host, `media/images/UltraCanvas-logo.png`. |
 | `attributionName` | Name under that logo, e.g. `"Ultra Canvas"`. |
@@ -66,7 +68,8 @@ with no name, are both valid. Leaving all three empty produces the plain
 logo/title/version/link splash.
 
 Elements are stacked in this order, centred in a column: logo, title, version,
-attribution caption, attribution logo, attribution name, website link.
+version date, attribution caption, attribution logo, attribution name, website
+link.
 
 ## API
 
