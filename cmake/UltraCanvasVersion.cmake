@@ -23,10 +23,6 @@
 #   ULTRACLEANER_VERSION        e.g. "0.50"    (Docs/UltraCleaner/CHANGELOG.md)
 #   ULTRACLEANER_VERSION_DOT4   e.g. "0.50.0.0"
 #   ULTRACLEANER_VERSION_COMMA4 e.g. "0,50,0,0"
-#   LADYBIRD_VERSION            e.g. "0.1.0"   (Docs/Ladybird/CHANGELOG.md)
-#   LADYBIRD_VERSION_DATE       e.g. "2026-08-28"
-#   LADYBIRD_VERSION_DOT4       e.g. "0.1.0.0"
-#   LADYBIRD_VERSION_COMMA4     e.g. "0,1,0,0"
 #
 # and one <APP>_VERSION triple per application that keeps its own changelog:
 #
@@ -44,20 +40,12 @@
 # when that release shipped, not when the build ran) and _DOT4 / _COMMA4
 # variants. An application with its own
 # changelog versions itself: it does not move when the framework releases, and
-# a change to it is described in its own file. Several have no consumer in the
-# build yet — like LADYBIRD_VERSION — and are set anyway, so that when one needs
-# a version it takes it from the same place everything else does rather than
-# growing a second copy of the number.
+# a change to it is described in its own file. 
 #
 # DemoApp is deliberately NOT in this list. It is the framework's own showcase:
 # its artefacts are named UCDemo-<ULTRACANVAS_VERSION> by the packaging scripts
 # and by CI, so it versions with the framework by design, and giving it a second
 # number would be exactly the duplication this module exists to prevent.
-#
-# The Ladybird port is built from its own tree, outside this repository, so
-# nothing here consumes LADYBIRD_VERSION yet; it is set so that tree gets the
-# port's version from the same place everything else does simply by including
-# this module, instead of keeping a second copy of the number.
 #
 # Expected first line of a changelog: `#### YYYY-MM-DD *x.y.z*`
 
@@ -129,7 +117,6 @@ _ultracanvas_declare_product(ULTRACANVAS         "Docs/UltraCanvas/CHANGELOG.md"
 # Applications that keep their own changelog and version themselves.
 _ultracanvas_declare_product(ULTRATEXTER         "Docs/Texter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md")
-_ultracanvas_declare_product(LADYBIRD            "Docs/Ladybird/CHANGELOG.md")
 _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md")
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")
