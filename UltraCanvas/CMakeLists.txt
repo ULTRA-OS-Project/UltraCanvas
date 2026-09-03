@@ -1611,15 +1611,15 @@ endif()
 # UltraCrypt above all, and the Tests targets — can link one definition of each
 # helper without the platform glue in UltraCanvasUtils.cpp.
 #
-# The string helpers and the Base64/Base32 codecs are deliberately SEPARATE
-# libraries, because they have different link-time homes. The UltraCanvas
-# library links the string helpers, so a SHARED core exports them; UltraCrypt
-# needs only the codecs. While both groups shared one object file, linking
-# UltraCrypt (for Base32) also pulled that object's Trim() and friends onto the
-# line — colliding with the same symbols exported by the shared core, which
-# PE/COFF rejects outright ("multiple definition of UltraCanvas::Trim"). Split,
-# every symbol is compiled once and comes from exactly one place. Both halves
-# are declared by the same header, so callers see no difference.
+# This library and UltraCanvasBase32 are split by LINK-TIME HOME, not by kind.
+# Everything here — the string helpers and Base64 — is linked into the
+# UltraCanvas library, so a SHARED core exports it; UltraNet calls Base64 and is
+# absorbed into that core, so Base64 has to stay on this side. Base32's only
+# consumer is UltraCrypt, which is deliberately UI-free, so it lives apart.
+# While Base32 shared an object with these symbols, linking UltraCrypt dragged
+# the whole object onto the line and its copies collided with the shared core's
+# exports — which PE/COFF rejects ("multiple definition of UltraCanvas::Trim").
+# Both halves are declared by the same header, so callers see no difference.
 add_library(UltraCanvasTextUtils STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextUtils.cpp)
 target_include_directories(UltraCanvasTextUtils PUBLIC
@@ -1628,16 +1628,16 @@ target_include_directories(UltraCanvasTextUtils PUBLIC
 target_compile_features(UltraCanvasTextUtils PUBLIC cxx_std_20)
 set_target_properties(UltraCanvasTextUtils PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# The codecs: linked by UltraCrypt (and so by UltraVault and the authenticator),
-# never by the UltraCanvas library — keeping them out of the shared core's
-# exports is exactly what makes the split work.
-add_library(UltraCanvasTextCodecs STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextCodecs.cpp)
-target_include_directories(UltraCanvasTextCodecs PUBLIC
+# Base32: linked by UltraCrypt (and so by UltraVault and the authenticator),
+# never by the UltraCanvas library. Keeping it out of the shared core's exports
+# is exactly what makes the split work — see UltraCanvasBase32.cpp.
+add_library(UltraCanvasBase32 STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBase32.cpp)
+target_include_directories(UltraCanvasBase32 PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas>)
-target_compile_features(UltraCanvasTextCodecs PUBLIC cxx_std_20)
-set_target_properties(UltraCanvasTextCodecs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(UltraCanvasBase32 PUBLIC cxx_std_20)
+set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Cryptographic services (Masterfile_modules.md §8). Deliberately free of any
 # UI dependency so headless consumers — UltraVault, UltraDatabase, tools — can
@@ -1649,9 +1649,8 @@ target_include_directories(UltraCrypt PUBLIC
     $<INSTALL_INTERFACE:include/ultracanvas>)
 target_compile_features(UltraCrypt PUBLIC cxx_std_20)
 set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
-# The secure Base32 decoder delegates to the shared codec in
-# UltraCanvasTextCodecs (the codecs half of the text utilities).
-target_link_libraries(UltraCrypt PUBLIC UltraCanvasTextCodecs)
+# The secure Base32 decoder delegates to the shared codec in UltraCanvasBase32.
+target_link_libraries(UltraCrypt PUBLIC UltraCanvasBase32)
 if(SODIUM_FOUND)
     target_compile_definitions(UltraCrypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
     target_include_directories(UltraCrypt PRIVATE ${SODIUM_INCLUDE_DIRS})
