@@ -1,13 +1,16 @@
 // Apps/UltraMail/main.cpp
 // UltraMail application entry point. Creates the UltraCanvas application, opens
-// the local store under the user data directory, shows the main window (Toolbox
-// + account info-tile bar) and runs the main loop.
-// Version: 0.2.0 (Phase 2)
+// the local store under the user data directory, shows the main window (start
+// page, or the account bar + mail view once an account exists) and runs the
+// main loop.
+// Version: 0.5.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailAlerts.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -36,6 +39,8 @@ int main() {
                      "initialised (no display?).\n");
         return EXIT_FAILURE;
     }
+    app.SetDefaultWindowIcon(
+        UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/UltraMail.svg"));
 
     UltraMail::UltraMailApp mail;
     std::string storeError;

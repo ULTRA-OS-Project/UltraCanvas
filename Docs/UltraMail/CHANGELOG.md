@@ -1,4 +1,4 @@
-#### 2026-09-03 *0.4.0*
+#### 2026-09-03 *0.5.0*
 - **Mail account passwords now live in UltraVault.** The 0.1 credential vault
   XOR-ed each secret against a 32-byte key it wrote to `vault.key` **in the same
   directory as the ciphertext** — anyone who could read the vault folder could
@@ -35,10 +35,10 @@
 - Linking UltraVault pulls in UltraCrypt, which exposed a latent link-time
   collision in the framework's text utilities that broke the Windows build of
   both UltraMail and EmailCleaner. The fix is a framework change and is recorded
-  in [`Docs/UltraCanvas/CHANGELOG.md`](../UltraCanvas/CHANGELOG.md) *0.3.93*;
+  in [`Docs/UltraCanvas/CHANGELOG.md`](../UltraCanvas/CHANGELOG.md) *0.3.95*;
   this release depends on it.
 
-#### 2026-09-03 *0.3.0*
+#### 2026-09-03 *0.4.0*
 - **"Save As…" on an attachment now works.** The reading view's attachment strip
   raised its `onSaveAs` callback into nothing — the menu entry was inert — and
   `SaveAttachment()` ignored where the user wanted the file, writing blindly
@@ -63,7 +63,7 @@
   wrapper, so it is not the right tool for writing the mail store; the file
   loader already routes through it for transparent decompression.
 
-#### 2026-09-03 *0.2.0*
+#### 2026-09-03 *0.3.0*
 - **Failures are now reported instead of swallowed.** UltraMail used to fail
   silently almost everywhere: a rejected password, an untrusted certificate, an
   unreachable server, a database that would not open, an attachment that could
@@ -103,6 +103,45 @@
 - `UltraMailApp::Initialize()` takes an optional `outError` and records why the
   contacts / outbox stores failed to open, so the Contacts button reports the
   problem rather than doing nothing.
+
+#### 2026-09-03 *0.2.0*
+- **First run shows a start page, nothing else.** Until the first email account
+  exists the main window holds only the UltraMail logo, the app title and an
+  "Add email account" button (`UltraMailStartPage`). The old "Welcome to
+  UltraMail. Add an account to begin." hint is gone. The button is a
+  primary-style `UltraCanvasButton` with the envelope icon; the page is a
+  centred flex column that follows the window size.
+- **The main window is one screen: actions · account bar · inbox | message.**
+  The Toolbox grid, the info-tile bar and the separate three-pane reading
+  window are replaced by a single account view (`UltraMailApp::BuildAccountView`,
+  a flex column sized to the window):
+  - an **actions column** — New email, Reload email, Contacts, Add account;
+  - the **account bar** (`UltraMailAccountBar`): with one account a summary
+    strip showing the provider's initial (first letter of the address's domain,
+    upper-case, bold), the account name (local part; full address in the
+    tooltip) and three `UltraCanvasBadge` counters — New today (blue), Unread
+    before today (lime), Waiting for reply (orange); with several accounts a
+    row of square tiles carrying the same information, the clicked tile
+    (selection-blue frame) driving the mail view;
+  - the **mail view** (`UltraMailMailView`): an `UltraCanvasSplitPane` with an
+    "Inbox" group box holding the selected account's inbox as an
+    `UltraCanvasColumnsTreeView` (From · Subject · Date, `●` unread, `↩`
+    waiting for reply, counts in the caption) and a "Message" group box holding
+    the `UltraMailMessagePreview` (subject, from, to, date, Reply, the body —
+    HTML through HTMLReader / CSSLayout, plain text in a read-only text area —
+    and the attachment strip). The preview is the reading view's pane, moved
+    into its own class; `UltraMailReadingView`, `UltraMailToolbox` and
+    `UltraMailInfoTileBar` are removed.
+- **Reload email** syncs every account immediately when the IMAP plug-in is
+  loaded (the button reads "Reloading…" until the last sync returns) and
+  re-reads the store either way.
+- **Engine: `GetAccountStatus` splits unread into today / before today** and
+  carries the account's email (`AccountStatus::unreadToday`, `unreadOlder`,
+  `email`); an optional `todayStart` argument pins local midnight for tests.
+- **UltraMail has an app icon** (`media/appicon/UltraMail.svg`): the envelope on
+  the selection blue. It is the start-page logo and the window icon.
+- Not used: `UltraCanvasTableView` does not compile in this tree (it is unused
+  by every other target); the inbox list is a `UltraCanvasColumnsTreeView`.
 
 #### 2026-08-31 *0.1.0*
 - **UltraMail keeps its own changelog from here.** Everything up to and

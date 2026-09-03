@@ -1,4 +1,4 @@
-#### 2026-09-03 *0.3.93*
+#### 2026-09-03 *0.3.95*
 - **Linking UltraCrypt into an application that also links a shared
   libultracanvas failed to link on Windows.** The string helpers (`Trim`,
   `Split`, `ToLowerCase`, `StartsWith`) and the Base64/Base32 codecs shared one
@@ -20,6 +20,113 @@
   It surfaced when UltraMail's credential vault moved to UltraVault (which links
   UltraCrypt), breaking both `UltraMail` and `EmailCleaner` — the latter only
   because it links the mail engine.
+
+#### 2026-09-03 *0.3.94*
+- **The filer decides per file format what gets a thumbnail — and, now, what
+  gets a detail view.** `Display > Preview` gated thumbnails only, in eight
+  coarse kinds (nine now — see the next entry), and nothing gated the detail pane a host opens beside the
+  display: that pane asked `UltraCanvasMediaViewer::IsSupportedMedia()` alone,
+  so a CorelDRAW or Xara file that had a thumbnail still had no preview, and an
+  EPS had neither. The submenu is now `Display > Thumbnails`, `Display > Detail
+  view` sits beside it with the same eight switches, and each set additionally
+  takes **per-format exceptions** — one extension switched off while its kind
+  stays on. New API: `SetThumbnailKind(s)` / `IsThumbnailKindEnabled` /
+  `GetThumbnailKinds`, the same for the detail view,
+  `SetThumbnailFormatEnabled` / `SetDetailViewFormatEnabled` (plus the
+  `GetDisabled…Formats` / `SetDisabled…Formats` pairs an application persists),
+  `ThumbnailEnabledFor(entry)` and `DetailViewEnabledFor(entry)`. The old
+  `SetPreviewType(s)` / `IsPreviewTypeEnabled` / `GetPreviewTypes` are replaced
+  by the thumbnail half of that set — same enum, same bit values.
+  `GetPreviewableFormats()` reports every format the switches address (its
+  extension, readable label, kind, and whether this build can produce a
+  thumbnail for it at all), which is what a settings page builds its list of
+  files from without repeating the widget's tables; `PreviewTypeLabel()` and
+  `AllPreviewTypes()` give it the menu wording and order.
+  `formatListMenuProvider` lets the host hang its own entry into those lists at
+  the end of both submenus, and `onDisplayFormatsChanged` fires whenever any of
+  the four sets changes, whoever changed it.
+- **Every format the FileLoader knows is in those lists.** The kinds skipped
+  audio entirely — `FilerFileCategory::Audio` mapped to no preview kind — so
+  the mp3s a build can play appeared in neither list and their detail pane
+  could not be switched off. `FilerPreviewType::Audio` closes that: the nine
+  kinds now cover all seven `MediaFormatCategory` values, so every format the
+  FileLoader inventory reports is filed under exactly one of them.
+  `FilerFormatListTest` asserts precisely that — present, and under the kind
+  its media category belongs to — for every extension and alias the inventory
+  reports. Audio has no thumbnail producer (nothing here reads cover art), so
+  its rows report themselves unsupported; its switches govern the detail view,
+  where a host's viewer does play the file.
+- **The "can this build render it" answer stopped over-promising.** Text,
+  Docs and Spreadsheets claimed a preview for every format in them, including
+  the ZIP and record containers no reader here unpacks (xls, epub, mobi, prc,
+  azw, azw3, fb2.zip). Worse than the wrong claim: the extractor did read
+  them, and since a head-of-file read stops at the first NUL, an epub drew a
+  miniature page holding `PK` instead of keeping its type glyph. Both now go
+  through one answer, `TextPreviewReadable()`.
+- **EPS, PostScript and old Illustrator files thumbnail from the preview they
+  carry.** Nothing here rasterizes PostScript — that needs an interpreter, and
+  a libvips build with the delegate is the exception, not the rule — so an
+  `.eps` showed the same bare glyph in every build.
+  `UltraCanvasEmbeddedPreview` now reads both preview mechanisms the EPSF
+  specification defines: the TIFF section of a DOS EPS binary header, and the
+  hex-encoded EPSI preview in the comment block, which is converted to a
+  greyscale PGM (its samples are ink coverage, so 0 is white). A
+  PDF-compatible `.ai` — every Illustrator file since CS2 — is recognised from
+  its `%PDF` signature and rendered by the PDF plugin like the document it is.
+  `EmbeddedPreviewTest` covers both mechanisms against files it writes itself,
+  including the polarity of the greyscale it produces.
+- **The media viewer shows a vector document it cannot rasterize.** A new
+  `MediaKind::Vector` covers Xara (`.xar/.web/.wix`), CorelDRAW (`.cdr/.cdt`)
+  and PostScript (`.eps/.epsf/.epsi/.ps/.ai`): `IsSupportedMedia()` accepts
+  them, and `LoadCurrent()` shows the file rasterized where the image pipeline
+  can do it and the embedded preview bitmap otherwise — the same treatment a
+  `*.ucd` container already got. A file that carries no preview says so in the
+  info bar rather than leaving an empty pane.
+
+#### 2026-09-03 *0.3.93*
+- **The splash screen can credit the toolkit the host is built on.**
+  `SplashScreenConfig` grew an attribution block — `attributionText`,
+  `attributionImagePath` and `attributionName` — drawn between the version line
+  and the website link, so an application whose UI is UltraCanvas but whose
+  branding is its own can say so: "GUI by" / the UltraCanvas hexagon / "Ultra
+  Canvas". The Ladybird port is the first caller; the alternative was the port
+  painting its own borderless window, which is exactly the hand-rolled UI the
+  house rules exist to prevent. Each of the three fields is independent and each
+  is omitted when empty, so a splash that sets none of them renders exactly as
+  it did before.
+- **The splash can show a release date under the version.** `versionDate` is a
+  new `SplashScreenConfig` field, drawn on its own line under the version in
+  the same size and colour, and `cmake/UltraCanvasVersion.cmake` now hands out
+  the date to put in it: alongside every `<PREFIX>_VERSION` it sets
+  `<PREFIX>_VERSION_DATE`, taken from the `YYYY-MM-DD` on the same changelog
+  line the version was already parsed out of. That is the date the release
+  shipped, which is the one worth showing — a `__DATE__` build stamp gives two
+  builds of one release two different dates, and makes a bug reported against
+  "0.1.0 of 3 September" impossible to identify. No changelog is touched and no
+  version moves; the module simply keeps the half of the line it used to throw
+  away.
+- **Splash logo sizes are configurable.** `logoSize` (default 250) and
+  `attributionLogoSize` (default 90) replace the hard-coded 250 px logo box.
+  Both are square boxes the image is fitted inside — `ImageFitMode::Contain` is
+  unchanged, so a non-square logo still keeps its aspect ratio, and the default
+  reproduces the previous layout.
+- **`UltraCanvasSplashScreen` now has a component doc** —
+  `Docs/UltraCanvas/UltraCanvasSplashScreen.md`, and a row in the UI element
+  catalogue. It was the one startup-time window with neither, which is how the
+  two-phase startup it wants (silent work before `Show()`, anything that opens a
+  window in `onSplashClosed`) stayed folded into Texter's `main.cpp` instead of
+  being written down where the next caller would find it.
+- **New shared asset: `media/appicon/Ladybird.png`,** the Ladybird mark on its
+  gradient disc, at 512 x 512 with transparency outside the disc so it serves as
+  a window icon as well as a splash logo. It is generated rather than hand-drawn
+  — `scripts/make_ladybird_icon.py` holds the geometry, stroke weight and
+  gradient stops — so it can be re-cut at another size without tracing it again.
+  See `Docs/Ladybird/SplashScreen.md`, which is how the port wires the splash
+  up: the assets it ships, and where the call goes in its startup.
+- **`Docs/Ladybird/` is in the LLM docs corpus.** It held only a changelog,
+  which `generate_llms_txt.py` excludes by name, so the directory was invisible
+  to `llms.txt` — and its first piece of developer documentation would have
+  been too. It is on the `APP_DOC_DIRS` allowlist now.
 
 #### 2026-09-02 *0.3.92*
 - **The filer showed the type glyph instead of every thumbnail whenever the

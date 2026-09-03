@@ -16,6 +16,8 @@
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSeparator.h"
+#include "UltraCanvasSplitPane.h"
 
 #include <algorithm>
 #include <cstring>
@@ -44,6 +46,54 @@ const RemovalMode kModes[] = {
     RemovalMode::MoveToTrash,
     RemovalMode::DeletePermanently
 };
+
+// ===== RULE PAGE METRICS =====
+// One margin around the page, one gap between its bands (toolbar, the two
+// boxes, the footer), so the sections read as separated rather than crowded.
+constexpr float kPagePadding = 12.0f;
+constexpr float kSectionGap  = 10.0f;
+// The category list is a reading column: the width that makes its wrapped
+// descriptions legible, not a share of the window. On a window too narrow to
+// seat both it and a usable table it gives ground, down to kCategoryColumnMin,
+// which is why the detail side names a width it wants first. The two meet at
+// the app's opening window, so that size and every larger one — a maximized
+// one above all — get the full reading column and give the rest to the table.
+constexpr int kCategoryColumnWidth = 404;
+constexpr int kCategoryColumnMin   = 260;
+constexpr int kDetailWantedWidth   = 612;
+
+// Both halves of the page wear the same frame — a captioned header strip over
+// a bordered body — so the eye reads them as two sections of one page.
+void ApplySectionStyle(const std::shared_ptr<UltraCanvasGroupBox>& box) {
+    GroupBoxVisualStyle style = GroupBoxVisualStyle::Default();
+    style.backgroundColor       = Colors::White;
+    style.borderColor           = Color(203, 203, 210);
+    style.cornerRadius          = 6.0f;
+    style.titleColor            = Color(52, 52, 60);
+    style.titleFont.fontWeight  = FontWeight::Bold;
+    style.headerBackgroundColor = Color(242, 242, 246);
+    style.showHeaderSeparator   = true;
+    style.contentPadding        = 10.0f;
+    box->SetFrameStyle(GroupBoxFrameStyle::Header);
+    box->SetVisualStyle(style);
+}
+
+// A split pane's panes are plain containers; a section fills one edge to edge.
+// Basis zero and grow one rather than a percentage: the pane's size is what
+// decides, so the section can never hold a width of its own against it.
+void FillPaneWith(const std::shared_ptr<UltraCanvasContainer>& pane,
+                  const std::shared_ptr<UltraCanvasContainer>& section) {
+    pane->layout.SetFlexColumn()
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ContainerStyle plainPane;
+    plainPane.autoShowScrollbars = false;
+    pane->SetContainerStyle(plainPane);
+    pane->AddChild(section);
+    section->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    section->layoutItem.SetFlexGrow(1);
+    section->layoutItem.SetFlexShrink(1);
+    section->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
 
 std::string FormatTimestamp(int64_t seconds) {
     if (seconds <= 0) return "—";
@@ -163,12 +213,16 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRulePage() {
     // Laid out, not positioned. Absolute offsets inside a tab page assume a
     // tab strip of a particular height, which is a font-metric away from
     // being wrong — on Windows it clipped the toolbar along its top edge.
-    auto page = CreateContainer("ucRulePage", 0, 0, kWindowWidth - 40,
-                                kWindowHeight - 170);
+    // Nothing here carries a construction origin either: a non-zero (x, y)
+    // makes UltraCanvasUIElement place the widget absolutely, which takes it
+    // straight back out of the layout that is meant to size it. The two boxes
+    // did carry one, which is why they sat 48 px low — over the summary and
+    // status lines — and kept their opening width on a maximized window.
+    auto page = CreateContainer("ucRulePage", 0, 0, 0, 0);
     page->layout.SetFlexColumn()
-                .SetFlexGap(8)
+                .SetFlexGap(kSectionGap)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    page->SetPadding(10);
+    page->SetPadding(kPagePadding);
     // No explicit size: the tabbed container measures its active page with
     // an exact width and height, so the page must not carry a size of its own
     // that competes with that.
@@ -181,84 +235,122 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRulePage() {
     auto toolbar = BuildToolbar();
     page->AddChild(toolbar);
     toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    toolbar->layoutItem.SetFlexGrow(0);
     toolbar->layoutItem.SetFlexShrink(0);
 
-    // The two panels side by side, taking whatever height is left.
-    auto columns = CreateContainer("ucRuleColumns", 0, 0, 0, 0);
-    columns->layout.SetFlexRow()
-                   .SetFlexGap(12)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    ContainerStyle plainColumns;
-    plainColumns.autoShowScrollbars = false;
-    columns->SetContainerStyle(plainColumns);
-    columns->SetElementSize(CSSLayout::Dimension::Auto(),
-                            CSSLayout::Dimension::Auto());
+    // The two panels side by side. A split pane rather than a plain flex row:
+    // it arranges its panes over its own rect, so the detail side keeps every
+    // pixel a wider window adds, and the line between the two sections is a
+    // real divider the user can drag.
+    auto split = CreateHorizontalSplitPane("ucRuleSplit", 0, 0, 0, 0);
+    split->SetElementSize(CSSLayout::Dimension::Auto(),
+                          CSSLayout::Dimension::Auto());
+    SplitPaneStyle splitStyle;
+    splitStyle.splitterThickness = 6;
+    splitStyle.splitterHitMargin = 3;
+    splitStyle.splitterColor     = Color(232, 232, 236);
+    splitStyle.handle.shape      = SplitterHandleShape::RoundedSquare;
+    splitStyle.handle.crossSize  = 9;
+    splitStyle.handle.axisLength = 44;
+    split->SetSplitPaneStyle(splitStyle);
 
-    auto categories = CreateGroupBox("ucCategoryBox", 12, 48, 404, 500,
-                                     "What to clean");
+    auto categoryPane = split->AddPane(1.0);
+    auto detailPane   = split->AddPane(3.0);
+    // A fixed size, not a weight: the category column keeps its width while
+    // the detail list absorbs everything a resize (a maximize included) adds.
+    // Dragging the divider still resizes it, and the width the user dragged to
+    // is the one that survives the next resize — from then on FitCategoryColumn
+    // leaves it alone, because a width the user chose outranks a computed one.
+    split->SetPaneFixedSize(0, kCategoryColumnWidth);
+    split->SetPaneMinSize(0, kCategoryColumnMin);
+    split->SetPaneMinSize(1, 320);
+    split->onSplitterDragEnd = [this](size_t) { categoryWidthPinned_ = true; };
+    ruleSplit_ = split;
+
+    FillPaneWith(categoryPane, BuildCategoryPanel());
+    FillPaneWith(detailPane, BuildDetailPanel());
+
+    page->AddChild(split);
+    // Basis zero, grow one: the footer below is measured at its own height
+    // first and the split takes exactly what is left, so the two boxes can
+    // never reach down over the summary and status lines.
+    split->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    split->layoutItem.SetFlexGrow(1);
+    split->layoutItem.SetFlexShrink(1);
+    split->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    page->AddChild(BuildRuleFooter());
+    return page;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildCategoryPanel() {
+    auto box = CreateGroupBox("ucCategoryBox", 0, 0, 0, 0, "What to clean");
     // A GroupBox folds its title band into its own padding, so its children
     // are laid out rather than positioned: an absolute y would put them
     // under the caption. The panel takes whatever is left below it.
-    categories->layout.SetFlexColumn()
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    box->layout.SetFlexColumn()
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ApplySectionStyle(box);
     // The GroupBox is a container too; leave the scrolling to the panel
     // inside it rather than having both grow a scrollbar.
     ContainerStyle plainBox;
     plainBox.autoShowScrollbars = false;
-    categories->SetContainerStyle(plainBox);
-    // A literal height would freeze the box at its opening size; the width is
-    // deliberate (a readable column), the height comes from the row.
-    categories->SetElementSize(CSSLayout::Dimension::Px(404),
-                               CSSLayout::Dimension::Pct(100));
-    auto categoryList = categoryPanel_.Build(0, 0, 376, 520);
-    categories->AddChild(categoryList);
+    box->SetContainerStyle(plainBox);
+
+    auto categoryList = categoryPanel_.Build(0, 0, 0, 0);
+    box->AddChild(categoryList);
     categoryList->layoutItem.SetFlexGrow(1);
     categoryList->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     categoryPanel_.onCategoryToggled = [this](CleanCategory category, bool on) {
         ApplyCategorySelection(category, on);
     };
-    columns->AddChild(categories);
-    // The category list keeps a readable, roughly constant width; the detail
-    // list takes the rest, because that is the panel that benefits from a
-    // wider window.
-    categories->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(404));
-    categories->layoutItem.SetFlexGrow(0);
-    categories->layoutItem.SetFlexShrink(0);
-    categories->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    return box;
+}
 
-    auto detail = BuildDetailPanel();
-    columns->AddChild(detail);
-    // Basis zero, grow one: take all the width the category column does not.
-    // Without an explicit basis the box keeps its construction width and the
-    // free space is simply left empty.
-    detail->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    detail->layoutItem.SetFlexGrow(1);
-    detail->layoutItem.SetFlexShrink(1);
-    detail->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRuleFooter() {
+    auto footer = CreateContainer("ucRuleFooter", 0, 0, 0, 0);
+    footer->layout.SetFlexColumn()
+                  .SetFlexGap(3)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    footer->SetElementSize(CSSLayout::Dimension::Auto(),
+                           CSSLayout::Dimension::Auto());
+    ContainerStyle plainFooter;
+    plainFooter.autoShowScrollbars = false;
+    footer->SetContainerStyle(plainFooter);
 
-    page->AddChild(columns);
-    columns->layoutItem.SetFlexGrow(1);
-    columns->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // A rule across the page: the boxes above end at a visible edge instead
+    // of running into the text below them.
+    auto divider = std::make_shared<UltraCanvasSeparator>(
+        /*isVertical=*/false, 1, 0, Color(214, 214, 220));
+    divider->SetElementSize(CSSLayout::Dimension::Pct(100),
+                            CSSLayout::Dimension::Px(1));
+    footer->AddChild(divider);
+    divider->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    divider->layoutItem.SetFlexShrink(0);
 
-    summaryLabel_ = CreateLabel("ucSummary", 0, 0, 1000, 24,
+    summaryLabel_ = CreateLabel("ucSummary", 0, 0, 0, 0,
                                 "Nothing scanned yet — press “Scan”.");
     summaryLabel_->SetElementSize(CSSLayout::Dimension::Pct(100),
                                   CSSLayout::Dimension::Auto());
-    page->AddChild(summaryLabel_);
+    footer->AddChild(summaryLabel_);
     summaryLabel_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     summaryLabel_->layoutItem.SetFlexShrink(0);
 
-    statusLabel_ = CreateLabel("ucStatus", 0, 0, 1000, 40, "");
+    statusLabel_ = CreateLabel("ucStatus", 0, 0, 0, 0, "");
     statusLabel_->SetWrap(TextWrap::WrapWord);
     statusLabel_->SetFontSize(11);
     // The status line carries whole sentences and has to be free to take a
     // second line rather than clip one.
     statusLabel_->SetElementSize(CSSLayout::Dimension::Pct(100),
                                  CSSLayout::Dimension::Auto());
-    page->AddChild(statusLabel_);
+    footer->AddChild(statusLabel_);
     statusLabel_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     statusLabel_->layoutItem.SetFlexShrink(0);
-    return page;
+
+    footer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    footer->layoutItem.SetFlexGrow(0);
+    footer->layoutItem.SetFlexShrink(0);
+    return footer;
 }
 
 void UltraCleanerWindow::LayoutForSize(float width, float height) {
@@ -273,9 +365,24 @@ void UltraCleanerWindow::LayoutForSize(float width, float height) {
     // dimensions, so a bounds-only change is overwritten on the next pass.
     tabs_->SetElementAbsolutePosition(Point2Df(kSideMargin, kTabsTop));
     tabs_->SetElementSize(Size2Df(tabsWidth, tabsHeight));
+    FitCategoryColumn(tabsWidth);
     tabs_->InvalidateLayout();
     if (window_) window_->AddDirtyRectangle(
         Rect2Di(0, 0, static_cast<int>(width), static_cast<int>(height)));
+}
+
+void UltraCleanerWindow::FitCategoryColumn(float tabsWidth) {
+    // Untouched, the divider sits where both halves are readable: the category
+    // column at its full reading width whenever the table can still have the
+    // width its five columns want, and narrower — never below its own minimum
+    // — on a window too small for both. Once the user has dragged it, their
+    // width stands and this does nothing.
+    if (!ruleSplit_ || categoryWidthPinned_) return;
+    // What the split pane itself spans: the tab body inside the page's margins.
+    const float splitWidth = tabsWidth - 2 * kPagePadding - 4.0f;
+    const int wanted = static_cast<int>(splitWidth) - kDetailWantedWidth;
+    ruleSplit_->SetPaneFixedSize(
+        0, std::clamp(wanted, kCategoryColumnMin, kCategoryColumnWidth));
 }
 
 void UltraCleanerWindow::Show() {
@@ -321,6 +428,13 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
     bar->AddChild(cleanButton_);
     cleanButton_->layoutItem.SetFlexShrink(0);
 
+    // What the run does, and what the run covers, are two different jobs; a
+    // rule between them says so without a caption.
+    auto barDivider = std::make_shared<UltraCanvasSeparator>(
+        /*isVertical=*/true, 1, 22, Color(206, 206, 212));
+    bar->AddChild(barDivider);
+    barDivider->layoutItem.SetFlexShrink(0);
+
     bar->AddStretchSpacer(1);
 
     // These go through the window rather than the panel: setting every item
@@ -340,18 +454,16 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
-    auto box = CreateGroupBox("ucDetailBox", 428, 48, 590, 500,
+    // No origin and no size: both axes come from the split pane it fills.
+    auto box = CreateGroupBox("ucDetailBox", 0, 0, 0, 0,
                               "Exactly what would go");
     box->layout.SetFlexColumn()
-               .SetFlexGap(6)
+               .SetFlexGap(8)
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ApplySectionStyle(box);
     ContainerStyle plainBox;
     plainBox.autoShowScrollbars = false;
     box->SetContainerStyle(plainBox);
-    // Both axes come from the row it sits in: it takes the width left over
-    // and the full height.
-    box->SetElementSize(CSSLayout::Dimension::Auto(),
-                        CSSLayout::Dimension::Pct(100));
 
     auto filterRow = CreateContainer("ucFilterRow", 0, 0, 0, 30);
     filterRow->layout.SetFlexRow()
@@ -379,24 +491,50 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
     box->AddChild(filterRow);
     filterRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    detailTree_ = std::make_shared<UltraCanvasColumnsTreeView>(
-        "ucDetail", 0, 0, 584, 470);
+    // No size of its own: the tree fills the box, which fills its pane, so a
+    // wider window is a wider table rather than a wider margin beside one.
+    detailTree_ = std::make_shared<UltraCanvasColumnsTreeView>("ucDetail", 0, 0);
     detailTree_->SetDisplayMode(TreeDisplayMode::Columns);
     detailTree_->SetSelectionMode(TreeSelectionMode::Single);
     detailTree_->SetShowColumnHeader(true);
     detailTree_->SetRowHeight(22);
+    // Location alone is flexible (width 0): a path is the one cell with no
+    // length limit, so it takes every pixel a wider window adds instead of
+    // leaving that space beside a table sized for the opening one. The other
+    // four hold text of a known shape — a yes/no, a byte count, a timestamp,
+    // a rule id — and take the width that shape needs, because slack given to
+    // them would only pad the value. Their widths and Location's floor add up
+    // to just under the table at the app's opening size, so five columns fit
+    // there and every larger window is Location growing. Each keeps a floor
+    // so a smaller window truncates rather than collapses, and every boundary
+    // is draggable — SetColumnsResizable is on by default — with a dragged
+    // column pinned at the width it was dragged to.
     detailTree_->SetColumns({
-        { "location", "Location", 0,   180, 3.0f, TextAlignment::Left,
+        { "location", "Location", 0,   160, 1.0f, TextAlignment::Left,
           Color(40, 40, 40), Colors::Transparent, 0, /*isTreeColumn=*/true },
-        { "clean",    "Clean",    56,  0,   1.0f, TextAlignment::Center,
+        { "clean",    "Clean",    56,  48,  0.0f, TextAlignment::Center,
           Color(40, 40, 40), Colors::Transparent, 0, false },
-        { "size",     "Size",     84,  0,   1.0f, TextAlignment::Right,
+        { "size",     "Size",     84,  72,  0.0f, TextAlignment::Right,
           Color(40, 40, 40), Colors::Transparent, 0, false },
-        { "changed",  "Changed",  116, 0,   1.0f, TextAlignment::Left,
+        { "changed",  "Changed",  122, 104, 0.0f, TextAlignment::Left,
           Color(40, 40, 40), Colors::Transparent, 0, false },
-        { "rule",     "Rule",     130, 0,   1.0f, TextAlignment::Left,
+        { "rule",     "Rule",     120, 104, 0.0f, TextAlignment::Left,
           Color(90, 90, 90), Colors::Transparent, 0, false },
     });
+    // Rules between the columns, and a header band light enough that the
+    // drag grips on those boundaries can be seen before they are found.
+    TreeColumnStyle columnStyle = detailTree_->GetColumnStyle();
+    // Separators carry the division between columns, so the gap itself can be
+    // narrow — which is what buys the fifth column its room at small widths.
+    columnStyle.columnGap            = 6;
+    columnStyle.showColumnSeparators = true;
+    columnStyle.columnSeparatorColor = Color(224, 224, 228);
+    columnStyle.headerBackground     = Color(238, 238, 242);
+    columnStyle.headerTextColor      = Color(52, 52, 60);
+    columnStyle.headerBorderColor    = Color(176, 176, 184);
+    columnStyle.headerHeight         = 24;
+    columnStyle.groupHeaderBackground = Color(70, 74, 84);
+    detailTree_->SetColumnStyle(columnStyle);
     // The node id carries the item's index in report_.items, which is what a
     // double-click needs to know.
     detailTree_->onNodeDoubleClicked = [this](TreeNode* node) {
@@ -407,7 +545,9 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
             std::strtoull(id.c_str() + std::strlen(kItemNodePrefix), nullptr, 10)));
     };
     box->AddChild(detailTree_);
+    detailTree_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     detailTree_->layoutItem.SetFlexGrow(1);
+    detailTree_->layoutItem.SetFlexShrink(1);
     detailTree_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     return box;
