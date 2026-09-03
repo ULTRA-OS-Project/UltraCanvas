@@ -83,12 +83,12 @@ endif()
 set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailApp.cpp
     ui/UltraMailStartPage.cpp
-    ui/UltraMailToolbox.cpp
-    ui/UltraMailInfoTileBar.cpp
+    ui/UltraMailAccountBar.cpp
+    ui/UltraMailMessagePreview.cpp
+    ui/UltraMailMailView.cpp
     ui/UltraMailAccountWizard.cpp
     ui/UltraMailAttachmentStrip.cpp
     ui/UltraMailContactsView.cpp
-    ui/UltraMailReadingView.cpp
     ui/UltraMailComposeWindow.cpp
 )
 

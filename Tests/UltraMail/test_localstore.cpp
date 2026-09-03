@@ -151,6 +151,27 @@ TEST(unread_counts_inbox_unseen) {
     REQUIRE_EQ(UnreadFor(s, "erika"), 1);
 }
 
+TEST(unread_split_today_vs_older) {
+    LocalStore s = FreshStore("split");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    const int64_t midnight = 1'000'000;
+    // Two unread today, one unread older, one read today (not counted).
+    MessageEnvelope a = Incoming("erika", 1, "a@x.com", {"erika@example.com"}); a.date = midnight + 10;
+    MessageEnvelope b = Incoming("erika", 2, "b@x.com", {"erika@example.com"}); b.date = midnight;
+    MessageEnvelope c = Incoming("erika", 3, "c@x.com", {"erika@example.com"}); c.date = midnight - 1;
+    MessageEnvelope d = Incoming("erika", 4, "d@x.com", {"erika@example.com"}); d.date = midnight + 5;
+    d.flags = Flag_Seen;
+    for (auto* m : {&a, &b, &c, &d}) REQUIRE(s.UpsertMessage(*m).success);
+
+    std::vector<AccountStatus> st;
+    REQUIRE(s.GetAccountStatus(st, midnight).success);
+    REQUIRE_EQ(st.size(), (size_t)1);
+    REQUIRE_EQ(st[0].email, std::string("erika@example.com"));
+    REQUIRE_EQ(st[0].unread, 3);
+    REQUIRE_EQ(st[0].unreadToday, 2);
+    REQUIRE_EQ(st[0].unreadOlder, 1);
+}
+
 TEST(deleted_excluded_from_rollups) {
     LocalStore s = FreshStore("del");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");

@@ -2,8 +2,9 @@
 // The UltraMail local store: the account / folder / message index built on the
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
-// "needs answer" state and the per-account rollups behind the info-tile bar.
-// Version: 0.1.0 (Phase 1)
+// "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.2.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -68,9 +69,15 @@ public:
         return SetFlags(accountId, folder, uid, Flag_Answered, true);
     }
 
-    // ---- Rollups (info-tile bar) ------------------------------------------
-    // One row per account: short name, unread and needs-answer counts.
-    UltraDbResult GetAccountStatus(std::vector<AccountStatus>& out) const;
+    // ---- Rollups (account bar) --------------------------------------------
+    // One row per account: short name, email, unread (total / today / older)
+    // and needs-answer counts. `todayStart` is the epoch second local midnight
+    // began; pass -1 (the default) to take it from the wall clock.
+    UltraDbResult GetAccountStatus(std::vector<AccountStatus>& out,
+                                   int64_t todayStart = -1) const;
+
+    // Epoch second at which the current local day began.
+    static int64_t StartOfToday();
 
 private:
     std::string connection_;

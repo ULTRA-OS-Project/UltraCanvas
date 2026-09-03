@@ -14,11 +14,13 @@ and **UltraDatabase** (local store) modules.
 > an IMAP mailbox into the store (folders, incremental envelopes with
 > needs-answer, cached bodies, flag mirroring). The **UI** has the main window
 > (a first-run **start page** — logo, title, "Add email account" — until the
-> first account exists, then the Toolbox + account info-tile bar), the setup
-> wizard (with discovery), the
-> **three-pane reading view** (folders | list | preview with body + attachments),
-> the attachment strip → MediaViewer, the contact manager, and the **composer**
-> (Write / Reply, Send through a **persistent outbox**). On startup the app
+> first account exists; then the **account bar** — one summary strip with the
+> provider initial, the account name and the New today / Unread / Waiting for
+> reply counters, or a tile per account — next to the New email / Reload email
+> / Contacts / Add account buttons, and below it the **inbox list | message
+> details** split), the setup wizard (with discovery), the attachment strip →
+> MediaViewer, the contact manager, and the **composer** (New email / Reply,
+> Send through a **persistent outbox**). On startup the app
 > brings up the UltraNet plug-in registry (SMTP/IMAP DSOs load if on the path;
 > `ULTRAMAIL_PLUGIN_DIR` overrides). A **background-sync scheduler** (per-account
 > intervals) drives the SyncService on a UI timer once the IMAP plug-in is
@@ -68,31 +70,35 @@ Apps/UltraMail/
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
                                   shows the start page or the account view
+                                  (actions column · account bar · mail view)
     UltraMailStartPage.{h,cpp}    first-run page: logo + app title + "Add email
                                   account" button, nothing else (no account yet)
-    UltraMailToolbox.{h,cpp}      account-view grid: one tile per account + the
-                                  "Add email account" square at the end
-    UltraMailInfoTileBar.{h,cpp}  per-account status strip (short name · unread
-                                  · needs-answer), fed by GetAccountStatus
+    UltraMailAccountBar.{h,cpp}   one account: summary strip (provider initial ·
+                                  name · New today / Unread / Waiting for reply
+                                  badges); several: a clickable tile per account
+    UltraMailMailView.{h,cpp}     split pane: "Inbox" group box with the message
+                                  list (ColumnsTreeView: From · Subject · Date) |
+                                  "Message" group box with the preview
+    UltraMailMessagePreview.{h,cpp} message details: headers, Reply, body (HTML via
+                                  HTMLReader/CSSLayout, text in a read-only area),
+                                  attachment strip
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
-    UltraMailReadingView.{h,cpp}  three-pane reader: folder tree | message list |
-                                  preview (headers + body + attachment strip + Reply);
-                                  HTML bodies rendered via HTMLReader/CSSLayout
     UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body + Send
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
 
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
-`UltraNet_MimeParse`); the attachment strip shows one chip per part.
-Double-clicking a chip — or the right-click **Open** — writes the bytes to the
-cache and opens them in **`UltraCanvasMediaViewer`** (images, PDF, text,
-audio/video, …). Try it: run with `ULTRAMAIL_DEMO=1` (and
-`ULTRAMAIL_DEMO_OPEN=1` to auto-open) to exercise the flow without a live sync.
+`UltraNet_MimeParse`); the attachment strip under the message body shows one
+chip per part. Double-clicking a chip — or the right-click **Open** — writes
+the bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
+PDF, text, audio/video, …). Try it: run with `ULTRAMAIL_DEMO_MAIL=1`, which
+seeds a demo inbox (two messages dated today, one with an attachment) so the
+whole main window can be exercised without a live sync.
 
 **Contacts:** the address book (`ContactStore` on UltraDatabase) organises
 contacts into **Family / Friends / Work / Leisure / Services** sections, each
@@ -125,10 +131,10 @@ dialog.
 - **"Needs answer" state** — a message counts when it is addressed to the
   account owner, is not automated/bulk, sits in the inbox, and carries no
   `\Answered` flag. Sending a reply (or `MarkAnswered`) clears it. This is the
-  data behind the account info-tile bar's "↩ N to answer" line.
-- **Per-account status rollup** (`GetAccountStatus`) — short name, unread and
-  needs-answer counts across all accounts, in one query. Directly powers the
-  info-tile bar and drives the Toolbox tile badges / OS taskbar badge.
+  data behind the account bar's "Waiting for reply" counter.
+- **Per-account status rollup** (`GetAccountStatus`) — short name, email,
+  unread (total, today, before today) and needs-answer counts across all
+  accounts, in one query. Directly powers the account bar's counters.
 
 ## Building & testing
 

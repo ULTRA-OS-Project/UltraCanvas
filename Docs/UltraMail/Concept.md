@@ -148,124 +148,69 @@ detected via IMAP SPECIAL-USE with name-based fallback), no manual
 
 ## 3. Main window
 
-Classic three-pane layout built from nested split panes:
+Once an account exists the main window is one screen — no separate
+reading window, no Toolbox grid — laid out from UltraCanvas elements:
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│ ☰  🏠  ✎ Write   ⟳ Get Mail   ↩ Reply  ↪ Forward  🗑  [Search… 🔍] │ ← UltraCanvasToolbar
-├───────────────────────────────────────────────────────────────────┤
-│ ┌── erika ──────┐ ┌── work ───────┐ ┌── shop ───────┐             │
-│ │ ✉ 3 new       │ │ ✉ 12 new      │ │ ✉ 0 new       │   ← account │
-│ │ ↩ 2 to answer │ │ ↩ 5 to answer │ │ ✓ all clear   │     bar (3.0)│
-│ └───────────────┘ └───────────────┘ └───────────────┘             │
-├──────────────┬────────────────────────────────────────────────────┤
-│ Unified Inbox│  ● From          Subject                 Date    📎 │
-│ ▾ erika@…    │  ○ Anna Schmidt  Re: Meeting notes       14:02     │
-│    Inbox (3) │  ● ULTRA Store   Your order shipped      11:47   📎 │ ← UltraCanvasListView
-│    Drafts    │  ○ Max Weber     Lunch on Friday?        Yesterday │
-│    Sent      ├────────────────────────────────────────────────────┤
-│    Junk      │  Re: Meeting notes                                 │
-│    Trash     │  Anna Schmidt <anna@…>          Tue 14:02  [Reply] │
-│  ▸ Archive   │ ────────────────────────────────────────────────── │
-│ ▸ max@work…  │  Hi Erika,                                         │ ← preview pane
-│              │  here are the notes from …                         │   (HTMLReader)
-├──────────────┴────────────────────────────────────────────────────┤
-│ ⟳ Synchronizing erika@… Inbox (12/340)              3 new messages │ ← status bar
-└───────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│ [✉ New email  ] ┌──────────────────────────────────────────────┐   │
+│ [⟳ Reload email] │  G   testmail@   12 New today  36 Unread     │   │ ← account bar
+│ [Contacts     ] │                   5 Waiting for reply         │   │   (3.0)
+│ [Add account  ] └──────────────────────────────────────────────┘   │
+├──────────────────────────────────┬─────────────────────────────────┤
+│ ┌ Inbox — 6 messages, 5 unread ┐ │ ┌ Message ───────────────────┐ │
+│ │ From         Subject    Date │ │ │ Budget review this afternoon│ │
+│ │ ● Carol Boss Budget …  Sep 03│ │ │ From: Carol Boss <carol@…>  │ │
+│ │ ● ULTRA Store Your in… Sep 03│ │ │ To: erika@example.com       │ │ ← split pane
+│ │   Max Weber  Lunch on… Jan 14│ │ │ Date: Sep 03, 2026 16:02    │ │
+│ │                              │ │ │ [↩ Reply]                   │ │
+│ │                              │ │ │ Hi Erika, …                 │ │
+│ └──────────────────────────────┘ │ └─────────────────────────────┘ │
+└──────────────────────────────────┴─────────────────────────────────┘
 ```
 
-### 3.0 Account info bar
+- **Actions column** (left): `New email` (composer for the selected
+  account), `Reload email` (syncs every account now — the label reads
+  "Reloading…" while a sync is in flight — then re-reads the store),
+  `Contacts`, `Add account`. Plain `UltraCanvasButton`s with icons.
+- **Account bar** (3.0) to the right of the actions.
+- **Inbox** group box: the selected account's inbox as an
+  `UltraCanvasColumnsTreeView` (From · Subject · Date, newest first; a
+  `●` in front of an unread sender, `↩` in front of one waiting for a
+  reply; the caption carries the message and unread counts). Selecting a
+  row shows it on the right.
+- **Message** group box: the `MessagePreview` — subject, from, to, date,
+  a Reply button, the body (HTML rendered through HTMLReader / CSSLayout,
+  plain text in a read-only text area) and the attachment strip.
+- Both boxes sit in an `UltraCanvasSplitPane`; the whole account view is
+  a flex column sized to the window, so it follows a resize.
 
-Once one or more accounts are set up, a horizontal strip of **account
-info tiles** sits at the top of the main window, directly under the
-toolbar — one tile per configured account, always visible. Each tile is
-a compact status card, not a big launcher square (those live on the
-Toolbox start screen, 2.1); here the point is at-a-glance triage across
-all accounts at once.
+### 3.0 Account bar
 
-Each tile shows three things:
+The strip at the top of the main window summarises the accounts. Its
+shape depends on how many there are:
 
-- **Short account name** — a user-editable nickname (`erika`, `work`,
-  `shop`), defaulting to the local-part of the address. Kept short so
-  many tiles fit; full address in the tooltip.
-- **New unread** — count of unread messages across the account's inbox
-  (folders the user marks as "watched" can be included). "`✉ 3 new`".
-- **Needs answer** — count of messages that were addressed to the user
-  and have not yet been replied to. "`↩ 2 to answer`". When both counts
-  are zero the tile shows a calm "`✓ all clear`" state.
+**One account — a summary strip** (the design's first image): the
+provider's initial (first letter of the address's domain, upper-case and
+bold — `G` for gmail.com), the account name (the local part of the
+address; the full address is the tooltip), and three counters, each an
+`UltraCanvasBadge` with a caption:
 
-Behaviour:
+| Counter | Colour | Meaning |
+|---|---|---|
+| **New today** | blue | unread inbox messages dated today (local midnight onwards) |
+| **Unread** | lime | unread inbox messages from before today |
+| **Waiting for reply** | orange | messages addressed to the user that have no reply yet (the engine's needs-answer state) |
 
-- **Colour / attention state.** A tile with mail needing an answer is
-  accented (warm accent); unread-only is a lighter accent; all-clear is
-  neutral. This makes "which account needs me right now" readable
-  without counting.
-- **Click a tile** → selects that account and jumps its Inbox into the
-  list pane (folder tree scrolls/expands to it). **Click the "needs
-  answer" line** → applies a *Needs answer* filter to the list (a saved
-  search over that account). This turns the tiles into one-click triage
-  entry points, not just indicators.
-- **Live updates.** Counts update from the SyncEngine as new mail
-  arrives (IMAP IDLE) and as the user reads/replies — the engine pushes
-  deltas to the UI via `PostToUIThread`. The same numbers drive the
-  Toolbox tile badges (2.1) and the OS window/taskbar badge, computed
-  once in the engine.
-- **Overflow.** With more accounts than fit, the strip scrolls
-  horizontally (or the tiles shrink to name + two small numbers); a
-  settings option collapses the bar to a single row of counters or
-  hides it for single-account users.
+**Several accounts — a row of square tiles** (the design's second
+image): each tile carries the same initial, name and three badges (the
+captions move into the badges' tooltips). Clicking a tile selects the
+account: the tile gets the selection-blue frame and the Inbox / Message
+boxes below switch to that account.
 
-Implementation: a horizontal `UltraCanvasContainer` (or a `UltraCanvasToolbar`
-in `Sidebar`/`Docked` style laid out horizontally) holding one
-delegate-drawn tile per account; tiles are `CreateIconButton`-style
-clickable panels with two badge lines. The bar is a natural first
-consumer of a future `UltraCanvasTileGrid`/tile component (see open
-question 1), but v1 hand-lays the row — the count is small.
-
-**Defining "needs answer".** A message counts as *needs answer* when
-all of these hold, computed by the engine and cached in the message
-index:
-
-1. It is **incoming** (not sent by one of the user's own addresses).
-2. The user is a **direct recipient** — their address is in `To:`
-   (optionally `Cc:`); pure bulk/list mail where they are neither is
-   excluded.
-3. It is **not yet answered** — this maps directly onto the IMAP
-   `\Answered` system flag, which the server sets when a reply is sent
-   and which the proposed `IMailboxProtocolPlugin::StoreFlags` already
-   manages. UltraMail sets `\Answered` locally the moment the user sends
-   a reply (matched by `In-Reply-To`/`References`), so the count drops
-   instantly and stays correct across devices.
-4. It is **not obviously automated** — messages with
-   `List-Id`/`List-Unsubscribe`, `Precedence: bulk/list`, or
-   `Auto-Submitted` headers, and mail in Junk/Trash, are excluded.
-5. Optionally, not older than a configurable window (default: no age
-   limit; a "hide older than 30 days" option keeps the count actionable).
-
-The user can always override per message: a **"Mark as answered / needs
-answer"** command toggles the `\Answered` flag by hand (for mail
-answered by phone, or that needs a follow-up). "Needs answer" is thus a
-real, synced mailbox state, not a fragile local guess.
-
-- **Folder pane** — `UltraCanvasTreeView`; one root node per account
-  plus a *Unified Inbox* node when more than one account exists; unread
-  counts rendered in the node label; context menu for folder
-  operations (new/rename/delete/empty trash).
-- **Message list** — `UltraCanvasListView` with delegate-drawn rows
-  (unread dot, sender, subject, smart date, attachment glyph, flag
-  star); sortable; multi-select; context menu (reply, forward, move,
-  mark, delete). Optional conversation grouping in v1.x.
-- **Preview pane** — HTML mail rendered with the `HTMLReader` subsystem
-  (`HTMLParser`/`HTMLDocument`/`CSSStyleSheet`) inside a scrollable
-  view; plain-text mail in a read-only `UltraCanvasTextArea`. A yellow
-  info bar offers "Load remote images" per message/sender. Attachment
-  strip with icon, name, size — open (via FileLoader/OS) or save.
-- **Toolbar** — built with `UltraCanvasToolbarBuilder`: home (back to
-  Toolbox), write, get-mail, reply/reply-all/forward, delete, junk,
-  and an `AddSearchBox` searching the local store as you type.
-- **Layout** — `CreateHorizontalSplitPane(folders, CreateVerticalSplitPane(list, preview))`;
-  divider positions persisted. A settings option switches to a wide
-  "list left / mail right" arrangement.
+The counts come from `LocalStore::GetAccountStatus`, one query for all
+accounts (`unreadToday` / `unreadOlder` / `needsAnswer`), refreshed
+after every sync and every action that changes flags.
 
 ### 3.1 Compose window
 
