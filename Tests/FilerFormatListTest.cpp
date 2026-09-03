@@ -89,9 +89,9 @@ int main(int argc, char** argv) {
             if (!present) continue;
             const std::set<FilerPreviewType> allowed = KindsFor(f.category);
             Check(allowed.count(it->second.kind) != 0,
-                  ext + " is filed under " + KindNames(allowed) + ", not \"" +
+                  ext + " is filed under \"" +
                           UltraCanvasFilerWidget::PreviewTypeLabel(it->second.kind) +
-                          "\"");
+                          "\", one of " + KindNames(allowed));
             Check(!it->second.label.empty(), ext + " carries a readable name");
         }
     }
