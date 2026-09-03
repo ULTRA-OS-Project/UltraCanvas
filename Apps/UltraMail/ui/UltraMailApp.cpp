@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
@@ -12,8 +13,8 @@
 #include "UltraMailSyncService.h"
 
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasModalDialog.h"
 
@@ -31,6 +32,20 @@
 using namespace UltraCanvas;
 
 namespace UltraMail {
+
+namespace {
+constexpr int   kWindowWidth   = 1180;
+constexpr int   kWindowHeight  = 760;
+constexpr float kViewPadding   = 12.0f;
+constexpr float kActionsWidth  = 150.0f;
+constexpr float kActionHeight  = 28.0f;
+constexpr float kActionGap     = 6.0f;
+constexpr int   kActionIcon    = 16;
+
+std::string IconPath(const std::string& name) {
+    return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
+}
+} // namespace
 
 std::string UltraMailApp::LocalPart(const std::string& email) {
     auto at = email.find('@');
@@ -79,51 +94,27 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
 std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     WindowConfig config;
     config.title  = "UltraMail";
-    config.width  = 960;
-    config.height = 640;
+    config.width  = kWindowWidth;
+    config.height = kWindowHeight;
     window_ = CreateWindow(config);
 
-    // Header line.
-    window_->AddChild(CreateLabel("umTitle", 16, 8, 400, 28, "UltraMail"));
+    const float w = static_cast<float>(config.width);
+    const float h = static_cast<float>(config.height);
 
-    // Account info-tile bar (populated once accounts exist).
-    auto bar = infoBar_.Build();
-    window_->AddChild(bar);
-    infoBar_.onAccountClicked     = [](const std::string&) { /* Phase 2: open account */ };
-    infoBar_.onNeedsAnswerClicked = [](const std::string&) { /* Phase 2: needs-answer view */ };
+    // Start page — the only thing on screen until the first account exists:
+    // logo, app title and the "Add email account" button.
+    auto start = startPage_.Build();
+    startPage_.onAddAccount = [this]() { HandleAddAccount(); };
+    window_->AddChild(start);
 
-    // Toolbox grid of account tiles + the "Add email account" tile.
-    auto grid = toolbox_.Build();
-    window_->AddChild(grid);
-    toolbox_.onAddAccount  = [this]() { HandleAddAccount(); };
-    toolbox_.onOpenAccount = [](const std::string&) { /* Phase 2: open the 3-pane view */ };
+    // Account view — actions column + account bar on top, inbox | message below.
+    window_->AddChild(BuildAccountView(w, h));
 
-    // Write / Reading view / Contacts entry points.
-    auto writeBtn = CreateButton("umWrite", 384, 8, 120, 28, "✎ Write");
-    writeBtn->onClick = [this]() {
-        std::string name, addr;
-        if (!accounts_.empty()) { name = accounts_.front().displayName; addr = accounts_.front().email; }
-        OpenComposer(Composer::NewMessage(name, addr));
+    // Both views are sized to the client area so their layouts follow the window.
+    ResizeViews(w, h);
+    window_->onWindowResize = [this](int cw, int ch) {
+        ResizeViews(static_cast<float>(cw), static_cast<float>(ch));
     };
-    window_->AddChild(writeBtn);
-
-    auto readBtn = CreateButton("umRead", 512, 8, 120, 28, "Read mail");
-    readBtn->onClick = [this]() { OpenReadingView(); };
-    window_->AddChild(readBtn);
-
-    auto contactsBtn = CreateButton("umContacts", 640, 8, 120, 28, "Contacts");
-    contactsBtn->onClick = [this]() { OpenContacts(); };
-    window_->AddChild(contactsBtn);
-
-    // Attachment strip (populated when a message with attachments is shown).
-    auto strip = attachmentStrip_.Build();
-    window_->AddChild(strip);
-    attachmentStrip_.onOpen   = [this](const Attachment& a) { OpenAttachment(a); };
-    attachmentStrip_.onSaveAs = [this](const Attachment& a) { SaveAttachment(a); };
-
-    // First-run hint below the grid.
-    window_->AddChild(CreateLabel("umHint", 16, 600, 600, 24,
-        "Welcome to UltraMail. Add an account to begin."));
 
     Refresh();
 
@@ -131,9 +122,6 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // IMAP plug-in is present).
     StartBackgroundSync();
 
-    // Demo path: exercise the attachment strip + viewer without a live sync.
-    if (const char* demo = std::getenv("ULTRAMAIL_DEMO"); demo && *demo == '1')
-        ShowDemoAttachments();
     // Demo path: seed mail, auto-collect senders, and open the contact manager.
     if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol == '1') {
         SeedDemoMail();
@@ -152,10 +140,10 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         d.password = "demo-password";
         HandleWizardSubmit(d);
     }
-    // Demo path: seed messages + bodies and open the reading view.
+    // Demo path: seed messages + bodies (the main window shows them).
     if (const char* dm = std::getenv("ULTRAMAIL_DEMO_MAIL"); dm && *dm == '1') {
         SeedDemoMail();
-        OpenReadingView();
+        Refresh();
     }
     // Demo path: send a draft (exercises the outbox queue + result dialog).
     if (const char* ds = std::getenv("ULTRAMAIL_DEMO_SEND"); ds && *ds == '1') {
@@ -180,25 +168,88 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     return window_;
 }
 
-void UltraMailApp::OpenReadingView() {
-    WindowConfig cfg;
-    cfg.title  = "UltraMail";
-    cfg.width  = 1120;
-    cfg.height = 680;
-    auto win = CreateWindow(cfg);
+std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width, float height) {
+    accountView_ = CreateContainer("accountView", 0, 0, width, height);
+    accountView_->SetPadding(kViewPadding);
+    accountView_->layout.SetFlexColumn()
+                        .SetFlexGap(kViewPadding)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    store_.ListAccounts(accounts_);
-    readingView_.SetStore(&store_);
-    readingView_.SetMailDir(mailDir_);
-    readingView_.SetAccounts(accounts_);
-    readingView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
-    readingView_.onReply = [this](const SourceMessage& src, const std::string& selfName,
-                                  const std::string& selfAddr) {
+    // ----- Top row: actions column on the left, account bar on the right -----
+    // Auto height: as tall as the actions column or the account bar's content
+    // (the summary strip stretches to the column; tiles set their own height).
+    auto top = CreateContainer("umTopRow", 0, 0, 0, 0);
+    top->layout.SetFlexRow()
+               .SetFlexGap(16)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    auto actions = CreateContainer("umActions", 0, 0, kActionsWidth, 0);
+    actions->layout.SetFlexColumn()
+                   .SetFlexGap(kActionGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto makeAction = [&](const std::string& id, const std::string& text,
+                          const std::string& icon, std::function<void()> onClick) {
+        auto button = CreateButton(id, 0, 0, kActionsWidth, kActionHeight, text);
+        if (!icon.empty()) {
+            button->SetIcon(IconPath(icon));
+            button->SetIconPosition(ButtonIconPosition::Left);
+            button->SetIconSize(kActionIcon, kActionIcon);
+            button->SetUseIconAsMask(true);
+        }
+        button->SetTextAlign(TextAlignment::Left);
+        button->onClick = std::move(onClick);
+        actions->AddChild(button);
+        return button;
+    };
+    makeAction("umNewEmail", "New email", "envelope.svg", [this]() {
+        std::string name, addr;
+        for (const auto& a : accounts_)
+            if (a.accountId == selectedAccount_) { name = a.displayName; addr = a.email; }
+        if (addr.empty() && !accounts_.empty()) {
+            name = accounts_.front().displayName; addr = accounts_.front().email;
+        }
+        OpenComposer(Composer::NewMessage(name, addr));
+    });
+    reloadButton_ = makeAction("umReload", "Reload email", "reload.svg",
+                               [this]() { HandleReload(); });
+    makeAction("umContacts", "Contacts", "", [this]() { OpenContacts(); });
+    makeAction("umAddAccount", "Add account", "", [this]() { HandleAddAccount(); });
+    top->AddChild(actions);
+
+    auto bar = accountBar_.Build();
+    accountBar_.onSelectAccount = [this](const std::string& accountId) {
+        selectedAccount_ = accountId;
+        Refresh();
+    };
+    top->AddChild(bar);
+    bar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    accountView_->AddChild(top);
+    top->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // ----- Mail area: inbox table | message details -----
+    mailView_.SetStore(&store_);
+    mailView_.SetMailDir(mailDir_);
+    mailView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
+    mailView_.onReply = [this](const SourceMessage& src, const std::string& selfName,
+                               const std::string& selfAddr) {
         OpenComposer(Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false));
     };
-    win->AddChild(readingView_.Build());
-    win->Show();
-    viewerWindows_.push_back(win);
+    auto mail = mailView_.Build();
+    accountView_->AddChild(mail);
+    mail->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    return accountView_;
+}
+
+void UltraMailApp::ResizeViews(float width, float height) {
+    startPage_.Resize(width, height);
+    if (accountView_) accountView_->SetElementSize(Size2Df(width, height));
+}
+
+void UltraMailApp::HandleReload() {
+    RunSyncs(/*force=*/true);
+    Refresh();
 }
 
 void UltraMailApp::OpenComposer(const Draft& draft) {
@@ -299,9 +350,16 @@ void UltraMailApp::SeedDemoMail() {
         m.accountId = "erika"; m.folder = "INBOX"; m.uid = uid;
         m.fromName = fromName; m.fromAddr = fromAddr; m.subject = subject;
         m.to = {"erika@example.com"}; m.messageId = in.messageId; m.flags = flags;
-        m.date = 1736852400 + uid * 3600;   // ~Jan 2026, increasing with uid
+        m.date = uid >= 5 ? static_cast<int64_t>(std::time(nullptr)) - (10 - uid) * 600
+                          : 1736852400 + uid * 3600;   // uid ≥ 5: today; else ~Jan 2026
         store_.UpsertMessage(m);
     };
+
+    seed(6, "Carol Boss", "carol@acme.com", "Budget review this afternoon",
+         "Hi Erika,\n\ncan we go through the Q3 numbers at 15:00?\n\nCarol",
+         Flag_None, /*withAttachment=*/false);
+    seed(5, "ULTRA Store", "orders@ultra.store", "Your invoice is ready",
+         "Your invoice for order #4711 is attached to your account page.", Flag_None, false);
 
     seed(4, "UltraCanvas News", "news@ultracanvas.dev", "UltraMail now renders HTML",
          "<html><body style=\"font-family:sans-serif;color:#222\">"
@@ -346,17 +404,32 @@ void UltraMailApp::StartBackgroundSync() {
     if (!imap) return;
     if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
         app->StartTimer(300000, /*periodic=*/true,
-                        [this](UltraCanvas::TimerId) { RunDueSyncs(); });
+                        [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
 }
 
-void UltraMailApp::RunDueSyncs() {
+void UltraMailApp::RunSyncs(bool force) {
     auto imapPlugin = UltraNet_GetPlugin("imaps");
     auto* imap = imapPlugin ? dynamic_cast<IMailboxProtocolPlugin*>(imapPlugin.get()) : nullptr;
     if (!imap) return;
 
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     CredentialVault vault(dataDir_ + "/vault");
-    for (const auto& acc : scheduler_.DueAccounts(now)) {
+
+    // Which accounts: the due ones, or all of them for a forced reload.
+    std::vector<ScheduledAccount> targets;
+    if (force) {
+        for (const auto& a : accounts_) {
+            DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
+            ScheduledAccount sa;
+            sa.accountId = a.accountId;
+            sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+            targets.push_back(sa);
+        }
+    } else {
+        targets = scheduler_.DueAccounts(now);
+    }
+
+    for (const auto& acc : targets) {
         if (acc.serverUrl.empty()) continue;
         std::string email;
         for (const auto& a : accounts_) if (a.accountId == acc.accountId) email = a.email;
@@ -369,11 +442,19 @@ void UltraMailApp::RunDueSyncs() {
 
         auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
         const std::string aid = acc.accountId;
+        if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Reloading…");
         // onDone keeps `svc` alive until the worker thread finishes; it marshals
         // the follow-up work back to the UI thread.
         svc->SyncInBackground(aid, acc.serverUrl, opts, [this, svc, aid](SyncOutcome) {
             if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
-                app->PostToUIThread([this, aid]() { CollectContacts(aid, "INBOX"); Refresh(); });
+                app->PostToUIThread([this, aid]() {
+                    if (--syncsInFlight_ <= 0) {
+                        syncsInFlight_ = 0;
+                        if (reloadButton_) reloadButton_->SetText("Reload email");
+                    }
+                    CollectContacts(aid, "INBOX");
+                    Refresh();
+                });
         });
         scheduler_.MarkSynced(acc.accountId, now);
     }
@@ -419,11 +500,6 @@ void UltraMailApp::SeedDemoContacts() {
     add("Electricity",  ContactSection::Services, "billing@power.example", "",             "PowerCo");
 }
 
-void UltraMailApp::ShowAttachments(const ParsedMessage& message) {
-    currentMessage_ = message;
-    attachmentStrip_.SetAttachments(currentMessage_.attachments);
-}
-
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     AttachmentCache cache(cacheDir_);
     const std::string path = cache.Write(attachment);
@@ -445,49 +521,23 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     viewerWindows_.push_back(win);   // keep the window alive
 }
 
-void UltraMailApp::SaveAttachment(const Attachment& attachment) {
-    // Phase 2: persist into the cache directory. A native Save-As dialog
-    // (UltraCanvasFileLoader) replaces this once wired.
-    AttachmentCache cache(cacheDir_);
-    cache.Write(attachment);
-}
-
-void UltraMailApp::ShowDemoAttachments() {
-    // Build a small multipart message with a text attachment, then run it
-    // through the same MIME codec a fetched message would use.
-    UltraNetMimeBuildInput in;
-    in.from = "demo@ultramail.local";
-    in.to = {"you@ultramail.local"};
-    in.subject = "Demo message with an attachment";
-    in.body = "This message carries an attachment — double-click it below "
-              "or right-click for Open / Save As.";
-    in.date = "Tue, 01 Jan 2026 00:00:00 +0000";
-    in.messageId = "<demo@ultramail.local>";
-
-    const std::string note =
-        "UltraMail attachment demo\r\n\r\n"
-        "This text file was extracted from the email's MIME parts by the "
-        "UltraNet MIME codec, written to the attachment cache, and opened in "
-        "UltraCanvasMediaViewer.\r\n";
-    UltraNetMimeBuildAttachment a;
-    a.filename = "readme.txt";
-    a.mediaType = "text/plain";
-    a.data.assign(note.begin(), note.end());
-    in.attachments.push_back(a);
-
-    ParsedMessage parsed = MimeCodec::Parse(UltraNet_MimeBuild(in));
-    ShowAttachments(parsed);
-
-    if (const char* open = std::getenv("ULTRAMAIL_DEMO_OPEN");
-        open && *open == '1' && !parsed.attachments.empty())
-        OpenAttachment(parsed.attachments.front());
-}
-
 void UltraMailApp::Refresh() {
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
-    infoBar_.Rebuild(status_);
-    toolbox_.Rebuild(accounts_, status_);
+
+    // Keep the selection on an existing account (default: the first one).
+    bool selectedExists = false;
+    for (const auto& a : accounts_) if (a.accountId == selectedAccount_) selectedExists = true;
+    if (!selectedExists) selectedAccount_ = accounts_.empty() ? "" : accounts_.front().accountId;
+
+    accountBar_.Rebuild(accounts_, status_, selectedAccount_);
+    mailView_.SetAccounts(accounts_);
+    mailView_.ShowAccount(selectedAccount_);
+
+    // No account yet → only the start page; otherwise only the account view.
+    const bool firstRun = accounts_.empty();
+    if (auto page = startPage_.Container()) page->SetVisible(firstRun);
+    if (accountView_) accountView_->SetVisible(!firstRun);
 }
 
 void UltraMailApp::HandleAddAccount() {
