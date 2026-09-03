@@ -1,8 +1,9 @@
 // Apps/UltraMail/ui/UltraMailToolbox.h
-// The Toolbox start screen: a grid of large square tiles, one per configured
-// account, plus an always-present "Add email account" tile. At first use the
-// grid contains only that single square icon.
-// Version: 0.1.0 (Phase 1)
+// The Toolbox: a grid of large square tiles, one per configured account, plus
+// an always-present "Add email account" tile. It is the account view's start
+// screen; before the first account exists the app shows the StartPage instead.
+// Version: 0.2.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

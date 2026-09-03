@@ -1,11 +1,13 @@
 // Apps/UltraMail/ui/UltraMailApp.h
 // The UltraMail application manager: owns the local store, the account list and
-// the main window, and wires the Toolbox, the account info-tile bar and the
-// account-setup wizard together. Texter-style app-composition class.
-// Version: 0.1.0 (Phase 1)
+// the main window, and wires the start page, the Toolbox, the account info-tile
+// bar and the account-setup wizard together. Texter-style app-composition class.
+// Version: 0.2.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraMailStartPage.h"
 #include "UltraMailToolbox.h"
 #include "UltraMailInfoTileBar.h"
 #include "UltraMailAccountWizard.h"
@@ -35,10 +37,12 @@ public:
     // account list. Returns false if the store cannot be opened.
     bool Initialize(const std::string& dataDir);
 
-    // Create the main window with the info-tile bar and the Toolbox grid.
+    // Create the main window: the start page (no account yet) or the account
+    // view (info-tile bar + Toolbox grid + Write / Read mail / Contacts).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> CreateMainWindow();
 
-    // Reload accounts + status and rebuild the info-tile bar and Toolbox.
+    // Reload accounts + status, rebuild the info-tile bar and Toolbox, and
+    // switch between the start page and the account view.
     void Refresh();
 
 private:
@@ -91,6 +95,10 @@ private:
     std::string mailDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    // Everything that belongs to the account view; hidden while the start page
+    // is up (no account configured) and shown once the first account exists.
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasUIElement>> accountView_;
+    StartPage       startPage_;
     Toolbox         toolbox_;
     InfoTileBar     infoBar_;
     AttachmentStrip attachmentStrip_;

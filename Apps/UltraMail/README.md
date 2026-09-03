@@ -13,7 +13,9 @@ and **UltraDatabase** (local store) modules.
 > account auto-discovery + credential vault, and the **SyncEngine** that drives
 > an IMAP mailbox into the store (folders, incremental envelopes with
 > needs-answer, cached bodies, flag mirroring). The **UI** has the main window
-> (Toolbox + account info-tile bar), the setup wizard (with discovery), the
+> (a first-run **start page** — logo, title, "Add email account" — until the
+> first account exists, then the Toolbox + account info-tile bar), the setup
+> wizard (with discovery), the
 > **three-pane reading view** (folders | list | preview with body + attachments),
 > the attachment strip → MediaViewer, the contact manager, and the **composer**
 > (Write / Reply, Send through a **persistent outbox**). On startup the app
@@ -64,9 +66,12 @@ Apps/UltraMail/
     UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
                                   address book (Other section) if new
   ui/                             UltraCanvas UI layer
-    UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
-    UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add
-                                  email account" square (the only tile at first use)
+    UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
+                                  shows the start page or the account view
+    UltraMailStartPage.{h,cpp}    first-run page: logo + app title + "Add email
+                                  account" button, nothing else (no account yet)
+    UltraMailToolbox.{h,cpp}      account-view grid: one tile per account + the
+                                  "Add email account" square at the end
     UltraMailInfoTileBar.{h,cpp}  per-account status strip (short name · unread
                                   · needs-answer), fed by GetAccountStatus
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)

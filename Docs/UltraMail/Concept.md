@@ -46,47 +46,55 @@ Two goals drive every design decision in this document:
 
 ## 2. First-run experience
 
-### 2.1 The Toolbox start screen
+### 2.1 The start page and the Toolbox
 
-UltraMail opens onto its **Toolbox** — a start screen showing a grid of
-large square tiles, one per configured e-mail account, in the visual
-language planned for the ULTRA OS launcher.
-
-**On first use the Toolbox contains exactly one square icon:**
+**On first use — no account configured yet — UltraMail shows nothing but
+a start page: the logo, the app title and one "Add email account"
+button.** No status bar, no tiles, no hint text; the button is the only
+thing to do, so it is the only thing on screen.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  UltraMail                                          _ □ ✕ │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
-│                    ┌─────────────┐                       │
-│                    │             │                       │
-│                    │      ✉ +    │                       │
-│                    │             │                       │
-│                    │  Add email  │                       │
-│                    │   account   │                       │
-│                    └─────────────┘                       │
+│                        ┌───────┐                         │
+│                        │  ✉    │   (logo)                │
+│                        └───────┘                         │
+│                        UltraMail                         │
 │                                                          │
-│        Welcome to UltraMail. Add an account to begin.    │
+│               ┌──────────────────────────┐               │
+│               │ ✉  Add email account     │               │
+│               └──────────────────────────┘               │
+│                                                          │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Clicking the tile starts the account setup wizard (2.2). Once at least
-one account exists, each account gets its own square tile (provider
-glyph, address, unread-count badge) and the "Add email account" tile
-moves to the end of the grid — it is always present, so adding a second
-account is the same gesture as adding the first. Opening an account
-tile enters the main mail window (section 3); the Toolbox stays
-reachable via a home button in the main toolbar.
+Clicking the button starts the account setup wizard (2.2). As soon as
+the first account exists the start page is replaced by the **Toolbox** —
+a start screen showing a grid of large square tiles, one per configured
+e-mail account, in the visual language planned for the ULTRA OS
+launcher — with the account info-tile bar (2.3) above it.
+
+In the Toolbox each account gets its own square tile (provider glyph,
+address, unread-count badge) and an "Add email account" tile sits at the
+end of the grid — it is always present, so adding a second account is
+the same gesture as adding the first. Opening an account tile enters the
+main mail window (section 3); the Toolbox stays reachable via a home
+button in the main toolbar.
 
 With a single configured account UltraMail skips the Toolbox on
 subsequent launches and opens the mail window directly (the behaviour
 is a settings option: *Start on: Toolbox / Last account*).
 
-Implementation: the Toolbox is a plain `UltraCanvasContainer` with a
-grid of `CreateIconButton(...)` tiles (or a `UltraCanvasToolbar` in
-`Docked` style with large icons); badges use the toolbar's built-in
-`badgeText` support.
+Implementation: the start page (`UltraMailStartPage`) is a flex-column
+`UltraCanvasContainer` centring an `UltraCanvasImageElement` (the app
+icon, `media/appicon/UltraMail.svg`), an `UltraCanvasLabel` and a
+primary-style `UltraCanvasButton`; the app shows it while the account
+list is empty and the account view otherwise. The Toolbox is a plain
+`UltraCanvasContainer` with a grid of `CreateIconButton(...)` tiles (or
+a `UltraCanvasToolbar` in `Docked` style with large icons); badges use
+the toolbar's built-in `badgeText` support.
 
 ### 2.2 Account setup wizard
 

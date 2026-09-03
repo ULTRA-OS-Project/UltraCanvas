@@ -1,3 +1,18 @@
+#### 2026-09-03 *0.2.0*
+- **First run shows a start page, nothing else.** Until the first email account
+  exists the main window holds only the UltraMail logo, the app title and an
+  "Add email account" button (`UltraMailStartPage`). The info-tile bar, the
+  Toolbox grid, the Write / Read mail / Contacts buttons and the old "Welcome to
+  UltraMail. Add an account to begin." hint are gone from that state; they
+  appear once an account is added and the start page goes away. The button is a
+  primary-style `UltraCanvasButton` with the envelope icon; the page is a
+  centred flex column that follows the window size.
+- **Account view header no longer overlaps the info-tile bar.** The bar starts
+  below the header row (title + action buttons) instead of at the window top,
+  where the "UltraMail" title was drawn over the first account's tile.
+- **UltraMail has an app icon** (`media/appicon/UltraMail.svg`): the envelope on
+  the selection blue. It is the start-page logo and the window icon.
+
 #### 2026-08-31 *0.1.0*
 - **UltraMail keeps its own changelog from here.** Everything up to and
   including this version shipped as part of a framework release and is recorded

@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
@@ -83,18 +84,37 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     config.height = 640;
     window_ = CreateWindow(config);
 
-    // Header line.
-    window_->AddChild(CreateLabel("umTitle", 16, 8, 400, 28, "UltraMail"));
+    // Start page — the only thing on screen until the first account exists:
+    // logo, app title and the "Add email account" button. Sized to the client
+    // area so its centred column follows the window.
+    auto start = startPage_.Build();
+    startPage_.Resize(static_cast<float>(config.width), static_cast<float>(config.height));
+    startPage_.onAddAccount = [this]() { HandleAddAccount(); };
+    window_->AddChild(start);
+    window_->onWindowResize = [this](int w, int h) {
+        startPage_.Resize(static_cast<float>(w), static_cast<float>(h));
+    };
 
-    // Account info-tile bar (populated once accounts exist).
+    // ===== Account view (everything below is hidden while the start page shows) =====
+
+    // Header line.
+    auto title = CreateLabel("umTitle", 16, 8, 400, 28, "UltraMail");
+    window_->AddChild(title);
+    accountView_.push_back(title);
+
+    // Account info-tile bar, below the header row (the header and the action
+    // buttons occupy the first 44 px).
     auto bar = infoBar_.Build();
+    bar->SetMargin(44, 0, 0, 0);
     window_->AddChild(bar);
+    accountView_.push_back(bar);
     infoBar_.onAccountClicked     = [](const std::string&) { /* Phase 2: open account */ };
     infoBar_.onNeedsAnswerClicked = [](const std::string&) { /* Phase 2: needs-answer view */ };
 
     // Toolbox grid of account tiles + the "Add email account" tile.
     auto grid = toolbox_.Build();
     window_->AddChild(grid);
+    accountView_.push_back(grid);
     toolbox_.onAddAccount  = [this]() { HandleAddAccount(); };
     toolbox_.onOpenAccount = [](const std::string&) { /* Phase 2: open the 3-pane view */ };
 
@@ -106,24 +126,24 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         OpenComposer(Composer::NewMessage(name, addr));
     };
     window_->AddChild(writeBtn);
+    accountView_.push_back(writeBtn);
 
     auto readBtn = CreateButton("umRead", 512, 8, 120, 28, "Read mail");
     readBtn->onClick = [this]() { OpenReadingView(); };
     window_->AddChild(readBtn);
+    accountView_.push_back(readBtn);
 
     auto contactsBtn = CreateButton("umContacts", 640, 8, 120, 28, "Contacts");
     contactsBtn->onClick = [this]() { OpenContacts(); };
     window_->AddChild(contactsBtn);
+    accountView_.push_back(contactsBtn);
 
     // Attachment strip (populated when a message with attachments is shown).
     auto strip = attachmentStrip_.Build();
     window_->AddChild(strip);
+    accountView_.push_back(strip);
     attachmentStrip_.onOpen   = [this](const Attachment& a) { OpenAttachment(a); };
     attachmentStrip_.onSaveAs = [this](const Attachment& a) { SaveAttachment(a); };
-
-    // First-run hint below the grid.
-    window_->AddChild(CreateLabel("umHint", 16, 600, 600, 24,
-        "Welcome to UltraMail. Add an account to begin."));
 
     Refresh();
 
@@ -488,6 +508,11 @@ void UltraMailApp::Refresh() {
     store_.GetAccountStatus(status_);
     infoBar_.Rebuild(status_);
     toolbox_.Rebuild(accounts_, status_);
+
+    // No account yet → only the start page; otherwise only the account view.
+    const bool firstRun = accounts_.empty();
+    if (auto page = startPage_.Container()) page->SetVisible(firstRun);
+    for (auto& element : accountView_) element->SetVisible(!firstRun);
 }
 
 void UltraMailApp::HandleAddAccount() {
