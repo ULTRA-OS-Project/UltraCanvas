@@ -645,3 +645,27 @@ the driver is detected, never bundled — and without it the disc degrades to
 storage-backed and reports itself as such. Regression tests:
 `Tests/VirtualFSPathTest.cpp`, `Tests/VirtualFSDeleteTest.cpp`,
 `Tests/VirtualFSNestedMemoryTest.cpp`, `Tests/VirtualFSRamDiskTest.cpp`.
+
+---
+
+### **11. UltraCloud**
+
+Cloud storage — the single home for cloud accounts, the default account, and
+"upload this and give me a share link", so no application talks to a cloud
+provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
+(Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
+SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+(WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
+through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
+PKCE through the system browser via UltraNet, tokens refreshed automatically;
+the OAuth client id is configuration, `SetOAuthApp` or
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+can also ship as plug-in libraries (`UltraCloud_PluginInit`,
+`LoadProviderPlugins`).
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
+(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
+HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+`UltraCloudUI` holds the shared add-account and link-picker dialogs.
+Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
+and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
+see `Docs/Modules/UltraCloud/README.md`.

@@ -185,6 +185,15 @@ if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLis
     add_subdirectory(UltraAI)
 endif()
     
+# ===== ULTRACLOUD =====
+# Cloud storage accounts, providers and share links, shared by every app
+# (Mail attaches links, Filer uploads and shares, Social hosts media). The
+# engine needs UltraDatabase (+ UltraNet for HTTP); the dialogs need the UI.
+option(BUILD_ULTRACLOUD "Build the UltraCloud module" ON)
+if(BUILD_ULTRACLOUD AND TARGET UltraDatabase)
+    add_subdirectory(UltraCloud)
+endif()
+
 # ===== ULTRAMAIL =====
 # The mail application. Phase 1 builds the headless engine (LocalStore on
 # UltraDatabase); UI targets are added in later phases. Enabled by default
@@ -652,6 +661,17 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     add_subdirectory(Tests/UltraMail)
     message(STATUS "")
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
+endif()
+
+# ===== ULTRACLOUD TESTS =====
+# Headless module tests (account store on UltraDatabase, secret stores, the
+# WebDAV / Nextcloud providers against a fake HTTP function); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS "Build the UltraCloud test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS AND TARGET UltraCloud)
+    enable_testing()
+    add_subdirectory(Tests/UltraCloud)
+    message(STATUS "")
+    message(STATUS "── UltraCloud test suite enabled (target: UltraCloudTests) ──")
 endif()
 
 # ===== EMAILCLEANER ENGINE TESTS =====

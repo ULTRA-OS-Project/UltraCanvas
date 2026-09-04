@@ -87,7 +87,9 @@ Apps/UltraMail/
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
-    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body + Send
+    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
+                                  strip, Send / Attach file / Attach cloud link
+                                  (UltraCloud picker → share link into the body)
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
@@ -114,6 +116,13 @@ It is a global (account-independent) store, so it can be promoted to a shared
 The GUI executable target `UltraMail` (root CMake, `-DBUILD_ULTRAMAIL_APP=ON`)
 links the full UltraCanvas UI library. The engine and its tests build without a
 display; the GUI needs the UI toolkit.
+
+**Attaching:** "Attach file…" reads a local file into the draft (the chips
+under the body show what is attached). "Attach cloud link…" goes through the
+**UltraCloud** module (`Docs/Modules/UltraCloud/README.md`): pick a cloud
+account (the default is preselected), browse it or upload the file into the
+current folder, and the share link lands in the body. Run with
+`ULTRAMAIL_DEMO_CLOUD=1` for a demo account with files and an open composer.
 
 **Account setup:** the wizard collects name / email / password; on submit,
 `AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from

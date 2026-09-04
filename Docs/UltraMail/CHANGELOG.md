@@ -1,3 +1,18 @@
+#### 2026-09-03 *0.3.0*
+- **Attachments in the composer.** "Attach file…" opens the file dialog and
+  adds the file to the draft (media type guessed from the extension); the
+  attachment strip under the body lists what is attached, and forwards carry
+  the original's attachments there too. Attached files go out through the
+  existing MIME builder.
+- **"Attach cloud link…"** through the new **UltraCloud** module
+  (`Docs/Modules/UltraCloud/README.md`): the picker lists the cloud accounts
+  (default preselected), browses the chosen account, uploads a local file into
+  the current folder, and puts a share link for the selected file into the
+  body as "<name>: <url>". With no account yet it offers the add-account
+  dialog (Nextcloud / ownCloud with password- and expiry-capable links, generic
+  WebDAV, and an in-memory demo). Accounts live in `cloud.db` next to the mail
+  store, secrets in `cloud-vault/`. `ULTRAMAIL_DEMO_CLOUD=1` seeds a demo
+  account and opens the composer.
 #### 2026-09-03 *0.5.0*
 - **Mail account passwords now live in UltraVault.** The 0.1 credential vault
   XOR-ed each secret against a 32-byte key it wrote to `vault.key` **in the same

@@ -23,6 +23,8 @@
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailCredentialVault.h"
 
+#include <UltraCloud/UltraCloud.h>
+
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
@@ -82,6 +84,8 @@ private:
 
     // Seed a few messages + cached .eml bodies (demo only).
     void SeedDemoMail();
+    // Add an in-memory demo cloud account with a few files (demo only).
+    void SeedDemoCloud();
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
@@ -118,6 +122,11 @@ private:
     LocalStore store_;
     ContactStore contacts_;
     OutboxStore outbox_;
+    // Cloud storage (UltraCloud): accounts + secrets behind the composer's
+    // "Attach cloud link". Per-app store for now (see the module README).
+    UltraCloud::AccountStore cloudAccounts_;
+    std::unique_ptr<UltraCloud::FileSecretStore> cloudSecrets_;
+    std::unique_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     // Non-empty when a store the app needs could not be opened; the matching

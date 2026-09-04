@@ -109,6 +109,13 @@ target_include_directories(UltraMail PRIVATE
 # Engine before the core: the engine (static) pulls UltraNet_* from the shared
 # libultracanvas import lib, and GNU ld resolves left-to-right, so the provider
 # must follow the consumer on the link line.
+# Cloud storage accounts + the shared dialogs behind "Attach cloud link".
+# UltraCloud pulls UltraCanvasJSON out of the core library, so it must come
+# before ${ULTRACANVAS_LIBRARY} on the link line for the same left-to-right
+# reason as the engine.
+if(TARGET UltraCloudUI)
+    target_link_libraries(UltraMail PRIVATE UltraCloudUI)
+endif()
 target_link_libraries(UltraMail PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(UltraMail PRIVATE fmt::fmt)
