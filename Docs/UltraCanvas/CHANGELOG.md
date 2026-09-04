@@ -40,61 +40,85 @@
   or `SetFormatMenuEnabled(false)` to override), and `ShowFormatMenuAt` puts it
   behind a toolbar button. The demo's spreadsheet page gained that button, a line
   reporting where its column widths came from, and a right-click hint.
+- **The tree view never drew its connecting lines.** `TreeLineStyle` has always
+  defaulted to `Dotted`, `SetLineColor` has always existed, and `RenderNode`
+  answered both with a comment saying the implementation *would* draw a line
+  from the parent to the current node. Every tree in the framework therefore
+  showed rows floating at an indentation with nothing tying them to their
+  parent — which branch a row belonged to had to be counted out by eye once
+  more than one branch was open. The connectors are now drawn: a vertical line
+  descends from the centre of a parent's expand button, a horizontal stub joins
+  each child's row to it, the line stops at the last child, and the trunks of
+  the ancestors that still have rows below continue through the deeper levels.
+  They are drawn over the row background, so they stay visible on the selected
+  row, and under the expand button, which caps the stub. Dotted lines sit on a
+  shared even-pixel grid so trunks and stubs meet cleanly at every junction,
+  and `TreeLineStyle::NoLine` still turns the whole thing off.
+- **Rows without children sat one button width left of the rows with them.** The
+  expand/collapse button was only reserved on rows that had children, so a
+  folder and an empty folder at the same depth started their icon and label at
+  different x positions and the tree read as if it had half-levels. The 16px
+  expander slot is now reserved on every row and left empty when there is
+  nothing to expand, so siblings line up whatever their contents; the slot
+  disappears from all rows, as before, when `SetShowExpandButtons(false)` is
+  set. The expand button's own geometry and hit box are unchanged, and both now
+  come from the same constants rather than from numbers repeated in the
+  renderer and the click handler.
+- **`showRootLines` was a dead field.** The tree view set it to `true` in all
+  three constructors, had no setter for it and never read it, so the top-level
+  rows of a forest — the sections of a tag tree, "Pinned" and "Computer" in a
+  file manager — hung side by side with nothing showing they belong to one list.
+  It is now the switch it always claimed to be, `SetShowRootLines()` /
+  `GetShowRootLines()`: a trunk down the left margin with a stub into every
+  top-level row, drawn exactly like the levels below it. The rows move one
+  indent right to make room, and only while that trunk is actually drawn — it is
+  off under `TreeLineStyle::NoLine`, and on a tree whose root is visible, where
+  the root row already is the trunk everything hangs from, so those trees keep
+  their current left margin to the pixel.
+- **Rows can carry a check flag.** `SetShowCheckboxes(true)` draws a checkbox on
+  every row, between the expand button and the icon, for the "tick what you want
+  backed up / exported / tagged" case that until now meant building a second
+  list beside the tree. The flags are independent of the row selection, which
+  keeps working as it did. A parent whose subtree is only partly ticked shows
+  Mixed — a filled square rather than a tick, so "some" never reads as "all" —
+  and `SetCheckPropagation(false)` turns the whole subtree logic off for trees
+  where each row stands alone. A click on the box toggles it and leaves the
+  selection where it was, the space bar does the same from the keyboard, and
+  `onNodeCheckChanged` fires once per row that actually moved, so a "7 of 12
+  flagged" caption can follow it. `GetCheckedNodes`, `SetAllChecked`,
+  `SetNodeChecked` and `SetCheckboxColors` round it out, and a single row can
+  drop its box (`TreeNodeData::showCheckbox = false`) while keeping the slot, so
+  a section header stays aligned with the rows around it.
+- **The demo's Tree View page shows both.** It advertised a "Checkable Nodes"
+  variant that did not exist. There are now two more examples on the page: a
+  forest whose connectors switch between None / Dotted / Solid from a segmented
+  control, with the root-level trunk on a checkbox beside it, and a folder tree
+  of check flags with a live count and a propagation toggle — the two features
+  above, in the place a newcomer looks for them.
 
 #### 2026-09-04 *0.3.98*
-- **The "Open with" icon cache grew forever.** Handler icons are extracted
-  into PNG files under `%LOCALAPPDATA%\UltraCanvas\openwith-icons` (and
-  `~/Library/Caches/…` on macOS) so the menu, which draws image files, does not
-  re-extract them on every open. Nothing ever deleted one. The key is where the
-  icon came from — an executable's path, a bundle path — so every application
-  the user upgrades, moves or uninstalls leaves behind a PNG that nothing will
-  ever ask for again, accumulating for the life of the account. Each file now
-  carries the day it was last served as its modification time, and the first
-  lookup in a process deletes everything not served for **two weeks**, plus any
-  `.tmp` an interrupted write left behind. Only `.png` and `.tmp` are ever
-  considered; a swept icon that turns out to still be wanted is extracted
-  again. The stamp is rewritten at most once a day, so a context menu that
-  opens all afternoon costs no disk writes, and a clock that was set back reads
-  as fresh rather than expired.
-- **That retention policy is shared, not copied.** `kIconCacheMaxAge`,
-  `SweepIconCache` and `StampIconCacheFile` are declared in
-  `UltraCanvasFileAssociationsBackend.h` and implemented once in
-  `core/UltraCanvasFileAssociations.cpp` — plain `std::filesystem`, no platform
-  code — so the Windows and macOS backends cannot drift apart on how long an
-  icon lives.
-- **A folder of pictures could blank the application icons next to them.** The
-  filer's thumbnail cache held every finished picture in one 96 MB budget, and
-  on overflow it did not evict — it dropped *every* finished entry it had and
-  started over. So one video poster frame landing on a full cache erased the
-  whole screenful, and in a folder like a program's install directory, where a
-  few large previews sit beside dozens of executables, the `.exe` and `.dll`
-  icons were the ones that went: they were re-extracted, evicted by the next
-  preview, re-extracted again, and what the user saw was that the icons "stopped
-  showing" and did not come back. The cache now evicts **least recently drawn
-  first**, and only as far as it takes to get back under budget, so what is on
-  screen survives what is scrolling past it.
-- **Application icons no longer compete with content previews for memory.**
-  They are the file's identity, not a courtesy preview, and they cost a
-  rounding error next to a poster frame — so they now have their own 16 MB
-  budget that nothing else can spend. `UltraCanvasFilerWidget.md` documents both
-  pools and what overflowing one does.
-- **A shell icon extraction that failed once failed for good.** The slot was
-  marked Failed and never retried, so a single transient refusal from the shell
-  left that executable drawn as a generic EXE glyph for the rest of the session.
-  Extraction now gets up to three tries before the tile settles on its glyph;
-  content decodes, which fail the same way every time, still stop after one.
-- **The thumbnail workers had never joined a COM apartment.** `SHDefExtractIconW`
-  is a shell call and the shell expects one of its caller; the workers ran
-  without, which is a plausible source of exactly the intermittent per-file
-  failures above (the main thread, which does `OleInitialize`, never saw them).
-  Each worker now holds a `NativeFileIconThreadScope` for its lifetime —
-  multi-threaded apartment, since these threads have no message pump — declared
-  in `UltraCanvasNativeFileIcons.h` and empty on platforms without an extractor.
-- **Cache byte accounting is now balanced on every path out of a slot.** The
-  old wipe recomputed the total from scratch each time it fired, so nothing
-  needed to subtract; incremental eviction does, and pruning a slot or
-  overwriting one now returns its bytes (and drops any decompressed copy of it)
-  through a single helper, so the counters cannot drift.
+- **Folders can be drawn as an icon.** The file display asked nothing about a
+  folder before: every one of them was the same painted folder shape. It now
+  asks its host, through the new `folderIconProvider(entry)` callback, and
+  draws whatever image the host names — any format the image pipeline loads,
+  in every view from the 16 px icon column of the Details rows up to a
+  maximized tile, with `FilerStyle::folderIconScale` still applying. An empty
+  answer keeps the shape, so a display that sets no provider looks exactly as
+  it did. The images go through the shared image cache, so the same icon on a
+  hundred folders is rasterized once per size.
+- **Writing a `.qoi` file no longer depends on ImageMagick.**
+  `SavePixmapAsQoiFile(pixmap, path)` and
+  `SaveImageFileAsQoi(sourcePath, destPath, maxEdge)` (`ImageCairo.h`) encode
+  through the bundled QOI codec (`qoi.cpp`), which is compiled into every
+  build — unlike `UCImageSaveFormat::QOI`, which routes through `magicksave`
+  and is unavailable wherever the local ImageMagick has no QOI writer.
+  `SaveImageFileAsQoi` reads any format the image pipeline loads and fits the
+  result into a `maxEdge` box: a vector source is rasterized at the full box
+  (a vector has no resolution of its own), a raster is only ever scaled down.
+  It is what an application storing a picture as an icon or a cached thumbnail
+  wants — UltraFiler's folder icons are converted with it. The file is written
+  through `PathFromUtf8`, so a non-ASCII path works on Windows too, which the
+  encoder's own `qoi_write()` (narrow `fopen`) does not.
 
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"

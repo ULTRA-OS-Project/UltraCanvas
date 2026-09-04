@@ -4,13 +4,13 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.6.0
-// Last Modified: 2026-09-03
+// Version: 1.7.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, kFilerAllPreviewTypes
+#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge
 
 #include <algorithm>
 #include <cstdint>
@@ -92,6 +92,15 @@ public:
     std::vector<std::string> disabledThumbnailFormats;
     std::vector<std::string> disabledDetailViewFormats;
 
+    // Display > File extensions: whether the names in the file display still
+    // carry their extension ("UltraFiler.exe" or "UltraFiler"), and what the
+    // thumbnail tiles show instead of / beside it - nothing, a bar across the
+    // foot of the icon with the extension at its right end, or that tag on its
+    // own. Names carry their extension and tiles carry no tag by default,
+    // which is the display every earlier release had.
+    bool showFileExtensions = true;
+    FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
     // them. Ctrl at the drop always copies and Shift always moves, whichever
@@ -167,6 +176,12 @@ public:
         if (it != kv.end()) detailViewKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.detailview.formats.off");
         if (it != kv.end()) disabledDetailViewFormats = ParseList(it->second);
+        it = kv.find("display.extensions.in.names");
+        if (it != kv.end())
+            showFileExtensions =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("display.extensions.badge");
+        if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("extras.prompt.application");
@@ -206,10 +221,33 @@ public:
              << FormatDisabledKinds(detailViewKinds) << "\n";
         file << "display.detailview.formats.off = "
              << FormatList(disabledDetailViewFormats) << "\n";
+        file << "display.extensions.in.names = "
+             << (showFileExtensions ? "true" : "false") << "\n";
+        file << "display.extensions.badge = "
+             << FormatExtensionBadge(extensionBadge) << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
+    }
+
+    // ===== THE THUMBNAIL EXTENSION TAG =====
+    // Named in the config file rather than stored as a number, for the same
+    // reason the preview kinds are: the file stays readable and a mode added
+    // later cannot change the meaning of an old value.
+    static std::string FormatExtensionBadge(FilerExtensionBadge badge) {
+        switch (badge) {
+            case FilerExtensionBadge::Bar:  return "bar";
+            case FilerExtensionBadge::Icon: return "icon";
+            default:                        return "none";
+        }
+    }
+
+    static FilerExtensionBadge ParseExtensionBadge(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "bar")  return FilerExtensionBadge::Bar;
+        if (value == "icon") return FilerExtensionBadge::Icon;
+        return FilerExtensionBadge::NoneBadge;
     }
 
     // ===== PREVIEW KIND NAMES =====

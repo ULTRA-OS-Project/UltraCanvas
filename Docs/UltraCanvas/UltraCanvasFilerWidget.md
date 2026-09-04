@@ -200,6 +200,55 @@ The row-based views (`Details`, `List`, `BarSize`) keep their single-line,
 ellipsized names — their rows are fixed height and the name has a whole column
 width available.
 
+## File extensions
+
+Whether a drawn name still ends in its extension, and what a thumbnail tile
+shows about the file type instead, are two independent switches
+(`Display > File extensions`):
+
+```cpp
+filer->SetFileExtensionsInNames(false);                    // "UltraFiler", not "UltraFiler.exe"
+filer->SetExtensionBadge(FilerExtensionBadge::Bar);        // "exe" on a strip under the icon
+```
+
+| Call | Default | Effect |
+|---|---|---|
+| `SetFileExtensionsInNames(bool)` | `true` | The names drawn in **every** view — Details, List, the thumbnail grids, BarSize, treemap cells and the name tooltips — keep their extension, or are drawn without it. |
+| `SetExtensionBadge(FilerExtensionBadge)` | `NoneBadge` | `Bar` draws a strip across the foot of a thumbnail tile's icon box with the extension in a tag at its right end; `Icon` draws that tag alone in the box's bottom-right corner; `NoneBadge` draws neither. |
+
+Both are **display-only**. `FilerEntry::name` always holds the real name, so
+sorting, the Type column, the selection info bar, the inline rename editor and
+every file operation keep working on it: a hidden extension cannot be lost by a
+rename, and renaming never has to re-append one. The rename editor therefore
+shows the full name (with the base name preselected, as always), which is also
+what stops a user from typing a second extension onto a name that already has
+one.
+
+A name is only shortened where its tail really is a file type. The tag rule and
+the name rule are the same one — `ExtensionTagOf()` answers it — so a name that
+keeps its tail also gets no tile tag:
+
+| Name | Drawn without extensions | Tile tag |
+|---|---|---|
+| `UltraFiler.exe` | `UltraFiler` | `exe` |
+| `sources.tar.gz` | `sources.tar` | `gz` |
+| `.bashrc` | `.bashrc` | — |
+| `README` | `README` | — |
+| `UCDemo-Windows-0.3.27-x86_64` | unchanged | — (a version, not a type) |
+| `Backup.old` (a **folder**) | unchanged | — (folders have no extension) |
+
+The tag is painted **over** the foot of the icon box, not under it, so
+switching it on never changes a tile's height and never relays out the grid.
+Only the four thumbnail views draw it — the row views have a Type column and a
+whole row width for the name. `DisplayNameOf(entry)` returns the name as the
+display draws it, for a host that labels the same entry elsewhere (a drag
+badge, a breadcrumb, a tile of its own).
+
+Changing either switch — from the menu or through the setters — fires
+`onDisplayFormatsChanged`, the same hook the Thumbnails / Detail view switches
+use, so an application persists both from one place (UltraFiler:
+`Settings > Display > File extensions`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -246,6 +295,8 @@ Extras         >  Share / Attributes / Copy path / Access
                   UltraFiler: Open prompt and the Pin / Unpin submenus)
 Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascending / Descending
                   Type        >  all view types
+                  File extensions > "Show in names" (checkbox) + None / Bar /
+                                 Icon (the thumbnail tile tag)
                   Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
                                  Docs / Spreadsheets / Videos / Audio / Fonts
                                  (checkboxes, all on; the host may append its
@@ -700,6 +751,35 @@ It gets a header of its own rather than joining `GetWellKnownUserFolders()` in
 compiled **standalone**, without the framework library, by several test targets
 that only want `Trim()` — a JSON dependency inside it leaves every one of them
 with undefined references at link time.
+
+## Folder icons
+
+Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
+the host replace that shape per folder: return the path of an image — any
+format the image pipeline loads, so SVG, PNG, QOI and the rest — and the entry
+is drawn from it in every view, from the 16 px icon column of the Details rows
+to a maximized thumbnail tile (`FilerStyle::folderIconScale` still applies).
+Return `""` and the built-in shape is drawn as before.
+
+```cpp
+filer->folderIconProvider = [](const FilerEntry& e) -> std::string {
+    if (e.name == "Music") return "media/icons/folder-music.svg";
+    return {};                    // everything else keeps the folder shape
+};
+```
+
+It is asked while the folder is painted, so it must be a lookup, not a disk
+walk or a platform query — cache whatever answering it costs. The images
+themselves are not a concern: they go through the shared image cache, keyed by
+path and size, so one icon on a hundred folders is rasterized once per size.
+
+The UltraFiler answers it with the icons of the well-known user folders
+(Desktop, Documents, Downloads, Music, Pictures, Videos — `media/icons/`), and
+before those with whatever the user set through the context menu's *Extras >
+Set folder icon*: that entry converts any picture to a QOI file in the
+application's config directory (`SaveImageFileAsQoi`, `ImageCairo.h`) and shows
+that copy, so the icon survives the original being moved or deleted. *Extras >
+Remove folder icon* takes it away again.
 
 ## Selection access
 
@@ -1300,6 +1380,7 @@ scan, which feeds its matches in through `AppendToFileList()` while it runs.
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
+| `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
@@ -1325,6 +1406,11 @@ s.captionOverflowSlack = 0;   // 0 = derived from smallFontSize
 s.captionCamelCaseBreaks = true; // "UltraCanvas" / "Texter.exe", not "UltraCanva" / "sTexter.exe"
 filer->SetStyle(s);
 ```
+
+`FilerStyle::extensionBarBackground`, `extensionTagBackground`,
+`extensionTagTextColor` and `extensionBadgeHeight` (0 = derived from
+`smallFontSize`) style the tile's extension tag — see
+[File extensions](#file-extensions).
 
 `FilerStyle::folderIconScale` (default 1.0) shrinks the folder glyph inside a
 thumbnail tile's image box, centered — e.g. 0.7 draws folders at 70% so they

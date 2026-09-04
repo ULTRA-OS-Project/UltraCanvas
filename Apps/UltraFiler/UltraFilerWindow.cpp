@@ -19,8 +19,13 @@
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
 // submenu ends with an app-provided block (extrasMenuProvider): "Open
-// prompt", then Pin / Unpin submenus whose "To Treeview" / "To Favorites"
-// flags follow the current selection.
+// prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// submenus whose "To Treeview" / "To Favorites" flags follow the current
+// selection. Folder icons: the main user folders carry one of their own
+// (media/icons), and any folder can be given a picture through "Set folder
+// icon", which is converted to QOI and kept with the settings
+// (UltraFilerFolderIcons); both are handed to the file displays through the
+// filer widget's folderIconProvider and to the folder tree's rows.
 // The gear button at the right end of the navigation row opens the settings
 // window (UltraFilerSettingsDialog), which also clears the history / the
 // favorites; persisted settings load at startup and configure the preview's
@@ -30,8 +35,8 @@
 // colour picked from the strip under a transparent image in the preview is
 // saved the same way. Esc closes the History or Favorites view, or an open
 // media preview.
-// Version: 1.17.0
-// Last Modified: 2026-09-03
+// Version: 1.18.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -42,7 +47,9 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasSupportedFormats.h"  // its image formats
 #include "UltraCanvasUtils.h"
 #include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
@@ -61,6 +68,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
@@ -173,16 +181,18 @@ namespace {
         return false;
     }
 
-    // Tree icon for each of the well-known home folders
-    // (GetWellKnownUserFolders), Explorer / Finder sidebar style.
+    // The icon each of the well-known home folders (GetWellKnownUserFolders)
+    // is shown with, in the folder tree and in the file display alike -
+    // Explorer / Finder sidebar style. A file in `media/icons`; the user can
+    // override any of them through Extras > Set folder icon.
     const char* UserFolderIconFile(UserFolderKind kind) {
         switch (kind) {
-            case UserFolderKind::Desktop:   return "computer.png";
-            case UserFolderKind::Documents: return "document.svg";
-            case UserFolderKind::Downloads: return "download.png";
-            case UserFolderKind::Music:     return "audio.png";
-            case UserFolderKind::Pictures:  return "image.svg";
-            case UserFolderKind::Videos:    return "video.png";
+            case UserFolderKind::Desktop:   return "user-desktop.svg";
+            case UserFolderKind::Documents: return "folder-documents.svg";
+            case UserFolderKind::Downloads: return "folder-download.svg";
+            case UserFolderKind::Music:     return "folder-music.svg";
+            case UserFolderKind::Pictures:  return "folder-images.svg";
+            case UserFolderKind::Videos:    return "folder-videos.svg";
             default:                        return "folder-brown.svg";
         }
     }
@@ -191,13 +201,31 @@ namespace {
     // (used to keep a curated home folder from listing twice): normalised,
     // no trailing separator, case-folded on Windows.
     std::string FolderIdentityKey(const std::string& path) {
-        std::string key = fs::path(path).lexically_normal().string();
-        while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
-            key.pop_back();
-#ifdef _WIN32
-        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
-#endif
-        return key;
+        // One implementation, shared with the folder-icon store: what the
+        // tree, the file display and the stored icons call "the same folder"
+        // cannot drift apart that way.
+        return UltraFilerFolderIcons::IdentityKey(path);
+    }
+
+    // The icon file of `path` when it is one of the well-known user folders,
+    // else "" - the folder is drawn the ordinary way then. Matched through
+    // FolderIdentityKey, so a redirected or differently spelled Documents
+    // folder is still recognised.
+    //
+    // Asked for every folder the file display draws, so where the platform
+    // puts those folders (a registry read per folder on Windows,
+    // xdg-user-dirs on Linux) is looked up once and kept: they do not move
+    // while the application runs.
+    std::string WellKnownFolderIconFile(const std::string& path) {
+        static const std::map<std::string, std::string> byKey = []() {
+            std::map<std::string, std::string> map;
+            for (const UserFolderInfo& f : GetWellKnownUserFolders())
+                map.emplace(FolderIdentityKey(f.path), UserFolderIconFile(f.kind));
+            return map;
+        }();
+        if (path.empty()) return {};
+        auto it = byKey.find(FolderIdentityKey(path));
+        return it == byKey.end() ? std::string() : it->second;
     }
 
     bool IsUserHomeDir(const std::string& path) {
@@ -588,6 +616,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
     WireDisplayFormatCallbacks(folderPreview.get());
+    WireFolderIconProvider(folderPreview.get());
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
     // the recently used files / folders / applications behind the clock button.
@@ -596,6 +625,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     history.Load();
     favorites.Load();
     folderViews.Load();
+    // Loaded before the tree is built, so a folder the user gave an icon
+    // carries it from the first frame rather than after the first repaint.
+    folderIcons.Load();
 
     BuildTabbedContainer();
 
@@ -748,6 +780,9 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     settings.detailViewKinds = source->GetDetailViewKinds();
     settings.disabledThumbnailFormats  = source->GetDisabledThumbnailFormats();
     settings.disabledDetailViewFormats = source->GetDisabledDetailViewFormats();
+    // The same hook reports the Display > File extensions switches.
+    settings.showFileExtensions = source->AreFileExtensionsInNames();
+    settings.extensionBadge     = source->GetExtensionBadge();
     settings.Save();
     ApplySettings();
 }
@@ -779,6 +814,23 @@ void UltraFilerWindow::WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target
     target->onDisplayFormatsChanged = [this, target]() {
         AdoptDisplayFormats(target);
     };
+}
+
+void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    // The flag keeps the widgets' own change hooks from writing the setting
+    // straight back while it is being pushed into them.
+    const bool wasApplying = applyingDisplayFormats;
+    applyingDisplayFormats = true;
+    target->SetThumbnailKinds(settings.thumbnailKinds);
+    target->SetDetailViewKinds(settings.detailViewKinds);
+    target->SetDisabledThumbnailFormats(settings.disabledThumbnailFormats);
+    target->SetDisabledDetailViewFormats(settings.disabledDetailViewFormats);
+    // Display > File extensions: whether the names keep their extension, and
+    // the tag the thumbnail tiles carry.
+    target->SetFileExtensionsInNames(settings.showFileExtensions);
+    target->SetExtensionBadge(settings.extensionBadge);
+    applyingDisplayFormats = wasApplying;
 }
 
 void UltraFilerWindow::ApplySettings() {
@@ -823,14 +875,7 @@ void UltraFilerWindow::ApplySettings() {
     // of the window carries the same switches, so the setting holds wherever
     // the user is looking - and the flag keeps the widgets' own change hooks
     // from writing the setting straight back.
-    applyingDisplayFormats = true;
-    for (UltraCanvasFilerWidget* f : AllFilers()) {
-        f->SetThumbnailKinds(settings.thumbnailKinds);
-        f->SetDetailViewKinds(settings.detailViewKinds);
-        f->SetDisabledThumbnailFormats(settings.disabledThumbnailFormats);
-        f->SetDisabledDetailViewFormats(settings.disabledDetailViewFormats);
-    }
-    applyingDisplayFormats = false;
+    for (UltraCanvasFilerWidget* f : AllFilers()) ApplyDisplaySettingsTo(f);
     // The detail pane may have been showing a file kind that was just switched
     // off - or may now be allowed to open for what is selected. (A no-op
     // before the split exists, i.e. on the call during start-up.)
@@ -979,12 +1024,164 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this](bool) { UnpinTargetsFromFavorites(); });
     unpinFavorites.enabled = anyInFavorites;
 
+    // Folder icons act on the folders among the targets: "Set folder icon"
+    // opens the image dialog, and "Remove folder icon" only lights up while
+    // one of them actually carries an icon of its own.
+    bool anyCustomIcon = false;
+    for (const FilerEntry& e : targets)
+        if (e.isDirectory && folderIcons.HasIcon(e.path)) anyCustomIcon = true;
+
+    MenuItemData setIcon = MenuItemData::Action("Set folder icon",
+            [this]() { SetFolderIconForTargets(); });
+    setIcon.enabled = allFolders;
+    MenuItemData removeIcon = MenuItemData::Action("Remove folder icon",
+            [this]() { RemoveFolderIconForTargets(); });
+    removeIcon.enabled = anyCustomIcon;
+
     return {
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
+            MenuItemData::Separator(),
+            setIcon,
+            removeIcon,
             MenuItemData::Separator(),
             MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
             MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
     };
+}
+
+// ===== EXTRAS EXTENSION: FOLDER ICONS =====
+
+// The icon file a tree row falls back to once the folder has no icon of its
+// own: what the row was created with. Derived rather than remembered - the
+// three rows that are not plain folders are recognisable from the tree itself,
+// so removing an icon cannot leave a drive or the Home row showing a folder.
+std::string UltraFilerWindow::DefaultTreeIconFile(const TreeNode* node) const {
+    if (!node) return "folder-brown.svg";
+    if (node->parent && node->parent->data.nodeId == kCloudNodeId) return "cloud.svg";
+    const std::string path = TreeNodeTargetPath(node);
+    if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(),
+                  node->data.nodeId) != treeDriveNodeIds.end())
+        return "drive.png";
+    if (IsUserHomeDir(path)) return "home-icon.png";
+    return "folder-brown.svg";
+}
+
+std::string UltraFilerWindow::FolderIconPath(const std::string& folderPath) const {
+    if (folderPath.empty()) return {};
+    // What the user picked beats the built-in icon of a well-known folder:
+    // setting one on Pictures is exactly the case for it.
+    const std::string custom = folderIcons.IconFor(folderPath);
+    if (!custom.empty()) return custom;
+    const std::string builtIn = WellKnownFolderIconFile(folderPath);
+    return builtIn.empty() ? std::string() : IconPath(builtIn);
+}
+
+void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->folderIconProvider = [this](const FilerEntry& entry) {
+        return FolderIconPath(entry.path);
+    };
+}
+
+std::vector<std::string> UltraFilerWindow::FolderIconTargets() const {
+    std::vector<std::string> folders;
+    for (const FilerEntry& e : PinTargets())
+        if (e.isDirectory) folders.push_back(e.path);
+    return folders;
+}
+
+void UltraFilerWindow::SetFolderIconForTargets() {
+    const std::vector<std::string> folders = FolderIconTargets();
+    if (folders.empty()) return;
+
+    // The image formats this build can actually turn into an icon: the
+    // runtime inventory's bitmap and vector entries, minus the ones only a
+    // graphics plugin understands - the conversion goes through the image
+    // pipeline, and offering a format it cannot decode would only produce a
+    // failure the user has to read.
+    std::vector<std::string> extensions;
+    for (MediaFormatCategory category : {MediaFormatCategory::Bitmap,
+                                         MediaFormatCategory::Vector}) {
+        for (const std::string& ext :
+                     UltraCanvasSupportedFormats::GetLoadExtensions(category)) {
+            if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
+                extensions.push_back(ext);
+        }
+    }
+    std::sort(extensions.begin(), extensions.end());
+    extensions.erase(std::unique(extensions.begin(), extensions.end()),
+                     extensions.end());
+
+    FileDialogOptions opts;
+    opts.SetTitle(folders.size() == 1
+                          ? "Icon for " + fs::path(folders.front()).filename().string()
+                          : "Icon for " + std::to_string(folders.size()) + " folders")
+        .SetInitialDirectory(folders.front())
+        // A picture chosen as an icon is not a document the shell should
+        // offer under "recently used".
+        .SetRegisterAsRecent(false)
+        .SetParentWindow(window.get());
+    if (!extensions.empty()) opts.AddFilter("Image files", extensions);
+    opts.AddFilter("All files", "*");
+
+    UltraCanvasFileLoader::OpenFileDialog(opts,
+            [this, folders](DialogResult result, const std::string& imagePath) {
+        if (result != DialogResult::OK || imagePath.empty()) return;
+        // The picture is converted once per folder into a QOI file of the
+        // application's own config directory, so the icon keeps working after
+        // the original is moved, renamed or deleted.
+        std::string error;
+        std::vector<std::string> changed;
+        for (const std::string& folder : folders) {
+            if (folderIcons.SetFromImage(folder, imagePath, error))
+                changed.push_back(folder);
+            else
+                break;   // the same picture fails for every folder
+        }
+        RefreshFolderIcons(changed);
+        if (!error.empty()) {
+            UltraCanvasAlert::Error("Cannot use this image as a folder icon.\n" + error,
+                                    "Set folder icon", nullptr, window.get());
+        }
+    });
+}
+
+void UltraFilerWindow::RemoveFolderIconForTargets() {
+    std::vector<std::string> changed;
+    for (const std::string& folder : FolderIconTargets())
+        if (folderIcons.Clear(folder)) changed.push_back(folder);
+    RefreshFolderIcons(changed);
+}
+
+void UltraFilerWindow::RefreshFolderIcons(const std::vector<std::string>& folders) {
+    if (folders.empty()) return;
+    // The tree draws its rows from the node data, so the changed rows are
+    // repointed at their new icon; the file displays ask the provider while
+    // they paint, so they only need a repaint.
+    if (folderTree) {
+        for (const std::string& folder : folders) {
+            const std::string icon = FolderIconPath(folder);
+            // The folder's regular row and, when it is pinned, its bookmark
+            // under the tree's "Pinned" section.
+            for (const std::string& nodeId : {folder, kPinnedChildPrefix + folder}) {
+                TreeNode* node = folderTree->FindNode(nodeId);
+                if (!node) continue;
+                node->data.leftIcon = TreeNodeIcon(
+                        icon.empty() ? IconPath(DefaultTreeIconFile(node)) : icon,
+                        16, 16);
+            }
+        }
+        folderTree->RequestRedraw();
+    }
+    // The converted icon of a folder that had one before is a new file at a
+    // new path, so nothing stale is cached - but a folder whose icon was
+    // removed and set again within one run can land on the same name, and the
+    // image cache would then serve the previous picture.
+    for (const std::string& folder : folders) {
+        const std::string icon = folderIcons.IconFor(folder);
+        if (!icon.empty()) UCImage::RemoveFromCache(icon);
+    }
+    for (UltraCanvasFilerWidget* f : AllFilers()) f->RequestRedraw();
 }
 
 void UltraFilerWindow::PinTargetsToFavorites() {
@@ -1693,7 +1890,11 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->SetFontSize(kUiFontSize);
     folderTree->SetRowHeight(24);
     folderTree->SetSelectionMode(TreeSelectionMode::Single);
-    folderTree->SetLineStyle(TreeLineStyle::NoLine);
+    // Dotted connectors between a folder and its subfolders, the way a file
+    // manager tree reads: which rows belong to which parent stays visible once
+    // several branches are open at the same time.
+    folderTree->SetLineStyle(TreeLineStyle::Dotted);
+    folderTree->SetLineColor(Color(0x9A, 0x9A, 0xA6, 0xFF));
     folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
 
     // Slim the vertical scrollbar to half its default width (6px) so it reads
@@ -1859,7 +2060,12 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
                                          const std::string& path,
                                          const std::string& label,
                                          const std::string& iconFile) {
-    if (!folderTree->AddNode(parentId, MakeFolderNodeData(path, label, iconFile)))
+    TreeNodeData data = MakeFolderNodeData(path, label, iconFile);
+    // A folder with an icon of its own - one the user set, or a well-known
+    // user folder - carries it in the tree too, not only in the file display.
+    const std::string icon = FolderIconPath(path);
+    if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+    if (!folderTree->AddNode(parentId, data))
         return;
     // The placeholder child that gives the node its expand button is added
     // once the background probe reports that the folder has subfolders.
@@ -2232,9 +2438,12 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
     for (const std::string& path : favorites.Paths(FilerFavoriteKind::Tree)) {
         std::string label = fs::path(path).filename().string();
         if (label.empty()) label = path;   // a filesystem root
-        folderTree->AddNode(kPinnedNodeId,
-                MakeFolderNodeData(kPinnedChildPrefix + path, label,
-                                   "folder-brown.svg"));
+        TreeNodeData data = MakeFolderNodeData(kPinnedChildPrefix + path, label,
+                                               "folder-brown.svg");
+        // The bookmark shows the folder's own icon, like its regular row does.
+        const std::string icon = FolderIconPath(path);
+        if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+        folderTree->AddNode(kPinnedNodeId, data);
     }
     // An empty section is just a header over nothing: hide it entirely while
     // nothing is pinned, and show it open — its entries are the point of it.
@@ -2632,6 +2841,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
     WireDisplayFormatCallbacks(tab->filer.get());
+    WireFolderIconProvider(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -2837,6 +3047,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(histFiler.get());
+        WireFolderIconProvider(histFiler.get());
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -3073,6 +3284,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(favFiler.get());
+        WireFolderIconProvider(favFiler.get());
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;

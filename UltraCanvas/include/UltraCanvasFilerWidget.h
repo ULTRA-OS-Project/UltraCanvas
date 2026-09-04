@@ -70,9 +70,16 @@
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
+// extrasMenuProvider. A folder can be drawn as an icon of the host's
+// choosing rather than as the built-in folder shape (folderIconProvider).
 // extrasMenuProvider.
-// Version: 1.23.0
-// Last Modified: 2026-09-03
+// The displayed names keep their file extension or drop it, and a thumbnail
+// tile can show the extension as a bar or a small tag over the foot of its
+// icon box (Display > File extensions). Both are display-only: FilerEntry
+// keeps the real name, so renaming, sorting and every file operation are
+// unaffected.
+// Version: 1.24.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -267,6 +274,24 @@ namespace UltraCanvas {
         DetailView    // Display > Detail view — the host's preview pane
     };
 
+    // ===== THE EXTENSION TAG OF A THUMBNAIL TILE =====
+    // What a tile shows about the file type besides its name (Display >
+    // File extensions). Independent of whether the name itself still carries
+    // the extension: a display that hides ".exe" in the name can put it back
+    // as a tag under the icon, which is where the eye looks for the type
+    // anyway — and a display that keeps it in the name can carry the tag too.
+    //   NoneBadge — nothing besides the name (the default).
+    //   Bar       — a strip across the foot of the icon box with the
+    //               extension in a tag at its right end.
+    //   Icon      — the tag alone, in the icon box's bottom-right corner.
+    // Only the tile-shaped views (the four thumbnail grids) draw it; the row
+    // views have a Type column and a whole row width for the name.
+    enum class FilerExtensionBadge {
+        NoneBadge,
+        Bar,
+        Icon
+    };
+
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
         std::string name;            // file / folder name (no path)
@@ -337,6 +362,12 @@ namespace UltraCanvas {
         Color renameTextColor      = Color(60, 60, 66, 255);
         Color infoBarBackground    = Color(245, 245, 247, 255);
         Color infoBarTextColor     = Color(50, 50, 56, 255);
+        // The extension tag drawn on a thumbnail tile (Display >
+        // File extensions): the strip of the Bar variant, and the tag itself,
+        // which both variants share.
+        Color extensionBarBackground  = Color(190, 190, 196, 235);
+        Color extensionTagBackground  = Color(80, 80, 86, 235);
+        Color extensionTagTextColor   = Color(255, 255, 255, 240);
 
         std::string fontFamily;          // empty = system default
         float fontSize        = 12.0f;   // Windows standard UI size (9pt @ 96dpi)
@@ -389,6 +420,10 @@ namespace UltraCanvas {
 
         int iconMenuButtonSize = 20;     // hover icon-menu button edge
         int infoBarHeight      = 26;     // selection info bar under the entries
+        // Height of the extension tag / bar on a thumbnail tile. It is drawn
+        // over the foot of the icon box, so it never changes a tile's height.
+        // 0 = derived from smallFontSize.
+        int extensionBadgeHeight = 0;
 
         // Column splitters of the Details / List / BarSize views. They reuse
         // UltraCanvasSplitPane's divider styling so a resizable Filer column
@@ -648,6 +683,39 @@ namespace UltraCanvas {
         void SetDatasetFields(uint32_t mask);
         uint32_t GetDatasetFields() const { return datasetFields; }
 
+        // ===== FILE EXTENSIONS =====
+        // Display > File extensions. Two independent switches:
+        //   * the name — whether the displayed name still carries its
+        //     extension ("UltraFiler.exe") or is shown without it
+        //     ("UltraFiler"). On by default. Only what is *drawn* changes:
+        //     renaming, sorting, the type column, the info bar and every file
+        //     operation keep working on the real name, so a hidden extension
+        //     can neither be lost by a rename nor duplicated by one.
+        //   * the tile tag — a bar or a small tag carrying the extension,
+        //     drawn over the foot of a thumbnail tile's icon box, so the type
+        //     stays visible in a display whose names have no extension (see
+        //     FilerExtensionBadge). Off by default.
+        // A name with no plausible extension is never shortened: the tail of
+        // "UCDemo-Windows-0.3.27-x86_64" is a version, not a file type.
+        void SetFileExtensionsInNames(bool on);
+        bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
+        void SetExtensionBadge(FilerExtensionBadge badge);
+        FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // The menu label of a badge mode ("Bar"), shared by the Display
+        // submenu and by an application's settings page.
+        static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
+        // The three modes in the order the menus and lists show them.
+        static const std::vector<FilerExtensionBadge>& AllExtensionBadges();
+
+        // The name of `e` as this display draws it — the full name, or the
+        // name without its extension while the names carry none. What a host
+        // needs to label an entry the way the display does (a drag badge, a
+        // breadcrumb, its own tile).
+        std::string DisplayNameOf(const FilerEntry& e) const;
+        // The extension a tile tag would show for `e` (lowercase, no dot),
+        // empty for folders and for names whose tail is not a file type.
+        static std::string ExtensionTagOf(const FilerEntry& e);
+
         // ===== SELECTIVE PREVIEWS =====
         // Which file kinds get a thumbnail rendered from the file instead of
         // their type glyph (Display > Thumbnails). All kinds are on by
@@ -704,9 +772,10 @@ namespace UltraCanvas {
         bool ThumbnailEnabledFor(const FilerEntry& e) const;
         bool DetailViewEnabledFor(const FilerEntry& e) const;
 
-        // Fired after any of the four sets above changed, whoever changed it
-        // (the Display menu included) — the hook an application persists the
-        // choice from and mirrors it into its other file displays.
+        // Fired after any of the four sets above — or either File extensions
+        // switch — changed, whoever changed it (the Display menu included):
+        // the hook an application persists the choice from and mirrors into
+        // its other file displays.
         std::function<void()> onDisplayFormatsChanged;
 
         // The preview kind an entry belongs to, or NonePreview for entries
@@ -918,6 +987,16 @@ namespace UltraCanvas {
         // built-in value (compression factor for archive-compressed entries).
         std::function<std::string(const FilerEntry&)> infoProvider;
 
+        // Icon for a folder entry, asked while the entry is drawn. Return the
+        // path of an image (any format the image pipeline loads - SVG, PNG,
+        // QOI, ...) to show it in place of the drawn folder shape, or "" to
+        // keep the shape. It is asked for every folder of every view, so it
+        // must be a lookup, not a disk walk. UltraFiler answers with the icons
+        // of the well-known user folders (Desktop, Documents, Downloads,
+        // Music, Pictures, Videos) and with whatever the user set through
+        // Extras > Set folder icon.
+        std::function<std::string(const FilerEntry&)> folderIconProvider;
+
         // Context-menu hooks. Items without a hook (and no built-in default)
         // are shown disabled.
         std::function<void(const std::vector<FilerEntry>&)> onShare;
@@ -992,6 +1071,10 @@ namespace UltraCanvas {
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
         uint32_t datasetFields = 0;
+        // Display > File extensions: whether a drawn name keeps its extension,
+        // and the tag the thumbnail tiles carry instead of / beside it.
+        bool fileExtensionsInNames = true;
+        FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
         // Bitmask of FilerPreviewType values that may show a thumbnail, and
         // the same for the host's detail pane (Display > Thumbnails /
         // Display > Detail view).
@@ -1812,6 +1895,13 @@ namespace UltraCanvas {
                              int maxWidth) const;
         int  NameLineHeight() const;            // one wrapped caption line
         int  CaptionBandHeight(int lines) const;// caption strip for `lines`
+        // FilerStyle::extensionBadgeHeight, resolved (0 = from smallFontSize).
+        int  ExtensionBadgeHeight() const;
+        // The Display > File extensions tag of a thumbnail tile, painted over
+        // the foot of its icon box (`box`) so no tile grows for it. Draws
+        // nothing while the badge is off or the entry carries no extension.
+        void DrawExtensionBadge(IRenderContext* ctx, const FilerEntry& e,
+                                const Rect2Di& box);
         // Per-entry "the drawn name is shortened" flags, refreshed by the draw
         // pass for the items it paints (sized with `entries`).
         std::vector<uint8_t> nameTruncated;

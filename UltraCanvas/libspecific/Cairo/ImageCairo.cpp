@@ -1,13 +1,16 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.2.0
-// Last Modified: 2026-07-21
+// Version: 2.3.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
+// The bundled QOI file-format codec (always compiled) - see
+// SavePixmapAsQoiFile at the bottom of this file.
+#include "qoi.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #include "UltraCanvasGifEncoder.h"
@@ -19,6 +22,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -1166,4 +1170,122 @@ namespace UltraCanvas {
         return "Image export not yet implemented (no libvips)";
     }
 #endif
+    // ===== QOI FILE EXPORT =====
+    // Declared in ImageCairo.h. Deliberately outside the libvips section: the
+    // encoder is the bundled qoi.cpp, so writing a .qoi file asks nothing of
+    // the installed image libraries.
+
+    std::string SavePixmapAsQoiFile(UCPixmapCairo& pixmap, const std::string& filePath) {
+        cairo_surface_t* surf = pixmap.GetSurface();
+        const int w = pixmap.GetRawWidth();
+        const int h = pixmap.GetRawHeight();
+        if (!surf || w <= 0 || h <= 0) return "QOI export: nothing to write";
+        cairo_surface_flush(surf);
+        const uint8_t* pixels = cairo_image_surface_get_data(surf);
+        if (!pixels) return "QOI export: the image has no pixel buffer";
+        const int stride = cairo_image_surface_get_stride(surf);
+        // The two 32-bit-per-pixel formats are what pixmaps of this framework
+        // carry; a palette or alpha-only surface has no colour to write.
+        const cairo_format_t format = cairo_image_surface_get_format(surf);
+        if (format != CAIRO_FORMAT_ARGB32 && format != CAIRO_FORMAT_RGB24)
+            return "QOI export: unsupported pixel format";
+        const bool opaqueFormat = (format == CAIRO_FORMAT_RGB24);
+
+        // Cairo ARGB32 holds one native-endian uint32 per pixel with the
+        // colour channels premultiplied by alpha; QOI stores straight RGBA
+        // bytes, so every partly transparent pixel is divided back out.
+        // Rows are addressed through the surface stride, which is padded to
+        // Cairo's alignment and is not width * 4 for every width.
+        std::vector<uint8_t> rgba(static_cast<size_t>(w) * h * 4);
+        size_t o = 0;
+        for (int y = 0; y < h; ++y) {
+            const uint32_t* row = reinterpret_cast<const uint32_t*>(
+                    pixels + static_cast<size_t>(y) * stride);
+            for (int x = 0; x < w; ++x) {
+                const uint32_t p = row[x];
+                // RGB24 keeps its top byte unused rather than as alpha.
+                const uint8_t a = opaqueFormat
+                        ? 255 : static_cast<uint8_t>((p >> 24) & 0xff);
+                uint8_t r = static_cast<uint8_t>((p >> 16) & 0xff);
+                uint8_t g = static_cast<uint8_t>((p >> 8) & 0xff);
+                uint8_t b = static_cast<uint8_t>(p & 0xff);
+                if (a == 0) {
+                    r = g = b = 0;
+                } else if (a != 255) {
+                    r = static_cast<uint8_t>(std::min(255, (r * 255 + a / 2) / a));
+                    g = static_cast<uint8_t>(std::min(255, (g * 255 + a / 2) / a));
+                    b = static_cast<uint8_t>(std::min(255, (b * 255 + a / 2) / a));
+                }
+                rgba[o++] = r;
+                rgba[o++] = g;
+                rgba[o++] = b;
+                rgba[o++] = a;
+            }
+        }
+
+        qoi_desc desc;
+        desc.width = static_cast<unsigned int>(w);
+        desc.height = static_cast<unsigned int>(h);
+        desc.channels = 4;
+        desc.colorspace = QOI_SRGB;
+        int encodedSize = 0;
+        void* encoded = qoi_encode(rgba.data(), &desc, &encodedSize);
+        if (!encoded || encodedSize <= 0) {
+            if (encoded) std::free(encoded);   // qoi_encode allocates with malloc
+            return "QOI export: encoding failed";
+        }
+        // Written through std::ofstream rather than qoi_write(): the encoder's
+        // fopen() takes a narrow path, which mangles non-ASCII names on
+        // Windows, while PathFromUtf8 goes through UTF-16 there.
+        std::ofstream out(PathFromUtf8(filePath), std::ios::binary);
+        bool ok = out.is_open();
+        if (ok) {
+            out.write(static_cast<const char*>(encoded), encodedSize);
+            out.close();
+            ok = out.good();
+        }
+        std::free(encoded);
+        if (!ok) return "QOI export: cannot write " + filePath;
+        return {};
+    }
+
+    std::string SaveImageFileAsQoi(const std::string& sourcePath,
+                                   const std::string& destPath,
+                                   int maxEdge) {
+        if (sourcePath.empty() || destPath.empty())
+            return "QOI export: no file given";
+        std::shared_ptr<UCImageRaster> img = UCImageRaster::Get(sourcePath);
+        if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) {
+            std::string why = img ? img->errorMessage : std::string();
+            return why.empty() ? ("Cannot read image: " + sourcePath)
+                               : ("Cannot read image: " + sourcePath + " (" + why + ")");
+        }
+
+        int w = img->GetWidth();
+        int h = img->GetHeight();
+        ImageFitMode fit = ImageFitMode::NoScale;
+        if (maxEdge > 0) {
+            // A vector document has no resolution of its own, so it is
+            // rasterized at the full box however small its intrinsic size
+            // says it is; a raster is only ever scaled down - blowing one up
+            // would store the same detail in more pixels.
+            const std::string ext = GetFileExtension(sourcePath);   // already lowercase
+            const bool vector = (ext == "svg" || ext == "svgz");
+            if (vector) {
+                w = h = maxEdge;
+                fit = ImageFitMode::Contain;
+            } else if (w > maxEdge || h > maxEdge) {
+                w = h = maxEdge;
+                fit = ImageFitMode::ScaleDown;
+            }
+        }
+
+        std::shared_ptr<UCPixmapCairo> pm = img->GetPixmap(w, h, fit, 1.0f);
+        if (!pm || !pm->IsValid()) {
+            std::string why = img->errorMessage;
+            return why.empty() ? ("Cannot decode image: " + sourcePath)
+                               : ("Cannot decode image: " + sourcePath + " (" + why + ")");
+        }
+        return SavePixmapAsQoiFile(*pm, destPath);
+    }
 }
