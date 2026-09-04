@@ -1,4 +1,24 @@
 #### 2026-09-04 *0.3.98*
+- **The "Open with" icon cache grew forever.** Handler icons are extracted
+  into PNG files under `%LOCALAPPDATA%\UltraCanvas\openwith-icons` (and
+  `~/Library/Caches/…` on macOS) so the menu, which draws image files, does not
+  re-extract them on every open. Nothing ever deleted one. The key is where the
+  icon came from — an executable's path, a bundle path — so every application
+  the user upgrades, moves or uninstalls leaves behind a PNG that nothing will
+  ever ask for again, accumulating for the life of the account. Each file now
+  carries the day it was last served as its modification time, and the first
+  lookup in a process deletes everything not served for **two weeks**, plus any
+  `.tmp` an interrupted write left behind. Only `.png` and `.tmp` are ever
+  considered; a swept icon that turns out to still be wanted is extracted
+  again. The stamp is rewritten at most once a day, so a context menu that
+  opens all afternoon costs no disk writes, and a clock that was set back reads
+  as fresh rather than expired.
+- **That retention policy is shared, not copied.** `kIconCacheMaxAge`,
+  `SweepIconCache` and `StampIconCacheFile` are declared in
+  `UltraCanvasFileAssociationsBackend.h` and implemented once in
+  `core/UltraCanvasFileAssociations.cpp` — plain `std::filesystem`, no platform
+  code — so the Windows and macOS backends cannot drift apart on how long an
+  icon lives.
 - **A folder of pictures could blank the application icons next to them.** The
   filer's thumbnail cache held every finished picture in one 96 MB budget, and
   on overflow it did not evict — it dropped *every* finished entry it had and
