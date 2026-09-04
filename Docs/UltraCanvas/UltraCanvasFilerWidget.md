@@ -580,6 +580,41 @@ Display > Thumbnails switches do not affect it. The extractor lives behind
 `LoadNativeFileIconPixmap`); on other platforms it reports no icon and
 nothing changes.
 
+Because an icon is the file's identity rather than a courtesy preview, it is
+held apart from the content thumbnails: the two have **separate memory
+budgets**, so a folder of photos or videos filling the thumbnail budget can
+never evict the application icons on screen (see
+[Thumbnail memory](#thumbnail-memory)). Extraction goes through the OS shell,
+which can fail on a file it would serve a moment later, so an icon is retried
+a few times before the tile settles on its glyph — and the worker threads join
+a COM apartment, which the shell expects of its caller.
+
+### Thumbnail memory
+
+Finished pictures are retained so scrolling back is instant, inside two byte
+budgets that bound what a huge folder at a large tile size can hold:
+
+| Pool | Budget | Holds |
+|---|---|---|
+| Content previews | 96 MB | bitmaps, vectors, poster frames, PDF pages, model renders, font specimens |
+| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` icons above |
+
+Overflowing a budget drops that pool's **least recently drawn** entries, and
+only as many as it takes to get back under — never the entry that just
+finished, and never entries of the other pool. The two properties matter
+together: a single video poster frame used to be able to empty the whole
+cache, which blanked every tile on screen at once, and one shared budget let a
+folder of photos push out the executables' icons even though those cost a
+rounding error of the memory. Anything dropped that is still on screen is
+re-queued by the next frame and usually comes straight back from the shared
+`UCImage` cache.
+
+`GetThumbnailCacheStats()` reports what is held (entries, stored bytes, and
+the uncompressed size those bytes stand for — they differ under
+`SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
+the decompressed tiles being drawn). Rescanning the folder or changing the
+view drops everything.
+
 ## Selection info bar
 
 A one-line bar under the folder display (`SetSelectionInfoVisible`, default on,

@@ -1413,6 +1413,22 @@ namespace UltraCanvas {
             std::shared_ptr<std::vector<uint8_t>> qoi;
             size_t bytes = 0;
             size_t rawBytes = 0;
+            // Last frame that asked for this slot. Overflowing the byte
+            // budget drops the least-recently-drawn slots first, so what is
+            // on screen survives; the budget used to drop every finished
+            // slot at once, which blanked a whole screenful of tiles.
+            uint64_t tick = 0;
+            // Application icons (.exe / .dll / .ico) are held in a budget of
+            // their own: they are cheap, they are the file's identity rather
+            // than a preview of its content, and a folder of photos or
+            // videos must not be able to push them out.
+            bool nativeIcon = false;
+            // Extractions of a native icon already spent on this slot. The
+            // shell can fail on a file it would serve a moment later (a busy
+            // shell, an exhausted handle table), so an icon gets a few tries
+            // before the tile settles on its type glyph — unlike a content
+            // decode, which fails the same way every time.
+            uint8_t attempts = 0;
         };
         struct ThumbRequest {
             std::string path;
@@ -1447,7 +1463,9 @@ namespace UltraCanvas {
         std::vector<std::thread> thumbWorkers;
         bool thumbShutdown = false;
         uint64_t thumbGeneration = 0;           // bumped to drop stale results
-        size_t thumbBytes = 0;                  // decoded pixmap bytes held
+        size_t thumbBytes = 0;                  // content-preview bytes held
+        size_t thumbNativeBytes = 0;            // application-icon bytes held
+        uint64_t thumbSlotTick = 0;             // LRU clock for thumbSlots
         std::atomic<bool> thumbRedrawPosted{false};
         // Destructor flips this so a queued PostToUIThread redraw task that
         // outlives the widget becomes a no-op instead of a dangling call.
@@ -1461,6 +1479,13 @@ namespace UltraCanvas {
                                                    int w, int h,
                                                    ImageFitMode fit,
                                                    float scale);
+        // Byte accounting for one slot, on its way out of thumbSlots: takes
+        // it off its pool and drops any decompressed copy of it.
+        void ReleaseThumbSlotLocked(const std::string& key, ThumbSlot& slot);
+        // Drop least-recently-drawn finished slots until both pools are back
+        // inside their budgets. `keepKey` (the slot just stored) is never
+        // dropped, so the work that triggered the eviction is not undone.
+        void EvictThumbSlotsLocked(const std::string& keepKey);
         void StartThumbnailWorkersLocked();
         void StopThumbnailWorkers();
         void ThumbnailWorkerMain();
