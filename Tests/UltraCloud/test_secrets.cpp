@@ -27,6 +27,7 @@ TEST(file_secret_store_round_trip) {
     const std::string dir = TempDir("secrets");
     FileSecretStore store(dir);
     Credentials in; in.username = "erika"; in.password = "s3cr3t-pass"; in.token = "";
+    in.refreshToken = "rt-1"; in.tokenExpiresAt = 1'900'000'000;
     REQUIRE(store.Store("nextcloud-erika", in));
 
     Credentials out;
@@ -34,6 +35,8 @@ TEST(file_secret_store_round_trip) {
     REQUIRE_EQ(out.username, std::string("erika"));
     REQUIRE_EQ(out.password, std::string("s3cr3t-pass"));
     REQUIRE_EQ(out.token, std::string(""));
+    REQUIRE_EQ(out.refreshToken, std::string("rt-1"));
+    REQUIRE_EQ(out.tokenExpiresAt, (int64_t)1'900'000'000);
 
     // Not plaintext on disk.
     bool plaintextFound = false;

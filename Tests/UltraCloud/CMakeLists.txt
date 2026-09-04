@@ -10,7 +10,11 @@ add_executable(UltraCloudTests
     test_secrets.cpp
     test_webdav.cpp
     test_nextcloud.cpp
-    test_service.cpp)
+    test_service.cpp
+    test_oauth.cpp
+    test_dropbox.cpp
+    test_onedrive.cpp
+    test_googledrive.cpp)
 
 target_compile_features(UltraCloudTests PRIVATE cxx_std_20)
 target_link_libraries(UltraCloudTests PRIVATE UltraCloud)

@@ -4,23 +4,17 @@
 // links exist only when the account has a public base URL that mirrors the
 // DAV root (a plain web folder), in which case the link is base + path.
 // Nextcloud derives from this and adds real share links.
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
-#include "UltraCloudProvider.h"
+#include "UltraCloudHttp.h"
 
-#include <UltraNet/UltraNetHttp.h>
-
-#include <functional>
 #include <string>
 #include <vector>
 
 namespace UltraCloud {
-
-// The HTTP seam: UltraNet_HttpRequest by default, a fake in tests.
-using HttpFn = std::function<UltraNetResult(const UltraNetHttpRequest&, UltraNetResponse&)>;
 
 // ---- Pure helpers (tested on their own) --------------------------------------
 // Percent-encode a provider path segment by segment, keeping the '/'s.
@@ -35,9 +29,9 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 // The link a plain web folder gives: publicBaseUrl + encoded path.
 std::string PublicFolderLink(const std::string& publicBaseUrl, const std::string& path);
 
-class WebDavProvider : public ICloudProvider {
+class WebDavProvider : public HttpProviderBase {
 public:
-    explicit WebDavProvider(HttpFn http = nullptr);
+    explicit WebDavProvider(HttpFn http = nullptr) : HttpProviderBase(std::move(http)) {}
 
     std::string Id() const override { return "webdav"; }
     std::string DisplayName() const override { return "WebDAV server"; }
@@ -58,16 +52,6 @@ public:
 
     // The DAV URL of a provider path. Plain WebDAV: serverUrl + path.
     virtual std::string DavUrl(const Account& account, const std::string& path) const;
-
-protected:
-    // One request with Basic (password) or Bearer (token) auth applied.
-    UltraNetResult Send(const Credentials& credentials, UltraNetHttpRequest request,
-                        UltraNetResponse& response) const;
-    // Map an HTTP outcome onto a Result (2xx → Ok).
-    static Result FromHttp(const UltraNetResult& net, const UltraNetResponse& response,
-                           const std::string& what);
-
-    HttpFn http_;
 };
 
 } // namespace UltraCloud

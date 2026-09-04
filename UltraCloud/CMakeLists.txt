@@ -5,8 +5,8 @@
 # Nextcloud providers over UltraNet HTTP) and, when the UltraCanvas UI library
 # is available, the UltraCloudUI library with the shared dialogs (add account,
 # pick a file / insert a link).
-# Version: 0.1.0
-# Last Modified: 2026-09-03
+# Version: 0.2.0
+# Last Modified: 2026-09-04
 # Author: UltraCanvas Framework / ULTRA OS
 
 if(NOT TARGET UltraDatabase)
@@ -19,9 +19,14 @@ set(ULTRACLOUD_SOURCES
     core/UltraCloudSecrets.cpp
     core/UltraCloudRegistry.cpp
     core/UltraCloudService.cpp
+    core/UltraCloudHttp.cpp
+    core/UltraCloudOAuth.cpp
     providers/UltraCloudWebDav.cpp
     providers/UltraCloudNextcloud.cpp
     providers/UltraCloudMemory.cpp
+    providers/UltraCloudDropbox.cpp
+    providers/UltraCloudOneDrive.cpp
+    providers/UltraCloudGoogleDrive.cpp
 )
 
 add_library(UltraCloud STATIC ${ULTRACLOUD_SOURCES})
@@ -32,7 +37,11 @@ target_compile_features(UltraCloud PUBLIC cxx_std_20)
 target_include_directories(UltraCloud PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/include)
+target_include_directories(UltraCloud PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(UltraCloud PUBLIC UltraDatabase)
+if(NOT WIN32)
+    target_link_libraries(UltraCloud PUBLIC ${CMAKE_DL_LIBS})   # provider plug-ins (dlopen)
+endif()
 
 # Secrets go to UltraVault when it is built; the file store is always there.
 if(TARGET UltraVault)

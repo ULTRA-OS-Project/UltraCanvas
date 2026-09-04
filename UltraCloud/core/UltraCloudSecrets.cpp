@@ -1,6 +1,6 @@
 // UltraCloud/core/UltraCloudSecrets.cpp
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudSecrets.h>
 
@@ -11,6 +11,7 @@
 #endif
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -74,7 +75,9 @@ bool FileSecretStore::Store(const std::string& accountId, const Credentials& cre
     if (!os) return false;
     os << "username\n" << Obfuscate(key, credentials.username) << "\n"
        << "password\n" << Obfuscate(key, credentials.password) << "\n"
-       << "token\n"    << Obfuscate(key, credentials.token)    << "\n";
+       << "token\n"    << Obfuscate(key, credentials.token)    << "\n"
+       << "refresh\n"  << Obfuscate(key, credentials.refreshToken) << "\n"
+       << "expires\n"  << Obfuscate(key, std::to_string(credentials.tokenExpiresAt)) << "\n";
     std::error_code ec;
     fs::permissions(SecretFile(dir_, accountId),
                     fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace, ec);
@@ -91,6 +94,8 @@ bool FileSecretStore::Retrieve(const std::string& accountId, Credentials& out) c
         if (name == "username")      out.username = Deobfuscate(key, value);
         else if (name == "password") out.password = Deobfuscate(key, value);
         else if (name == "token")    out.token    = Deobfuscate(key, value);
+        else if (name == "refresh")  out.refreshToken = Deobfuscate(key, value);
+        else if (name == "expires")  out.tokenExpiresAt = std::strtoll(Deobfuscate(key, value).c_str(), nullptr, 10);
     }
     return true;
 }
@@ -116,6 +121,10 @@ bool VaultSecretStore::Store(const std::string& accountId, const Credentials& cr
                          UltraVault::SecretValue::FromString(credentials.password)) && ok;
     ok = UltraVault::Put(VaultKey(accountId, "token"),
                          UltraVault::SecretValue::FromString(credentials.token)) && ok;
+    ok = UltraVault::Put(VaultKey(accountId, "refresh"),
+                         UltraVault::SecretValue::FromString(credentials.refreshToken)) && ok;
+    ok = UltraVault::Put(VaultKey(accountId, "expires"),
+                         UltraVault::SecretValue::FromString(std::to_string(credentials.tokenExpiresAt))) && ok;
     return ok;
 }
 
@@ -127,13 +136,16 @@ bool VaultSecretStore::Retrieve(const std::string& accountId, Credentials& out) 
     if (UltraVault::Get(VaultKey(accountId, "username"), v)) { out.username = v.AsString(); any = true; }
     if (UltraVault::Get(VaultKey(accountId, "password"), v)) { out.password = v.AsString(); any = true; }
     if (UltraVault::Get(VaultKey(accountId, "token"), v))    { out.token    = v.AsString(); any = true; }
+    if (UltraVault::Get(VaultKey(accountId, "refresh"), v))  { out.refreshToken = v.AsString(); any = true; }
+    if (UltraVault::Get(VaultKey(accountId, "expires"), v))
+        out.tokenExpiresAt = std::strtoll(v.AsString().c_str(), nullptr, 10);
     return any;
 }
 
 bool VaultSecretStore::Remove(const std::string& accountId) {
     if (!UltraVault::IsAvailable()) return false;
     bool any = false;
-    for (const char* what : {"username", "password", "token"})
+    for (const char* what : {"username", "password", "token", "refresh", "expires"})
         any = static_cast<bool>(UltraVault::Delete(VaultKey(accountId, what))) || any;
     return any;
 }

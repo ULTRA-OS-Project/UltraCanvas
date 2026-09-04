@@ -1,6 +1,6 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 
@@ -12,6 +12,9 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasUtils.h"   // OpenURL
+
+#include <UltraCloud/UltraCloudOAuth.h>
 
 #include <memory>
 #include <thread>
@@ -30,7 +33,7 @@ constexpr float kRowHeight  = 30.0f;
 // in-process demo last.
 std::vector<std::shared_ptr<ICloudProvider>> OrderedProviders() {
     std::vector<std::shared_ptr<ICloudProvider>> out;
-    for (const char* id : {"nextcloud", "webdav"})
+    for (const char* id : {"nextcloud", "dropbox", "onedrive", "googledrive", "webdav"})
         if (auto p = GetProvider(id)) out.push_back(p);
     for (const auto& p : ListProviders()) {
         bool seen = false;
@@ -101,7 +104,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
 
     auto user = CreateTextInput("cloudAccUser", 0, 0, 300, 28);
     user->SetPlaceholder("user name");
-    addRow("cloudAccUser", "User", user);
+    auto userRow = addRow("cloudAccUser", "User", user);
 
     auto password = CreatePasswordInput("cloudAccPass", 0, 0, 300, 28);
     password->SetPlaceholder("password or app password");
@@ -119,8 +122,10 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         "cloudAccDefault", 0, 0, 300, 26, "Use as the default cloud account", false);
     addRow("cloudAccDefaultRow", "", makeDefault);
 
-    form->AddChild(CreateLabel("cloudAccHint", 0, 0, 0, 36,
-        "Nextcloud: create an app password under Settings → Security and use it here."));
+    auto hint = CreateLabel("cloudAccHint", 0, 0, 0, 36,
+        "Nextcloud: create an app password under Settings → Security and use it here.");
+    hint->SetWrap(TextWrap::WrapWord);
+    form->AddChild(hint);
 
     auto status = CreateLabel("cloudAccStatus", 0, 0, 0, 22, "");
     status->SetTextColor(Color(180, 40, 40, 255));
@@ -129,26 +134,45 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     dialog->AddChild(form);
     form->layoutItem.SetFlexGrow(1);
 
-    // Show only the rows the chosen provider needs.
-    auto applyProvider = [providers, serverRow, publicRow, passwordRow, provider]() {
+    // Buttons (created here so applyProvider can relabel the Add button).
+    auto addBtn = CreateButton("cloudAccAdd", 0, 0, 150, 28, "Add account");
+
+    // Show only the rows the chosen provider needs. OAuth providers sign in
+    // through the browser: no user / password rows, and the button says so.
+    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, provider,
+                          hint, addBtn]() {
         int idx = provider->GetSelectedIndex();
         if (idx < 0 || idx >= static_cast<int>(providers.size())) return;
-        const auto caps = providers[static_cast<std::size_t>(idx)]->Capabilities();
-        const std::string id = providers[static_cast<std::size_t>(idx)]->Id();
+        const auto& p = providers[static_cast<std::size_t>(idx)];
+        const auto caps = p->Capabilities();
+        const std::string id = p->Id();
         serverRow->SetVisible(caps.needsServerUrl);
         publicRow->SetVisible(id == "webdav");
+        userRow->SetVisible(!caps.needsOAuth);
         passwordRow->SetVisible(!caps.needsOAuth && id != "memory");
+        if (caps.needsOAuth) {
+            addBtn->SetText("Sign in in browser");
+            hint->SetText(HasOAuthApp(id)
+                ? "Your browser opens " + p->DisplayName() + "'s sign-in page; come back here when it says you are done."
+                : "No OAuth client id is configured for " + p->DisplayName()
+                  + " — set ULTRACLOUD_" + id + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
+        } else {
+            addBtn->SetText("Add account");
+            hint->SetText(id == "nextcloud"
+                ? "Nextcloud: create an app password under Settings → Security and use it here."
+                : id == "webdav" ? "Links need a public URL that serves the same folder as the DAV root."
+                : "");
+        }
     };
     provider->onSelectionChanged = [applyProvider](int, const DropdownItem&) { applyProvider(); };
     applyProvider();
 
-    // Buttons.
+    // Button row.
     auto buttons = CreateContainer("cloudAccButtons", 0, 0, 0, 36);
     buttons->layout.SetFlexRow()
                    .SetFlexGap(10)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
-    auto addBtn = CreateButton("cloudAccAdd", 0, 0, 120, 28, "Add account");
     auto cancelBtn = CreateButton("cloudAccCancel", 0, 0, 80, 28, "Cancel");
     buttons->AddChild(addBtn);
     buttons->AddChild(cancelBtn);
@@ -174,15 +198,25 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
 
         const auto caps = providers[static_cast<std::size_t>(idx)]->Capabilities();
         if (caps.needsServerUrl && a.serverUrl.empty()) { status->SetText("Enter the server URL."); return; }
-        if (a.username.empty() && a.providerId != "memory") { status->SetText("Enter the user name."); return; }
+        if (!caps.needsOAuth && a.username.empty() && a.providerId != "memory") {
+            status->SetText("Enter the user name."); return;
+        }
+        if (caps.needsOAuth && !HasOAuthApp(a.providerId)) {
+            status->SetText("No OAuth client id configured for this provider."); return;
+        }
 
         status->SetTextColor(Color(60, 60, 60, 255));
-        status->SetText("Signing in…");
+        status->SetText(caps.needsOAuth ? "Waiting for the browser sign-in…" : "Signing in…");
         addBtn->SetDisabled(true);
 
-        // Verify + store off the UI thread; report back on it.
-        std::thread([weak, dlg, added, addBtn, status, a, c, &service]() mutable {
-            Result r = service.AddAccount(a, c, /*verify=*/true);
+        // Verify + store off the UI thread; report back on it. OAuth providers
+        // open the consent page in the system browser and wait for the
+        // loopback redirect.
+        const bool oauth = caps.needsOAuth;
+        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service]() mutable {
+            Result r = oauth
+                ? service.SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
+                : service.AddAccount(a, c, /*verify=*/true);
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto finish = [weak, dlg, added, addBtn, status, a, r]() {
                 if (weak.expired()) return;   // dialog already closed

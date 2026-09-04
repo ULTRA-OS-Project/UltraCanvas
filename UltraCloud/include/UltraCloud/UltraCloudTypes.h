@@ -2,8 +2,8 @@
 // Core data types of the UltraCloud module: results, accounts, credentials,
 // remote entries and share links. Provider-independent; every provider and
 // every app-facing call speaks in these.
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -54,9 +54,14 @@ struct Account {
 
 // What a provider needs to sign in. Resolved from the secret store per call.
 struct Credentials {
-    std::string username;   // usually Account::username; some providers differ
-    std::string password;   // password or app password (Basic auth)
-    std::string token;      // OAuth2 access token (Bearer auth)
+    std::string username;       // usually Account::username; some providers differ
+    std::string password;       // password or app password (Basic auth)
+    std::string token;          // OAuth2 access token (Bearer auth)
+    std::string refreshToken;   // OAuth2 refresh token (empty = none issued)
+    int64_t     tokenExpiresAt = 0;   // epoch seconds the access token dies; 0 = unknown
+
+    bool HasToken() const { return !token.empty(); }
+    bool TokenExpired(int64_t now) const { return HasToken() && tokenExpiresAt > 0 && now >= tokenExpiresAt; }
 };
 
 // One file or folder on the provider.

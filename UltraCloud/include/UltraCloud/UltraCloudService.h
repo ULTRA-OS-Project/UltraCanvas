@@ -1,8 +1,8 @@
 // UltraCloud/include/UltraCloud/UltraCloudService.h
 // The app-facing facade: accounts + secrets + providers behind one object.
 // "Share this file through my default cloud account" is one call.
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -10,6 +10,7 @@
 #include "UltraCloudProvider.h"
 #include "UltraCloudSecrets.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,6 +29,11 @@ public:
     // first account becomes the default. With `verify` the provider is asked
     // to sign in first and nothing is stored if that fails.
     Result AddAccount(Account& account, const Credentials& credentials, bool verify);
+    // Sign in through the provider's OAuth2 flow (`openUrl` shows the consent
+    // page), fill the account's user name from the provider, then store it
+    // like AddAccount. For providers whose Capabilities().needsOAuth is set.
+    Result SignInAccount(Account& account,
+                         const std::function<void(const std::string& url)>& openUrl);
     Result RemoveAccount(const std::string& accountId);
 
     std::shared_ptr<ICloudProvider> ProviderFor(const Account& account) const;
@@ -45,8 +51,10 @@ public:
                           ShareLink& out, std::string* remotePathOut = nullptr);
 
 private:
+    // Account + credentials + provider for an id. An expired OAuth token is
+    // refreshed here and the new one stored, so callers never see a stale one.
     Result Resolve(const std::string& accountId, Account& account, Credentials& credentials,
-                   std::shared_ptr<ICloudProvider>& provider) const;
+                   std::shared_ptr<ICloudProvider>& provider);
 
     AccountStore& accounts_;
     ISecretStore& secrets_;

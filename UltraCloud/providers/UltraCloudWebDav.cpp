@@ -1,6 +1,6 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
@@ -181,12 +181,6 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 
 // ---- WebDavProvider ---------------------------------------------------------
 
-WebDavProvider::WebDavProvider(HttpFn http) : http_(std::move(http)) {
-    if (!http_) http_ = [](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
-        return UltraNet_HttpRequest(req, resp);
-    };
-}
-
 ProviderCapabilities WebDavProvider::Capabilities() const {
     ProviderCapabilities c;
     c.browse = true; c.upload = true;
@@ -197,44 +191,6 @@ ProviderCapabilities WebDavProvider::Capabilities() const {
 
 std::string WebDavProvider::DavUrl(const Account& account, const std::string& path) const {
     return JoinUrl(account.serverUrl, EncodePath(NormalizePath(path)));
-}
-
-UltraNetResult WebDavProvider::Send(const Credentials& credentials, UltraNetHttpRequest request,
-                                    UltraNetResponse& response) const {
-    if (!credentials.token.empty()) {
-        request.options.authType = UltraNetAuthType::Bearer;
-        request.options.credentials.type = UltraNetAuthType::Bearer;
-        request.options.credentials.token = credentials.token;
-    } else if (!credentials.username.empty()) {
-        request.options.authType = UltraNetAuthType::Basic;
-        request.options.credentials.type = UltraNetAuthType::Basic;
-        request.options.credentials.username = credentials.username;
-        request.options.credentials.password = credentials.password;
-    }
-    if (request.options.timeoutMs == 0) request.options.timeoutMs = 60000;
-    return http_(request, response);
-}
-
-Result WebDavProvider::FromHttp(const UltraNetResult& net, const UltraNetResponse& response,
-                                const std::string& what) {
-    if (!net) {
-        const int status = response.statusCode;
-        if (status == 401 || status == 403)
-            return Result::Error(ResultCode::AuthFailed, what + ": sign-in rejected", status);
-        if (status == 404)
-            return Result::Error(ResultCode::NotFound, what + ": not found", status);
-        if (status >= 400)
-            return Result::Error(ResultCode::Server, what + ": HTTP " + std::to_string(status), status);
-        return Result::Error(ResultCode::Network, what + ": " + net.message, status);
-    }
-    const int status = response.statusCode;
-    if (status == 401 || status == 403)
-        return Result::Error(ResultCode::AuthFailed, what + ": sign-in rejected", status);
-    if (status == 404)
-        return Result::Error(ResultCode::NotFound, what + ": not found", status);
-    if (status >= 400)
-        return Result::Error(ResultCode::Server, what + ": HTTP " + std::to_string(status), status);
-    return Result::Ok();
 }
 
 Result WebDavProvider::Verify(const Account& account, const Credentials& credentials) {

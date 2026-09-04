@@ -622,10 +622,15 @@ storage-backed and reports itself as such. Regression tests:
 Cloud storage — the single home for cloud accounts, the default account, and
 "upload this and give me a share link", so no application talks to a cloud
 provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
-(Verify / List / MakeDirectory / Upload / Download / CreateShareLink);
-v0.1 ships Nextcloud / ownCloud (WebDAV + OCS share API, password and expiry
-on links), generic WebDAV (links through a public web-folder URL) and an
-in-memory demo provider; Dropbox, OneDrive and Google Drive follow over OAuth2.
+(Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
+SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+(WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
+through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
+PKCE through the system browser via UltraNet, tokens refreshed automatically;
+the OAuth client id is configuration, `SetOAuthApp` or
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+can also ship as plug-in libraries (`UltraCloud_PluginInit`,
+`LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
 (`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
 HTTP goes through UltraNet. `CloudService` is the app-facing facade;
