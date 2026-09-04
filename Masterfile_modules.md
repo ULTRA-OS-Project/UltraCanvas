@@ -669,3 +669,72 @@ HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
 see `Docs/Modules/UltraCloud/README.md`.
+
+---
+
+### **12. UltraAndroid**
+
+The UltraAndroid module runs Android applications on Linux / ULTRA OS as
+single native windows — never an Android home screen — with the user's own
+folders visible to the applications at one fixed mount point.
+
+**Not to be confused with `UltraCanvas/OS/Android/`**, which is the opposite
+direction: that backend runs *our* apps *on* Android. UltraAndroid runs *other
+people's* Android apps *on Linux*. No shared code; they meet only in that the
+runtimes UltraAndroid provisions are also the test beds that backend needs.
+
+UltraAndroid elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraAndroidResult`; runtime, application and
+  share instances are opaque `UltraAndroidHandle`s
+- No Android home screen, launcher or notification shade is ever displayed;
+  every Android app window is a native ULTRA OS window
+- Engines are never linked: the container manager, LXC, `adb` and QEMU run as
+  spawned child processes, keeping GPL licensing outside the framework
+  binaries
+- Google Play / GMS is never bundled, and ARM translation layers
+  (libndk/libhoudini) are never redistributed — both are detected and
+  reported, never shipped
+- The user's folders are shared, not copied, and appear at the same guest
+  path in both tiers
+
+UltraAndroid uses open-source runtimes (a Waydroid-class LXC container on the
+host kernel for the default tier; Cuttlefish or the AOSP emulator under KVM
+for the fallback tier) and encapsulates them so backings can be swapped — see
+`Docs/Research/UltraAndroidDesignProposal.md`, and
+`Docs/UltraCanvas/AndroidOnLinuxInvestigation.md` for the survey that selected
+them.
+
+**Proposed Functions (Stage 1 — host-side, no runtime required):**
+- `UltraAndroid_Initialize`, `UltraAndroid_Shutdown`,
+  `UltraAndroid_IsInitialized`, `UltraAndroid_GetConfig`,
+  `UltraAndroid_SetConfig`, `UltraAndroid_GetCapabilities`,
+  `UltraAndroid_GetVersion`
+- `UltraAndroid_InspectApk` (package, label, icon, minSdk/targetSdk and native
+  ABIs, read straight out of the APK — zip via VirtualFS plus an AXML
+  decoder), `UltraAndroid_QueryCompatibility` (runs natively / needs
+  translation / needs the other tier / cannot run)
+
+**Proposed Functions (Stage 2 — container tier):**
+- `UltraAndroid_ListImages`, `UltraAndroid_InstallImage`,
+  `UltraAndroid_RemoveImage`, `UltraAndroid_GetImageInfo`
+- `UltraAndroid_StartRuntime`, `UltraAndroid_StopRuntime`,
+  `UltraAndroid_GetRuntimeState`, `UltraAndroid_GetRuntimeInfo`
+- `UltraAndroid_ShareFolder`, `UltraAndroid_UnshareFolder`,
+  `UltraAndroid_ListShares`
+- `UltraAndroid_InstallApk`, `UltraAndroid_UninstallApp`,
+  `UltraAndroid_ListApps`, `UltraAndroid_GetAppInfo`, `UltraAndroid_RunApp`,
+  `UltraAndroid_CloseApp`, `UltraAndroid_KillApp`, `UltraAndroid_GetAppState`,
+  `UltraAndroid_WaitApp`, `UltraAndroid_ReleaseApp`
+
+**Planned (Stage 3):** the VM tier behind the same API for hosts whose kernel
+has no binder, ULTRA OS launcher entries, audio routing per app window, and
+host↔guest clipboard.
+
+UltraAndroid is intended to be the recommended way for UltraFiler and any
+UltraCanvas-based application to describe and launch `.apk` files.
+Linux / ULTRA OS only.
+
+**Implementation status:** none — named and specified only. The design
+proposal is written; no code, no `Docs/Modules/UltraAndroid/README.md` and no
+demo entry exist yet, and those land with Stage 1 rather than before it.

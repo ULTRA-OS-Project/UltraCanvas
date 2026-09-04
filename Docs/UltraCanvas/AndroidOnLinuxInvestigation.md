@@ -24,7 +24,10 @@ questions that come after it:
 - **Yes — four viable runtimes**, and they are not interchangeable: the SDK
   **Android Emulator** (AVD), **Cuttlefish**, **Waydroid** and **redroid**.
   For validating *our* APK the answer is the emulator; for Android apps on an
-  ULTRA OS desktop the answer is Waydroid. §2 separates them.
+  ULTRA OS desktop the answer is Waydroid — that second use is now its own
+  module, **UltraAndroid**
+  ([design proposal](../Research/UltraAndroidDesignProposal.md), §7). §2
+  separates them.
 - **The decision that matters is the ABI, not the runtime.** Everything in the
   tree today targets `arm64-v8a` alone — `abiFilters 'arm64-v8a'` in
   [`packaging/build.gradle.template`](../../UltraCanvas/OS/Android/packaging/build.gradle.template)
@@ -320,8 +323,15 @@ Notes that decide whether this is useful or noise:
 
 ## 7. The ULTRA OS question: Android apps on a Linux desktop
 
-Distinct from everything above, and the answer is **Waydroid**, with three
-commitments attached:
+Distinct from everything above. This capability now has a name and a
+specification of its own — **UltraAndroid**, an ULTRA OS module in the shape of
+UltraWin (which does the same job for Windows applications): see
+[`Docs/Research/UltraAndroidDesignProposal.md`](../Research/UltraAndroidDesignProposal.md)
+and its registry entry in [`Masterfile_modules.md`](../../Masterfile_modules.md).
+This section records the survey conclusion that selected its runtimes.
+
+The answer is **Waydroid** as the default tier, with three commitments
+attached:
 
 1. **Kernel.** The desktop kernel must provide binder (and the memory-sharing
    primitive the image expects). On mainstream 6.x kernels this is usually
