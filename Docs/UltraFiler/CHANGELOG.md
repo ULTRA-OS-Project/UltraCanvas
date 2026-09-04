@@ -1,3 +1,16 @@
+#### 2026-09-04 *1.18.2*
+- **The folder tree shows its connecting lines again.** The tree was built with
+  `TreeLineStyle::NoLine`, so a deep folder opened alongside its neighbours left
+  the rows below it indented against nothing: which folder a subfolder belonged
+  to was a matter of counting indents. Dotted connectors are back, in a gray
+  that carries the structure without competing with the folder icons.
+- **Folders with and without subfolders now start at the same place.** A folder
+  with a `+` had its icon and name pushed one button width to the right of a
+  folder without one, so a plain folder looked like it sat a half-level to the
+  left of the folder above it. The framework now reserves the expander slot on
+  every row (see `Docs/UltraCanvas/CHANGELOG.md` 0.3.98), and the tree lines up
+  down each level.
+
 #### 2026-09-03 *1.18.1*
 - **The Fonts kind persists.** The framework grew a tenth preview kind — font
   files, thumbnailed as a line of their own glyphs — and both list-of-files

@@ -803,12 +803,13 @@ namespace UltraCanvas {
         if (rootNode) {
             // Rows start below the (optional) fixed header band and scroll beneath it.
             int currentY = contentRect.y + headerHeight - scrollOffsetY;
+            std::vector<bool> pipes;   // ancestor connectors alive on the current row
             if (rootVisible) {
-                RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
+                RenderNode(ctx, rootNode.get(), currentY, 0, contentRect, pipes);
             } else {
                 // Hidden root: its children are the top level, at depth 0.
                 for (auto &child: rootNode->children)
-                    RenderNode(ctx, child.get(), currentY, 0, contentRect);
+                    RenderNode(ctx, child.get(), currentY, 0, contentRect, pipes);
             }
         }
 
@@ -965,95 +966,150 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    int UltraCanvasTreeView::GetTreeLineX(const Rect2Di &contentRect, int level) const {
+        return contentRect.x + level * indentSize + kExpanderButtonOffset + kExpanderButtonSize / 2;
+    }
+
+    // Both helpers expect the caller to have pushed the render state: they leave
+    // the stroke width and the dash pattern behind them.
+    void UltraCanvasTreeView::DrawTreeLineV(IRenderContext *ctx, int x, int yFrom, int yTo) {
+        if (!ctx || yTo <= yFrom) return;
+        // The line sits on a half-pixel so a 1px stroke covers exactly one column
+        // of pixels. The dashes are measured from yFrom, and the offset pulls the
+        // dots onto even device rows - so the trunks of separate rows, and the
+        // horizontal stubs below, all land on one shared dot grid.
+        if (lineStyle == TreeLineStyle::Dotted) {
+            ctx->SetLineDash(UCDashPattern({1.0, 1.0}, static_cast<double>(yFrom & 1)));
+        }
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawLine(Point2Dd(x + 0.5, yFrom), Point2Dd(x + 0.5, yTo), lineColor);
+    }
+
+    void UltraCanvasTreeView::DrawTreeLineH(IRenderContext *ctx, int y, int xFrom, int xTo) {
+        if (!ctx || xTo <= xFrom) return;
+        if (lineStyle == TreeLineStyle::Dotted) {
+            ctx->SetLineDash(UCDashPattern({1.0, 1.0}, static_cast<double>(xFrom & 1)));
+        }
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawLine(Point2Dd(xFrom, y + 0.5), Point2Dd(xTo, y + 0.5), lineColor);
+    }
+
+    void UltraCanvasTreeView::RenderChildNodes(IRenderContext *ctx, TreeNode *node, int &currentY, int level,
+                                               const Rect2Di &contentRect, std::vector<bool> &pipes) {
+        // The last visible child ends its parent's connector: everything above it
+        // keeps the trunk running down to the next sibling.
+        TreeNode *lastVisible = nullptr;
+        for (auto &child: node->children) {
+            if (child->data.visible) lastVisible = child.get();
+        }
+        if (!lastVisible) return;
+
+        pipes.push_back(false);
+        for (auto &child: node->children) {
+            if (!child->data.visible) continue;
+            pipes.back() = (child.get() != lastVisible);
+            RenderNode(ctx, child.get(), currentY, level + 1, contentRect, pipes);
+        }
+        pipes.pop_back();
+    }
+
     void UltraCanvasTreeView::RenderNode(IRenderContext *ctx, TreeNode *node, int &currentY, int level,
-                                         const Rect2Di &contentRect) {
+                                         const Rect2Di &contentRect, std::vector<bool> &pipes) {
         if (!node || !node->data.visible) return;
-        // Skip if outside visible area
-        if (currentY + rowHeight < contentRect.y || currentY > contentRect.Bottom()) {
-            currentY += rowHeight;
-            if (node->IsExpanded()) {
-                for (auto &child: node->children) {
-                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-                }
-            }
-            return;
-        }
 
-        int nodeX = contentRect.x + level * indentSize;
-        int nodeY = currentY;
-        int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
-        int nodeWidth = contentRect.width - sbWidth;
-
-        // Let a subclass fully own the row (e.g. a full-width section-header bar).
-        if (RenderNodeFullRow(ctx, node, nodeY, contentRect, nodeWidth)) {
-            currentY += rowHeight;
-            if (node->IsExpanded()) {
-                for (auto &child: node->children) {
-                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-                }
-            }
-            return;
-        }
-
-        // Draw node background
-        Color bgColor = backgroundColor;
-        if (node == dropTargetNode) {
-            bgColor = dropTargetColor;
-        } else if (node->selected) {
-            bgColor = selectionColor;
-        } else if (node->hovered) {
-            bgColor = hoverColor;
-        } else if (node->data.backgroundColor != Colors::Transparent) {
-            bgColor = node->data.backgroundColor;
-        }
-
-        if (bgColor != backgroundColor) {
-            ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight), bgColor);
-        }
-
-        // Draw connecting lines
-        if (lineStyle != TreeLineStyle::NoLine && level > 0) {
-            // Draw horizontal line to parent
-            // Implementation would draw line from parent to current node
-        }
-
-        // Draw expand/collapse button
-        if (showExpandButtons && node->HasChildren()) {
-            int buttonX = nodeX + 6;
-            int buttonY = nodeY + (rowHeight - 12) / 2;
-
-            // Draw button background
-            ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, 12, 12), expandButtonColor, 1.0, Colors::Gray);
-
-            // Draw +/- symbol
-            ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
-            if (!node->IsExpanded()) {
-                ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
-            }
-        }
-
-        // Calculate text position
-        int textX = nodeX + (showExpandButtons && node->HasChildren() ? 16 : 0) + textPadding;
-
-        // Draw left icon
-        if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
-            ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                           Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
-                                   node->data.leftIcon.width, node->data.leftIcon.height),
-                           ImageFitMode::Contain);
-            textX += node->data.leftIcon.width + iconSpacing;
-        }
-
-        // Draw the row's label/content (Classic single text run; subclasses draw columns).
-        RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
-
+        const int nodeY = currentY;
         currentY += rowHeight;
+
+        // Rows scrolled out of the viewport cost nothing but their height; their
+        // children still have to be walked so the ones below land correctly.
+        const bool offscreen = (nodeY + rowHeight < contentRect.y || nodeY > contentRect.Bottom());
+
+        if (!offscreen) {
+            const int nodeX = contentRect.x + level * indentSize;
+            const int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
+            const int nodeWidth = contentRect.width - sbWidth;
+
+            // Let a subclass fully own the row (e.g. a full-width section-header bar).
+            if (RenderNodeFullRow(ctx, node, nodeY, contentRect, nodeWidth)) {
+                if (node->IsExpanded()) RenderChildNodes(ctx, node, currentY, level, contentRect, pipes);
+                return;
+            }
+
+            // Draw node background
+            Color bgColor = backgroundColor;
+            if (node == dropTargetNode) {
+                bgColor = dropTargetColor;
+            } else if (node->selected) {
+                bgColor = selectionColor;
+            } else if (node->hovered) {
+                bgColor = hoverColor;
+            } else if (node->data.backgroundColor != Colors::Transparent) {
+                bgColor = node->data.backgroundColor;
+            }
+
+            if (bgColor != backgroundColor) {
+                ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight), bgColor);
+            }
+
+            const bool hasExpander = showExpandButtons && node->HasChildren();
+            // The expander slot is reserved on every row, so the icon and label of a
+            // childless node sit at the same x as those of its expandable siblings.
+            int textX = nodeX + (showExpandButtons ? kExpanderSlot : 0) + textPadding;
+
+            // Connecting lines: the trunks of the ancestors that continue past this
+            // row, plus the elbow that ties this row to its parent's trunk. Drawn
+            // after the row background (so they stay visible on a selected row) and
+            // before the expander button, which caps the elbow.
+            if (lineStyle != TreeLineStyle::NoLine && level > 0) {
+                const int rowMidY = nodeY + rowHeight / 2;
+                ctx->PushState();   // the dash pattern must not outlive the row
+                for (int ancestor = 0; ancestor + 1 < level; ++ancestor) {
+                    if (pipes[ancestor]) {
+                        DrawTreeLineV(ctx, GetTreeLineX(contentRect, ancestor), nodeY, nodeY + rowHeight);
+                    }
+                }
+                const int trunkX = GetTreeLineX(contentRect, level - 1);
+                // A last child stops the trunk at its own row centre; the others let
+                // it run on to the sibling below.
+                DrawTreeLineV(ctx, trunkX, nodeY, pipes[level - 1] ? nodeY + rowHeight : rowMidY + 1);
+                // The stub runs to the expander button, or all the way to the icon
+                // when the node has none.
+                DrawTreeLineH(ctx, rowMidY, trunkX, hasExpander ? nodeX + kExpanderButtonOffset : textX);
+                ctx->PopState();
+            }
+
+            // Draw expand/collapse button
+            if (hasExpander) {
+                int buttonX = nodeX + kExpanderButtonOffset;
+                int buttonY = nodeY + (rowHeight - kExpanderButtonSize) / 2;
+
+                // Draw button background
+                ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, kExpanderButtonSize, kExpanderButtonSize),
+                                         expandButtonColor, 1.0, Colors::Gray);
+
+                // Draw +/- symbol
+                ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
+                if (!node->IsExpanded()) {
+                    ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
+                }
+            }
+
+            // Draw left icon
+            if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
+                ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
+                               Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                                       node->data.leftIcon.width, node->data.leftIcon.height),
+                               ImageFitMode::Contain);
+                textX += node->data.leftIcon.width + iconSpacing;
+            }
+
+            // Draw the row's label/content (Classic single text run; subclasses draw columns).
+            RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
+        }
 
         // Render children if expanded
         if (node->IsExpanded()) {
-            for (auto &child: node->children) {
-                RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-            }
+            RenderChildNodes(ctx, node, currentY, level, contentRect, pipes);
         }
     }
 
@@ -1130,7 +1186,8 @@ namespace UltraCanvas {
 
             // Check if clicking on expand/collapse button
             if (showExpandButtons && clickedNode->HasChildren() &&
-                event.pointer.x >= nodeX && event.pointer.x <= nodeX + 17) {
+                event.pointer.x >= nodeX &&
+                event.pointer.x <= nodeX + kExpanderButtonOffset + kExpanderButtonSize) {
                 ToggleNode(clickedNode);
                 if (clickedNode->IsExpanded() && showFirstChildOnExpand) {
                     ExpandFirstChildNode(clickedNode);

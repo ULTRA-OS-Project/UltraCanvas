@@ -429,6 +429,15 @@ public:
     void SetWindow(UltraCanvasWindowBase* win) override;
 
 protected:
+    // ===== ROW GEOMETRY =====
+    // The expand/collapse button lives in a fixed-width slot at the left of every
+    // row - reserved whether or not the node has children, so a leaf's icon and
+    // label line up with those of its expandable siblings instead of sliding one
+    // button-width to the left.
+    static constexpr int kExpanderSlot = 16;         // width reserved on every row
+    static constexpr int kExpanderButtonOffset = 6;  // button x inside the slot
+    static constexpr int kExpanderButtonSize = 12;   // button width/height
+
     // ===== ROW RENDERING EXTENSION POINTS =====
     // Hooks that let a subclass (e.g. UltraCanvasColumnsTreeView) customise how a
     // row is drawn without re-implementing the whole RenderNode traversal.
@@ -487,7 +496,24 @@ private:
     
     TreeNode* GetNodeAtY(int y);
     
-    void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level, const Rect2Di& contentRect);
+    // `pipes` carries one flag per ancestor level: true when that ancestor still
+    // has a sibling row coming below, i.e. its vertical connector runs through
+    // the row being drawn. pipes.size() == level, and pipes[level - 1] tells
+    // whether `node` itself is the last visible child of its parent.
+    void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level,
+                    const Rect2Di& contentRect, std::vector<bool>& pipes);
+
+    // Draw the visible children of `node` (which sits at display level `level`),
+    // maintaining `pipes` for the connector lines.
+    void RenderChildNodes(IRenderContext *ctx, TreeNode* node, int& currentY, int level,
+                          const Rect2Di& contentRect, std::vector<bool>& pipes);
+
+    // ===== CONNECTING LINES =====
+    // X of the vertical connector that joins the node drawn at display level
+    // `level` to its children: the centre of that node's expander slot.
+    int  GetTreeLineX(const Rect2Di& contentRect, int level) const;
+    void DrawTreeLineV(IRenderContext* ctx, int x, int yFrom, int yTo);
+    void DrawTreeLineH(IRenderContext* ctx, int y, int xFrom, int xTo);
 
     void ExpandNodeRecursive(TreeNode* node);
     void CollapseNodeRecursive(TreeNode* node);

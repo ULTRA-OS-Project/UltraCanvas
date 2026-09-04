@@ -46868,7 +46868,12 @@ Sets/gets the height of each row in pixels.
 void SetIndentSize(int size)
 int GetIndentSize() const
 ```
-Sets/gets the indentation size per level.
+Sets/gets the indentation size per level (default 16).
+
+Every row reserves the same 16px slot for the expand/collapse button, whether
+or not the node has children, so the icon and the label of a childless node
+line up with those of its expandable siblings instead of sliding one button
+width to the left. `SetShowExpandButtons(false)` drops the slot from all rows.
 
 #### Font Size
 ```cpp
@@ -46891,7 +46896,16 @@ Sets/gets the selection mode.
 void SetLineStyle(TreeLineStyle style)
 TreeLineStyle GetLineStyle() const
 ```
-Sets/gets the connecting line style.
+Sets/gets the connecting line style (default `TreeLineStyle::Dotted`; use
+`TreeLineStyle::NoLine` for a tree without connectors).
+
+The connectors are drawn the way a file manager draws them: a vertical line
+descends from the centre of a parent's expand button through its children, a
+horizontal stub joins each child's row to it, and the line stops at the last
+child. Deeper levels keep the trunks of the ancestors that still have rows to
+come below. The stub ends at the child's expand button, or reaches its icon
+when the child has none. Lines are drawn over the row background, so they stay
+visible on the selected row, and take `SetLineColor` (default gray).
 
 ### Scroll-to-Top Button
 

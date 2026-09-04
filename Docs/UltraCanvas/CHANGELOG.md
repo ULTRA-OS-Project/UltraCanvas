@@ -1,3 +1,29 @@
+#### 2026-09-04 *0.3.98*
+- **The tree view never drew its connecting lines.** `TreeLineStyle` has always
+  defaulted to `Dotted`, `SetLineColor` has always existed, and `RenderNode`
+  answered both with a comment saying the implementation *would* draw a line
+  from the parent to the current node. Every tree in the framework therefore
+  showed rows floating at an indentation with nothing tying them to their
+  parent — which branch a row belonged to had to be counted out by eye once
+  more than one branch was open. The connectors are now drawn: a vertical line
+  descends from the centre of a parent's expand button, a horizontal stub joins
+  each child's row to it, the line stops at the last child, and the trunks of
+  the ancestors that still have rows below continue through the deeper levels.
+  They are drawn over the row background, so they stay visible on the selected
+  row, and under the expand button, which caps the stub. Dotted lines sit on a
+  shared even-pixel grid so trunks and stubs meet cleanly at every junction,
+  and `TreeLineStyle::NoLine` still turns the whole thing off.
+- **Rows without children sat one button width left of the rows with them.** The
+  expand/collapse button was only reserved on rows that had children, so a
+  folder and an empty folder at the same depth started their icon and label at
+  different x positions and the tree read as if it had half-levels. The 16px
+  expander slot is now reserved on every row and left empty when there is
+  nothing to expand, so siblings line up whatever their contents; the slot
+  disappears from all rows, as before, when `SetShowExpandButtons(false)` is
+  set. The expand button's own geometry and hit box are unchanged, and both now
+  come from the same constants rather than from numbers repeated in the
+  renderer and the click handler.
+
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"
   category.** UltraCloud, UltraCrypt, UltraDatabase, UltraVault and UltraWin all
