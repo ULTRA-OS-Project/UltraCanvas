@@ -1,3 +1,44 @@
+#### 2026-09-04 *0.3.97*
+- **Five sibling modules were missing from the demo's "ULTRA OS modules"
+  category.** UltraCloud, UltraCrypt, UltraDatabase, UltraVault and UltraWin all
+  exist in the tree, are registered in `Masterfile_modules.md` and carry their
+  own documentation, but the demo listed only nine modules — so the one place a
+  newcomer goes to see what ULTRA OS is made of showed roughly half of it, and
+  the modules that hold the credentials, the database and the Windows tier were
+  the invisible half. All five are now registered in
+  `Apps/DemoApp/UltraCanvasDemo.cpp`, each opening its module documentation
+  screen (intro, architecture diagram where one exists, full README) like the
+  other doc-only entries.
+- **UltraVault had no `Docs/Modules/` entry to open.** Its documentation was the
+  design document under `UltraAI/Docs/`, outside the folder the demo copies to
+  its resources directory, so the module could not be shown at all.
+  `Docs/Modules/UltraVault/README.md` now covers it as a module — why credential
+  storage is a system service rather than per-app code, the backend table
+  (memory and encrypted file implemented; libsecret / Keychain / Credential
+  Manager planned), the design rules that make it safe (nothing throws, no
+  passphrase-versus-tampering oracle, secrets wiped on `Shutdown`), the public
+  surface with a worked example, and its consumers — and links the design
+  document for the full argument.
+- **The dependencies table listed modules the demo did not, and the demo listed
+  modules the table did not.** The in-app *Dependencies & Third Party* screen
+  now carries an "Additional ULTRA OS modules" group for each of the five, in
+  the same order as the tree: UltraCloud (no library of its own — UltraNet,
+  UltraDatabase and UltraVault, plus bundled yyjson for provider JSON),
+  UltraCrypt (libsodium, optional at build time and failing closed without it),
+  UltraDatabase (system SQLite for Stage 1, the networked drivers still
+  planned), UltraVault (crypto through UltraCrypt; native backends planned) and
+  UltraWin (Wine, winetricks and QEMU spawned but never linked, FreeRDP linked,
+  bundled yyjson for QMP — Linux only). `Docs/Dependencies.md` gained the three
+  sections it lacked and the library-link rows behind the new names, so every
+  library in the table is clickable there too, and its UltraVault section moved
+  so both files read in one order. `master_dependencies.yaml` gained the
+  `database:` section for SQLite, which no manifest recorded.
+- **The "ULTRA OS modules" overview page now names the modules.** Selecting the
+  category itself rendered the ULTRA OS prose and the architecture diagram but
+  never said what sits under it; `Docs/Modules/ULTRA-OS/README.md` now lists all
+  fourteen with a line each, and points at the module registry and the
+  dependencies screen for the detail.
+
 #### 2026-09-04 *0.3.96*
 - **Font definition files can be previewed and read.** Fonts were the one
   document class the framework consumed but could never show: they went into
