@@ -7,6 +7,7 @@
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasColumnsTreeView.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>
@@ -15,7 +16,7 @@
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 0, 0, 1000, 600);
+        auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 0, 0, 1000, 800);
         container->SetPadding(0,0,10,0);
 
         // Title
@@ -217,6 +218,131 @@ namespace UltraCanvas {
             }
         };
         container->AddChild(sortCheckbox);
+
+        // ----- Connecting lines: None / Dotted / Solid, and the root-level trunk -----
+        // A forest (hidden root, so the sections are the top level) is the case the
+        // connectors were made for: without them the rows of three open sections are
+        // just indentation. The segmented control switches TreeLineStyle live.
+        auto linesTree = std::make_shared<UltraCanvasTreeView>("LinesTree", 350, 330, 300, 190);
+        linesTree->SetRowHeight(22);
+        linesTree->SetSelectionMode(TreeSelectionMode::Single);
+        linesTree->SetRootVisible(false);
+        linesTree->SetLineStyle(TreeLineStyle::Dotted);
+        linesTree->SetRootNode(TreeNodeData("lines_root", ""));
+
+        for (int section = 1; section <= 3; ++section) {
+            const std::string sectionId = "sec" + std::to_string(section);
+            linesTree->AddNode("lines_root",
+                               TreeNodeData(sectionId, "Section " + std::to_string(section)));
+            for (int para = 1; para <= 2; ++para) {
+                const std::string paraId = sectionId + "_p" + std::to_string(para);
+                linesTree->AddNode(sectionId,
+                                   TreeNodeData(paraId, "Paragraph " + std::to_string(section) +
+                                                                "." + std::to_string(para)));
+            }
+        }
+        // One deeper branch, so the trunk of a section that still has rows below it
+        // can be seen running past its nested children.
+        linesTree->AddNode("sec1_p1", TreeNodeData("sec1_p1_a", "Figure 1.1.a"));
+        linesTree->AddNode("sec1_p1", TreeNodeData("sec1_p1_b", "Figure 1.1.b"));
+        linesTree->ExpandAll();
+        container->AddChild(linesTree);
+
+        auto linesLabel = std::make_shared<UltraCanvasLabel>("LinesTreeLabel", 350, 524, 300, 20);
+        linesLabel->SetText("Connecting lines (SetLineStyle)");
+        linesLabel->SetFontSize(12);
+        container->AddChild(linesLabel);
+
+        auto lineStyleControl = SegmentedControlBuilder("LineStyleSegments", 350, 548, 300, 28)
+                .AddSegment("No lines")
+                .AddSegment("Dotted")
+                .AddSegment("Solid")
+                .SetSelectedIndex(1)
+                .OnSegmentSelected([linesTree](int index) {
+                    switch (index) {
+                        case 0: linesTree->SetLineStyle(TreeLineStyle::NoLine); break;
+                        case 2: linesTree->SetLineStyle(TreeLineStyle::Solid); break;
+                        default: linesTree->SetLineStyle(TreeLineStyle::Dotted); break;
+                    }
+                    linesTree->RequestRedraw();
+                })
+                .Build();
+        container->AddChild(lineStyleControl);
+
+        // Root lines: the trunk down the left margin that ties the three sections
+        // together. It costs one indent of left margin, which is why it can be
+        // switched off. (It only applies to a forest — a visible root row is
+        // already the trunk everything hangs from.)
+        auto rootLinesCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "RootLinesCheckbox", 350, 582, 300, 24, "Connect the top-level rows too");
+        rootLinesCheckbox->SetChecked(true);
+        rootLinesCheckbox->onStateChanged = [linesTree](CheckedState, CheckedState newState) {
+            linesTree->SetShowRootLines(newState == CheckedState::Checked);
+        };
+        container->AddChild(rootLinesCheckbox);
+
+        // ----- Check flags: a tri-state selection independent of the row selection -----
+        auto flagTree = std::make_shared<UltraCanvasTreeView>("FlagTree", 680, 490, 300, 190);
+        flagTree->SetRowHeight(22);
+        flagTree->SetSelectionMode(TreeSelectionMode::Single);
+        flagTree->SetShowCheckboxes(true);
+        flagTree->SetRootVisible(false);
+        flagTree->SetRootNode(TreeNodeData("flag_root", ""));
+
+        const char* flagFolders[] = {"Documents", "Pictures", "Music"};
+        const char* flagFiles[][3] = {
+            {"Invoice.odt", "Report.pdf", "Notes.txt"},
+            {"Holiday.jpg", "Portrait.png", "Sketch.svg"},
+            {"Intro.mp3", "Theme.flac", "Demo.wav"},
+        };
+        for (int folder = 0; folder < 3; ++folder) {
+            const std::string folderId = "flag_dir" + std::to_string(folder);
+            TreeNodeData folderData(folderId, flagFolders[folder]);
+            folderData.leftIcon = TreeNodeIcon(
+                NormalizePath(GetResourcesDir() + "media/icons/folder-brown.svg"), 16, 16);
+            flagTree->AddNode("flag_root", folderData);
+            for (int file = 0; file < 3; ++file) {
+                TreeNodeData fileData(folderId + "_f" + std::to_string(file), flagFiles[folder][file]);
+                fileData.leftIcon = TreeNodeIcon(
+                    NormalizePath(GetResourcesDir() + "media/icons/text.png"), 16, 16);
+                flagTree->AddNode(folderId, fileData);
+            }
+        }
+        flagTree->ExpandAll();
+        // Two files pre-flagged, so the tri-state parent (a filled square rather than
+        // a tick) is visible without touching anything.
+        flagTree->SetNodeChecked("flag_dir0_f0", true);
+        flagTree->SetNodeChecked("flag_dir1_f2", true);
+        container->AddChild(flagTree);
+
+        auto flagLabel = std::make_shared<UltraCanvasLabel>("FlagTreeLabel", 680, 684, 300, 20);
+        flagLabel->SetText("Check flags (SetShowCheckboxes)");
+        flagLabel->SetFontSize(12);
+        container->AddChild(flagLabel);
+
+        auto flagStatus = std::make_shared<UltraCanvasLabel>("FlagStatusLabel", 680, 738, 300, 22);
+        flagStatus->SetFontSize(12);
+        // Weak capture would be cleaner, but the label outlives the tree here: both
+        // belong to the same page container.
+        auto updateFlagStatus = [flagTree, flagStatus]() {
+            const size_t flagged = flagTree->GetCheckedNodes().size();
+            flagStatus->SetText(std::to_string(flagged) + " of 12 rows flagged");
+        };
+        updateFlagStatus();
+        flagTree->onNodeCheckChanged = [updateFlagStatus](TreeNode*, TreeCheckState) {
+            updateFlagStatus();
+        };
+        container->AddChild(flagStatus);
+
+        // Propagation: on, a folder's flag carries to its files and the folder shows
+        // "some" as a filled square; off, every row carries its own flag.
+        auto propagateCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "FlagPropagateCheckbox", 680, 708, 300, 24, "Flag the whole subtree");
+        propagateCheckbox->SetChecked(true);
+        propagateCheckbox->onStateChanged = [flagTree](CheckedState, CheckedState newState) {
+            flagTree->SetCheckPropagation(newState == CheckedState::Checked);
+        };
+        container->AddChild(propagateCheckbox);
 
         return container;
     }

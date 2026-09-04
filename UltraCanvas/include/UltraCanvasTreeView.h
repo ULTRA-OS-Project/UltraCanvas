@@ -39,6 +39,16 @@ enum class TreeLineStyle {
     Solid = 2       // Solid connecting lines
 };
 
+// ===== PER-ROW CHECK FLAG =====
+// State of the optional checkbox a row carries when the tree runs with
+// SetShowCheckboxes(true). Mixed is the parent state a partly-checked subtree
+// produces while check propagation is on (see SetCheckPropagation).
+enum class TreeCheckState {
+    Unchecked = 0,
+    Checked = 1,
+    Mixed = 2
+};
+
 // ===== TREE SORT MODE =====
 // Ordering applied to a node's children. LastAccess orders by TreeNodeData::accessSequence
 // (largest first when ascending=false), which callers stamp when a value is touched.
@@ -105,6 +115,11 @@ struct TreeNodeData {
     Color backgroundColor = Colors::Transparent; // Background color (transparent by default)
     std::string tooltip;          // Tooltip text
     void* userData = nullptr;     // Custom user data
+
+    // ----- Optional check flag (drawn only while SetShowCheckboxes(true)) -----
+    TreeCheckState checkState = TreeCheckState::Unchecked;
+    bool showCheckbox = true;     // false: the row keeps the slot but draws no box
+                                  // (a section header, a row that cannot be picked)
 
     // ----- Optional columns (used by column tree views, see UltraCanvasColumnsTreeView) -----
     // The base tree renders a single line from `text`. A column tree view treats
@@ -212,6 +227,8 @@ private:
     bool showExpandButtons;        // Show +/- buttons
     bool showFirstChildOnExpand;   // auto open first child on expand node
     bool autoExpandSelectedNode;  // auto expand selected node
+    bool showCheckboxes = false;   // draw a check flag on every row
+    bool checkPropagation = true;  // checking a row checks its subtree, parents follow
     bool autoSortChildren = false; // keep children sorted alphabetically on insert
     bool autoSortAscending = true; // direction used by auto-sort
 
@@ -226,6 +243,9 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
+    Color checkboxBackgroundColor = Colors::White;             // check flag box fill
+    Color checkboxBorderColor = Color(0x70, 0x70, 0x78);       // check flag box outline
+    Color checkboxCheckColor = Color(0x21, 0x7A, 0x35);        // tick / mixed square
     Color dropTargetColor = Color(0x33, 0x99, 0xFF, 0x66); // drag-drop target row
 
     // The node currently highlighted as a drag-and-drop target, if any.
@@ -262,6 +282,10 @@ public:
     std::function<void(TreeNode*)> onNodeDoubleClicked;
     std::function<void(TreeNode*)> onNodeExpanded;
     std::function<void(TreeNode*)> onNodeCollapsed;
+    // A row's check flag changed - by a click on the box, the space bar, or one
+    // of the Set*Checked calls. Fires once per node whose state actually moved,
+    // propagated parents and children included.
+    std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
     std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop; // dragged, target
     // Files dragged in from elsewhere (the file list, another app) and dropped
     // on a node. `onFilesDragAccept` decides whether a node is a valid drop
@@ -350,8 +374,47 @@ public:
     void SetLineStyle(TreeLineStyle style) { lineStyle = style; }
     TreeLineStyle GetLineStyle() const { return lineStyle; }
     
-    void SetShowExpandButtons(bool show) { showExpandButtons = show; }
+    void SetShowExpandButtons(bool show) { showExpandButtons = show; RequestRedraw(); }
     bool GetShowExpandButtons() const { return showExpandButtons; }
+
+    // Connect the TOP-LEVEL rows to each other as well, the way a file manager
+    // does: a trunk down the left margin with a stub into every top-level row.
+    // The rows move one indent to the right to make room for it, so the gutter
+    // is only taken while the lines are actually drawn — it does nothing under
+    // TreeLineStyle::NoLine, nor on a tree whose root is visible, where the root
+    // row already is the trunk every other row hangs from. Default: on.
+    void SetShowRootLines(bool show) { showRootLines = show; RequestRedraw(); }
+    bool GetShowRootLines() const { return showRootLines; }
+
+    // ===== CHECK FLAGS =====
+    // Draw a check flag on every row, between the expand button and the icon,
+    // turning the tree into a multi-select list of flags that is independent of
+    // the row selection (which keeps working as before). Default: off.
+    void SetShowCheckboxes(bool show) { showCheckboxes = show; RequestRedraw(); }
+    bool GetShowCheckboxes() const { return showCheckboxes; }
+
+    // With propagation on (the default), checking a row checks its whole subtree
+    // and every ancestor becomes Checked or Mixed to match; with it off, each row
+    // carries its own flag and nothing else moves.
+    void SetCheckPropagation(bool enable) { checkPropagation = enable; }
+    bool GetCheckPropagation() const { return checkPropagation; }
+
+    void SetNodeCheckState(TreeNode* node, TreeCheckState state);
+    void SetNodeChecked(TreeNode* node, bool checked) {
+        SetNodeCheckState(node, checked ? TreeCheckState::Checked : TreeCheckState::Unchecked);
+    }
+    void SetNodeChecked(const std::string& nodeId, bool checked);
+    // Unchecked/Mixed -> Checked, Checked -> Unchecked (what a click on the box does).
+    void ToggleNodeCheck(TreeNode* node);
+    TreeCheckState GetNodeCheckState(TreeNode* node) const {
+        return node ? node->data.checkState : TreeCheckState::Unchecked;
+    }
+    bool IsNodeChecked(TreeNode* node) const {
+        return node && node->data.checkState == TreeCheckState::Checked;
+    }
+    // Every fully checked node, in display order. Mixed parents are not included.
+    std::vector<TreeNode*> GetCheckedNodes() const;
+    void SetAllChecked(bool checked);
 
     void SetShowFirstChildOnExpand(bool show) { showFirstChildOnExpand = show; }
     bool GetShowFirstChildOnExpand() const { return showFirstChildOnExpand; }
@@ -367,6 +430,11 @@ public:
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
+    void SetCheckboxColors(const Color& background, const Color& border, const Color& check) {
+        checkboxBackgroundColor = background;
+        checkboxBorderColor = border;
+        checkboxCheckColor = check;
+    }
 
     // ===== SORTING =====
     // Persistent option: keep children alphabetically sorted as nodes are added.
@@ -437,6 +505,13 @@ protected:
     static constexpr int kExpanderSlot = 16;         // width reserved on every row
     static constexpr int kExpanderButtonOffset = 6;  // button x inside the slot
     static constexpr int kExpanderButtonSize = 12;   // button width/height
+    // The check flag takes its own slot right after the expander one, again on
+    // every row, so a row that carries no box still lines up with one that does.
+    // The lead keeps the box clear of the expand button, which overruns its own
+    // slot by two pixels.
+    static constexpr int kCheckboxSize = 14;
+    static constexpr int kCheckboxLead = 4;                             // gap before the box
+    static constexpr int kCheckboxSlot = kCheckboxLead + kCheckboxSize; // box + that gap
 
     // ===== ROW RENDERING EXTENSION POINTS =====
     // Hooks that let a subclass (e.g. UltraCanvasColumnsTreeView) customise how a
@@ -496,27 +571,57 @@ private:
     
     TreeNode* GetNodeAtY(int y);
     
-    // `pipes` carries one flag per ancestor level: true when that ancestor still
-    // has a sibling row coming below, i.e. its vertical connector runs through
-    // the row being drawn. pipes.size() == level, and pipes[level - 1] tells
-    // whether `node` itself is the last visible child of its parent.
+    // `pipes` carries one flag per drawn level down to this row, the top level
+    // included: pipes[k] is true when the row's ancestor at display level k still
+    // has a sibling row coming below, i.e. that level's vertical connector runs
+    // through the row being drawn. pipes.size() == level + 1, and pipes[level] is
+    // the node's own flag - false on the last visible child of its parent, which
+    // is where its trunk stops.
     void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level,
                     const Rect2Di& contentRect, std::vector<bool>& pipes);
 
-    // Draw the visible children of `node` (which sits at display level `level`),
-    // maintaining `pipes` for the connector lines.
+    // Draw the visible children of `node` (which sits at display level `level`,
+    // -1 for a hidden root whose children are the top level), pushing their
+    // shared connector column onto `pipes` for the duration.
     void RenderChildNodes(IRenderContext *ctx, TreeNode* node, int& currentY, int level,
                           const Rect2Di& contentRect, std::vector<bool>& pipes);
 
-    // ===== CONNECTING LINES =====
+    // ===== ROW / LINE GEOMETRY =====
+    // Left margin the root-level connectors live in: one indent while they are
+    // drawn, nothing otherwise, so a tree without them starts at the content edge.
+    // A visible root is a single top-level row that already carries the trunk for
+    // everything below it, so there is nothing for a root-level connector to join
+    // and no gutter is taken.
+    int  GetRootGutter() const {
+        return (showRootLines && !rootVisible && lineStyle != TreeLineStyle::NoLine)
+                       ? indentSize : 0;
+    }
+    // X where the row drawn at display level `level` starts (its expander slot).
+    int  GetRowOriginX(const Rect2Di& contentRect, int level) const {
+        return contentRect.x + GetRootGutter() + level * indentSize;
+    }
     // X of the vertical connector that joins the node drawn at display level
-    // `level` to its children: the centre of that node's expander slot.
+    // `level` to its children: the centre of that node's expander slot. Level -1
+    // is the root-level trunk, which lives in the gutter above.
     int  GetTreeLineX(const Rect2Di& contentRect, int level) const;
     void DrawTreeLineV(IRenderContext* ctx, int x, int yFrom, int yTo);
     void DrawTreeLineH(IRenderContext* ctx, int y, int xFrom, int xTo);
 
     void ExpandNodeRecursive(TreeNode* node);
     void CollapseNodeRecursive(TreeNode* node);
+
+    // ===== CHECK FLAGS =====
+    // The box of the row starting at `rowOriginX`, or an empty rect when this row
+    // draws none.
+    Rect2Di GetCheckboxRect(TreeNode* node, int rowOriginX, int nodeY) const;
+    void RenderCheckbox(IRenderContext* ctx, TreeNode* node, const Rect2Di& box);
+    // Force `state` on the node and everything under it (propagation on).
+    void ApplyCheckStateToSubtree(TreeNode* node, TreeCheckState state);
+    // Walk up from `node`, setting each parent to Checked / Unchecked / Mixed
+    // after its children.
+    void RefreshAncestorCheckStates(TreeNode* node);
+    // Set one node's state, firing onNodeCheckChanged only on a real change.
+    void AssignCheckState(TreeNode* node, TreeCheckState state);
     
     // ===== EVENT HANDLERS =====
     bool HandleMouseDown(const UCEvent& event);
@@ -578,6 +683,21 @@ public:
     
     TreeViewBuilder& SetLineStyle(TreeLineStyle style) {
         treeView->SetLineStyle(style);
+        return *this;
+    }
+
+    TreeViewBuilder& SetShowRootLines(bool show) {
+        treeView->SetShowRootLines(show);
+        return *this;
+    }
+
+    TreeViewBuilder& SetShowCheckboxes(bool show) {
+        treeView->SetShowCheckboxes(show);
+        return *this;
+    }
+
+    TreeViewBuilder& OnNodeCheckChanged(std::function<void(TreeNode*, TreeCheckState)> callback) {
+        treeView->onNodeCheckChanged = callback;
         return *this;
     }
 

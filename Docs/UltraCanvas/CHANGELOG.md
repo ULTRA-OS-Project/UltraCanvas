@@ -1,3 +1,36 @@
+#### 2026-09-04 *0.3.99*
+- **`showRootLines` was a dead field.** The tree view set it to `true` in all
+  three constructors, had no setter for it and never read it, so the top-level
+  rows of a forest — the sections of a tag tree, "Pinned" and "Computer" in a
+  file manager — hung side by side with nothing showing they belong to one list.
+  It is now the switch it always claimed to be, `SetShowRootLines()` /
+  `GetShowRootLines()`: a trunk down the left margin with a stub into every
+  top-level row, drawn exactly like the levels below it. The rows move one
+  indent right to make room, and only while that trunk is actually drawn — it is
+  off under `TreeLineStyle::NoLine`, and on a tree whose root is visible, where
+  the root row already is the trunk everything hangs from, so those trees keep
+  their current left margin to the pixel.
+- **Rows can carry a check flag.** `SetShowCheckboxes(true)` draws a checkbox on
+  every row, between the expand button and the icon, for the "tick what you want
+  backed up / exported / tagged" case that until now meant building a second
+  list beside the tree. The flags are independent of the row selection, which
+  keeps working as it did. A parent whose subtree is only partly ticked shows
+  Mixed — a filled square rather than a tick, so "some" never reads as "all" —
+  and `SetCheckPropagation(false)` turns the whole subtree logic off for trees
+  where each row stands alone. A click on the box toggles it and leaves the
+  selection where it was, the space bar does the same from the keyboard, and
+  `onNodeCheckChanged` fires once per row that actually moved, so a "7 of 12
+  flagged" caption can follow it. `GetCheckedNodes`, `SetAllChecked`,
+  `SetNodeChecked` and `SetCheckboxColors` round it out, and a single row can
+  drop its box (`TreeNodeData::showCheckbox = false`) while keeping the slot, so
+  a section header stays aligned with the rows around it.
+- **The demo's Tree View page shows both.** It advertised a "Checkable Nodes"
+  variant that did not exist. There are now two more examples on the page: a
+  forest whose connectors switch between None / Dotted / Solid from a segmented
+  control, with the root-level trunk on a checkbox beside it, and a folder tree
+  of check flags with a live count and a propagation toggle — the two features
+  above, in the place a newcomer looks for them.
+
 #### 2026-09-04 *0.3.98*
 - **The tree view never drew its connecting lines.** `TreeLineStyle` has always
   defaulted to `Dotted`, `SetLineColor` has always existed, and `RenderNode`
