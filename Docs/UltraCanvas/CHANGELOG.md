@@ -1,4 +1,4 @@
-#### 2026-09-03 *0.3.95*
+#### 2026-09-04 *0.3.96*
 - **Font definition files can be previewed and read.** Fonts were the one
   document class the framework consumed but could never show: they went into
   the text pipeline by family name and never came back out as something a file
@@ -68,6 +68,8 @@
   default font map is dropped instead and surfaces created later pick the font
   up). Covered by `Tests/FontFileTest.cpp`, which runs against the framework's
   own bundled Ubuntu faces and so needs no installed font.
+
+#### 2026-09-03 *0.3.95*
 - **Linking UltraCrypt into an application that also links a shared
   libultracanvas failed to link on Windows.** The string helpers (`Trim`,
   `Split`, `ToLowerCase`, `StartsWith`) and the Base64/Base32 codecs shared one
