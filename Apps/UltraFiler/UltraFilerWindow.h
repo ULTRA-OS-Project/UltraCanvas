@@ -46,8 +46,8 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.14.0
-// Last Modified: 2026-09-01
+// Version: 1.15.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -71,6 +71,7 @@
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
+#include "UltraFilerSettingsDialog.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -436,10 +437,31 @@ private:
     // preview's transparent-image backdrop). Called at startup and by the
     // settings dialog after every change.
     void ApplySettings();
+    // Every file display of the window - the tabs, the folder preview and the
+    // History / Favorites lists - so a setting that governs all of them is
+    // applied in one pass.
+    std::vector<UltraCanvasFilerWidget*> AllFilers() const;
+    // Display > Thumbnails / Detail view: the switches of `source` (the file
+    // display whose menu was used) become the persisted setting and are
+    // mirrored into every other file display. Guarded against the echo of its
+    // own writes - each SetThumbnailKinds() fires the change hook again.
+    void AdoptDisplayFormats(UltraCanvasFilerWidget* source);
+    // Whether the detail pane can show this entry: the Display > Detail view
+    // switches allow it AND the media viewer has a view for the file.
+    bool CanShowInDetailView(const FilerEntry& entry) const;
+    // The tail the file display hangs under Display > Thumbnails and
+    // Display > Detail view: "File formats...", which opens the matching
+    // settings page.
+    std::vector<MenuItemData> BuildFormatListMenuItems(FilerPreviewTarget target);
+    // Installs the display-format callbacks (menu tail + change hook) on a
+    // freshly created file display.
+    void WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
-    // History / Clear Favorites actions.
-    void OpenSettingsDialog();
+    // History / Clear Favorites actions. `page` points it straight at one
+    // settings page - the Display menu's "File formats..." entries do.
+    void OpenSettingsDialog(UltraFilerSettingsDialog::Page page =
+                                    UltraFilerSettingsDialog::Page::Default);
 
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
@@ -541,6 +563,9 @@ private:
 
     bool syncingTree = false;              // tree selection driven by code
     bool syncingControls = false;          // dropdowns driven by filer callbacks
+    // Set while the display-format switches are pushed into the file
+    // displays, so their change hooks do not write the setting back.
+    bool applyingDisplayFormats = false;
     bool previewEnabled = true;            // the command bar toggle state
     bool previewShown = false;             // preview pane currently in the split
     bool previewShowsFolder = false;       // pane holds folderPreview, not preview

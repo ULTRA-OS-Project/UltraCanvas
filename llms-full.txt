@@ -17340,8 +17340,12 @@ Notes:
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
   uses.
-- **Display > Preview** switches content previews on and off per file kind —
-  see [Selective previews](#selective-previews).
+- **Display > Thumbnails** switches thumbnails on and off per file kind, and
+  **Display > Detail view** does the same for the detail pane a host opens
+  beside the display — see [Selective previews](#selective-previews). Both
+  submenus end with the host's own entry into the per-format lists when it
+  installed a `formatListMenuProvider` (UltraFiler: "File formats…", which
+  opens the matching settings page).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
   thumbnail views: Size, Edit date, Creation date, Attributes, Length
   (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
@@ -17353,30 +17357,40 @@ Notes:
 ## Selective previews
 
 A **content preview** is a tile rendered from the file itself instead of the
-generic category glyph. Which kinds of file get one is selectable, and every
-kind is enabled by default:
+generic category glyph. Two independent sets of switches decide what a file
+may show, and every kind is enabled in both by default:
+
+- **Thumbnails** (`Display > Thumbnails`) — the tile the widget draws.
+- **Detail view** (`Display > Detail view`) — whether the host may open its
+  detail pane for the entry. The widget does not own that pane; it keeps the
+  answer so that one setting governs both halves of a file manager's display.
 
 ```cpp
-filer->SetPreviewType(FilerPreviewType::Videos, false);   // no poster frames
-filer->IsPreviewTypeEnabled(FilerPreviewType::PDF);       // true
+filer->SetThumbnailKind(FilerPreviewType::Videos, false);   // no poster frames
+filer->IsThumbnailKindEnabled(FilerPreviewType::PDF);       // true
 
 // Only the cheap ones (a slow network share, say):
-filer->SetPreviewTypes(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
-                       static_cast<uint32_t>(FilerPreviewType::Text));
+filer->SetThumbnailKinds(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
+                         static_cast<uint32_t>(FilerPreviewType::Text));
 
-filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
+filer->SetThumbnailKinds(kFilerAllPreviewTypes);            // back to the default
+
+// The same nine switches for the host's detail pane:
+filer->SetDetailViewKind(FilerPreviewType::Videos, false);
+if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 ```
 
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix) and the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps). The rest (emf, wmf, dxf, dwg, ai, older RIFF cdr) has no renderer that works without a window and keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (emf, wmf, dxf, dwg, older RIFF cdr, an EPS written without a preview) has no renderer that works without a window and keeps its glyph |
 | `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
+| `Audio` | Audio | mp3, flac, wav, ogg, m4a, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
 
 Notes:
 
@@ -17398,24 +17412,83 @@ Notes:
   a page is legible — from roughly a 40 px box up. The small icon column of the
   Details and List rows keeps the type glyph, so a folder listing does not read
   every document in it.
-- `FilerPreviewType` values are a bitmask; `GetPreviewTypes()` returns the
-  current set and `kFilerAllPreviewTypes` is the default. The preview kinds do
-  not map one to one onto `FilerFileCategory`: PDF is split out of the Document
-  category because it renders a page, and CSV / TSV count as spreadsheets
-  because they preview as a grid (their file category stays `Text`).
+- `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
+  `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
+  the default of both. The preview kinds do not map one to one onto
+  `FilerFileCategory`: PDF is split out of the Document category because it
+  renders a page, and CSV / TSV count as spreadsheets because they preview as a
+  grid (their file category stays `Text`).
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
 
+### Per-format switches (the list of files)
+
+A kind is coarse: switching *Vector graphics* off to be rid of one expensive
+format costs the thumbnails of all seventeen. Each set therefore takes
+per-format exceptions — a single extension switched off while its kind stays
+on:
+
+```cpp
+filer->SetThumbnailFormatEnabled("eps", false);      // no EPS thumbnails
+filer->IsThumbnailFormatEnabled("eps");              // false
+filer->SetDetailViewFormatEnabled(".PSD", false);    // dot and case are ignored
+
+// What an application persists (both sorted, lowercase, dot-less):
+std::vector<std::string> off = filer->GetDisabledThumbnailFormats();
+filer->SetDisabledThumbnailFormats(off);
+```
+
+The lists hold the **exceptions**, not an allow-list, so a format the widget
+learns about later — a plugin registering a new vector format — is enabled by
+default like every other one.
+
+`GetPreviewableFormats()` is what such a list of files is built from: every
+format the switches can address, in menu order (by kind, then by extension),
+each with the readable label and whether **this build** can produce a thumbnail
+for it at all.
+
+The list is complete with respect to the FileLoader: every format
+`UltraCanvasFileLoader::GetSupportedFormats()` reports for this build — its
+canonical extension and every alias — appears in it, filed under the preview
+kind of its media category. That is what the nine kinds are for: they cover
+all seven `MediaFormatCategory` values (Documents split three ways), so a
+format the application can open always has a switch. `FilerFormatListTest`
+holds the widget to it.
+
+```cpp
+for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats()) {
+    // f.extension "eps", f.label "EPS", f.kind VectorGraphics,
+    // f.thumbnailSupported — false without a PostScript loader AND without an
+    // embedded preview, so a settings page can grey the entry out instead of
+    // offering a switch that changes nothing.
+}
+```
+
+`thumbnailSupported` answers for the format in **this** build, and it answers
+honestly: false for audio (nothing reads cover art), for the vector formats
+with no renderer and no embedded preview (emf, wmf, dxf, dwg), for PDF without
+the plugin, for video without a backend, and for the container formats no
+reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
+ones are refused by the text-preview extractor too, so the tile keeps its type
+glyph instead of drawing a "page" holding the file's ZIP magic.
+
+`onDisplayFormatsChanged` fires after any of the four sets changes, whoever
+changed it (the Display menu included) — that is where an application saves
+the choice and mirrors it into its other file displays.
+
 ### Embedded preview bitmaps
 
 Most vector formats have no renderer that works without a window, so a
-background worker cannot rasterize them. Two families do not need one: Xara
+background worker cannot rasterize them. Three families do not need one: Xara
 documents (`.xar`, `.web`, `.wix`) store a GIF/JPEG/PNG preview among the first
-records of the file head, and the ZIP-based CorelDRAW documents (`.cdr`,
-`.cdt`, X4 and newer) keep one as `previews/thumbnail.png`. Both are ordinary
-images once lifted out, so they decode on the thumbnail workers like any
-bitmap.
+records of the file head, the ZIP-based CorelDRAW documents (`.cdr`, `.cdt`,
+X4 and newer) keep one as `previews/thumbnail.png`, and PostScript documents
+(`.eps`, `.epsf`, `.epsi`, `.ps` and the pre-CS2 `.ai` files, which are EPS)
+carry one either as the TIFF section of a DOS EPS binary header or as the
+hex-encoded EPSI preview in their comment block. The first two are ordinary
+images once lifted out; the EPSI preview is converted to a greyscale PGM. All
+of them decode on the thumbnail workers like any bitmap.
 
 The extraction is plain file parsing — no graphics plugin, no render context —
 and lives in `UltraCanvasEmbeddedPreview.h`, so anything else that wants the
@@ -17429,8 +17502,13 @@ if (FormatCarriesEmbeddedPreview(path)) {               // asks about the format
 ```
 
 `ExtractEmbeddedPreviewBytes` returns an empty vector for a file that carries
-no preview, an older RIFF-based `.cdr`, or a document too damaged to parse — it
-never throws, so a worker can hand it any file the user points at.
+no preview (a plain ASCII EPS, for one — rendering that needs a PostScript
+interpreter), an older RIFF-based `.cdr`, or a document too damaged to parse —
+it never throws, so a worker can hand it any file the user points at.
+
+`UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
+rasterize is displayed from its embedded preview, which is what gives these
+formats a detail pane as well as a tile.
 
 ### File types the FileLoader knows
 
@@ -17440,7 +17518,8 @@ does not list is looked up in the runtime format inventory
 built from) before the entry is written off as "some file", so a format that
 arrives with a graphics, document or media plugin the application registered
 lands in its real `FilerFileCategory` — and with it gets the right colour, the
-right grouping, and the Display > Preview switch that governs it. The inventory
+right grouping, and the Display > Thumbnails / Detail view switches that
+govern it. The inventory
 is consulted once and cached, so it costs nothing per directory entry.
 
 ### Native application icons (Windows)
@@ -17452,7 +17531,7 @@ is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
 up to 256 px) on the same background workers as the image thumbnails, so a
 folder of executables scrolls as smoothly as one of photos; a file without an
 icon resource keeps its glyph. This is an icon, not a content preview, so the
-Display > Preview switches do not affect it. The extractor lives behind
+Display > Thumbnails switches do not affect it. The extractor lives behind
 `UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
 `LoadNativeFileIconPixmap`); on other platforms it reports no icon and
 nothing changes.

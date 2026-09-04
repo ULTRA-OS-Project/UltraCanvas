@@ -4,7 +4,7 @@
 // provider preset table, then a Mozilla-style autoconfig / ISPDB lookup over
 // HTTP (UltraNet). The preset and XML-parsing steps are pure and testable; the
 // network step is orchestrated in Discover().
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -60,5 +60,11 @@ public:
 // Helpers (also used by tests).
 std::string EmailDomain(const std::string& email);
 std::string EmailLocalPart(const std::string& email);
+
+// A deliberately permissive sanity check for an address the user typed: exactly
+// one '@', a non-empty local part, and a domain with a dot and no whitespace.
+// It exists to catch typos before an account is created — not to validate
+// RFC 5322, which the mail server does authoritatively.
+bool LooksLikeEmailAddress(const std::string& email);
 
 } // namespace UltraMail

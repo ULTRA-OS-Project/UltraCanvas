@@ -58,16 +58,21 @@
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
 // Which file kinds show a real content preview instead of their type glyph is
-// selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
-// Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
-// expensive files can be browsed with only the cheap previews switched on.
+// selectable per kind (Display > Thumbnails: Bitmaps, Vector graphics, 3D,
+// PDF, Text, Docs, Spreadsheets, Videos, Audio — all on by default), so a
+// folder full of expensive files can be browsed with only the cheap previews
+// switched on. Display > Detail view carries the same nine switches for the
+// detail pane a host opens beside the display, and both sets take per-format
+// exceptions, so one format can be excluded while its kind stays on. The nine
+// kinds cover every media category the FileLoader inventory reports, which is
+// what lets GetPreviewableFormats() list every format this build can open.
 // The context menu's "Open with >" lists the applications the OS registers
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider.
-// Version: 1.22.0
-// Last Modified: 2026-09-02
+// Version: 1.23.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +96,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -191,18 +197,35 @@ namespace UltraCanvas {
     };
 
     // ===== PREVIEWABLE FILE KINDS =====
-    // Which kinds of file are shown with a real content preview — a thumbnail
-    // rendered from the file itself — instead of the generic type glyph.
-    // Combine as a bitmask; the Display > Preview submenu toggles them and
-    // every kind is enabled by default. Switching one off makes its entries
-    // fall back to the type glyph immediately (and stops the widget from
-    // reading those files at all), which is what makes browsing a folder of
-    // huge photos, videos or PDFs on a slow volume bearable.
+    // Which kinds of file may be shown with a real content preview — a
+    // picture rendered from the file itself — instead of the generic type
+    // glyph. Combine as a bitmask; two independent sets of these switches
+    // exist, and every kind is on in both by default:
+    //
+    //   * THUMBNAILS  (Display > Thumbnails) — the tile the widget draws for
+    //     an entry. Switching a kind off makes its entries fall back to the
+    //     type glyph immediately and stops the widget from reading those
+    //     files at all, which is what makes browsing a folder of huge photos,
+    //     videos or PDFs on a slow volume bearable.
+    //   * DETAIL VIEW (Display > Detail view) — whether the host may open its
+    //     detail pane (UltraFiler's preview pane) for a selected entry. The
+    //     widget does not own that pane; it answers DetailViewEnabledFor() so
+    //     one file manager setting governs both halves of the display.
+    //
+    // Each set additionally carries a per-format list (the "list of files"):
+    // a single extension can be switched off while its kind stays on — see
+    // SetThumbnailFormatEnabled() / SetDetailViewFormatEnabled().
     //
     // The kinds are grouped by what the preview costs to produce, not by
     // FilerFileCategory: PDF is split out of Documents because it renders a
     // page, and CSV / TSV count as Spreadsheets because they preview as a
-    // cell grid (their file category stays Text).
+    // cell grid (their file category stays Text). Together they cover every
+    // MediaFormatCategory the FileLoader inventory reports, so every format
+    // this build can open belongs to exactly one of them — which is what lets
+    // the per-format lists be complete. Audio is the one kind with no
+    // thumbnail producer at all (nothing here reads cover art yet); its
+    // switches govern the detail view, where a host's viewer does play the
+    // file, and its Thumbnails rows report themselves as unsupported.
     enum class FilerPreviewType : uint32_t {
         NonePreview    = 0,
         Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
@@ -212,10 +235,31 @@ namespace UltraCanvas {
         Text           = 1u << 4,   // txt / log / json / xml / source code / ...
         Docs           = 1u << 5,   // odt / doc / docx / rtf / md / html / tex
         Spreadsheets   = 1u << 6,   // ods / xls / xlsx / csv / tsv
-        Videos         = 1u << 7    // poster frame of the clip
+        Videos         = 1u << 7,   // poster frame of the clip
+        Audio          = 1u << 8    // mp3 / flac / wav / ... (detail view only)
     };
-    // Every previewable kind — the default of SetPreviewTypes().
-    constexpr uint32_t kFilerAllPreviewTypes = 0xFFu;
+    // Every previewable kind — the default of both switch sets.
+    constexpr uint32_t kFilerAllPreviewTypes = 0x1FFu;
+
+    // ===== ONE FORMAT OF THE "LIST OF FILES" =====
+    // What GetPreviewableFormats() reports: every file format the two switch
+    // sets can address, so a settings page can list them without repeating
+    // the widget's tables. `thumbnailSupported` says whether THIS build can
+    // actually produce a thumbnail for the format (no PostScript loader, no
+    // PDF plugin, no video backend → false): a list can grey those out
+    // instead of offering a switch that changes nothing.
+    struct FilerFormatInfo {
+        std::string      extension;    // lowercase, without the leading dot
+        std::string      label;        // "EPS", "CorelDRAW", "PNG", ...
+        FilerPreviewType kind = FilerPreviewType::NonePreview;
+        bool             thumbnailSupported = false;
+    };
+
+    // Which of the two switch sets an API or a menu hook is about.
+    enum class FilerPreviewTarget {
+        Thumbnails,   // Display > Thumbnails — the tiles of the file display
+        DetailView    // Display > Detail view — the host's preview pane
+    };
 
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
@@ -599,16 +643,66 @@ namespace UltraCanvas {
         uint32_t GetDatasetFields() const { return datasetFields; }
 
         // ===== SELECTIVE PREVIEWS =====
-        // Which file kinds get a content preview instead of their type glyph
-        // (Display > Preview). All kinds are on by default. Switching a kind
-        // off repaints its entries with the type glyph and stops the widget
-        // from opening those files for a preview at all; switching it back on
-        // re-uses whatever is still cached and decodes the rest in the
-        // background as usual.
-        void SetPreviewType(FilerPreviewType type, bool on);
-        bool IsPreviewTypeEnabled(FilerPreviewType type) const;
-        void SetPreviewTypes(uint32_t mask);
-        uint32_t GetPreviewTypes() const { return previewTypes; }
+        // Which file kinds get a thumbnail rendered from the file instead of
+        // their type glyph (Display > Thumbnails). All kinds are on by
+        // default. Switching a kind off repaints its entries with the type
+        // glyph and stops the widget from opening those files at all;
+        // switching it back on re-uses whatever is still cached and decodes
+        // the rest in the background as usual.
+        void SetThumbnailKind(FilerPreviewType type, bool on);
+        bool IsThumbnailKindEnabled(FilerPreviewType type) const;
+        void SetThumbnailKinds(uint32_t mask);
+        uint32_t GetThumbnailKinds() const { return thumbnailKinds; }
+
+        // Which file kinds the host may open its detail pane for
+        // (Display > Detail view). The widget only keeps the answer — see
+        // DetailViewEnabledFor() — so that the file display and the detail
+        // pane are configured in one place.
+        void SetDetailViewKind(FilerPreviewType type, bool on);
+        bool IsDetailViewKindEnabled(FilerPreviewType type) const;
+        void SetDetailViewKinds(uint32_t mask);
+        uint32_t GetDetailViewKinds() const { return detailViewKinds; }
+
+        // The per-format lists. An extension switched off here is skipped
+        // even while its kind is on, and one switched on again simply drops
+        // out of the exception list — so a format the widget learns about
+        // later (a plugin registering a new vector format, say) is enabled by
+        // default like every other one. Extensions are matched lowercase and
+        // without the leading dot; ".EPS", "EPS" and "eps" are the same.
+        void SetThumbnailFormatEnabled(const std::string& extension, bool on);
+        bool IsThumbnailFormatEnabled(const std::string& extension) const;
+        void SetDetailViewFormatEnabled(const std::string& extension, bool on);
+        bool IsDetailViewFormatEnabled(const std::string& extension) const;
+        // The exceptions themselves, for an application that persists them.
+        // Both lists are sorted, lowercase and dot-less.
+        std::vector<std::string> GetDisabledThumbnailFormats() const;
+        void SetDisabledThumbnailFormats(const std::vector<std::string>& exts);
+        std::vector<std::string> GetDisabledDetailViewFormats() const;
+        void SetDisabledDetailViewFormats(const std::vector<std::string>& exts);
+
+        // The menu label of a preview kind ("Vector graphics"), shared by the
+        // Display submenus and by an application listing the formats.
+        static const char* PreviewTypeLabel(FilerPreviewType type);
+        // The eight kinds in the order the menus and lists show them.
+        static const std::vector<FilerPreviewType>& AllPreviewTypes();
+
+        // Everything the two lists can address: the widget's own format table
+        // plus whatever the FileLoader inventory reports, one entry per
+        // extension, sorted by kind and then by extension.
+        static std::vector<FilerFormatInfo> GetPreviewableFormats();
+
+        // Whether an entry gets a thumbnail / may be shown in the host's
+        // detail pane under the current switches. Both answer true for
+        // entries of no preview kind (folders, audio, archives, programs):
+        // those are governed by the host, not by these lists.
+        bool ThumbnailEnabledFor(const FilerEntry& e) const;
+        bool DetailViewEnabledFor(const FilerEntry& e) const;
+
+        // Fired after any of the four sets above changed, whoever changed it
+        // (the Display menu included) — the hook an application persists the
+        // choice from and mirrors it into its other file displays.
+        std::function<void()> onDisplayFormatsChanged;
+
         // The preview kind an entry belongs to, or NonePreview for entries
         // that never carry a content preview (folders, audio, archives,
         // programs, unknown types).
@@ -831,6 +925,14 @@ namespace UltraCanvas {
         // state); non-empty results are appended behind a separator. The
         // UltraFiler adds "Open prompt" and its Pin / Unpin submenus here.
         std::function<std::vector<MenuItemData>()> extrasMenuProvider;
+        // Host-provided tail of the Display > Thumbnails and Display > Detail
+        // view submenus, asked once per submenu every time the menu opens.
+        // The per-format lists ("list of files") live in the application, not
+        // in a menu; this is where it hangs the entry that opens them —
+        // UltraFiler adds "File formats…", which opens the matching settings
+        // page.
+        std::function<std::vector<MenuItemData>(FilerPreviewTarget)>
+                formatListMenuProvider;
 
         // File-list (search result) display: while active, ScanFolder() builds
         // the entries from these explicit paths instead of listing currentPath.
@@ -884,8 +986,16 @@ namespace UltraCanvas {
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
         uint32_t datasetFields = 0;
-        // Bitmask of FilerPreviewType values that may show a content preview.
-        uint32_t previewTypes = kFilerAllPreviewTypes;
+        // Bitmask of FilerPreviewType values that may show a thumbnail, and
+        // the same for the host's detail pane (Display > Thumbnails /
+        // Display > Detail view).
+        uint32_t thumbnailKinds  = kFilerAllPreviewTypes;
+        uint32_t detailViewKinds = kFilerAllPreviewTypes;
+        // The per-format exceptions of each set: the extensions explicitly
+        // switched off. Kept as exceptions rather than as a full allow-list
+        // so a format neither table knows yet is enabled by default.
+        std::set<std::string> disabledThumbnailFormats;
+        std::set<std::string> disabledDetailViewFormats;
         FilerStyle style;
 
         std::vector<size_t> selection;            // indices into `entries`
@@ -1294,9 +1404,12 @@ namespace UltraCanvas {
         // Swaps thumbFrameWants into the worker queue and forgets pending
         // slots that fell out of the visible + prefetch bands.
         void CommitThumbnailWants();
-        // True when `e` may show a content preview right now: it belongs to a
-        // preview kind and that kind is enabled in previewTypes.
-        bool PreviewEnabledFor(const FilerEntry& e) const;
+        // Both switch sets share one implementation: `kinds` is the mask and
+        // `disabled` the per-format exception list of the set being asked.
+        static bool PreviewAllowed(const FilerEntry& e, uint32_t kinds,
+                                   const std::set<std::string>& disabled);
+        // Fires onDisplayFormatsChanged (if the host installed one).
+        void NotifyDisplayFormatsChanged();
         // True when a preview of `e` is worth drawing in a box that size. A
         // page-shaped preview (PDF, 3D model, text page) needs a tile; in the
         // icon column of a Details / List row it would be an indistinct
