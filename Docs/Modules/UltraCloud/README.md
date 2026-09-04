@@ -50,9 +50,9 @@ What already existed and stays where it is:
 |---|---|---|---|---|
 | Nextcloud / ownCloud | WebDAV PUT under `/remote.php/dav/files/<user>/` | OCS Share API (`shareType=3`), with password, expiry, label | app password (Basic) | `https://cloud.example.com/s/<token>` |
 | WebDAV server | WebDAV PUT | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
-| Dropbox | `files/upload` (single call, ≤ 150 MB) | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
+| Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
-| Google Drive | multipart `files.create` (or a media update when the name exists) | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
+| Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -223,7 +223,12 @@ database, the secret store on a temp directory, the providers against a fake
 `HttpFn` that records the requests (PROPFIND with `Depth: 1`, MKCOL, PUT, the
 OCS POST, Dropbox's `Dropbox-API-Arg`, Graph's upload session and
 `Content-Range` chunks, Drive's path queries and multipart create) and
-answers with canned bodies, and the OAuth flow through `OAuthHooks`.
+answers with canned bodies, and the OAuth flow through `OAuthHooks`. The
+large-upload paths are exercised with small thresholds
+(`SetUploadLimits(simpleLimit, chunkSize)` on the three hosted providers),
+so a 25-byte file walks the same start / append / finish, upload-session or
+resumable code as a multi-gigabyte one. Chunks are read from disk as they are
+sent; a large upload never holds more than one chunk in memory.
 
 ## Roadmap
 
@@ -235,7 +240,5 @@ answers with canned bodies, and the OAuth flow through `OAuthHooks`.
 3. **Sync-folder shortcut**: offer `GetCloudStorageFolders()` results as a
    place to pick a local file from, then upload + link through the matching
    account.
-4. **Large uploads everywhere**: Dropbox upload sessions above 150 MB and a
-   resumable upload for Google Drive (today one request each).
-5. The ULTRA OS own storage service as one more provider, shipped as the
+4. The ULTRA OS own storage service as one more provider, shipped as the
    default account.

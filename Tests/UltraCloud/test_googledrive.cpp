@@ -117,3 +117,43 @@ TEST(googledrive_mkdir_and_share_link) {
     REQUIRE_EQ(link.url, std::string("https://drive.google.com/file/d/x1/view?usp=drivesdk"));
     REQUIRE_EQ(link.id, std::string("anyone1"));
 }
+
+TEST(googledrive_large_upload_is_resumable) {
+    std::vector<std::string> log, ranges, bodies;
+    bool followRedirectsOff = true;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        const std::string url = Decoded(req.url);
+        if (url.find("uploadType=resumable") != std::string::npos) {
+            log.push_back(url);
+            REQUIRE_EQ(req.headers.Get("X-Upload-Content-Length"), std::string("25"));
+            resp.statusCode = 200;
+            resp.headers.Set("Location", "https://www.googleapis.com/upload/drive/v3/files?upload_id=abc");
+            return Ok();
+        }
+        if (url.find("upload_id=abc") != std::string::npos) {
+            ranges.push_back(req.headers.Get("Content-Range"));
+            bodies.push_back(Body(req));
+            followRedirectsOff = followRedirectsOff && !req.options.followRedirects;
+            const bool last = ranges.size() == 3;
+            Answer(resp, last ? 200 : 308, last ? R"({"id":"new"})" : "");
+            return Ok();
+        }
+        return FakeDrive(req, resp, log);
+    };
+    GoogleDriveProvider gd(fake);
+    gd.SetUploadLimits(/*simple=*/20, /*chunk=*/10);
+    Account a; Credentials c; c.token = "tok";
+    // New file in /Docs (parent f1) → resumable create.
+    REQUIRE(gd.Upload(a, c, WriteFile("big.bin", "0123456789abcdefghijKLMNO"), "/Docs/big.bin"));
+    REQUIRE_EQ(log.back(), std::string("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable"));
+    REQUIRE_EQ(ranges.size(), (size_t)3);
+    REQUIRE_EQ(ranges[0], std::string("bytes 0-9/25"));
+    REQUIRE_EQ(ranges[2], std::string("bytes 20-24/25"));
+    REQUIRE_EQ(bodies[2], std::string("KLMNO"));
+    REQUIRE(followRedirectsOff);
+    // Existing file → resumable update on its id.
+    ranges.clear(); bodies.clear();
+    REQUIRE(gd.Upload(a, c, WriteFile("report.pdf", "0123456789abcdefghijKLMNO"), "/Docs/report.pdf"));
+    REQUIRE_EQ(log.back(), std::string("https://www.googleapis.com/upload/drive/v3/files/x1?uploadType=resumable"));
+    REQUIRE_EQ(ranges.size(), (size_t)3);
+}

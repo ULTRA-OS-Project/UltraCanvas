@@ -1,5 +1,5 @@
 // UltraCloud/providers/UltraCloudGoogleDrive.cpp
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudGoogleDrive.h>
@@ -185,19 +185,82 @@ Result GoogleDriveProvider::MakeDirectory(const Account&, const Credentials& cre
     return FromHttp(net, resp, "create folder " + path);
 }
 
-Result GoogleDriveProvider::Upload(const Account&, const Credentials& credentials,
-                                   const std::string& localPath, const std::string& remotePath) {
+Result GoogleDriveProvider::UploadResumable(const Credentials& credentials,
+                                            const std::string& localPath, int64_t total,
+                                            const std::string& name, const std::string& parentId,
+                                            const std::string& existingId, const std::string& what) {
+    // Open the session: a create (metadata with the parent) or an update in place.
+    UltraNetHttpRequest open;
+    if (existingId.empty()) {
+        JSONValue meta = JSONValue::MakeObject();
+        meta.Set("name", name);
+        JSONValue parents = JSONValue::MakeArray();
+        parents.Append(parentId);
+        meta.Set("parents", parents);
+        open.url = std::string(kUpload) + "/files" + Query({{"uploadType", "resumable"}});
+        open.method = UltraNetHttpMethod::Post;
+        open.headers.Set("Content-Type", "application/json; charset=UTF-8");
+        open.body = Bytes(ToJson(meta));
+    } else {
+        open.url = std::string(kUpload) + "/files/" + existingId + Query({{"uploadType", "resumable"}});
+        open.method = UltraNetHttpMethod::Custom;
+        open.customMethod = "PATCH";
+    }
+    open.headers.Set("X-Upload-Content-Type", "application/octet-stream");
+    open.headers.Set("X-Upload-Content-Length", std::to_string(total));
+    UltraNetResponse openResp;
+    UltraNetResult net = Send(credentials, open, openResp);
+    Result r = FromHttp(net, openResp, what);
+    if (!r) return r;
+    const std::string sessionUri = openResp.headers.Get("Location");
+    if (sessionUri.empty()) return Result::Error(ResultCode::Server, what + ": no upload session");
+
+    // The chunks. Google answers 308 (Resume Incomplete) to every chunk but
+    // the last, which must not be followed as a redirect.
     std::ifstream is(localPath, std::ios::binary);
     if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
-    std::string data((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+    std::vector<uint8_t> chunk;
+    for (int64_t offset = 0; offset < total; offset += chunkSize_) {
+        const int64_t length = std::min(chunkSize_, total - offset);
+        ReadChunk(is, offset, length, chunk);
+        UltraNetHttpRequest put;
+        put.url = sessionUri;
+        put.method = UltraNetHttpMethod::Put;
+        put.headers.Set("Content-Range", ContentRange(offset, length, total));
+        put.headers.Set("Content-Type", "application/octet-stream");
+        put.body = chunk;
+        put.options.followRedirects = false;
+        put.options.timeoutMs = 600000;
+        UltraNetResponse putResp;
+        UltraNetResult pnet = Send(credentials, put, putResp);
+        if (putResp.statusCode == 308) continue;   // more to come
+        Result pr = FromHttp(pnet, putResp, what);
+        if (!pr) return pr;
+    }
+    return Result::Ok();
+}
+
+Result GoogleDriveProvider::Upload(const Account&, const Credentials& credentials,
+                                   const std::string& localPath, const std::string& remotePath) {
+    const int64_t total = FileSize(localPath);
+    if (total < 0) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     const std::string p = NormalizePath(remotePath);
+    const std::string what = "upload " + remotePath;
     std::string parentId;
     Result rp = ResolveId(credentials, Parent(p), parentId);
     if (!rp) return rp;
+    std::string existing, mime;
+    if (!FindChild(credentials, parentId, Leaf(p), existing, mime)) existing.clear();
+
+    if (total > simpleUploadLimit_)
+        return UploadResumable(credentials, localPath, total, Leaf(p), parentId, existing, what);
+
+    std::ifstream is(localPath, std::ios::binary);
+    if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
+    std::string data((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
 
     UltraNetHttpRequest req;
-    std::string existing, mime;
-    if (FindChild(credentials, parentId, Leaf(p), existing, mime)) {
+    if (!existing.empty()) {
         // Same name already there: replace its content in place.
         req.url = std::string(kUpload) + "/files/" + existing + Query({{"uploadType", "media"}});
         req.method = UltraNetHttpMethod::Custom;
@@ -223,7 +286,7 @@ Result GoogleDriveProvider::Upload(const Account&, const Credentials& credential
     }
     UltraNetResponse resp;
     UltraNetResult net = Send(credentials, req, resp);
-    return FromHttp(net, resp, "upload " + remotePath);
+    return FromHttp(net, resp, what);
 }
 
 Result GoogleDriveProvider::Download(const Account&, const Credentials& credentials,

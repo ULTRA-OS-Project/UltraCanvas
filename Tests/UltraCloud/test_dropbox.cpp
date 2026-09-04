@@ -124,3 +124,43 @@ TEST(dropbox_mkdir_conflict_is_ok_and_account_info) {
     REQUIRE_EQ(user, std::string("erika@example.com"));
     REQUIRE_EQ(name, std::string("Erika"));
 }
+
+TEST(dropbox_large_upload_uses_a_session) {
+    std::vector<std::string> endpoints, args, bodies;
+    HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        endpoints.push_back(req.url.substr(req.url.find("/2/") + 3));
+        args.push_back(req.headers.Get("Dropbox-API-Arg"));
+        bodies.push_back(Body(req));
+        Answer(resp, 200, endpoints.back() == "files/upload_session/start"
+                              ? R"({"session_id":"sess-1"})" : R"({"name":"big.bin"})");
+        return Ok();
+    };
+    // 25 bytes with a 10-byte chunk and a 20-byte simple limit → start(10) + append(10) + finish(5).
+    const std::string dir = (std::filesystem::temp_directory_path() / "ultracloud-dropbox").string();
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir + "/big.bin", std::ios::binary) << "0123456789abcdefghijKLMNO";
+    DropboxProvider dropbox(fake);
+    dropbox.SetUploadLimits(/*simple=*/20, /*chunk=*/10);
+    Account a; Credentials c; c.token = "tok";
+    REQUIRE(dropbox.Upload(a, c, dir + "/big.bin", "/Shared/big.bin"));
+    REQUIRE_EQ(endpoints.size(), (size_t)3);
+    REQUIRE_EQ(endpoints[0], std::string("files/upload_session/start"));
+    REQUIRE_EQ(endpoints[1], std::string("files/upload_session/append_v2"));
+    REQUIRE_EQ(endpoints[2], std::string("files/upload_session/finish"));
+    REQUIRE_EQ(bodies[0], std::string("0123456789"));
+    REQUIRE_EQ(bodies[1], std::string("abcdefghij"));
+    REQUIRE_EQ(bodies[2], std::string("KLMNO"));
+    REQUIRE(args[1].find("\"session_id\":\"sess-1\"") != std::string::npos);
+    REQUIRE(args[1].find("\"offset\":10") != std::string::npos);
+    REQUIRE(args[2].find("\"offset\":20") != std::string::npos);
+    REQUIRE(args[2].find("\"commit\":{") != std::string::npos);
+    REQUIRE(args[2].find("\"path\":\"/Shared/big.bin\"") != std::string::npos);
+    REQUIRE(args[2].find("\"mode\":\"overwrite\"") != std::string::npos);
+
+    // A file exactly two chunks long ends with an empty finish.
+    endpoints.clear(); bodies.clear();
+    std::ofstream(dir + "/two.bin", std::ios::binary) << "0123456789abcdefghij0123456789";
+    REQUIRE(dropbox.Upload(a, c, dir + "/two.bin", "/two.bin"));
+    REQUIRE_EQ(endpoints.size(), (size_t)3);
+    REQUIRE_EQ(bodies[2], std::string("0123456789"));
+}

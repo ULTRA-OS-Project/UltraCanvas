@@ -1,5 +1,5 @@
 // UltraCloud/providers/UltraCloudOneDrive.cpp
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOneDrive.h>
@@ -127,24 +127,24 @@ Result OneDriveProvider::MakeDirectory(const Account&, const Credentials& creden
 
 Result OneDriveProvider::Upload(const Account&, const Credentials& credentials,
                                 const std::string& localPath, const std::string& remotePath) {
+    const int64_t total = FileSize(localPath);
     std::ifstream is(localPath, std::ios::binary);
-    if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
-    std::vector<uint8_t> data((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    const int64_t total = static_cast<int64_t>(data.size());
+    if (total < 0 || !is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
+    const std::string what = "upload " + remotePath;
 
-    if (total <= kSimpleUploadLimit) {
+    if (total <= simpleUploadLimit_) {
         UltraNetHttpRequest req;
         req.url = OneDriveItemUrl(remotePath, "content");
         req.method = UltraNetHttpMethod::Put;
         req.headers.Set("Content-Type", "application/octet-stream");
-        req.body = std::move(data);
+        ReadChunk(is, 0, total, req.body);
         UltraNetResponse resp;
         UltraNetResult net = Send(credentials, req, resp);
-        return FromHttp(net, resp, "upload " + remotePath);
+        return FromHttp(net, resp, what);
     }
 
-    // Large file: an upload session, then the bytes in chunks against the
-    // pre-authorised session URL (no bearer token on those requests).
+    // Large file: an upload session, then the bytes in chunks streamed from
+    // disk against the pre-authorised session URL (no bearer token there).
     JSONValue item = JSONValue::MakeObject();
     item.Set("@microsoft.graph.conflictBehavior", "replace");
     JSONValue body = JSONValue::MakeObject();
@@ -156,25 +156,25 @@ Result OneDriveProvider::Upload(const Account&, const Credentials& credentials,
     open.body = Bytes(ToJson(body));
     UltraNetResponse openResp;
     UltraNetResult net = Send(credentials, open, openResp);
-    Result r = FromHttp(net, openResp, "upload " + remotePath);
+    Result r = FromHttp(net, openResp, what);
     if (!r) return r;
     const std::string uploadUrl = ParseJson(BodyText(openResp))["uploadUrl"].GetString();
-    if (uploadUrl.empty())
-        return Result::Error(ResultCode::Server, "upload " + remotePath + ": no upload session");
+    if (uploadUrl.empty()) return Result::Error(ResultCode::Server, what + ": no upload session");
 
-    for (int64_t offset = 0; offset < total; offset += kChunkSize) {
-        const int64_t end = std::min(offset + kChunkSize, total);
-        UltraNetHttpRequest chunk;
-        chunk.url = uploadUrl;
-        chunk.method = UltraNetHttpMethod::Put;
-        chunk.headers.Set("Content-Range", "bytes " + std::to_string(offset) + "-"
-                                           + std::to_string(end - 1) + "/" + std::to_string(total));
-        chunk.headers.Set("Content-Type", "application/octet-stream");
-        chunk.body.assign(data.begin() + offset, data.begin() + end);
-        chunk.options.timeoutMs = 600000;
-        UltraNetResponse chunkResp;
-        UltraNetResult cnet = http_(chunk, chunkResp);   // session URL carries its own auth
-        Result cr = FromHttp(cnet, chunkResp, "upload " + remotePath);
+    std::vector<uint8_t> chunk;
+    for (int64_t offset = 0; offset < total; offset += chunkSize_) {
+        const int64_t length = std::min(chunkSize_, total - offset);
+        ReadChunk(is, offset, length, chunk);
+        UltraNetHttpRequest put;
+        put.url = uploadUrl;
+        put.method = UltraNetHttpMethod::Put;
+        put.headers.Set("Content-Range", ContentRange(offset, length, total));
+        put.headers.Set("Content-Type", "application/octet-stream");
+        put.body = chunk;
+        put.options.timeoutMs = 600000;
+        UltraNetResponse putResp;
+        UltraNetResult cnet = http_(put, putResp);   // session URL carries its own auth
+        Result cr = FromHttp(cnet, putResp, what);
         if (!cr) return cr;
     }
     return Result::Ok();
