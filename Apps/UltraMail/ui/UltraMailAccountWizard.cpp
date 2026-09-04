@@ -5,6 +5,8 @@
 #include "UltraMailAccountWizard.h"
 
 #include "UltraCanvasModalDialog.h"
+#include "UltraMailAlerts.h"
+#include "UltraMailDiscovery.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -110,13 +112,28 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
 
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [name, email, password, onSubmit](DialogResult result) {
+        [name, email, password, onSubmit, parent](DialogResult result) {
             if (result != DialogResult::OK) return;
             AccountDraft draft;
             draft.displayName = name->GetText();
             draft.email       = email->GetText();
             draft.password    = password->GetText();
-            if (onSubmit && !draft.email.empty()) onSubmit(draft);
+
+            // Say why nothing happened rather than discarding what was typed.
+            if (draft.email.empty()) {
+                AlertWarning(parent, "No e-mail address was entered, so no "
+                                     "account was added.",
+                             "Enter the address of the mailbox you want to add, "
+                             "for example you@example.com.");
+                return;
+            }
+            if (!LooksLikeEmailAddress(draft.email)) {
+                AlertWarning(parent, "\"" + draft.email + "\" is not a valid "
+                             "e-mail address, so no account was added.",
+                             "An address looks like you@example.com.");
+                return;
+            }
+            if (onSubmit) onSubmit(draft);
         },
         parent);
 }

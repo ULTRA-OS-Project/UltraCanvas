@@ -1,3 +1,28 @@
+#### 2026-09-03 *0.3.95*
+- **Linking UltraCrypt into an application that also links a shared
+  libultracanvas failed to link on Windows.** The string helpers (`Trim`,
+  `Split`, `ToLowerCase`, `StartsWith`) and the Base64/Base32 codecs shared one
+  translation unit in `UltraCanvasTextUtils.cpp`, and therefore one object file.
+  The UltraCanvas library links that archive publicly, so a shared core exports
+  the string helpers; UltraCrypt links it too, for `Base32Decode` alone. Pulling
+  that one codec out of the archive extracted the whole object — the string
+  helpers with it — and those collided with the same symbols already exported by
+  the shared core: `multiple definition of UltraCanvas::Trim`, fatal on PE/COFF.
+- `Base32` now lives in its own translation unit and its own static library,
+  `UltraCanvasBase32`, which UltraCrypt links instead. The split is by
+  **link-time home, not by kind**: the string helpers *and* Base64 stay with
+  `UltraCanvasTextUtils`, because UltraNet calls Base64 and UltraNet is absorbed
+  into the shared core, so those symbols must come from the core on every
+  platform. Base32's only consumer is UltraCrypt, which is deliberately UI-free,
+  so it is the one piece that belongs apart. Nothing the shared core exports is
+  now reachable from an archive on UltraCrypt's link line. Declarations stay in
+  `UltraCanvasTextUtils.h` and the code is moved verbatim, so no caller changes.
+- This was latent rather than new: nothing previously put UltraCrypt and a
+  shared core on one link line in a way that forced the object to be extracted.
+  It surfaced when UltraMail's credential vault moved to UltraVault (which links
+  UltraCrypt), breaking both `UltraMail` and `EmailCleaner` — the latter only
+  because it links the mail engine.
+
 #### 2026-09-03 *0.3.94*
 - **The filer decides per file format what gets a thumbnail — and, now, what
   gets a detail view.** `Display > Preview` gated thumbnails only, in eight

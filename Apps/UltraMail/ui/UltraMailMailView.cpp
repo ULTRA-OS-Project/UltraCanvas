@@ -96,6 +96,9 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     // Right: the message details.
     messageBox_ = CreateGroupBox("messageBox", 0, 0, 0, 0, "Message");
     messageBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
+    preview_.onSaveAttachment = [this](const Attachment& a) {
+        if (onSaveAttachment) onSaveAttachment(a);
+    };
     preview_.onOpenAttachment = [this](const Attachment& a) {
         if (onOpenAttachment) onOpenAttachment(a);
     };

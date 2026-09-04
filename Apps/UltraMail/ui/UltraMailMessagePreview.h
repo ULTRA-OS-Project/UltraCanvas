@@ -46,6 +46,9 @@ public:
 
     // Delegated to the app (writes to cache + opens in UltraCanvasMediaViewer).
     std::function<void(const Attachment&)> onOpenAttachment;
+    // Raised by the attachment strip's "Save As…" entry. Without it that menu
+    // item does nothing at all.
+    std::function<void(const Attachment&)> onSaveAttachment;
     // Delegated to the app: build a reply for the shown message.
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;
