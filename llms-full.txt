@@ -41293,6 +41293,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
+- **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
+- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
@@ -41394,6 +41396,15 @@ void SetSelectionBorders(const CellBorders& borders);
 void SetSelectionAlignment(HorizontalAlignment h, VerticalAlignment v);
 void SetSelectionNumberFormat(const NumberFormat& format);
 void SetSelectionWrapText(bool wrap);
+void AdjustSelectionDecimalPlaces(int delta);   // +1 / -1: the "increase/decrease decimals" commands
+
+// Read the active cell's formatting back (used to tick the formatting menu)
+CellFont             GetActiveCellFont() const;
+Color                GetActiveCellBackgroundColor() const;
+HorizontalAlignment  GetActiveCellHAlign() const;
+VerticalAlignment    GetActiveCellVAlign() const;
+NumberFormat         GetActiveCellNumberFormat() const;
+bool                 GetActiveCellWrapText() const;
 ```
 
 ### Rows, Columns, Merge, and Freeze
@@ -41401,6 +41412,10 @@ void SetSelectionWrapText(bool wrap);
 ```cpp
 int  GetColumnWidth(int col) const;
 void SetColumnWidth(int col, int width);
+void AutoFitColumnWidth(int col);          // fit one column to its content
+void AutoFitSelectedColumns();
+void AutoFitUnsizedColumns();              // fit every column no document/user sized
+void RequestAutoFitForUnsizedColumns();    // ...on the next render, when text can be measured
 void SetColumnHidden(int col, bool hidden);
 int  GetRowHeight(int row) const;
 void SetRowHeight(int row, int height);
@@ -41801,6 +41816,92 @@ std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 ```
 
+## Column widths
+
+A spreadsheet document may or may not say how wide its columns are, and the grid
+handles both cases without the application doing anything.
+
+**Widths stored in the document are applied.** OpenDocument keeps the width in a
+`style:style` of family `table-column`, referenced from `<table:table-column>`
+through `table:style-name` (and the row height likewise in a `table-row` style);
+`.xlsx` keeps it in `<cols><col width="…"/></cols>` plus the sheet-wide
+`sheetFormatPr/@defaultColWidth`. Both are read on import and converted to grid
+pixels at 96 dpi, so `5.08cm`, `2in` and `144pt` all arrive as 192 px. Saving
+writes the same conformant structures back, so a document round-trips through
+UltraCanvas and reopens in LibreOffice or Excel with its layout intact.
+
+**Anything the document did not size is auto-fitted to its content.** Every CSV,
+and any `.ods`/`.xlsx` that leaves a column at the default (or asks for
+`style:use-optimal-column-width` / `bestFit`), gets that column measured against
+its widest displayed value. The measurement uses the render context's real glyph
+advances in the font each cell actually uses, so a bold heading or a `1.234,00 €`
+value is sized correctly rather than by character count. Because that needs a
+render context, a file loaded before the grid is on a window is fitted on the
+first render — `LoadFromFile` and friends arrange this for you.
+
+A width becomes "explicit" — and is left alone by the auto-fit pass — when the
+document supplied it, when the user drags a column divider or double-clicks it,
+or when the application calls `SetColumnWidth`. To re-fit deliberately:
+
+```cpp
+grid->AutoFitColumnWidth(2);      // one column (also: double-click its divider)
+grid->AutoFitSelectedColumns();   // the selection
+grid->AutoFitUnsizedColumns();    // everything nothing has sized yet
+```
+
+At sheet level the same operations take an optional text measurer, which is what
+lets them be used off-screen or in tests:
+
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+sheet->AutoFitUnsizedColumns([](const std::string& text, const CellFont& font) {
+    return MyTextMetrics(text, font);   // omit the argument to use the built-in estimate
+});
+bool authored = sheet->HasExplicitColumnWidth(0);
+sheet->SetColumnWidth(0, 120, /*explicitWidth*/ true);
+```
+
+## Cell formatting menu
+
+`UltraCanvasSpreadsheetFormatMenu.h` builds the standard formatting menu for the
+current selection: alignment (horizontal, vertical, wrap), number-format presets,
+font style and size, text and background colour, column/row sizing, and
+merge/unmerge. Each number preset shows a live sample rendered through the same
+formatter the cells use, so the menu shows exactly what the cell will show.
+
+The grid opens it on a right-click, with no application code at all — the click
+selects the cell under the cursor (or keeps a multi-cell selection, or the whole
+column/row when the click lands on a header) and pops the menu up there. Turn it
+off with `SetFormatMenuEnabled(false)`, or replace it by setting
+`onCellContextMenu`.
+
+To put the same menu behind a toolbar button:
+
+```cpp
+#include "UltraCanvasSpreadsheetFormatMenu.h"
+
+formatButton->onClick = [grid, formatButton]() {
+    grid->ShowFormatMenuAt(static_cast<int>(formatButton->GetXInWindow()),
+                           static_cast<int>(formatButton->GetYInWindow() +
+                                            formatButton->GetHeight()));
+};
+```
+
+Or build the items into a menu of your own:
+
+```cpp
+auto menu = CreateSpreadsheetFormatMenu("MyFormatMenu", grid.get());
+// ...or merge them into an existing menu:
+for (const auto& item : BuildSpreadsheetFormatMenuItems(grid.get())) {
+    myMenu->AddItem(item);
+}
+```
+
+Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
+so the ticks and radio marks reflect the cell that was just clicked.
+`SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
+`NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
 ## Best Practices
 
 - **Create with the factory.** Use `CreateSpreadsheetElement(...)` so the element is a `shared_ptr` (matching the rest of the framework). Capture that `shared_ptr` in async callbacks (file dialogs) so the grid stays alive, and call `RequestRedraw()` after mutating it from a callback.
@@ -41809,6 +41910,7 @@ std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 - **Mind coordinate systems.** The API is 0-based `(row, col)`; formula text and `CellAddress::ToString()` are 1-based A1 notation (`SetCellFormula(9, 1, "=SUM(B2:B8)")`).
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.
+- **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
 ## See Also
@@ -41818,6 +41920,8 @@ std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 - [`include/UltraCanvasSpreadsheetSheet.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetSheet.h) - `SpreadsheetSheet` worksheet API
 - [`include/UltraCanvasSpreadsheetCell.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetCell.h) - `SpreadsheetCell` value and formatting API
 - [`include/UltraCanvasSpreadsheetTypes.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetTypes.h) - Addresses, ranges, styles, number formats, enums
+- [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
+- [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
 
 ==============================================================================

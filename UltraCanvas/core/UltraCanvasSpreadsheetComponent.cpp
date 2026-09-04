@@ -390,10 +390,29 @@ bool UltraCanvasSpreadsheet::IsCellSelected(int row, int col) const {
 // FORMATTING
 // ============================================================================
 
+CellRange UltraCanvasSpreadsheet::GetFormattingRange() const {
+    CellRange sel = GetSelection();
+    const auto* sheet = GetActiveSheet();
+    if (!sheet) return sel;
+
+    const bool wholeColumns = sel.end.row >= SpreadsheetLimits::MaxRows - 1;
+    const bool wholeRows    = sel.end.col >= SpreadsheetLimits::MaxColumns - 1;
+    if (!wholeColumns && !wholeRows) return sel;
+
+    const CellRange used = sheet->GetUsedRange();
+    if (wholeColumns) {
+        sel.end.row = std::max(sel.start.row, std::min(sel.end.row, used.end.row));
+    }
+    if (wholeRows) {
+        sel.end.col = std::max(sel.start.col, std::min(sel.end.col, used.end.col));
+    }
+    return sel;
+}
+
 void UltraCanvasSpreadsheet::SetSelectionFont(const CellFont& font) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -407,7 +426,7 @@ void UltraCanvasSpreadsheet::SetSelectionFont(const CellFont& font) {
 void UltraCanvasSpreadsheet::SetSelectionFontFamily(const std::string& family) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -421,7 +440,7 @@ void UltraCanvasSpreadsheet::SetSelectionFontFamily(const std::string& family) {
 void UltraCanvasSpreadsheet::SetSelectionFontSize(float size) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -435,7 +454,7 @@ void UltraCanvasSpreadsheet::SetSelectionFontSize(float size) {
 void UltraCanvasSpreadsheet::SetSelectionFontColor(const Color& color) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -449,7 +468,7 @@ void UltraCanvasSpreadsheet::SetSelectionFontColor(const Color& color) {
 void UltraCanvasSpreadsheet::SetSelectionBackgroundColor(const Color& color) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -463,7 +482,7 @@ void UltraCanvasSpreadsheet::SetSelectionBackgroundColor(const Color& color) {
 void UltraCanvasSpreadsheet::SetSelectionBorders(const CellBorders& borders) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -477,7 +496,7 @@ void UltraCanvasSpreadsheet::SetSelectionBorders(const CellBorders& borders) {
 void UltraCanvasSpreadsheet::SetSelectionAlignment(HorizontalAlignment h, VerticalAlignment v) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -491,7 +510,7 @@ void UltraCanvasSpreadsheet::SetSelectionAlignment(HorizontalAlignment h, Vertic
 void UltraCanvasSpreadsheet::SetSelectionNumberFormat(const NumberFormat& format) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -505,7 +524,7 @@ void UltraCanvasSpreadsheet::SetSelectionNumberFormat(const NumberFormat& format
 void UltraCanvasSpreadsheet::SetSelectionWrapText(bool wrap) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     if (recordingUndo_) RecordRangeChange(sel);
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
@@ -514,6 +533,65 @@ void UltraCanvasSpreadsheet::SetSelectionWrapText(bool wrap) {
     }
     if (onCellFormatChange) onCellFormatChange(sel.start.row, sel.start.col);
     RequestRedraw();
+}
+
+void UltraCanvasSpreadsheet::AdjustSelectionDecimalPlaces(int delta) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet || delta == 0) return;
+    CellRange sel = GetFormattingRange();
+    if (recordingUndo_) RecordRangeChange(sel);
+    for (int row = sel.start.row; row <= sel.end.row; ++row) {
+        for (int col = sel.start.col; col <= sel.end.col; ++col) {
+            SpreadsheetCell* cell = sheet->GetCell(row, col);
+            if (!cell) continue;
+            NumberFormat fmt = cell->GetStyle().numberFormat;
+            // "General" has no decimal setting of its own; the first
+            // increase/decrease turns the cell into a plain number, as Excel
+            // and LibreOffice both do.
+            if (fmt.category == NumberFormatCategory::General ||
+                fmt.category == NumberFormatCategory::Text) {
+                fmt = NumberFormat::Number(std::max(0, delta), false);
+            } else {
+                int decimals = std::clamp(fmt.decimalPlaces + delta, 0, 15);
+                if (decimals == fmt.decimalPlaces) continue;
+                switch (fmt.category) {
+                    case NumberFormatCategory::Currency:
+                    case NumberFormatCategory::Accounting:
+                        fmt = NumberFormat::Currency(fmt.currencySymbol, decimals,
+                                                     fmt.currencySymbolAfter);
+                        break;
+                    case NumberFormatCategory::Percentage:
+                        fmt = NumberFormat::Percentage(decimals);
+                        break;
+                    case NumberFormatCategory::Scientific:
+                        fmt = NumberFormat::Scientific(decimals);
+                        break;
+                    default:
+                        fmt = NumberFormat::Number(decimals, fmt.useThousandsSeparator);
+                        break;
+                }
+            }
+            cell->SetNumberFormat(fmt);
+        }
+    }
+    if (onCellFormatChange) onCellFormatChange(sel.start.row, sel.start.col);
+    RequestRedraw();
+}
+
+NumberFormat UltraCanvasSpreadsheet::GetActiveCellNumberFormat() const {
+    CellAddress active = GetActiveCell();
+    if (const auto* cell = GetCellIfExists(active.row, active.col)) {
+        return cell->GetStyle().numberFormat;
+    }
+    return NumberFormat::General();
+}
+
+bool UltraCanvasSpreadsheet::GetActiveCellWrapText() const {
+    CellAddress active = GetActiveCell();
+    if (const auto* cell = GetCellIfExists(active.row, active.col)) {
+        return cell->GetStyle().wrapText;
+    }
+    return false;
 }
 
 Color UltraCanvasSpreadsheet::GetActiveCellBackgroundColor() const {
@@ -636,9 +714,12 @@ int UltraCanvasSpreadsheet::GetFrozenColumnCount() const {
 void UltraCanvasSpreadsheet::AutoFitSelectedColumns() {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellTextMeasureFn measure = MakeSpreadsheetTextMeasurer(GetRenderContext());
+    CellRange sel = GetFormattingRange();
     for (int col = sel.start.col; col <= sel.end.col; ++col) {
-        sheet->AutoFitColumnWidth(col);
+        sheet->AutoFitColumnWidth(col, measure);
+        // Asked for explicitly, so the post-import pass must not undo it.
+        sheet->GetOrCreateColumnDefinition(col).explicitWidth = true;
     }
     UpdateLayout();
     RequestRedraw();
@@ -684,9 +765,11 @@ void UltraCanvasSpreadsheet::DeleteColumnsAt(int col, int count) {
 void UltraCanvasSpreadsheet::AutoFitSelectedRows() {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         sheet->AutoFitRowHeight(row);
+        // Asked for explicitly, so nothing later overrides it.
+        sheet->GetOrCreateRowDefinition(row).explicitHeight = true;
     }
     UpdateLayout();
     RequestRedraw();

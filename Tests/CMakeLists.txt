@@ -522,6 +522,30 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetNumberFormatTest")
 
+# ===== SPREADSHEET COLUMN SIZING TEST =====
+# Regression test for column widths taken from an imported document (ODF/OOXML
+# length conversion) and for the auto-width pass that fits the columns a file
+# did not size. Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetColumnSizingTest...")
+add_executable(SpreadsheetColumnSizingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetColumnSizingTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+)
+target_include_directories(SpreadsheetColumnSizingTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetColumnSizingTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetColumnSizingTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetColumnSizingTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetColumnSizingTest
+    COMMAND SpreadsheetColumnSizingTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
+
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell
 # clipping, level generation, NaN holes, point gridding and polyline

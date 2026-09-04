@@ -523,6 +523,13 @@ struct CellStyle {
 struct ColumnDefinition {
     int index = 0;
     int width = SpreadsheetLimits::DefaultColumnWidth;  // In pixels
+    // True once something actually chose this width: a width stored in the
+    // imported document, a drag on the header divider, or an explicit
+    // SetColumnWidth call. False means "nobody has sized this column", which is
+    // what the post-import auto-width pass looks for - a file that carries no
+    // column widths (CSV, and plenty of ODS/XLSX documents) gets columns fitted
+    // to their content instead of every column at the same default width.
+    bool explicitWidth = false;
     bool hidden = false;
     bool collapsed = false;     // For grouping
     int outlineLevel = 0;       // Grouping level
@@ -536,6 +543,8 @@ struct ColumnDefinition {
 struct RowDefinition {
     int index = 0;
     int height = SpreadsheetLimits::DefaultRowHeight;  // In pixels
+    // Same meaning as ColumnDefinition::explicitWidth, for the row height.
+    bool explicitHeight = false;
     bool hidden = false;
     bool collapsed = false;     // For grouping
     int outlineLevel = 0;       // Grouping level

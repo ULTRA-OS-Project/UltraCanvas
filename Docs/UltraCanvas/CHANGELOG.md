@@ -1,3 +1,46 @@
+#### 2026-09-04 *0.3.98*
+- **Imported spreadsheets lost their column widths, and files that carry none
+  showed every column at the same default width.** OpenDocument does not put the
+  width on `<table:table-column>` — it lives in a `style:style` of family
+  `table-column` that the element references through `table:style-name` — but the
+  ODS importer only looked for an inline `style:column-width` attribute, so no
+  real `.ods` ever arrived with its layout. The importer now resolves
+  `table-column` and `table-row` styles (and the inline attribute as a fallback),
+  through one shared length converter that handles `cm`/`mm`/`in`/`pt`/`pc`/`px`
+  at 96 dpi instead of three ad-hoc multipliers, and honours
+  `style:use-optimal-column-width`. The `.xlsx` importer gained
+  `sheetFormatPr/@defaultColWidth` and `defaultRowHeight`, treats `bestFit`
+  columns as content-fitted rather than authored, and no longer materializes
+  16 384 column definitions for a `<col min="1" max="16384">` run that is really
+  a sheet-wide default.
+- **The ODS writer emitted widths LibreOffice ignores.** It wrote
+  `style:column-width` straight onto `<table:table-column>`, which is not valid
+  ODF; a sheet saved from UltraCanvas reopened with every column back at the
+  default. Column widths and row heights are now written as `table-column` /
+  `table-row` automatic styles referenced by `table:style-name`, so a document
+  round-trips through UltraCanvas with its layout intact.
+- **Columns the document does not size are fitted to their content.** Every CSV,
+  and any `.ods`/`.xlsx` that leaves a column at the default, now gets that
+  column measured against its widest displayed value instead of clipping it —
+  the bundled demo document has no column styles at all, which is why its
+  headings read "Chargeba" and "Sales (€" before. The fit uses the render
+  context's real glyph advances in each cell's own font, so a bold heading is
+  measured as bold and `1.234,00 €` is measured as ten characters rather than
+  the thirteen bytes the old `length() * 8` estimate counted. A width chosen by
+  the document, by a header drag or by `SetColumnWidth` is marked explicit and
+  left alone.
+- **There was no way to format cells from the UI.** The engine had alignment,
+  number formats, fonts, colours and merging, but every one of them needed
+  application code to reach. `UltraCanvasSpreadsheetFormatMenu.h` adds the
+  standard formatting menu — alignment and wrap, number-format presets each
+  showing a live sample rendered through the cell formatter itself, increase /
+  decrease decimals, font style and size, a text and background palette,
+  column/row sizing, merge and unmerge — applied to the current selection. The
+  grid opens it on a right-click with no application code (`onCellContextMenu`
+  or `SetFormatMenuEnabled(false)` to override), and `ShowFormatMenuAt` puts it
+  behind a toolbar button. The demo's spreadsheet page gained that button, a line
+  reporting where its column widths came from, and a right-click hint.
+
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"
   category.** UltraCloud, UltraCrypt, UltraDatabase, UltraVault and UltraWin all

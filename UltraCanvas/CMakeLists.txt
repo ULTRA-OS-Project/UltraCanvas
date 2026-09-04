@@ -647,6 +647,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsxIO.cpp
+        # Cell-formatting menu (alignment, number formats, colours, sizing)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormatMenu.cpp
         # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVImportDialog.cpp
         # CSV/TSV "Text Export" options dialog (depends on the spreadsheet element)

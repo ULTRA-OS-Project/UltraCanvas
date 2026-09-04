@@ -20,6 +20,7 @@
 
 namespace UltraCanvas {
 class UltraCanvasTextInput;
+class UltraCanvasMenu;
 
 // Forward declarations
 class IRenderContext;
@@ -45,6 +46,12 @@ struct SpreadsheetUndoAction {
     std::string oldName;
     std::string newName;
 };
+
+// A text measurer backed by a live render context: it selects each cell's own
+// font before measuring, so a bold 14pt heading is not sized with 11pt body
+// metrics. Returns nullptr for a null context, which the sheet's auto-fit takes
+// as "estimate from the font size instead".
+CellTextMeasureFn MakeSpreadsheetTextMeasurer(IRenderContext* ctx);
 
 // ============================================================================
 // SPREADSHEET EDIT MODE
@@ -83,6 +90,10 @@ public:
     std::function<void()> onStructureChange;
     std::function<void()> onUndoStackChange;
     std::function<void(const std::string&)> onStatusChange;
+    // Right-click on the grid: (row, col, windowX, windowY). Set this to put up
+    // your own menu; when it is unset the built-in cell-formatting menu opens
+    // (see SetFormatMenuEnabled).
+    std::function<void(int, int, int, int)> onCellContextMenu;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
@@ -142,6 +153,14 @@ private:
     Color sheetTabActiveColor_ = Colors::White;
     Color sheetTabInactiveColor_ = Color(230, 230, 230);
     Color formulaBarBackgroundColor_ = Colors::White;
+
+    // The built-in formatting context menu, created lazily on first use.
+    std::shared_ptr<UltraCanvasMenu> formatMenu_;
+    bool formatMenuEnabled_ = true;
+    // Set by a file load: columns the document did not size are fitted to their
+    // content on the next render, when a render context exists to measure text
+    // with. Doing it at load time would have to guess the font metrics.
+    bool autoFitPending_ = false;
 
     float formulaBarHeight_ = 28;
     float sheetTabHeight_ = 24;
@@ -244,6 +263,12 @@ public:
     void InsertTextAtCursor(const std::string& text);
     
     // ===== FORMATTING =====
+    // The range the SetSelection* / AdjustSelection* calls actually write to.
+    // Identical to GetSelection() for an ordinary range; a whole-column or
+    // whole-row selection (from a header click, or SelectAll) is clipped to the
+    // cells that exist, because walking its full 1,048,576 rows would allocate
+    // a cell for every empty one.
+    CellRange GetFormattingRange() const;
     void SetSelectionFont(const CellFont& font);
     void SetSelectionFontFamily(const std::string& family);
     void SetSelectionFontSize(float size);
@@ -257,10 +282,25 @@ public:
     void SetSelectionNumberFormat(const NumberFormat& format);
     void SetSelectionWrapText(bool wrap);
     
+    // Add `delta` to the decimal places of every selected cell's number format
+    // (the "increase/decrease decimals" commands). A General cell becomes a
+    // plain Number format first, as in Excel and LibreOffice.
+    void AdjustSelectionDecimalPlaces(int delta);
+
     CellFont GetActiveCellFont() const;
     Color GetActiveCellBackgroundColor() const;
     HorizontalAlignment GetActiveCellHAlign() const;
     VerticalAlignment GetActiveCellVAlign() const;
+    NumberFormat GetActiveCellNumberFormat() const;
+    bool GetActiveCellWrapText() const;
+
+    // ===== FORMATTING MENU =====
+    // The cell-formatting menu (alignment, number format presets, font style,
+    // column width) that the grid opens on a right-click. Defined in
+    // UltraCanvasSpreadsheetFormatMenu.h/.cpp.
+    void ShowFormatMenuAt(int windowX, int windowY);
+    bool IsFormatMenuEnabled() const { return formatMenuEnabled_; }
+    void SetFormatMenuEnabled(bool enabled) { formatMenuEnabled_ = enabled; }
     
     // ===== MERGE CELLS =====
     bool MergeSelection();
@@ -284,6 +324,12 @@ public:
     void SetColumnWidth(int col, int width);
     void AutoFitColumnWidth(int col);
     void AutoFitSelectedColumns();
+    // Fit every used column the loaded document did not size. Called
+    // automatically after a file load; also useful after filling a sheet from
+    // code. Measures with the live render context when there is one.
+    void AutoFitUnsizedColumns();
+    // Queue that pass for the next render, when text can be measured properly.
+    void RequestAutoFitForUnsizedColumns() { autoFitPending_ = true; }
     void SetColumnHidden(int col, bool hidden);
     bool IsColumnHidden(int col) const;
     void InsertColumns(int count = 1);
