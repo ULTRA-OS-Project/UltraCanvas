@@ -1341,6 +1341,7 @@ their *License* is likewise marked **—** (OS component).
 | CoreAudio | [developer.apple.com](https://developer.apple.com/documentation/coreaudio) | — | — |
 | CoreText | [developer.apple.com](https://developer.apple.com/documentation/coretext/) | — | — |
 | corrosion (corrosion-rs) | [corrosion-rs.github.io](https://corrosion-rs.github.io/corrosion/) | [github.com/corrosion-rs/corrosion](https://github.com/corrosion-rs/corrosion) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Credential Manager (Windows) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/wincred/) | — | — |
 | CUPS | [openprinting.github.io/cups](https://openprinting.github.io/cups/) | [github.com/OpenPrinting/cups](https://github.com/OpenPrinting/cups) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | EGL | [khronos.org/egl](https://www.khronos.org/egl/) | [github.com/KhronosGroup/EGL-Registry](https://github.com/KhronosGroup/EGL-Registry) | — |
 | FFmpeg | [ffmpeg.org](https://ffmpeg.org/) | [git.ffmpeg.org/ffmpeg.git](https://git.ffmpeg.org/ffmpeg.git) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
@@ -1363,6 +1364,7 @@ their *License* is likewise marked **—** (OS component).
 | ImageMagick | [imagemagick.org](https://imagemagick.org/) | [github.com/ImageMagick/ImageMagick](https://github.com/ImageMagick/ImageMagick) | [ImageMagick](https://spdx.org/licenses/ImageMagick.html) |
 | jbig2dec | [jbig2dec.com](https://jbig2dec.com/) | [github.com/ArtifexSoftware/jbig2dec](https://github.com/ArtifexSoftware/jbig2dec) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | yyjson | [ibireme.github.io/yyjson](https://ibireme.github.io/yyjson/doc/doxygen/html/) | [github.com/ibireme/yyjson](https://github.com/ibireme/yyjson) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Keychain Services (macOS) | [developer.apple.com](https://developer.apple.com/documentation/security/keychain_services) | — | — |
 | KissFFT | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | LAME (libmp3lame) | [lame.sourceforge.io](https://lame.sourceforge.io/) | [sourceforge.net/projects/lame](https://sourceforge.net/projects/lame/) | [LGPL 2](https://spdx.org/licenses/LGPL-2.0-or-later.html) |
 | Latin Modern Math | [gust.org.pl](https://www.gust.org.pl/projects/e-foundry/lm-math) | — | [LPPL](https://spdx.org/licenses/LPPL-1.3c.html) |
@@ -1390,6 +1392,8 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
+| MySQL / MariaDB (planned) | [mysql.com](https://www.mysql.com/) | [github.com/mysql/mysql-server](https://github.com/mysql/mysql-server) | — |
+| libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -1399,10 +1403,13 @@ their *License* is likewise marked **—** (OS component).
 | Opus (libopus) | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opus](https://github.com/xiph/opus) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | opusfile | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opusfile](https://github.com/xiph/opusfile) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Pango | [pango.gnome.org](https://pango.gnome.org/) | [gitlab.gnome.org/GNOME/pango](https://gitlab.gnome.org/GNOME/pango) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| PostgreSQL (planned) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | — |
 | PulseAudio | [freedesktop.org/wiki/Software/PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | [gitlab.freedesktop.org/pulseaudio/pulseaudio](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| QEMU (runtime, not linked) | [qemu.org](https://www.qemu.org/) | [gitlab.com/qemu-project/qemu](https://gitlab.com/qemu-project/qemu) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | qrcodegen | [nayuki.io](https://www.nayuki.io/page/qr-code-generator-library) | [github.com/nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) | [MIT](https://spdx.org/licenses/MIT.html) |
 | QuartzCore | [developer.apple.com](https://developer.apple.com/documentation/quartzcore) | — | — |
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
+| SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
@@ -1551,12 +1558,40 @@ for the full search order.
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
 
-### UltraVault module
+### UltraCloud module
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Memory + encrypted-file backends (crypto via the UltraCrypt sibling) | (core only) | (core only) | (core only) |
-| Planned native backends | libsecret (planned) | Keychain (planned) | Credential Manager (planned) |
+| Cloud accounts, uploads and share links (Nextcloud / ownCloud, WebDAV, Dropbox, OneDrive, Google Drive; OAuth2 + PKCE) | (core only) — HTTP through UltraNet, accounts on UltraDatabase, secrets in UltraVault | (core only) — same siblings | (core only) — same siblings |
+| Provider API JSON (via UltraCanvasJSON) | yyjson (bundled) | yyjson (bundled) | yyjson (bundled) |
+
+> UltraCloud adds no third-party library of its own: every provider is written
+> in-tree against the sibling modules. Provider plug-ins loaded at runtime
+> (`UltraCloud_PluginInit`) bring their own dependencies, tracked with the
+> plug-in.
+
+### UltraCrypt module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+
+> libsodium is optional to the *build* only: configure succeeds without it, but
+> UltraCrypt then reports `BackendUnavailable` from every operation, and the
+> features layered on it (the UCD document encryption envelope, the UltraVault
+> file backend) refuse to run. SHA-1 is vendored in-tree (legacy-gated, for
+> HOTP/TOTP interop) and needs no library.
+
+### UltraDatabase module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Embedded SQL engine (Stage 1) | SQLite (system libsqlite3) | SQLite (system libsqlite3) | SQLite (system libsqlite3) |
+| Networked drivers (Stage 2) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) |
+
+> The build prefers the system libsqlite3 (pkg-config, then a plain
+> `find_library`); when it is missing the `UltraDatabase` target is simply not
+> built and the rest of the tree configures unchanged.
 
 ### Ultra Net module
 
@@ -1574,6 +1609,13 @@ for the full search order.
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraVault module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Memory + encrypted-file backends (crypto via the UltraCrypt sibling) | (core only) | (core only) | (core only) |
+| Planned native backends | libsecret (planned) | Keychain (planned) | Credential Manager (planned) |
 
 ### UltraWin module
 
@@ -52136,6 +52178,33 @@ Besides the technical implementation ULTRA OS focuses also on the ecosystem to
 create a competition to the current mainstream OS that dominate the market. The
 intention is to create new marketplaces for all.
 
+## The modules
+
+Every entry under this category is a module of the ULTRA OS stack. Select one
+for its documentation, its architecture diagram and — where the demo ships a
+live example — a working screen built on it.
+
+| Module | What it does |
+|---|---|
+| **AudioFX** | Audio effects, analysis and decoding. |
+| **FileLoader** | One universal load / save / convert facade for every file type. |
+| **IODeviceManager** | Scanners, cameras and printers behind one device API. |
+| **PixelFX** | Image effects and processing. |
+| **Smart Home** | Devices, rooms and scenes for the connected home. |
+| **UltraAI** | Provider-agnostic AI: chat, vision, speech, translation, image / video / music generation. |
+| **UltraCloud** | Cloud accounts, uploads and share links (Nextcloud / ownCloud, WebDAV, Dropbox, OneDrive, Google Drive). |
+| **UltraCrypt** | Hashing, HMAC, authenticated encryption, key derivation and secure random — the one place crypto is implemented. |
+| **UltraDatabase** | Named database connections, parameterized queries, transactions and migrations. |
+| **UltraNet** | Networking: HTTP, WebSocket, FTP, TCP/UDP, TLS, DNS. |
+| **UltraVault** | Credential and secret storage for API keys, tokens and passphrases. |
+| **UltraWin** | Windows applications on Linux / ULTRA OS, as single native windows. |
+| **VideoFX** | Video effects and transcoding. |
+| **VirtualFS** | Archives and compression browsed as ordinary folders. |
+
+The full registry — the purpose and public function surface of every module —
+is `Masterfile_modules.md`; the third-party library each one pulls in is listed
+under **Dependencies & Third Party** in this demo.
+
 ![ULTRA OS](media/diagrams/ULTRA-OS.svg)
 
 ==============================================================================
@@ -54991,6 +55060,127 @@ FILE: Docs/Modules/UltraNet/intro.md
 # UltraNet
 
 The unified, secure networking layer for every platform. One API covers HTTP, HTTPS, WebSocket, FTP, FTPS, SFTP, raw TCP and UDP, TLS, and DNS, complete with reusable sessions, proxy support, certificate validation, and async requests for responsive UIs. Additional protocols such as SMTP, IMAP, MQTT, and SSH load as plug-ins without touching the core. Built on libcurl and OpenSSL for proven performance and security.
+
+==============================================================================
+FILE: Docs/Modules/UltraVault/README.md
+==============================================================================
+
+# UltraVault
+
+**Credential and secret storage for every ULTRA OS app.**
+Sibling of `UltraCanvas` (UI), `UltraNet` (networking), `UltraCrypt`
+(cryptography), `UltraDatabase` (storage) and `UltraAI` (AI capabilities).
+
+UltraVault is the single system-level home for API keys, tokens, passphrases
+and any other secret, so that no application, plugin or sibling module rolls
+its own storage. A secret is stored once under a namespaced key and every
+consumer — UltraAI resolving a provider key, UltraCloud holding an OAuth
+refresh token, a mail or FTP client keeping a password — reads it back through
+the same call.
+
+> **Status (v0.1):** the memory backend (CI / ephemeral) and the encrypted-file
+> backend are implemented and tested — Argon2id key derivation with the cost
+> parameters stored in the file header, XChaCha20-Poly1305 AEAD with that
+> header authenticated as associated data, all via **UltraCrypt**. Sources
+> under `UltraCanvas/{include,core}/UltraVault/`, target `UltraVault`, header
+> `<UltraVault/UltraVault.h>`, `namespace UltraVault`, unit tests in
+> `Tests/UltraVaultTests.cpp`. Platform-native backends (libsecret / Keychain /
+> Credential Manager), `Import` and `PromptUserForSecret` are planned.
+>
+> The full design document — why a dedicated module, the backend comparison
+> and the key-naming contract — is
+> [`UltraAI/Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md).
+
+---
+
+## Why a module
+
+Every mature platform converges on one system service for secrets — Keychain
+on macOS, Credential Manager on Windows, the Secret Service (`libsecret`) on
+Linux, Keystore on Android — instead of asking each application to invent its
+own. Credential storage does not belong inside the consumer module: UltraAI,
+UltraNet, file managers, Git tools, package managers and OAuth-using apps all
+need the same thing, and each in-app re-implementation is another place to get
+key derivation, wiping and file tampering wrong.
+
+Keeping it separate also keeps the migration path open: when ULTRA OS gains a
+kernel-mediated secret store, it becomes one more UltraVault backend and the
+public C++ surface does not change.
+
+## Backends
+
+| Backend | State | Notes |
+|---|---|---|
+| `Memory` | implemented | Process-lifetime store, nothing persisted. Used by CI and tests, and the `Auto` fallback when nothing else is configured. |
+| `File` | implemented | One encrypted vault file. Argon2id-derived key (parameters in the header), XChaCha20-Poly1305 AEAD through UltraCrypt. |
+| `Libsecret` / `Keychain` / `CredMan` | planned | Host keyrings behind the same surface. |
+| `Native` | planned | Kernel-mediated ULTRA OS store. |
+
+`Backend::Auto` picks `File` when a vault path is configured (`Config::filePath`
+or the `ULTRAVAULT_FILE` environment variable) and `Memory` otherwise.
+
+## Design rules
+
+- **Nothing throws.** Every fallible operation returns `UltraVault::Result`
+  (`Success`, `NotFound`, `AccessDenied`, `Locked`, `BackendUnavailable`,
+  `InvalidKey`, `IoError`, `Unknown`).
+- **No oracle.** A wrong passphrase and a tampered vault file report the same
+  `AccessDenied` with the same message, so the file cannot be used to test
+  guesses.
+- **Secrets do not linger.** `Initialize()` wipes the passphrase in the
+  caller's `Config` after adopting it; `Shutdown()` wipes the decrypted store
+  and the derived key.
+- **Namespaced keys.** `<vendor>.<app>.<purpose>` — e.g. `ai.anthropic.api_key`.
+
+## Public surface
+
+```cpp
+#include <UltraVault/UltraVault.h>
+
+UltraVault::Config config;
+config.backend    = UltraVault::Backend::File;
+config.filePath   = "/home/user/.config/ultraos/secrets.vault";
+config.passphrase = passphraseFromUser;      // wiped in place by Initialize
+
+if (!UltraVault::Initialize(config).IsOk()) return;
+
+UltraVault::Put("ai.anthropic.api_key",
+                UltraVault::SecretValue::FromString(key));
+
+UltraVault::SecretValue value;
+if (UltraVault::Get("ai.anthropic.api_key", value).IsOk()) {
+    UseApiKey(value.AsString());
+}
+
+for (const std::string& key : UltraVault::List("ai.")) { /* … */ }
+
+UltraVault::Delete("ai.anthropic.api_key");
+UltraVault::Shutdown();
+```
+
+| Group | Functions |
+|---|---|
+| Lifecycle | `Initialize()`, `Initialize(Config&)`, `Shutdown()`, `IsAvailable()`, `GetBackendName()` |
+| Secrets | `Put(key, SecretValue, SecretAcl = {})`, `Get(key, out)`, `Delete(key)`, `List(prefix = "")` |
+| Bootstrap (planned) | `Import(sourcePath)`, `PromptUserForSecret(key, prompt)` |
+
+`SecretValue` carries arbitrary bytes plus a MIME type (`text/plain`,
+`application/x-pem`, …). `SecretAcl` records the owning app id, additional
+readers and a "requires user presence" flag; the memory and file backends
+store it, OS-native backends will enforce it.
+
+## Consumers
+
+- **UltraAI** — `ProviderConfig::apiKeyVaultRef` resolves through
+  `UltraVault::Get` when built with `ULTRAAI_USE_ULTRAVAULT` (on by default
+  in-tree); see `Docs/Modules/UltraAI/README.md`.
+- **UltraCloud** — `VaultSecretStore` keeps cloud account tokens here, falling
+  back to a per-app obfuscated file store when UltraVault is not built.
+
+## Third-party dependencies
+
+None of its own: the cryptography comes from the **UltraCrypt** sibling
+(libsodium). See [`Docs/Dependencies.md`](../../Dependencies.md).
 
 ==============================================================================
 FILE: Docs/Modules/UltraWin/README.md

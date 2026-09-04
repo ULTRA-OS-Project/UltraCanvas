@@ -5,10 +5,12 @@
 // UltraCanvasListView multi-column element.
 //
 // The list is grouped PER MODULE: a section-header row names each module
-// (UltraCanvas core, the optional plugins, then FileLoader / UltraNet /
-// SmartHome / UltraAI / AudioFX / PixelFX / VideoFX / VirtualFS /
-// IODeviceManager). Under each header the rows give the purpose and the
-// third-party libraries used on Linux, macOS and Windows, one library per line.
+// (UltraCanvas core, the optional plugins, then AudioFX / FileLoader /
+// IODeviceManager / PixelFX / SmartHome / UltraAI / UltraCloud / UltraCrypt /
+// UltraDatabase / UltraNet / UltraVault / UltraWin / VideoFX / VirtualFS).
+// Under each header the rows give the purpose and the third-party libraries
+// used on Linux, macOS and Windows, one library per line. The grouping mirrors
+// Docs/Dependencies.md — keep the two in step when a module gains a library.
 //
 // Library names are rendered as links: hovering shows a tooltip with the
 // library's website / source-repository / license, clicking opens a small
@@ -26,7 +28,7 @@
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
 // Version: 5.4.0
-// Last Modified: 2026-08-27
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -73,6 +75,7 @@ namespace UltraCanvas {
         {"Unicode",     "Unicode License v3",                         "https://spdx.org/licenses/Unicode-3.0.html"},
         {"curl",        "curl License",                               "https://spdx.org/licenses/curl.html"},
         {"LPPL",        "LaTeX Project Public License 1.3c (GUST Font License)", "https://spdx.org/licenses/LPPL-1.3c.html"},
+        {"public domain", "SQLite Blessing — public domain dedication",  "https://spdx.org/licenses/blessing.html"},
     };
 
     static const DepLicense* FindDepLicense(const std::string& label) {
@@ -189,6 +192,21 @@ namespace UltraCanvas {
         {"libmspack",         "https://www.cabextract.org.uk/libmspack/",                          "https://github.com/kyz/libmspack",                              "LGPL 2.1"},
         {"wimlib",            "https://wimlib.net/",                                               "https://wimlib.net/git/wimlib",                                 "LGPL 3"},
         {"libbrotli",         "https://www.brotli.org/",                                           "https://github.com/google/brotli",                              "MIT"},
+        // --- UltraCrypt ---
+        {"libsodium",         "https://doc.libsodium.org/",                                        "https://github.com/jedisct1/libsodium",                         "ISC"},
+        // --- UltraVault (planned native backends) ---
+        {"libsecret",         "https://gnome.pages.gitlab.gnome.org/libsecret/",                   "https://gitlab.gnome.org/GNOME/libsecret",                      "LGPL 2.1"},
+        {"Keychain",          "https://developer.apple.com/documentation/security/keychain_services", "",                                                           ""},
+        {"Credential Manager","https://learn.microsoft.com/en-us/windows/win32/api/wincred/",      "",                                                              ""},
+        // --- UltraDatabase ---
+        {"SQLite",            "https://www.sqlite.org/",                                           "https://github.com/sqlite/sqlite",                              "public domain"},
+        {"PostgreSQL",        "https://www.postgresql.org/",                                       "https://github.com/postgres/postgres",                          ""},
+        {"MySQL",             "https://www.mysql.com/",                                            "https://github.com/mysql/mysql-server",                         ""},
+        // --- UltraWin ---
+        {"Wine",              "https://www.winehq.org/",                                           "https://gitlab.winehq.org/wine/wine",                           "LGPL 2.1"},
+        {"winetricks",        "https://wiki.winehq.org/Winetricks",                                "https://github.com/Winetricks/winetricks",                      "LGPL 2.1"},
+        {"QEMU",              "https://www.qemu.org/",                                             "https://gitlab.com/qemu-project/qemu",                          "GPL 2"},
+        {"FreeRDP",           "https://www.freerdp.com/",                                          "https://github.com/FreeRDP/FreeRDP",                            "Apache 2"},
     };
 
     // Library names sorted longest-first so "librevenge-stream" wins over
@@ -644,11 +662,33 @@ namespace UltraCanvas {
         header("Ultra AI module");
         dep("No additional third party", "(core only)", "(core only)", "(core only)");
 
+        header("UltraCloud module");
+        dep("Cloud accounts, uploads and\nshare links (OAuth2 + PKCE)", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings");
+        dep("Provider API JSON\n(via UltraCanvasJSON)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)");
+
+        header("UltraCrypt module");
+        dep("Hashing, HMAC, AEAD, key\nderivation, secure random", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)");
+
+        header("UltraDatabase module");
+        dep("Embedded SQL engine (Stage 1)", "SQLite (public domain)", "SQLite (public domain)", "SQLite (public domain)");
+        dep("Networked drivers (Stage 2)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)");
+
         header("Ultra Net module");
         dep("Core protocols (HTTP/WS/FTP/TLS/DNS)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)");
         dep("Native sockets / platform glue", "POSIX sockets (glibc)", "BSD sockets\nNetwork.framework", "Winsock2 (ws2_32)");
         dep("Extra protocols (SMTP/MQTT/SSH/gRPC/…)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)");
         dep("JMAP mail plug-in (RFC 8620/8621)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)");
+
+        header("UltraVault module");
+        dep("Memory + encrypted-file backends\n(crypto via the UltraCrypt sibling)", "(core only)", "(core only)", "(core only)");
+        dep("Planned native backends", "libsecret (LGPL 2.1)\n(planned)", "Keychain\n(planned)", "Credential Manager\n(planned)");
+
+        header("UltraWin module (Linux / ULTRA OS only)");
+        dep("Windows-app compatibility\n(Wine tier)", "Wine (LGPL 2.1) (optional,\nruntime only — spawned as a\nchild process, never linked)", "– (module not built)", "– (module not built)");
+        dep("Component installer (VC++\nruntimes, fonts, .NET, DXVK)", "winetricks (LGPL 2.1)\n(optional, runtime only)", "– (module not built)", "– (module not built)");
+        dep("VM tier: Windows guest (Stage 2)", "QEMU (GPL 2) (optional,\nruntime only; KVM through\nthe host kernel)", "– (module not built)", "– (module not built)");
+        dep("VM tier: QMP control JSON", "yyjson (MIT) (bundled)", "– (module not built)", "– (module not built)");
+        dep("VM tier: RemoteApp client", "FreeRDP (Apache 2)\n(optional, linked)", "– (module not built)", "– (module not built)");
 
         header("VideoFX module");
         dep("Video effects / transcode", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)");

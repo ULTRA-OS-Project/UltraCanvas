@@ -48,6 +48,27 @@ cryptography:
       # 1.0.19+ additionally provides crypto_kdf_hkdf_*; until the floor is
       # raised, HKDF must be built on top of the HMAC primitives.
 
+# ===== DATABASE (UltraDatabase) =====
+#
+# UltraDatabase wraps SQLite as its embedded engine (Stage 1); the networked
+# drivers (PostgreSQL, MySQL / MariaDB) are the Stage 2 plan and are not wired
+# yet. SQLite is taken from the system: the build prefers pkg-config, falls
+# back to a plain find_library, and simply skips the UltraDatabase target when
+# neither finds it — the rest of the tree configures unchanged.
+database:
+  core:
+    sqlite3:
+      min_version: ""                 # no floor enforced by the build
+      purpose: "Embedded SQL engine for UltraDatabase (Stage 1)"
+      required: false                 # ULTRACANVAS_ENABLE_DATABASE is ON, but
+                                      # the target is skipped when absent
+      platforms: ["all"]
+      pkg_config: "sqlite3"
+      apt: "libsqlite3-dev"
+      brew: "sqlite"
+      msys2: "mingw-w64-x86_64-sqlite3"
+      vcpkg: "sqlite3"
+
 networking:
   core:
     libcurl:

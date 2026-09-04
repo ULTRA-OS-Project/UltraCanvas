@@ -48,6 +48,7 @@ their *License* is likewise marked **—** (OS component).
 | CoreAudio | [developer.apple.com](https://developer.apple.com/documentation/coreaudio) | — | — |
 | CoreText | [developer.apple.com](https://developer.apple.com/documentation/coretext/) | — | — |
 | corrosion (corrosion-rs) | [corrosion-rs.github.io](https://corrosion-rs.github.io/corrosion/) | [github.com/corrosion-rs/corrosion](https://github.com/corrosion-rs/corrosion) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Credential Manager (Windows) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/wincred/) | — | — |
 | CUPS | [openprinting.github.io/cups](https://openprinting.github.io/cups/) | [github.com/OpenPrinting/cups](https://github.com/OpenPrinting/cups) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | EGL | [khronos.org/egl](https://www.khronos.org/egl/) | [github.com/KhronosGroup/EGL-Registry](https://github.com/KhronosGroup/EGL-Registry) | — |
 | FFmpeg | [ffmpeg.org](https://ffmpeg.org/) | [git.ffmpeg.org/ffmpeg.git](https://git.ffmpeg.org/ffmpeg.git) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
@@ -70,6 +71,7 @@ their *License* is likewise marked **—** (OS component).
 | ImageMagick | [imagemagick.org](https://imagemagick.org/) | [github.com/ImageMagick/ImageMagick](https://github.com/ImageMagick/ImageMagick) | [ImageMagick](https://spdx.org/licenses/ImageMagick.html) |
 | jbig2dec | [jbig2dec.com](https://jbig2dec.com/) | [github.com/ArtifexSoftware/jbig2dec](https://github.com/ArtifexSoftware/jbig2dec) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | yyjson | [ibireme.github.io/yyjson](https://ibireme.github.io/yyjson/doc/doxygen/html/) | [github.com/ibireme/yyjson](https://github.com/ibireme/yyjson) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Keychain Services (macOS) | [developer.apple.com](https://developer.apple.com/documentation/security/keychain_services) | — | — |
 | KissFFT | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | LAME (libmp3lame) | [lame.sourceforge.io](https://lame.sourceforge.io/) | [sourceforge.net/projects/lame](https://sourceforge.net/projects/lame/) | [LGPL 2](https://spdx.org/licenses/LGPL-2.0-or-later.html) |
 | Latin Modern Math | [gust.org.pl](https://www.gust.org.pl/projects/e-foundry/lm-math) | — | [LPPL](https://spdx.org/licenses/LPPL-1.3c.html) |
@@ -97,6 +99,8 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
+| MySQL / MariaDB (planned) | [mysql.com](https://www.mysql.com/) | [github.com/mysql/mysql-server](https://github.com/mysql/mysql-server) | — |
+| libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -106,10 +110,13 @@ their *License* is likewise marked **—** (OS component).
 | Opus (libopus) | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opus](https://github.com/xiph/opus) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | opusfile | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opusfile](https://github.com/xiph/opusfile) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Pango | [pango.gnome.org](https://pango.gnome.org/) | [gitlab.gnome.org/GNOME/pango](https://gitlab.gnome.org/GNOME/pango) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| PostgreSQL (planned) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | — |
 | PulseAudio | [freedesktop.org/wiki/Software/PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | [gitlab.freedesktop.org/pulseaudio/pulseaudio](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| QEMU (runtime, not linked) | [qemu.org](https://www.qemu.org/) | [gitlab.com/qemu-project/qemu](https://gitlab.com/qemu-project/qemu) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | qrcodegen | [nayuki.io](https://www.nayuki.io/page/qr-code-generator-library) | [github.com/nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) | [MIT](https://spdx.org/licenses/MIT.html) |
 | QuartzCore | [developer.apple.com](https://developer.apple.com/documentation/quartzcore) | — | — |
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
+| SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
@@ -258,12 +265,40 @@ for the full search order.
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
 
-### UltraVault module
+### UltraCloud module
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Memory + encrypted-file backends (crypto via the UltraCrypt sibling) | (core only) | (core only) | (core only) |
-| Planned native backends | libsecret (planned) | Keychain (planned) | Credential Manager (planned) |
+| Cloud accounts, uploads and share links (Nextcloud / ownCloud, WebDAV, Dropbox, OneDrive, Google Drive; OAuth2 + PKCE) | (core only) — HTTP through UltraNet, accounts on UltraDatabase, secrets in UltraVault | (core only) — same siblings | (core only) — same siblings |
+| Provider API JSON (via UltraCanvasJSON) | yyjson (bundled) | yyjson (bundled) | yyjson (bundled) |
+
+> UltraCloud adds no third-party library of its own: every provider is written
+> in-tree against the sibling modules. Provider plug-ins loaded at runtime
+> (`UltraCloud_PluginInit`) bring their own dependencies, tracked with the
+> plug-in.
+
+### UltraCrypt module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+
+> libsodium is optional to the *build* only: configure succeeds without it, but
+> UltraCrypt then reports `BackendUnavailable` from every operation, and the
+> features layered on it (the UCD document encryption envelope, the UltraVault
+> file backend) refuse to run. SHA-1 is vendored in-tree (legacy-gated, for
+> HOTP/TOTP interop) and needs no library.
+
+### UltraDatabase module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Embedded SQL engine (Stage 1) | SQLite (system libsqlite3) | SQLite (system libsqlite3) | SQLite (system libsqlite3) |
+| Networked drivers (Stage 2) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) |
+
+> The build prefers the system libsqlite3 (pkg-config, then a plain
+> `find_library`); when it is missing the `UltraDatabase` target is simply not
+> built and the rest of the tree configures unchanged.
 
 ### Ultra Net module
 
@@ -281,6 +316,13 @@ for the full search order.
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraVault module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Memory + encrypted-file backends (crypto via the UltraCrypt sibling) | (core only) | (core only) | (core only) |
+| Planned native backends | libsecret (planned) | Keychain (planned) | Credential Manager (planned) |
 
 ### UltraWin module
 
