@@ -1,3 +1,58 @@
+#### 2026-09-04 *0.3.98*
+- **The "Open with" icon cache grew forever.** Handler icons are extracted
+  into PNG files under `%LOCALAPPDATA%\UltraCanvas\openwith-icons` (and
+  `~/Library/Caches/…` on macOS) so the menu, which draws image files, does not
+  re-extract them on every open. Nothing ever deleted one. The key is where the
+  icon came from — an executable's path, a bundle path — so every application
+  the user upgrades, moves or uninstalls leaves behind a PNG that nothing will
+  ever ask for again, accumulating for the life of the account. Each file now
+  carries the day it was last served as its modification time, and the first
+  lookup in a process deletes everything not served for **two weeks**, plus any
+  `.tmp` an interrupted write left behind. Only `.png` and `.tmp` are ever
+  considered; a swept icon that turns out to still be wanted is extracted
+  again. The stamp is rewritten at most once a day, so a context menu that
+  opens all afternoon costs no disk writes, and a clock that was set back reads
+  as fresh rather than expired.
+- **That retention policy is shared, not copied.** `kIconCacheMaxAge`,
+  `SweepIconCache` and `StampIconCacheFile` are declared in
+  `UltraCanvasFileAssociationsBackend.h` and implemented once in
+  `core/UltraCanvasFileAssociations.cpp` — plain `std::filesystem`, no platform
+  code — so the Windows and macOS backends cannot drift apart on how long an
+  icon lives.
+- **A folder of pictures could blank the application icons next to them.** The
+  filer's thumbnail cache held every finished picture in one 96 MB budget, and
+  on overflow it did not evict — it dropped *every* finished entry it had and
+  started over. So one video poster frame landing on a full cache erased the
+  whole screenful, and in a folder like a program's install directory, where a
+  few large previews sit beside dozens of executables, the `.exe` and `.dll`
+  icons were the ones that went: they were re-extracted, evicted by the next
+  preview, re-extracted again, and what the user saw was that the icons "stopped
+  showing" and did not come back. The cache now evicts **least recently drawn
+  first**, and only as far as it takes to get back under budget, so what is on
+  screen survives what is scrolling past it.
+- **Application icons no longer compete with content previews for memory.**
+  They are the file's identity, not a courtesy preview, and they cost a
+  rounding error next to a poster frame — so they now have their own 16 MB
+  budget that nothing else can spend. `UltraCanvasFilerWidget.md` documents both
+  pools and what overflowing one does.
+- **A shell icon extraction that failed once failed for good.** The slot was
+  marked Failed and never retried, so a single transient refusal from the shell
+  left that executable drawn as a generic EXE glyph for the rest of the session.
+  Extraction now gets up to three tries before the tile settles on its glyph;
+  content decodes, which fail the same way every time, still stop after one.
+- **The thumbnail workers had never joined a COM apartment.** `SHDefExtractIconW`
+  is a shell call and the shell expects one of its caller; the workers ran
+  without, which is a plausible source of exactly the intermittent per-file
+  failures above (the main thread, which does `OleInitialize`, never saw them).
+  Each worker now holds a `NativeFileIconThreadScope` for its lifetime —
+  multi-threaded apartment, since these threads have no message pump — declared
+  in `UltraCanvasNativeFileIcons.h` and empty on platforms without an extractor.
+- **Cache byte accounting is now balanced on every path out of a slot.** The
+  old wipe recomputed the total from scratch each time it fired, so nothing
+  needed to subtract; incremental eviction does, and pruning a slot or
+  overwriting one now returns its bytes (and drops any decompressed copy of it)
+  through a single helper, so the counters cannot drift.
+
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"
   category.** UltraCloud, UltraCrypt, UltraDatabase, UltraVault and UltraWin all

@@ -85,6 +85,21 @@ files (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
 extraction survives both the expiry above and a restart. Linux `.desktop`
 icons already resolve to theme files and need no extraction.
 
+Because that cache outlives the process it is also **expired**: an entry is
+keyed by where its icon came from, so an application that is upgraded, moved
+or uninstalled orphans its PNG — nothing will ever ask for that key again.
+Each file carries the day it was last served as its modification time (the
+one timestamp worth trusting; Windows stopped maintaining last-access times
+by default with Vista), rewritten at most once a day so a menu that opens
+repeatedly costs no disk writes. The first lookup in a process sweeps the
+directory and deletes everything not served for **two weeks**, along with any
+`.tmp` left by an interrupted write; nothing else in there is touched. A
+swept icon that turns out to still be wanted is simply extracted again. The
+policy is `kIconCacheMaxAge` / `SweepIconCache` / `StampIconCacheFile` in
+`UltraCanvasFileAssociationsBackend.h`, implemented once in
+`core/UltraCanvasFileAssociations.cpp` so both platforms expire on the same
+rule.
+
 ## Example
 
 ```cpp

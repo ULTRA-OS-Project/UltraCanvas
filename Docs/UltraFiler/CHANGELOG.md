@@ -1,3 +1,11 @@
+#### 2026-09-04 *1.18.2*
+- **Application icons stay on screen.** In a folder holding both large previews
+  and many executables — a program's install directory, say — the `.exe` and
+  `.dll` icons could vanish partway through browsing and not come back, leaving
+  a wall of generic EXE/DLL glyphs. The cause and the fix are entirely in the
+  framework's thumbnail cache: see framework 0.3.98. Nothing changed in
+  UltraFiler itself; this release is what carries the fix to it.
+
 #### 2026-09-03 *1.18.1*
 - **The Fonts kind persists.** The framework grew a tenth preview kind — font
   files, thumbnailed as a line of their own glyphs — and both list-of-files
