@@ -1,3 +1,27 @@
+#### 2026-09-04 *0.3.98*
+- **Folders can be drawn as an icon.** The file display asked nothing about a
+  folder before: every one of them was the same painted folder shape. It now
+  asks its host, through the new `folderIconProvider(entry)` callback, and
+  draws whatever image the host names — any format the image pipeline loads,
+  in every view from the 16 px icon column of the Details rows up to a
+  maximized tile, with `FilerStyle::folderIconScale` still applying. An empty
+  answer keeps the shape, so a display that sets no provider looks exactly as
+  it did. The images go through the shared image cache, so the same icon on a
+  hundred folders is rasterized once per size.
+- **Writing a `.qoi` file no longer depends on ImageMagick.**
+  `SavePixmapAsQoiFile(pixmap, path)` and
+  `SaveImageFileAsQoi(sourcePath, destPath, maxEdge)` (`ImageCairo.h`) encode
+  through the bundled QOI codec (`qoi.cpp`), which is compiled into every
+  build — unlike `UCImageSaveFormat::QOI`, which routes through `magicksave`
+  and is unavailable wherever the local ImageMagick has no QOI writer.
+  `SaveImageFileAsQoi` reads any format the image pipeline loads and fits the
+  result into a `maxEdge` box: a vector source is rasterized at the full box
+  (a vector has no resolution of its own), a raster is only ever scaled down.
+  It is what an application storing a picture as an icon or a cached thumbnail
+  wants — UltraFiler's folder icons are converted with it. The file is written
+  through `PathFromUtf8`, so a non-ASCII path works on Windows too, which the
+  encoder's own `qoi_write()` (narrow `fopen`) does not.
+
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"
   category.** UltraCloud, UltraCrypt, UltraDatabase, UltraVault and UltraWin all

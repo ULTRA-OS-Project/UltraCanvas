@@ -70,9 +70,10 @@
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
-// extrasMenuProvider.
-// Version: 1.23.0
-// Last Modified: 2026-09-03
+// extrasMenuProvider. A folder can be drawn as an icon of the host's
+// choosing rather than as the built-in folder shape (folderIconProvider).
+// Version: 1.24.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -917,6 +918,16 @@ namespace UltraCanvas {
         // duration). Called once per entry at scan time; empty result keeps the
         // built-in value (compression factor for archive-compressed entries).
         std::function<std::string(const FilerEntry&)> infoProvider;
+
+        // Icon for a folder entry, asked while the entry is drawn. Return the
+        // path of an image (any format the image pipeline loads - SVG, PNG,
+        // QOI, ...) to show it in place of the drawn folder shape, or "" to
+        // keep the shape. It is asked for every folder of every view, so it
+        // must be a lookup, not a disk walk. UltraFiler answers with the icons
+        // of the well-known user folders (Desktop, Documents, Downloads,
+        // Music, Pictures, Videos) and with whatever the user set through
+        // Extras > Set folder icon.
+        std::function<std::string(const FilerEntry&)> folderIconProvider;
 
         // Context-menu hooks. Items without a hook (and no built-in default)
         // are shown disabled.

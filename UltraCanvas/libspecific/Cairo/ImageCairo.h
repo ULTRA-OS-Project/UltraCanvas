@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.2.0
-// Last Modified: 2026-07-21
+// Version: 1.3.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -242,6 +242,25 @@ namespace UltraCanvas {
         static bool InitializeImageSubsysterm(const char* programName);
         static void ShutdownImageSubsysterm();
     };
+
+    // ===== QOI FILE EXPORT =====
+    // Writes a real .qoi file - the interchange format, unlike
+    // QoiCompressPixmap's in-process blobs (QoiPixmapCodec.h) - through the
+    // bundled QOI encoder (qoi.cpp). Nothing but Cairo is involved, so this
+    // works in builds without libvips and without an ImageMagick QOI write
+    // delegate, which is what `UCImageSaveFormat::QOI` needs. The pixmap's
+    // premultiplied ARGB32 pixels are un-premultiplied to straight RGBA
+    // first, as the format requires. Returns "" on success, else the reason.
+    std::string SavePixmapAsQoiFile(UCPixmapCairo& pixmap, const std::string& filePath);
+
+    // The same, straight from an image file of any format the pipeline loads
+    // (SVG included, rasterized by the vector renderer). `maxEdge` > 0 fits
+    // the image into a maxEdge x maxEdge box keeping its aspect ratio - what
+    // an application storing a picture as an icon wants; 0 keeps the source
+    // resolution. Returns "" on success, else the reason.
+    std::string SaveImageFileAsQoi(const std::string& sourcePath,
+                                   const std::string& destPath,
+                                   int maxEdge = 0);
 
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> CreatePixmapFromVImage(vips::VImage vipsImage);

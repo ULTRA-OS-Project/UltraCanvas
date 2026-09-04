@@ -666,6 +666,35 @@ compiled **standalone**, without the framework library, by several test targets
 that only want `Trim()` — a JSON dependency inside it leaves every one of them
 with undefined references at link time.
 
+## Folder icons
+
+Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
+the host replace that shape per folder: return the path of an image — any
+format the image pipeline loads, so SVG, PNG, QOI and the rest — and the entry
+is drawn from it in every view, from the 16 px icon column of the Details rows
+to a maximized thumbnail tile (`FilerStyle::folderIconScale` still applies).
+Return `""` and the built-in shape is drawn as before.
+
+```cpp
+filer->folderIconProvider = [](const FilerEntry& e) -> std::string {
+    if (e.name == "Music") return "media/icons/folder-music.svg";
+    return {};                    // everything else keeps the folder shape
+};
+```
+
+It is asked while the folder is painted, so it must be a lookup, not a disk
+walk or a platform query — cache whatever answering it costs. The images
+themselves are not a concern: they go through the shared image cache, keyed by
+path and size, so one icon on a hundred folders is rasterized once per size.
+
+The UltraFiler answers it with the icons of the well-known user folders
+(Desktop, Documents, Downloads, Music, Pictures, Videos — `media/icons/`), and
+before those with whatever the user set through the context menu's *Extras >
+Set folder icon*: that entry converts any picture to a QOI file in the
+application's config directory (`SaveImageFileAsQoi`, `ImageCairo.h`) and shows
+that copy, so the icon survives the original being moved or deleted. *Extras >
+Remove folder icon* takes it away again.
+
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
@@ -1265,6 +1294,7 @@ scan, which feeds its matches in through `AppendToFileList()` while it runs.
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
+| `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
