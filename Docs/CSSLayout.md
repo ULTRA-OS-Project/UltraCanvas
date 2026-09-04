@@ -216,6 +216,44 @@ you want the engine to size or stretch, use the no-size constructor (or pass `0,
   font, style), call `InvalidateLayout()` in addition to `RequestRedraw()` — a redraw
   alone repaints the *old* bounds; only an invalidation makes the engine re-measure.
 
+## Recipe: a box that grows with its content but keeps a minimum size
+
+A card/tile whose content can get wider (a row of counters whose numbers grow, a
+label with a longer name) must **not** be given an explicit width: an explicit
+`size.width` overrides fit-content, and containers clip their children to the
+content area, so the overflowing row is silently cut off instead of widening the
+frame. Leave the axis that must grow **auto**, and express the design's baseline
+as a *minimum*:
+
+```cpp
+// Auto width (grows with the content), fixed height, never narrower than 176.
+auto tile = std::make_shared<UltraCanvasContainer>("tile", 0, 0, 0, 0);  // 0 ⇒ Auto
+tile->size.height = CSSLayout::Dimension::Px(176);
+CSSLayout::BoxConstraints limits;
+limits.minWidth = CSSLayout::Dimension::Px(176);
+tile->boxConstraints = limits;
+
+tile->layout.SetFlexColumn()
+            .SetFlexGap(10)
+            .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+            .SetFlexAlignItems(CSSLayout::AlignItems::Center);   // keeps rows centred
+```
+
+Every auto-sized row inside then shrink-wraps its children and is centred by
+`AlignItems::Center`, so the whole stack stays on the tile's centre line as it
+widens. Children whose content changes must call `InvalidateLayout()` from their
+setters (the framework's own widgets do) — otherwise the engine keeps the cached
+measurement.
+
+> **Caveat:** a flex container honours an item's `boxConstraints` on the **main
+> axis only** ([FlexLayout.cpp:470](../UltraCanvas/core/CSSLayout/FlexLayout.cpp#L470)).
+> For a child of a flex **row**, `minWidth` works but `minHeight` is ignored —
+> give that axis an explicit `size.height` (as above) when it does not need to grow.
+
+`Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
+with a provider letter, an address and a row of `UltraCanvasBadge` counters that
+widens as the counts grow.
+
 ## Troubleshooting: my widget renders nothing at all
 
 The most common contract violation fails **silently**: an auto-sized leaf widget

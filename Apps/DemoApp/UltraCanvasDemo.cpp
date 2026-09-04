@@ -1831,6 +1831,21 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
+        modulesBuilder.AddItem("ultracloud", "Ultra Cloud",
+                               "Ultra Cloud Module — cloud accounts, uploads and share links "
+                               "(Nextcloud/ownCloud, WebDAV, Dropbox, OneDrive, Google Drive)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraCloud"); });
+        modulesBuilder.AddItem("ultracrypt", "Ultra Crypt",
+                               "Ultra Crypt Module — hashing, HMAC, AEAD, key derivation "
+                               "and secure random for every ULTRA OS module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraCrypt"); });
+        modulesBuilder.AddItem("ultradatabase", "Ultra Database",
+                               "Ultra Database Module — named connections, parameterized "
+                               "queries, transactions and migrations over SQLite (Stage 1)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraDatabase"); });
         modulesBuilder.AddItem("ultranet", "Ultra Net",
                                "Ultra Net Module — overview, documentation and a live "
                                "remote-resource loader (UltraCanvasFileLoader::LoadFile + "
@@ -1839,6 +1854,16 @@ namespace UltraCanvas {
                                [this]() { return CreateNetworkingExamples(); },
                                "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
                                "Docs/Modules/UltraNet/README.md");
+        modulesBuilder.AddItem("ultravault", "Ultra Vault",
+                               "Ultra Vault Module — the system-level home for API keys, "
+                               "tokens and passphrases (memory and encrypted-file backends)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraVault"); });
+        modulesBuilder.AddItem("ultrawin", "Ultra Win",
+                               "Ultra Win Module — Windows applications on Linux / ULTRA OS "
+                               "as single native windows (Wine tier)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
