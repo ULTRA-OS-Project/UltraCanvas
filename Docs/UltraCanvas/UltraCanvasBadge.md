@@ -19,6 +19,7 @@
 - ✅ **Count** mode with a max cap (e.g. `150` → `"99+"`) and show-zero suppression
 - ✅ **Text / status** mode (short label)
 - ✅ **Dot** mode (minimal status indicator, no text)
+- ✅ **Shape**: pill by default, or a rounded box via `BadgeStyle::cornerRadius`
 - ✅ Colour **variants**: Neutral · Primary · Successful · Warning · Danger · Info
   (or a fully custom colour)
 - ✅ **Overlay anchoring** to any corner of a sibling element, with a white
@@ -75,6 +76,7 @@ bool IsBadgeVisible() const;           // false when a 0 count / empty text hide
 void SetVariant(BadgeVariant);         // Neutral|Primary|Successful|Warning|Danger|Info
 void SetColor(const Color&);           // custom colour override
 BadgeStyle& GetStyle();
+void SetStyle(const BadgeStyle&);      // re-measures (InvalidateLayout) and redraws
 
 // Overlay
 void AnchorTo(const std::shared_ptr<UltraCanvasUIElement>& anchor,
@@ -84,6 +86,32 @@ void SetOverlayRing(bool);             // white separator ring (default on when 
 
 std::function<void()> onClick;
 ```
+
+## Shape: pill or rounded box
+
+`BadgeStyle::cornerRadius` decides the body's shape. The default `-1` keeps the
+classic pill (radius = half the height); any value `>= 0` draws a **rounded box**
+with that radius (`0` = square corners), clamped so it can never exceed half the
+shorter side. Use it when the counter should echo the corners of the tile or card
+it sits in rather than read as a pill:
+
+```cpp
+auto counter = CreateCountBadge("c", 0, 0, 12);
+counter->SetColor(Color(0, 160, 255, 255));
+BadgeStyle style;
+style.height       = 34.0f;
+style.minWidth     = 34.0f;   // a single digit stays a square
+style.paddingH     = 10.0f;
+style.cornerRadius = 8.0f;    // rounded box instead of a pill
+style.fontSize     = 15.0f;
+counter->SetStyle(style);
+```
+
+The badge still auto-sizes to its text, so `SetCount(9999)` widens the box while
+`minWidth` keeps short counts square. Put a row of them in a flex container with
+`JustifyContent::Center` and leave the surrounding tile's width **auto** so the
+frame grows with them — see `Docs/CSSLayout.md` and `Apps/UltraMail/ui/UltraMailAccountBar.cpp`
+for a worked example.
 
 ## Notes
 

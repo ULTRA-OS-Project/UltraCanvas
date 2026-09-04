@@ -1,3 +1,16 @@
+#### 2026-09-04 *0.6.0*
+- **Account tiles grow with their counters.** The tile was a fixed 176×176 box,
+  so a four- or five-digit unread count pushed the counter row past the rounded
+  frame and the container clipped it. The tile's width is now **auto** with 176
+  as a *minimum* (the height stays fixed), so the frame widens with the numbers
+  while the letter, the address and the counter row stay centred on the tile's
+  centre line. The counter row also centres explicitly
+  (`JustifyContent::Center`) instead of relying on shrink-wrap.
+- **Counters are rounded boxes, not pills.** `BadgeStyle::cornerRadius` (new,
+  `-1` keeps the pill default) lets `UltraCanvasBadge` draw a rounded box; the
+  account counters use an 8px radius so they echo the tile's rounded frame, as
+  in the design.
+
 #### 2026-09-03 *0.3.0*
 - **Attachments in the composer.** "Attach file…" opens the file dialog and
   adds the file to the draft (media type guessed from the extension); the
