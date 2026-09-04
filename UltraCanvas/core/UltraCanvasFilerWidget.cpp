@@ -44,8 +44,13 @@
 // a single format can be switched off inside a kind, and Display > Detail view
 // carries the same switches for the detail pane a host opens beside the
 // display.
-// Version: 1.23.0
-// Last Modified: 2026-09-03
+// The names the display draws keep their file extension or drop it
+// (Display > File extensions), and a thumbnail tile can carry the extension
+// as a bar or a small tag over the foot of its icon box instead — the name
+// itself is never touched, so renaming and every file operation still work on
+// the real one.
+// Version: 1.24.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -2971,6 +2976,65 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::NotifyDisplayFormatsChanged() {
         if (onDisplayFormatsChanged) onDisplayFormatsChanged();
+    }
+
+    // ===== FILE EXTENSIONS =====
+    // Whether a drawn name keeps its extension, and the tag a thumbnail tile
+    // carries instead of it. Both only change what is painted: `FilerEntry`
+    // keeps the real name throughout, so renaming, sorting and every file
+    // operation are untouched by either switch.
+
+    void UltraCanvasFilerWidget::SetFileExtensionsInNames(bool on) {
+        if (fileExtensionsInNames == on) return;
+        fileExtensionsInNames = on;
+        // A shorter name may fit a tile caption in fewer lines, which is what
+        // sizes the rows of the thumbnail grids.
+        InvalidateFilerLayout();
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    void UltraCanvasFilerWidget::SetExtensionBadge(FilerExtensionBadge badge) {
+        if (extensionBadge == badge) return;
+        extensionBadge = badge;
+        // The tag is painted over the icon box, so nothing is relaid out.
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    const char* UltraCanvasFilerWidget::ExtensionBadgeLabel(
+            FilerExtensionBadge badge) {
+        switch (badge) {
+            case FilerExtensionBadge::Bar:  return "Bar";
+            case FilerExtensionBadge::Icon: return "Icon";
+            default:                        return "None";
+        }
+    }
+
+    const std::vector<FilerExtensionBadge>&
+    UltraCanvasFilerWidget::AllExtensionBadges() {
+        static const std::vector<FilerExtensionBadge> all = {
+            FilerExtensionBadge::NoneBadge,
+            FilerExtensionBadge::Bar,
+            FilerExtensionBadge::Icon,
+        };
+        return all;
+    }
+
+    std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
+        if (e.isDirectory) return "";
+        return LooksLikeFileExtension(e.extension) ? e.extension : std::string();
+    }
+
+    std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
+        if (fileExtensionsInNames) return e.name;
+        // Only a plausible file type is dropped: the tail of
+        // "UCDemo-Windows-0.3.27-x86_64" is a version, not an extension, and a
+        // folder has no extension at all, so every dot in it belongs to it.
+        if (ExtensionTagOf(e).empty()) return e.name;
+        const size_t dot = e.name.find_last_of('.');
+        if (dot == std::string::npos || dot == 0) return e.name;
+        return e.name.substr(0, dot);
     }
 
     bool UltraCanvasFilerWidget::PreviewFitsRect(const FilerEntry& e,
@@ -6116,7 +6180,8 @@ namespace UltraCanvas {
             int rowNameLines = 1;
             for (size_t i = rowStart; mctx && i < rowEnd; ++i) {
                 rowNameLines = std::max(rowNameLines,
-                                        CaptionLinesFor(mctx, entries[i].name,
+                                        CaptionLinesFor(mctx,
+                                                        DisplayNameOf(entries[i]),
                                                         tileW - 8));
                 if (rowNameLines >= maxNameLines) break;
             }
@@ -6887,6 +6952,52 @@ namespace UltraCanvas {
 
     int UltraCanvasFilerWidget::CaptionBandHeight(int lines) const {
         return style.captionHeight + (std::max(1, lines) - 1) * NameLineHeight();
+    }
+
+    int UltraCanvasFilerWidget::ExtensionBadgeHeight() const {
+        if (style.extensionBadgeHeight > 0) return style.extensionBadgeHeight;
+        return clampi(static_cast<int>(style.smallFontSize) + 5, 12, 24);
+    }
+
+    // ===== THE EXTENSION TAG OF A TILE =====
+    // Display > File extensions: "exe" in a dark tag at the foot of the icon
+    // box, either alone (Icon) or at the right end of a strip across the box
+    // (Bar). It is drawn *over* the box rather than under it, so switching it
+    // on never changes a tile's height and never relays out the grid.
+    void UltraCanvasFilerWidget::DrawExtensionBadge(IRenderContext* ctx,
+                                                    const FilerEntry& e,
+                                                    const Rect2Di& box) {
+        if (!ctx || extensionBadge == FilerExtensionBadge::NoneBadge) return;
+        const std::string tag = ExtensionTagOf(e);
+        if (tag.empty()) return;
+        const int h = ExtensionBadgeHeight();
+        if (box.width < 16 || box.height < h) return;
+
+        ctx->PushState();
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = std::max(8.0f, style.smallFontSize - 1.0f);
+        fsty.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fsty);
+
+        const Size2Di ts = ctx->GetTextLineDimensions(tag);
+        const int tagW = clampi(ts.width + 10, 16, box.width);
+        const int y = box.y + box.height - h;
+        if (extensionBadge == FilerExtensionBadge::Bar) {
+            ctx->SetFillPaint(style.extensionBarBackground);
+            ctx->FillRectangle(Rect2Dd(box.x, y, box.width, h));
+        }
+        const int tagX = box.x + box.width - tagW;
+        ctx->SetFillPaint(style.extensionTagBackground);
+        if (extensionBadge == FilerExtensionBadge::Bar)
+            ctx->FillRectangle(Rect2Dd(tagX, y, tagW, h));
+        else
+            ctx->FillRoundedRectangle(Rect2Dd(tagX, y, tagW, h), 3);
+
+        ctx->SetTextPaint(style.extensionTagTextColor);
+        ctx->DrawText(tag, Point2Dd(tagX + (tagW - ts.width) / 2.0,
+                                    y + (h - ts.height) / 2.0));
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawSelectionState(IRenderContext* ctx,
@@ -7844,7 +7955,7 @@ namespace UltraCanvas {
             Color color = style.secondaryTextColor;
             switch (c.id) {
                 case FilerDetailsColumn::Name:
-                    value = e.name;
+                    value = DisplayNameOf(e);
                     color = style.textColor;
                     break;
                 case FilerDetailsColumn::Path:
@@ -7908,7 +8019,8 @@ namespace UltraCanvas {
         ctx->SetTextPaint(style.textColor);
         int textX = item.imageRect.x + item.imageRect.width + 6;
         int avail = item.rect.x + item.rect.width - textX - 4;
-        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name, avail);
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex,
+                                               DisplayNameOf(e), avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
         ctx->DrawText(shown, Point2Dd(textX,
                 item.rect.y + (item.rect.height - ts.height) / 2));
@@ -7935,6 +8047,10 @@ namespace UltraCanvas {
                           img.y + (img.height - h) / 2, w, h);
         }
         DrawEntryIcon(ctx, e, img, fit);
+        // Display > File extensions: the type tag over the foot of the icon
+        // box. The box, not the fitted image: a landscape photo leaves the
+        // tag hanging in the gap below it otherwise.
+        DrawExtensionBadge(ctx, e, item.imageRect);
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
@@ -7947,7 +8063,7 @@ namespace UltraCanvas {
         int capH = CaptionBandHeight(item.captionLines);
         int nameLineH = NameLineHeight();
         std::vector<std::string> nameLines = WrapEntryName(
-                ctx, item.entryIndex, e.name, item.rect.width - 8,
+                ctx, item.entryIndex, DisplayNameOf(e), item.rect.width - 8,
                 std::max(1, item.captionLines));
         double ny = capTop + (capH - static_cast<int>(nameLines.size()) * nameLineH) / 2.0;
         for (const std::string& ln : nameLines) {
@@ -8005,7 +8121,8 @@ namespace UltraCanvas {
         // widest value we can format ("NNN.N UU").
         BarSizeColumns cols = BarSizeColumnsFor(item, BarSizeValueWidthFor(ctx));
 
-        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex,
+                                               DisplayNameOf(e),
                                                cols.nameWidth - 8);
         ctx->SetTextPaint(style.textColor);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
@@ -8081,7 +8198,8 @@ namespace UltraCanvas {
             int maxLines = clampi(nameRoom / std::max(1, lineH), 1,
                                   std::max(1, style.captionMaxLines));
             std::vector<std::string> nameLines = WrapEntryName(
-                    ctx, item.entryIndex, e.name, item.rect.width - 8, maxLines);
+                    ctx, item.entryIndex, DisplayNameOf(e),
+                    item.rect.width - 8, maxLines);
             int ny = item.rect.y + 3;
             for (const std::string& ln : nameLines) {
                 ctx->DrawText(ln, Point2Dd(item.rect.x + 4, ny));
@@ -9361,7 +9479,7 @@ namespace UltraCanvas {
                     IsOnItemName(item, content)) {
                     target = TooltipTarget::ItemName;
                     entry  = item.entryIndex;
-                    text   = entries[item.entryIndex].name;
+                    text   = DisplayNameOf(entries[item.entryIndex]);
                 }
                 break;
             }
@@ -9874,9 +9992,24 @@ namespace UltraCanvas {
                 }
             }
 
+            // File extensions > whether the drawn names carry them, and the
+            // tag the thumbnail tiles show instead of / beside them.
+            std::vector<MenuItemData> extensionItems;
+            extensionItems.push_back(MenuItemData::Checkbox(
+                    "Show in names", fileExtensionsInNames,
+                    [this](bool on) { SetFileExtensionsInNames(on); }));
+            extensionItems.push_back(MenuItemData::Separator());
+            for (FilerExtensionBadge b : AllExtensionBadges()) {
+                extensionItems.push_back(MenuItemData::Radio(
+                        ExtensionBadgeLabel(b), 4, extensionBadge == b,
+                        [this, b]() { SetExtensionBadge(b); }));
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
+            displayItems.push_back(MenuItemData::Submenu("File extensions",
+                                                         extensionItems));
             displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
             displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));

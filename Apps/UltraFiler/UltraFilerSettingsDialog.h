@@ -3,8 +3,8 @@
 // pages with sub pages, e.g. Media Viewer > Transparent Images) and the
 // selected page on the right. Changes apply to the running application
 // immediately (via the onChanged callback) and are persisted right away.
-// Version: 1.2.0
-// Last Modified: 2026-09-03
+// Version: 1.3.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -22,7 +22,7 @@ public:
     // on; the others let a caller point straight at a setting - the file
     // display's Display > Thumbnails / Detail view submenus open the matching
     // list of files this way.
-    enum class Page { Default, Thumbnails, DetailView };
+    enum class Page { Default, Thumbnails, DetailView, FileExtensions };
 
     // Opens the settings window (or raises it when already open). `settings`
     // must outlive the dialog; `onChanged` is called after every change so the
