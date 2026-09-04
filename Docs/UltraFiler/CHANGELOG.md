@@ -1,30 +1,34 @@
 #### 2026-09-04 *1.19.0*
-- **Settings > Display > File extensions.** Two switches on one page: whether
-  the file display's names still end in their extension, and what the thumbnail
-  tiles show about the file type instead — nothing, a bar across the foot of the
-  icon with the extension at its right end, or that tag on its own in the
-  corner. Hiding the extension only changes what is drawn: renaming, sorting,
-  the Type column and every file operation keep using the real name, so a
-  hidden extension can neither be lost nor duplicated by a rename, and a name
-  whose tail is a version rather than a type (`UCDemo-Windows-0.3.27-x86_64`),
-  a dot file and a folder with a dot in it are all left alone. Both settings are
-  saved to `config.ini` (`display.extensions.in.names`,
-  `display.extensions.badge`) and applied to every file display of the window;
-  the display's own `Display > File extensions` submenu carries the same
-  switches, and flipping one there is the same setting saved the same way.
-- **A file display opened later starts configured.** The Display > Thumbnails
-  and Display > Detail view switches were pushed into the file displays that
-  existed when a setting changed, so a tab opened afterwards — and the History
-  and Favorites lists — came up with everything switched on regardless of what
-  was saved, until the next settings change swept them up. Every newly created
-  display now takes the saved Display settings at creation.
-#### 2026-09-04 *1.18.2*
-- **Application icons stay on screen.** In a folder holding both large previews
-  and many executables — a program's install directory, say — the `.exe` and
-  `.dll` icons could vanish partway through browsing and not come back, leaving
-  a wall of generic EXE/DLL glyphs. The cause and the fix are entirely in the
-  framework's thumbnail cache: see framework 0.3.98. Nothing changed in
-  UltraFiler itself; this release is what carries the fix to it.
+- **The main user folders have icons of their own — in the file display, not
+  only in the tree.** Desktop, Documents, Downloads, Music, Pictures and
+  Videos are drawn from `media/icons/user-desktop.svg`,
+  `folder-documents.svg`, `folder-download.svg`, `folder-music.svg`,
+  `folder-images.svg` and `folder-videos.svg` instead of the generic folder
+  shape, so the Home folder reads at a glance the way Explorer's and Finder's
+  do. The tree and the display now take them from the same place, so they
+  cannot drift apart, and a redirected or localized folder ("Bilder", a
+  Documents folder moved into OneDrive) gets its icon like any other — the
+  match is on the resolved path, not on the name.
+- **Extras > Set folder icon: any folder can have any picture as its icon.**
+  The entry opens the file dialog filtered to the image formats this build can
+  actually read, and the chosen picture — SVG, PNG, JPEG, WebP, QOI, whatever
+  the image pipeline loads — is converted once to a 256 px QOI file in the
+  application's config directory (`~/.config/UltraFiler/foldericons`,
+  `%APPDATA%\UltraFiler\foldericons`, `~/Library/Application
+  Support/UltraFiler/foldericons`). It is that copy the filer draws, so the
+  icon keeps working when the original is moved, renamed or deleted, and it
+  costs no format plugin to decode. The icon shows everywhere the folder does:
+  every tab, the folder preview, the History and Favorites lists, its row in
+  the folder tree and its bookmark under the tree's Pinned section. With
+  several folders selected they all get it; with nothing selected the shown
+  folder does. **Extras > Remove folder icon** takes it away again (and
+  deletes the converted file) — it is enabled only while one of the selected
+  folders actually carries one. A folder the user set an icon on keeps it over
+  the built-in icon of a main user folder, which is the point of setting one
+  on Pictures.
+- The mapping lives in `foldericons.txt` beside the settings, as one
+  tab-separated line per folder, and an entry whose converted icon has gone
+  missing is dropped on load rather than drawn as nothing.
 
 #### 2026-09-03 *1.18.1*
 - **The Fonts kind persists.** The framework grew a tenth preview kind — font

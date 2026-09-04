@@ -7775,6 +7775,22 @@ namespace UltraCanvas {
 
         Color color = CategoryColor(e.category);
         if (e.isDirectory) {
+            // A folder the host gave an icon (the well-known user folders, or
+            // one the user picked) is drawn as that image instead of the
+            // shape. Cached by the shared image cache per path and size, so
+            // the same six icons cost one rasterization each however many
+            // folders and views show them.
+            if (folderIconProvider) {
+                const std::string icon = folderIconProvider(e);
+                // An icon file that cannot be read falls through to the shape:
+                // an empty box where a folder should be is worse than the
+                // look the host meant to replace.
+                auto img = icon.empty() ? nullptr : UCImage::Get(icon);
+                if (img && img->IsValid()) {
+                    ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
+                    return;
+                }
+            }
             // Folder shape: a tab above the body.
             double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
             ctx->SetFillPaint(color);
