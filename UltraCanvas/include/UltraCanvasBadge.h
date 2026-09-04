@@ -1,7 +1,7 @@
 // include/UltraCanvasBadge.h
 // Badge: a small count / status indicator. Works two ways:
-//   * Standalone — a coloured pill with a number or short label, or a minimal
-//                  status dot.
+//   * Standalone — a coloured pill (or rounded box, via BadgeStyle::cornerRadius)
+//                  with a number or short label, or a minimal status dot.
 //   * Overlay    — anchored to a corner of another element (the classic
 //                  notification count on a bell / inbox icon).
 //
@@ -9,8 +9,8 @@
 // variants (Neutral / Primary / Success / Warning / Danger / Info). The badge
 // auto-sizes to its content and, when anchored, follows its anchor.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.1.0 - BadgeStyle::cornerRadius: pill (default) or rounded box.
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -58,6 +58,12 @@ namespace UltraCanvas {
         float paddingH     = 6.0f;
         float dotSize       = 10.0f;
         float borderWidth   = 0.0f;
+
+        // Corner radius of the badge body. The default -1 keeps the classic
+        // pill (radius = height / 2); any value >= 0 draws a rounded box with
+        // that radius instead (0 = square corners), for tile/card designs where
+        // the counter should echo the frame's corners rather than a pill.
+        float cornerRadius  = -1.0f;
 
         float fontSize     = 11.0f;
         std::string fontFamily;
