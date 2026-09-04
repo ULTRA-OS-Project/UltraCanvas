@@ -1471,6 +1471,30 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER FILE-EXTENSION DISPLAY TEST =====
+# Display > File extensions: the name the file display draws for an entry and
+# the type tag its thumbnail tiles carry. Hiding an extension must never
+# invent a file type out of a version number or an architecture tag.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerExtensionDisplayTest...")
+    add_executable(FilerExtensionDisplayTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerExtensionDisplayTest.cpp
+    )
+    target_include_directories(FilerExtensionDisplayTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerExtensionDisplayTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerExtensionDisplayTest PRIVATE UltraCanvas)
+    set_target_properties(FilerExtensionDisplayTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerExtensionDisplayTest COMMAND FilerExtensionDisplayTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerExtensionDisplayTest")
+else()
+    message(STATUS "  FilerExtensionDisplayTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FONT FILE TEST =====
 # Reading a font definition file as a document: its name records, and the
 # line of its own glyphs the filer thumbnails it with. Runs against the

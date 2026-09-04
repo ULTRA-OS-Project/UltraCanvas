@@ -219,6 +219,17 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   are prewarmed in the background while a folder is shown, so the menu opens
   without any lookup delay.
 - **Status bar:** entry count of the folder, selection count and summed size.
+- **Folder icons:** the main user folders — Desktop, Documents, Downloads,
+  Music, Pictures and Videos — are shown with icons of their own instead of
+  the generic folder shape, in the file display and in the folder tree alike.
+  **Extras > Set folder icon** gives *any* folder a picture of the user's
+  choosing: it opens the file dialog filtered to the image formats the build
+  can read, and converts the chosen file to a QOI icon kept in the config
+  directory (`~/.config/UltraFiler/foldericons`), so the icon survives the
+  original being moved or deleted. It is drawn everywhere the folder appears —
+  every tab, the folder preview, the History and Favorites lists, the tree row
+  and its Pinned bookmark — and beats the built-in icon of a main user folder.
+  **Extras > Remove folder icon** takes it away again.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file

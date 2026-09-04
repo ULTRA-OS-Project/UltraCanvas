@@ -56,59 +56,28 @@
   above, in the place a newcomer looks for them.
 
 #### 2026-09-04 *0.3.98*
-- **The "Open with" icon cache grew forever.** Handler icons are extracted
-  into PNG files under `%LOCALAPPDATA%\UltraCanvas\openwith-icons` (and
-  `~/Library/Caches/…` on macOS) so the menu, which draws image files, does not
-  re-extract them on every open. Nothing ever deleted one. The key is where the
-  icon came from — an executable's path, a bundle path — so every application
-  the user upgrades, moves or uninstalls leaves behind a PNG that nothing will
-  ever ask for again, accumulating for the life of the account. Each file now
-  carries the day it was last served as its modification time, and the first
-  lookup in a process deletes everything not served for **two weeks**, plus any
-  `.tmp` an interrupted write left behind. Only `.png` and `.tmp` are ever
-  considered; a swept icon that turns out to still be wanted is extracted
-  again. The stamp is rewritten at most once a day, so a context menu that
-  opens all afternoon costs no disk writes, and a clock that was set back reads
-  as fresh rather than expired.
-- **That retention policy is shared, not copied.** `kIconCacheMaxAge`,
-  `SweepIconCache` and `StampIconCacheFile` are declared in
-  `UltraCanvasFileAssociationsBackend.h` and implemented once in
-  `core/UltraCanvasFileAssociations.cpp` — plain `std::filesystem`, no platform
-  code — so the Windows and macOS backends cannot drift apart on how long an
-  icon lives.
-- **A folder of pictures could blank the application icons next to them.** The
-  filer's thumbnail cache held every finished picture in one 96 MB budget, and
-  on overflow it did not evict — it dropped *every* finished entry it had and
-  started over. So one video poster frame landing on a full cache erased the
-  whole screenful, and in a folder like a program's install directory, where a
-  few large previews sit beside dozens of executables, the `.exe` and `.dll`
-  icons were the ones that went: they were re-extracted, evicted by the next
-  preview, re-extracted again, and what the user saw was that the icons "stopped
-  showing" and did not come back. The cache now evicts **least recently drawn
-  first**, and only as far as it takes to get back under budget, so what is on
-  screen survives what is scrolling past it.
-- **Application icons no longer compete with content previews for memory.**
-  They are the file's identity, not a courtesy preview, and they cost a
-  rounding error next to a poster frame — so they now have their own 16 MB
-  budget that nothing else can spend. `UltraCanvasFilerWidget.md` documents both
-  pools and what overflowing one does.
-- **A shell icon extraction that failed once failed for good.** The slot was
-  marked Failed and never retried, so a single transient refusal from the shell
-  left that executable drawn as a generic EXE glyph for the rest of the session.
-  Extraction now gets up to three tries before the tile settles on its glyph;
-  content decodes, which fail the same way every time, still stop after one.
-- **The thumbnail workers had never joined a COM apartment.** `SHDefExtractIconW`
-  is a shell call and the shell expects one of its caller; the workers ran
-  without, which is a plausible source of exactly the intermittent per-file
-  failures above (the main thread, which does `OleInitialize`, never saw them).
-  Each worker now holds a `NativeFileIconThreadScope` for its lifetime —
-  multi-threaded apartment, since these threads have no message pump — declared
-  in `UltraCanvasNativeFileIcons.h` and empty on platforms without an extractor.
-- **Cache byte accounting is now balanced on every path out of a slot.** The
-  old wipe recomputed the total from scratch each time it fired, so nothing
-  needed to subtract; incremental eviction does, and pruning a slot or
-  overwriting one now returns its bytes (and drops any decompressed copy of it)
-  through a single helper, so the counters cannot drift.
+- **Folders can be drawn as an icon.** The file display asked nothing about a
+  folder before: every one of them was the same painted folder shape. It now
+  asks its host, through the new `folderIconProvider(entry)` callback, and
+  draws whatever image the host names — any format the image pipeline loads,
+  in every view from the 16 px icon column of the Details rows up to a
+  maximized tile, with `FilerStyle::folderIconScale` still applying. An empty
+  answer keeps the shape, so a display that sets no provider looks exactly as
+  it did. The images go through the shared image cache, so the same icon on a
+  hundred folders is rasterized once per size.
+- **Writing a `.qoi` file no longer depends on ImageMagick.**
+  `SavePixmapAsQoiFile(pixmap, path)` and
+  `SaveImageFileAsQoi(sourcePath, destPath, maxEdge)` (`ImageCairo.h`) encode
+  through the bundled QOI codec (`qoi.cpp`), which is compiled into every
+  build — unlike `UCImageSaveFormat::QOI`, which routes through `magicksave`
+  and is unavailable wherever the local ImageMagick has no QOI writer.
+  `SaveImageFileAsQoi` reads any format the image pipeline loads and fits the
+  result into a `maxEdge` box: a vector source is rasterized at the full box
+  (a vector has no resolution of its own), a raster is only ever scaled down.
+  It is what an application storing a picture as an icon or a cached thumbnail
+  wants — UltraFiler's folder icons are converted with it. The file is written
+  through `PathFromUtf8`, so a non-ASCII path works on Windows too, which the
+  encoder's own `qoi_write()` (narrow `fopen`) does not.
 
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"

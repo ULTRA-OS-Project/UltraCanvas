@@ -1,4 +1,4 @@
-#### 2026-09-04 *1.18.3*
+#### 2026-09-04 *1.19.1*
 - **The folder tree shows its connecting lines again.** The tree was built with
   `TreeLineStyle::NoLine`, so a deep folder opened alongside its neighbours left
   the rows below it indented against nothing: which folder a subfolder belonged
@@ -11,13 +11,37 @@
   every row (see `Docs/UltraCanvas/CHANGELOG.md` 0.3.99), and the tree lines up
   down each level.
 
-#### 2026-09-04 *1.18.2*
-- **Application icons stay on screen.** In a folder holding both large previews
-  and many executables — a program's install directory, say — the `.exe` and
-  `.dll` icons could vanish partway through browsing and not come back, leaving
-  a wall of generic EXE/DLL glyphs. The cause and the fix are entirely in the
-  framework's thumbnail cache: see framework 0.3.98. Nothing changed in
-  UltraFiler itself; this release is what carries the fix to it.
+#### 2026-09-04 *1.19.0*
+- **The main user folders have icons of their own — in the file display, not
+  only in the tree.** Desktop, Documents, Downloads, Music, Pictures and
+  Videos are drawn from `media/icons/user-desktop.svg`,
+  `folder-documents.svg`, `folder-download.svg`, `folder-music.svg`,
+  `folder-images.svg` and `folder-videos.svg` instead of the generic folder
+  shape, so the Home folder reads at a glance the way Explorer's and Finder's
+  do. The tree and the display now take them from the same place, so they
+  cannot drift apart, and a redirected or localized folder ("Bilder", a
+  Documents folder moved into OneDrive) gets its icon like any other — the
+  match is on the resolved path, not on the name.
+- **Extras > Set folder icon: any folder can have any picture as its icon.**
+  The entry opens the file dialog filtered to the image formats this build can
+  actually read, and the chosen picture — SVG, PNG, JPEG, WebP, QOI, whatever
+  the image pipeline loads — is converted once to a 256 px QOI file in the
+  application's config directory (`~/.config/UltraFiler/foldericons`,
+  `%APPDATA%\UltraFiler\foldericons`, `~/Library/Application
+  Support/UltraFiler/foldericons`). It is that copy the filer draws, so the
+  icon keeps working when the original is moved, renamed or deleted, and it
+  costs no format plugin to decode. The icon shows everywhere the folder does:
+  every tab, the folder preview, the History and Favorites lists, its row in
+  the folder tree and its bookmark under the tree's Pinned section. With
+  several folders selected they all get it; with nothing selected the shown
+  folder does. **Extras > Remove folder icon** takes it away again (and
+  deletes the converted file) — it is enabled only while one of the selected
+  folders actually carries one. A folder the user set an icon on keeps it over
+  the built-in icon of a main user folder, which is the point of setting one
+  on Pictures.
+- The mapping lives in `foldericons.txt` beside the settings, as one
+  tab-separated line per folder, and an entry whose converted icon has gone
+  missing is dropped on load rather than drawn as nothing.
 
 #### 2026-09-03 *1.18.1*
 - **The Fonts kind persists.** The framework grew a tenth preview kind — font

@@ -40,14 +40,19 @@
 // Delete / Paste (folders only), a Pin submenu whose "To Treeview" /
 // "To Favorites" flags show and toggle where the folder is pinned, and Unpin
 // (pinned entries only). The filer context menus' Extras submenu ends with an
-// app-provided block (extrasMenuProvider): "Open prompt", then Pin / Unpin
-// submenus with the same flags, acting on the current selection.
+// app-provided block (extrasMenuProvider): "Open prompt", then "Set folder
+// icon" / "Remove folder icon" (any folder can be given a picture of the
+// user's choosing, converted to QOI and kept in the config directory - see
+// UltraFilerFolderIcons), then Pin / Unpin submenus with the same flags, all
+// acting on the current selection. The main user folders (Desktop, Documents,
+// Downloads, Music, Pictures, Videos) carry icons of their own without
+// anything being set.
 // The tree's drive entries (the drive roots on Windows, "File System" and the
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.15.0
-// Last Modified: 2026-09-03
+// Version: 1.16.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -68,6 +73,7 @@
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
 #include "UltraFilerFavorites.h"
+#include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
@@ -333,6 +339,32 @@ private:
     // show whether the current selection is pinned there.
     std::vector<MenuItemData> BuildExtrasMenuItems();
 
+    // ===== FOLDER ICONS (Extras > Set folder icon) =====
+    // The icon a folder is drawn with, as an absolute image path: the one the
+    // user set for it, else the icon of a well-known user folder (Desktop,
+    // Documents, Downloads, Music, Pictures, Videos), else "" — which is what
+    // makes the file display draw its own folder shape.
+    std::string FolderIconPath(const std::string& folderPath) const;
+    // The icon file a tree row shows when its folder has no icon of its own -
+    // "drive.png" for a drive entry, "home-icon.png" for Home, "cloud.svg"
+    // under Cloud Storage, else the plain folder.
+    std::string DefaultTreeIconFile(const TreeNode* node) const;
+    // Installs FolderIconPath as a freshly created file display's
+    // folderIconProvider, so every view of it draws the icons.
+    void WireFolderIconProvider(UltraCanvasFilerWidget* target);
+    // Extras > Set folder icon: opens the image file dialog and gives the
+    // chosen picture — converted to QOI — to the selected folders (or, with
+    // nothing selected, to the shown folder). Extras > Remove folder icon
+    // takes it away again.
+    void SetFolderIconForTargets();
+    void RemoveFolderIconForTargets();
+    // The folders the two entries above act on: the selected ones, or the
+    // shown folder while nothing is selected.
+    std::vector<std::string> FolderIconTargets() const;
+    // Repaints what shows a folder's icon after it changed: its tree row and
+    // every file display.
+    void RefreshFolderIcons(const std::vector<std::string>& folders);
+
     // ===== FOLDER TREE: PINNED SECTION + CONTEXT MENU =====
     // Rebuilds the children of the tree's "Pinned" node from the pinned
     // folder paths (dropping the ones that no longer exist).
@@ -456,6 +488,12 @@ private:
     // Installs the display-format callbacks (menu tail + change hook) on a
     // freshly created file display.
     void WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target);
+    // The Display settings every file display carries alike: the thumbnail /
+    // detail-view switches and the File extensions ones. Applied by
+    // ApplySettings to all of them, and to a display created later (a new tab,
+    // the History and Favorites lists) so it opens configured rather than
+    // waiting for the next settings change.
+    void ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
     // History / Clear Favorites actions. `page` points it straight at one
@@ -581,6 +619,7 @@ private:
     UltraFilerSettings settings;           // persisted application settings
     UltraFilerHistory  history;            // recently used files / folders / apps
     UltraFilerFavorites favorites;         // pinned files / folders / apps + tree pins
+    UltraFilerFolderIcons folderIcons;     // user-set icons of individual folders
     UltraFilerFolderViews folderViews;     // per-folder view type + sort order
     // Set while a stored folder state is being pushed into a filer, so the
     // widget's own onViewTypeChanged / onSortChanged do not record it straight
