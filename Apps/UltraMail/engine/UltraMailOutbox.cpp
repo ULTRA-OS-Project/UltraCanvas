@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOutbox.h"
 
@@ -174,8 +174,14 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp,
         opts.useTls = true;
 
         UltraNetResult r = sender.Send(item.draft, item.serverUrl, opts);
-        if (r) { store_.Remove(item.id); stats.sent++; }
-        else   { store_.MarkFailed(item.id, r.message); stats.failed++; }
+        if (r) {
+            store_.Remove(item.id);
+            stats.sent++;
+        } else {
+            store_.MarkFailed(item.id, r.message);
+            stats.failed++;
+            stats.lastFailure = r;   // carried out so the UI can say why
+        }
     }
     return stats;
 }
