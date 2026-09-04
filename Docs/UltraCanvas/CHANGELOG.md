@@ -1,3 +1,35 @@
+#### 2026-09-04 *0.3.97*
+- **The Filer draws names with or without their file extension, and can put
+  the extension back on the tile.** A file display that ends every name in
+  `.png` spends a third of a narrow tile caption on four characters that the
+  icon already said, and one that simply cuts them off leaves nothing saying
+  what the file is. `UltraCanvasFilerWidget` now separates the two questions
+  (`Display > File extensions`): `SetFileExtensionsInNames(bool)` decides
+  whether the *drawn* name keeps its extension, and
+  `SetExtensionBadge(FilerExtensionBadge)` — `NoneBadge` / `Bar` / `Icon` —
+  decides what a thumbnail tile shows instead, either a strip across the foot
+  of the icon box with the extension in a tag at its right end, or that tag
+  alone in the corner. Both ship off / on as before, so nothing changes for a
+  display that does not ask.
+  Both are display-only: `FilerEntry::name` still holds the real name, so
+  sorting, the Type column, the info bar, the inline rename editor and every
+  file operation work on it exactly as before — a hidden extension cannot be
+  lost by a rename and never has to be re-appended by one. The name is
+  shortened only where its tail really is a file type: `ExtensionTagOf()`
+  answers that for the name rule and the tag rule alike, so
+  `UCDemo-Windows-0.3.27-x86_64` keeps its version, a dot file keeps its whole
+  name, a folder keeps every dot, and none of them gets a tag either.
+  `DisplayNameOf(entry)` hands a host the name as the display draws it.
+  The tag is painted *over* the foot of the icon box rather than under it, so
+  switching it on changes no tile's height and relays out nothing, and the four
+  colours and heights it uses are `FilerStyle` fields
+  (`extensionBarBackground`, `extensionTagBackground`, `extensionTagTextColor`,
+  `extensionBadgeHeight`). Both switches sit in the context menu under
+  `Display > File extensions` and report through the existing
+  `onDisplayFormatsChanged` hook, so an application persists them from the same
+  place it persists the Thumbnails / Detail view switches.
+  `Tests/FilerExtensionDisplayTest` covers the name and tag rules.
+
 #### 2026-09-04 *0.3.96*
 - **Font definition files can be previewed and read.** Fonts were the one
   document class the framework consumed but could never show: they went into

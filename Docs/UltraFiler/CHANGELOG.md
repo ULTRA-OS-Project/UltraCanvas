@@ -1,3 +1,24 @@
+#### 2026-09-04 *1.19.0*
+- **Settings > Display > File extensions.** Two switches on one page: whether
+  the file display's names still end in their extension, and what the thumbnail
+  tiles show about the file type instead — nothing, a bar across the foot of the
+  icon with the extension at its right end, or that tag on its own in the
+  corner. Hiding the extension only changes what is drawn: renaming, sorting,
+  the Type column and every file operation keep using the real name, so a
+  hidden extension can neither be lost nor duplicated by a rename, and a name
+  whose tail is a version rather than a type (`UCDemo-Windows-0.3.27-x86_64`),
+  a dot file and a folder with a dot in it are all left alone. Both settings are
+  saved to `config.ini` (`display.extensions.in.names`,
+  `display.extensions.badge`) and applied to every file display of the window;
+  the display's own `Display > File extensions` submenu carries the same
+  switches, and flipping one there is the same setting saved the same way.
+- **A file display opened later starts configured.** The Display > Thumbnails
+  and Display > Detail view switches were pushed into the file displays that
+  existed when a setting changed, so a tab opened afterwards — and the History
+  and Favorites lists — came up with everything switched on regardless of what
+  was saved, until the next settings change swept them up. Every newly created
+  display now takes the saved Display settings at creation.
+
 #### 2026-09-03 *1.18.1*
 - **The Fonts kind persists.** The framework grew a tenth preview kind — font
   files, thumbnailed as a line of their own glyphs — and both list-of-files
