@@ -817,6 +817,8 @@ namespace UltraCanvas {
                                 "Docs/UltraCanvas/UltraCanvasTreeViewExamples.md")
                 .AddVariant("treeview", "File Explorer Style")
                 .AddVariant("treeview", "Multi-Selection Tree")
+                .AddVariant("treeview", "Debugger Variables (columns)")
+                .AddVariant("treeview", "Connecting Lines (none / dotted / solid)")
                 .AddVariant("treeview", "Checkable Nodes");
 
         extendedBuilder.AddItem("spreadsheet", "Spreadsheet engine",

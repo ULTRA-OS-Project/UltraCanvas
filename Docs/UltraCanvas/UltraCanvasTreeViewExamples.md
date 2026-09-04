@@ -15,6 +15,8 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Hierarchical Data Display**: Multi-level tree structure with parent-child relationships
 - **Dual Icon Support**: Left and right icons for each node
 - **Selection Modes**: Single, multiple, or no selection
+- **Check Flags**: Optional tri-state checkbox per row, with subtree propagation
+- **Connecting Lines**: Dotted or solid parent/child connectors, root level included
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
 - **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
@@ -62,6 +64,12 @@ enum class TreeLineStyle {
     Solid = 2         // Solid lines
 };
 
+enum class TreeCheckState {
+    Unchecked = 0,
+    Checked = 1,
+    Mixed = 2         // Part of the subtree is checked (see Check Flags)
+};
+
 enum class TreeSortMode {
     NoSort = 0,       // Preserve insertion order
     Alphabetic = 1,   // By display name (data.text), case-insensitive
@@ -94,6 +102,10 @@ struct TreeNodeData {
     Color backgroundColor = Colors::Transparent; // Background color
     std::string tooltip;                   // Tooltip text
     void* userData = nullptr;              // Custom user data
+
+    // Check flag — drawn only while the tree runs with SetShowCheckboxes(true).
+    TreeCheckState checkState = TreeCheckState::Unchecked;
+    bool showCheckbox = true;              // false: keep the slot, draw no box
 
     // Optional columns — read by column tree views (UltraCanvasColumnsTreeView);
     // ignored by the base tree, so setting them is always safe.
@@ -289,7 +301,12 @@ Sets/gets the height of each row in pixels.
 void SetIndentSize(int size)
 int GetIndentSize() const
 ```
-Sets/gets the indentation size per level.
+Sets/gets the indentation size per level (default 16).
+
+Every row reserves the same 16px slot for the expand/collapse button, whether
+or not the node has children, so the icon and the label of a childless node
+line up with those of its expandable siblings instead of sliding one button
+width to the left. `SetShowExpandButtons(false)` drops the slot from all rows.
 
 #### Font Size
 ```cpp
@@ -312,7 +329,90 @@ Sets/gets the selection mode.
 void SetLineStyle(TreeLineStyle style)
 TreeLineStyle GetLineStyle() const
 ```
-Sets/gets the connecting line style.
+Sets/gets the connecting line style (default `TreeLineStyle::Dotted`; use
+`TreeLineStyle::NoLine` for a tree without connectors).
+
+The connectors are drawn the way a file manager draws them: a vertical line
+descends from the centre of a parent's expand button through its children, a
+horizontal stub joins each child's row to it, and the line stops at the last
+child. Deeper levels keep the trunks of the ancestors that still have rows to
+come below. The stub ends at the child's expand button, or reaches its icon
+when the child has none. Lines are drawn over the row background, so they stay
+visible on the selected row, and take `SetLineColor` (default gray).
+
+#### Root Lines
+```cpp
+void SetShowRootLines(bool show)
+bool GetShowRootLines() const
+```
+Connects the **top-level** rows to each other as well: a trunk down the left
+margin with a stub into every top-level row, exactly as the levels below are
+drawn. The rows move one indent right to make room for it, so the margin is
+only taken while that trunk is actually drawn. Default: on.
+
+It does nothing under `TreeLineStyle::NoLine`, and nothing on a tree whose root
+is visible — there the root row already is the trunk every other row hangs
+from. It is a forest (`SetRootVisible(false)`, several top-level rows) that has
+something to connect.
+
+### Check Flags (Checkable Nodes)
+
+A tree can draw a check flag on every row, between the expand button and the
+icon. The flags are independent of the row selection — selecting, expanding and
+multi-selection all keep working as before — so one tree can answer both "which
+row am I looking at" and "which rows did I tick".
+
+```cpp
+void SetShowCheckboxes(bool show)      // off by default
+bool GetShowCheckboxes() const
+
+void SetCheckPropagation(bool enable)  // on by default
+bool GetCheckPropagation() const
+
+void SetNodeChecked(TreeNode* node, bool checked)
+void SetNodeChecked(const std::string& nodeId, bool checked)
+void SetNodeCheckState(TreeNode* node, TreeCheckState state)
+void ToggleNodeCheck(TreeNode* node)
+TreeCheckState GetNodeCheckState(TreeNode* node) const
+bool IsNodeChecked(TreeNode* node) const
+std::vector<TreeNode*> GetCheckedNodes() const
+void SetAllChecked(bool checked)
+
+void SetCheckboxColors(const Color& background, const Color& border, const Color& check)
+std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
+```
+
+`TreeCheckState` is `Unchecked`, `Checked` or `Mixed`. Mixed is what a parent
+shows while only part of its subtree is flagged — a filled square rather than a
+tick, so "some" never reads as "all"; clicking it completes the subtree.
+
+With **propagation** on (the default) a flag carries down the subtree and every
+ancestor follows as Checked or Mixed. With it off, each row carries its own flag
+and nothing else moves.
+
+The flag is toggled by a click on the box — which leaves the selection where it
+was — or by the space bar on the focused row. `onNodeCheckChanged` fires once
+per row whose state actually moved, propagated parents and children included,
+so a "3 of 12 flagged" caption can be kept up to date from it. An individual row
+can drop its box with `TreeNodeData::showCheckbox = false` (a section header, a
+row that must not be picked); the row keeps the slot, so everything stays
+aligned.
+
+```cpp
+auto backupTree = std::make_shared<UltraCanvasTreeView>("Backup", 20, 20, 300, 240);
+backupTree->SetShowCheckboxes(true);
+backupTree->SetRootVisible(false);
+backupTree->SetRootNode(TreeNodeData("root", ""));
+backupTree->AddNode("root", TreeNodeData("docs", "Documents"));
+backupTree->AddNode("docs", TreeNodeData("invoice", "Invoice.odt"));
+backupTree->AddNode("docs", TreeNodeData("report", "Report.pdf"));
+backupTree->ExpandAll();
+backupTree->SetNodeChecked("invoice", true);   // "Documents" turns Mixed
+
+backupTree->onNodeCheckChanged = [backupTree](TreeNode*, TreeCheckState) {
+    debugOutput << backupTree->GetCheckedNodes().size() << " rows flagged" << std::endl;
+};
+```
 
 ### Scroll-to-Top Button
 
@@ -394,11 +494,14 @@ void SetLineColor(const Color& color)
 void SetTextColor(const Color& color)
 void SetExpandButtonColor(const Color& color)
 Color GetExpandButtonColor() const
+void SetCheckboxColors(const Color& background, const Color& border, const Color& check)
 ```
 Sets various color properties for the tree view.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+`SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
+colour of both the tick and the Mixed square.
 
 ### Event Callbacks
 
@@ -541,7 +644,7 @@ The tree view supports comprehensive keyboard navigation:
 | **←** (Left Arrow) | Collapse node or navigate to parent |
 | **→** (Right Arrow) | Expand node or navigate to first child |
 | **Enter** | Toggle node expansion |
-| **Space** | Select/deselect node |
+| **Space** | Toggle the row's check flag, or select the row when the tree has none |
 | **Home** | Navigate to first node |
 | **End** | Navigate to last visible node |
 | **Page Up** | Scroll up one page |
@@ -557,6 +660,9 @@ The tree view supports comprehensive keyboard navigation:
 
 ### Expand/Collapse Button
 - Clicking the +/- button expands or collapses the node without selecting it
+
+### Check Flag
+- Clicking the check box toggles the row's flag and leaves the selection alone
 
 ### Scrolling
 - **Mouse Wheel**: Scroll vertically
@@ -620,6 +726,8 @@ std::vector<TreeNode*> GetVisibleChildren()
 | Line Style | Dotted |
 | Show Expand Buttons | true |
 | Show Root Lines | true |
+| Show Checkboxes | false |
+| Check Propagation | true |
 | Scrollbar Width | 16 pixels |
 | Background Color | White |
 | Selection Color | Blue |

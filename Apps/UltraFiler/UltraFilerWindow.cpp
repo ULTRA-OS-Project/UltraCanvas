@@ -1890,7 +1890,11 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->SetFontSize(kUiFontSize);
     folderTree->SetRowHeight(24);
     folderTree->SetSelectionMode(TreeSelectionMode::Single);
-    folderTree->SetLineStyle(TreeLineStyle::NoLine);
+    // Dotted connectors between a folder and its subfolders, the way a file
+    // manager tree reads: which rows belong to which parent stays visible once
+    // several branches are open at the same time.
+    folderTree->SetLineStyle(TreeLineStyle::Dotted);
+    folderTree->SetLineColor(Color(0x9A, 0x9A, 0xA6, 0xFF));
     folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
 
     // Slim the vertical scrollbar to half its default width (6px) so it reads

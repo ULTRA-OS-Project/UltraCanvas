@@ -803,12 +803,15 @@ namespace UltraCanvas {
         if (rootNode) {
             // Rows start below the (optional) fixed header band and scroll beneath it.
             int currentY = contentRect.y + headerHeight - scrollOffsetY;
+            // One flag per drawn level, the top level included (pipes[0]) - see the
+            // declaration of RenderNode.
+            std::vector<bool> pipes;
             if (rootVisible) {
-                RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
+                pipes.push_back(false);   // the root row has no sibling below it
+                RenderNode(ctx, rootNode.get(), currentY, 0, contentRect, pipes);
             } else {
                 // Hidden root: its children are the top level, at depth 0.
-                for (auto &child: rootNode->children)
-                    RenderNode(ctx, child.get(), currentY, 0, contentRect);
+                RenderChildNodes(ctx, rootNode.get(), currentY, -1, contentRect, pipes);
             }
         }
 
@@ -965,96 +968,291 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    int UltraCanvasTreeView::GetTreeLineX(const Rect2Di &contentRect, int level) const {
+        return GetRowOriginX(contentRect, level) + kExpanderButtonOffset + kExpanderButtonSize / 2;
+    }
+
+    // Both helpers expect the caller to have pushed the render state: they leave
+    // the stroke width and the dash pattern behind them.
+    void UltraCanvasTreeView::DrawTreeLineV(IRenderContext *ctx, int x, int yFrom, int yTo) {
+        if (!ctx || yTo <= yFrom) return;
+        // The line sits on a half-pixel so a 1px stroke covers exactly one column
+        // of pixels. The dashes are measured from yFrom, and the offset pulls the
+        // dots onto even device rows - so the trunks of separate rows, and the
+        // horizontal stubs below, all land on one shared dot grid.
+        if (lineStyle == TreeLineStyle::Dotted) {
+            ctx->SetLineDash(UCDashPattern({1.0, 1.0}, static_cast<double>(yFrom & 1)));
+        }
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawLine(Point2Dd(x + 0.5, yFrom), Point2Dd(x + 0.5, yTo), lineColor);
+    }
+
+    void UltraCanvasTreeView::DrawTreeLineH(IRenderContext *ctx, int y, int xFrom, int xTo) {
+        if (!ctx || xTo <= xFrom) return;
+        if (lineStyle == TreeLineStyle::Dotted) {
+            ctx->SetLineDash(UCDashPattern({1.0, 1.0}, static_cast<double>(xFrom & 1)));
+        }
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawLine(Point2Dd(xFrom, y + 0.5), Point2Dd(xTo, y + 0.5), lineColor);
+    }
+
+    void UltraCanvasTreeView::RenderChildNodes(IRenderContext *ctx, TreeNode *node, int &currentY, int level,
+                                               const Rect2Di &contentRect, std::vector<bool> &pipes) {
+        // The last visible child ends its parent's connector: everything above it
+        // keeps the trunk running down to the next sibling.
+        TreeNode *lastVisible = nullptr;
+        for (auto &child: node->children) {
+            if (child->data.visible) lastVisible = child.get();
+        }
+        if (!lastVisible) return;
+
+        pipes.push_back(false);
+        for (auto &child: node->children) {
+            if (!child->data.visible) continue;
+            pipes.back() = (child.get() != lastVisible);
+            RenderNode(ctx, child.get(), currentY, level + 1, contentRect, pipes);
+        }
+        pipes.pop_back();
+    }
+
     void UltraCanvasTreeView::RenderNode(IRenderContext *ctx, TreeNode *node, int &currentY, int level,
-                                         const Rect2Di &contentRect) {
+                                         const Rect2Di &contentRect, std::vector<bool> &pipes) {
         if (!node || !node->data.visible) return;
-        // Skip if outside visible area
-        if (currentY + rowHeight < contentRect.y || currentY > contentRect.Bottom()) {
-            currentY += rowHeight;
-            if (node->IsExpanded()) {
-                for (auto &child: node->children) {
-                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-                }
-            }
-            return;
-        }
 
-        int nodeX = contentRect.x + level * indentSize;
-        int nodeY = currentY;
-        int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
-        int nodeWidth = contentRect.width - sbWidth;
-
-        // Let a subclass fully own the row (e.g. a full-width section-header bar).
-        if (RenderNodeFullRow(ctx, node, nodeY, contentRect, nodeWidth)) {
-            currentY += rowHeight;
-            if (node->IsExpanded()) {
-                for (auto &child: node->children) {
-                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-                }
-            }
-            return;
-        }
-
-        // Draw node background
-        Color bgColor = backgroundColor;
-        if (node == dropTargetNode) {
-            bgColor = dropTargetColor;
-        } else if (node->selected) {
-            bgColor = selectionColor;
-        } else if (node->hovered) {
-            bgColor = hoverColor;
-        } else if (node->data.backgroundColor != Colors::Transparent) {
-            bgColor = node->data.backgroundColor;
-        }
-
-        if (bgColor != backgroundColor) {
-            ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight), bgColor);
-        }
-
-        // Draw connecting lines
-        if (lineStyle != TreeLineStyle::NoLine && level > 0) {
-            // Draw horizontal line to parent
-            // Implementation would draw line from parent to current node
-        }
-
-        // Draw expand/collapse button
-        if (showExpandButtons && node->HasChildren()) {
-            int buttonX = nodeX + 6;
-            int buttonY = nodeY + (rowHeight - 12) / 2;
-
-            // Draw button background
-            ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, 12, 12), expandButtonColor, 1.0, Colors::Gray);
-
-            // Draw +/- symbol
-            ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
-            if (!node->IsExpanded()) {
-                ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
-            }
-        }
-
-        // Calculate text position
-        int textX = nodeX + (showExpandButtons && node->HasChildren() ? 16 : 0) + textPadding;
-
-        // Draw left icon
-        if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
-            ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                           Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
-                                   node->data.leftIcon.width, node->data.leftIcon.height),
-                           ImageFitMode::Contain);
-            textX += node->data.leftIcon.width + iconSpacing;
-        }
-
-        // Draw the row's label/content (Classic single text run; subclasses draw columns).
-        RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
-
+        const int nodeY = currentY;
         currentY += rowHeight;
+
+        // Rows scrolled out of the viewport cost nothing but their height; their
+        // children still have to be walked so the ones below land correctly.
+        const bool offscreen = (nodeY + rowHeight < contentRect.y || nodeY > contentRect.Bottom());
+
+        if (!offscreen) {
+            const int nodeX = GetRowOriginX(contentRect, level);
+            const int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
+            const int nodeWidth = contentRect.width - sbWidth;
+
+            // Let a subclass fully own the row (e.g. a full-width section-header bar).
+            if (RenderNodeFullRow(ctx, node, nodeY, contentRect, nodeWidth)) {
+                if (node->IsExpanded()) RenderChildNodes(ctx, node, currentY, level, contentRect, pipes);
+                return;
+            }
+
+            // Draw node background
+            Color bgColor = backgroundColor;
+            if (node == dropTargetNode) {
+                bgColor = dropTargetColor;
+            } else if (node->selected) {
+                bgColor = selectionColor;
+            } else if (node->hovered) {
+                bgColor = hoverColor;
+            } else if (node->data.backgroundColor != Colors::Transparent) {
+                bgColor = node->data.backgroundColor;
+            }
+
+            if (bgColor != backgroundColor) {
+                ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight), bgColor);
+            }
+
+            const bool hasExpander = showExpandButtons && node->HasChildren();
+            // The expander slot - and the check flag slot behind it - are reserved on
+            // every row, so the icon and label of a childless or unflagged node sit at
+            // the same x as those of its siblings.
+            const int slotEnd = nodeX + (showExpandButtons ? kExpanderSlot : 0);
+            int textX = slotEnd + (showCheckboxes ? kCheckboxSlot : 0) + textPadding;
+
+            // Connecting lines: the trunks of the ancestors that continue past this
+            // row, plus the elbow that ties this row to its parent's trunk. Drawn
+            // after the row background (so they stay visible on a selected row) and
+            // before the expander button, which caps the elbow. Column -1 is the
+            // root-level trunk, drawn only when there is a gutter to hold it.
+            const int firstColumn = GetRootGutter() > 0 ? -1 : 0;
+            if (lineStyle != TreeLineStyle::NoLine && level - 1 >= firstColumn) {
+                const int rowMidY = nodeY + rowHeight / 2;
+                ctx->PushState();   // the dash pattern must not outlive the row
+                for (int column = firstColumn; column + 1 < level; ++column) {
+                    if (pipes[column + 1]) {
+                        DrawTreeLineV(ctx, GetTreeLineX(contentRect, column), nodeY, nodeY + rowHeight);
+                    }
+                }
+                const int trunkX = GetTreeLineX(contentRect, level - 1);
+                // A last child stops the trunk at its own row centre; the others let
+                // it run on to the sibling below.
+                DrawTreeLineV(ctx, trunkX, nodeY, pipes[level] ? nodeY + rowHeight : rowMidY + 1);
+                // The stub runs to the expander button, else to the check flag, else
+                // all the way to the icon - stopping a hair short of it, so a dotted
+                // line never touches a glyph on a row that carries no icon.
+                const int stubEnd = hasExpander ? nodeX + kExpanderButtonOffset
+                                                : (showCheckboxes ? slotEnd + kCheckboxLead
+                                                                  : textX - 2);
+                DrawTreeLineH(ctx, rowMidY, trunkX, stubEnd);
+                ctx->PopState();
+            }
+
+            // Draw expand/collapse button
+            if (hasExpander) {
+                int buttonX = nodeX + kExpanderButtonOffset;
+                int buttonY = nodeY + (rowHeight - kExpanderButtonSize) / 2;
+
+                // Draw button background
+                ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, kExpanderButtonSize, kExpanderButtonSize),
+                                         expandButtonColor, 1.0, Colors::Gray);
+
+                // Draw +/- symbol
+                ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
+                if (!node->IsExpanded()) {
+                    ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
+                }
+            }
+
+            // Draw the check flag
+            if (showCheckboxes) {
+                RenderCheckbox(ctx, node, GetCheckboxRect(node, nodeX, nodeY));
+            }
+
+            // Draw left icon
+            if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
+                ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
+                               Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                                       node->data.leftIcon.width, node->data.leftIcon.height),
+                               ImageFitMode::Contain);
+                textX += node->data.leftIcon.width + iconSpacing;
+            }
+
+            // Draw the row's label/content (Classic single text run; subclasses draw columns).
+            RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
+        }
 
         // Render children if expanded
         if (node->IsExpanded()) {
-            for (auto &child: node->children) {
-                RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-            }
+            RenderChildNodes(ctx, node, currentY, level, contentRect, pipes);
         }
+    }
+
+    // ===== CHECK FLAGS =====
+
+    Rect2Di UltraCanvasTreeView::GetCheckboxRect(TreeNode *node, int rowOriginX, int nodeY) const {
+        if (!showCheckboxes || !node || !node->data.showCheckbox) return Rect2Di(0, 0, 0, 0);
+        const int boxX = rowOriginX + (showExpandButtons ? kExpanderSlot : 0) + kCheckboxLead;
+        return Rect2Di(boxX, nodeY + (rowHeight - kCheckboxSize) / 2, kCheckboxSize, kCheckboxSize);
+    }
+
+    void UltraCanvasTreeView::RenderCheckbox(IRenderContext *ctx, TreeNode *node, const Rect2Di &box) {
+        if (!ctx || box.width <= 0) return;
+
+        ctx->DrawFilledRectangle(box, checkboxBackgroundColor, 1.0, checkboxBorderColor);
+
+        switch (node->data.checkState) {
+            case TreeCheckState::Checked: {
+                // A tick drawn as two strokes, inset so it never touches the border.
+                ctx->PushState();
+                ctx->SetStrokeWidth(2.0);
+                const double left = box.x + box.width * 0.24;
+                const double mid = box.x + box.width * 0.44;
+                const double right = box.x + box.width * 0.78;
+                const double midY = box.y + box.height * 0.52;
+                const double lowY = box.y + box.height * 0.74;
+                const double highY = box.y + box.height * 0.26;
+                ctx->DrawLine(Point2Dd(left, midY), Point2Dd(mid, lowY), checkboxCheckColor);
+                ctx->DrawLine(Point2Dd(mid, lowY), Point2Dd(right, highY), checkboxCheckColor);
+                ctx->PopState();
+                break;
+            }
+            case TreeCheckState::Mixed: {
+                // Part of the subtree is checked: a filled square rather than a tick,
+                // so "some" never reads as "all" at a glance.
+                const int inset = std::max(3, box.width / 4);
+                ctx->DrawFilledRectangle(Rect2Di(box.x + inset, box.y + inset,
+                                                 box.width - 2 * inset, box.height - 2 * inset),
+                                         checkboxCheckColor);
+                break;
+            }
+            case TreeCheckState::Unchecked:
+            default:
+                break;
+        }
+    }
+
+    void UltraCanvasTreeView::AssignCheckState(TreeNode *node, TreeCheckState state) {
+        if (!node || node->data.checkState == state) return;
+        node->data.checkState = state;
+        if (onNodeCheckChanged) onNodeCheckChanged(node, state);
+    }
+
+    void UltraCanvasTreeView::ApplyCheckStateToSubtree(TreeNode *node, TreeCheckState state) {
+        if (!node) return;
+        AssignCheckState(node, state);
+        for (auto &child: node->children) {
+            ApplyCheckStateToSubtree(child.get(), state);
+        }
+    }
+
+    void UltraCanvasTreeView::RefreshAncestorCheckStates(TreeNode *node) {
+        for (TreeNode *parent = node ? node->parent : nullptr; parent; parent = parent->parent) {
+            int checked = 0;
+            int total = 0;
+            bool anyMixed = false;
+            for (auto &child: parent->children) {
+                total++;
+                if (child->data.checkState == TreeCheckState::Checked) checked++;
+                else if (child->data.checkState == TreeCheckState::Mixed) anyMixed = true;
+            }
+            TreeCheckState state = TreeCheckState::Unchecked;
+            if (total > 0 && checked == total) state = TreeCheckState::Checked;
+            else if (anyMixed || checked > 0) state = TreeCheckState::Mixed;
+            AssignCheckState(parent, state);
+        }
+    }
+
+    void UltraCanvasTreeView::SetNodeCheckState(TreeNode *node, TreeCheckState state) {
+        if (!node) return;
+        if (checkPropagation && state != TreeCheckState::Mixed) {
+            ApplyCheckStateToSubtree(node, state);
+        } else {
+            AssignCheckState(node, state);
+        }
+        if (checkPropagation) RefreshAncestorCheckStates(node);
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SetNodeChecked(const std::string &nodeId, bool checked) {
+        SetNodeChecked(FindNode(nodeId), checked);
+    }
+
+    void UltraCanvasTreeView::ToggleNodeCheck(TreeNode *node) {
+        if (!node) return;
+        // Mixed counts as "not yet checked": the click that follows a partial
+        // subtree completes it rather than clearing it.
+        SetNodeCheckState(node, node->data.checkState == TreeCheckState::Checked
+                                        ? TreeCheckState::Unchecked
+                                        : TreeCheckState::Checked);
+    }
+
+    std::vector<TreeNode *> UltraCanvasTreeView::GetCheckedNodes() const {
+        std::vector<TreeNode *> checked;
+        std::function<void(TreeNode *)> collect = [&](TreeNode *node) {
+            if (!node) return;
+            if (node->data.checkState == TreeCheckState::Checked) checked.push_back(node);
+            for (const auto &child: node->children) collect(child.get());
+        };
+        if (rootNode) {
+            if (rootVisible) collect(rootNode.get());
+            else for (const auto &child: rootNode->children) collect(child.get());
+        }
+        return checked;
+    }
+
+    void UltraCanvasTreeView::SetAllChecked(bool checked) {
+        if (!rootNode) return;
+        const TreeCheckState state = checked ? TreeCheckState::Checked : TreeCheckState::Unchecked;
+        if (rootVisible) {
+            ApplyCheckStateToSubtree(rootNode.get(), state);
+        } else {
+            // The hidden root is not a row, but it still carries the state its
+            // children agree on so a later propagation reads it correctly.
+            rootNode->data.checkState = state;
+            for (auto &child: rootNode->children) ApplyCheckStateToSubtree(child.get(), state);
+        }
+        RequestRedraw();
     }
 
     void UltraCanvasTreeView::RenderNodeLabel(IRenderContext *ctx, TreeNode *node, int nodeY,
@@ -1123,19 +1321,31 @@ namespace UltraCanvas {
             // the root, but Render() draws a hidden root's children as the top
             // level (display level 0) — so mirror that offset here, otherwise
             // the expand-button hit box lands one indent too far right (over the
-            // node icon instead of the "+").
-            int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+            // node icon instead of the "+"). GetRowOriginX adds the root-line
+            // gutter, which shifts every row when the root connectors are drawn.
+            Rect2Di localContentRect = GetLocalContentRect();
             int displayLevel = clickedNode->level - (rootVisible ? 0 : 1);
-            int nodeX = localContentX + displayLevel * indentSize;
+            int nodeX = GetRowOriginX(localContentRect, displayLevel);
 
             // Check if clicking on expand/collapse button
             if (showExpandButtons && clickedNode->HasChildren() &&
-                event.pointer.x >= nodeX && event.pointer.x <= nodeX + 17) {
+                event.pointer.x >= nodeX &&
+                event.pointer.x <= nodeX + kExpanderButtonOffset + kExpanderButtonSize) {
                 ToggleNode(clickedNode);
                 if (clickedNode->IsExpanded() && showFirstChildOnExpand) {
                     ExpandFirstChildNode(clickedNode);
                 }
                 return true;
+            }
+
+            // Check if clicking the row's check flag: it toggles the flag and
+            // leaves the selection where it was.
+            if (showCheckboxes) {
+                Rect2Di box = GetCheckboxRect(clickedNode, nodeX, 0);
+                if (box.width > 0 && event.pointer.x >= box.x && event.pointer.x < box.Right()) {
+                    ToggleNodeCheck(clickedNode);
+                    return true;
+                }
             }
 
             // Regular node selection
@@ -1271,7 +1481,14 @@ namespace UltraCanvas {
 
                 break;
             case 32: // Space
-                SelectNode(focusedNode, event.ctrl && selectionMode == TreeSelectionMode::Multiple);
+                // With check flags on, the space bar is the keyboard equivalent of
+                // clicking the box - the row is already focused, so selecting it
+                // again would do nothing visible.
+                if (showCheckboxes && focusedNode->data.showCheckbox) {
+                    ToggleNodeCheck(focusedNode);
+                } else {
+                    SelectNode(focusedNode, event.ctrl && selectionMode == TreeSelectionMode::Multiple);
+                }
                 break;
             case 36: // Home
                 if (rootNode) {
