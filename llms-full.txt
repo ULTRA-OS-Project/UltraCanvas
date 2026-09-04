@@ -226,6 +226,37 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
+  file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
+  document rather than as something to render text with: its name records are
+  metadata, and a line of its own glyphs is a thumbnail. Implemented in
+  `core/UltraCanvasFontFile.cpp` on FreeType alone — no fontconfig, no Pango,
+  no render context and no installed font, with one `FT_Library` per call so
+  the whole surface is safe on background threads (which is what lets the
+  filer thumbnail a folder of fonts). Public surface:
+  - `IsFontFileExtension` / `FontFormatForExtension` / `FontFormatName` —
+    recognition by extension, before a file is opened.
+  - `ReadFontFileInfo` — `FontFileInfo` (container format, file size, face
+    count) with one `FontFaceInfo` per face: the decoded name records
+    (family, subfamily, full/PostScript name, version, copyright, trademark,
+    manufacturer, designer, license, license URL, sample text) plus glyph
+    count, units per em, scalable / fixed-width / kerning / bold / italic and
+    the strike sizes of a bitmap face. Never throws on a malformed file.
+  - `RenderFontSpecimenPixmap` (+ `FontSpecimenOptions`) — a ready-to-draw
+    `UCPixmap` card carrying a line of the font's own glyphs, fitted to the
+    box; a symbol face with no Latin glyphs falls back to its own first
+    glyphs. No shaping: glyph lookup plus kerning, which is what is possible
+    without a registered font and a Pango context.
+
+  Registration for actual text rendering is the application's, not this
+  module's: `UltraCanvasApplicationBase::RegisterFontFile` /
+  `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
+  process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
+  FontConfig on Windows, CoreText process scope on macOS), followed by
+  `RefreshFontConfiguration()` so the new family resolves in the next layout.
+  Process-private and permanent: there is no unregister.
+  See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -17233,12 +17264,15 @@ Print
 Extras         >  Share / Attributes / Copy path / Access
                   (plus the host's items via extrasMenuProvider — in the
                   UltraFiler: Open prompt and the Pin / Unpin submenus)
-Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type    >  all view types
-                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
-                             Docs / Spreadsheets / Videos  (checkboxes, all on)
-                  Dataset >  Size / Edit date / Creation date / Attributes /
-                             Length (audio/video) / Dimensions (bitmaps)
+Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type        >  all view types
+                  Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                                 Docs / Spreadsheets / Videos / Audio / Fonts
+                                 (checkboxes, all on; the host may append its
+                                 own entry via formatListMenuProvider)
+                  Detail view >  the same ten kinds (checkboxes, all on)
+                  Dataset     >  Size / Edit date / Creation date / Attributes /
+                                 Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
                   Hidden files (checkbox: hidden entries, and the full listing
@@ -17367,6 +17401,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
+| `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. The mirror image of Audio: there is no font viewer yet, so the Detail view switches are the ones with nothing behind them, and woff / woff2 report as unsupported unless the installed FreeType was built with zlib / Brotli |
 
 Notes:
 
@@ -17384,16 +17419,18 @@ Notes:
   is simply switched off. The worker therefore logs
   `no thumbnail produced for "<path>"` for each such file, which is what names
   the cause when a whole folder loses its previews.
-- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
-  a page is legible — from roughly a 40 px box up. The small icon column of the
-  Details and List rows keeps the type glyph, so a folder listing does not read
-  every document in it.
+- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D, Fonts) are only drawn
+  where a page is legible — from roughly a 40 px box up. The small icon column of
+  the Details and List rows keeps the type glyph, so a folder listing does not
+  read every document in it, and a font specimen squeezed into an icon slot is
+  not shown as a smear of ink.
 - `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
   `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
   the default of both. The preview kinds do not map one to one onto
   `FilerFileCategory`: PDF is split out of the Document category because it
   renders a page, and CSV / TSV count as spreadsheets because they preview as a
-  grid (their file category stays `Text`).
+  grid (their file category stays `Text`). Fonts are the one kind that does line
+  up exactly with its category (`FilerFileCategory::Font`).
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
@@ -19561,6 +19598,249 @@ between being listed and being watched). The
 [Filer widget](UltraCanvasFilerWidget.md#watching-the-shown-folder) shows the
 shape: try the watcher, and keep a polling worker for when it says no — or for
 when it later says the watch is over.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFontFile.md
+==============================================================================
+
+# UltraCanvasFontFile
+
+Reads a **font definition file** — `.ttf`, `.otf`, `.ttc`, `.woff`, Type 1,
+the bitmap formats — as a *document*: its name records are metadata you can
+show, and a line of its own glyphs is a thumbnail you can draw. Together with
+`UltraCanvasApplicationBase::RegisterFontFile()` it also makes a font file
+usable for real text rendering without installing it.
+
+Header: `include/UltraCanvasFontFile.h`. Implementation:
+`core/UltraCanvasFontFile.cpp`. Backed by FreeType, which is a hard
+dependency of the framework, so every build has this.
+
+## Why it is separate from the text stack
+
+The framework's text pipeline takes a **family name** (`FontStyle::fontFamily`)
+and resolves it through fontconfig/Pango. That is the right shape for drawing
+text and the wrong shape for two other jobs:
+
+- **Showing a font to a person.** A file manager must thumbnail a folder of
+  downloaded fonts *before* any of them is installed, on background threads,
+  without a render context.
+- **Learning what is in a file.** "Which families does this `.ttc` contain?"
+  has to be answerable before you can ask for one by name.
+
+So everything here goes straight at the file with FreeType: no fontconfig, no
+Pango, no window, no installation. Every call creates and destroys its own
+`FT_Library`, which is what makes concurrent calls from several worker threads
+safe.
+
+## Reading a font file
+
+```cpp
+#include "UltraCanvasFontFile.h"
+
+UltraCanvas::FontFileInfo info;
+if (UltraCanvas::ReadFontFileInfo("/home/me/Downloads/Inter.ttf", info)) {
+    for (const auto& face : info.faces) {
+        std::cout << face.family << " / " << face.subfamily
+                  << "  (" << face.glyphCount << " glyphs)\n";
+    }
+}
+```
+
+`ReadFontFileInfo` returns false for a file that is missing, unreadable, or
+not a font this FreeType understands. It never throws on a malformed file.
+
+`FontFileInfo` carries the container: `format` (a `FontFileFormat`),
+`formatName` (FreeType's own name for it), `fileSize`, `faceCount`, and one
+`FontFaceInfo` per face — a plain `.ttf` has one, a `.ttc` collection has
+several.
+
+`FontFaceInfo` carries the name-table records, already decoded to UTF-8 and
+empty when the font does not have them: `family`, `subfamily`, `fullName`,
+`postScriptName`, `version`, `copyright`, `trademark`, `manufacturer`,
+`designer`, `license`, `licenseURL`, `sampleText` — plus the technical
+facts: `glyphCount`, `unitsPerEM`, `scalable`, `fixedWidth`, `hasKerning`,
+`bold`, `italic`, `hasUnicodeCharmap`, and `fixedSizes` (the strike heights of
+a bitmap-only face).
+
+The name table stores the same string several times over, once per platform,
+encoding and language the font was built for. The reader scores the records
+and keeps the best one per name id, preferring Windows Unicode US-English, so
+a font that also carries its family name in MacRoman Japanese still reads as
+English. Where the font has the typographic names (ids 16/17) they win over
+the legacy ones (1/2), so a split-weight family reads as `Ubuntu` / `Light`
+rather than `Ubuntu Light` / `Regular`.
+
+## Drawing a specimen
+
+```cpp
+auto pixmap = UltraCanvas::RenderFontSpecimenPixmap(path, 96, 96, deviceScale);
+if (pixmap) ctx->DrawPixmap(*pixmap, rect, ImageFitMode::Contain);
+```
+
+The result is a white card with a line of the font's own glyphs on it, sized
+to fill the box — the same "sheet of paper" idiom the document and PDF
+previews use, so a font sits among them in a thumbnail grid without looking
+like a different kind of thing. Returns null when the file cannot be opened,
+holds no glyphs, or nothing legible fits.
+
+`width`/`height` are logical pixels and `scale` is the device scale, exactly
+as for every other preview producer: `scale = 2` rasterizes 2× the pixels.
+
+```cpp
+UltraCanvas::FontSpecimenOptions options;
+options.text = "Hamburgefonstiv";          // default: see below
+options.textColor = Color(26, 26, 28, 255);
+options.backgroundColor = Colors::White;
+options.faceIndex = 1;                      // a face inside a .ttc
+options.padding = 3;
+auto pixmap = RenderFontSpecimenPixmap(path, 240, 60, 1.0f, options);
+```
+
+The size is chosen by fitting the run's **ink** box to the padded area, so a
+narrow box shrinks the glyphs to fit the width and a tall one fills the
+height. A face with fixed strikes only (BDF/PCF/FON) gets the largest strike
+that fits.
+
+Because of that fit, the default sample follows the shape of the box:
+`"AaBbCc"` where it is at least twice as wide as it is tall, `"Ag"` otherwise.
+A six-glyph line in a square tile is fitted by its *width* and ends up a small
+fraction of the tile tall — too small to read the letterforms off, which is
+the whole point of a specimen. Two glyphs fill the same tile. Set
+`options.text` for a fixed sample regardless of shape.
+
+Two limits are worth knowing:
+
+- **No shaping.** Glyphs are looked up per character and advanced with
+  kerning; there is no HarfBuzz pass, no bidi and no fallback face. That is
+  enough for the Latin specimen text and is the only thing possible here —
+  shaping through Pango would need the font registered and a context, which
+  is exactly what this module exists to avoid. Pass ASCII-ish specimen text.
+- **Symbol and icon fonts** have no glyph for the sample characters at all.
+  Rather than produce an empty card, the specimen then falls back to drawing
+  the face's own first few glyphs, so a Font Awesome or a dingbat file
+  previews as its own icons.
+
+## Recognition
+
+- `IsFontFileExtension(pathOrExtension)` — true for an extension this module
+  can open. Takes a path or a bare extension, with or without the dot, in any
+  case. It answers for the *extension*: whether this build's FreeType can
+  really decode the file (WOFF2 needs Brotli) is decided by
+  `ReadFontFileInfo`.
+- `FontFormatForExtension(pathOrExtension)` — the format an extension names,
+  before the file is opened.
+- `FontFormatName(format)` — `"TrueType"`, `"OpenType"`, `"Type 1"`,
+  `"WOFF"`, `"WOFF2"`, `"Bitmap font"`.
+
+Fonts are also in the framework-wide format inventory
+(`UltraCanvasSupportedFormats`) under `MediaFormatCategory::Font`, so a file
+dialog can build a font filter with
+`GetLoadExtensions(MediaFormatCategory::Font)`. They are listed as loadable
+there and are **never** loadable by the image pipeline —
+`CanImagePipelineLoad("ttf")` stays false, so a font is never handed to a
+raster decoder by mistake.
+
+## Registering a font for text rendering
+
+Reading and previewing need no registration. Actually *drawing text* with a
+font file does — the text pipeline resolves families by name:
+
+```cpp
+auto* app = UltraCanvasApplication::GetInstance();
+
+FontFileInfo info;
+if (ReadFontFileInfo(path, info) && app->RegisterFontFile(path)) {
+    FontStyle style;
+    style.fontFamily = info.faces[0].family;   // now resolvable
+    style.fontSize = 18;
+    ctx->SetFontStyle(style);
+}
+```
+
+`RegisterFontFile()` is **process-private**: nothing is installed for the user
+or for other applications, and it lasts until the process exits. Use it for
+fonts an application ships or downloads rather than requires to be installed —
+a document that embeds its fonts, a theme that comes with one, a font manager
+previewing a candidate before it is installed.
+
+| | |
+|---|---|
+| `bool RegisterFontFile(path)` | Registers the file. Registering the same file twice is a no-op that returns true; returns false when the file does not exist or the platform's font system rejects it. |
+| `bool IsFontFileRegistered(path)` | Whether this path was registered already. |
+| `std::vector<std::string> GetRegisteredFontFiles()` | Every file registered so far, in registration order. |
+
+Per platform: FontConfig (`FcConfigAppFontAddFile`) on Linux, Android and
+WASM; GDI `AddFontResourceExW(FR_PRIVATE)` **plus** FontConfig on Windows,
+because Pango is pinned to its FontConfig backend there; CoreText
+(`CTFontManagerRegisterFontsForURL`, process scope) on macOS.
+
+Two caveats, both structural rather than incidental:
+
+- **There is no unregister.** Neither FontConfig nor the framework can
+  withdraw one file's faces from a running text stack without discarding
+  every application font, so a registration is for the life of the process.
+- **Call it from the UI thread.** It changes global font state that layout
+  reads.
+
+After a successful registration the framework calls
+`RefreshFontConfiguration()` for you, which rebuilds the FontConfig FontSet
+and signals Pango's default font map (`pango_fc_font_map_config_changed`) so
+the new family is resolvable in the very next layout — not only in windows
+created afterwards. On macOS, and on any build without PangoFT2, there is no
+such signal: the default font map is dropped instead, and contexts that
+already exist pick the font up when their surface is next recreated.
+
+## In the filer
+
+`UltraCanvasFilerWidget` classifies font files as `FilerFileCategory::Font`
+and previews them as `FilerPreviewType::Fonts` — one of the kinds the
+Display ▸ Thumbnails submenu toggles, on by default like all the others, and
+addressable per format through the same list of files as everything else. As
+with PDF pages and 3D models, the specimen is only drawn where it would be
+legible: below 40 px the entry keeps its type glyph, so the icon column of a
+Details row is not a smear of ink. Rendering happens on the same background
+thumbnail workers as photos and video poster frames.
+
+```cpp
+filer->SetThumbnailKind(FilerPreviewType::Fonts, false);        // glyphs only
+filer->SetThumbnailFormatEnabled("woff2", false);               // just this one
+```
+
+Fonts are the mirror image of the Audio kind: Audio has a detail view (a
+host's player) and no thumbnail, while Fonts has a thumbnail and, so far, no
+viewer — so `GetPreviewableFormats()` reports `thumbnailSupported` true for
+every font format except `woff` and `woff2`, which depend on the zlib / Brotli
+support the installed FreeType was built with.
+
+## Supported formats
+
+| Extension | Format | Notes |
+|---|---|---|
+| `ttf`, `ttc` | TrueType | `ttc` is a collection: `faceCount` > 1 |
+| `otf`, `otc` | OpenType | CFF or CFF2 outlines |
+| `woff` | Web font | needs a FreeType built with zlib |
+| `woff2` | Web font 2 | needs a FreeType built with Brotli |
+| `pfa`, `pfb` | PostScript Type 1 | no name table; family comes from the font program |
+| `bdf`, `pcf`, `fon`, `fnt` | Bitmap fonts | fixed strikes only, `scalable` is false |
+
+`format` in `FontFileInfo` reports what the **container really is** after the
+file is opened, not what the extension claimed: an `.otf` holding `glyf`
+outlines reads as `TrueType`.
+
+## Threading
+
+`ReadFontFileInfo` and `RenderFontSpecimenPixmap` are safe to call from any
+thread, concurrently, and may block on I/O — call them off the UI thread for
+anything more than a single file. `RegisterFontFile` is the opposite: UI
+thread only.
+
+## Tests
+
+`Tests/FontFileTest.cpp` (ctest target `FontFileTest`) covers the extension
+gate, the name records of the framework's own bundled Ubuntu faces, the
+specimen rasterizer across sizes and scales, graceful refusal of a PNG and of
+a truncated font, and the filer/inventory classification. It needs no
+installed font.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFunnelChart.md

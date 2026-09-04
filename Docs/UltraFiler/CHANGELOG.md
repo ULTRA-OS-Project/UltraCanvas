@@ -1,3 +1,13 @@
+#### 2026-09-03 *1.18.1*
+- **The Fonts kind persists.** The framework grew a tenth preview kind — font
+  files, thumbnailed as a line of their own glyphs — and both list-of-files
+  pages show it and its twelve formats without any change here, because they
+  are built from what the widget reports. Its kind switch was the one thing
+  that did not survive a restart: the config file names the kinds it stores
+  rather than storing a mask, so a kind with no name is simply not written and
+  comes back on. `fonts` is now one of those names, and Settings > Display >
+  Thumbnails > Fonts stays switched off across launches like every other kind.
+
 #### 2026-09-03 *1.18.0*
 - **Settings > Display > Thumbnails and Settings > Display > Detail view: two
   lists of files.** Each page shows the nine file kinds as one checkbox each

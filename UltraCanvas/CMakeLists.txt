@@ -196,6 +196,14 @@ pkg_check_modules(PANGO REQUIRED pango pangocairo)
 # FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend)
 if(NOT APPLE)
     pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+    # PangoFT2 - part of Pango itself, present wherever Pango is built against
+    # FontConfig (which is every platform that reaches this branch). It is
+    # linked for exactly one call: pango_fc_font_map_config_changed(), which
+    # is what makes a font registered after start-up visible to the Pango
+    # contexts that already exist. Not REQUIRED, because a build without it
+    # still works - RefreshFontConfiguration() then drops the default font
+    # map instead, and the new font is picked up by surfaces created after.
+    pkg_check_modules(PANGOFT2 pangoft2)
 endif()
 
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
@@ -425,6 +433,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # Preview bitmaps vector documents (Xara, ZIP-based CorelDRAW)
         # carry inside themselves - what the filer thumbnails them from.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedPreview.cpp
+        # Font definition files (ttf/otf/woff/...) read as documents: name
+        # records for the metadata, a line of their own glyphs for the
+        # thumbnail. Pure FreeType, so it needs no installed font.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontFile.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
@@ -1219,6 +1231,13 @@ if(NOT APPLE AND FONTCONFIG_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
+if(NOT APPLE AND PANGOFT2_FOUND)
+    foreach(_inc_dir ${PANGOFT2_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${PANGOFT2_LIBRARIES})
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_PANGOFT2=1)
+endif()
 if(ULTRACANVAS_HAS_VIPS)
     foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
@@ -1444,6 +1463,7 @@ if(WIN32)
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}
             ${FONTCONFIG_LIBRARY_DIRS}
+            ${PANGOFT2_LIBRARY_DIRS}
             ${FREETYPE_LIBRARY_DIRS}
             ${HARFBUZZ_LIBRARY_DIRS}
             ${GLIB_LIBRARY_DIRS}

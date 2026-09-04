@@ -1436,3 +1436,29 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  FilerFormatListTest skipped (UltraCanvas target not present)")
 endif()
+
+message(STATUS "")
+
+# ===== FONT FILE TEST =====
+# Reading a font definition file as a document: its name records, and the
+# line of its own glyphs the filer thumbnails it with. Runs against the
+# framework's own bundled Ubuntu faces, so it needs no installed font.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontFileTest...")
+    add_executable(FontFileTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontFileTest.cpp
+    )
+    target_include_directories(FontFileTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontFileTest PRIVATE cxx_std_20)
+    target_compile_definitions(FontFileTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(FontFileTest PRIVATE UltraCanvas)
+    set_target_properties(FontFileTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontFileTest COMMAND FontFileTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontFileTest")
+else()
+    message(STATUS "  FontFileTest skipped (UltraCanvas target not present)")
+endif()

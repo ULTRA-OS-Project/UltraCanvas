@@ -244,12 +244,15 @@ Print
 Extras         >  Share / Attributes / Copy path / Access
                   (plus the host's items via extrasMenuProvider — in the
                   UltraFiler: Open prompt and the Pin / Unpin submenus)
-Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type    >  all view types
-                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
-                             Docs / Spreadsheets / Videos  (checkboxes, all on)
-                  Dataset >  Size / Edit date / Creation date / Attributes /
-                             Length (audio/video) / Dimensions (bitmaps)
+Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type        >  all view types
+                  Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                                 Docs / Spreadsheets / Videos / Audio / Fonts
+                                 (checkboxes, all on; the host may append its
+                                 own entry via formatListMenuProvider)
+                  Detail view >  the same ten kinds (checkboxes, all on)
+                  Dataset     >  Size / Edit date / Creation date / Attributes /
+                                 Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
                   Hidden files (checkbox: hidden entries, and the full listing
@@ -378,6 +381,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
+| `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. The mirror image of Audio: there is no font viewer yet, so the Detail view switches are the ones with nothing behind them, and woff / woff2 report as unsupported unless the installed FreeType was built with zlib / Brotli |
 
 Notes:
 
@@ -395,16 +399,18 @@ Notes:
   is simply switched off. The worker therefore logs
   `no thumbnail produced for "<path>"` for each such file, which is what names
   the cause when a whole folder loses its previews.
-- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
-  a page is legible — from roughly a 40 px box up. The small icon column of the
-  Details and List rows keeps the type glyph, so a folder listing does not read
-  every document in it.
+- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D, Fonts) are only drawn
+  where a page is legible — from roughly a 40 px box up. The small icon column of
+  the Details and List rows keeps the type glyph, so a folder listing does not
+  read every document in it, and a font specimen squeezed into an icon slot is
+  not shown as a smear of ink.
 - `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
   `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
   the default of both. The preview kinds do not map one to one onto
   `FilerFileCategory`: PDF is split out of the Document category because it
   renders a page, and CSV / TSV count as spreadsheets because they preview as a
-  grid (their file category stays `Text`).
+  grid (their file category stays `Text`). Fonts are the one kind that does line
+  up exactly with its category (`FilerFileCategory::Font`).
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).

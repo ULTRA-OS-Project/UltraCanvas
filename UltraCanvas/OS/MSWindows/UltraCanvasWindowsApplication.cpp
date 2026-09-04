@@ -1082,4 +1082,32 @@ namespace UltraCanvas {
 #endif
         }
     }
+    bool UltraCanvasWindowsApplication::RegisterFontFileNative(const std::string& fontFilePath) {
+        // Two registrations, because two consumers look in different places:
+        // GDI (FR_PRIVATE - this process only) for anything that goes through
+        // the Win32 text stack, and fontconfig for Pango, which the framework
+        // pins to its FontConfig backend on Windows. Pango is the one that
+        // matters for UltraCanvas text, so a GDI refusal is logged and
+        // tolerated while a fontconfig refusal fails the call.
+        const std::wstring wpath = Utf8ToUtf16(fontFilePath);
+        if (AddFontResourceExW(wpath.c_str(), FR_PRIVATE, 0) == 0) {
+            debugOutput << "UltraCanvas: AddFontResourceExW failed for "
+                        << fontFilePath << std::endl;
+        }
+
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) {
+            debugOutput << "UltraCanvas: RegisterFontFileNative: no current "
+                           "fontconfig config" << std::endl;
+            return false;
+        }
+        if (!FcConfigAppFontAddFile(
+                cfg, reinterpret_cast<const FcChar8*>(fontFilePath.c_str()))) {
+            debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        return true;
+    }
+
 } // namespace UltraCanvas

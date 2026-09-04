@@ -229,6 +229,7 @@ public:
             {"spreadsheets", FilerPreviewType::Spreadsheets},
             {"videos",       FilerPreviewType::Videos},
             {"audio",        FilerPreviewType::Audio},
+            {"fonts",        FilerPreviewType::Fonts},
         };
         return names;
     }
