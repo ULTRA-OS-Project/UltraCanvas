@@ -5,13 +5,14 @@
 // The extraction itself is exposed to the rest of the Windows backend
 // through UltraCanvasWindowsIcons.h: the "Open with" service reuses it for
 // the icon locations that IAssocHandler reports.
-// Version: 1.0.1
-// Last Modified: 2026-08-24
+// Version: 1.1.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
 
 #include <windows.h>
+#include <objbase.h>  // CoInitializeEx for the worker-thread apartment
 #include <shlobj.h>   // SHDefExtractIconW (WIN32_LEAN_AND_MEAN keeps it
                       // out of windows.h; shellapi.h does not declare it)
 
@@ -166,6 +167,20 @@ namespace UltraCanvas {
         // Icon 0 is the one Explorer shows for the file itself.
         return WindowsIcons::LoadIconResourcePixmap(Utf8ToWide(path), 0,
                                                     desiredSize);
+    }
+
+    // The extraction runs on the filer's thumbnail workers, which have no
+    // message loop, so they join the multi-threaded apartment rather than
+    // creating an STA nobody pumps. RPC_E_CHANGED_MODE means the thread is
+    // already in an apartment of the other kind - fine for the shell calls
+    // here, and it must not be balanced by a CoUninitialize.
+    NativeFileIconThreadScope::NativeFileIconThreadScope() {
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        joined = (hr == S_OK || hr == S_FALSE);
+    }
+
+    NativeFileIconThreadScope::~NativeFileIconThreadScope() {
+        if (joined) CoUninitialize();
     }
 
 } // namespace UltraCanvas
