@@ -1,4 +1,4 @@
-#### 2026-09-04 *1.18.2*
+#### 2026-09-04 *1.18.3*
 - **The folder tree shows its connecting lines again.** The tree was built with
   `TreeLineStyle::NoLine`, so a deep folder opened alongside its neighbours left
   the rows below it indented against nothing: which folder a subfolder belonged
@@ -8,8 +8,16 @@
   with a `+` had its icon and name pushed one button width to the right of a
   folder without one, so a plain folder looked like it sat a half-level to the
   left of the folder above it. The framework now reserves the expander slot on
-  every row (see `Docs/UltraCanvas/CHANGELOG.md` 0.3.98), and the tree lines up
+  every row (see `Docs/UltraCanvas/CHANGELOG.md` 0.3.99), and the tree lines up
   down each level.
+
+#### 2026-09-04 *1.18.2*
+- **Application icons stay on screen.** In a folder holding both large previews
+  and many executables — a program's install directory, say — the `.exe` and
+  `.dll` icons could vanish partway through browsing and not come back, leaving
+  a wall of generic EXE/DLL glyphs. The cause and the fix are entirely in the
+  framework's thumbnail cache: see framework 0.3.98. Nothing changed in
+  UltraFiler itself; this release is what carries the fix to it.
 
 #### 2026-09-03 *1.18.1*
 - **The Fonts kind persists.** The framework grew a tenth preview kind — font

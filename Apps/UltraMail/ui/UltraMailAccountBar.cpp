@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - account tiles auto-expand with their counters; counters are
+//                  rounded boxes rather than pills.
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
@@ -33,9 +34,10 @@ constexpr float kBadgeHeight   = 34.0f;
 constexpr float kBadgeFont     = 15.0f;
 constexpr float kFrameWidth    = 2.0f;
 constexpr float kSummaryRadius = 18.0f;
-constexpr float kTileSide      = 176.0f;
+constexpr float kTileSide      = 176.0f;   // the tile's square baseline (minimum)
 constexpr float kTileRadius    = 28.0f;
 constexpr float kTileGap       = 20.0f;
+constexpr float kBadgeRadius   = 8.0f;     // rounded box, not a pill
 
 std::shared_ptr<UltraCanvasBadge> MakeCounter(const std::string& id, int count,
                                               const Color& color, bool darkText) {
@@ -47,6 +49,7 @@ std::shared_ptr<UltraCanvasBadge> MakeCounter(const std::string& id, int count,
     style.height    = kBadgeHeight;
     style.minWidth  = kBadgeHeight;
     style.paddingH  = 10.0f;
+    style.cornerRadius = kBadgeRadius;
     style.fontSize  = kBadgeFont;
     style.textColor = darkText ? Color(20, 20, 20, 255) : Colors::White;
     badge->SetStyle(style);
@@ -76,7 +79,18 @@ std::shared_ptr<UltraCanvasLabel> MakeName(const std::string& id, const std::str
 class AccountTile : public UltraCanvasContainer {
 public:
     AccountTile(const std::string& id, std::function<void()> onSelect)
-        : UltraCanvasContainer(id, 0, 0, kTileSide, kTileSide), onSelect_(std::move(onSelect)) {}
+        : UltraCanvasContainer(id, 0, 0, 0, 0), onSelect_(std::move(onSelect)) {
+        // Width is left AUTO so the tile grows with its counters as the numbers
+        // get longer (the counter badges auto-size to their text). A fixed width
+        // would clip them: containers clip children to their content area.
+        // The square baseline is kept as a *minimum* width plus a fixed height —
+        // a flex container honours an item's boxConstraints on the main axis
+        // only, so the height must be an explicit size rather than a min.
+        size.height = CSSLayout::Dimension::Px(kTileSide);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(kTileSide);
+        boxConstraints = limits;
+    }
     bool OnEvent(const UCEvent& event) override {
         if (!IsVisible() || IsDisabled()) return false;
         if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
@@ -185,6 +199,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         auto counters = CreateContainer("acctCounters_" + acc, 0, 0, 0, 0);
         counters->layout.SetFlexRow()
                         .SetFlexGap(6)
+                        .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto today = MakeCounter("acctBadge_today_" + acc, st.unreadToday, kNewTodayColor, false);
         today->SetTooltip("New today");

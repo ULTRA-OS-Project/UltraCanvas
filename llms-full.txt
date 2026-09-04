@@ -1263,6 +1263,44 @@ you want the engine to size or stretch, use the no-size constructor (or pass `0,
   font, style), call `InvalidateLayout()` in addition to `RequestRedraw()` — a redraw
   alone repaints the *old* bounds; only an invalidation makes the engine re-measure.
 
+## Recipe: a box that grows with its content but keeps a minimum size
+
+A card/tile whose content can get wider (a row of counters whose numbers grow, a
+label with a longer name) must **not** be given an explicit width: an explicit
+`size.width` overrides fit-content, and containers clip their children to the
+content area, so the overflowing row is silently cut off instead of widening the
+frame. Leave the axis that must grow **auto**, and express the design's baseline
+as a *minimum*:
+
+```cpp
+// Auto width (grows with the content), fixed height, never narrower than 176.
+auto tile = std::make_shared<UltraCanvasContainer>("tile", 0, 0, 0, 0);  // 0 ⇒ Auto
+tile->size.height = CSSLayout::Dimension::Px(176);
+CSSLayout::BoxConstraints limits;
+limits.minWidth = CSSLayout::Dimension::Px(176);
+tile->boxConstraints = limits;
+
+tile->layout.SetFlexColumn()
+            .SetFlexGap(10)
+            .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+            .SetFlexAlignItems(CSSLayout::AlignItems::Center);   // keeps rows centred
+```
+
+Every auto-sized row inside then shrink-wraps its children and is centred by
+`AlignItems::Center`, so the whole stack stays on the tile's centre line as it
+widens. Children whose content changes must call `InvalidateLayout()` from their
+setters (the framework's own widgets do) — otherwise the engine keeps the cached
+measurement.
+
+> **Caveat:** a flex container honours an item's `boxConstraints` on the **main
+> axis only** ([FlexLayout.cpp:470](../UltraCanvas/core/CSSLayout/FlexLayout.cpp#L470)).
+> For a child of a flex **row**, `minWidth` works but `minHeight` is ignored —
+> give that axis an explicit `size.height` (as above) when it does not need to grow.
+
+`Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
+with a provider letter, an address and a row of `UltraCanvasBadge` counters that
+widens as the counts grow.
+
 ## Troubleshooting: my widget renders nothing at all
 
 The most common contract violation fails **silently**: an auto-sized leaf widget
@@ -5943,6 +5981,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBadge.md
 - ✅ **Count** mode with a max cap (e.g. `150` → `"99+"`) and show-zero suppression
 - ✅ **Text / status** mode (short label)
 - ✅ **Dot** mode (minimal status indicator, no text)
+- ✅ **Shape**: pill by default, or a rounded box via `BadgeStyle::cornerRadius`
 - ✅ Colour **variants**: Neutral · Primary · Successful · Warning · Danger · Info
   (or a fully custom colour)
 - ✅ **Overlay anchoring** to any corner of a sibling element, with a white
@@ -5999,6 +6038,7 @@ bool IsBadgeVisible() const;           // false when a 0 count / empty text hide
 void SetVariant(BadgeVariant);         // Neutral|Primary|Successful|Warning|Danger|Info
 void SetColor(const Color&);           // custom colour override
 BadgeStyle& GetStyle();
+void SetStyle(const BadgeStyle&);      // re-measures (InvalidateLayout) and redraws
 
 // Overlay
 void AnchorTo(const std::shared_ptr<UltraCanvasUIElement>& anchor,
@@ -6008,6 +6048,32 @@ void SetOverlayRing(bool);             // white separator ring (default on when 
 
 std::function<void()> onClick;
 ```
+
+## Shape: pill or rounded box
+
+`BadgeStyle::cornerRadius` decides the body's shape. The default `-1` keeps the
+classic pill (radius = half the height); any value `>= 0` draws a **rounded box**
+with that radius (`0` = square corners), clamped so it can never exceed half the
+shorter side. Use it when the counter should echo the corners of the tile or card
+it sits in rather than read as a pill:
+
+```cpp
+auto counter = CreateCountBadge("c", 0, 0, 12);
+counter->SetColor(Color(0, 160, 255, 255));
+BadgeStyle style;
+style.height       = 34.0f;
+style.minWidth     = 34.0f;   // a single digit stays a square
+style.paddingH     = 10.0f;
+style.cornerRadius = 8.0f;    // rounded box instead of a pill
+style.fontSize     = 15.0f;
+counter->SetStyle(style);
+```
+
+The badge still auto-sizes to its text, so `SetCount(9999)` widens the box while
+`minWidth` keeps short counts square. Put a row of them in a flex container with
+`JustifyContent::Center` and leave the surrounding tile's width **auto** so the
+frame grows with them — see `Docs/CSSLayout.md` and `Apps/UltraMail/ui/UltraMailAccountBar.cpp`
+for a worked example.
 
 ## Notes
 
@@ -17045,6 +17111,21 @@ files (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
 extraction survives both the expiry above and a restart. Linux `.desktop`
 icons already resolve to theme files and need no extraction.
 
+Because that cache outlives the process it is also **expired**: an entry is
+keyed by where its icon came from, so an application that is upgraded, moved
+or uninstalled orphans its PNG — nothing will ever ask for that key again.
+Each file carries the day it was last served as its modification time (the
+one timestamp worth trusting; Windows stopped maintaining last-access times
+by default with Vista), rewritten at most once a day so a menu that opens
+repeatedly costs no disk writes. The first lookup in a process sweeps the
+directory and deletes everything not served for **two weeks**, along with any
+`.tmp` left by an interrupted write; nothing else in there is touched. A
+swept icon that turns out to still be wanted is simply extracted again. The
+policy is `kIconCacheMaxAge` / `SweepIconCache` / `StampIconCacheFile` in
+`UltraCanvasFileAssociationsBackend.h`, implemented once in
+`core/UltraCanvasFileAssociations.cpp` so both platforms expire on the same
+rule.
+
 ## Example
 
 ```cpp
@@ -17614,6 +17695,41 @@ Display > Thumbnails switches do not affect it. The extractor lives behind
 `UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
 `LoadNativeFileIconPixmap`); on other platforms it reports no icon and
 nothing changes.
+
+Because an icon is the file's identity rather than a courtesy preview, it is
+held apart from the content thumbnails: the two have **separate memory
+budgets**, so a folder of photos or videos filling the thumbnail budget can
+never evict the application icons on screen (see
+[Thumbnail memory](#thumbnail-memory)). Extraction goes through the OS shell,
+which can fail on a file it would serve a moment later, so an icon is retried
+a few times before the tile settles on its glyph — and the worker threads join
+a COM apartment, which the shell expects of its caller.
+
+### Thumbnail memory
+
+Finished pictures are retained so scrolling back is instant, inside two byte
+budgets that bound what a huge folder at a large tile size can hold:
+
+| Pool | Budget | Holds |
+|---|---|---|
+| Content previews | 96 MB | bitmaps, vectors, poster frames, PDF pages, model renders, font specimens |
+| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` icons above |
+
+Overflowing a budget drops that pool's **least recently drawn** entries, and
+only as many as it takes to get back under — never the entry that just
+finished, and never entries of the other pool. The two properties matter
+together: a single video poster frame used to be able to empty the whole
+cache, which blanked every tile on screen at once, and one shared budget let a
+folder of photos push out the executables' icons even though those cost a
+rounding error of the memory. Anything dropped that is still on screen is
+re-queued by the next frame and usually comes straight back from the shared
+`UCImage` cache.
+
+`GetThumbnailCacheStats()` reports what is held (entries, stored bytes, and
+the uncompressed size those bytes stand for — they differ under
+`SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
+the decompressed tiles being drawn). Rescanning the folder or changing the
+view drops everything.
 
 ## Selection info bar
 

@@ -5,7 +5,11 @@
 // display names come from IAssocHandler::GetUIName, and their icons from
 // IAssocHandler::GetIconLocation, extracted once into PNG files under
 // %LOCALAPPDATA%\UltraCanvas\openwith-icons (the shared menu API is
-// image-file based, and the cache survives restarts).
+// image-file based, and the cache survives restarts). Because it survives
+// restarts it also has to be swept: an entry is keyed by the icon's location,
+// so upgrading or uninstalling an application orphans its PNG for good. Each
+// file carries the day it was last served as its modification time, and the
+// first lookup of a process deletes everything not served for two weeks.
 // AssocQueryStringW marks which of the handlers is the current default and
 // lifts it to the front of the list.
 // Launching a specific handler goes through IAssocHandler::CreateInvoker /
@@ -19,8 +23,8 @@
 // core calls this backend from both the UI thread and its prewarm worker.
 // All entry points are serialized by the core's backend mutex (see
 // UltraCanvasFileAssociationsBackend.h) — no locking here.
-// Version: 1.1.0
-// Last Modified: 2026-08-24
+// Version: 1.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 // SHAssocEnumHandlers / IAssocHandler are Vista+ and the mingw-w64 headers
@@ -58,6 +62,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -216,11 +221,21 @@ namespace {
         if (location.empty()) return {};
         const std::string dir = IconCacheDir();
         if (dir.empty()) return {};
+        // The cache survives restarts, so it also has to be expired: see
+        // SweepIconCache in UltraCanvasFileAssociationsBackend.h. Once per
+        // process, on the first lookup — cheap next to the shell enumeration
+        // and icon extraction this same call is about to do, and off the UI
+        // thread whenever the core's prewarm worker gets here first.
+        static std::once_flag sweepOnce;
+        std::call_once(sweepOnce, SweepIconCache, dir);
         const std::string key = HashKey(WideToUtf8(location) + "|" +
                                         std::to_string(index));
         const std::string path = dir + "\\" + key + ".png";
         std::error_code ec;
-        if (fs::exists(PathFromUtf8(path), ec) && !ec) return path;
+        if (fs::exists(PathFromUtf8(path), ec) && !ec) {
+            StampIconCacheFile(path);   // keeps it out of the next sweep
+            return path;
+        }
         std::shared_ptr<UCPixmap> pixmap =
                 WindowsIcons::LoadIconResourcePixmap(location, index, kIconPixels);
         if (!pixmap) return {};
