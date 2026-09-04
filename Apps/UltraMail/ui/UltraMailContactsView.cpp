@@ -7,6 +7,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraMailAlerts.h"
 #include "UltraCanvasEvent.h"
 
 #include <memory>
@@ -243,12 +244,18 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
     dialog->AddChild(buttonRow);
 
     // Capture by value; `contact` carries id + section through the callback.
+    UltraCanvas::UltraCanvasWindowBase* parent = root_ ? root_->GetWindow() : nullptr;
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [this, contact, name, email, phone, org, notes](DialogResult result) mutable {
+        [this, contact, name, email, phone, org, notes, parent](DialogResult result) mutable {
             if (result != DialogResult::OK) return;
             contact.displayName = name->GetText();
-            if (contact.displayName.empty()) return;
+            if (contact.displayName.empty()) {
+                AlertWarning(parent, "The contact was not saved because it has "
+                                     "no name.",
+                             "Enter a name for the contact and try again.");
+                return;
+            }
 
             contact.organization = org->GetText();
             contact.notes = notes->GetText();
@@ -267,9 +274,14 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
                 contact.phones.push_back(p);
             }
 
-            if (store_->Save(contact)) Refresh();
+            if (UltraDbResult saved = store_->Save(contact); saved) {
+                Refresh();
+            } else {
+                AlertError(parent, "\"" + contact.displayName + "\" could not be "
+                           "saved to the address book.", DetailLine(saved));
+            }
         },
-        root_ ? root_->GetWindow() : nullptr);
+        parent);
 }
 
 } // namespace UltraMail

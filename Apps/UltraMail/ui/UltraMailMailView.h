@@ -42,6 +42,7 @@ public:
 
     // Forwarded to the preview.
     std::function<void(const Attachment&)> onOpenAttachment;
+    std::function<void(const Attachment&)> onSaveAttachment;
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;
 

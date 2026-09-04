@@ -1052,7 +1052,11 @@ if (BUILD_TESTS)
     # round-trip plus the mandated negative cases, KDF behaviour and secure
     # buffer semantics. Compiles only UltraCrypt, so it runs headless.
     add_executable(UltraCryptTests Tests/UltraCryptTests.cpp)
-    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt)
+    # UltraCrypt brings UltraCanvasBase32; the test also checks Base64 vectors,
+    # which live with the rest of the core's text utilities. Linking that archive
+    # here is safe precisely because this test is headless — there is no shared
+    # libultracanvas on the line for its symbols to collide with.
+    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt UltraCanvasTextUtils)
     target_compile_features(UltraCryptTests PRIVATE cxx_std_20)
     set_target_properties(UltraCryptTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

@@ -4,6 +4,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 
+#include "UltraCanvasFileLoader.h"
+
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextArea.h"
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -128,6 +130,9 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // Attachment chips below the body (fixed height, hidden while empty).
     auto strip = attachmentStrip_.Build();
     root_->AddChild(strip);
+    attachmentStrip_.onSaveAs = [this](const Attachment& a) {
+        if (onSaveAttachment) onSaveAttachment(a);
+    };
     attachmentStrip_.onOpen = [this](const Attachment& a) {
         if (onOpenAttachment) onOpenAttachment(a);
     };
@@ -197,21 +202,30 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     // Load the cached body (.eml) and decode it.
     fs::path path = fs::path(mailDir_) / env.accountId / SanitizeFolder(env.folder)
                   / (std::to_string(env.uid) + ".eml");
+    // Read through the framework's file loader: a cached body is never
+    // compressed, but unlike a bare ifstream it reports why a read failed, so an
+    // unreadable file says so instead of looking as if it were never downloaded.
     std::error_code ec;
-    if (fs::exists(path, ec)) {
-        std::ifstream is(path, std::ios::binary);
-        std::string raw((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+    if (!fs::exists(path, ec)) {
+        RenderBody("(message body not downloaded yet)", false);
+        attachmentStrip_.SetAttachments({});
+        current_.body.clear();
+        current_.attachments.clear();
+    } else if (auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path.string());
+               !loaded.success) {
+        RenderBody("(this message's body could not be read)\n\n"
+                   + (loaded.error.empty() ? path.string() : loaded.error), false);
+        attachmentStrip_.SetAttachments({});
+        current_.body.clear();
+        current_.attachments.clear();
+    } else {
+        const std::string raw(loaded.bytes.begin(), loaded.bytes.end());
         ParsedMessage pm = MimeCodec::Parse(raw);
         RenderBody(pm.body, pm.bodyIsHtml);
         attachmentStrip_.SetAttachments(pm.attachments);
         // Reply quoting works from text; reduce HTML to text for the captured copy.
         current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
         current_.attachments = pm.attachments;
-    } else {
-        RenderBody("(message body not downloaded yet)", false);
-        attachmentStrip_.SetAttachments({});
-        current_.body.clear();
-        current_.attachments.clear();
     }
 
     // Capture the selection for a possible Reply.

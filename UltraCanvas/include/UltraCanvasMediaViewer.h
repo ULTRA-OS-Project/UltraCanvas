@@ -60,8 +60,8 @@
 // click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
 // off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.7.0
-// Last Modified: 2026-08-25
+// Version: 1.8.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -103,10 +103,14 @@ class UltraCanvasColorSwatchBar;     // backdrop palette under transparent image
 // spreadsheet element, 3D models (STL) through the OpenGL model viewer, text /
 // source / markdown files through a read-only text area, e-books through the
 // eBook viewer, and audio/video through their player elements. UCDoc marks an
-// UltraCanvas Document container (*.ucd); it is displayed through the image
-// surface (embedded preview thumbnail) or the text area (header summary), so
-// it never becomes the active view kind itself.
-enum class MediaKind { Image, Document, Sheet, Model, Text, Book, UCDoc, Video, Audio };
+// UltraCanvas Document container (*.ucd) and Vector a vector document no
+// renderer here can rasterize (Xara, CorelDRAW, EPS/PostScript); both are
+// displayed through the image surface (the preview bitmap the file carries)
+// or the text area (a summary), so neither becomes the active view kind
+// itself.
+enum class MediaKind {
+    Image, Document, Sheet, Model, Text, Book, UCDoc, Vector, Video, Audio
+};
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -490,6 +494,12 @@ private:
     static bool IsModelFile(const std::string& path);       // STL 3D models
     static bool IsEBookFile(const std::string& path);       // EPUB / FB2 / MOBI / AZW
     static bool IsUCDFile(const std::string& path);         // UltraCanvas Document (*.ucd)
+    // Vector documents shown through the preview bitmap they carry inside
+    // themselves (Xara .xar/.web/.wix, CorelDRAW .cdr/.cdt, PostScript
+    // .eps/.epsf/.epsi/.ps/.ai) - the formats with no renderer that works
+    // without a window. SVG is NOT one of these: the image pipeline
+    // rasterizes it, so it is an image file here.
+    static bool IsVectorDocumentFile(const std::string& path);
     // Bitmaps and vector graphics the image pipeline rasterizes (SVG through
     // librsvg). Checked before IsTextFile so markup-based image formats show
     // their picture rather than their source code.

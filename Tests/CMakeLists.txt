@@ -1411,3 +1411,28 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  EmbeddedPreviewTest skipped (UltraCanvas target not present)")
 endif()
+
+message(STATUS "")
+
+# ===== FILER FORMAT LIST TEST =====
+# The list of files behind Display > Thumbnails and Display > Detail view has
+# to hold every format the FileLoader inventory reports for this build, filed
+# under the preview kind of its media category - a format the file manager can
+# open but cannot list is one whose thumbnail nobody can switch on.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFormatListTest...")
+    add_executable(FilerFormatListTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFormatListTest.cpp
+    )
+    target_include_directories(FilerFormatListTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerFormatListTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFormatListTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFormatListTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerFormatListTest COMMAND FilerFormatListTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerFormatListTest")
+else()
+    message(STATUS "  FilerFormatListTest skipped (UltraCanvas target not present)")
+endif()
