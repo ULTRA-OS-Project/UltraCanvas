@@ -12,6 +12,9 @@ sysroot and APK packaging remain, so none of it has run on a device yet — `Ult
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
+**Companion:** [`AndroidOnLinuxInvestigation.md`](AndroidOnLinuxInvestigation.md)
+covers how to *run* the resulting APK — on a Linux workstation or in CI, with no
+Android hardware — and which ABI to build first so that is possible at all.
 
 This document records a full audit of the codebase (platform abstraction, the
 Linux backend, prior porting attempts, dependencies, build system and CI) and

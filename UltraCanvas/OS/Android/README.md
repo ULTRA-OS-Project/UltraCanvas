@@ -10,7 +10,11 @@ APK asset extraction.
 **Still open, and it gates everything: the cross-compiled dependency sysroot
 and APK packaging.** No APK can be built until that exists, so none of this has
 run on a device — it is compiled continuously in CI, not observed. See
-[`packaging/`](packaging/README.md).
+[`packaging/`](packaging/README.md), and
+[`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
+for how to run the first APK on a Linux box rather than a phone (and what to
+fix before that first run — the backend's `std::cerr` diagnostics go nowhere on
+Android).
 
 ## What is here
 

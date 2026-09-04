@@ -43,6 +43,16 @@ but **none of it has run on a device**, and it cannot until the sysroot exists.
 Treat every runtime behaviour described in the backend README as designed and
 reviewed, not as observed.
 
+## Which ABI to build first
+
+`build.gradle.template` says `abiFilters 'arm64-v8a'`, which is what ships —
+but it is the wrong ABI to *start* with, because nothing on an x86_64 Linux
+desktop can run it without a translation layer or whole-CPU emulation. Build
+`x86_64` first (`scripts/android-bootstrap-sysroot.sh x86_64`, already wired to
+vcpkg's `x64-android` triplet), get the APK running on an emulator, then add
+arm64. See
+[`AndroidOnLinuxInvestigation.md`](../../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md).
+
 ## Layout a Gradle project needs
 
 ```
