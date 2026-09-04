@@ -488,6 +488,12 @@ private:
     // Installs the display-format callbacks (menu tail + change hook) on a
     // freshly created file display.
     void WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target);
+    // The Display settings every file display carries alike: the thumbnail /
+    // detail-view switches and the File extensions ones. Applied by
+    // ApplySettings to all of them, and to a display created later (a new tab,
+    // the History and Favorites lists) so it opens configured rather than
+    // waiting for the next settings change.
+    void ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
     // History / Clear Favorites actions. `page` points it straight at one

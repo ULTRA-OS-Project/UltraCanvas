@@ -780,6 +780,9 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     settings.detailViewKinds = source->GetDetailViewKinds();
     settings.disabledThumbnailFormats  = source->GetDisabledThumbnailFormats();
     settings.disabledDetailViewFormats = source->GetDisabledDetailViewFormats();
+    // The same hook reports the Display > File extensions switches.
+    settings.showFileExtensions = source->AreFileExtensionsInNames();
+    settings.extensionBadge     = source->GetExtensionBadge();
     settings.Save();
     ApplySettings();
 }
@@ -811,6 +814,23 @@ void UltraFilerWindow::WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target
     target->onDisplayFormatsChanged = [this, target]() {
         AdoptDisplayFormats(target);
     };
+}
+
+void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    // The flag keeps the widgets' own change hooks from writing the setting
+    // straight back while it is being pushed into them.
+    const bool wasApplying = applyingDisplayFormats;
+    applyingDisplayFormats = true;
+    target->SetThumbnailKinds(settings.thumbnailKinds);
+    target->SetDetailViewKinds(settings.detailViewKinds);
+    target->SetDisabledThumbnailFormats(settings.disabledThumbnailFormats);
+    target->SetDisabledDetailViewFormats(settings.disabledDetailViewFormats);
+    // Display > File extensions: whether the names keep their extension, and
+    // the tag the thumbnail tiles carry.
+    target->SetFileExtensionsInNames(settings.showFileExtensions);
+    target->SetExtensionBadge(settings.extensionBadge);
+    applyingDisplayFormats = wasApplying;
 }
 
 void UltraFilerWindow::ApplySettings() {
@@ -855,14 +875,7 @@ void UltraFilerWindow::ApplySettings() {
     // of the window carries the same switches, so the setting holds wherever
     // the user is looking - and the flag keeps the widgets' own change hooks
     // from writing the setting straight back.
-    applyingDisplayFormats = true;
-    for (UltraCanvasFilerWidget* f : AllFilers()) {
-        f->SetThumbnailKinds(settings.thumbnailKinds);
-        f->SetDetailViewKinds(settings.detailViewKinds);
-        f->SetDisabledThumbnailFormats(settings.disabledThumbnailFormats);
-        f->SetDisabledDetailViewFormats(settings.disabledDetailViewFormats);
-    }
-    applyingDisplayFormats = false;
+    for (UltraCanvasFilerWidget* f : AllFilers()) ApplyDisplaySettingsTo(f);
     // The detail pane may have been showing a file kind that was just switched
     // off - or may now be allowed to open for what is selected. (A no-op
     // before the split exists, i.e. on the call during start-up.)

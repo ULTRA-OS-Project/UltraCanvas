@@ -548,6 +548,38 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== CSS LAYOUT AUTO-EXPAND TEST =====
+# The auto-expanding, centred card pattern (UltraMail's account tile) on the
+# real CSSLayout engine: an auto-width flex column grows with an inner row of
+# auto-sized counters, keeps every row centred, and honours its minimum width.
+# Pure geometry - the layout engine has no UI-stack dependencies.
+message(STATUS "  Building CSSLayoutAutoExpandTest...")
+add_executable(CSSLayoutAutoExpandTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutAutoExpandTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutAutoExpandTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutAutoExpandTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutAutoExpandTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutAutoExpandTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutAutoExpandTest
+    COMMAND CSSLayoutAutoExpandTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
+
 # ===== PACKET LAYOUT TEST =====
 # Packet structure model, layout engine (row splitting with continuation
 # edges, proportional clamping, lanes), validators, and the RFC-pinning
@@ -1435,6 +1467,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFormatListTest")
 else()
     message(STATUS "  FilerFormatListTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER FILE-EXTENSION DISPLAY TEST =====
+# Display > File extensions: the name the file display draws for an entry and
+# the type tag its thumbnail tiles carry. Hiding an extension must never
+# invent a file type out of a version number or an architecture tag.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerExtensionDisplayTest...")
+    add_executable(FilerExtensionDisplayTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerExtensionDisplayTest.cpp
+    )
+    target_include_directories(FilerExtensionDisplayTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerExtensionDisplayTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerExtensionDisplayTest PRIVATE UltraCanvas)
+    set_target_properties(FilerExtensionDisplayTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerExtensionDisplayTest COMMAND FilerExtensionDisplayTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerExtensionDisplayTest")
+else()
+    message(STATUS "  FilerExtensionDisplayTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")

@@ -7,7 +7,10 @@
 // pixel width or a share of the preview's width, set with a slider),
 // Display > Thumbnails and Display > Detail view (the list of files: which
 // file kinds, and which individual formats inside them, are drawn as a
-// thumbnail in the file display / opened in the detail pane beside it), Media
+// thumbnail in the file display / opened in the detail pane beside it),
+// Display > File extensions (whether a displayed name still ends in its
+// extension, and whether a thumbnail tile carries that extension as a bar or
+// a small tag), Media
 // Viewer > Transparent Images (the backdrop behind transparent images —
 // checkered pattern or a preset colour chosen with the colour picker),
 // Handling > Drag & Drop (what
@@ -16,8 +19,8 @@
 // stored with "Save app") and History & Favorites (clearing the
 // recently-used lists and the pinned entries). Changes apply live and are
 // saved immediately.
-// Version: 1.7.0
-// Last Modified: 2026-09-03
+// Version: 1.8.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -45,6 +48,7 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace UltraCanvas {
 
@@ -58,6 +62,7 @@ namespace {
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
+    constexpr const char* kPageFileExtensions = "display/file-extensions";
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
@@ -83,6 +88,14 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
         std::shared_ptr<UltraCanvasRadio>  homePredefinedRadio;
         UltraCanvasRadioGroup              homeContentGroup;
+
+        // Display > File extensions: the "keep them in the name" checkbox and
+        // one radio per thumbnail tag mode (None / Bar / Icon), in the order
+        // the widget lists them.
+        std::shared_ptr<UltraCanvasCheckbox> extensionsInNamesBox;
+        std::vector<std::pair<FilerExtensionBadge,
+                              std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
+        UltraCanvasRadioGroup                extensionBadgeGroup;
 
         // Display > Thumbnails / Display > Detail view: the kind checkboxes
         // and the per-format ones of each page, kept so the two "Everything
@@ -712,6 +725,93 @@ namespace {
         return page;
     }
 
+    // ===== DISPLAY > FILE EXTENSIONS =====
+    // Two switches that belong together: whether a displayed name still ends
+    // in ".exe", and what a thumbnail tile shows about the type instead - the
+    // bar with the extension at its right end, the tag alone, or nothing.
+    // Neither touches the file: the widget draws a shortened name, it does not
+    // own a second one, so renaming and every file operation keep working on
+    // the real name.
+    const char* ExtensionBadgeDescription(FilerExtensionBadge badge) {
+        switch (badge) {
+            case FilerExtensionBadge::Bar:
+                return "Bar - a strip across the foot of the icon, extension "
+                       "at its right end";
+            case FilerExtensionBadge::Icon:
+                return "Icon - the extension alone, in the icon's bottom-right "
+                       "corner";
+            default:
+                return "None - the tiles show the name only";
+        }
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildFileExtensionsPage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-ext");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-ext-title", "File extensions", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-ext-caption",
+                "How the file display names a file and shows what type it is:"));
+
+        d->extensionsInNamesBox = MakeFormatCheckbox("ufl-set-ext-in-names",
+                "Show the file extension in the name", 460,
+                d->settings->showFileExtensions, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->showFileExtensions = on;
+            ApplyAndSave(d);
+        });
+        d->extensionsInNamesBox->SetFontSize(kFontSize + 1.0f);
+        page->AddChild(d->extensionsInNamesBox);
+
+        page->AddChild(MakeLabel("ufl-set-ext-note1",
+                "Off, \"UltraFiler.exe\" is listed as \"UltraFiler\". Only the "
+                "drawn name changes -"));
+        page->AddChild(MakeLabel("ufl-set-ext-note2",
+                "renaming, sorting and every file operation keep using the "
+                "real name."));
+
+        page->AddChild(MakeLabel("ufl-set-ext-badge-caption",
+                "In the thumbnail views, show the extension on the tile:"));
+
+        d->badgeRadios.clear();
+        for (FilerExtensionBadge badge :
+             UltraCanvasFilerWidget::AllExtensionBadges()) {
+            auto radio = UltraCanvasRadio::Create(
+                    std::string("ufl-set-ext-badge-") +
+                            UltraCanvasFilerWidget::ExtensionBadgeLabel(badge),
+                    -1, -1, ExtensionBadgeDescription(badge),
+                    d->settings->extensionBadge == badge);
+            // Explicit sizes: content measuring needs a render context, which
+            // the dialog does not have while it is first laid out.
+            radio->size.width  = CSSLayout::Dimension::Px(520);
+            radio->size.height = CSSLayout::Dimension::Px(22);
+            radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            d->extensionBadgeGroup.AddRadioButton(radio);
+            d->badgeRadios.emplace_back(badge, radio);
+            page->AddChild(radio);
+        }
+        d->extensionBadgeGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [badge, radio] : d->badgeRadios) {
+                if (radio != selected) continue;
+                d->settings->extensionBadge = badge;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        page->AddChild(MakeLabel("ufl-set-ext-note3",
+                "The tag is drawn over the foot of the icon, so no tile grows "
+                "for it, and a"));
+        page->AddChild(MakeLabel("ufl-set-ext-note4",
+                "folder - or a name whose tail is a version rather than a type "
+                "- never gets one."));
+        return page;
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildHomeFolderPage(DialogState* d) {
         auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-home");
         page->layout.SetFlexColumn().SetFlexGap(8)
@@ -1274,6 +1374,11 @@ namespace {
         homeFolder.text = "Home folder";
         d->tree->AddNode(kPageDisplay, homeFolder);
 
+        TreeNodeData fileExtensions;
+        fileExtensions.nodeId = kPageFileExtensions;
+        fileExtensions.text = "File extensions";
+        d->tree->AddNode(kPageDisplay, fileExtensions);
+
         TreeNodeData pdfInventory;
         pdfInventory.nodeId = kPagePdfInventory;
         pdfInventory.text = "PDF Inventory";
@@ -1347,6 +1452,12 @@ namespace {
                                   .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageHomeFolder] = homeFolderPage;
         d->pageArea->AddChild(homeFolderPage);
+
+        auto fileExtensionsPage = BuildFileExtensionsPage(d);
+        fileExtensionsPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageFileExtensions] = fileExtensionsPage;
+        d->pageArea->AddChild(fileExtensionsPage);
 
         auto pdfInventoryPage = BuildPdfInventoryPage(d);
         pdfInventoryPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -1447,6 +1558,7 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     switch (initialPage) {
         case Page::Thumbnails: pageId = kPageThumbnails; break;
         case Page::DetailView: pageId = kPageDetailView; break;
+        case Page::FileExtensions: pageId = kPageFileExtensions; break;
         default: break;
     }
     // Raise the already open window instead of opening a second one - on the
