@@ -7001,6 +7001,68 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Keeps the retained pixmap bytes bounded: browsing a huge folder in
+        // a big tile size cannot grow without limit.
+        //
+        // Two pools, because the two kinds of picture are not interchangeable.
+        // A content preview is a courtesy — the tile reads fine without it —
+        // and a single video poster frame can be megabytes. An application
+        // icon is the file's identity: an .exe drawn with the generic "EXE"
+        // glyph looks broken, and the icon costs a few hundred kilobytes at
+        // most. Sharing one budget let a folder of photos or videos evict
+        // every icon on screen, which is exactly what "the icons stopped
+        // showing" looked like.
+        constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
+        constexpr size_t kNativeIconBudgetBytes = 16 * 1024 * 1024;
+        // Tries an application icon gets from the shell before the tile
+        // settles on its type glyph.
+        constexpr uint8_t kNativeIconMaxAttempts = 3;
+    } // namespace
+
+    void UltraCanvasFilerWidget::ReleaseThumbSlotLocked(const std::string& key,
+                                                        ThumbSlot& slot) {
+        if (slot.state == ThumbState::Ready) {
+            size_t& pool = slot.nativeIcon ? thumbNativeBytes : thumbBytes;
+            pool -= std::min(pool, slot.bytes);
+        }
+        auto hit = thumbHot.find(key);
+        if (hit != thumbHot.end()) {
+            thumbHotBytes -= std::min(thumbHotBytes, hit->second.bytes);
+            thumbHot.erase(hit);
+        }
+    }
+
+    void UltraCanvasFilerWidget::EvictThumbSlotsLocked(const std::string& keepKey) {
+        struct Pool { size_t* held; size_t budget; bool native; };
+        const Pool pools[2] = {
+            { &thumbBytes,       kThumbBudgetBytes,      false },
+            { &thumbNativeBytes, kNativeIconBudgetBytes, true  },
+        };
+        for (const Pool& pool : pools) {
+            while (*pool.held > pool.budget) {
+                // Least recently drawn first: tiles the user scrolled past
+                // long ago go before the ones still on screen.
+                auto oldest = thumbSlots.end();
+                for (auto it = thumbSlots.begin(); it != thumbSlots.end(); ++it) {
+                    if (it->first == keepKey) continue;
+                    if (it->second.state != ThumbState::Ready) continue;
+                    if (it->second.nativeIcon != pool.native) continue;
+                    if (oldest == thumbSlots.end() ||
+                        it->second.tick < oldest->second.tick) {
+                        oldest = it;
+                    }
+                }
+                // Only the kept slot is left in this pool: it is over budget
+                // on its own, and dropping it would undo the decode that
+                // just finished.
+                if (oldest == thumbSlots.end()) break;
+                ReleaseThumbSlotLocked(oldest->first, oldest->second);
+                thumbSlots.erase(oldest);
+            }
+        }
+    }
+
     std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireThumbnail(
             const std::string& path, int w, int h,
             ImageFitMode fit, float scale) {
@@ -7011,6 +7073,8 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lk(thumbMutex);
             auto it = thumbSlots.find(key);
             if (it != thumbSlots.end()) {
+                // Touched by this frame — the eviction sweep reads this.
+                it->second.tick = ++thumbSlotTick;
                 if (it->second.state == ThumbState::Ready) {
                     if (it->second.pixmap) return it->second.pixmap;
                     // Compressed slot: serve from the hot cache, or take a
@@ -7028,7 +7092,10 @@ namespace UltraCanvas {
                     // item keeps its place when the queue is rebuilt.
                 }
             } else {
-                thumbSlots.emplace(key, ThumbSlot{});
+                ThumbSlot fresh;
+                fresh.tick = ++thumbSlotTick;
+                fresh.nativeIcon = NativeFileIconAvailable(path);
+                thumbSlots.emplace(key, std::move(fresh));
             }
         }
 
@@ -7119,6 +7186,7 @@ namespace UltraCanvas {
         for (auto it = thumbSlots.begin(); it != thumbSlots.end();) {
             if (it->second.state == ThumbState::Pending &&
                 wantedKeys.find(it->first) == wantedKeys.end()) {
+                ReleaseThumbSlotLocked(it->first, it->second);
                 it = thumbSlots.erase(it);
             } else {
                 ++it;
@@ -7214,6 +7282,7 @@ namespace UltraCanvas {
         thumbQueue.clear();
         thumbSlots.clear();
         thumbBytes = 0;
+        thumbNativeBytes = 0;
         thumbHot.clear();
         thumbHotBytes = 0;
         textQueue.clear();
@@ -7299,11 +7368,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
-        // Keeps the retained pixmap bytes bounded: browsing a huge folder in a
-        // big tile size cannot grow without limit. On overflow the finished
-        // slots are simply dropped — anything still visible is re-queued by
-        // the next draw and comes straight back from the shared pixmap cache.
-        constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
+        // Native icon extraction goes through the OS shell, which wants the
+        // calling thread to have joined a COM apartment; held for the life of
+        // the worker rather than per extraction. A no-op off Windows.
+        NativeFileIconThreadScope nativeIconScope;
 
         for (;;) {
             ThumbRequest req;
@@ -7393,8 +7461,9 @@ namespace UltraCanvas {
             // A throw out of a decoder leaves `pm` empty: the slot is marked
             // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
+            const bool nativeIcon = NativeFileIconAvailable(req.path);
             RunGuarded("thumbnail decode", req.path, [&]() {
-            if (NativeFileIconAvailable(req.path)) {
+            if (nativeIcon) {
                 // The icon embedded in an executable (or an .ico file),
                 // extracted by the OS shell at the nearest embedded size.
                 const int edge = std::max(1, static_cast<int>(std::lround(
@@ -7481,6 +7550,11 @@ namespace UltraCanvas {
                     const std::string key = ThumbSlotKey(req.path, req.w, req.h,
                                                          req.fit, req.scale);
                     ThumbSlot& slot = thumbSlots[key];
+                    // A re-decode into a slot that already holds something
+                    // (the request outlived a prune and came back) must not
+                    // count its bytes twice.
+                    ReleaseThumbSlotLocked(key, slot);
+                    slot.nativeIcon = nativeIcon;
                     if (pm) {
                         slot.state = ThumbState::Ready;
                         slot.rawBytes = static_cast<size_t>(pm->GetRawWidth())
@@ -7494,29 +7568,27 @@ namespace UltraCanvas {
                             slot.qoi = nullptr;
                             slot.bytes = slot.rawBytes;
                         }
-                        thumbBytes += slot.bytes;
-                        if (thumbBytes > kThumbBudgetBytes) {
-                            for (auto sit = thumbSlots.begin();
-                                 sit != thumbSlots.end();) {
-                                if (sit->first != key &&
-                                    sit->second.state == ThumbState::Ready) {
-                                    auto hit = thumbHot.find(sit->first);
-                                    if (hit != thumbHot.end()) {
-                                        thumbHotBytes -= hit->second.bytes;
-                                        thumbHot.erase(hit);
-                                    }
-                                    sit = thumbSlots.erase(sit);
-                                } else {
-                                    ++sit;
-                                }
-                            }
-                            thumbBytes = slot.bytes;
-                        }
+                        (slot.nativeIcon ? thumbNativeBytes : thumbBytes) += slot.bytes;
+                        EvictThumbSlotsLocked(key);
                     } else {
-                        slot.state = ThumbState::Failed;   // don't retry-loop
                         slot.pixmap = nullptr;
                         slot.qoi = nullptr;
-                        producedNothing = true;
+                        slot.bytes = 0;
+                        slot.rawBytes = 0;
+                        // A content decode that produced nothing produces
+                        // nothing the second time too, so the slot is retired
+                        // and the tile stops asking. An application icon can
+                        // fail on a file the shell would serve a moment later,
+                        // so it goes back to Pending for another try; the
+                        // attempt count keeps that from becoming a loop, and a
+                        // slot the view scrolls away from is pruned along with
+                        // its count, so coming back is a fresh start.
+                        if (nativeIcon && ++slot.attempts < kNativeIconMaxAttempts) {
+                            slot.state = ThumbState::Pending;
+                        } else {
+                            slot.state = ThumbState::Failed;
+                            producedNothing = true;
+                        }
                     }
                     report = true;
                 }
