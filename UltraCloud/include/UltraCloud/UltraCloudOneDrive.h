@@ -3,7 +3,7 @@
 // /me/drive/root:/<path>: children, content (simple PUT up to 4 MB, an
 // upload session in 10 MiB chunks above that), createLink (anonymous view
 // links with optional password and expiry). Signs in with OAuth2 + PKCE.
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -18,13 +18,18 @@ std::string OneDriveItemUrl(const std::string& path, const std::string& suffix);
 
 class OneDriveProvider : public OAuthProviderBase {
 public:
-    // Files above this size go through an upload session.
-    static constexpr int64_t kSimpleUploadLimit = 4 * 1024 * 1024;
-    // Session chunk: a multiple of 320 KiB, as Graph requires.
-    static constexpr int64_t kChunkSize = 10 * 1024 * 1024;
+    // Files above this size go through an upload session (Graph caps a
+    // simple PUT at 4 MB); session chunks are multiples of 320 KiB.
+    static constexpr int64_t kDefaultSimpleUploadLimit = 4LL * 1024 * 1024;
+    static constexpr int64_t kDefaultChunkSize         = 10LL * 1024 * 1024;
 
     explicit OneDriveProvider(HttpFn http = nullptr, OAuthHooks hooks = {})
         : OAuthProviderBase(std::move(http), std::move(hooks)) {}
+
+    // Tune the session thresholds (tests use small ones).
+    void SetUploadLimits(int64_t simpleUploadLimit, int64_t chunkSize) {
+        simpleUploadLimit_ = simpleUploadLimit; chunkSize_ = chunkSize;
+    }
 
     std::string Id() const override { return "onedrive"; }
     std::string DisplayName() const override { return "OneDrive"; }
@@ -45,6 +50,10 @@ public:
     Result CreateShareLink(const Account& account, const Credentials& credentials,
                            const std::string& remotePath,
                            const ShareLinkOptions& options, ShareLink& out) override;
+
+private:
+    int64_t simpleUploadLimit_ = kDefaultSimpleUploadLimit;
+    int64_t chunkSize_         = kDefaultChunkSize;
 };
 
 } // namespace UltraCloud

@@ -21,8 +21,18 @@ std::string GoogleDriveChildQuery(const std::string& parentId, const std::string
 
 class GoogleDriveProvider : public OAuthProviderBase {
 public:
+    // Files above this size go through a resumable upload (Google recommends
+    // it above 5 MB); chunks are multiples of 256 KiB.
+    static constexpr int64_t kDefaultSimpleUploadLimit = 5LL * 1024 * 1024;
+    static constexpr int64_t kDefaultChunkSize         = 8LL * 1024 * 1024;
+
     explicit GoogleDriveProvider(HttpFn http = nullptr, OAuthHooks hooks = {})
         : OAuthProviderBase(std::move(http), std::move(hooks)) {}
+
+    // Tune the resumable thresholds (tests use small ones).
+    void SetUploadLimits(int64_t simpleUploadLimit, int64_t chunkSize) {
+        simpleUploadLimit_ = simpleUploadLimit; chunkSize_ = chunkSize;
+    }
 
     std::string Id() const override { return "googledrive"; }
     std::string DisplayName() const override { return "Google Drive"; }
@@ -54,6 +64,13 @@ private:
     // The id (and mime type) of `name` inside `parentId`, or NotFound.
     Result FindChild(const Credentials& credentials, const std::string& parentId,
                      const std::string& name, std::string& id, std::string& mimeType);
+    // Resumable upload: open a session (create or update), then PUT chunks.
+    Result UploadResumable(const Credentials& credentials, const std::string& localPath,
+                           int64_t total, const std::string& name, const std::string& parentId,
+                           const std::string& existingId, const std::string& what);
+
+    int64_t simpleUploadLimit_ = kDefaultSimpleUploadLimit;
+    int64_t chunkSize_         = kDefaultChunkSize;
 };
 
 } // namespace UltraCloud

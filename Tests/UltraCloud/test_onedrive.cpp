@@ -88,7 +88,7 @@ TEST(onedrive_large_upload_uses_a_session_in_chunks) {
         Answer(resp, ranges.size() == 3 ? 201 : 202, "{}");
         return Ok();
     };
-    // 25 MiB → 10 + 10 + 5 chunks.
+    // 25 MiB with the default limits → 10 + 10 + 5 MiB chunks.
     const std::string big(25 * 1024 * 1024, 'x');
     OneDriveProvider od(fake);
     Account a; Credentials c; c.token = "tok";
@@ -97,6 +97,13 @@ TEST(onedrive_large_upload_uses_a_session_in_chunks) {
     REQUIRE_EQ(ranges.size(), (size_t)3);
     REQUIRE_EQ(ranges[0], std::string("bytes 0-10485759/26214400"));
     REQUIRE_EQ(ranges[2], std::string("bytes 20971520-26214399/26214400"));
+
+    // Small limits: the same 25-byte layout as the other providers' tests.
+    ranges.clear();
+    od.SetUploadLimits(/*simple=*/20, /*chunk=*/10);
+    REQUIRE(od.Upload(a, c, WriteFile("small-big.bin", "0123456789abcdefghijKLMNO"), "/sb.bin"));
+    REQUIRE_EQ(ranges.size(), (size_t)3);
+    REQUIRE_EQ(ranges[2], std::string("bytes 20-24/25"));
 }
 
 TEST(onedrive_share_link) {
