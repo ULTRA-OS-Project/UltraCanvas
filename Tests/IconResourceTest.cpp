@@ -1,6 +1,6 @@
 // Tests/IconResourceTest.cpp
-// The portable icon reader (UltraCanvasIconResource): an ".ico" file, and
-// the RT_GROUP_ICON / RT_ICON resources of a PE binary.
+// The portable icon reader (UltraCanvasIconResource): an ".ico" file, the
+// RT_GROUP_ICON / RT_ICON resources of a PE binary, and an Apple ".icns".
 //
 // Both inputs are assembled here rather than checked in, so the bytes the
 // reader is asked to understand are visible beside the expectation - and so
@@ -12,8 +12,10 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasIconResource.h"
+#include "UltraCanvasImage.h"
 
 #include <cstdint>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -191,6 +193,80 @@ std::vector<uint8_t> BuildExecutable() {
     return out.bytes;
 }
 
+// ===== AN APPLE ICON FILE =====
+// Two renditions of the same 4x4 picture, in the two encodings an icns can
+// hold: the classic run-length encoded 24-bit form with its mask in a
+// separate element, and (bigger) a modern element whose payload is a PNG -
+// which this test fills with bytes the image pipeline will refuse, so the
+// reader has to fall back to the rendition it can actually decode.
+struct BigBlob {
+    std::vector<uint8_t> bytes;
+    void U8(uint8_t v) { bytes.push_back(v); }
+    void U32(uint32_t v) {
+        U8((v >> 24) & 0xFF); U8((v >> 16) & 0xFF);
+        U8((v >> 8) & 0xFF);  U8(v & 0xFF);
+    }
+    void Type(const char* t) { for (int i = 0; i < 4; ++i) U8(static_cast<uint8_t>(t[i])); }
+    void Raw(const std::vector<uint8_t>& v) {
+        bytes.insert(bytes.end(), v.begin(), v.end());
+    }
+};
+
+// One channel of `count` identical bytes, in Apple's PackBits variant: a
+// lead byte >= 0x80 means "the next byte, (lead - 0x7D) times".
+std::vector<uint8_t> IcnsRun(uint8_t value, int count) {
+    std::vector<uint8_t> out;
+    int left = count;
+    while (left > 0) {
+        const int chunk = std::min(left, 130);      // 0xFF - 0x7D
+        out.push_back(static_cast<uint8_t>(0x7D + chunk));
+        out.push_back(value);
+        left -= chunk;
+    }
+    return out;
+}
+
+// In an icns the element type dictates the size: "is32" is always 16x16,
+// and its mask "s8mk" always 256 bytes.
+constexpr int kIcnsEdge = 16;
+
+std::vector<uint8_t> BuildIcnsFile() {
+    const int pixels = kIcnsEdge * kIcnsEdge;
+    // is32: red, green and blue channels, run-length encoded.
+    BigBlob rgb;
+    rgb.Raw(IcnsRun(0xFF, pixels));                 // red
+    rgb.Raw(IcnsRun(0x00, pixels));                 // green
+    rgb.Raw(IcnsRun(0x00, pixels));                 // blue
+    // s8mk: the transparency, one plain byte per pixel - opaque except the
+    // top-left pixel, the same shape the .ico above uses.
+    std::vector<uint8_t> mask(static_cast<size_t>(pixels), 0xFF);
+    mask[0] = 0x00;
+
+    BigBlob body;
+    body.Type("is32");
+    body.U32(static_cast<uint32_t>(8 + rgb.bytes.size()));
+    body.Raw(rgb.bytes);
+    body.Type("s8mk");
+    body.U32(static_cast<uint32_t>(8 + mask.size()));
+    body.Raw(mask);
+    // A modern element that claims to be a PNG and is not: the reader must
+    // try it, fail, and fall through to the rendition above.
+    const std::vector<uint8_t> notAPng = {0x89, 'P', 'N', 'G', 0x0D, 0x0A,
+                                          0x1A, 0x0A, 'j', 'u', 'n', 'k'};
+    body.Type("ic07");
+    body.U32(static_cast<uint32_t>(8 + notAPng.size()));
+    body.Raw(notAPng);
+    // A table of contents, which is not a rendition and must be skipped.
+    body.Type("TOC ");
+    body.U32(8);
+
+    BigBlob file;
+    file.Type("icns");
+    file.U32(static_cast<uint32_t>(8 + body.bytes.size()));
+    file.Raw(body.bytes);
+    return file.bytes;
+}
+
 void WriteBinaryFile(const fs::path& path, const std::vector<uint8_t>& bytes) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary);
@@ -203,19 +279,19 @@ bool IsOpaqueRed(uint32_t pixel) { return pixel == 0xFFFF0000u; }
 bool IsTransparent(uint32_t pixel) { return (pixel >> 24) == 0; }
 
 void CheckDecodedIcon(const std::shared_ptr<UCPixmap>& pixmap,
-                      const std::string& what) {
+                      const std::string& what, int expectedEdge = kIconEdge) {
     if (!pixmap || !pixmap->IsValid()) {
         Check(false, what + ": decoded");
         return;
     }
-    Check(pixmap->GetWidth() == kIconEdge && pixmap->GetHeight() == kIconEdge,
+    Check(pixmap->GetWidth() == expectedEdge && pixmap->GetHeight() == expectedEdge,
           what + ": " + std::to_string(pixmap->GetWidth()) + "x" +
                   std::to_string(pixmap->GetHeight()) + " pixels");
     Check(IsOpaqueRed(pixmap->GetPixel(1, 1)),
           what + ": the picture is the colour the frame stores");
     Check(IsTransparent(pixmap->GetPixel(0, 0)),
           what + ": the AND mask makes its pixel transparent");
-    Check(!IsTransparent(pixmap->GetPixel(3, 3)),
+    Check(!IsTransparent(pixmap->GetPixel(expectedEdge - 1, expectedEdge - 1)),
           what + ": the rest of the icon stays opaque");
 }
 
@@ -223,6 +299,11 @@ void CheckDecodedIcon(const std::shared_ptr<UCPixmap>& pixmap,
 
 int main() {
     std::cout << "===== UltraCanvas Icon Resource Test =====\n";
+    // A rendition that holds a PNG is decoded through the image pipeline,
+    // and the pipeline is unusable before it is initialized — which is what
+    // UltraCanvasApplication does at startup and a bare test has to do
+    // itself.
+    UCImage::InitializeImageSubsysterm("IconResourceTest");
     const fs::path root = fs::temp_directory_path() / "ultracanvas-iconresource-test";
     std::error_code ec;
     fs::remove_all(root, ec);
@@ -253,6 +334,16 @@ int main() {
     // nothing: a stale index in a shortcut must not blank the tile.
     CheckDecodedIcon(LoadIconResource(exe.string(), 7, 32),
                      "an index the file does not have");
+
+    std::cout << "\nAn .icns file\n";
+    const fs::path icns = root / "App.icns";
+    WriteBinaryFile(icns, BuildIcnsFile());
+    CheckDecodedIcon(LoadIconResource(icns.string(), 0, 16), "the icns file",
+                     kIcnsEdge);
+    CheckDecodedIcon(DecodeIconFileBytes(BuildIcnsFile(), 16),
+                     "the same bytes in memory", kIcnsEdge);
+    Check(HasIconResourceExtension("/Applications/Thing.app/Contents/Resources/app.icns"),
+          "an .icns is recognised as an icon file");
 
     std::cout << "\nFiles with no icon in them\n";
     const fs::path text = root / "notes.ico";
