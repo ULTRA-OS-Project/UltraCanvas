@@ -69,6 +69,7 @@
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasDesktopEntry.h"
 #include "UltraCanvasShellLink.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
@@ -2102,10 +2103,16 @@ namespace UltraCanvas {
         std::string needle = nameFilter;
         std::transform(needle.begin(), needle.end(), needle.begin(),
                        [](unsigned char c) { return std::tolower(c); });
-        std::string name = e.name;
-        std::transform(name.begin(), name.end(), name.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        return name.find(needle) != std::string::npos;
+        auto matches = [&needle](std::string value) {
+            std::transform(value.begin(), value.end(), value.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return value.find(needle) != std::string::npos;
+        };
+        // The name on screen counts as well as the name on disk: typing
+        // "firefox" has to find a launcher shown as "Firefox Web Browser",
+        // whatever its file is called.
+        return matches(e.name) ||
+               (!e.linkDisplayName.empty() && matches(e.linkDisplayName));
     }
 
     void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
@@ -2244,10 +2251,11 @@ namespace UltraCanvas {
             e.typeName = "Folder";
             return;
         }
-        if (e.extension == "lnk") {
-            // A shortcut is not a kind of file, it is a reference to one.
-            // The name says so; what it points at (ResolveShortcutEntry,
-            // once the file has actually been read) says the rest.
+        if (e.extension == "lnk" || e.extension == "desktop") {
+            // A shortcut is not a kind of file, it is a reference to one —
+            // a Windows .lnk or a freedesktop desktop entry. The name says
+            // so; what it points at (ResolveShortcutEntry, once the file has
+            // actually been read) says the rest.
             e.category = FilerFileCategory::Other;
             e.typeName = "Shortcut";
             return;
@@ -2314,6 +2322,7 @@ namespace UltraCanvas {
             std::time_t modifiedTime = 0;
             bool isShortcut = false;
             std::string linkTarget;
+            std::string displayName;
             std::string info;
             FilerFileCategory category = FilerFileCategory::Other;
         };
@@ -2331,7 +2340,9 @@ namespace UltraCanvas {
     } // namespace
 
     void UltraCanvasFilerWidget::ResolveShortcutEntry(FilerEntry& e) const {
-        if (e.isDirectory || e.extension != "lnk") return;
+        if (e.isDirectory ||
+            (e.extension != "lnk" && e.extension != "desktop"))
+            return;
 
         {
             std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
@@ -2341,6 +2352,7 @@ namespace UltraCanvas {
                 if (!it->second.isShortcut) return;
                 e.isShortcut = true;
                 e.linkTarget = it->second.linkTarget;
+                e.linkDisplayName = it->second.displayName;
                 e.info = it->second.info;
                 e.category = it->second.category;
                 return;
@@ -2350,8 +2362,40 @@ namespace UltraCanvas {
         ShortcutCacheEntry cached;
         cached.size = e.size;
         cached.modifiedTime = e.modifiedTime;
+        UCDesktopEntry desktop;
         UCShellLink link;
-        if (ReadShellLink(e.path, link)) {
+        if (e.extension == "desktop" && ReadDesktopEntry(e.path, desktop)) {
+            cached.isShortcut = true;
+            // A launcher is called what it says it is called: the file name
+            // of a desktop entry is an id ("org.mozilla.firefox.desktop"),
+            // not something to show anyone.
+            cached.displayName = desktop.name;
+            switch (desktop.kind) {
+                case UCDesktopEntry::Kind::Application:
+                    cached.category = FilerFileCategory::Executable;
+                    // The program it starts, resolved on this machine when
+                    // it is installed; the raw command otherwise, which is
+                    // still what the entry says it runs.
+                    cached.linkTarget = desktop.program;
+                    cached.info = desktop.program.empty() ? desktop.exec
+                                                          : desktop.program;
+                    break;
+                case UCDesktopEntry::Kind::Link:
+                    // A web shortcut: the address is the target, and it is
+                    // not a file, so linkTarget (a host path) stays empty.
+                    cached.category = FilerFileCategory::Other;
+                    cached.info = desktop.url;
+                    break;
+                case UCDesktopEntry::Kind::Directory:
+                    cached.category = FilerFileCategory::Folder;
+                    cached.info = desktop.comment;
+                    break;
+                case UCDesktopEntry::Kind::Unknown:
+                    cached.category = FilerFileCategory::Other;
+                    cached.info = desktop.comment;
+                    break;
+            }
+        } else if (ReadShellLink(e.path, link)) {
             cached.isShortcut = true;
             cached.linkTarget = link.hostTargetPath;
             // The info column shows the target the way Windows writes it -
@@ -2392,6 +2436,7 @@ namespace UltraCanvas {
         if (!cached.isShortcut) return;
         e.isShortcut = true;
         e.linkTarget = cached.linkTarget;
+        e.linkDisplayName = cached.displayName;
         e.info = cached.info;
         e.category = cached.category;
     }
@@ -3132,6 +3177,12 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
+        // A launcher that carries its own name is shown by it: the file name
+        // of a desktop entry is an id nobody reads
+        // ("org.mozilla.firefox.desktop"), while its Name= is what the menus
+        // of the machine call it. Only the drawn name changes — renaming,
+        // sorting and every file operation still use the real one.
+        if (!e.linkDisplayName.empty()) return e.linkDisplayName;
         if (fileExtensionsInNames) return e.name;
         // Only a plausible file type is dropped: the tail of
         // "UCDemo-Windows-0.3.27-x86_64" is a version, not an extension, and a
@@ -9792,6 +9843,30 @@ namespace UltraCanvas {
         // external application (or the kernel) can read.
         std::error_code ec;
         if (!fs::is_regular_file(e.path, ec) || ec) return;
+        // A desktop entry is a launcher: what it means is the program it
+        // names, or the address it points at. Opening the file itself would
+        // hand a text file to a text editor.
+        if (e.isShortcut && e.extension == "desktop") {
+            UCDesktopEntry desktop;
+            if (ReadDesktopEntry(e.path, desktop)) {
+                if (desktop.kind == UCDesktopEntry::Kind::Link &&
+                    !desktop.url.empty()) {
+                    OpenURL(desktop.url);
+                    return;
+                }
+                if (!desktop.exec.empty()) {
+                    // The platform's launcher expands the Exec line and
+                    // detaches the process; on a system that does not know
+                    // desktop entries this falls back to running the file,
+                    // which fails cleanly and is reported.
+                    std::string launchError;
+                    if (!FileAssociations::OpenWithApplicationPath(
+                                e.path, {}, launchError))
+                        ReportError(launchError);
+                    return;
+                }
+            }
+        }
 #ifndef _WIN32
         // Off Windows nothing knows what a .lnk is, so opening the shortcut
         // would open the shortcut - what the user means is the file it

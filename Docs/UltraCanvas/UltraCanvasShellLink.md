@@ -117,9 +117,11 @@ can open by path.
 ## Where it is used
 
 `UltraCanvasFilerWidget` reads every `.lnk` it lists: the entry's type,
-category, info column and icon all come from the target
+category, info column and icon all come from the target — the same treatment
+[`UltraCanvasDesktopEntry`](UltraCanvasDesktopEntry.md) gets for the Linux
+half of the same idea
 (`FilerEntry::isShortcut`, `FilerEntry::linkTarget`). See
-[UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#shortcuts-lnk).
+[UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#shortcuts).
 
 ## Test
 

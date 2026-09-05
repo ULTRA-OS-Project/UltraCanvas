@@ -1544,6 +1544,31 @@ endif()
 
 message(STATUS "")
 
+# ===== DESKTOP ENTRY TEST =====
+# The freedesktop desktop-entry reader: what a .desktop says, the icon its
+# Icon= name resolves to in the installed themes, and the argument vector its
+# Exec= expands into. Builds a throwaway icon theme and points XDG_DATA_HOME
+# at it, so it never depends on what the machine has installed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DesktopEntryTest...")
+    add_executable(DesktopEntryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DesktopEntryTest.cpp
+    )
+    target_include_directories(DesktopEntryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DesktopEntryTest PRIVATE cxx_std_20)
+    target_link_libraries(DesktopEntryTest PRIVATE UltraCanvas)
+    set_target_properties(DesktopEntryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DesktopEntryTest COMMAND DesktopEntryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DesktopEntryTest")
+else()
+    message(STATUS "  DesktopEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column
 # and the resolved target on the entry. Builds its own shortcuts (and its own

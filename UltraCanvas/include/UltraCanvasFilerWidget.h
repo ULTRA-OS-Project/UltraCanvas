@@ -312,6 +312,13 @@ namespace UltraCanvas {
         // to a program is drawn with the program's own icon.
         bool isShortcut  = false;
         std::string linkTarget;
+        // The name a shortcut calls itself, when that is not its file name:
+        // a desktop entry's `Name=` ("Firefox Web Browser" for a file called
+        // org.mozilla.firefox.desktop). The file display draws this instead
+        // of the file name; renaming, sorting and every file operation still
+        // use `name`, which is what is actually on disk. Empty for a
+        // shortcut whose file name is its name, which is every .lnk.
+        std::string linkDisplayName;
 
         uint64_t size = 0;           // bytes (uncompressed)
         uint64_t compressedSize = 0; // bytes inside an archive (0 = not compressed)

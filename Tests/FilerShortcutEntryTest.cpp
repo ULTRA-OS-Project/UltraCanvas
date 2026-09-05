@@ -1,6 +1,7 @@
 // Tests/FilerShortcutEntryTest.cpp
-// What the file display makes of a Windows shortcut it lists: the entry a
-// scan produces for a ".lnk" (UltraCanvasFilerWidget::GetEntries()).
+// What the file display makes of a shortcut it lists: the entry a scan
+// produces for a Windows ".lnk" and for a freedesktop ".desktop"
+// (UltraCanvasFilerWidget::GetEntries()).
 //
 // The rule this guards: a shortcut reads as the thing it points at, not as a
 // file called "LNK". Its type is "Shortcut", its category is the target's —
@@ -121,6 +122,16 @@ int main() {
     WriteBinaryFile(desktop / "Missing.lnk", BuildShellLink(missing));
 
     WriteTextFile(desktop / "notes.lnk", "not a shell link at all\n");
+    WriteTextFile(desktop / "notes.desktop", "no group header, just text\n");
+
+    // Two freedesktop launchers: the Linux half of the same idea.
+    WriteTextFile(desktop / "org.example.Editor.desktop",
+                  "[Desktop Entry]\nType=Application\nName=Example Editor\n"
+                  "Exec=/bin/sh -c \"echo hi\" %U\nTryExec=/bin/sh\n"
+                  "Icon=text-editor\n");
+    WriteTextFile(desktop / "Site.desktop",
+                  "[Desktop Entry]\nType=Link\nName=A Site\n"
+                  "URL=https://example.com/\nIcon=web-browser\n");
 
     auto filer = std::make_shared<UltraCanvasFilerWidget>("shortcut-test",
                                                           0, 0, 800, 600);
@@ -170,10 +181,46 @@ int main() {
         Check(false, "the shortcut is listed");
     }
 
-    std::cout << "\nA file that only ends in .lnk\n";
+    std::cout << "\nA desktop entry that launches a program\n";
+    if (const FilerEntry* e = FindEntry(*filer, "org.example.Editor.desktop")) {
+        Check(e->isShortcut, "it is recognised as a shortcut");
+        Check(e->typeName == "Shortcut",
+              "its type is \"Shortcut\" -> \"" + e->typeName + "\"");
+        Check(e->category == FilerFileCategory::Executable,
+              "its category is the program it starts");
+        Check(e->linkDisplayName == "Example Editor",
+              "it is drawn by the name it calls itself -> \"" +
+                      e->linkDisplayName + "\"");
+        Check(SamePath(e->linkTarget, "/bin/sh"),
+              "linkTarget is the program, resolved on this machine -> \"" +
+                      e->linkTarget + "\"");
+    } else {
+        Check(false, "the desktop entry is listed");
+    }
+
+    std::cout << "\nA desktop entry that opens a web address\n";
+    if (const FilerEntry* e = FindEntry(*filer, "Site.desktop")) {
+        Check(e->isShortcut && e->linkDisplayName == "A Site",
+              "it is a shortcut, drawn by its name");
+        Check(e->info == "https://example.com/",
+              "the info column shows the address -> \"" + e->info + "\"");
+        Check(e->linkTarget.empty(),
+              "and linkTarget stays empty: an address is not a file here");
+    } else {
+        Check(false, "the desktop entry is listed");
+    }
+
+    std::cout << "\nA file that only ends in .lnk or .desktop\n";
     if (const FilerEntry* e = FindEntry(*filer, "notes.lnk")) {
-        Check(!e->isShortcut, "it is not treated as a shortcut");
+        Check(!e->isShortcut, "the .lnk is not treated as a shortcut");
         Check(e->linkTarget.empty(), "and points at nothing");
+    } else {
+        Check(false, "the file is listed");
+    }
+    if (const FilerEntry* e = FindEntry(*filer, "notes.desktop")) {
+        Check(!e->isShortcut, "the .desktop is not treated as a shortcut");
+        Check(e->linkDisplayName.empty(),
+              "and is drawn by its own file name");
     } else {
         Check(false, "the file is listed");
     }

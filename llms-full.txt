@@ -211,15 +211,17 @@ the backing implementation can be replaced without affecting callers.
   for a file, and detached launching. Core worker/cache in
   `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
   internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
-  (Linux/BSD: freedesktop; Windows: SHAssocEnumHandlers / IAssocHandler;
-  macOS: NSWorkspace / Launch Services — all three enumerate, launch and
-  extract application icons).
+  (Linux/BSD: freedesktop, reading its `.desktop` entries and their icon
+  names through `UltraCanvasDesktopEntry`; Windows: SHAssocEnumHandlers /
+  IAssocHandler; macOS: NSWorkspace / Launch Services — all three enumerate,
+  launch and extract application icons).
   Public surface (`namespace FileAssociations` + `FileAssociationApp`):
   - `GetApplicationsForFiles` — candidates for a selection (intersection),
     default application first, cache-served once prewarmed.
   - `OpenWithDefaultApplication` / `OpenWithApplication` /
     `OpenWithApplicationPath` — detached launches (default handler /
-    enumerated app / user-picked executable).
+    enumerated app / user-picked executable; on Linux/BSD that path may also
+    be a `.desktop` file, whose own command is what then runs).
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
@@ -245,6 +247,33 @@ the backing implementation can be replaced without affecting callers.
   - `ExpandWindowsEnvironmentPath` — `%ProgramFiles%` and the rest of the
     well-known set; an unknown variable is left visible rather than dropped.
   See `Docs/UltraCanvas/UltraCanvasShellLink.md`.
+
+- **UltraCanvasDesktopEntry** (`UltraCanvasDesktopEntry.h`) — freedesktop
+  desktop entries (`.desktop`), the Linux/BSD counterpart of a Windows
+  shortcut, and the icon themes their `Icon=` names point into. **The
+  framework's single reader for the format**: the "Open with" service builds
+  its Linux application index with it and the filer widget draws and launches
+  the entries a folder holds, so the two cannot disagree about what a
+  launcher is called or what it looks like. Plain text plus
+  `std::filesystem` in `core/UltraCanvasDesktopEntry.cpp` — no GIO, no GTK,
+  safe on background threads. Public surface:
+  - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
+  - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
+    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    machine. False for a file with no `[Desktop Entry]` group, so a file that
+    merely ends in `.desktop` is never mistaken for one.
+  - `FindDesktopIconFile` — an icon *name* resolved to an image file through
+    the configured theme, what it inherits, hicolor and the pixmap
+    directories, at the nearest installed size (exact, else scalable, else
+    nearest larger). Cached per theme and per lookup.
+  - `SetDesktopIconTheme` / `GetDesktopIconTheme` /
+    `RefreshDesktopIconThemes` — the theme in use (detected from the GTK and
+    KDE settings files) and the way to drop everything cached after it
+    changes.
+  - `DesktopEntryCommand` — `Exec=` expanded into an argv (field codes
+    `%f/%F/%u/%U` filled, `%i/%c/%k` dropped, `%%` literal).
+  See `Docs/UltraCanvas/UltraCanvasDesktopEntry.md`.
 
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons a
   Windows file carries, read without a Windows shell: the frames of an `.ico`
@@ -14494,6 +14523,129 @@ mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDesktopEntry.md
+==============================================================================
+
+# UltraCanvasDesktopEntry — freedesktop desktop entries (.desktop)
+
+`UltraCanvasDesktopEntry.h` reads the `.desktop` files a Linux or BSD desktop
+is built from — the format's own name for a shortcut — and resolves the icon
+names they carry into image files.
+
+It is the counterpart of [`UltraCanvasShellLink`](UltraCanvasShellLink.md),
+which does the same for a Windows `.lnk`, and it is the framework's **single**
+reader for the format: the "Open with" service builds its application index
+with it, and the filer widget draws and launches the launchers a folder holds.
+Two readers would eventually disagree about what the same file is called.
+
+Plain text parsing plus `std::filesystem` in `core/UltraCanvasDesktopEntry.cpp`
+— no GIO, no GTK, no dependency, and safe on a background thread (which is
+what lets the filer's thumbnail workers resolve icons). Nothing here launches
+anything; that is `UltraCanvasFileAssociations`.
+
+## Reading an entry
+
+```cpp
+#include "UltraCanvasDesktopEntry.h"
+
+UCDesktopEntry entry;
+if (UltraCanvas::ReadDesktopEntry("/usr/share/applications/firefox.desktop", entry)) {
+    entry.kind;      // Application / Link / Directory / Unknown
+    entry.name;      // "Firefox Web Browser", in the user's language
+    entry.exec;      // "firefox %u" — verbatim, field codes intact
+    entry.program;   // "/usr/bin/firefox" — what it actually runs, or ""
+    entry.iconName;  // "firefox" — a name, not a file
+}
+```
+
+`ReadDesktopEntry` returns false for a file that cannot be read or that has no
+`[Desktop Entry]` group, so a file that merely ends in `.desktop` is never
+mistaken for one. Only the main group is read: a `[Desktop Action …]` group
+below it cannot overwrite the entry's own name or command.
+
+| Field | What it holds |
+|---|---|
+| `kind` | `Type=` — an Application to run, a Link to open, a Directory's metadata |
+| `name` / `genericName` / `comment` | the localized strings, in the user's language |
+| `exec` / `tryExec` / `workingDirectory` | `Exec=`, `TryExec=`, `Path=` |
+| `program` | the executable those resolve to on **this** machine; empty when it is not installed |
+| `iconName` / `iconFile` | `Icon=` and, when a caller resolves it, the image file it names |
+| `url` | `URL=`, for a `Type=Link` web shortcut |
+| `mimeTypes` | `MimeType=` — what the application declares it opens |
+| `terminal` / `noDisplay` / `hidden` | the flags, reported rather than acted on |
+
+**Localization** follows the specification: `Name[de_DE]` beats `Name[de]`
+beats `Name`, whichever order the file lists them in, matched against
+`LC_MESSAGES` / `LC_ALL` / `LANG`. A language the user does not read is
+ignored entirely. The language is resolved per file rather than once per
+process, so an application that changes locale is not stuck with the language
+its first folder listing happened to use.
+
+## Icons: a name, not a file
+
+`Icon=` almost never names a file. It names an *icon*, to be found in the icon
+themes installed on the machine, at whatever size the caller wants:
+
+```cpp
+std::string file = UltraCanvas::FindDesktopIconFile(entry.iconName, 48);
+```
+
+The lookup is the icon-theme specification's, in this order:
+
+1. The **configured theme**, detected from the desktop's own settings — GTK's
+   `settings.ini` (`gtk-icon-theme-name`), KDE's `kdeglobals`, the GTK2
+   `.gtkrc-2.0` — or set by the host with `SetDesktopIconTheme()`.
+2. Everything that theme **inherits**, breadth first, from each theme's
+   `index.theme`.
+3. **hicolor**, which every theme is required to fall back to.
+4. The flat **pixmaps** directories that predate the spec.
+
+Within a theme the size decides the directory: the **exact** size if it is
+installed, else a **scalable** (SVG) icon — which is every size — else the
+nearest larger, else the largest smaller. Base directories are the standard
+set (`$XDG_DATA_HOME/icons`, `~/.icons`, `$XDG_DATA_DIRS/*/icons`), and an
+`Icon=` that is an absolute path is taken as it stands.
+
+Each theme's directory listing and every lookup are cached, so a folder of a
+hundred launchers costs one listing per theme rather than a directory walk per
+icon. `RefreshDesktopIconThemes()` drops all of it — after the user changes
+theme, or a package installs icons.
+
+## The command it runs
+
+```cpp
+std::vector<std::string> argv =
+        UltraCanvas::DesktopEntryCommand(entry, {"/home/sam/notes.txt"});
+```
+
+`Exec=` is tokenized the way the specification says (double quotes group, a
+backslash escapes inside them) and its field codes are expanded: `%f`, `%F`,
+`%u` and `%U` are replaced by the files, `%i`, `%c`, `%k` and unknown codes
+are dropped, `%%` is a literal percent, and an entry with no file code at all
+gets the files appended. The result is ready for `exec()`; launching it —
+detached, with the right working directory — is
+[`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md)'s
+`OpenWithApplicationPath`, which accepts a `.desktop` path directly.
+
+## Where it is used
+
+- **The "Open with" service** builds its Linux application index from it, and
+  draws each row with `FindDesktopIconFile`.
+- **`UltraCanvasFilerWidget`** resolves every `.desktop` a folder holds: the
+  entry is drawn by its `Name=`, with the icon its `Icon=` names, and
+  activating it runs what it says. See
+  [UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#shortcuts).
+
+## Test
+
+`Tests/DesktopEntryTest.cpp` builds a throwaway icon theme (a custom theme
+inheriting hicolor, icons at several sizes, a scalable one, a flat pixmap) and
+points `XDG_DATA_HOME` at it, so what it asserts about the lookup does not
+depend on what the machine running it has installed. It also covers the
+localized keys, the `[Desktop Action]` group, `Type=Link`, the `Exec=` field
+codes and the files that end in `.desktop` without being entries.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDiagramRouting.md
 ==============================================================================
 
@@ -17613,6 +17765,20 @@ All launches detach via `LaunchDetachedProcess`
 (`UltraCanvasUtils.h`: POSIX double-fork + `setsid`, Windows
 `CreateProcess` into a detached process group).
 
+On Linux/BSD, `OpenWithApplicationPath` accepts a **`.desktop` file** as well
+as a program: running the file itself would fail (it is text, not a
+program), so the entry is read and the command it names is what runs, with
+its own `Path=` as the working directory. That is what makes the file
+dialog's "Other application…" work when the user picks a launcher out of
+`/usr/share/applications`, and it is how the file display activates a
+desktop entry it lists.
+
+Reading those files — the `[Desktop Entry]` group, its localized `Name=`, and
+the icon-theme lookup behind `Icon=` — is
+[`UltraCanvasDesktopEntry`](UltraCanvasDesktopEntry.md)'s, not this service's:
+the file display draws the very same launchers and must agree with the menu
+about what they are called and what they look like.
+
 ## Prewarm / caching model
 
 Lookups are cached per extension and served under a mutex, so
@@ -18305,10 +18471,12 @@ the uncompressed size those bytes stand for — they differ under
 the decompressed tiles being drawn). Rescanning the folder or changing the
 view drops everything.
 
-## Shortcuts (.lnk)
+## Shortcuts
 
-A Windows shortcut is drawn with **the icon of what it points at**, and reads
-as the thing it stands for rather than as a file called "LNK":
+A shortcut is drawn with **the icon of what it points at**, and reads as the
+thing it stands for rather than as a file called "LNK" or as a text file with
+a reverse-DNS name. Both formats a desktop uses are read: the Windows `.lnk`
+and the freedesktop `.desktop`, on every platform.
 
 - Its **type** is `Shortcut`, and its **category** — the colour, the grouping,
   the preview switch that governs it — comes from its target, so a shortcut to
@@ -18326,14 +18494,47 @@ as the thing it stands for rather than as a file called "LNK":
   shell resolves the link itself, which keeps the arguments and working
   directory it carries.
 
-The reading is `UltraCanvasShellLink.h` (`ReadShellLink`), and it works on
-every platform — the shortcut's Windows path is mapped onto the host by
-looking for the drive it names (a Wine prefix, or the root of a mounted
-Windows disk). `FilerEntry::isShortcut` and `FilerEntry::linkTarget` carry the
-result to the host: `linkTarget` is the target **as this machine opens it**,
-empty when the target is not here or is a shell item rather than a file — an
-application that can run Windows programs itself (`onFileActivated`) uses it
-to launch the real target.
+### Windows shortcuts (.lnk)
+
+The reading is [`UltraCanvasShellLink.h`](UltraCanvasShellLink.md)
+(`ReadShellLink`), and it works on every platform — the shortcut's Windows
+path is mapped onto the host by looking for the drive it names (a Wine
+prefix, or the root of a mounted Windows disk).
+
+### Desktop entries (.desktop)
+
+A freedesktop launcher gets the same treatment, read with
+[`UltraCanvasDesktopEntry.h`](UltraCanvasDesktopEntry.md), plus the one thing
+a `.lnk` never needs:
+
+- **It is drawn by the name it calls itself.** The file name of a desktop
+  entry is an id — `org.mozilla.firefox.desktop` — while its `Name=` is what
+  every menu on the machine calls it. That name is what the display draws
+  (`FilerEntry::linkDisplayName`), and what the filter-as-you-type box matches
+  in addition to the file name. Only the drawn name changes: renaming, sorting
+  and every file operation still use the real file name, so nothing on disk is
+  ever addressed by a display string.
+- **Its icon is looked up in the icon themes**, not read out of the file:
+  `Icon=` is a name, resolved through the configured theme, what that theme
+  inherits, hicolor, then the pixmap directories, at the size the tile needs.
+- A `Type=Application` entry's **category is Program** and its target is the
+  executable it starts, resolved on this machine (`/usr/bin/firefox`); a
+  `Type=Link` entry shows its **address** in the info column, and a
+  `Type=Directory` groups with folders.
+- **Activating one runs what it says**: the `Exec=` line, expanded and
+  launched detached through the platform's launcher, with the entry's own
+  `Path=` as the working directory — a `Type=Link` opens its address instead.
+  Opening the file itself (what happened before) handed a text file to a text
+  editor.
+
+### What the host sees
+
+`FilerEntry::isShortcut`, `FilerEntry::linkTarget` and
+`FilerEntry::linkDisplayName` carry the result to the application.
+`linkTarget` is the target **as this machine opens it** — empty when the
+target is not here, or is not a file at all (a shell item, a web address) — so
+an application that can run Windows programs itself (`onFileActivated`) uses
+it to launch the real target.
 
 Because an icon is the file's identity rather than a courtesy preview, it is
 held apart from the content thumbnails: the two have **separate memory
@@ -18605,11 +18806,12 @@ part:
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
 
-A **Windows shortcut** is activated as the thing it points at: one to a folder
-navigates into that folder, and one to a file opens the file — off Windows by
-resolving the link first, since nothing there knows what a `.lnk` is, and on
-Windows through the shell, which does it better (it keeps the arguments and
-working directory the link carries). See [Shortcuts (.lnk)](#shortcuts-lnk).
+A **shortcut** is activated as the thing it points at: one to a folder
+navigates into that folder, and one to a file opens the file. A Windows
+`.lnk` is resolved first off Windows, since nothing there knows what one is,
+and on Windows goes through the shell, which does it better (it keeps the
+arguments and working directory the link carries); a `.desktop` launcher runs
+its own `Exec=` line. See [Shortcuts](#shortcuts).
 
 Entries inside archives are virtual paths nothing external can read, so
 activation never tries to run or open them.
@@ -39937,9 +40139,11 @@ can open by path.
 ## Where it is used
 
 `UltraCanvasFilerWidget` reads every `.lnk` it lists: the entry's type,
-category, info column and icon all come from the target
+category, info column and icon all come from the target — the same treatment
+[`UltraCanvasDesktopEntry`](UltraCanvasDesktopEntry.md) gets for the Linux
+half of the same idea
 (`FilerEntry::isShortcut`, `FilerEntry::linkTarget`). See
-[UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#shortcuts-lnk).
+[UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#shortcuts).
 
 ## Test
 

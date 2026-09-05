@@ -1,3 +1,57 @@
+#### 2026-09-05 *0.3.102*
+- **Linux shortcuts are shown the way Windows ones now are.** A `.desktop`
+  launcher was a grey sheet named `org.mozilla.firefox.desktop`; the file
+  display reads it now, and shows it as **Firefox Web Browser** with
+  **Firefox's own icon**, the shortcut badge in the corner, `Shortcut` as its
+  type and the program it starts in the info column. The icon comes out of
+  the icon themes installed on the machine (`Icon=` is a name, not a file),
+  and the name out of the entry's localized `Name=` — the file name of a
+  desktop entry is an id nobody reads. Only the drawn name changes:
+  renaming, sorting and every file operation still use the real file name, so
+  nothing on disk is addressed by a display string. The filter-as-you-type
+  box matches both, so typing "firefox" finds the launcher whatever its file
+  is called.
+- **Double-clicking a launcher runs it.** The `Exec=` line is expanded and
+  launched detached with the entry's own `Path=` as the working directory,
+  and a `Type=Link` entry opens its web address. Before this, activating a
+  desktop entry handed a text file to a text editor. `FilerEntry` gained
+  `linkDisplayName` beside `isShortcut` / `linkTarget`; for a launcher
+  `linkTarget` is the executable it resolves to on **this** machine
+  (`/usr/bin/firefox`), empty when the program is not installed.
+- **New `UltraCanvasDesktopEntry.h`: the framework's single reader for the
+  format.** `ReadDesktopEntry` returns what a `.desktop` says — Type,
+  localized Name / GenericName / Comment, Exec / TryExec / Path, Icon, URL,
+  MimeType and the flags — plus the executable those resolve to here.
+  `FindDesktopIconFile` turns an icon *name* into an image file the way the
+  icon-theme specification says: the configured theme (from the GTK and KDE
+  settings files, or `SetDesktopIconTheme()`), everything it inherits,
+  hicolor, then the flat pixmap directories, picking the exact installed size
+  if there is one, else a scalable icon, else the nearest larger. Theme
+  listings and lookups are cached, so a folder of a hundred launchers costs
+  one directory listing per theme rather than a walk per icon.
+  `DesktopEntryCommand` expands `Exec=` into an argv. A file with no
+  `[Desktop Entry]` group is refused, so a text file that ends in `.desktop`
+  is never mistaken for a launcher.
+- **The "Open with" service now shares that reader** instead of parsing
+  `.desktop` files and hunting for icons itself: its Linux backend lost its
+  private parser, its hicolor-only icon lookup and its Exec tokenizer, and
+  gained the localized application names and full theme lookup that came with
+  the shared one. Two readers of the same files would eventually disagree
+  about what a launcher is called.
+- **`OpenWithApplicationPath` accepts a `.desktop` file** on Linux/BSD, not
+  only a program. Picking a launcher in the "Other application…" dialog used
+  to try to *execute* the text file and fail; now the entry is read and the
+  command it names is what runs, with its own `Path=` as the working
+  directory.
+- Tests: `Tests/DesktopEntryTest.cpp` builds a throwaway icon theme (a custom
+  theme inheriting hicolor, several sizes, a scalable icon, a flat pixmap)
+  and points `XDG_DATA_HOME` at it, so what it asserts about the lookup does
+  not depend on what the machine has installed; it also covers the localized
+  keys, `[Desktop Action]` groups, `Type=Link`, the `Exec=` field codes and
+  the files that only end in `.desktop`. `Tests/FilerShortcutEntryTest.cpp`
+  now scans launchers alongside `.lnk` shortcuts and checks the entries the
+  display produces from both.
+
 #### 2026-09-05 *0.3.101*
 - **Windows shortcuts are shown as what they point at, with the icon of the
   program they start.** A folder of `.lnk` files used to be a wall of
