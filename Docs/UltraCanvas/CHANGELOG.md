@@ -1,3 +1,27 @@
+#### 2026-09-04 *0.3.100*
+- **Folders can be drawn as an icon.** The file display asked nothing about a
+  folder before: every one of them was the same painted folder shape. It now
+  asks its host, through the new `folderIconProvider(entry)` callback, and
+  draws whatever image the host names — any format the image pipeline loads,
+  in every view from the 16 px icon column of the Details rows up to a
+  maximized tile, with `FilerStyle::folderIconScale` still applying. An empty
+  answer keeps the shape, so a display that sets no provider looks exactly as
+  it did. The images go through the shared image cache, so the same icon on a
+  hundred folders is rasterized once per size.
+- **Writing a `.qoi` file no longer depends on ImageMagick.**
+  `SavePixmapAsQoiFile(pixmap, path)` and
+  `SaveImageFileAsQoi(sourcePath, destPath, maxEdge)` (`ImageCairo.h`) encode
+  through the bundled QOI codec (`qoi.cpp`), which is compiled into every
+  build — unlike `UCImageSaveFormat::QOI`, which routes through `magicksave`
+  and is unavailable wherever the local ImageMagick has no QOI writer.
+  `SaveImageFileAsQoi` reads any format the image pipeline loads and fits the
+  result into a `maxEdge` box: a vector source is rasterized at the full box
+  (a vector has no resolution of its own), a raster is only ever scaled down.
+  It is what an application storing a picture as an icon or a cached thumbnail
+  wants — UltraFiler's folder icons are converted with it. The file is written
+  through `PathFromUtf8`, so a non-ASCII path works on Windows too, which the
+  encoder's own `qoi_write()` (narrow `fopen`) does not.
+
 #### 2026-09-04 *0.3.99*
 - **Imported spreadsheets lost their column widths, and files that carry none
   showed every column at the same default width.** OpenDocument does not put the
@@ -97,28 +121,89 @@
   above, in the place a newcomer looks for them.
 
 #### 2026-09-04 *0.3.98*
-- **Folders can be drawn as an icon.** The file display asked nothing about a
-  folder before: every one of them was the same painted folder shape. It now
-  asks its host, through the new `folderIconProvider(entry)` callback, and
-  draws whatever image the host names — any format the image pipeline loads,
-  in every view from the 16 px icon column of the Details rows up to a
-  maximized tile, with `FilerStyle::folderIconScale` still applying. An empty
-  answer keeps the shape, so a display that sets no provider looks exactly as
-  it did. The images go through the shared image cache, so the same icon on a
-  hundred folders is rasterized once per size.
-- **Writing a `.qoi` file no longer depends on ImageMagick.**
-  `SavePixmapAsQoiFile(pixmap, path)` and
-  `SaveImageFileAsQoi(sourcePath, destPath, maxEdge)` (`ImageCairo.h`) encode
-  through the bundled QOI codec (`qoi.cpp`), which is compiled into every
-  build — unlike `UCImageSaveFormat::QOI`, which routes through `magicksave`
-  and is unavailable wherever the local ImageMagick has no QOI writer.
-  `SaveImageFileAsQoi` reads any format the image pipeline loads and fits the
-  result into a `maxEdge` box: a vector source is rasterized at the full box
-  (a vector has no resolution of its own), a raster is only ever scaled down.
-  It is what an application storing a picture as an icon or a cached thumbnail
-  wants — UltraFiler's folder icons are converted with it. The file is written
-  through `PathFromUtf8`, so a non-ASCII path works on Windows too, which the
-  encoder's own `qoi_write()` (narrow `fopen`) does not.
+- **The Filer draws names with or without their file extension, and can put
+  the extension back on the tile.** A file display that ends every name in
+  `.png` spends a third of a narrow tile caption on four characters that the
+  icon already said, and one that simply cuts them off leaves nothing saying
+  what the file is. `UltraCanvasFilerWidget` now separates the two questions
+  (`Display > File extensions`): `SetFileExtensionsInNames(bool)` decides
+  whether the *drawn* name keeps its extension, and
+  `SetExtensionBadge(FilerExtensionBadge)` — `NoneBadge` / `Bar` / `Icon` —
+  decides what a thumbnail tile shows instead, either a strip across the foot
+  of the icon box with the extension in a tag at its right end, or that tag
+  alone in the corner. Both ship off / on as before, so nothing changes for a
+  display that does not ask.
+  Both are display-only: `FilerEntry::name` still holds the real name, so
+  sorting, the Type column, the info bar, the inline rename editor and every
+  file operation work on it exactly as before — a hidden extension cannot be
+  lost by a rename and never has to be re-appended by one. The name is
+  shortened only where its tail really is a file type: `ExtensionTagOf()`
+  answers that for the name rule and the tag rule alike, so
+  `UCDemo-Windows-0.3.27-x86_64` keeps its version, a dot file keeps its whole
+  name, a folder keeps every dot, and none of them gets a tag either.
+  `DisplayNameOf(entry)` hands a host the name as the display draws it.
+  The tag is painted *over* the foot of the icon box rather than under it, so
+  switching it on changes no tile's height and relays out nothing, and the four
+  colours and heights it uses are `FilerStyle` fields
+  (`extensionBarBackground`, `extensionTagBackground`, `extensionTagTextColor`,
+  `extensionBadgeHeight`). Both switches sit in the context menu under
+  `Display > File extensions` and report through the existing
+  `onDisplayFormatsChanged` hook, so an application persists them from the same
+  place it persists the Thumbnails / Detail view switches.
+  `Tests/FilerExtensionDisplayTest` covers the name and tag rules.
+- **The "Open with" icon cache grew forever.** Handler icons are extracted
+  into PNG files under `%LOCALAPPDATA%\UltraCanvas\openwith-icons` (and
+  `~/Library/Caches/…` on macOS) so the menu, which draws image files, does not
+  re-extract them on every open. Nothing ever deleted one. The key is where the
+  icon came from — an executable's path, a bundle path — so every application
+  the user upgrades, moves or uninstalls leaves behind a PNG that nothing will
+  ever ask for again, accumulating for the life of the account. Each file now
+  carries the day it was last served as its modification time, and the first
+  lookup in a process deletes everything not served for **two weeks**, plus any
+  `.tmp` an interrupted write left behind. Only `.png` and `.tmp` are ever
+  considered; a swept icon that turns out to still be wanted is extracted
+  again. The stamp is rewritten at most once a day, so a context menu that
+  opens all afternoon costs no disk writes, and a clock that was set back reads
+  as fresh rather than expired.
+- **That retention policy is shared, not copied.** `kIconCacheMaxAge`,
+  `SweepIconCache` and `StampIconCacheFile` are declared in
+  `UltraCanvasFileAssociationsBackend.h` and implemented once in
+  `core/UltraCanvasFileAssociations.cpp` — plain `std::filesystem`, no platform
+  code — so the Windows and macOS backends cannot drift apart on how long an
+  icon lives.
+- **A folder of pictures could blank the application icons next to them.** The
+  filer's thumbnail cache held every finished picture in one 96 MB budget, and
+  on overflow it did not evict — it dropped *every* finished entry it had and
+  started over. So one video poster frame landing on a full cache erased the
+  whole screenful, and in a folder like a program's install directory, where a
+  few large previews sit beside dozens of executables, the `.exe` and `.dll`
+  icons were the ones that went: they were re-extracted, evicted by the next
+  preview, re-extracted again, and what the user saw was that the icons "stopped
+  showing" and did not come back. The cache now evicts **least recently drawn
+  first**, and only as far as it takes to get back under budget, so what is on
+  screen survives what is scrolling past it.
+- **Application icons no longer compete with content previews for memory.**
+  They are the file's identity, not a courtesy preview, and they cost a
+  rounding error next to a poster frame — so they now have their own 16 MB
+  budget that nothing else can spend. `UltraCanvasFilerWidget.md` documents both
+  pools and what overflowing one does.
+- **A shell icon extraction that failed once failed for good.** The slot was
+  marked Failed and never retried, so a single transient refusal from the shell
+  left that executable drawn as a generic EXE glyph for the rest of the session.
+  Extraction now gets up to three tries before the tile settles on its glyph;
+  content decodes, which fail the same way every time, still stop after one.
+- **The thumbnail workers had never joined a COM apartment.** `SHDefExtractIconW`
+  is a shell call and the shell expects one of its caller; the workers ran
+  without, which is a plausible source of exactly the intermittent per-file
+  failures above (the main thread, which does `OleInitialize`, never saw them).
+  Each worker now holds a `NativeFileIconThreadScope` for its lifetime —
+  multi-threaded apartment, since these threads have no message pump — declared
+  in `UltraCanvasNativeFileIcons.h` and empty on platforms without an extractor.
+- **Cache byte accounting is now balanced on every path out of a slot.** The
+  old wipe recomputed the total from scratch each time it fired, so nothing
+  needed to subtract; incremental eviction does, and pruning a slot or
+  overwriting one now returns its bytes (and drops any decompressed copy of it)
+  through a single helper, so the counters cannot drift.
 
 #### 2026-09-04 *0.3.97*
 - **Five sibling modules were missing from the demo's "ULTRA OS modules"
@@ -449,6 +534,7 @@
   (the header and its test suite were untouched). The widget binds to the
   shared wrapper as 0.3.79 intended, so the rules above — and the new one —
   are what the tiles draw.
+
 #### 2026-09-01 *0.3.91*
 - **New: `UltraCanvasVolumeMonitor`** (`UltraCanvas/{include,core}/UltraCanvasVolumeMonitor.h/.cpp`,
   backends under `OS/<Platform>/`) — the mounted volumes of the machine, and a
@@ -927,6 +1013,7 @@
   selected — the first click of a double-click that *opens* the folder no
   longer scans it into the pane (and whatever the pane showed stays put
   while the delay runs).
+
 #### 2026-08-28 *0.3.82*
 - **An ILLEGAL_INSTRUCTION crash now names what the machine actually has.**
   Reporting `0xC000001D` and the faulting module is only half an answer: it says
@@ -1376,7 +1463,6 @@
   folder swaps the pane's content in place instead of closing and reopening
   the pane.
 
-
 #### 2026-08-26 *0.3.74*
 - **EPS (Encapsulated PostScript) vector graphics support.** New
   `UltraCanvasEPSPlugin` (`Plugins/Vector/EPS/`) renders `.eps`/`.epsf`/`.ps`
@@ -1403,7 +1489,6 @@
   fullscreen viewer and zoom controls, and **`Tests/EPSProbeTest`** prints
   the interpreter's triage for any file and rasterizes `--render` PNGs for
   ghostscript comparison (registered as a parse regression test).
-
 
 #### 2026-08-26 *0.3.73*
 - **Sliders over a small range reach every value again.** `UltraCanvasSlider`
@@ -1433,6 +1518,7 @@
   the existing sliders act on their result, and *Save as* bakes them in like
   every other adjustment. This is the tool that reaches highlights, midtones
   and shadows separately; the sliders move the whole tone range at once.
+
 #### 2026-08-26 *0.3.72*
 - **The XAR renderer draws real Xara files correctly now.** Files written by
   a modern Xara (Designer Pro X19) displayed as scattered, unfilled
@@ -1595,6 +1681,7 @@
 - Fixed the vector storage plugin's target name typo:
   `UltraCanvasVectorlugin` → `UltraCanvasVectorPlugin` (referenced only
   through exported variables, so nothing else moves).
+
 #### 2026-08-25 *0.3.69*
 - **Transparent images get their backdrop colours under the picture.** Until
   now the only way to change what shows through a transparent PNG or an SVG was
@@ -2001,6 +2088,7 @@
   (`pageMargin`) is halved, 24 px to 12 px, so a fitted page uses the space it
   is given instead of floating in it — most visible on a single-page document,
   where there is no thumbnail strip beside it.
+
 #### 2026-08-22 *0.3.56*
 - **New application: UltraCleaner.** Finds and removes the files macOS,
   Windows and Linux leave behind — temporary files, application and browser
@@ -2390,6 +2478,7 @@
   the segment's right edge, so the whole arrow head opens the menu. It
   never takes more than the trailing half of an item, so the label keeps a
   clickable area of its own.
+
 #### 2026-08-11 *0.3.47*
 - **macOS: a classic USB mouse wheel is responsive again.** `UCEvent::wheelDelta`
   is an integer notch count — the X11 backend emits ±1 per button-4/5 press, the
@@ -2546,6 +2635,7 @@
   `UltraNet_TcpAccept` takes an optional timeout, and the new
   `UltraNet_SocketLocalEndpoint` reports the bound address/port — together
   they let a port-0 listener discover its ephemeral port.
+
 #### 2026-08-10 *0.3.39*
 - **UltraCanvasAlbum** *(1.6.1)*: a hover video preview no longer plays
   alongside the full video opened from its tile. Clicking a video tile (or its
@@ -3208,6 +3298,7 @@
   navigation. Mouse wheel / scrollbar scrolling and mouse selection are
   unaffected.
   
+
 #### 2026-08-01 *0.3.21*
 - **UltraCanvasSplitPane**: split lines can now carry an optional **handle**.
   `SplitterHandleShape` picks the form - `Square`, `RoundedSquare`, `Round`
@@ -3723,6 +3814,7 @@
   depth and interlacing and keeps 1-bit transparency for RGBA sources.
   Both `UCImageRaster::Save` and PixelFX `SaveGif` route through it.
  
+
 #### 2026-07-20 *0.3.11*
 - Make work VTracer/Vectorizer plugin.
 - Implement RemoveFromCache() method for images used for reload
@@ -3746,6 +3838,7 @@
 - The DemoApp OCR screen gains a language dropdown populated from the full
   catalogue; languages that are not installed yet are marked and downloaded
   on demand when "Run OCR" is pressed.
+
 #### 2026-07-19 *0.3.10*
 - Fix GIF export failing with `VipsOperation: class "gifsave" not found` on
   builds whose libvips lacks cgif (the MSYS2/Windows package is built with
@@ -4072,6 +4165,7 @@
 - Fixed incremental search in TextArea (stop advance on each typed matched character)
 - Refactor Audio element. Use composite widget instead manual draw. Use SVG icons for play/pause/etc.. buttons
   
+
 #### 2026-06-21 *0.2.23*
 - `UltraCanvasGLSurface` now resizes its render target / framebuffer to follow the element's actual bounds on every render, however the bounds were changed. Previously the framebuffer size (`surfaceWidth_`/`surfaceHeight_`) was only updated from the `SetBounds` override, so a layout-driven resize — flex/grid stretch, a parent resize, `SetElementSize`, a window resize — left the GL content stuck at its old size (it wrote `finalBounds` without routing through `SetBounds`). `Render()` now syncs the framebuffer size from `GetLocalBounds()` and forces a content re-render that pass, so GL surfaces resize correctly under any layout path (this is what made the Shaders-tab "maximize" need an explicit `SetBounds`; flexible/maximized GL surfaces now grow on their own).
 
@@ -4184,6 +4278,7 @@
 #### 2026-06-03 *0.2.1*
 - Major update. Implemented CSS Flex/Grid/Absolute layout support.
  
+
 #### 2026-05-20 *0.1.39*
 - Show cursor and allow selection in the TextArea in read-only mode
 - Autodetext syntax highlighting rules by filename with auto fallbask to extension
@@ -4217,6 +4312,7 @@
 - Add more modules description to Modules section
 - Implement Breadcrumb demo
 - 
+
 #### 2026-05-14 *0.1.33*
 - Implemented new Image performance demo
 - Fix problem with AltGr+key in Windows
@@ -4300,4 +4396,3 @@
 
 #### 2026-04-06 *0.1.15*
 - Add platform-native system font detection, replace hardcoded "Sans" defaults
-
