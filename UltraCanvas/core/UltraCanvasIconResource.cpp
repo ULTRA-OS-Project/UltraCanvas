@@ -68,16 +68,16 @@ namespace UltraCanvas {
         // kilobytes and its icons are one section, while the file itself can
         // be hundreds of megabytes that a thumbnail worker must not pull
         // into memory to find a 32-pixel picture.
-        bool ReadFileRange(const std::string& path, uintmax_t offset,
+        bool ReadFileRange(const std::string& path, std::uintmax_t offset,
                            size_t length, std::vector<uint8_t>& out) {
             out.clear();
             if (length == 0) return false;
             std::error_code ec;
             if (!fs::is_regular_file(path, ec) || ec) return false;
-            const uintmax_t size = fs::file_size(path, ec);
+            const std::uintmax_t size = fs::file_size(path, ec);
             if (ec || size == 0 || offset >= size) return false;
             const size_t want = static_cast<size_t>(
-                    std::min<uintmax_t>(length, size - offset));
+                    std::min<std::uintmax_t>(length, size - offset));
             std::ifstream in(path, std::ios::binary);
             if (!in) return false;
             in.seekg(static_cast<std::streamoff>(offset));

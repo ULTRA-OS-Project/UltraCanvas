@@ -180,20 +180,6 @@ namespace UltraCanvas {
             return parts;
         }
 
-        // "C:\dir\file" -> letter 'c' and the components after it. False for
-        // anything that is not a drive-letter path (a UNC name, a relative
-        // path, a shell namespace string).
-        bool SplitDrivePath(const std::string& winPath, char& outLetter,
-                            std::vector<std::string>& outParts) {
-            if (winPath.size() < 2 || winPath[1] != ':' ||
-                !std::isalpha(static_cast<unsigned char>(winPath[0])))
-                return false;
-            outLetter = static_cast<char>(
-                    std::tolower(static_cast<unsigned char>(winPath[0])));
-            outParts = SplitWindowsPath(winPath.substr(2));
-            return true;
-        }
-
         // Case-insensitive lookup of one child. The exact name is tried
         // first: on a case-insensitive host (Windows, a default macOS disk)
         // that is the whole cost, and on Linux it is the common case too,
@@ -224,6 +210,26 @@ namespace UltraCanvas {
             const fs::path canonical = fs::weakly_canonical(path, ec);
             if (ec || canonical.empty()) return path.string();
             return canonical.string();
+        }
+
+#ifndef _WIN32
+        // ===== EVERYTHING BELOW MAPS A WINDOWS PATH ONTO A HOST THAT IS NOT
+        // WINDOWS =====
+        // On Windows the path already names a file the system can open, so
+        // none of this is compiled there.
+
+        // "C:\dir\file" -> letter 'c' and the components after it. False for
+        // anything that is not a drive-letter path (a UNC name, a relative
+        // path, a shell namespace string).
+        bool SplitDrivePath(const std::string& winPath, char& outLetter,
+                            std::vector<std::string>& outParts) {
+            if (winPath.size() < 2 || winPath[1] != ':' ||
+                !std::isalpha(static_cast<unsigned char>(winPath[0])))
+                return false;
+            outLetter = static_cast<char>(
+                    std::tolower(static_cast<unsigned char>(winPath[0])));
+            outParts = SplitWindowsPath(winPath.substr(2));
+            return true;
         }
 
         // Walk `parts` down from `root`, matching each component
@@ -314,6 +320,7 @@ namespace UltraCanvas {
                 AddPrefixCandidate(roots, fs::path(home) / ".wine", letter);
             return roots;
         }
+#endif // !_WIN32
 
         // ===== ENVIRONMENT VARIABLES =====
         // Off Windows there is no Windows environment to read, so the

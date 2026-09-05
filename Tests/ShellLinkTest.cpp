@@ -16,6 +16,7 @@
 
 #include "ShellLinkTestSupport.h"
 
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -35,6 +36,22 @@ int g_failures = 0;
 void Check(bool condition, const std::string& what) {
     std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << "\n";
     if (!condition) ++g_failures;
+}
+
+#ifdef _WIN32
+std::string ToUpperAscii(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+#endif
+
+// Two paths naming the same file. String equality would be a test of
+// canonicalization rather than of resolution - a drive letter's case, a
+// symlink, a short name.
+bool SamePath(const std::string& got, const fs::path& expected) {
+    if (got.empty()) return false;
+    std::error_code ec;
+    return fs::equivalent(got, expected, ec) && !ec;
 }
 
 void CheckEqual(const std::string& got, const std::string& expected,
@@ -108,33 +125,68 @@ void TestBasicFields(const TestTree& tree) {
     CheckEqual(read.arguments, spec.arguments, "arguments");
     CheckEqual(read.iconLocation, spec.iconLocation, "icon location");
     Check(!read.targetIsDirectory, "the target is a file, not a folder");
-    CheckEqual(read.hostTargetPath,
-               (tree.root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe").string(),
-               "the target resolves inside the prefix");
-    CheckEqual(read.hostIconLocation,
-               (tree.root / "drive_c" / "Program Files" / "Etcher" / "app.ico").string(),
-               "the icon file resolves too");
+#ifndef _WIN32
+    // Only a host that is not Windows has to map "C:\..." onto a drive of
+    // its own; on Windows the path already names a file the system opens,
+    // and the tree below is not on a C: it can find.
+    Check(SamePath(read.hostTargetPath,
+                   tree.root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe"),
+          "the target resolves inside the prefix -> \"" + read.hostTargetPath + "\"");
+    Check(SamePath(read.hostIconLocation,
+                   tree.root / "drive_c" / "Program Files" / "Etcher" / "app.ico"),
+          "the icon file resolves too -> \"" + read.hostIconLocation + "\"");
+#endif
 
     Check(read.iconIndex == 0, "the icon index is the one the header carries");
+
+#ifdef _WIN32
+    // The Windows side of the same question: a link whose stored path is a
+    // path this system really has resolves to that file, and one whose path
+    // is not there resolves to nothing.
+    {
+        const fs::path real =
+                tree.root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe";
+        LinkSpec here;
+        here.flags = IsUnicode | HasLinkInfo;
+        here.localBasePath = real.string();
+        const fs::path realLink = tree.Desktop() / "Real.lnk";
+        WriteBinaryFile(realLink, BuildShellLink(here));
+        UCShellLink readHere;
+        Check(ReadShellLink(realLink.string(), readHere) &&
+                      SamePath(readHere.hostTargetPath, real),
+              "a stored path this system has resolves to it");
+    }
+#endif
 }
 
 void TestCaseInsensitiveAndEnvironment(const TestTree& tree) {
     std::cout << "\nPaths as Windows wrote them\n";
     // Windows paths are case-insensitive and the host filesystem is not:
     // a link that says PROGRA~ in capitals still names the same file.
+    const fs::path exe =
+            tree.root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe";
     LinkSpec spec;
     spec.flags = IsUnicode | HasLinkInfo;
+#ifdef _WIN32
+    // The same question on Windows, where the file really is where the link
+    // says: shout the path this system's own file lives at.
+    spec.localBasePath = ToUpperAscii(exe.string());
+#else
     spec.localBasePath = "C:\\PROGRAM FILES\\etcher\\ETCHER.EXE";
+#endif
     const fs::path link = tree.Desktop() / "Shouty.lnk";
     WriteBinaryFile(link, BuildShellLink(spec));
     UCShellLink read;
     Check(ReadShellLink(link.string(), read), "the link is read");
-    CheckEqual(read.hostTargetPath,
-               (tree.root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe").string(),
-               "case is not what decides whether the target is found");
+    Check(SamePath(read.hostTargetPath, exe),
+          "case is not what decides whether the target is found -> \"" +
+                  read.hostTargetPath + "\"");
 
+#ifndef _WIN32
     // A link written on another machine: the absolute path is wrong here,
-    // the environment form is right, and the environment form wins.
+    // the environment form is right, and the environment form wins. Off
+    // Windows only - on Windows %ProgramFiles% is the real one, and this
+    // tree is not under it.
     LinkSpec envSpec;
     envSpec.flags = IsUnicode | HasLinkInfo;
     envSpec.localBasePath = "D:\\Games\\Nothing\\Here.exe";
@@ -148,6 +200,7 @@ void TestCaseInsensitiveAndEnvironment(const TestTree& tree) {
                "%ProgramFiles% resolves when the stored path does not");
     CheckEqual(envRead.targetPath, envSpec.environmentTarget,
                "and it is the target the link reports");
+#endif
 }
 
 void TestFolderShortcut(const TestTree& tree) {
@@ -161,9 +214,11 @@ void TestFolderShortcut(const TestTree& tree) {
     UCShellLink read;
     Check(ReadShellLink(link.string(), read), "the link is read");
     Check(read.targetIsDirectory, "the target is reported as a folder");
-    CheckEqual(read.hostTargetPath,
-               (tree.root / "drive_c" / "Program Files" / "Etcher").string(),
-               "the folder resolves");
+#ifndef _WIN32
+    Check(SamePath(read.hostTargetPath,
+                   tree.root / "drive_c" / "Program Files" / "Etcher"),
+          "the folder resolves -> \"" + read.hostTargetPath + "\"");
+#endif
 
     // No icon of its own: what it is drawn with is the target's icon.
     Check(read.iconLocation.empty() && read.hostIconLocation.empty(),
@@ -211,16 +266,27 @@ void TestNotALink(const TestTree& tree) {
 void TestWindowsPathMapping(const TestTree& tree) {
     std::cout << "\nMapping a Windows path onto this host\n";
     const std::string context = (tree.Desktop() / "any.lnk").string();
-    CheckEqual(ResolveWindowsPathOnHost("C:\\Windows", context),
-               (tree.root / "drive_c" / "Windows").string(),
-               "a folder inside the prefix");
+#ifdef _WIN32
+    // On Windows "C:\Windows" is C:\Windows: the mapping is the identity,
+    // and all it has to do is confirm the file is there.
+    Check(SamePath(ResolveWindowsPathOnHost("C:\\Windows", context), "C:\\Windows"),
+          "a Windows path resolves to itself");
+    Check(!ExpandWindowsEnvironmentPath("%SystemRoot%\\notepad.exe").empty() &&
+                  ExpandWindowsEnvironmentPath("%SystemRoot%\\notepad.exe") !=
+                          "%SystemRoot%\\notepad.exe",
+          "%SystemRoot% expands from the process environment");
+#else
+    Check(SamePath(ResolveWindowsPathOnHost("C:\\Windows", context),
+                   tree.root / "drive_c" / "Windows"),
+          "a folder inside the prefix");
+    Check(ExpandWindowsEnvironmentPath("%SystemRoot%\\notepad.exe") ==
+                  "C:\\Windows\\notepad.exe",
+          "%SystemRoot% expands to where a Windows disk keeps it");
+#endif
     CheckEqual(ResolveWindowsPathOnHost("C:\\No Such Folder\\x.exe", context),
                std::string{}, "a path that is not there resolves to nothing");
     CheckEqual(ResolveWindowsPathOnHost("", context), std::string{},
                "an empty path resolves to nothing");
-    Check(ExpandWindowsEnvironmentPath("%SystemRoot%\\notepad.exe") ==
-                  "C:\\Windows\\notepad.exe",
-          "%SystemRoot% expands");
     Check(ExpandWindowsEnvironmentPath("%NotAThing%\\x") == "%NotAThing%\\x",
           "an unknown variable is left visible rather than dropped");
 }

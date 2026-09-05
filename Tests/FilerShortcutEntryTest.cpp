@@ -48,6 +48,13 @@ void WriteTextFile(const fs::path& path, const std::string& text) {
     out << text;
 }
 
+// Two paths naming the same file, rather than the same spelling of one.
+bool SamePath(const std::string& got, const fs::path& expected) {
+    if (got.empty()) return false;
+    std::error_code ec;
+    return fs::equivalent(got, expected, ec) && !ec;
+}
+
 const FilerEntry* FindEntry(const UltraCanvasFilerWidget& filer,
                             const std::string& name) {
     for (const FilerEntry& e : filer.GetEntries())
@@ -72,26 +79,45 @@ int main() {
     WriteTextFile(root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe", "MZ");
     WriteTextFile(root / "drive_c" / "Program Files" / "Etcher" / "readme.txt", "hi");
 
+    // What the links store. Off Windows the tree is a Wine prefix and the
+    // links say "C:\..." like the shortcuts on a real Windows desktop; on
+    // Windows there is no prefix to map through, so they say where these
+    // files actually are - which is the only path that system resolves.
+    const fs::path exe = root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe";
+    const fs::path folderTarget = root / "drive_c" / "Program Files" / "Etcher";
+    const fs::path documentTarget =
+            root / "drive_c" / "Program Files" / "Etcher" / "readme.txt";
+#ifdef _WIN32
+    const std::string storedExe = exe.string();
+    const std::string storedFolder = folderTarget.string();
+    const std::string storedDocument = documentTarget.string();
+#else
+    const std::string storedExe = "C:\\Program Files\\Etcher\\Etcher.exe";
+    const std::string storedFolder = "C:\\Program Files\\Etcher";
+    const std::string storedDocument = "C:\\Program Files\\Etcher\\readme.txt";
+#endif
+
     LinkSpec program;
     program.flags = IsUnicode | HasLinkInfo | HasArguments;
-    program.localBasePath = "C:\\Program Files\\Etcher\\Etcher.exe";
+    program.localBasePath = storedExe;
     program.arguments = "--no-sandbox";
     WriteBinaryFile(desktop / "balenaEtcher.lnk", BuildShellLink(program));
 
     LinkSpec folder;
     folder.flags = IsUnicode | HasLinkInfo;
     folder.fileAttributes = 0x00000010;      // FILE_ATTRIBUTE_DIRECTORY
-    folder.localBasePath = "C:\\Program Files\\Etcher";
+    folder.localBasePath = storedFolder;
     WriteBinaryFile(desktop / "Etcher folder.lnk", BuildShellLink(folder));
 
     LinkSpec document;
     document.flags = IsUnicode | HasLinkInfo;
-    document.localBasePath = "C:\\Program Files\\Etcher\\readme.txt";
+    document.localBasePath = storedDocument;
     WriteBinaryFile(desktop / "Read me.lnk", BuildShellLink(document));
 
     LinkSpec missing;
     missing.flags = IsUnicode | HasLinkInfo;
-    missing.localBasePath = "D:\\Gone\\Away.exe";
+    // A drive letter no test tree can supply, on either platform.
+    missing.localBasePath = "Q:\\Gone\\Away.exe";
     WriteBinaryFile(desktop / "Missing.lnk", BuildShellLink(missing));
 
     WriteTextFile(desktop / "notes.lnk", "not a shell link at all\n");
@@ -107,10 +133,9 @@ int main() {
               "its type is \"Shortcut\" -> \"" + e->typeName + "\"");
         Check(e->category == FilerFileCategory::Executable,
               "its category is the target's (a program)");
-        Check(e->info == program.localBasePath,
+        Check(e->info == storedExe,
               "the info column names the target -> \"" + e->info + "\"");
-        Check(e->linkTarget ==
-                      (root / "drive_c" / "Program Files" / "Etcher" / "Etcher.exe").string(),
+        Check(SamePath(e->linkTarget, exe),
               "linkTarget is the target as this host opens it -> \"" +
                       e->linkTarget + "\"");
     } else {
