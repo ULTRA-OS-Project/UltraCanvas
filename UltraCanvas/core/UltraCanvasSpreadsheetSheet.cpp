@@ -16,29 +16,89 @@ namespace UltraCanvas {
 // COLUMN / ROW AUTO-FIT
 // ============================================================================
 
-void SpreadsheetSheet::AutoFitColumnWidth(int col) {
-    int maxWidth = defaultColumnWidth_;
+void SpreadsheetSheet::AutoFitColumnWidth(int col, const CellTextMeasureFn& measure) {
+    int contentWidth = 0;
+    int scanned = 0;
 
     for (const auto& [coord, cellPtr] : cells_) {
-        if (coord.second == col && cellPtr && !cellPtr->IsEmpty()) {
-            std::string text = cellPtr->GetDisplayValue();
-            int textWidth = static_cast<int>(text.length() * 8) + 10;
-            maxWidth = std::max(maxWidth, textWidth);
-        }
+        if (coord.second != col || !cellPtr || cellPtr->IsEmpty()) continue;
+        if (++scanned > SpreadsheetAutoFit::MaxScanRows) break;
+
+        const std::string text = cellPtr->GetDisplayValue();
+        if (text.empty()) continue;
+        const CellFont& font = cellPtr->GetStyle().font;
+        // Real glyph advances when the UI handed us a measurer, an em-based
+        // estimate otherwise - never the byte count, which sizes every column
+        // holding "€" or an accent far too wide.
+        int width = measure ? measure(text, font)
+                            : SpreadsheetEstimateTextWidth(text, font);
+        // An indent moves the text right inside the cell, so it costs width too.
+        width += cellPtr->GetStyle().indent * 8;
+        contentWidth = std::max(contentWidth, width);
     }
 
-    SetColumnWidth(col, std::min(maxWidth, 500));
+    // A column with nothing in it keeps the sheet default rather than shrinking
+    // to the auto-fit minimum, so blank columns stay uniform.
+    SetColumnWidth(col,
+                   contentWidth > 0 ? SpreadsheetClampAutoFitWidth(contentWidth) : defaultColumnWidth_,
+                   /*explicitWidth*/ false);
 }
 
-void SpreadsheetSheet::AutoFitColumnWidthRange(int startCol, int endCol) {
+void SpreadsheetSheet::AutoFitColumnWidthRange(int startCol, int endCol, const CellTextMeasureFn& measure) {
     for (int col = startCol; col <= endCol; ++col) {
-        AutoFitColumnWidth(col);
+        AutoFitColumnWidth(col, measure);
+    }
+}
+
+void SpreadsheetSheet::AutoFitUnsizedColumns(const CellTextMeasureFn& measure) {
+    if (cells_.empty()) return;
+
+    // One pass over the sparse cell map rather than one pass per column: a
+    // freshly imported sheet can be thousands of columns wide, and re-walking
+    // every cell for each of them turns a paste-sized import into a stall.
+    std::unordered_map<int, int> widestByColumn;
+    std::unordered_map<int, int> scannedByColumn;
+    for (const auto& [coord, cellPtr] : cells_) {
+        const int col = coord.second;
+        if (!cellPtr || cellPtr->IsEmpty()) continue;
+        if (HasExplicitColumnWidth(col)) continue;   // the document or the user chose this one
+        if (++scannedByColumn[col] > SpreadsheetAutoFit::MaxScanRows) continue;
+
+        const std::string text = cellPtr->GetDisplayValue();
+        if (text.empty()) continue;
+        const CellStyle& style = cellPtr->GetStyle();
+        int width = measure ? measure(text, style.font)
+                            : SpreadsheetEstimateTextWidth(text, style.font);
+        width += style.indent * 8;
+
+        int& widest = widestByColumn[col];
+        widest = std::max(widest, width);
+    }
+
+    for (const auto& [col, widest] : widestByColumn) {
+        if (widest <= 0) continue;
+        SetColumnWidth(col, SpreadsheetClampAutoFitWidth(widest), /*explicitWidth*/ false);
     }
 }
 
 void SpreadsheetSheet::AutoFitRowHeight(int row) {
-    // Without text metrics, fall back to the default height.
-    SetRowHeight(row, defaultRowHeight_);
+    // Row height follows the tallest font in the row: a 24pt heading in a 20px
+    // row is clipped top and bottom, which is what this fixes. Wrapped text
+    // would need line-broken measurement, so a wrapped cell only guarantees its
+    // first line here.
+    float tallest = 0.0f;
+    for (const auto& [coord, cellPtr] : cells_) {
+        if (coord.first != row || !cellPtr || cellPtr->IsEmpty()) continue;
+        tallest = std::max(tallest, cellPtr->GetStyle().font.size);
+    }
+    if (tallest <= 0.0f) {
+        SetRowHeight(row, defaultRowHeight_, /*explicitHeight*/ false);
+        return;
+    }
+    // ~1.25 em line box plus a little breathing room, never below the sheet
+    // default so a sheet of ordinary text keeps uniform rows.
+    const int fitted = static_cast<int>(tallest * 1.25f + 0.5f) + 4;
+    SetRowHeight(row, std::max(fitted, defaultRowHeight_), /*explicitHeight*/ false);
 }
 
 void SpreadsheetSheet::AutoFitRowHeightRange(int startRow, int endRow) {

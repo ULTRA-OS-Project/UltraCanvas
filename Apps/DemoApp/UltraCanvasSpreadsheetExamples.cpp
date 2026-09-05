@@ -1,6 +1,10 @@
 // Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
 // Demonstrates UltraCanvasSpreadsheet: an editable grid with an "Open" button
-// that loads spreadsheet files (.ods / .csv) through UltraCanvasFileLoader.
+// that loads spreadsheet files (.ods / .xlsx / .csv) through
+// UltraCanvasFileLoader, column widths taken from the imported document (and
+// auto-fitted to the content when the document carries none), and the cell
+// formatting menu - alignment, number-format presets, colours and column/row
+// sizing - on the "Format" button and on a right-click in the grid.
 // Version: 1.0.0
 // Last Modified: 2026-05-30
 // Author: UltraCanvas Framework
@@ -10,6 +14,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetFormatMenu.h"
 #include "UltraCanvasCSVImportDialog.h"
 #include "UltraCanvasCSVExportDialog.h"
 #include "UltraCanvasFileLoader.h"
@@ -85,6 +90,27 @@ namespace UltraCanvas {
 
             sheet->Recalculate();
         }
+
+        // Says where the grid's column widths came from, so the demo makes the
+        // two paths visible: widths stored in the document are honoured, and a
+        // document without them (every CSV, and plenty of ODS/XLSX files) gets
+        // its columns fitted to the content instead of a uniform default.
+        std::string DescribeColumnWidths(const UltraCanvasSpreadsheet* grid) {
+            const SpreadsheetSheet* active = grid ? grid->GetActiveSheet() : nullptr;
+            if (!active) return "no sheet";
+
+            const CellRange used = active->GetUsedRange();
+            int fromFile = 0, fitted = 0;
+            for (int col = used.start.col; col <= used.end.col; ++col) {
+                if (active->HasExplicitColumnWidth(col)) ++fromFile; else ++fitted;
+            }
+            if (fromFile > 0 && fitted > 0) {
+                return std::to_string(fromFile) + " column widths from the file, "
+                     + std::to_string(fitted) + " auto-fitted";
+            }
+            if (fromFile > 0) return std::to_string(fromFile) + " column widths from the file";
+            return std::to_string(fitted) + " columns auto-fitted to their content";
+        }
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSpreadsheetExamples() {
@@ -114,13 +140,31 @@ namespace UltraCanvas {
                                                            "Save…");
         root->AddChild(saveBtn);
 
-        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 496, 56, 510, 22);
+        auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,
+                                                             "Format Cells ▾");
+        root->AddChild(formatBtn);
+
+        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 632, 56, 374, 22);
         status->SetFontSize(12);
         status->SetTextColor(Color(90, 90, 90, 255));
         root->AddChild(status);
 
+        // Second toolbar line: where the column widths came from, plus how to
+        // reach the formatting menu.
+        auto hint = std::make_shared<UltraCanvasLabel>("ssHint", 20, 84, 980, 18);
+        hint->SetFontSize(11);
+        hint->SetTextColor(Color(120, 120, 120, 255));
+        root->AddChild(hint);
+
+        // Both load paths report the same two facts, so they are built once.
+        auto describeGrid = [](const UltraCanvasSpreadsheet* grid) {
+            return DescribeColumnWidths(grid) +
+                   "  ·  right-click a cell (or use Format Cells) for alignment, "
+                   "number formats and colours";
+        };
+
         // ===== SPREADSHEET ELEMENT =====
-        auto sheet = CreateSpreadsheetElement("ssDemoGrid", 20, 92, kWidth - 40, kHeight - 104);
+        auto sheet = CreateSpreadsheetElement("ssDemoGrid", 20, 106, kWidth - 40, kHeight - 118);
 
         // Load the bundled OpenDocument Spreadsheet demo file on entry so the
         // element opens on a real .ods document (monthly sales / chargeback
@@ -129,11 +173,15 @@ namespace UltraCanvas {
         const std::string samplePath =
             NormalizePath(GetResourcesDir() + "media/docs/spreadsheet.ods");
         if (sheet->LoadFromFile(samplePath)) {
-            status->SetText("Loaded: " + samplePath
-                            + " — supported formats: .ods, .xlsx, .csv");
+            status->SetText("Loaded: " + samplePath);
+            hint->SetText(describeGrid(sheet.get()));
         } else {
+            // The seeded fallback sets its own widths in code, so the
+            // file-versus-auto-fit split would be misleading here.
             SeedSampleData(sheet.get());
-            status->SetText("Loaded: (sample data) — supported formats: .ods, .xlsx, .csv");
+            status->SetText("Loaded: (sample data)");
+            hint->SetText("Right-click a cell (or use Format Cells) for alignment, "
+                          "number formats and colours");
         }
         root->AddChild(sheet);
 
@@ -141,7 +189,7 @@ namespace UltraCanvas {
         // Capture shared_ptrs so the grid/label stay valid for the async callback;
         // they are also owned by the container, so there is no ownership cycle
         // (the button does not own the container).
-        openBtn->onClick = [sheet, status]() {
+        openBtn->onClick = [sheet, status, hint, describeGrid]() {
             FileDialogOptions opts;
             opts.SetTitle("Open Spreadsheet File")
                 .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "xlsx", "csv", "tsv" })
@@ -151,7 +199,7 @@ namespace UltraCanvas {
                 .AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
-                [sheet, status](DialogResult result, const std::string& path) {
+                [sheet, status, hint, describeGrid](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
                         status->SetText("Open cancelled.");
                         status->RequestRedraw();
@@ -159,6 +207,8 @@ namespace UltraCanvas {
                     }
                     if (sheet->LoadFromFile(path)) {
                         status->SetText("Loaded: " + path);
+                        hint->SetText(describeGrid(sheet.get()));
+                        hint->RequestRedraw();
                     } else {
                         status->SetText("Could not open file: " + sheet->GetLastError());
                     }
@@ -171,14 +221,14 @@ namespace UltraCanvas {
         // Pick a CSV/TSV file, then open the options dialog (charset, separators,
         // start row, number recognition) with a live preview. On accept the grid
         // is loaded with exactly the chosen settings.
-        importBtn->onClick = [sheet, status]() {
+        importBtn->onClick = [sheet, status, hint, describeGrid]() {
             FileDialogOptions opts;
             opts.SetTitle("Select CSV / TSV File")
                 .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv", "txt" })
                 .AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
-                [sheet, status](DialogResult result, const std::string& path) {
+                [sheet, status, hint, describeGrid](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
                         status->SetText("Import cancelled.");
                         status->RequestRedraw();
@@ -193,9 +243,11 @@ namespace UltraCanvas {
                         return;
                     }
                     ShowCSVImportDialog(path,
-                        [sheet, status, path](const CSVImportOptions& options) {
+                        [sheet, status, hint, describeGrid, path](const CSVImportOptions& options) {
                             if (sheet->LoadCSVWithOptions(path, options)) {
                                 status->SetText("Imported: " + path);
+                                hint->SetText(describeGrid(sheet.get()));
+                                hint->RequestRedraw();
                             } else {
                                 status->SetText("Could not import file: " + sheet->GetLastError());
                             }
@@ -263,6 +315,20 @@ namespace UltraCanvas {
                     }
                     status->RequestRedraw();
                 });
+        };
+
+        // ===== FORMAT CELLS -> the framework's cell-formatting menu =====
+        // Same menu the grid opens on a right-click (see
+        // UltraCanvasSpreadsheetFormatMenu.h); it applies to the current
+        // selection, so select a range first to format all of it.
+        // The button is captured raw, not as a shared_ptr: the callback lives
+        // inside the button, so a shared_ptr to itself would keep it alive
+        // forever.
+        UltraCanvasButton* formatBtnRaw = formatBtn.get();
+        formatBtn->onClick = [sheet, formatBtnRaw]() {
+            sheet->ShowFormatMenuAt(
+                static_cast<int>(formatBtnRaw->GetXInWindow()),
+                static_cast<int>(formatBtnRaw->GetYInWindow() + formatBtnRaw->GetHeight()));
         };
 
         return root;
