@@ -1,3 +1,70 @@
+#### 2026-09-05 *0.3.101*
+- **Windows shortcuts are shown as what they point at, with the icon of the
+  program they start.** A folder of `.lnk` files used to be a wall of
+  identical grey "LNK" sheets — the one thing a desktop is mostly made of,
+  and the file display could say nothing about any of it. Every shortcut it
+  lists is now read: its type is `Shortcut`, its category (colour, grouping,
+  the preview switch that governs it) comes from its target, the info column
+  and the info bar show that target as the link stores it
+  (`C:\Program Files\…`), and the tile carries **the icon the link names** —
+  the application icon of the program, or the `.ico` a browser wrote for a web
+  shortcut. A small arrow badge in the icon's bottom-left corner is what
+  tells the shortcut apart from the file whose icon it wears; below 24 px it
+  is left off rather than smudged over the icon it annotates. Double-clicking
+  a shortcut to a folder navigates into that folder, and one to a file opens
+  the file. `FilerEntry` gained `isShortcut` and `linkTarget` (the target as
+  **this** host opens it), so an application that runs Windows programs
+  itself can launch the real target from `onFileActivated`.
+- **New `UltraCanvasShellLink.h`: the Windows shell link format, read on
+  every platform.** `ReadShellLink` returns what a `.lnk` says — target,
+  arguments, working directory, comment, icon location and index, target
+  attributes — including the icon location and index that answer the one
+  question a file display asks: which file's icon is this shortcut drawn
+  with (that one, else the target's, which is Explorer's rule).
+  `ResolveWindowsPathOnHost` maps the Windows paths inside a link onto the
+  host by looking for the drive they name: the `drive_c` / `dosdevices`
+  layout of a Wine prefix, the root of a mounted Windows disk (a directory
+  holding both `Windows` and `Users`), then `$WINEPREFIX` and `~/.wine` —
+  matching each path component case-insensitively, because Windows wrote them
+  that way and the host filesystem is not. A link written on another machine
+  usually carries an absolute path that is wrong here and a `%ProgramFiles%`
+  form that is right; every form the link offers is tried, and the first one
+  this host can actually find wins. A file that merely ends in `.lnk` is
+  never mistaken for a shortcut: the header signature and CLSID decide.
+- **New `UltraCanvasIconResource.h`: `.ico` files and PE icon resources
+  decoded without a Windows shell.** `LoadIconResource(path, index, size)`
+  walks the resource directory of an `.exe` / `.dll` itself and decodes the
+  frame nearest the wanted size — PNG frames through the image pipeline, DIB
+  frames (1/4/8/16/24/32-bit, palette and AND mask) here, including the
+  pre-XP 32-bit form whose alpha band is unused. Windows' index convention,
+  so a shortcut's icon index means what it means on Windows. Only the header
+  range and the resource section of a program are read, so finding a
+  32-pixel picture in a 300 MB installer costs neither the file nor the
+  memory; every offset in the format is treated as untrusted.
+- **Application icons are no longer a Windows-only feature.**
+  `NativeFileIconAvailable` / `LoadNativeFileIconPixmap`
+  (`UltraCanvasNativeFileIcons.h`) now answer for `.exe`, `.dll`, `.ico` and
+  `.lnk` on every platform — through the shell on Windows, by reading the
+  files everywhere else. A Windows disk mounted on ULTRA OS, Linux or macOS,
+  and the `drive_c` of a Wine prefix, show their programs and shortcuts with
+  their own icons instead of a generic sheet. On Windows the shell is still
+  asked first, and now also serves the icon a shortcut's association provides
+  when its target holds no icon resource of its own (a shortcut to a document
+  or a folder); a file the shell declines falls back to the portable reader.
+  `.ico` files that this build's image pipeline decodes but the icon reader
+  does not still fall back to the pipeline, so nothing that used to show a
+  picture stopped.
+- Tests: `Tests/ShellLinkTest.cpp` builds shell links byte by byte and reads
+  them back (LinkInfo targets, `%ProgramFiles%` targets, folder targets,
+  non-Unicode strings, case-insensitive resolution inside a prefix, and the
+  files that end in `.lnk` without being links);
+  `Tests/FilerShortcutEntryTest.cpp` scans a folder of them and checks the
+  entries the file display produces (type, category, info column, resolved
+  target); `Tests/IconResourceTest.cpp` assembles an `.ico` and a minimal PE
+  binary in memory and checks the decoded pixels, mask-driven transparency
+  included. The links all three build come from
+  `Tests/ShellLinkTestSupport.h`.
+
 #### 2026-09-04 *0.3.100*
 - **Folders can be drawn as an icon.** The file display asked nothing about a
   folder before: every one of them was the same painted folder shape. It now

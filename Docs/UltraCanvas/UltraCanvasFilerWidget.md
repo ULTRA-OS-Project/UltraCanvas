@@ -566,28 +566,28 @@ right grouping, and the Display > Thumbnails / Detail view switches that
 govern it. The inventory
 is consulted once and cached, so it costs nothing per directory entry.
 
-### Native application icons (Windows)
+### Native application icons
 
-On Windows, `.exe`, `.dll` and `.ico` files show the **icon embedded in the
-file** — what Explorer shows — instead of the generic EXE/DLL glyph, in every
-view from the Details icon column up to the largest thumbnail tiles. The icon
-is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
-up to 256 px) on the same background workers as the image thumbnails, so a
-folder of executables scrolls as smoothly as one of photos; a file without an
-icon resource keeps its glyph. This is an icon, not a content preview, so the
-Display > Thumbnails switches do not affect it. The extractor lives behind
-`UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
-`LoadNativeFileIconPixmap`); on other platforms it reports no icon and
-nothing changes.
+`.exe`, `.dll` and `.ico` files show the **icon inside the file** — what
+Explorer shows — instead of the generic EXE/DLL glyph, in every view from the
+Details icon column up to the largest thumbnail tiles. A file without an icon
+resource keeps its glyph. This is an icon, not a content preview, so the
+Display > Thumbnails switches do not affect it.
 
-Because an icon is the file's identity rather than a courtesy preview, it is
-held apart from the content thumbnails: the two have **separate memory
-budgets**, so a folder of photos or videos filling the thumbnail budget can
-never evict the application icons on screen (see
-[Thumbnail memory](#thumbnail-memory)). Extraction goes through the OS shell,
-which can fail on a file it would serve a moment later, so an icon is retried
-a few times before the tile settles on its glyph — and the worker threads join
-a COM apartment, which the shell expects of its caller.
+The extraction lives behind `UltraCanvasNativeFileIcons.h`
+(`NativeFileIconAvailable` / `LoadNativeFileIconPixmap`) and runs on the same
+background workers as the image thumbnails, so a folder of programs scrolls
+as smoothly as one of photos. Two implementations answer it:
+
+- **On Windows** through the shell (`SHDefExtractIconW` at the nearest
+  embedded size, up to 256 px), which also covers what only a registry
+  association knows — the icon of a document or a folder a shortcut points at.
+- **Everywhere else** by reading the files
+  (`UltraCanvasIconResource.h`): the PE resource directory of an `.exe` /
+  `.dll` and the frames of an `.ico`, decoded without a Windows API and
+  without a new dependency. This is what makes a Windows disk mounted on
+  ULTRA OS, Linux or macOS — or the `drive_c` of a Wine prefix — show its
+  programs with their own icons.
 
 ### Thumbnail memory
 
@@ -597,7 +597,7 @@ budgets that bound what a huge folder at a large tile size can hold:
 | Pool | Budget | Holds |
 |---|---|---|
 | Content previews | 96 MB | bitmaps, vectors, poster frames, PDF pages, model renders, font specimens |
-| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` icons above |
+| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` / `.lnk` icons above |
 
 Overflowing a budget drops that pool's **least recently drawn** entries, and
 only as many as it takes to get back under — never the entry that just
@@ -614,6 +614,45 @@ the uncompressed size those bytes stand for — they differ under
 `SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
 the decompressed tiles being drawn). Rescanning the folder or changing the
 view drops everything.
+
+## Shortcuts (.lnk)
+
+A Windows shortcut is drawn with **the icon of what it points at**, and reads
+as the thing it stands for rather than as a file called "LNK":
+
+- Its **type** is `Shortcut`, and its **category** — the colour, the grouping,
+  the preview switch that governs it — comes from its target, so a shortcut to
+  a folder groups with folders and one to a program with programs.
+- The **info column and the info bar show the target** as the link stores it
+  (`C:\Program Files\…`), which is the string the shortcut's own properties
+  show on Windows, and which stays informative for a link whose target is not
+  on this machine.
+- A small **arrow badge** in the bottom-left corner of the icon marks it as a
+  shortcut — the only thing that tells it apart from the file it points at,
+  whose icon it otherwise wears exactly. Below 24 px the badge is left off
+  rather than smudged over the icon it annotates.
+- **Double-clicking** it opens what it points at: a shortcut to a folder
+  navigates into that folder, and one to a file opens the file. On Windows the
+  shell resolves the link itself, which keeps the arguments and working
+  directory it carries.
+
+The reading is `UltraCanvasShellLink.h` (`ReadShellLink`), and it works on
+every platform — the shortcut's Windows path is mapped onto the host by
+looking for the drive it names (a Wine prefix, or the root of a mounted
+Windows disk). `FilerEntry::isShortcut` and `FilerEntry::linkTarget` carry the
+result to the host: `linkTarget` is the target **as this machine opens it**,
+empty when the target is not here or is a shell item rather than a file — an
+application that can run Windows programs itself (`onFileActivated`) uses it
+to launch the real target.
+
+Because an icon is the file's identity rather than a courtesy preview, it is
+held apart from the content thumbnails: the two have **separate memory
+budgets**, so a folder of photos or videos filling the thumbnail budget can
+never evict the application icons on screen (see
+[Thumbnail memory](#thumbnail-memory)). Where extraction goes through the OS
+shell it can fail on a file it would serve a moment later, so an icon is
+retried a few times before the tile settles on its glyph — and the worker
+threads join a COM apartment, which the shell expects of its caller.
 
 ## Selection info bar
 
@@ -875,6 +914,12 @@ part:
   contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
+
+A **Windows shortcut** is activated as the thing it points at: one to a folder
+navigates into that folder, and one to a file opens the file — off Windows by
+resolving the link first, since nothing there knows what a `.lnk` is, and on
+Windows through the shell, which does it better (it keeps the arguments and
+working directory the link carries). See [Shortcuts (.lnk)](#shortcuts-lnk).
 
 Entries inside archives are virtual paths nothing external can read, so
 activation never tries to run or open them.

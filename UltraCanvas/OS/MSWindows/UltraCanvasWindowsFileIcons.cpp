@@ -10,11 +10,14 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
+#include "UltraCanvasIconResource.h"
+#include "UltraCanvasShellLink.h"
 
 #include <windows.h>
 #include <objbase.h>  // CoInitializeEx for the worker-thread apartment
 #include <shlobj.h>   // SHDefExtractIconW (WIN32_LEAN_AND_MEAN keeps it
                       // out of windows.h; shellapi.h does not declare it)
+#include <shellapi.h> // SHGetFileInfoW - the icon an association provides
 
 #include <cairo/cairo.h>
 
@@ -25,13 +28,12 @@
 
 namespace UltraCanvas {
 
+    // The same set on every platform - the icon-carrying file kinds plus
+    // shortcuts, which name one of them. Kept in one place
+    // (UltraCanvasIconResource / UltraCanvasShellLink) so a file display
+    // shows the same icons wherever the disk is being read from.
     bool NativeFileIconAvailable(const std::string& path) {
-        const size_t dot = path.find_last_of('.');
-        if (dot == std::string::npos) return false;
-        std::string ext = path.substr(dot + 1);
-        std::transform(ext.begin(), ext.end(), ext.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        return ext == "exe" || ext == "dll" || ext == "ico";
+        return HasIconResourceExtension(path) || IsShellLinkPath(path);
     }
 
     namespace {
@@ -161,12 +163,70 @@ namespace UltraCanvas {
 
     } // namespace WindowsIcons
 
+    namespace {
+
+        // The icon the shell shows for a file, from its association rather
+        // than from its own resources: what a shortcut to a document or a
+        // folder is drawn with. Smaller than an extracted resource icon (the
+        // shell serves the system icon sizes), so it is only a fallback.
+        std::shared_ptr<UCPixmap> AssociatedIconPixmap(const std::wstring& path,
+                                                       int desiredSize) {
+            if (path.empty()) return nullptr;
+            SHFILEINFOW info{};
+            const UINT flags = SHGFI_ICON |
+                               (desiredSize > 16 ? SHGFI_LARGEICON : SHGFI_SMALLICON);
+            if (!SHGetFileInfoW(path.c_str(), 0, &info, sizeof(info), flags) ||
+                !info.hIcon)
+                return nullptr;
+            std::shared_ptr<UCPixmap> pixmap = WindowsIcons::PixmapFromIcon(info.hIcon);
+            DestroyIcon(info.hIcon);
+            return pixmap;
+        }
+
+    } // namespace
+
     std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string& path,
                                                        int desiredSize) {
         if (!NativeFileIconAvailable(path)) return nullptr;
+
+        if (IsShellLinkPath(path)) {
+            // A shortcut carries no icon of its own: it names one, in a file
+            // somewhere else - the program it starts, or the .ico a browser
+            // wrote for a web shortcut. Read the link, then extract from
+            // whatever it named, and from its target when that fails.
+            UCShellLink link;
+            if (ReadShellLink(path, link)) {
+                if (!link.hostIconLocation.empty()) {
+                    if (auto pixmap = WindowsIcons::LoadIconResourcePixmap(
+                                Utf8ToWide(link.hostIconLocation),
+                                link.iconIndex, desiredSize))
+                        return pixmap;
+                }
+                if (!link.hostTargetPath.empty()) {
+                    const std::wstring target = Utf8ToWide(link.hostTargetPath);
+                    if (auto pixmap = WindowsIcons::LoadIconResourcePixmap(
+                                target, 0, desiredSize))
+                        return pixmap;
+                    // The target holds no icon resource (a shortcut to a
+                    // document, a folder, a data file): its association has
+                    // one, and that is what Explorer draws.
+                    if (auto pixmap = AssociatedIconPixmap(target, desiredSize))
+                        return pixmap;
+                }
+            }
+            // An unreadable link, or a target this machine no longer has:
+            // the shell still knows what Explorer draws for the link itself.
+            return AssociatedIconPixmap(Utf8ToWide(path), desiredSize);
+        }
+
         // Icon 0 is the one Explorer shows for the file itself.
-        return WindowsIcons::LoadIconResourcePixmap(Utf8ToWide(path), 0,
-                                                    desiredSize);
+        if (auto pixmap = WindowsIcons::LoadIconResourcePixmap(Utf8ToWide(path), 0,
+                                                               desiredSize))
+            return pixmap;
+        // The shell can decline a file it has no handler for (an icon
+        // library, a binary from another architecture). The portable reader
+        // walks the resource directory itself and often still finds it.
+        return LoadIconResource(path, 0, desiredSize);
     }
 
     // The extraction runs on the filer's thumbnail workers, which have no

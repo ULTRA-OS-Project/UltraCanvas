@@ -1,3 +1,31 @@
+#### 2026-09-05 *1.20.0*
+- **Windows shortcuts show the icon of the program they start.** A Desktop or
+  Start-Menu folder full of `.lnk` files was a wall of identical grey "LNK"
+  sheets that said nothing about any of them. Each one is now read: the tile
+  carries the icon the shortcut names — the application's own icon, or the
+  `.ico` a browser wrote for a web shortcut — with a small arrow badge in the
+  corner marking it as a shortcut, the type column says `Shortcut`, and the
+  info column and info bar show what it points at. A shortcut also groups and
+  colours as the thing it stands for, so one to a folder sits with the
+  folders. This works wherever the files are: a mounted Windows disk, a
+  folder synced from a Windows machine, or the `drive_c` of an UltraWin
+  environment — the icons are read out of the files themselves rather than
+  asked of a Windows shell (framework 0.3.101: `UltraCanvasShellLink.h` and
+  `UltraCanvasIconResource.h`).
+- **Double-clicking a shortcut starts what it points at.** A shortcut to a
+  folder opens that folder; a shortcut to a program runs it through the
+  UltraWin environment it belongs to, the same way a double-clicked `.exe`
+  already did — through Wine's `start`, so the arguments and working
+  directory the shortcut carries are kept. A shortcut to a *document* is not
+  a Windows program: it opens with whatever this system opens that document
+  with. A shortcut to a program also
+  counts as an application in the History and Favorites lists, which is what
+  a Start-Menu entry is.
+- **Attributes shows what a shortcut is.** For a `.lnk` the dialog adds the
+  target, the arguments, the folder it starts in and its comment, plus where
+  that target lives on **this** system — or "not found on this system" when
+  the shortcut points at a program this machine does not have.
+
 #### 2026-09-04 *1.19.2*
 - **The main user folders have icons of their own — in the file display, not
   only in the tree.** Desktop, Documents, Downloads, Music, Pictures and

@@ -430,6 +430,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
+        # Windows shell links (.lnk) and the icon resources they point at,
+        # both parsed from the files themselves so a Windows disk shows its
+        # shortcuts and programs with their own icons on every platform.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasShellLink.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasIconResource.cpp
         # Preview bitmaps vector documents (Xara, ZIP-based CorelDRAW)
         # carry inside themselves - what the filer thumbnails them from.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedPreview.cpp

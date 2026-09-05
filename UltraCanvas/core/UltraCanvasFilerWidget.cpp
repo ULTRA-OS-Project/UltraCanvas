@@ -69,6 +69,7 @@
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasShellLink.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
@@ -2243,6 +2244,14 @@ namespace UltraCanvas {
             e.typeName = "Folder";
             return;
         }
+        if (e.extension == "lnk") {
+            // A shortcut is not a kind of file, it is a reference to one.
+            // The name says so; what it points at (ResolveShortcutEntry,
+            // once the file has actually been read) says the rest.
+            e.category = FilerFileCategory::Other;
+            e.typeName = "Shortcut";
+            return;
+        }
         const auto& m = ExtensionTypeMap();
         auto it = m.find(e.extension);
         if (it != m.end()) {
@@ -2295,8 +2304,104 @@ namespace UltraCanvas {
         return true;
     }
 
+    // What a shortcut resolved to, kept between rescans. A folder watcher
+    // fires a rescan on every change while a copy runs, and re-reading every
+    // .lnk in the folder each time would be paid on the UI thread; the file's
+    // size and modification time say when the cached answer is stale.
+    namespace {
+        struct ShortcutCacheEntry {
+            uint64_t size = 0;
+            std::time_t modifiedTime = 0;
+            bool isShortcut = false;
+            std::string linkTarget;
+            std::string info;
+            FilerFileCategory category = FilerFileCategory::Other;
+        };
+        // Bounded: a listing of a Start-Menu tree can hold thousands of
+        // shortcuts, and this is a convenience, not a store.
+        constexpr size_t kShortcutCacheLimit = 2048;
+        std::mutex& ShortcutCacheMutex() {
+            static std::mutex m;
+            return m;
+        }
+        std::unordered_map<std::string, ShortcutCacheEntry>& ShortcutCache() {
+            static std::unordered_map<std::string, ShortcutCacheEntry> cache;
+            return cache;
+        }
+    } // namespace
+
+    void UltraCanvasFilerWidget::ResolveShortcutEntry(FilerEntry& e) const {
+        if (e.isDirectory || e.extension != "lnk") return;
+
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto it = ShortcutCache().find(e.path);
+            if (it != ShortcutCache().end() && it->second.size == e.size &&
+                it->second.modifiedTime == e.modifiedTime) {
+                if (!it->second.isShortcut) return;
+                e.isShortcut = true;
+                e.linkTarget = it->second.linkTarget;
+                e.info = it->second.info;
+                e.category = it->second.category;
+                return;
+            }
+        }
+
+        ShortcutCacheEntry cached;
+        cached.size = e.size;
+        cached.modifiedTime = e.modifiedTime;
+        UCShellLink link;
+        if (ReadShellLink(e.path, link)) {
+            cached.isShortcut = true;
+            cached.linkTarget = link.hostTargetPath;
+            // The info column shows the target the way Windows writes it -
+            // that is the string the user recognizes from the shortcut's
+            // properties, and it stays informative for a link whose target is
+            // not on this machine.
+            cached.info = link.targetPath.empty() ? link.description
+                                                  : link.targetPath;
+            // The category comes from the target, so the entry sorts, groups
+            // and colours as the thing it stands for. The icon follows the
+            // same rule, but is drawn from the icon the link names rather
+            // than from the category (DrawEntryIcon / LoadNativeFileIconPixmap).
+            std::error_code ec;
+            const bool directory =
+                    link.targetIsDirectory ||
+                    (!link.hostTargetPath.empty() &&
+                     fs::is_directory(link.hostTargetPath, ec) && !ec);
+            if (directory) {
+                cached.category = FilerFileCategory::Folder;
+            } else {
+                const std::string target = link.hostTargetPath.empty()
+                                                   ? link.targetPath
+                                                   : link.hostTargetPath;
+                FilerEntry probe;
+                probe.extension = LowerExtension(fs::path(target).filename().string());
+                if (!probe.extension.empty()) {
+                    ApplyEntryTypeInfo(probe);
+                    cached.category = probe.category;
+                }
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto& cache = ShortcutCache();
+            if (cache.size() >= kShortcutCacheLimit) cache.clear();
+            cache[e.path] = cached;
+        }
+        if (!cached.isShortcut) return;
+        e.isShortcut = true;
+        e.linkTarget = cached.linkTarget;
+        e.info = cached.info;
+        e.category = cached.category;
+    }
+
     void UltraCanvasFilerWidget::DecorateEntry(FilerEntry& e) const {
         e.effectiveSize = e.size;
+        // A shortcut takes its type, category and info column from the file
+        // it points at; everything below (attributes, the info column the
+        // host may override) then applies to the entry as resolved.
+        ResolveShortcutEntry(e);
 
         std::string attr;
         if (e.isDirectory) attr += 'D';
@@ -7027,11 +7132,13 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
-        // Executables show their embedded application icon (Windows .exe /
-        // .dll / .ico — Explorer-style). Not a content preview, so it is not
-        // gated by the Display > Thumbnails toggles; an explicit thumbnail
-        // still wins below. On platforms without an extractor this is false
-        // for every path.
+        // Programs show their embedded application icon (.exe / .dll / .ico —
+        // Explorer-style), and a shortcut shows the icon it names, which is
+        // normally the icon of the program it starts. Not a content preview,
+        // so it is not gated by the Display > Thumbnails toggles; an explicit
+        // thumbnail still wins below. The cache key is the shortcut's own
+        // path, not the icon file's: two shortcuts into the same library can
+        // name different icons in it.
         if (!e.isDirectory && e.thumbnailPath.empty() &&
             NativeFileIconAvailable(e.path))
             return e.path;
@@ -7479,9 +7586,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
-        // Native icon extraction goes through the OS shell, which wants the
-        // calling thread to have joined a COM apartment; held for the life of
-        // the worker rather than per extraction. A no-op off Windows.
+        // Where native icon extraction goes through the OS shell it wants
+        // the calling thread to have joined a COM apartment; held for the
+        // life of the worker rather than per extraction. A no-op where the
+        // icons are read from the files themselves.
         NativeFileIconThreadScope nativeIconScope;
 
         for (;;) {
@@ -7575,8 +7683,8 @@ namespace UltraCanvas {
             const bool nativeIcon = NativeFileIconAvailable(req.path);
             RunGuarded("thumbnail decode", req.path, [&]() {
             if (nativeIcon) {
-                // The icon embedded in an executable (or an .ico file),
-                // extracted by the OS shell at the nearest embedded size.
+                // The icon a program, icon file or shortcut carries, at the
+                // nearest size it embeds.
                 const int edge = std::max(1, static_cast<int>(std::lround(
                         std::max(req.w, req.h) * req.scale)));
                 pm = LoadNativeFileIconPixmap(req.path, edge);
@@ -7740,6 +7848,15 @@ namespace UltraCanvas {
                                                const Rect2Di& rect,
                                                ImageFitMode imageFit) {
         if (rect.width <= 2 || rect.height <= 2) return;
+        // A shortcut wears the icon of what it points at, so the arrow badge
+        // drawn over it afterwards is the only thing that says it is one.
+        struct ShortcutBadge {
+            UltraCanvasFilerWidget* widget;
+            IRenderContext* ctx;
+            const Rect2Di& rect;
+            bool wanted;
+            ~ShortcutBadge() { if (wanted) widget->DrawShortcutOverlay(ctx, rect); }
+        } badge{this, ctx, rect, e.isShortcut};
 
         // Real image thumbnails (explicit thumbnail, else the bitmap itself).
         // Never decoded here: the frame must not wait for image files, so the
@@ -7827,6 +7944,40 @@ namespace UltraCanvas {
             ctx->DrawText(ext, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
                                         rect.y + (rect.height - bandH - ts.height) / 2.0));
         }
+    }
+
+    void UltraCanvasFilerWidget::DrawShortcutOverlay(IRenderContext* ctx,
+                                                     const Rect2Di& rect) {
+        // The badge Explorer and Finder both put in the bottom-left corner:
+        // a white tile with an arrow leaving it. Below a certain size
+        // it would be a smudge over the icon it is meant to annotate, so it
+        // is left off - the type column still says "Shortcut".
+        const int edge = std::min(rect.width, rect.height);
+        if (edge < 24) return;
+        const double box = std::max(10.0, edge * 0.38);
+        const Rect2Dd badge(rect.x + 1, rect.y + rect.height - box - 1, box, box);
+
+        ctx->SetFillPaint(Color(255, 255, 255, 235));
+        ctx->FillRoundedRectangle(badge, 2);
+        ctx->SetStrokePaint(Color(0, 0, 0, 60));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(badge, 2);
+
+        // The arrow: a shaft from the lower left to the upper right with a
+        // filled head, drawn in the same dark ink as the type glyph text.
+        const double pad = box * 0.26;
+        const Point2Dd tail(badge.x + pad, badge.y + box - pad);
+        const Point2Dd head(badge.x + box - pad, badge.y + pad);
+        ctx->SetStrokePaint(Color(45, 45, 52, 255));
+        ctx->SetStrokeWidth(std::max(1.2f, static_cast<float>(box * 0.12)));
+        ctx->DrawLine(tail, head);
+        const double barb = box * 0.34;
+        ctx->SetFillPaint(Color(45, 45, 52, 255));
+        std::vector<Point2Dd> arrowHead = {
+                head,
+                Point2Dd(head.x - barb, head.y),
+                Point2Dd(head.x, head.y + barb)};
+        ctx->FillLinePath(arrowHead);
     }
 
     void UltraCanvasFilerWidget::DrawTextPreview(IRenderContext* ctx,
@@ -9617,6 +9768,15 @@ namespace UltraCanvas {
             SetPath(e.path);
             return;
         }
+        // A shortcut to a folder opens that folder - the file it is stays
+        // out of the way, exactly as it does in Explorer.
+        if (e.isShortcut && !e.linkTarget.empty()) {
+            std::error_code lec;
+            if (fs::is_directory(e.linkTarget, lec) && !lec) {
+                SetPath(e.linkTarget);
+                return;
+            }
+        }
         if (onFileActivated) {
             onFileActivated(e);
             return;
@@ -9632,6 +9792,26 @@ namespace UltraCanvas {
         // external application (or the kernel) can read.
         std::error_code ec;
         if (!fs::is_regular_file(e.path, ec) || ec) return;
+#ifndef _WIN32
+        // Off Windows nothing knows what a .lnk is, so opening the shortcut
+        // would open the shortcut - what the user means is the file it
+        // points at. (On Windows the shell resolves it, and better: it keeps
+        // the arguments and the working directory the link carries.) A host
+        // that can run Windows programs itself installs onFileActivated and
+        // never reaches this.
+        if (e.isShortcut && !e.linkTarget.empty() &&
+            fs::is_regular_file(e.linkTarget, ec) && !ec) {
+            FilerEntry target = e;
+            target.path = e.linkTarget;
+            target.name = fs::path(e.linkTarget).filename().string();
+            target.extension = LowerExtension(target.name);
+            target.isShortcut = false;
+            target.linkTarget.clear();
+            ApplyEntryTypeInfo(target);
+            OpenEntryWithOS(target);
+            return;
+        }
+#endif
         std::string error;
         switch (FileAssociations::ClassifyExecutable(e.path)) {
             case FileAssociations::ExecutableKind::Binary:
