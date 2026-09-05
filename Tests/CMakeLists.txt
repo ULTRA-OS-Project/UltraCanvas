@@ -1569,6 +1569,30 @@ endif()
 
 message(STATUS "")
 
+# ===== MAC BUNDLE TEST =====
+# The property-list reader (both encodings) and the macOS application bundles
+# and web locations built on it. Builds a bundle directory in a temp folder,
+# so it runs — and has to pass — on every platform, not only on macOS.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MacBundleTest...")
+    add_executable(MacBundleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MacBundleTest.cpp
+    )
+    target_include_directories(MacBundleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MacBundleTest PRIVATE cxx_std_20)
+    target_link_libraries(MacBundleTest PRIVATE UltraCanvas)
+    set_target_properties(MacBundleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MacBundleTest COMMAND MacBundleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MacBundleTest")
+else()
+    message(STATUS "  MacBundleTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column
 # and the resolved target on the entry. Builds its own shortcuts (and its own

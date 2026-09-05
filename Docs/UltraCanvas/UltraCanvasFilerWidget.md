@@ -584,10 +584,11 @@ as smoothly as one of photos. Two implementations answer it:
   association knows — the icon of a document or a folder a shortcut points at.
 - **Everywhere else** by reading the files
   (`UltraCanvasIconResource.h`): the PE resource directory of an `.exe` /
-  `.dll` and the frames of an `.ico`, decoded without a Windows API and
-  without a new dependency. This is what makes a Windows disk mounted on
-  ULTRA OS, Linux or macOS — or the `drive_c` of a Wine prefix — show its
-  programs with their own icons.
+  `.dll`, the frames of an `.ico`, and the renditions of an `.icns`, decoded
+  without a platform API and without a new dependency. This is what makes a
+  Windows disk mounted on ULTRA OS, Linux or macOS — or the `drive_c` of a
+  Wine prefix — show its programs with their own icons, and a Mac disk read
+  anywhere show its applications with theirs.
 
 ### Thumbnail memory
 
@@ -619,8 +620,9 @@ view drops everything.
 
 A shortcut is drawn with **the icon of what it points at**, and reads as the
 thing it stands for rather than as a file called "LNK" or as a text file with
-a reverse-DNS name. Both formats a desktop uses are read: the Windows `.lnk`
-and the freedesktop `.desktop`, on every platform.
+a reverse-DNS name. Every format the three desktops use is read, on every
+platform: the Windows `.lnk`, the freedesktop `.desktop`, the macOS `.webloc`
+and — on macOS, the only system that can follow one — a Finder alias.
 
 - Its **type** is `Shortcut`, and its **category** — the colour, the grouping,
   the preview switch that governs it — comes from its target, so a shortcut to
@@ -671,10 +673,32 @@ a `.lnk` never needs:
   Opening the file itself (what happened before) handed a text file to a text
   editor.
 
+### macOS shortcuts and application bundles
+
+A `.webloc` shows its address in the info column and opens it when activated,
+like a `Type=Link` desktop entry. A **Finder alias** carries no extension to
+recognise it by, so the file itself is asked (its first bytes are bookmark
+data) — and only on macOS, which is the only system that can resolve one;
+elsewhere an alias stays the plain file nothing can follow.
+
+An **application bundle** (`.app`) is the odd one: not a shortcut but a
+*directory the platform presents as one object*. It is drawn with the icon
+inside it and by the application's own name (`Example Editor`, not
+`Example Editor.app`), typed `Application`, categorised as a program rather
+than a folder, and `FilerEntry::isBundle` marks it. It carries no shortcut
+badge — it is not a reference to something else, it *is* the application.
+
+**Activating one depends on where you are.** On macOS it launches, which is
+the Finder's rule; everywhere else it opens as the folder it is, because
+navigating in is the only thing that machine can do with a Mac application.
+The reading — Info.plist, the executable, the `.icns` — is
+[`UltraCanvasMacBundle`](UltraCanvasMacBundle.md) and works on every platform,
+so a Mac disk mounted on Linux still shows its applications properly.
+
 ### What the host sees
 
-`FilerEntry::isShortcut`, `FilerEntry::linkTarget` and
-`FilerEntry::linkDisplayName` carry the result to the application.
+`FilerEntry::isShortcut`, `FilerEntry::isBundle`, `FilerEntry::linkTarget`
+and `FilerEntry::linkDisplayName` carry the result to the application.
 `linkTarget` is the target **as this machine opens it** — empty when the
 target is not here, or is not a file at all (a shell item, a web address) — so
 an application that can run Windows programs itself (`onFileActivated`) uses

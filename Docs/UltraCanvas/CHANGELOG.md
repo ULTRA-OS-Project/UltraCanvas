@@ -1,3 +1,51 @@
+#### 2026-09-05 *0.3.103*
+- **macOS applications and shortcuts read like the other two desktops'.** An
+  application bundle was a folder called `Example Editor.app`, a `.webloc` a
+  property list nothing opened, and a Finder alias a file nothing could
+  follow. The file display now shows a bundle by the **application's own
+  name**, with **the icon inside it**, typed `Application` and categorised as
+  a program rather than a folder (`FilerEntry::isBundle`); it carries no
+  shortcut badge, because it is not a reference to something else — it is the
+  application. A `.webloc` shows its address and opens it, and on macOS a
+  Finder alias resolves like any other shortcut.
+- **Activating a bundle depends on where you are**: on macOS it launches, the
+  Finder's rule; everywhere else it opens as the folder it is, because
+  navigating in is the only thing that machine can do with a Mac application.
+- **New `UltraCanvasMacBundle.h`.** `ReadApplicationBundle` returns what a
+  bundle's Info.plist says — display name, identifier, version, the
+  executable inside it, and the `.icns` it is drawn with, found through the
+  omissions real bundles have (a `CFBundleIconFile` without its extension, a
+  `CFBundleIconName` that points into a compiled asset catalog, or nothing at
+  all, where the `.icns` in Resources is the answer). `ReadWebLocation` reads
+  the address out of a `.webloc`. `ResolveFinderAlias` follows bookmark data
+  on macOS (`OS/MacOS/UltraCanvasMacOSAlias.mm`, resolved without UI and
+  without mounting, so a folder listing never puts a volume password dialog
+  on screen) and reports false everywhere else rather than guessing: an alias
+  survives its target *moving*, and only the system that wrote it can follow
+  that.
+- **New `UltraCanvasPropertyList.h`: Apple property lists in both
+  encodings** — the XML form through the tinyxml2 the framework already
+  carries, and the binary `bplist00` form (object table, offset table,
+  32-byte trailer) parsed here, since that is what most shipped Info.plists
+  actually are. Deliberately not a general plist library: it serves the
+  top-level dictionary flattened to text, which is what a bundle or a web
+  location needs, and skips nested containers rather than half-modelling
+  them. Every offset in a binary plist is bounds-checked.
+- **The icon reader learns `.icns`** (`UltraCanvasIconResource`), so an
+  application bundle has an icon on every platform, not only on macOS: modern
+  renditions hold a PNG, the classic ones a run-length encoded RGB bitmap
+  whose transparency arrives as a separate mask element, and the small ARGB
+  renditions the same encoding with alpha first. A rendition this build
+  cannot decode falls through to the next. Raising the reader's ceiling to
+  1024 (an icns goes that big) also separated out what a 0 in an `.ico`'s
+  one-byte size field means, which is 256 and not "the biggest there is".
+- Tests: `Tests/MacBundleTest.cpp` builds a bundle directory, a web location,
+  an alias-shaped file, an XML plist and a binary one byte by byte, and reads
+  them all back — on every platform, because the reading has to work on every
+  platform. `Tests/FilerShortcutEntryTest.cpp` and
+  `Tests/IconResourceTest.cpp` gained the bundle, web-location and `.icns`
+  cases.
+
 #### 2026-09-05 *0.3.102*
 - **Linux shortcuts are shown the way Windows ones now are.** A `.desktop`
   launcher was a grey sheet named `org.mozilla.firefox.desktop`; the file

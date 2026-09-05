@@ -440,6 +440,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # display and the "Open with" service, which used to parse the format
         # privately.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopEntry.cpp
+        # Apple property lists (Info.plist, .webloc) in both encodings, and
+        # the macOS application bundles and shortcut files built on them.
+        # Read without an Apple API, so a Mac disk mounted anywhere shows its
+        # applications with their real names and icons.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPropertyList.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMacBundle.cpp
         # Preview bitmaps vector documents (Xara, ZIP-based CorelDRAW)
         # carry inside themselves - what the filer thumbnails them from.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedPreview.cpp

@@ -104,14 +104,45 @@ the backing implementation can be replaced without affecting callers.
     `%f/%F/%u/%U` filled, `%i/%c/%k` dropped, `%%` literal).
   See `Docs/UltraCanvas/UltraCanvasDesktopEntry.md`.
 
-- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons a
-  Windows file carries, read without a Windows shell: the frames of an `.ico`
-  and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary. In
+- **UltraCanvasPropertyList** (`UltraCanvasPropertyList.h`) — Apple property
+  lists in both encodings (XML through tinyxml2, binary `bplist00` parsed in
+  `core/UltraCanvasPropertyList.cpp`). Deliberately not a general plist
+  library: it serves the **top-level dictionary, flattened to text**, which
+  is what a bundle or a web location is asked for; nested containers are
+  skipped rather than half-modelled. Every offset in a binary plist is
+  bounds-checked. `UCPropertyList::Read` / `ReadBytes`, then `Has`,
+  `GetString`, `GetBool`, `GetInteger`, `Values`.
+  See `Docs/UltraCanvas/UltraCanvasPropertyList.md`.
+
+- **UltraCanvasMacBundle** (`UltraCanvasMacBundle.h`) — macOS application
+  bundles and the shortcut files a Mac desktop uses, the third desktop's
+  answer beside `UltraCanvasShellLink` and `UltraCanvasDesktopEntry`. Read
+  from the files themselves (`core/UltraCanvasMacBundle.cpp`), so a Mac disk
+  mounted anywhere shows its applications with their real names and icons.
+  Public surface:
+  - `IsBundlePath` / `IsApplicationBundlePath` — the packages the Finder
+    presents as one object, and the narrower "is it an application".
+  - `ReadApplicationBundle` — `UCAppBundle` (display name, identifier,
+    version, the executable inside it, the `.icns` it is drawn with, whether
+    it is an application). False for a directory with no readable
+    Info.plist. The icon search covers the usual omissions: the named file,
+    the name plus `.icns`, `CFBundleIconName`, then the `.icns` in Resources.
+  - `IsWebLocationPath` / `ReadWebLocation` — the address in a `.webloc`.
+  - `IsFinderAliasFile` / `ResolveFinderAlias` — an alias is recognised by
+    its bookmark-data magic anywhere, but only macOS can follow one
+    (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
+    false rather than guessing.
+  See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
+  other two desktops keep their applications' faces in, read without either
+  of them: the frames of an `.ico`, the `RT_GROUP_ICON` / `RT_ICON` resources
+  of a PE binary, and the renditions of an Apple `.icns`. In
   `core/UltraCanvasIconResource.cpp`; reads only the header range and the
   resource section of a program rather than the whole file, and treats every
   offset in the format as untrusted. Public surface:
-  - `HasIconResourceExtension` — `.ico`, `.exe`, `.dll`, `.icl`, `.cpl`,
-    `.ocx`, `.scr`, `.mun`, by extension alone.
+  - `HasIconResourceExtension` — `.ico`, `.icns`, `.exe`, `.dll`, `.icl`,
+    `.cpl`, `.ocx`, `.scr`, `.mun`, by extension alone.
   - `LoadIconResource(path, index, desiredSize)` — the frame nearest the
     wanted size as a `UCPixmap`. Windows' index convention: negative names a
     resource id, non-negative counts icons in resource order.

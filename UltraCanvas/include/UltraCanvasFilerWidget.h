@@ -311,6 +311,11 @@ namespace UltraCanvas {
         // The entry's category and icon come from that target, so a shortcut
         // to a program is drawn with the program's own icon.
         bool isShortcut  = false;
+        // A directory the platform presents as one object rather than as a
+        // folder: a macOS ".app" and its relatives. It is still a directory
+        // on disk, but it is drawn with the application's icon, named by the
+        // application, and activated by launching it.
+        bool isBundle    = false;
         std::string linkTarget;
         // The name a shortcut calls itself, when that is not its file name:
         // a desktop entry's `Name=` ("Firefox Web Browser" for a file called
@@ -1679,6 +1684,10 @@ namespace UltraCanvas {
         // modification time), so a rescan of a folder full of shortcuts
         // costs no further reads.
         void ResolveShortcutEntry(FilerEntry& e) const;
+        // The same for a directory that is really an application: a macOS
+        // bundle, whose Info.plist names it, names its executable and names
+        // the icon it is drawn with. Cached like the shortcuts above.
+        void ResolveBundleEntry(FilerEntry& e) const;
 
         // ===== FOLDER LISTING PREFETCH =====
         // After a folder settles, a low-priority worker pre-scans its visible

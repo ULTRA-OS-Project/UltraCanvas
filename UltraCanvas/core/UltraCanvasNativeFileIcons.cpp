@@ -13,6 +13,7 @@
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasDesktopEntry.h"
 #include "UltraCanvasIconResource.h"
+#include "UltraCanvasMacBundle.h"
 #include "UltraCanvasShellLink.h"
 
 #ifndef _WIN32
@@ -20,7 +21,7 @@ namespace UltraCanvas {
 
     bool NativeFileIconAvailable(const std::string& path) {
         return HasIconResourceExtension(path) || IsShellLinkPath(path) ||
-               IsDesktopEntryPath(path);
+               IsDesktopEntryPath(path) || IsBundlePath(path);
     }
 
     std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string& path,
@@ -42,6 +43,14 @@ namespace UltraCanvas {
                 link.hostTargetPath != link.hostIconLocation)
                 return LoadIconResource(link.hostTargetPath, 0, desiredSize);
             return nullptr;
+        }
+        if (IsBundlePath(path)) {
+            // An application bundle keeps its icon inside itself, as the
+            // ".icns" its Info.plist names.
+            UCAppBundle bundle;
+            if (!ReadApplicationBundle(path, bundle) || bundle.iconFile.empty())
+                return nullptr;
+            return LoadIconResource(bundle.iconFile, 0, desiredSize);
         }
         if (IsDesktopEntryPath(path)) {
             // A desktop entry names its icon rather than carrying one: the
