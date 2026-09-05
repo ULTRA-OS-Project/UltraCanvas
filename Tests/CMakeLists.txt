@@ -1519,6 +1519,80 @@ endif()
 
 message(STATUS "")
 
+# ===== SHELL LINK TEST =====
+# Reading a Windows shortcut (.lnk) on any platform: what it points at, the
+# icon it names, and how its Windows path maps onto the host filesystem. The
+# links are built byte by byte inside the test, so it needs no fixtures.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ShellLinkTest...")
+    add_executable(ShellLinkTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ShellLinkTest.cpp
+    )
+    target_include_directories(ShellLinkTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(ShellLinkTest PRIVATE cxx_std_20)
+    target_link_libraries(ShellLinkTest PRIVATE UltraCanvas)
+    set_target_properties(ShellLinkTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ShellLinkTest COMMAND ShellLinkTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ShellLinkTest")
+else()
+    message(STATUS "  ShellLinkTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER SHORTCUT ENTRY TEST =====
+# What the file display makes of a .lnk it lists: type, category, info column
+# and the resolved target on the entry. Builds its own shortcuts (and its own
+# Wine-prefix-shaped tree) inside the test.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerShortcutEntryTest...")
+    add_executable(FilerShortcutEntryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerShortcutEntryTest.cpp
+    )
+    target_include_directories(FilerShortcutEntryTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(FilerShortcutEntryTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerShortcutEntryTest PRIVATE UltraCanvas)
+    set_target_properties(FilerShortcutEntryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerShortcutEntryTest COMMAND FilerShortcutEntryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerShortcutEntryTest")
+else()
+    message(STATUS "  FilerShortcutEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== ICON RESOURCE TEST =====
+# The portable icon reader: an .ico file and the RT_GROUP_ICON / RT_ICON
+# resources of a PE binary, both assembled inside the test rather than
+# checked in as binaries.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building IconResourceTest...")
+    add_executable(IconResourceTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/IconResourceTest.cpp
+    )
+    target_include_directories(IconResourceTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(IconResourceTest PRIVATE cxx_std_20)
+    target_link_libraries(IconResourceTest PRIVATE UltraCanvas)
+    set_target_properties(IconResourceTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME IconResourceTest COMMAND IconResourceTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: IconResourceTest")
+else()
+    message(STATUS "  IconResourceTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FONT FILE TEST =====
 # Reading a font definition file as a document: its name records, and the
 # line of its own glyphs the filer thumbnails it with. Runs against the

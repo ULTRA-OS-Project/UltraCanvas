@@ -226,6 +226,42 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
+  shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
+  points at, the icon it is drawn with, and the command line it starts. Byte
+  parsing plus `std::filesystem` in `core/UltraCanvasShellLink.cpp` — no
+  Windows API, no state between calls, safe on background threads. Public
+  surface:
+  - `IsShellLinkPath` — recognition by extension, before a file is opened.
+  - `ReadShellLink` — `UCShellLink` (target, arguments, working directory,
+    comment, relative path, icon location + index, target attributes, size
+    and time). False for a file that is missing, truncated or not a link, so
+    a file that merely ends in `.lnk` is never mistaken for one.
+  - `ResolveWindowsPathOnHost` — maps `C:\…` onto this host by walking up
+    from a context path for a Wine prefix (`drive_c` / `dosdevices`), the
+    root of a mounted Windows disk, then `$WINEPREFIX` / `~/.wine`. Case
+    -insensitive per component, canonical result, empty when the file is not
+    here.
+  - `ExpandWindowsEnvironmentPath` — `%ProgramFiles%` and the rest of the
+    well-known set; an unknown variable is left visible rather than dropped.
+  See `Docs/UltraCanvas/UltraCanvasShellLink.md`.
+
+- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons a
+  Windows file carries, read without a Windows shell: the frames of an `.ico`
+  and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary. In
+  `core/UltraCanvasIconResource.cpp`; reads only the header range and the
+  resource section of a program rather than the whole file, and treats every
+  offset in the format as untrusted. Public surface:
+  - `HasIconResourceExtension` — `.ico`, `.exe`, `.dll`, `.icl`, `.cpl`,
+    `.ocx`, `.scr`, `.mun`, by extension alone.
+  - `LoadIconResource(path, index, desiredSize)` — the frame nearest the
+    wanted size as a `UCPixmap`. Windows' index convention: negative names a
+    resource id, non-negative counts icons in resource order.
+  - `DecodeIconFileBytes` — the same for bytes already in hand.
+  Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
+  Windows, and as the fallback for a file the shell declines on it.
+  See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
   document rather than as something to render text with: its name records are
@@ -18220,28 +18256,28 @@ right grouping, and the Display > Thumbnails / Detail view switches that
 govern it. The inventory
 is consulted once and cached, so it costs nothing per directory entry.
 
-### Native application icons (Windows)
+### Native application icons
 
-On Windows, `.exe`, `.dll` and `.ico` files show the **icon embedded in the
-file** — what Explorer shows — instead of the generic EXE/DLL glyph, in every
-view from the Details icon column up to the largest thumbnail tiles. The icon
-is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
-up to 256 px) on the same background workers as the image thumbnails, so a
-folder of executables scrolls as smoothly as one of photos; a file without an
-icon resource keeps its glyph. This is an icon, not a content preview, so the
-Display > Thumbnails switches do not affect it. The extractor lives behind
-`UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
-`LoadNativeFileIconPixmap`); on other platforms it reports no icon and
-nothing changes.
+`.exe`, `.dll` and `.ico` files show the **icon inside the file** — what
+Explorer shows — instead of the generic EXE/DLL glyph, in every view from the
+Details icon column up to the largest thumbnail tiles. A file without an icon
+resource keeps its glyph. This is an icon, not a content preview, so the
+Display > Thumbnails switches do not affect it.
 
-Because an icon is the file's identity rather than a courtesy preview, it is
-held apart from the content thumbnails: the two have **separate memory
-budgets**, so a folder of photos or videos filling the thumbnail budget can
-never evict the application icons on screen (see
-[Thumbnail memory](#thumbnail-memory)). Extraction goes through the OS shell,
-which can fail on a file it would serve a moment later, so an icon is retried
-a few times before the tile settles on its glyph — and the worker threads join
-a COM apartment, which the shell expects of its caller.
+The extraction lives behind `UltraCanvasNativeFileIcons.h`
+(`NativeFileIconAvailable` / `LoadNativeFileIconPixmap`) and runs on the same
+background workers as the image thumbnails, so a folder of programs scrolls
+as smoothly as one of photos. Two implementations answer it:
+
+- **On Windows** through the shell (`SHDefExtractIconW` at the nearest
+  embedded size, up to 256 px), which also covers what only a registry
+  association knows — the icon of a document or a folder a shortcut points at.
+- **Everywhere else** by reading the files
+  (`UltraCanvasIconResource.h`): the PE resource directory of an `.exe` /
+  `.dll` and the frames of an `.ico`, decoded without a Windows API and
+  without a new dependency. This is what makes a Windows disk mounted on
+  ULTRA OS, Linux or macOS — or the `drive_c` of a Wine prefix — show its
+  programs with their own icons.
 
 ### Thumbnail memory
 
@@ -18251,7 +18287,7 @@ budgets that bound what a huge folder at a large tile size can hold:
 | Pool | Budget | Holds |
 |---|---|---|
 | Content previews | 96 MB | bitmaps, vectors, poster frames, PDF pages, model renders, font specimens |
-| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` icons above |
+| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` / `.lnk` icons above |
 
 Overflowing a budget drops that pool's **least recently drawn** entries, and
 only as many as it takes to get back under — never the entry that just
@@ -18268,6 +18304,45 @@ the uncompressed size those bytes stand for — they differ under
 `SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
 the decompressed tiles being drawn). Rescanning the folder or changing the
 view drops everything.
+
+## Shortcuts (.lnk)
+
+A Windows shortcut is drawn with **the icon of what it points at**, and reads
+as the thing it stands for rather than as a file called "LNK":
+
+- Its **type** is `Shortcut`, and its **category** — the colour, the grouping,
+  the preview switch that governs it — comes from its target, so a shortcut to
+  a folder groups with folders and one to a program with programs.
+- The **info column and the info bar show the target** as the link stores it
+  (`C:\Program Files\…`), which is the string the shortcut's own properties
+  show on Windows, and which stays informative for a link whose target is not
+  on this machine.
+- A small **arrow badge** in the bottom-left corner of the icon marks it as a
+  shortcut — the only thing that tells it apart from the file it points at,
+  whose icon it otherwise wears exactly. Below 24 px the badge is left off
+  rather than smudged over the icon it annotates.
+- **Double-clicking** it opens what it points at: a shortcut to a folder
+  navigates into that folder, and one to a file opens the file. On Windows the
+  shell resolves the link itself, which keeps the arguments and working
+  directory it carries.
+
+The reading is `UltraCanvasShellLink.h` (`ReadShellLink`), and it works on
+every platform — the shortcut's Windows path is mapped onto the host by
+looking for the drive it names (a Wine prefix, or the root of a mounted
+Windows disk). `FilerEntry::isShortcut` and `FilerEntry::linkTarget` carry the
+result to the host: `linkTarget` is the target **as this machine opens it**,
+empty when the target is not here or is a shell item rather than a file — an
+application that can run Windows programs itself (`onFileActivated`) uses it
+to launch the real target.
+
+Because an icon is the file's identity rather than a courtesy preview, it is
+held apart from the content thumbnails: the two have **separate memory
+budgets**, so a folder of photos or videos filling the thumbnail budget can
+never evict the application icons on screen (see
+[Thumbnail memory](#thumbnail-memory)). Where extraction goes through the OS
+shell it can fail on a file it would serve a moment later, so an icon is
+retried a few times before the tile settles on its glyph — and the worker
+threads join a COM apartment, which the shell expects of its caller.
 
 ## Selection info bar
 
@@ -18529,6 +18604,12 @@ part:
   contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
+
+A **Windows shortcut** is activated as the thing it points at: one to a folder
+navigates into that folder, and one to a file opens the file — off Windows by
+resolving the link first, since nothing there knows what a `.lnk` is, and on
+Windows through the shell, which does it better (it keeps the arguments and
+working directory the link carries). See [Shortcuts (.lnk)](#shortcuts-lnk).
 
 Entries inside archives are virtual paths nothing external can read, so
 activation never tries to run or open them.
@@ -24010,6 +24091,90 @@ default. Hovering a hexagon shows its cell index and value.
 - The geometry math (`MakeHexLayout`, `HexCenter`, `HexNearestCell`) is
   dependency-free and unit-tested (grid fit, centre round-trip, point binning).
 - Cells whose value is `NaN` (transparent NaN colour) are skipped.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
+==============================================================================
+
+# UltraCanvasIconResource — Windows icon resources without Windows
+
+`UltraCanvasIconResource.h` reads the icons a Windows file carries: the frames
+of an `.ico`, and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary
+(`.exe`, `.dll`, and the icon libraries that share the format). It is what
+gives a program its own icon in a file display on a system that has no Windows
+shell to ask.
+
+Implemented in `core/UltraCanvasIconResource.cpp`: the PE resource directory
+is a small tree of fixed-size records, and an icon frame is either a PNG
+(handed to the image pipeline) or a DIB with a 1-bit transparency mask
+(decoded here). No Windows API, no new dependency, safe on a background
+thread.
+
+```cpp
+#include "UltraCanvasIconResource.h"
+
+if (UltraCanvas::HasIconResourceExtension(path)) {          // no file access
+    auto pixmap = UltraCanvas::LoadIconResource(path, 0, 48);  // blocking
+}
+```
+
+| Function | Answers |
+|---|---|
+| `HasIconResourceExtension` | can this **kind** of file hold icons? (`.ico`, `.exe`, `.dll`, `.icl`, `.cpl`, `.ocx`, `.scr`, `.mun`) — extension only, no file access |
+| `LoadIconResource(path, index, desiredSize)` | the icon as a `UCPixmap`, or null |
+| `DecodeIconFileBytes(bytes, desiredSize)` | the same for bytes already in hand — an icon inside an archive, one fetched over the network |
+
+## Which icon, and which size
+
+`index` follows the convention a Windows shortcut's icon index uses: a
+**non-negative** index selects the n-th icon of the file in resource order, a
+**negative** one names a resource id (`-index`). An index that names nothing
+falls back to the file's first icon — a stale index written into a shortcut
+years ago must not blank the tile.
+
+An icon holds the same picture at several sizes. The frame nearest
+`desiredSize` is the one decoded: the exact size if it is there, else the
+smallest frame **larger** than it (downscaling keeps detail), else the largest
+frame there is, with colour depth breaking a tie. The pixmap comes back at the
+frame's own size — the caller's fit mode is what scales it into place.
+
+The chosen frame is not the only one tried: a file can name a resource that is
+not there, or hold a frame in a form this build cannot decode, and a picture
+at the wrong size beats no picture at all.
+
+## What it reads, and what it refuses
+
+- **Frames**: PNG frames (the Vista-and-later 256 px form) go through
+  `UCImageRaster::LoadFromMemory`. DIB frames are decoded here at 1, 4, 8, 16,
+  24 and 32 bits per pixel, bottom-up, with the palette and the AND mask the
+  format puts below the colour bitmap. A 32-bit frame whose alpha band is
+  entirely zero is a pre-XP icon that means the mask, not "invisible", and is
+  read as such.
+- **The file is not read whole.** A program's headers are its first few
+  kilobytes and its icons are one section; a 300 MB installer is not pulled
+  into memory to find a 32-pixel picture. Only the header range and the
+  resource section are read.
+- Every offset in these formats comes out of the file itself, so all of them
+  are treated as untrusted: a record pointing outside the data it lives in
+  produces "no icon", never a read past the end.
+- The first bytes decide which reader a file gets, not its name — an `.exe`
+  that is a script and an `.ico` that is something else both exist.
+
+## Where it is used
+
+`LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off Windows, for
+`.exe` / `.dll` / `.ico` and for the `.lnk` shortcuts that name one of them
+(read with [UltraCanvasShellLink](UltraCanvasShellLink.md)). On Windows the shell is asked first and this reader is
+the fallback for a file the shell declines. The filer widget's thumbnail
+workers are what call it; see
+[UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#native-application-icons).
+
+## Test
+
+`Tests/IconResourceTest.cpp` assembles an `.ico` and a minimal PE binary in
+memory — section table, three-level resource tree, a group icon naming its
+`RT_ICON` — and checks the decoded pixels, including the mask-driven
+transparency.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
@@ -39648,6 +39813,142 @@ flow->FitView();
   model this feature's layering follows
 - [`UltraCanvasClassDiagramProposal.md`](UltraCanvasClassDiagramProposal.md)
   — the UML family's roadmap
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasShellLink.md
+==============================================================================
+
+# UltraCanvasShellLink — Windows shortcuts (.lnk) on every platform
+
+`UltraCanvasShellLink.h` reads the Windows shell link format (MS-SHLLINK) —
+the `.lnk` files a Windows desktop is made of — and answers the two questions
+a file display asks about one: **what does it point at**, and **which icon is
+it drawn with**.
+
+Windows resolves a shortcut through the shell. Nothing else does, which is why
+a filer looking at a mounted Windows disk, at the `drive_c` of a Wine prefix,
+or at a folder synced from a Windows machine used to show a desktop full of
+nameless "LNK" sheets. This module is the missing piece: it parses the file
+itself, so the answer is the same on Windows, ULTRA OS, Linux and macOS.
+
+Implemented in `core/UltraCanvasShellLink.cpp` on byte parsing plus
+`std::filesystem` — no Windows API, no new dependency, and safe to call from a
+background thread (it holds no state between calls).
+
+## Reading a link
+
+```cpp
+#include "UltraCanvasShellLink.h"
+
+UCShellLink link;
+if (UltraCanvas::ReadShellLink("/mnt/win/Users/Sam/Desktop/Etcher.lnk", link)) {
+    link.targetPath;      // "C:\\Program Files\\Etcher\\Etcher.exe"
+    link.hostTargetPath;  // "/mnt/win/Program Files/Etcher/Etcher.exe"
+    link.arguments;       // "--no-sandbox"
+    link.iconLocation;    // the file holding the icon, when the link names one
+    link.iconIndex;       // index into it (negative = a resource id)
+    link.targetIsDirectory;
+}
+```
+
+`ReadShellLink` returns false — leaving the output untouched — for a file that
+is missing, truncated, or does not carry the format's header signature and
+CLSID. A file that merely ends in `.lnk` is therefore never mistaken for a
+shortcut.
+
+| Field | What it holds |
+|---|---|
+| `targetPath` | the target as the link stores it, a Windows path |
+| `hostTargetPath` | the same file as **this** host opens it; empty when it is not here |
+| `arguments` / `workingDirectory` | the command line the link starts the target with |
+| `description` | the link's comment |
+| `relativePath` | `".\\App.exe"` — the target relative to the link itself |
+| `iconLocation` / `hostIconLocation` / `iconIndex` | the icon the link is drawn with |
+| `targetIsDirectory` | the target is a folder (from its stored attributes) |
+| `targetIsNetworkPath` | the target is a UNC name, resolved through the network |
+| `targetSize` / `targetModifiedTime` | what the target was when the link was made |
+
+The icon a shortcut is drawn with follows Explorer's rule, and every caller
+walks the same chain: `hostIconLocation` at `iconIndex` when the link names an
+icon, else icon 0 of `hostTargetPath`. That is what
+`LoadNativeFileIconPixmap` does for a `.lnk` — through the shell on Windows
+(which adds the target's file association for a shortcut to a document or a
+folder), and through
+[UltraCanvasIconResource](UltraCanvasIconResource.md) everywhere else.
+
+## Windows paths on a host that is not Windows
+
+Every path inside a shortcut is a Windows path, and `C:\Program Files\…` means
+nothing to a POSIX `open()`. `ResolveWindowsPathOnHost(windowsPath,
+contextPath)` maps one, and it is what fills every `host*` field above.
+`contextPath` is a host path near the file — normally the shortcut being read
+— and is what makes the mapping possible: the drive the path names is looked
+for by walking up from it, in this order.
+
+1. A **Wine prefix**: an ancestor named `drive_c`, or one holding a
+   `dosdevices` directory. Drive letters resolve through
+   `dosdevices/<letter>:`, which is exactly the mapping a prefix defines.
+2. The **root of a mounted Windows disk**: an ancestor holding both a
+   `Windows` and a `Users` directory. Only `C:` is recognisable this way,
+   which is the letter that matters — it is where the programs a shortcut
+   points at are installed.
+3. `$WINEPREFIX`, then `~/.wine`, for a shortcut that sits somewhere else
+   entirely.
+
+Path components below the drive root are matched **case-insensitively**,
+because Windows wrote them that way and the host filesystem is not: a link that says `C:\PROGRA~\ETCHER`
+still finds `Program Files/Etcher`. The result is canonical (symlinks
+resolved), so an entry reached through a prefix's `dosdevices` symlink
+compares equal to the same file listed anywhere else. An empty return means
+"this host does not have that file" — never a guess.
+
+On Windows the function only expands environment variables and confirms the
+file is there.
+
+## Environment variables
+
+`ExpandWindowsEnvironmentPath` expands `%VAR%` references the way the shell
+would: from the process environment on Windows, and off Windows from the fixed
+layout of a Windows disk (`%ProgramFiles%` → `C:\Program Files`,
+`%SystemRoot%` → `C:\Windows`, and the rest of the well-known set). The
+per-user variables (`%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`) need a
+profile, which `ResolveWindowsPathOnHost` derives from the shortcut's own
+location when it sits inside one.
+
+An **unknown variable is left as it stands** rather than replaced with
+nothing: a path with a visible `%FOO%` in it is a readable failure, while one
+with the reference silently dropped looks valid and is not.
+
+This matters more than it sounds. A shortcut written on another machine often
+carries an absolute path that is wrong here *and* an environment form that is
+right — the format stores both, in the `EnvironmentVariableDataBlock` — and
+the reader tries every form the link offers, in order, keeping the first the
+host can actually find.
+
+## What is not parsed
+
+The **target ID list** is skipped. It describes shell items rather than files:
+a shortcut to a file repeats the path in its LinkInfo block, and one to a
+virtual item (a Control Panel page, a packaged app, a Recycle Bin) has no file
+path at all. Such a link reads successfully with an empty `targetPath` — it is
+still a shortcut, it just does not point at a file this or any other program
+can open by path.
+
+## Where it is used
+
+`UltraCanvasFilerWidget` reads every `.lnk` it lists: the entry's type,
+category, info column and icon all come from the target
+(`FilerEntry::isShortcut`, `FilerEntry::linkTarget`). See
+[UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md#shortcuts-lnk).
+
+## Test
+
+`Tests/ShellLinkTest.cpp` builds links byte by byte (`ShellLinkTestSupport.h`)
+and reads them back — LinkInfo targets, `%ProgramFiles%` targets, folder
+targets, non-Unicode strings, case-insensitive resolution inside a prefix, and
+the files that end in `.lnk` without being links.
+`Tests/FilerShortcutEntryTest.cpp` takes the same links through a folder scan
+and checks the entries the file display produces from them.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md

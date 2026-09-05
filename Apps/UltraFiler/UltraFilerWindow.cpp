@@ -435,6 +435,10 @@ namespace {
     // than things the user launches.
     bool IsApplicationEntry(const FilerEntry& e) {
         if (e.isDirectory) return false;
+        // A Windows shortcut is whatever it points at: one to a program
+        // belongs in the Applications list (that is what a Start-Menu entry
+        // is), one to a document does not.
+        if (e.isShortcut) return e.category == FilerFileCategory::Executable;
         static const char* const kAppExtensions[] = {
             "exe", "msi", "com", "bat", "cmd", "appimage", "desktop",
             "app", "apk", "deb", "rpm", "flatpakref", "snap", "run"};
@@ -2766,10 +2770,22 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
-        // Windows executables and installers go to the UltraWin emulation
-        // layer, not to the host's file associations (.msi runs through
-        // msiexec inside the environment).
-        if (entry.extension == "exe" || entry.extension == "msi") {
+        // Windows executables, installers and program shortcuts go to the
+        // UltraWin emulation layer, not to the host's file associations
+        // (.msi runs through msiexec inside the environment, and a .lnk
+        // through Wine's "start", which keeps the arguments and working
+        // directory the shortcut carries). A shortcut whose target is a
+        // document is not a Windows program and opens with whatever this
+        // system opens that document with; one whose target is not on this
+        // machine still goes to Wine, which resolves it inside the prefix.
+        // A shortcut to a folder never reaches here — the widget navigates
+        // into it instead.
+        const bool windowsShortcut =
+            entry.isShortcut &&
+            (entry.category == FilerFileCategory::Executable ||
+             entry.linkTarget.empty());
+        if (entry.extension == "exe" || entry.extension == "msi" ||
+            windowsShortcut) {
             LaunchWindowsExecutable(entry);
             return;
         }

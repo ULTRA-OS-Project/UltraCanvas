@@ -305,6 +305,13 @@ namespace UltraCanvas {
         bool isReadOnly  = false;
         bool isSymlink   = false;
         bool isArchive   = false;    // browsable archive (zip / 7z / ...)
+        // A Windows shortcut (.lnk) the widget could read: `linkTarget` is
+        // the file it points at as THIS host opens it, empty when the target
+        // is not on this machine (or is a shell item rather than a file).
+        // The entry's category and icon come from that target, so a shortcut
+        // to a program is drawn with the program's own icon.
+        bool isShortcut  = false;
+        std::string linkTarget;
 
         uint64_t size = 0;           // bytes (uncompressed)
         uint64_t compressedSize = 0; // bytes inside an archive (0 = not compressed)
@@ -1651,11 +1658,20 @@ namespace UltraCanvas {
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
         // The per-entry finishing pass every listing gets: weight, attribute
-        // letters and the info column (compression ratio or infoProvider).
+        // letters, shortcut resolution and the info column (the shortcut's
+        // target, a compression ratio, or whatever infoProvider returns).
         void DecorateEntry(FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
+
         void ApplyEntryTypeInfo(FilerEntry& e) const;
+        // Reads a .lnk and fills the entry from it: what it points at, and
+        // with it the type, the category and the icon the entry is drawn
+        // with. A file that ends in .lnk but is not a shell link is left as
+        // the plain file it is. Answers are cached per file (path, size,
+        // modification time), so a rescan of a folder full of shortcuts
+        // costs no further reads.
+        void ResolveShortcutEntry(FilerEntry& e) const;
 
         // ===== FOLDER LISTING PREFETCH =====
         // After a folder settles, a low-priority worker pre-scans its visible
@@ -1814,6 +1830,10 @@ namespace UltraCanvas {
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
+        // The small arrow badge in the corner of a shortcut's icon - the one
+        // mark that tells a shortcut apart from the file it points at, whose
+        // icon it otherwise wears exactly.
+        void DrawShortcutOverlay(IRenderContext* ctx, const Rect2Di& rect);
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         // True when the entry sits on the clipboard as a pending "cut", so the
         // view can ghost it until the move completes (Explorer-style).

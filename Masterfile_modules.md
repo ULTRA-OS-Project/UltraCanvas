@@ -55,6 +55,42 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
+  shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
+  points at, the icon it is drawn with, and the command line it starts. Byte
+  parsing plus `std::filesystem` in `core/UltraCanvasShellLink.cpp` — no
+  Windows API, no state between calls, safe on background threads. Public
+  surface:
+  - `IsShellLinkPath` — recognition by extension, before a file is opened.
+  - `ReadShellLink` — `UCShellLink` (target, arguments, working directory,
+    comment, relative path, icon location + index, target attributes, size
+    and time). False for a file that is missing, truncated or not a link, so
+    a file that merely ends in `.lnk` is never mistaken for one.
+  - `ResolveWindowsPathOnHost` — maps `C:\…` onto this host by walking up
+    from a context path for a Wine prefix (`drive_c` / `dosdevices`), the
+    root of a mounted Windows disk, then `$WINEPREFIX` / `~/.wine`. Case
+    -insensitive per component, canonical result, empty when the file is not
+    here.
+  - `ExpandWindowsEnvironmentPath` — `%ProgramFiles%` and the rest of the
+    well-known set; an unknown variable is left visible rather than dropped.
+  See `Docs/UltraCanvas/UltraCanvasShellLink.md`.
+
+- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons a
+  Windows file carries, read without a Windows shell: the frames of an `.ico`
+  and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary. In
+  `core/UltraCanvasIconResource.cpp`; reads only the header range and the
+  resource section of a program rather than the whole file, and treats every
+  offset in the format as untrusted. Public surface:
+  - `HasIconResourceExtension` — `.ico`, `.exe`, `.dll`, `.icl`, `.cpl`,
+    `.ocx`, `.scr`, `.mun`, by extension alone.
+  - `LoadIconResource(path, index, desiredSize)` — the frame nearest the
+    wanted size as a `UCPixmap`. Windows' index convention: negative names a
+    resource id, non-negative counts icons in resource order.
+  - `DecodeIconFileBytes` — the same for bytes already in hand.
+  Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
+  Windows, and as the fallback for a file the shell declines on it.
+  See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
   document rather than as something to render text with: its name records are
