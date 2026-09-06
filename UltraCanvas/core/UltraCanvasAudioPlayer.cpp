@@ -7,6 +7,7 @@
 
 #include "UltraCanvasAudioPlayer.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 #include "../libspecific/Audio/IAudioBackend.h"
 #include <algorithm>
 #include <atomic>
@@ -167,6 +168,16 @@ bool UltraCanvasAudioPlayer::LoadFromFile(const std::string& filePath) {
         std::string reason = DescribeFileReadError(filePath);
         if (reason.empty()) {
             if (auto* backend = GetAudioBackend()) reason = backend->DescribeDecodeFailure(filePath);
+        }
+        if (reason.empty()) {
+            // The registry recognises plenty of formats this build cannot
+            // decode — that is what lets the player appear at all — so it can
+            // name the format and what is missing.
+            if (auto codec = FindMediaCodecForFile(MediaCodecKind::Audio, filePath);
+                codec && !codec->canDecode) {
+                reason = codec->description + " is not supported by this build";
+                reason += codec->notes.empty() ? "." : (": " + codec->notes + ".");
+            }
         }
         if (reason.empty())
             reason = "The audio format is not supported or the file is damaged: " + filePath;

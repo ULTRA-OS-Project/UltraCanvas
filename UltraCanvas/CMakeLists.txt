@@ -463,6 +463,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVolumeMonitor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Layout.cpp

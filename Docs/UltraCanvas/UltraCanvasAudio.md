@@ -26,6 +26,14 @@ left. With the option OFF a null backend keeps the API surface compiling
 | Raw AAC (`aac`, ADTS) | with **FAAD2**, **fdk-aac** *or* the **GStreamer** plugins | never | FAAD2 / fdk-aac, else GStreamer |
 | ALAC in `m4a`, WMA, AIFF | with the **GStreamer** plugins | never | GStreamer `decodebin` |
 
+The matrix itself lives in the codec registry —
+[UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md) — which is
+also where an application registers a codec of its own, and where the media
+viewer asks whether a file is audio at all. A format the registry recognises
+but cannot decode is deliberately absent from the table above and present in
+the registry, so a viewer classifies the file correctly and says what is
+missing rather than treating it as something else.
+
 "Always" means whenever the audio backend is compiled in. The optional codec
 libraries are system packages detected via pkg-config at configure time
 (`libflac-dev`, `libvorbis-dev` + `libogg-dev`, `libopusenc-dev`,
@@ -92,6 +100,29 @@ VBR with a Xing header, mono/stereo only. `Tests/AudioCodecTests.cpp`
 `UltraCanvasAudio.h` — `UCAudio` holds decoded PCM + `AudioBufferInfo`. Mirrors
 `UCImage`. Decoders are pluggable (`Plugins/Audio/`); WAV will be the built-in
 default.
+
+### Adding a codec
+
+`UCAudio::LoadFromFile` and `SaveToFile` fall through to the codec registry once
+the built-in backend and codec libraries have declined a file, so an application
+that brings its own decoder registers it and everything else follows — the
+viewer's classification, the Filer's categories, the format inventory and the
+open/save dialogs:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ape";
+codec.description = "Monkey's Audio";
+codec.kind        = MediaCodecKind::Audio;
+codec.canDecode   = true;
+codec.provider    = "MyApp (libMAC)";
+codec.decodeAudio = [](const std::string& p) { return MyApp::DecodeApe(p); };
+RegisterMediaCodec(codec);
+```
+
+See [UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md) for the
+rest — encode callbacks, content probes for an ambiguous extension, and the
+upgrade rules when two registrations claim the same format.
 
 ### Playback (non-visual)
 

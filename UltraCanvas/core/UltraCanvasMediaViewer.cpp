@@ -46,6 +46,9 @@
 #ifdef ULTRACANVAS_ENABLE_AUDIO
 #include "UltraCanvasAudioPlayerElement.h"
 #endif
+// Always: file classification asks the codec registry what this build can
+// play, and with neither backend compiled in it correctly answers "nothing".
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1274,57 +1277,20 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     return tokenizer.SetLanguageByExtension(e);
 }
 
-namespace {
-// Three consecutive 188-byte packet boundaries carrying the MPEG-TS sync byte.
-// Enough to separate a transport stream from a TypeScript file that happens to
-// begin with a 'G'.
-bool LooksLikeMpegTransportStream(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return false;
-    char buf[188 * 2 + 1] = {0};
-    f.read(buf, sizeof(buf));
-    if (f.gcount() < static_cast<std::streamsize>(sizeof(buf))) return false;
-    return buf[0] == 0x47 && buf[188] == 0x47 && buf[188 * 2] == 0x47;
-}
-} // namespace
-
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
-    // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
-    // real video backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_VIDEO
-    static const std::vector<std::string> v = {
-        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv", "asf",
-        "flv", "mpg", "mpeg", "mpe", "m2v", "ogv", "ogm",
-        "3gp", "3g2", "m2ts", "mts"
-    };
-    std::string e = LowerExt(path);
-    if (e.empty()) return false;
-    // ".ts" is TypeScript far more often than it is an MPEG transport stream,
-    // and this test runs before the text one - so it is settled by content, not
-    // by the extension. A transport stream is 188-byte packets each starting
-    // with the sync byte 0x47; source code does not survive that test.
-    if (e == "ts") return LooksLikeMpegTransportStream(path);
-    return std::find(v.begin(), v.end(), e) != v.end();
-#else
-    (void)path;
-    return false;
-#endif
+    // The codec registry is the single source of truth: it knows which
+    // containers the platform video backend was built with, honours the
+    // content probe for an extension shared with another kind of file (".ts"
+    // is TypeScript far more often than a transport stream), and returns true
+    // for a format that is recognised but has no decoder — so the viewer can
+    // show a player and the reason it is empty rather than mistaking the file
+    // for a picture. With no video backend compiled in nothing is registered,
+    // and this is false for everything.
+    return IsMediaFileOfKind(MediaCodecKind::Video, path);
 }
 
 bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
-    // Audio plays through UltraCanvasAudioPlayerElement; only advertised when a
-    // real audio backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_AUDIO
-    static const std::vector<std::string> a = {
-        "mp3", "wav", "flac", "ogg", "oga", "m4a", "m4b",
-        "aac", "opus", "wma", "aif", "aiff", "aifc", "mka"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(a.begin(), a.end(), e) != a.end();
-#else
-    (void)path;
-    return false;
-#endif
+    return IsMediaFileOfKind(MediaCodecKind::Audio, path);
 }
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {

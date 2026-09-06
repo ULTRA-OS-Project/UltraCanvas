@@ -1233,6 +1233,19 @@ if (BUILD_TESTS)
     )
     add_test(NAME Mp4AudioDemuxTest COMMAND Mp4AudioDemuxTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The audio/video codec registry that drives media classification and the
+    # format inventory. Links the full library so it sees the codecs this build
+    # actually compiled with, and runs headless.
+    add_executable(MediaCodecRegistryTest Tests/MediaCodecRegistryTest.cpp)
+    target_include_directories(MediaCodecRegistryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(MediaCodecRegistryTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(MediaCodecRegistryTest PRIVATE cxx_std_20)
+    set_target_properties(MediaCodecRegistryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaCodecRegistryTest COMMAND MediaCodecRegistryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
 if (BUILD_FILEMANAGER_APP)

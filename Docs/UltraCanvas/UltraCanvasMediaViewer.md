@@ -26,13 +26,16 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
-Which of those actually decode is the platform backend's business, and
-`UltraCanvasSupportedFormats` is the authoritative runtime answer for both
-rows; the lists above are only what the viewer *classifies* as playable, so a
-file it cannot decode still gets a player-shaped error naming the codec rather
-than a broken image. `.ts` is the one extension settled by content instead of
-by name — it is TypeScript far more often than an MPEG transport stream, so the
-viewer checks for the 188-byte packet sync bytes before claiming it.
+Those two rows are not a list in this file: `IsAudioFile` and `IsVideoFile` ask
+the codec registry
+([UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md)) what this
+build was compiled with, so a format an application registers is classified too,
+and a format the build cannot decode still gets a player-shaped error naming
+what is missing rather than a broken image. `UltraCanvasSupportedFormats` — also
+built from the registry — is the authoritative answer to what actually decodes.
+`.ts` is the one extension settled by content instead of by name: it is
+TypeScript far more often than an MPEG transport stream, so its registration
+carries a probe for the 188-byte packet sync bytes.
 
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —

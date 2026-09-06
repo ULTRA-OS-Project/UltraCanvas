@@ -1,3 +1,47 @@
+#### 2026-09-06 *0.3.105*
+- **Media classification is driven by the codecs the build actually has.** The
+  media viewer decided what counted as audio or video from two extension lists
+  written into `UltraCanvasMediaViewer.cpp`, which had to be kept in step by
+  hand with what CMake linked — and were not. That is the whole reason an
+  `.m4a` was classified as audio by a build with no AAC decoder in it: the
+  viewer built a player, the decode failed, and nothing had anything to say.
+  Adding a codec meant editing the viewer, the format inventory and the
+  Filer's tables and hoping they agreed.
+- **New `UltraCanvasMediaCodecRegistry.h`** holds the answer once, and keeps
+  two questions apart that were previously answered from the same list:
+  `IsMediaFileOfKind` ("is this audio at all?") and `CanDecodeMediaFile` ("can
+  we play it?"). The gap between them is the useful part — a format registered
+  as **recognised but unsupported** is classified correctly, so the viewer
+  shows an audio transport and names the missing decoder, while the format
+  inventory stays silent about it because the inventory answers "what can this
+  build do". `UltraCanvasSupportedFormats` is now built from the registry
+  rather than from its own copy of the matrix, so the inventory, the open
+  dialogs, the Filer's categories and the viewer cannot disagree again; the
+  inventory it produces is byte-for-byte what it produced before.
+- **Registration is the extension point, and it is a real one.** An audio
+  registration may carry `decodeAudio` / `encodeAudio` callbacks, and
+  `UCAudio::LoadFromFile` and `SaveToFile` fall through to them once the
+  built-in backend and codec libraries have declined a file. Running last
+  means a plugin never has to displace anything to be reachable. Registering
+  the same extension twice **upgrades** the entry — capabilities OR-ed,
+  aliases unioned — so adding an encoder cannot silently drop a decoder;
+  `UnregisterMediaCodec` is how you replace one outright. Video decoding stays
+  with `IVideoBackend`; what a video registration contributes is recognition
+  and capability, and the doc says so rather than implying more.
+- **Extensions two kinds of file share are settled by content.** A
+  registration can carry a `probeFile` callback, run outside the registry's
+  lock, and an entry that has one is deliberately kept out of the
+  extension-keyed format inventory — a name-only lookup could not honour it.
+  The `.ts` transport-stream check moved out of the viewer and onto its
+  registration, which is where it belongs.
+- **`Tests/MediaCodecRegistryTest.cpp`** covers the built-ins, the
+  recognised-versus-decodable split, inventory agreement in both directions,
+  probe gating, the upgrade-not-duplicate rule, and a registered codec being
+  reached through `UCAudio::LoadFromFile` and `SaveToFile`. It passes with the
+  audio and video backends both compiled in and both switched off, which is
+  the configuration that caught the one bug in this change.
+- **New doc: `Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md`.**
+
 #### 2026-09-06 *0.3.104*
 - **M4A plays.** UltraFiler showed an audio player for an `.m4a` and then sat
   there: the viewer advertised the extension as audio, but nothing in the

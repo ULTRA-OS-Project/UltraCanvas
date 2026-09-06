@@ -11,16 +11,13 @@
 //                  the Markdown/HTML text path, plus every extension the
 //                  eBook engine registry reports at runtime.
 //   Spreadsheet  — the built-in ODS/XLSX/CSV engines (always compiled in).
-//   Audio        — the miniaudio backend (WAV/MP3/FLAC decode, WAV encode)
-//                  plus the optional system codec libraries: libFLAC (FLAC
-//                  encode), libvorbis (OGG encode+decode), libopusenc/opusfile
-//                  (Opus encode/decode), LAME (MP3 encode), FAAD2 / fdk-aac
-//                  (AAC decode), and the GStreamer plugins as a catch-all
-//                  decoder for M4A/WMA/AIFF when no in-tree codec covers them.
-//   Video        — the platform backend's demuxer/muxer matrix (GStreamer /
-//                  Media Foundation / AVFoundation). Saving is limited to the
-//                  containers the capture session muxes; everything else the
-//                  backend demuxes is listed load-only.
+//   Audio, Video — UltraCanvasMediaCodecRegistry, which holds the built-in
+//                  codec matrix (miniaudio, the optional system codec
+//                  libraries, FAAD2/fdk-aac, the platform media plugins, and
+//                  the video backend's demuxer/muxer table) plus anything an
+//                  application registered. Entries that are only *recognised*
+//                  — no decoder, no encoder — are omitted here on purpose;
+//                  they exist so a viewer can classify a file it cannot play.
 //   Font         — FreeType, a hard dependency, so the list is fixed. "Load"
 //                  means UltraCanvasFontFile can read the name records and
 //                  rasterize a specimen, not that the image pipeline decodes
@@ -30,6 +27,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasGraphicsPluginSystem.h"
 #include "UltraCanvasImage.h"                 // VipsCanLoad / VipsCanSave
 #include "Documents/eBook/IEBookEngine.h"     // GetRegisteredEBookExtensions
@@ -270,94 +268,42 @@ namespace {
                         "built-in CSV engine", "" });
     }
 
-    // ---- Audio: miniaudio's decode/encode matrix plus the optional system
-    // codec libraries wired through AudioCodecsExtra (compile-gated on the
-    // ULTRACANVAS_HAS_* defines their CMake detection sets) ----
+    // ---- Audio & video: the codec registry ----
+    // Both matrices live in UltraCanvasMediaCodecRegistry now, where the media
+    // viewer's "is this an audio file" also reads them, so the two can no
+    // longer disagree — which is exactly how .m4a came to be classified as
+    // audio by a build that had no AAC decoder in it.
+    //
+    // Two registrations are deliberately not advertised here:
+    //   * a recognised format with neither a decoder nor an encoder. The
+    //     registry keeps it so a viewer can classify the file and say why it
+    //     cannot play it; the inventory is the answer to "what can this build
+    //     do", so it must stay silent about it.
+    //   * a format whose extension is shared with another kind of file and is
+    //     settled by content (".ts"). This inventory is keyed on extensions
+    //     alone, so a name-only lookup could not honour the probe — those
+    //     formats are reached through the registry, and their unambiguous
+    //     siblings (m2ts / mts) carry the entry here.
+    void AddCodecFormats(std::vector<MediaFormatInfo>& out,
+                         MediaCodecKind kind, MediaFormatCategory category) {
+        for (const MediaCodecRegistration& c : GetRegisteredMediaCodecs(kind)) {
+            if (!c.canDecode && !c.canEncode) continue;
+            if (c.probeFile) continue;
+            MediaFormatInfo f;
+            f.extension   = c.extension;
+            f.aliases     = c.aliases;
+            f.description = c.description;
+            f.category    = category;
+            f.canLoad     = c.canDecode;
+            f.canSave     = c.canEncode;
+            f.provider    = c.provider;
+            f.notes       = c.notes;
+            out.push_back(std::move(f));
+        }
+    }
+
     void AddAudioFormats(std::vector<MediaFormatInfo>& out) {
-#ifdef ULTRACANVAS_ENABLE_AUDIO
-        out.push_back({ "wav", {}, "Waveform audio",
-                        MediaFormatCategory::Audio, true, true,
-                        "miniaudio (dr_wav)", "" });
-#ifdef ULTRACANVAS_HAS_LAME
-        out.push_back({ "mp3", {}, "MPEG layer III audio",
-                        MediaFormatCategory::Audio, true, true,
-                        "miniaudio (dr_mp3) + LAME", "" });
-#else
-        out.push_back({ "mp3", {}, "MPEG layer III audio",
-                        MediaFormatCategory::Audio, true, false,
-                        "miniaudio (dr_mp3)",
-                        "saving requires LAME (libmp3lame)" });
-#endif
-#ifdef ULTRACANVAS_HAS_LIBFLAC
-        out.push_back({ "flac", {}, "Free Lossless Audio Codec",
-                        MediaFormatCategory::Audio, true, true,
-                        "miniaudio (dr_flac) + libFLAC", "" });
-#else
-        out.push_back({ "flac", {}, "Free Lossless Audio Codec",
-                        MediaFormatCategory::Audio, true, false,
-                        "miniaudio (dr_flac)",
-                        "saving requires libFLAC" });
-#endif
-#ifdef ULTRACANVAS_HAS_VORBIS
-        out.push_back({ "ogg", { "oga" }, "Ogg Vorbis audio",
-                        MediaFormatCategory::Audio, true, true,
-                        "libvorbis (vorbisfile + vorbisenc)", "" });
-#endif
-#if defined(ULTRACANVAS_HAS_OPUSFILE) || defined(ULTRACANVAS_HAS_OPUSENC)
-        {
-            bool opusLoad = false, opusSave = false;
-#ifdef ULTRACANVAS_HAS_OPUSFILE
-            opusLoad = true;
-#endif
-#ifdef ULTRACANVAS_HAS_OPUSENC
-            opusSave = true;
-#endif
-            out.push_back({ "opus", {}, "Opus audio",
-                            MediaFormatCategory::Audio, opusLoad, opusSave,
-                            "opusfile + libopusenc", "" });
-        }
-#endif
-        // AAC lives in two shapes: a raw .aac bitstream and the MPEG-4
-        // container .m4a/.m4b. Both decode through AudioCodecsAAC.cpp, which
-        // needs FAAD2 or fdk-aac for the bitstream itself - or, failing that,
-        // the GStreamer plugins the video backend already links. Encoding is
-        // not wired for either.
-#if defined(ULTRACANVAS_HAS_FAAD) || defined(ULTRACANVAS_HAS_FDKAAC) || \
-    defined(ULTRACANVAS_HAS_GST_AUDIO_DECODE)
-        {
-#if defined(ULTRACANVAS_HAS_FAAD)
-            const char* aacBackend = "FAAD2";
-#elif defined(ULTRACANVAS_HAS_FDKAAC)
-            const char* aacBackend = "fdk-aac";
-#else
-            const char* aacBackend = "GStreamer (system plugins)";
-#endif
-            out.push_back({ "m4a", { "m4b" }, "MPEG-4 audio (AAC)",
-                            MediaFormatCategory::Audio, true, false,
-                            aacBackend, "saving is not supported" });
-            out.push_back({ "aac", {}, "Raw AAC bitstream (ADTS)",
-                            MediaFormatCategory::Audio, true, false,
-                            aacBackend, "saving is not supported" });
-        }
-#endif
-        // Whatever else the platform media plugins cover. Listed only when the
-        // fallback is compiled in, because without it none of these decode.
-#ifdef ULTRACANVAS_HAS_GST_AUDIO_DECODE
-        out.push_back({ "wma", {}, "Windows Media Audio",
-                        MediaFormatCategory::Audio, true, false,
-                        "GStreamer (system plugins)",
-                        "decode depends on the installed plugins" });
-        out.push_back({ "aiff", { "aif", "aifc" }, "Audio Interchange File Format",
-                        MediaFormatCategory::Audio, true, false,
-                        "GStreamer (system plugins)", "saving is not supported" });
-        out.push_back({ "mka", {}, "Matroska audio",
-                        MediaFormatCategory::Audio, true, false,
-                        "GStreamer (system plugins)",
-                        "decode depends on the installed plugins" });
-#endif
-#else
-        (void)out;
-#endif
+        AddCodecFormats(out, MediaCodecKind::Audio, MediaFormatCategory::Audio);
     }
 
     // ---- Fonts: FreeType is a hard dependency of the framework, so every
@@ -387,78 +333,8 @@ namespace {
                         "FreeType", "fixed strikes only - no outlines" });
     }
 
-    // ---- Video: per-platform backend demuxer/muxer matrix ----
     void AddVideoFormats(std::vector<MediaFormatInfo>& out) {
-#ifdef ULTRACANVAS_ENABLE_VIDEO
-        struct Candidate {
-            const char* ext;
-            std::vector<std::string> aliases;
-            const char* description;
-            bool load;
-            bool save;
-        };
-        // canSave is true only for the containers the capture session can
-        // actually mux into (MuxerFor() in the platform backend). Everything
-        // else the backend can demux is listed load-only rather than left out:
-        // omitting it made the open dialog refuse files the player then played
-        // perfectly well, and left the Filer with no category for them.
-#if defined(__linux__)
-        const char* provider = "GStreamer";
-        const char* notes = "codec availability depends on installed GStreamer plugins";
-        static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" },        "MPEG-4 container",   true, true  },
-            { "mov",  {},               "QuickTime movie",    true, true  },
-            { "mkv",  {},               "Matroska video",     true, true  },
-            { "webm", {},               "WebM video",         true, true  },
-            { "avi",  {},               "AVI video",          true, true  },
-            { "wmv",  { "asf" },        "Windows Media video", true, false },
-            { "flv",  {},               "Flash video",        true, false },
-            { "mpg",  { "mpeg", "mpe", "m2v" }, "MPEG program stream", true, false },
-            { "ogv",  { "ogm" },        "Ogg video",          true, false },
-            { "3gp",  { "3g2" },        "3GPP video",         true, false },
-            // Deliberately keyed on m2ts/mts, not the bare "ts": in a source
-            // tree that extension is TypeScript far more often than it is a
-            // transport stream, and an extension-only lookup cannot tell them
-            // apart. The media viewer sniffs the sync bytes for that one.
-            { "m2ts", { "mts" },        "MPEG transport stream", true, false },
-        };
-#elif defined(_WIN32)
-        const char* provider = "Media Foundation";
-        const char* notes = "codec availability depends on installed Media Foundation codecs";
-        static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" },        "MPEG-4 container",   true, true  },
-            { "mov",  {},               "QuickTime movie",    true, false },
-            { "mkv",  {},               "Matroska video",     true, false },
-            { "webm", {},               "WebM video",         true, false },
-            { "avi",  {},               "AVI video",          true, false },
-            { "wmv",  { "asf" },        "Windows Media video", true, false },
-            { "3gp",  { "3g2" },        "3GPP video",         true, false },
-            { "m2ts", { "mts" },        "MPEG transport stream", true, false },
-        };
-#else   // macOS / AVFoundation
-        const char* provider = "AVFoundation";
-        const char* notes = "";
-        static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" },        "MPEG-4 container",   true, true  },
-            { "mov",  {},               "QuickTime movie",    true, true  },
-            { "3gp",  { "3g2" },        "3GPP video",         true, false },
-        };
-#endif
-        for (const auto& c : candidates) {
-            MediaFormatInfo f;
-            f.extension   = c.ext;
-            f.aliases     = c.aliases;
-            f.description = c.description;
-            f.category    = MediaFormatCategory::Video;
-            f.canLoad     = c.load;
-            f.canSave     = c.save;
-            f.provider    = provider;
-            f.notes       = notes;
-            out.push_back(std::move(f));
-        }
-#else
-        (void)out;
-#endif
+        AddCodecFormats(out, MediaCodecKind::Video, MediaFormatCategory::Video);
     }
 
     MediaFormatCategory CategoryFromGraphicsType(GraphicsFormatType type) {
