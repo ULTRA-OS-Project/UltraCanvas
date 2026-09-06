@@ -33,6 +33,18 @@
   size bound still being applied, and unregistering a decoder while leaving the
   format recognised. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too — the
   case that shows a plugin working on a build with no platform backend.
+#### 2026-09-06 *0.3.106*
+- **The folder breadcrumb's "Computer" node can open a page of the host's
+  own.** `FolderBreadcrumbOptions::onComputerClick` — when set, a click on
+  the strip's leading *Computer* node calls it instead of navigating to the
+  drive root of the shown path (its dropdown lists the drives as before).
+  UltraFiler uses it for its Computer page; a host that leaves it unset gets
+  the old behaviour.
+- **A pie chart handed a new data source draws the new slices.**
+  `UltraCanvasPieChartElement` cut its slices once and only its own setters
+  told it to cut again, so `SetDataSource()` on a chart already on screen
+  changed the centre text and nothing else. The slices now follow every
+  base-cache invalidation (the data source, the plot area).
 
 #### 2026-09-06 *0.3.105*
 - **Media classification is driven by the codecs the build actually has.** The

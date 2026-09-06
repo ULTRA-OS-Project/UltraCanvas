@@ -1470,6 +1470,27 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER VOLUME SPACE TEST =====
+# The Computer page's drive cards: the used share the pie chart is cut by
+# and the "free of" line under it (Apps/UltraFiler/UltraFilerVolumeSpace.h).
+# Header-only, so the test needs no library - it runs on any build.
+message(STATUS "  Building FilerVolumeSpaceTest...")
+add_executable(FilerVolumeSpaceTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerVolumeSpaceTest.cpp
+)
+target_include_directories(FilerVolumeSpaceTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerVolumeSpaceTest PRIVATE cxx_std_20)
+set_target_properties(FilerVolumeSpaceTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerVolumeSpaceTest")
+
+message(STATUS "")
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
