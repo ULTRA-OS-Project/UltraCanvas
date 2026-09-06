@@ -1,3 +1,60 @@
+#### 2026-09-06 *0.3.106*
+- **Raster editing layer — what a bitmap editor needs and the framework did
+  not have.** PixelFX has always been a complete whole-image engine (filters,
+  colour, resampling, formats), but a paint program also needs the pixels
+  *under the brush*: a mutable layer, a layer stack, a selection, undo, dab
+  stamping and an element that edits rather than views. The investigation is
+  written up in `Docs/UltraPaint/FeatureGapAnalysis.md`; the additions are
+  framework code so the next application gets them too.
+- **New `UltraCanvasRasterLayer.h`** — `UCRasterLayer`, a straight-RGBA
+  8-bit pixel buffer with name / visibility / lock / opacity / blend mode
+  (`RasterBlendMode`: Normal, Multiply, Screen, Overlay, Darken, Lighten,
+  Difference, Addition, Subtract, Soft Light, Hard Light), whole-layer edits,
+  compositing onto a premultiplied ARGB32 pixmap with the blend arithmetic,
+  and a lossless PixelFX round trip (`ToPixelFX` / `FromPixelFX`).
+- **New `UltraCanvasRasterSelection.h`** — `UCRasterSelection`, a soft
+  coverage mask with rectangle / ellipse / polygon / mask shapes, replace /
+  add / subtract / intersect, feather / grow / shrink / invert / translate,
+  and the marching-ants outline.
+- **New `UltraCanvasRasterDocument.h`** — `UCRasterDocument`, the layer
+  stack of one canvas: layer operations, whole-image geometry, pixel-edit
+  brackets (`BeginEdit` / `EndEdit` / `RecordEdit`) and copy-on-write
+  structural snapshots for undo / redo under a memory budget,
+  selection-aware PixelFX filter application (`ApplyFilter`,
+  `PreviewFilter`), a cached composite pixmap re-drawn by dirty rectangle,
+  file load / save through PixelFX and a layered `.ucraster` project file
+  (ZIP of `document.json` plus one PNG per layer, via `UCZipPackage` and
+  `UltraCanvasJSON`).
+- **New `UltraCanvasBrushEngine.h`** — `UCBrushStroke` (round / square dabs
+  with hardness, opacity *capping the stroke* versus flow *per dab*, spacing
+  with carry-over so speed does not change density, anti-aliasing, pressure;
+  paint / erase / clone / smudge / dodge / burn) and `RasterPaint`
+  (anti-aliased line / rectangle / ellipse / polygon through 4×4 supersampled
+  coverage, scanline flood fill with tolerance and a global mode, magic-wand
+  mask, linear / radial / reflected gradients interpolated in premultiplied
+  space, mask stamping, eyedropper). None of it needs libvips.
+- **New element `UltraCanvasPaintSurface`** — displays a document's live
+  composite at any zoom (preset ladder, wheel about the pointer, fit, 100 %),
+  pans (middle button, Space+drag, or a pan mode), draws the checkerboard,
+  pixel grid from 8×, marching ants on a timer, a brush-size cursor, and
+  forwards pointer events to the host's tool **in image coordinates** with
+  an overlay hook for rubber bands. Added to the element catalogue.
+- **`IRenderContext::SetImageSmoothing(bool)`** — nearest-neighbour pixmap
+  drawing (Cairo: `CAIRO_FILTER_NEAREST`) so a zoomed bitmap shows square
+  pixels; default on, the surface switches it off above 200 %.
+- **New application `Apps/UltraPaint`** (own changelog
+  `Docs/UltraPaint/CHANGELOG.md`, `BUILD_ULTRAPAINT_APP`): the bitmap editor
+  on this layer — 23 tools, layers panel, PixelFX adjustments and filters
+  with live preview, Curves through `UltraCanvasCurvesDialog`, export through
+  `UltraCanvasImageExportDialog`. `ULTRAPAINT_VERSION` joins
+  `cmake/UltraCanvasVersion.cmake`; `package-linux.sh` bundles it.
+- **New doc `Docs/UltraCanvas/UltraCanvasPaintSurface.md`** covering the
+  five classes; Masterfile_modules.md gains the raster editing section.
+- **`Tests/RasterEditingTest.cpp`** (with `BUILD_TESTS`) runs the layer
+  arithmetic, selection algebra, brush engine, document undo / redo,
+  selection-aware filters and the PNG / `.ucraster` round trips headless —
+  112 checks, no window.
+
 #### 2026-09-06 *0.3.105*
 - **Media classification is driven by the codecs the build actually has.** The
   media viewer decided what counted as audio or video from two extension lists

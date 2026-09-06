@@ -363,6 +363,11 @@ namespace UltraCanvas {
         virtual int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) = 0;
 
         // ===== IMAGE RENDERING =====
+        // Interpolation used when a pixmap is drawn scaled. Smoothing (the
+        // default) filters bilinearly; off draws nearest-neighbour, which is
+        // what a bitmap editor wants above 200 % so pixels read as pixels.
+        virtual void SetImageSmoothing(bool smooth) { (void)smooth; }
+        virtual bool GetImageSmoothing() const { return true; }
         virtual void DrawPartOfPixmap(UCPixmap& pixmap, const Rect2Dd& srcRect, const Rect2Dd& destRect) = 0;
         virtual void DrawPixmap(UCPixmap& pixmap, const Rect2Dd& rect, ImageFitMode fitMode) = 0;
         // DrawMasked used mainly for B/W icons to replace non-transparent areas by specfied color

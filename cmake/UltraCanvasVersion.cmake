@@ -34,6 +34,7 @@
 #   ULTRAMAIL_VERSION          (Docs/UltraMail/CHANGELOG.md)
 #   ULTRASOCIAL_VERSION        (Docs/UltraSocial/CHANGELOG.md)
 #   ULTRAVIEWER_VERSION        (Docs/UltraViewer/CHANGELOG.md)
+#   ULTRAPAINT_VERSION         (Docs/UltraPaint/CHANGELOG.md)
 #   ULTRAWIN_VERSION           (Docs/Modules/UltraWin/CHANGELOG.md)
 #
 # Each of those also gets _VERSION_DATE (the date on the same changelog line —
@@ -125,6 +126,7 @@ _ultracanvas_declare_product(ULTRAFILER          "Docs/UltraFiler/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAMAIL           "Docs/UltraMail/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRASOCIAL         "Docs/UltraSocial/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAVIEWER         "Docs/UltraViewer/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRAPAINT          "Docs/UltraPaint/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAWIN            "Docs/Modules/UltraWin/CHANGELOG.md")
 
 # Re-run the configure step when a changelog gains a new entry, so an
