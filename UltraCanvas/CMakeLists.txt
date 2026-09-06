@@ -1028,6 +1028,9 @@ endif()
 #   Windows: Media Foundation (TODO)
 list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendNull.cpp
+    # Always compiled: an application may register a video codec of its own on
+    # a build that has no platform backend at all.
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoCodecPlugin.cpp
 )
 set(ULTRACANVAS_VIDEO_BACKEND_FOUND OFF)
 if(ULTRACANVAS_ENABLE_VIDEO)

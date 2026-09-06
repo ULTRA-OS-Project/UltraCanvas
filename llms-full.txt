@@ -28737,6 +28737,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md
 
 `UltraCanvasMediaCodecRegistry.h` — the one place that knows which audio and
 video formats a build can handle, and the extension point for adding more.
+Video decoding is registered through its companion,
+`libspecific/Video/VideoCodecPlugin.h`.
 
 ## Why it exists
 
@@ -28867,12 +28869,66 @@ build:
 - **Video** — the platform backend's demuxer/muxer matrix (GStreamer, Media
   Foundation, AVFoundation). `canEncode` is true only for the containers the
   capture session can actually mux; everything else the backend demuxes is
-  registered decode-only.
+  registered decode-only. Decoding for these goes through `IVideoBackend`;
+  a codec an application adds brings its own — see below.
 
-Video *decoding* itself still goes through `IVideoBackend`, not through a
-registry callback: what a video registration contributes is recognition and
-capability. An application that wants to add a video container has to teach the
-platform backend about it as well.
+## Registering a video codec
+
+A video registration carries its decoding in a companion header,
+`libspecific/Video/VideoCodecPlugin.h`, rather than on `MediaCodecRegistration`
+itself: it deals in `IVideoDecodeSession`, and this header has to stay
+includable from anywhere — including a build with no video backend at all.
+
+```cpp
+#include "../libspecific/Video/VideoCodecPlugin.h"
+
+MediaCodecRegistration codec;
+codec.extension   = "ivf";
+codec.description = "Indexed Video Format";
+codec.kind        = MediaCodecKind::Video;
+codec.provider    = "MyApp";
+
+RegisterVideoCodecPlugin(codec,
+    [](const std::string& source, const VideoDecodeOptions& opts)
+            -> std::unique_ptr<IVideoDecodeSession> {
+        return MyApp::OpenIvf(source, opts);      // null if it is not one
+    });
+```
+
+Supplying a decoder implies `canDecode`, so a format cannot be registered with a
+working decoder and then advertised as unplayable. `UltraCanvasVideoPlayer`
+opens the session, and `CaptureVideoThumbnail` drives the same factory to
+produce a poster frame — so a plugin gets thumbnails for free. Pass an optional
+third argument only when the codec has something cheaper than opening a session
+and waiting for a frame:
+
+```cpp
+RegisterVideoCodecPlugin(codec, openDecoder,
+    [](const std::string& source, const VideoThumbnailRequest& req) {
+        return MyApp::GrabIvfPoster(source, req);
+    });
+```
+
+`UnregisterVideoCodecPlugin` drops the callbacks but leaves the registry entry,
+so a format can stay *recognised* after its decoder goes away;
+`UnregisterMediaCodec` removes it entirely.
+
+### Precedence: video plugins run first, audio plugins run last
+
+An audio plugin is tried **after** the built-in backend and codec libraries have
+declined a file. A video plugin is tried **before** the platform backend, for
+the sources it claims. The asymmetry is deliberate and not a matter of taste:
+
+`IVideoBackend::OpenDecoder` does not decline a source it cannot decode. The
+GStreamer backend builds a `playbin` and reports an undecodable file
+asynchronously on its bus; Media Foundation and AVFoundation behave similarly.
+A "backend first, plugin fallback" ordering would therefore hand every source to
+the backend and leave a registered codec permanently unreachable.
+
+Precedence is safe because the lookup is keyed on extensions a plugin
+*explicitly registered*. A source no plugin claimed goes straight to the
+backend, untouched — that is what `Tests/VideoCodecPluginTest.cpp` asserts, so
+the rule cannot quietly become interception.
 
 ## Threading
 
@@ -28881,12 +28937,20 @@ from any thread at any time; a query sees the state at the moment it is made.
 Entries are copy-on-write, so a `FindMediaCodecForFile` result stays valid
 however the registry changes afterwards.
 
-## Test
+## Tests
 
-`Tests/MediaCodecRegistryTest.cpp` (`BUILD_TESTS=ON`) covers the built-ins, the
-recognised-versus-decodable split, inventory agreement, probe gating, the
-upgrade-not-duplicate rule, and a registered codec being reached through
-`UCAudio::LoadFromFile` and `SaveToFile`.
+`BUILD_TESTS=ON` builds two, both headless and both needing no media assets:
+
+- `Tests/MediaCodecRegistryTest.cpp` — the built-ins, the
+  recognised-versus-decodable split, inventory agreement, probe gating, the
+  upgrade-not-duplicate rule, and a registered codec being reached through
+  `UCAudio::LoadFromFile` and `SaveToFile`.
+- `Tests/VideoCodecPluginTest.cpp` — a synthetic in-process video codec driven
+  through `UltraCanvasVideoPlayer` and `CaptureVideoThumbnail`, including the
+  generic thumbnail fallback, the precedence rule, and that a source no plugin
+  claimed is left alone. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too,
+  which is the case that shows a plugin working on a build with no platform
+  backend at all.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewer.md
@@ -50346,6 +50410,32 @@ rec->ShowSaveDialog();   // pick a path, then records to it
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Adding a container or codec
+
+The platform backend (GStreamer / Media Foundation / AVFoundation) is not the
+only way a video source can be decoded. An application that brings its own
+container registers it with `RegisterVideoCodecPlugin`
+(`libspecific/Video/VideoCodecPlugin.h`), supplying a factory that returns an
+`IVideoDecodeSession`:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ivf";
+codec.description = "Indexed Video Format";
+codec.kind        = MediaCodecKind::Video;
+RegisterVideoCodecPlugin(codec, [](const std::string& source,
+                                   const VideoDecodeOptions& opts) {
+    return MyApp::OpenIvf(source, opts);
+});
+```
+
+`UltraCanvasVideoPlayer` then opens it, `CaptureVideoThumbnail` grabs a poster
+frame from the same factory, and the media viewer, the Filer's categories, the
+format inventory and the file dialogs all pick the format up. A registered codec
+takes precedence over the platform backend for the sources it claims — the
+backend never declines one, so a fallback ordering could not reach a plugin. See
+[UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md).
 
 ## Build
 

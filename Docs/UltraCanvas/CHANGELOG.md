@@ -1,3 +1,39 @@
+#### 2026-09-07 *0.3.106*
+- **A video codec an application brings is now actually used.** The codec
+  registry landed in 0.3.105 could classify a video format and advertise it,
+  but decoding still went through `IVideoBackend` alone — so "registering a
+  container" stopped short of the only part that plays it, and the doc had to
+  say so. `libspecific/Video/VideoCodecPlugin.h` closes that: a registration
+  carries a factory returning an `IVideoDecodeSession`, and
+  `UltraCanvasVideoPlayer` opens it while `CaptureVideoThumbnail` drives the
+  same factory for a poster frame. A plugin therefore gets thumbnails without
+  writing any — the generic decode-session grab was generalised from "the
+  backend's `OpenDecoder`" to any session opener — and may supply a dedicated
+  fast grab when it has something cheaper.
+- **The decoding half lives beside the backend, not in the public header.** It
+  deals in `IVideoDecodeSession`, and `UltraCanvasMediaCodecRegistry.h` has to
+  stay includable from anywhere — the media viewer includes it even on a build
+  with no video backend at all. So the registry keeps recognition and
+  capability, and `VideoCodecPlugin.h` keeps the callbacks, in a side table
+  keyed by the registry's own canonical extension so aliases and content probes
+  resolve the same way.
+- **Video plugins run first; audio plugins run last — and the asymmetry is the
+  point.** `IVideoBackend::OpenDecoder` never declines a source: the GStreamer
+  backend builds a `playbin` and reports an undecodable file asynchronously on
+  its bus. Ordering the plugin as a fallback therefore handed every source to
+  the backend and left a registered codec permanently unreachable, which is
+  exactly what the new test caught on its first run. Precedence is safe because
+  the lookup matches only extensions a plugin explicitly registered — a source
+  no plugin claimed still goes straight to the backend, untouched, and the test
+  asserts that so the rule cannot quietly become interception.
+- **`Tests/VideoCodecPluginTest.cpp`** drives a synthetic in-process codec
+  through the real `UltraCanvasVideoPlayer` and `CaptureVideoThumbnail`:
+  classification, the inventory entry, a decoded frame arriving on
+  `onFrameReady`, the thumbnail fallback, a dedicated grabber taking over, the
+  size bound still being applied, and unregistering a decoder while leaving the
+  format recognised. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too — the
+  case that shows a plugin working on a build with no platform backend.
+
 #### 2026-09-06 *0.3.105*
 - **Media classification is driven by the codecs the build actually has.** The
   media viewer decided what counted as audio or video from two extension lists
