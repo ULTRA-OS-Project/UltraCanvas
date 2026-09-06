@@ -1,7 +1,7 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.5.0
-// Last Modified: 2026-08-11
+// Version: 1.6.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -1749,7 +1749,11 @@ namespace UltraCanvas {
             BreadcrumbItem computer("__computer__", options.computerLabel);
             computer.tooltip = options.computerLabel + " — show all drives";
             std::string rootTarget = base.string();
-            computer.onClick = [onNavigate, rootTarget]() {
+            std::function<void()> onComputerClick = options.onComputerClick;
+            computer.onClick = [onNavigate, rootTarget, onComputerClick]() {
+                // A host with a page for the machine itself gets the click;
+                // everyone else lands on the drive root.
+                if (onComputerClick) { onComputerClick(); return; }
                 if (onNavigate) onNavigate(rootTarget);
             };
             // Filled when the dropdown opens, like the sub-folder menus below:
