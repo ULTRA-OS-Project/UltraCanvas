@@ -116,6 +116,19 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 - **Folder tree:** a **Pinned** section on top — above *Computer*, open, and
   shown only while something is pinned — then *Computer* with Home, **Cloud
   Storage** and the drives / volumes below it.
+  - **Computer is a page of its own.** Clicking the entry (or *Up* from a
+    drive root, or the breadcrumb's leading *Computer* node) replaces the
+    folder display with the machine's places: **Folders** — Home and every
+    Cloud Storage folder as folder tiles, which open on a double-click and
+    carry the usual context menu — and **Drives** — one card per mounted
+    volume with a **pie chart of used against free space** (green while there
+    is room, amber past 75 %, red past 90 %, the percentage in the middle),
+    the drive's name as the button that opens it, *232.9 GB free of 476.2 GB*
+    and the mount point. The sizes are read off the UI thread, so a network
+    share that stopped answering delays its own card and nothing else, and
+    the cards follow mounts and unmounts like the tree's drive rows. The
+    status bar sums the drives; Esc, any navigation or a tab switch returns
+    to the folder display.
   - **Home** follows *Settings > Display > Home folder*. Curated (the Windows
     default), it lists the user's main folders — Desktop, Documents, Downloads,
     Music, Pictures, Videos — and stops there, so a profile does not spill

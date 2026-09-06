@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasPieChart.cpp
 // Comprehensive pie / donut / 3D chart element for UltraCanvas
-// Version: 1.0.0
-// Last Modified: 2026-05-14
+// Version: 1.0.1
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasPieChart.h"
 #include "../../libspecific/Cairo/RenderContextCairo.h"
@@ -490,6 +490,13 @@ namespace UltraCanvas {
                 return s.name + "\n" + FormatValue(s.value) + "\n" + FormatPercent(s.percentage);
         }
         return s.name;
+    }
+
+    void UltraCanvasPieChartElement::UpdateRenderingCache() {
+        // A stale base cache means the data or the area changed under the
+        // slices: SetDataSource() only knows the base's flag.
+        if (!cacheValid) InvalidateSlices();
+        UltraCanvasChartElementBase::UpdateRenderingCache();
     }
 
     // ===== RENDER ENTRY POINT =====
