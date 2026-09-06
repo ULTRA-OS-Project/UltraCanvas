@@ -35,6 +35,18 @@
   impossible to overwrite or rename for the rest of the session, and it broke
   *deleting an entry inside one*: that rewrites the archive and renames the
   new file over the old, which the provider's own handle refused.
+- **The folder breadcrumb's "Computer" node can open a page of the host's
+  own.** `FolderBreadcrumbOptions::onComputerClick` — when set, a click on
+  the strip's leading *Computer* node calls it instead of navigating to the
+  drive root of the shown path (its dropdown lists the drives as before).
+  UltraFiler uses it for its Computer page; a host that leaves it unset gets
+  the old behaviour.
+- **A pie chart handed a new data source draws the new slices.**
+  `UltraCanvasPieChartElement` cut its slices once and only its own setters
+  told it to cut again, so `SetDataSource()` on a chart already on screen
+  changed the centre text and nothing else. The slices now follow every
+  base-cache invalidation (the data source, the plot area).
+
 #### 2026-09-06 *0.3.105*
 - **Media classification is driven by the codecs the build actually has.** The
   media viewer decided what counted as audio or video from two extension lists
