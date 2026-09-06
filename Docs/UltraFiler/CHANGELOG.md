@@ -1,3 +1,25 @@
+#### 2026-09-06 *1.21.0*
+- **The tree's Computer entry opens a page of its own.** Clicking *Computer*
+  used to do nothing — it was a header over Home, Cloud Storage and the
+  drives. It now replaces the folder display with the machine's places:
+  **Folders** — Home and every Cloud Storage folder as folder tiles, which
+  open on a double-click and carry the usual context menu — and **Drives** —
+  one card per mounted volume with a **pie chart of used against free
+  space**: green while there is room, amber past 75 %, red past 90 %, the
+  percentage in the middle, the drive's name as the button that opens it,
+  *232.9 GB free of 476.2 GB* and the mount point under it. The sizes are
+  read on a worker thread, so a network share that stopped answering delays
+  its own card and never the window, and the cards follow mounts and
+  unmounts like the tree's drive rows do. The status bar sums the drives and
+  the window title says *Computer*.
+- **Up from a drive root goes to the Computer page**, the way Explorer's Up
+  from a drive lands on *This PC*; the Up button is no longer greyed out at
+  a root. The breadcrumb's leading *Computer* node opens the page too
+  (framework 0.3.104: `FolderBreadcrumbOptions::onComputerClick`), and its
+  dropdown still lists the drives. Esc, any navigation, Back / Forward or a
+  tab switch returns to the folder display, with the tree, the breadcrumb
+  and the status bar describing the folder again.
+
 #### 2026-09-05 *1.20.0*
 - **Windows shortcuts show the icon of the program they start.** A Desktop or
   Start-Menu folder full of `.lnk` files was a wall of identical grey "LNK"

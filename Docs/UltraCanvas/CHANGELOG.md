@@ -1,3 +1,11 @@
+#### 2026-09-06 *0.3.104*
+- **The folder breadcrumb's "Computer" node can open a page of the host's
+  own.** `FolderBreadcrumbOptions::onComputerClick` — when set, a click on
+  the strip's leading *Computer* node calls it instead of navigating to the
+  drive root of the shown path (its dropdown lists the drives as before).
+  UltraFiler uses it for its Computer page; a host that leaves it unset gets
+  the old behaviour.
+
 #### 2026-09-05 *0.3.103*
 - **macOS applications and shortcuts read like the other two desktops'.** An
   application bundle was a folder called `Example Editor.app`, a `.webloc` a

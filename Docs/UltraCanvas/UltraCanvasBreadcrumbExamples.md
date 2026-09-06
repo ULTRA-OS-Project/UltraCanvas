@@ -119,6 +119,11 @@ struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
     std::string computerLabel = "Computer";
     bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
+    // What a click on the "Computer" node itself does. Unset, it navigates to
+    // the drive root of the shown path; a host with a page of its own for the
+    // machine (UltraFiler's Computer page) opens that instead. The node's
+    // dropdown lists the drives either way.
+    std::function<void()> onComputerClick;
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the

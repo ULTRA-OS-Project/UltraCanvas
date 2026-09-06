@@ -51,8 +51,15 @@
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.16.0
-// Last Modified: 2026-09-04
+// The tree's "Computer" entry (and the Up button from a drive root) opens the
+// Computer page in the folder pane, in place of the active tab's folder
+// display: the Home and Cloud Storage folders as folder tiles, then one card
+// per mounted volume with a pie chart of its used against free space
+// (UltraCanvasPieChartElement), its name as the button that opens it, and
+// the free / total sizes. The sizes are read off the UI thread and the cards
+// follow mounts and unmounts like the tree's drive rows do.
+// Version: 1.17.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,17 +79,20 @@
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
+#include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
+#include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -325,6 +335,42 @@ private:
     // What the Pin / Unpin entries act on: the visible filer's selection, or
     // the shown folder itself while nothing is selected in the browsing view.
     std::vector<FilerEntry> PinTargets() const;
+
+    // ===== COMPUTER PAGE (the tree's "Computer" entry) =====
+    // The page lives in the split's folder pane next to the tab content host
+    // and replaces it while shown; the tabs keep their folders meanwhile, and
+    // anything that shows a folder - a navigation, a tab switch, Back /
+    // Forward, an entry opened from History - hides it again. Esc hides it
+    // too, and the tree keeps "Computer" selected while it is up.
+    void BuildComputerPage();
+    void SetComputerPageVisible(bool visible);
+    // Re-lists the page's folders (Home, then the Cloud Storage folders the
+    // tree found) and rebuilds the drive cards from what is mounted right
+    // now; the sizes come in afterwards (QueueVolumeSpaceQuery).
+    void RefreshComputerPage();
+    void RefreshComputerFolders();
+    void RebuildComputerDriveCards(const std::vector<MountedVolume>& volumes);
+    // Pushes a volume's sizes into its card: the pie's two slices (used /
+    // free, the used one coloured by how full the volume is), the centre
+    // percentage and the "free of" line.
+    void ApplyVolumeSpaceToCard(const VolumeSpace& space);
+    // Reads the sizes of the listed volumes on a worker thread and posts
+    // them back (ApplyVolumeSpaces): std::filesystem::space on a network
+    // share that stopped answering waits out a timeout, which the window
+    // must not. A query asked for while one runs is run again once that
+    // one has answered, so the newest set of volumes is always measured.
+    void QueueVolumeSpaceQuery();
+    void StopVolumeSpaceQuery();
+    void ApplyVolumeSpaces(const std::vector<VolumeSpace>& spaces);
+    // The folders the page lists: the home folder, then the cloud folders
+    // under the tree's Cloud Storage section, in the tree's order.
+    std::vector<std::string> ComputerPageFolderPaths() const;
+    // Rebuilds the breadcrumb for `path`, with the strip's leading
+    // "Computer" node opening the Computer page rather than the drive root.
+    void RebuildBreadcrumb(const std::string& path);
+    // The breadcrumb while the Computer page is shown: the single "Computer"
+    // node, whose dropdown still lists the drives.
+    void ShowComputerBreadcrumb();
     // Pin > To Favorites: each target goes into the tab its kind belongs to.
     void PinTargetsToFavorites();
     // Pin > To Treeview: each target folder appears under the tree's Pinned
@@ -523,6 +569,18 @@ private:
     std::shared_ptr<UltraCanvasContainer>       favoritesPane; // Favorites view root
     std::shared_ptr<UltraCanvasTabbedContainer> favoritesTabs; // Files / Folders / Apps
     std::shared_ptr<UltraCanvasFilerWidget>     favoritesFilers[HistoryTabCount];
+    // The Computer page (see BuildComputerPage): its root in the folder pane,
+    // the folder tiles, the row of drive cards and what each card is made of.
+    struct ComputerDriveCard {
+        std::string path;                                    // mount point
+        std::shared_ptr<UltraCanvasPieChartElement> pie;     // used / free
+        std::shared_ptr<UltraCanvasLabel> usageLabel;        // "62% used"
+        std::shared_ptr<UltraCanvasLabel> spaceLabel;        // "232.9 GB free of 476.2 GB"
+    };
+    std::shared_ptr<UltraCanvasContainer>       computerPane;
+    std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
+    std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
     std::shared_ptr<UltraCanvasButton>          newButton;       // "New folder ▾" split button
     std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
@@ -565,6 +623,14 @@ private:
     // keeps two lookups from running at once.
     std::thread cloudWorker;
     std::atomic<bool> cloudWorkerBusy{false};
+    // The volume sizes the Computer page shows (QueueVolumeSpaceQuery):
+    // the last answer per mount point, so a re-opened page shows the sizes
+    // it already knows while the fresh ones are read; the worker reading
+    // them, its busy flag and the "ask again when done" flag.
+    std::map<std::string, VolumeSpace> volumeSpaces;
+    std::thread spaceWorker;
+    std::atomic<bool> spaceWorkerBusy{false};
+    std::atomic<bool> spaceQueryPending{false};
     // Background sub-folder search (see RunSearch). `searchState` is null while
     // no scan runs; `searchGeneration` is bumped for every scan started or
     // stopped, so batches queued by an abandoned one are dropped on arrival.
@@ -616,6 +682,7 @@ private:
     std::string folderPreviewReadyPath;
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split
+    bool computerShown = false;            // Computer page replaces the tab content
     UltraFilerSettings settings;           // persisted application settings
     UltraFilerHistory  history;            // recently used files / folders / apps
     UltraFilerFavorites favorites;         // pinned files / folders / apps + tree pins
