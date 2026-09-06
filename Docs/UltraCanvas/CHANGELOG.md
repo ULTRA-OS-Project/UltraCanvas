@@ -1,3 +1,40 @@
+#### 2026-09-06 *0.3.106*
+- **"Is this file in use by another program" is now a question the framework
+  can answer** (`UltraCanvasFileLock.h`). It is the question behind every
+  *"the action can't be completed because the file is open in another
+  program"*, and until now nothing here could ask it. `ProbeFileLock()`
+  answers for one file and `ProbeFileLocks()` for a whole folder in one pass;
+  the answer separates **Locked** (a write or a replace would fail right now)
+  from **OpenElsewhere** (somebody has it open, which on Unix stops nothing),
+  and can name the holding program where the platform allows. The probe asks
+  for the access an overwrite needs while granting every sharing flag itself,
+  then closes the handle: nothing is written, and a probe is never what
+  another program trips over. Windows answers through the share mode and the
+  Restart Manager, Linux through `/proc/locks` and `/proc/<pid>/fd`; on macOS
+  and the mobile targets `FileLockProbeAvailable()` is false and every probe
+  says Unknown. Tested by `Tests/FileLockTest.cpp` (ctest: `FileLockTest`).
+- **The file display marks files that are being held.** With
+  `SetShowLockState()` (default on) a held file wears a padlock badge in the
+  corner of its icon, carries `X` among its attributes (`O` for one merely
+  open elsewhere) and is described in the info bar — so a file that will
+  refuse to be copied over, renamed or deleted says so before the attempt.
+  Each shown file is probed once per listing on the folder-statistics worker,
+  never on the UI thread, and only the entries actually drawn are asked about.
+- **A closed media preview lets go of its file.** `UltraCanvasMediaViewer`
+  stopped playback when its file was closed, but a stopped clip is still an
+  open clip: the decoder kept the file, and on Windows that handle is exactly
+  what makes it impossible to rename, replace or delete — next to a preview
+  pane that offers all three. `CloseFile()` now unloads the video and audio
+  players as well, through the new `UltraCanvasVideoPlayerElement::Unload()`
+  and `UltraCanvasAudioPlayerElement::Unload()`.
+- **VirtualFS no longer holds an archive open after listing it.** The
+  libarchive provider kept a read handle on the archive for as long as it sat
+  in the manager's cache (up to ten at a time), although every operation
+  already opens its own handle — libarchive cannot rewind, so each pass needs
+  a fresh one anyway. On Windows that spare handle made a browsed `.zip`
+  impossible to overwrite or rename for the rest of the session, and it broke
+  *deleting an entry inside one*: that rewrites the archive and renames the
+  new file over the old, which the provider's own handle refused.
 #### 2026-09-06 *0.3.105*
 - **Media classification is driven by the codecs the build actually has.** The
   media viewer decided what counted as audio or video from two extension lists

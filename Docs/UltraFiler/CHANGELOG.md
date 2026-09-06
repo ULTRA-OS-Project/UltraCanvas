@@ -1,3 +1,45 @@
+#### 2026-09-06 *1.21.0*
+- **The file display says when a file is in use.** A file another program is
+  holding — a running program, a document something has open, an archive being
+  read — now wears a small padlock in the corner of its icon, carries `X`
+  among its attributes and is described in the info bar ("In use by another
+  program (cannot be replaced)"). That is the answer to a copy, a rename or a
+  delete that fails with *"the action can't be completed because the file is
+  open in another program"*, given **before** the attempt instead of after it.
+  A file that is merely open somewhere without blocking anything — the normal
+  state on Linux and macOS, where an open file can still be replaced — is
+  marked `O` and wears no padlock, because it is information, not an obstacle.
+  Nothing is written by the check: the file is opened for the access an
+  overwrite would need, with every sharing flag granted, and closed again.
+- **Attributes names the program.** For a single file the Attributes dialog
+  adds an "In use" row that says which program is holding it ("In use by
+  Firefox (1234)") wherever the system can be asked — Windows through the
+  Restart Manager, Linux through `/proc`. That is the one question a file
+  manager could never answer and the user always has.
+- **Settings > Display > Files in use** turns the marking off. It costs one
+  extra open per shown file, which is worth avoiding on a slow network volume;
+  the page also says so, and disables itself where the system cannot answer.
+  Everything is probed in the background, so a folder never opens slower for
+  it.
+- **UltraFiler no longer holds its own folder open.** A program's working
+  directory is an open handle on that folder, and on Windows that alone stops
+  the folder being renamed, replaced or deleted — so starting UltraFiler by
+  double-clicking it made its own folder impossible to overwrite with a newer
+  version for as long as it ran, with an error blaming a folder whose files
+  all looked free. UltraFiler now moves its working directory to the home
+  folder at start-up. A folder given on the command line is resolved before
+  the move, so a relative path still means what it did.
+- **A closed preview lets go of the file it was showing.** Closing the preview
+  pane stopped playback of a video or a track but left the decoder holding the
+  file, which on Windows blocked renaming, replacing or deleting exactly the
+  file the user had just been looking at. The preview now unloads it
+  (framework 0.3.106).
+- **Browsing into an archive no longer locks it.** The archive stayed open
+  behind the scenes after being listed, so on Windows a `.zip` that had been
+  looked into could not be overwritten or renamed for the rest of the session
+  — and deleting a file *inside* one failed, because that rewrites the archive
+  and renames the new file over the old (framework 0.3.106).
+
 #### 2026-09-05 *1.20.0*
 - **Windows shortcuts show the icon of the program they start.** A Desktop or
   Start-Menu folder full of `.lnk` files was a wall of identical grey "LNK"

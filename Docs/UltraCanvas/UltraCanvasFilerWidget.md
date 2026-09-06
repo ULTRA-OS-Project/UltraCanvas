@@ -745,6 +745,43 @@ painting its tile when the Length / Dimensions dataset fields are enabled —
 never opens the file on the UI thread; the detail appears with the next
 posted repaint, typically within a frame or two.
 
+## Files in use
+
+`SetShowLockState(bool)` (default **on**) marks files another program is
+holding — the reason an overwrite, a rename or a delete of one fails with
+*"the file is open in another program"*. It is a no-op where the platform
+cannot answer (`FileLockProbeAvailable()`, see
+[UltraCanvasFileLock](UltraCanvasFileLock.md)).
+
+A held file is marked three ways, so the state is visible in every view:
+
+- a **padlock badge** in the bottom-right corner of its icon (mirroring the
+  shortcut arrow on the left), for a file the system actually refuses —
+  drawn only where the icon is at least 24 px, like the shortcut badge;
+- an **attribute letter** among `D` / `L` / `R` / `H` / `A`: `X` for a file
+  that cannot be replaced right now, `O` for one merely open elsewhere (which
+  on Unix blocks nothing). It shows in the Details view's `Attr` column, in
+  the thumbnail dataset line and in the info bar's `[...]` group;
+- the **info bar**, which spells it out for a single selected file:
+  *"In use by another program (cannot be replaced)"*.
+
+The probe is one open per file — closed again, nothing written — and runs on
+the **same background worker** as the folder statistics, ahead of every other
+job on it, in one batch per pass. Only files the view actually draws are ever
+asked about, and each is asked once per listing: the answers are dropped and
+re-taken on a rescan, which is what a refresh (F5) and the folder watch's
+reaction to a change both trigger. Nothing is probed on the UI thread, so a
+folder on a slow volume opens at the same speed either way.
+
+`GetEntryLockState(path)` reads back what the last probe found, without
+probing. Holders are deliberately **not** collected for a listing — naming the
+program costs a Restart Manager session per file on Windows; a host that wants
+the name asks `ProbeFileLock(path, true)` for the one file it is showing, the
+way UltraFiler's Attributes dialog does.
+
+Directories are never probed: what holds a folder open is usually a program's
+*working directory*, which no probe here can see.
+
 ## Folder listing prefetch
 
 With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans

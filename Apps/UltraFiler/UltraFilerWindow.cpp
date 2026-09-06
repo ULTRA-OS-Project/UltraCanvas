@@ -659,8 +659,28 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     std::string start = startFolder;
     std::error_code ec;
+    // Resolved against the working directory while that is still the one we
+    // were started in - the move below changes what a relative path means.
+    if (!start.empty()) {
+        fs::path absolute = fs::absolute(start, ec);
+        if (!ec) start = absolute.lexically_normal().string();
+    }
     if (start.empty() || !fs::is_directory(start, ec)) start = UserHomeDir();
     if (start.empty()) start = fs::current_path(ec).string();
+
+    // A process holds its working directory open, and on Windows that handle
+    // alone is enough to stop the folder being renamed, replaced or deleted.
+    // Starting UltraFiler by double-clicking it makes its own folder the
+    // working directory, so copying a newer version over that folder fails
+    // with "the folder is open in another program" for as long as it runs -
+    // for a reason no file in the folder explains. Nothing here reads relative
+    // paths (resources are found from the executable, settings from the home
+    // folder), so the working directory moves to the home folder, which is
+    // not a folder anybody replaces.
+    const std::string home = UserHomeDir();
+    if (!home.empty() && fs::is_directory(home, ec)) {
+        fs::current_path(home, ec);   // a refusal changes nothing but the lock
+    }
 
     AddNewTab(start, true);
 
@@ -853,11 +873,17 @@ void UltraFilerWindow::ApplySettings() {
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
     // for tabs that were already open when it changed. The folder preview
-    // accepts drops too, so it follows the same setting.
-    for (auto& state : tabStates)
-        if (state->filer) state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
-    if (folderPreview)
+    // accepts drops too, so it follows the same setting. Display > Files in
+    // use rides along, for the same reason and to the same displays.
+    for (auto& state : tabStates) {
+        if (!state->filer) continue;
+        state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+        state->filer->SetShowLockState(settings.showLockState);
+    }
+    if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+        folderPreview->SetShowLockState(settings.showLockState);
+    }
     // Display > Home folder: curate the home folder's display - every tab and
     // the folder preview - or show it whole, and keep the tree's Home entry in
     // step. The widget ignores a SetCuratedHomeFolder that changes nothing, so
@@ -2714,6 +2740,8 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     state->filer->SetSelectNextAfterDelete(previewEnabled);
     // Handling > Drag & Drop: move or copy on a plain drop onto a folder.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+    // Display > Files in use: mark files another program is holding.
+    state->filer->SetShowLockState(settings.showLockState);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);

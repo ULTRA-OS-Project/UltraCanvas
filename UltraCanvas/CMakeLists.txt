@@ -457,6 +457,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
+        # "Is this file in use by another program" - the question behind
+        # every failed overwrite. Platform backend under OS/<Platform>/.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
         # Mounted volumes + notification when that set changes. The platform
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.
@@ -1335,6 +1338,11 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # null-returning fallback. PUBLIC so an app can ask whether watching is native.
 if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
+# File-lock probing: the same arrangement for UltraCanvasFileLock. PUBLIC so an
+# app can leave the "in use" display out entirely where nothing can answer.
+if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
 endif()
 # Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
 # PUBLIC so an app can tell a device notification from the polling fallback.
