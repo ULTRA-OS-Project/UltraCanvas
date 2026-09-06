@@ -1,6 +1,8 @@
 // Tests/FilerShortcutEntryTest.cpp
-// What the file display makes of a Windows shortcut it lists: the entry a
-// scan produces for a ".lnk" (UltraCanvasFilerWidget::GetEntries()).
+// What the file display makes of a shortcut it lists: the entry a scan
+// produces for a Windows ".lnk", a freedesktop ".desktop", a macOS
+// ".webloc", and for the one directory that is not a folder - an application
+// bundle (UltraCanvasFilerWidget::GetEntries()).
 //
 // The rule this guards: a shortcut reads as the thing it points at, not as a
 // file called "LNK". Its type is "Shortcut", its category is the target's —
@@ -121,6 +123,37 @@ int main() {
     WriteBinaryFile(desktop / "Missing.lnk", BuildShellLink(missing));
 
     WriteTextFile(desktop / "notes.lnk", "not a shell link at all\n");
+    WriteTextFile(desktop / "notes.desktop", "no group header, just text\n");
+
+    // Two freedesktop launchers: the Linux half of the same idea.
+    WriteTextFile(desktop / "org.example.Editor.desktop",
+                  "[Desktop Entry]\nType=Application\nName=Example Editor\n"
+                  "Exec=/bin/sh -c \"echo hi\" %U\nTryExec=/bin/sh\n"
+                  "Icon=text-editor\n");
+    WriteTextFile(desktop / "Site.desktop",
+                  "[Desktop Entry]\nType=Link\nName=A Site\n"
+                  "URL=https://example.com/\nIcon=web-browser\n");
+
+    // The macOS pair: a web location, and an application bundle - a
+    // directory the display has to treat as one object.
+    WriteTextFile(desktop / "Example Page.webloc",
+                  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                  "<plist version=\"1.0\"><dict>\n"
+                  "<key>URL</key><string>https://example.org/page</string>\n"
+                  "</dict></plist>\n");
+    const fs::path bundle = desktop / "Example Editor.app";
+    WriteTextFile(bundle / "Contents" / "Info.plist",
+                  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                  "<plist version=\"1.0\"><dict>\n"
+                  "<key>CFBundleName</key><string>Example Editor</string>\n"
+                  "<key>CFBundleIdentifier</key><string>com.example.editor</string>\n"
+                  "<key>CFBundleExecutable</key><string>ExampleEditor</string>\n"
+                  "<key>CFBundlePackageType</key><string>APPL</string>\n"
+                  "</dict></plist>\n");
+    WriteTextFile(bundle / "Contents" / "MacOS" / "ExampleEditor", "x");
+    // A folder that only ends in ".app": named like a package, with nothing
+    // inside to back it up.
+    fs::create_directories(desktop / "NotReally.app", ec);
 
     auto filer = std::make_shared<UltraCanvasFilerWidget>("shortcut-test",
                                                           0, 0, 800, 600);
@@ -170,10 +203,87 @@ int main() {
         Check(false, "the shortcut is listed");
     }
 
-    std::cout << "\nA file that only ends in .lnk\n";
+    std::cout << "\nA desktop entry that launches a program\n";
+    if (const FilerEntry* e = FindEntry(*filer, "org.example.Editor.desktop")) {
+        Check(e->isShortcut, "it is recognised as a shortcut");
+        Check(e->typeName == "Shortcut",
+              "its type is \"Shortcut\" -> \"" + e->typeName + "\"");
+        Check(e->category == FilerFileCategory::Executable,
+              "its category is the program it starts");
+        Check(e->linkDisplayName == "Example Editor",
+              "it is drawn by the name it calls itself -> \"" +
+                      e->linkDisplayName + "\"");
+        Check(SamePath(e->linkTarget, "/bin/sh"),
+              "linkTarget is the program, resolved on this machine -> \"" +
+                      e->linkTarget + "\"");
+    } else {
+        Check(false, "the desktop entry is listed");
+    }
+
+    std::cout << "\nA desktop entry that opens a web address\n";
+    if (const FilerEntry* e = FindEntry(*filer, "Site.desktop")) {
+        Check(e->isShortcut && e->linkDisplayName == "A Site",
+              "it is a shortcut, drawn by its name");
+        Check(e->info == "https://example.com/",
+              "the info column shows the address -> \"" + e->info + "\"");
+        Check(e->linkTarget.empty(),
+              "and linkTarget stays empty: an address is not a file here");
+    } else {
+        Check(false, "the desktop entry is listed");
+    }
+
+    std::cout << "\nA macOS web location\n";
+    if (const FilerEntry* e = FindEntry(*filer, "Example Page.webloc")) {
+        Check(e->isShortcut, "it is recognised as a shortcut");
+        Check(e->typeName == "Shortcut",
+              "its type is \"Shortcut\" -> \"" + e->typeName + "\"");
+        Check(e->info == "https://example.org/page",
+              "the info column shows the address -> \"" + e->info + "\"");
+    } else {
+        Check(false, "the web location is listed");
+    }
+
+    std::cout << "\nA macOS application bundle\n";
+    if (const FilerEntry* e = FindEntry(*filer, "Example Editor.app")) {
+        Check(e->isBundle, "it is recognised as a bundle");
+        Check(e->isDirectory,
+              "it is still a directory - what changes is how it is treated");
+        Check(!e->isShortcut, "and it is not a shortcut: it IS the application");
+        Check(e->typeName == "Application",
+              "its type is \"Application\" -> \"" + e->typeName + "\"");
+        Check(e->category == FilerFileCategory::Executable,
+              "its category is a program, not a folder");
+        Check(e->linkDisplayName == "Example Editor",
+              "it is drawn by the application's name -> \"" +
+                      e->linkDisplayName + "\"");
+        Check(SamePath(e->linkTarget,
+                       bundle / "Contents" / "MacOS" / "ExampleEditor"),
+              "linkTarget is the executable inside it -> \"" + e->linkTarget + "\"");
+    } else {
+        Check(false, "the bundle is listed");
+    }
+
+    std::cout << "\nA folder that only ends in .app\n";
+    if (const FilerEntry* e = FindEntry(*filer, "NotReally.app")) {
+        Check(!e->isBundle, "it is not treated as a bundle");
+        Check(e->typeName == "Folder",
+              "and it goes back to being a folder -> \"" + e->typeName + "\"");
+        Check(e->category == FilerFileCategory::Folder, "including its category");
+    } else {
+        Check(false, "the folder is listed");
+    }
+
+    std::cout << "\nA file that only ends in .lnk or .desktop\n";
     if (const FilerEntry* e = FindEntry(*filer, "notes.lnk")) {
-        Check(!e->isShortcut, "it is not treated as a shortcut");
+        Check(!e->isShortcut, "the .lnk is not treated as a shortcut");
         Check(e->linkTarget.empty(), "and points at nothing");
+    } else {
+        Check(false, "the file is listed");
+    }
+    if (const FilerEntry* e = FindEntry(*filer, "notes.desktop")) {
+        Check(!e->isShortcut, "the .desktop is not treated as a shortcut");
+        Check(e->linkDisplayName.empty(),
+              "and is drawn by its own file name");
     } else {
         Check(false, "the file is listed");
     }

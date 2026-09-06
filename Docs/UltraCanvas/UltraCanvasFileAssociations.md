@@ -64,6 +64,20 @@ All launches detach via `LaunchDetachedProcess`
 (`UltraCanvasUtils.h`: POSIX double-fork + `setsid`, Windows
 `CreateProcess` into a detached process group).
 
+On Linux/BSD, `OpenWithApplicationPath` accepts a **`.desktop` file** as well
+as a program: running the file itself would fail (it is text, not a
+program), so the entry is read and the command it names is what runs, with
+its own `Path=` as the working directory. That is what makes the file
+dialog's "Other application…" work when the user picks a launcher out of
+`/usr/share/applications`, and it is how the file display activates a
+desktop entry it lists.
+
+Reading those files — the `[Desktop Entry]` group, its localized `Name=`, and
+the icon-theme lookup behind `Icon=` — is
+[`UltraCanvasDesktopEntry`](UltraCanvasDesktopEntry.md)'s, not this service's:
+the file display draws the very same launchers and must agree with the menu
+about what they are called and what they look like.
+
 ## Prewarm / caching model
 
 Lookups are cached per extension and served under a mutex, so

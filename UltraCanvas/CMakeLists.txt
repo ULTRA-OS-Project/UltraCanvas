@@ -435,6 +435,17 @@ set(ULTRACANVAS_CORE_SOURCES
         # shortcuts and programs with their own icons on every platform.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasShellLink.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasIconResource.cpp
+        # Freedesktop desktop entries (.desktop): the Linux/BSD shortcut, and
+        # the icon-theme lookup its Icon= names need. Shared by the file
+        # display and the "Open with" service, which used to parse the format
+        # privately.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopEntry.cpp
+        # Apple property lists (Info.plist, .webloc) in both encodings, and
+        # the macOS application bundles and shortcut files built on them.
+        # Read without an Apple API, so a Mac disk mounted anywhere shows its
+        # applications with their real names and icons.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPropertyList.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMacBundle.cpp
         # Preview bitmaps vector documents (Xara, ZIP-based CorelDRAW)
         # carry inside themselves - what the filer thumbnails them from.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedPreview.cpp

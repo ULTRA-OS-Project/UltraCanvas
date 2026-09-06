@@ -17,6 +17,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociationsBackend.h"
+#include "UltraCanvasDesktopEntry.h"   // the shared .desktop reader + icon lookup
 #include "UltraCanvasUtils.h"   // ToLowerCase, Split, Trim, LaunchDetachedProcess
 
 #include <algorithm>
@@ -225,53 +226,33 @@ namespace {
         }
     }
 
-    // Group-less .desktop key file: only [Desktop Entry] matters here.
+    // One .desktop file, read by the shared reader (UltraCanvasDesktopEntry)
+    // and kept in the index under its desktop-file id. What is added here is
+    // what only an application index cares about: the id, whether the entry
+    // is launchable at all, and the freedesktop rule that a Hidden entry
+    // counts as deleted.
     void ParseDesktopFile(GlobalIndex& index, const std::string& path,
                           const std::string& id) {
         if (index.apps.count(id)) return;   // an earlier (user) dir already won
-        std::ifstream in(path);
-        if (!in.is_open()) return;
-        DesktopEntry entry;
-        entry.id = id;
-        bool inMainGroup = false;
-        bool isApplication = false;
-        bool hidden = false;
-        std::string line;
-        while (std::getline(in, line)) {
-            const std::string s = Trim(line);
-            if (s.empty() || s[0] == '#') continue;
-            if (s.front() == '[') {
-                if (inMainGroup) break;     // main group ended — done
-                inMainGroup = (s == "[Desktop Entry]");
-                continue;
-            }
-            if (!inMainGroup) continue;
-            const size_t eq = s.find('=');
-            if (eq == std::string::npos) continue;
-            const std::string key = Trim(s.substr(0, eq));
-            const std::string value = Trim(s.substr(eq + 1));
-            if (key == "Type")          isApplication = (value == "Application");
-            else if (key == "Name")     entry.name = value;   // exact key only; localized Name[..] skipped
-            else if (key == "Icon")     entry.iconName = value;
-            else if (key == "Exec")     entry.exec = value;
-            else if (key == "Terminal") entry.terminal = (value == "true");
-            else if (key == "NoDisplay")entry.noDisplay = (value == "true");
-            else if (key == "Hidden")   hidden = (value == "true");
-            else if (key == "MimeType") {
-                for (const std::string& raw : Split(value, ';')) {
-                    const std::string mime = Trim(raw);
-                    if (!mime.empty()) entry.mimeTypes.push_back(mime);
-                }
-            }
-        }
-        // Hidden means "treat as deleted" — record nothing, so a system entry
-        // the user masked in ~/.local/share/applications really disappears.
-        if (hidden) {
+        UCDesktopEntry parsed;
+        if (!ReadDesktopEntry(path, parsed)) return;
+        // Hidden means "treat as deleted" — record nothing usable, so a
+        // system entry the user masked in ~/.local/share/applications really
+        // disappears instead of being served by the lower-priority copy.
+        if (parsed.hidden) {
             index.apps.emplace(id, DesktopEntry{});   // block lower-priority dirs
             return;
         }
-        entry.valid = isApplication && !entry.exec.empty();
-        if (entry.name.empty()) entry.name = id;
+        DesktopEntry entry;
+        entry.id = id;
+        entry.name = parsed.name.empty() ? id : parsed.name;
+        entry.iconName = parsed.iconName;
+        entry.exec = parsed.exec;
+        entry.terminal = parsed.terminal;
+        entry.noDisplay = parsed.noDisplay;
+        entry.mimeTypes = std::move(parsed.mimeTypes);
+        entry.valid = parsed.kind == UCDesktopEntry::Kind::Application &&
+                      !entry.exec.empty();
         index.apps.emplace(id, std::move(entry));
     }
 
@@ -297,40 +278,15 @@ namespace {
 
     // ===== ICONS =====
 
-    // Good-enough icon lookup for menu-sized icons: hicolor (every theme's
-    // mandated fallback) in menu-friendly sizes, then /usr/share/pixmaps.
-    // Full icon-theme spec resolution (theme inheritance, scaled dirs) is
-    // deliberately out of scope here.
-    std::string ResolveIconPath(const std::string& iconName) {
-        if (iconName.empty()) return {};
-        std::error_code ec;
-        if (iconName.front() == '/')
-            return fs::is_regular_file(iconName, ec) ? iconName : std::string();
-        static const char* const kSizes[] = {
-                "48x48", "64x64", "32x32", "128x128", "256x256", "scalable"};
-        static const char* const kExtensions[] = {"png", "svg", "xpm"};
-        for (const std::string& dataDir : DataDirs()) {
-            for (const char* size : kSizes) {
-                for (const char* ext : kExtensions) {
-                    const std::string candidate = dataDir + "/icons/hicolor/" +
-                            size + "/apps/" + iconName + "." + ext;
-                    if (fs::is_regular_file(candidate, ec) && !ec)
-                        return candidate;
-                }
-            }
-            for (const char* ext : kExtensions) {
-                const std::string candidate =
-                        dataDir + "/pixmaps/" + iconName + "." + ext;
-                if (fs::is_regular_file(candidate, ec) && !ec)
-                    return candidate;
-            }
-        }
-        return {};
-    }
+    // Menu-sized: what an "Open with" row draws. The lookup itself — the
+    // configured theme, what it inherits, hicolor, then the flat pixmaps
+    // directories — belongs to the shared reader, which the file display
+    // uses for the very same icons.
+    constexpr int kMenuIconSize = 48;
 
     const std::string& IconPathFor(DesktopEntry& entry) {
         if (!entry.iconResolved) {
-            entry.iconPath = ResolveIconPath(entry.iconName);
+            entry.iconPath = FindDesktopIconFile(entry.iconName, kMenuIconSize);
             entry.iconResolved = true;
         }
         return entry.iconPath;
@@ -480,65 +436,15 @@ namespace {
     }
 
     // ===== EXEC EXPANSION =====
-
-    // Tokenize an Exec= value: space-separated, double quotes group, "\\"
-    // escapes inside quotes (the spec's full escape table folded to the cases
-    // that occur in practice).
-    std::vector<std::string> TokenizeExec(const std::string& exec) {
-        std::vector<std::string> tokens;
-        std::string current;
-        bool inQuotes = false;
-        bool haveCurrent = false;
-        for (size_t i = 0; i < exec.size(); ++i) {
-            const char c = exec[i];
-            if (inQuotes) {
-                if (c == '\\' && i + 1 < exec.size()) { current += exec[++i]; }
-                else if (c == '"') inQuotes = false;
-                else current += c;
-                haveCurrent = true;
-            } else if (c == '"') {
-                inQuotes = true;
-                haveCurrent = true;
-            } else if (c == ' ' || c == '\t') {
-                if (haveCurrent) tokens.push_back(current);
-                current.clear();
-                haveCurrent = false;
-            } else {
-                current += c;
-                haveCurrent = true;
-            }
-        }
-        if (haveCurrent) tokens.push_back(current);
-        return tokens;
-    }
-
-    // Expand the field codes of one token stream against the files to open.
-    // %f/%F/%u/%U insert the paths (as plain paths — the applications this
-    // reaches accept both paths and URIs, and paths survive spaces without
-    // percent-encoding subtleties); %i/%c/%k and unknown codes are dropped;
-    // "%%" is a literal percent. Without any file code the paths are appended.
+    // Tokenizing an Exec= value and expanding its field codes is the shared
+    // reader's (UltraCanvasDesktopEntry): the file display expands the same
+    // lines when it launches a shortcut, and two expanders would eventually
+    // disagree about the same launcher.
     std::vector<std::string> BuildArgv(const std::string& exec,
                                        const std::vector<std::string>& paths) {
-        std::vector<std::string> argv;
-        bool inserted = false;
-        for (const std::string& token : TokenizeExec(exec)) {
-            if (token == "%f" || token == "%F" || token == "%u" || token == "%U") {
-                argv.insert(argv.end(), paths.begin(), paths.end());
-                inserted = true;
-                continue;
-            }
-            if (token == "%i" || token == "%c" || token == "%k") continue;
-            std::string expanded;
-            for (size_t i = 0; i < token.size(); ++i) {
-                if (token[i] != '%' || i + 1 >= token.size()) { expanded += token[i]; continue; }
-                const char code = token[++i];
-                if (code == '%') expanded += '%';
-                // Any other embedded field code expands to nothing.
-            }
-            argv.push_back(expanded);
-        }
-        if (!inserted) argv.insert(argv.end(), paths.begin(), paths.end());
-        return argv;
+        UCDesktopEntry entry;
+        entry.exec = exec;
+        return DesktopEntryCommand(entry, paths);
     }
 
     bool LaunchDesktopEntry(const DesktopEntry& entry,
@@ -631,10 +537,29 @@ bool LaunchWith(const FileAssociationApp& app,
 
 bool LaunchWithPath(const std::string& applicationPath,
                     const std::vector<std::string>& paths, std::string& outError) {
-    std::vector<std::string> argv{applicationPath};
-    argv.insert(argv.end(), paths.begin(), paths.end());
-    const std::string workingDir = paths.empty()
-            ? std::string() : fs::path(paths[0]).parent_path().string();
+    std::vector<std::string> argv;
+    std::string workingDir;
+    // An application on this platform is usually a program, but it can also
+    // be the .desktop file that describes one — what the user picks in a
+    // file dialog pointed at /usr/share/applications, and what the file
+    // display activates when a folder holds a launcher. Running the file
+    // itself would fail (it is text, not a program): run what it says.
+    UCDesktopEntry entry;
+    if (IsDesktopEntryPath(applicationPath) &&
+        ReadDesktopEntry(applicationPath, entry)) {
+        argv = DesktopEntryCommand(entry, paths);
+        if (argv.empty()) {
+            outError = "\"" + (entry.name.empty() ? applicationPath : entry.name) +
+                       "\" has no launchable command.";
+            return false;
+        }
+        workingDir = entry.workingDirectory;
+    } else {
+        argv.push_back(applicationPath);
+        argv.insert(argv.end(), paths.begin(), paths.end());
+    }
+    if (workingDir.empty() && !paths.empty())
+        workingDir = fs::path(paths[0]).parent_path().string();
     return LaunchDetachedProcess(argv, workingDir, outError);
 }
 

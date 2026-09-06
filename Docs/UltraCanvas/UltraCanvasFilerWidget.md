@@ -584,10 +584,11 @@ as smoothly as one of photos. Two implementations answer it:
   association knows — the icon of a document or a folder a shortcut points at.
 - **Everywhere else** by reading the files
   (`UltraCanvasIconResource.h`): the PE resource directory of an `.exe` /
-  `.dll` and the frames of an `.ico`, decoded without a Windows API and
-  without a new dependency. This is what makes a Windows disk mounted on
-  ULTRA OS, Linux or macOS — or the `drive_c` of a Wine prefix — show its
-  programs with their own icons.
+  `.dll`, the frames of an `.ico`, and the renditions of an `.icns`, decoded
+  without a platform API and without a new dependency. This is what makes a
+  Windows disk mounted on ULTRA OS, Linux or macOS — or the `drive_c` of a
+  Wine prefix — show its programs with their own icons, and a Mac disk read
+  anywhere show its applications with theirs.
 
 ### Thumbnail memory
 
@@ -615,10 +616,13 @@ the uncompressed size those bytes stand for — they differ under
 the decompressed tiles being drawn). Rescanning the folder or changing the
 view drops everything.
 
-## Shortcuts (.lnk)
+## Shortcuts
 
-A Windows shortcut is drawn with **the icon of what it points at**, and reads
-as the thing it stands for rather than as a file called "LNK":
+A shortcut is drawn with **the icon of what it points at**, and reads as the
+thing it stands for rather than as a file called "LNK" or as a text file with
+a reverse-DNS name. Every format the three desktops use is read, on every
+platform: the Windows `.lnk`, the freedesktop `.desktop`, the macOS `.webloc`
+and — on macOS, the only system that can follow one — a Finder alias.
 
 - Its **type** is `Shortcut`, and its **category** — the colour, the grouping,
   the preview switch that governs it — comes from its target, so a shortcut to
@@ -636,14 +640,69 @@ as the thing it stands for rather than as a file called "LNK":
   shell resolves the link itself, which keeps the arguments and working
   directory it carries.
 
-The reading is `UltraCanvasShellLink.h` (`ReadShellLink`), and it works on
-every platform — the shortcut's Windows path is mapped onto the host by
-looking for the drive it names (a Wine prefix, or the root of a mounted
-Windows disk). `FilerEntry::isShortcut` and `FilerEntry::linkTarget` carry the
-result to the host: `linkTarget` is the target **as this machine opens it**,
-empty when the target is not here or is a shell item rather than a file — an
-application that can run Windows programs itself (`onFileActivated`) uses it
-to launch the real target.
+### Windows shortcuts (.lnk)
+
+The reading is [`UltraCanvasShellLink.h`](UltraCanvasShellLink.md)
+(`ReadShellLink`), and it works on every platform — the shortcut's Windows
+path is mapped onto the host by looking for the drive it names (a Wine
+prefix, or the root of a mounted Windows disk).
+
+### Desktop entries (.desktop)
+
+A freedesktop launcher gets the same treatment, read with
+[`UltraCanvasDesktopEntry.h`](UltraCanvasDesktopEntry.md), plus the one thing
+a `.lnk` never needs:
+
+- **It is drawn by the name it calls itself.** The file name of a desktop
+  entry is an id — `org.mozilla.firefox.desktop` — while its `Name=` is what
+  every menu on the machine calls it. That name is what the display draws
+  (`FilerEntry::linkDisplayName`), and what the filter-as-you-type box matches
+  in addition to the file name. Only the drawn name changes: renaming, sorting
+  and every file operation still use the real file name, so nothing on disk is
+  ever addressed by a display string.
+- **Its icon is looked up in the icon themes**, not read out of the file:
+  `Icon=` is a name, resolved through the configured theme, what that theme
+  inherits, hicolor, then the pixmap directories, at the size the tile needs.
+- A `Type=Application` entry's **category is Program** and its target is the
+  executable it starts, resolved on this machine (`/usr/bin/firefox`); a
+  `Type=Link` entry shows its **address** in the info column, and a
+  `Type=Directory` groups with folders.
+- **Activating one runs what it says**: the `Exec=` line, expanded and
+  launched detached through the platform's launcher, with the entry's own
+  `Path=` as the working directory — a `Type=Link` opens its address instead.
+  Opening the file itself (what happened before) handed a text file to a text
+  editor.
+
+### macOS shortcuts and application bundles
+
+A `.webloc` shows its address in the info column and opens it when activated,
+like a `Type=Link` desktop entry. A **Finder alias** carries no extension to
+recognise it by, so the file itself is asked (its first bytes are bookmark
+data) — and only on macOS, which is the only system that can resolve one;
+elsewhere an alias stays the plain file nothing can follow.
+
+An **application bundle** (`.app`) is the odd one: not a shortcut but a
+*directory the platform presents as one object*. It is drawn with the icon
+inside it and by the application's own name (`Example Editor`, not
+`Example Editor.app`), typed `Application`, categorised as a program rather
+than a folder, and `FilerEntry::isBundle` marks it. It carries no shortcut
+badge — it is not a reference to something else, it *is* the application.
+
+**Activating one depends on where you are.** On macOS it launches, which is
+the Finder's rule; everywhere else it opens as the folder it is, because
+navigating in is the only thing that machine can do with a Mac application.
+The reading — Info.plist, the executable, the `.icns` — is
+[`UltraCanvasMacBundle`](UltraCanvasMacBundle.md) and works on every platform,
+so a Mac disk mounted on Linux still shows its applications properly.
+
+### What the host sees
+
+`FilerEntry::isShortcut`, `FilerEntry::isBundle`, `FilerEntry::linkTarget`
+and `FilerEntry::linkDisplayName` carry the result to the application.
+`linkTarget` is the target **as this machine opens it** — empty when the
+target is not here, or is not a file at all (a shell item, a web address) — so
+an application that can run Windows programs itself (`onFileActivated`) uses
+it to launch the real target.
 
 Because an icon is the file's identity rather than a courtesy preview, it is
 held apart from the content thumbnails: the two have **separate memory
@@ -915,11 +974,12 @@ part:
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
 
-A **Windows shortcut** is activated as the thing it points at: one to a folder
-navigates into that folder, and one to a file opens the file — off Windows by
-resolving the link first, since nothing there knows what a `.lnk` is, and on
-Windows through the shell, which does it better (it keeps the arguments and
-working directory the link carries). See [Shortcuts (.lnk)](#shortcuts-lnk).
+A **shortcut** is activated as the thing it points at: one to a folder
+navigates into that folder, and one to a file opens the file. A Windows
+`.lnk` is resolved first off Windows, since nothing there knows what one is,
+and on Windows goes through the shell, which does it better (it keeps the
+arguments and working directory the link carries); a `.desktop` launcher runs
+its own `Exec=` line. See [Shortcuts](#shortcuts).
 
 Entries inside archives are virtual paths nothing external can read, so
 activation never tries to run or open them.

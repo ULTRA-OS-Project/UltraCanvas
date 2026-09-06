@@ -40,15 +40,17 @@ the backing implementation can be replaced without affecting callers.
   for a file, and detached launching. Core worker/cache in
   `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
   internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
-  (Linux/BSD: freedesktop; Windows: SHAssocEnumHandlers / IAssocHandler;
-  macOS: NSWorkspace / Launch Services — all three enumerate, launch and
-  extract application icons).
+  (Linux/BSD: freedesktop, reading its `.desktop` entries and their icon
+  names through `UltraCanvasDesktopEntry`; Windows: SHAssocEnumHandlers /
+  IAssocHandler; macOS: NSWorkspace / Launch Services — all three enumerate,
+  launch and extract application icons).
   Public surface (`namespace FileAssociations` + `FileAssociationApp`):
   - `GetApplicationsForFiles` — candidates for a selection (intersection),
     default application first, cache-served once prewarmed.
   - `OpenWithDefaultApplication` / `OpenWithApplication` /
     `OpenWithApplicationPath` — detached launches (default handler /
-    enumerated app / user-picked executable).
+    enumerated app / user-picked executable; on Linux/BSD that path may also
+    be a `.desktop` file, whose own command is what then runs).
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
@@ -75,14 +77,72 @@ the backing implementation can be replaced without affecting callers.
     well-known set; an unknown variable is left visible rather than dropped.
   See `Docs/UltraCanvas/UltraCanvasShellLink.md`.
 
-- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons a
-  Windows file carries, read without a Windows shell: the frames of an `.ico`
-  and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary. In
+- **UltraCanvasDesktopEntry** (`UltraCanvasDesktopEntry.h`) — freedesktop
+  desktop entries (`.desktop`), the Linux/BSD counterpart of a Windows
+  shortcut, and the icon themes their `Icon=` names point into. **The
+  framework's single reader for the format**: the "Open with" service builds
+  its Linux application index with it and the filer widget draws and launches
+  the entries a folder holds, so the two cannot disagree about what a
+  launcher is called or what it looks like. Plain text plus
+  `std::filesystem` in `core/UltraCanvasDesktopEntry.cpp` — no GIO, no GTK,
+  safe on background threads. Public surface:
+  - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
+  - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
+    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    machine. False for a file with no `[Desktop Entry]` group, so a file that
+    merely ends in `.desktop` is never mistaken for one.
+  - `FindDesktopIconFile` — an icon *name* resolved to an image file through
+    the configured theme, what it inherits, hicolor and the pixmap
+    directories, at the nearest installed size (exact, else scalable, else
+    nearest larger). Cached per theme and per lookup.
+  - `SetDesktopIconTheme` / `GetDesktopIconTheme` /
+    `RefreshDesktopIconThemes` — the theme in use (detected from the GTK and
+    KDE settings files) and the way to drop everything cached after it
+    changes.
+  - `DesktopEntryCommand` — `Exec=` expanded into an argv (field codes
+    `%f/%F/%u/%U` filled, `%i/%c/%k` dropped, `%%` literal).
+  See `Docs/UltraCanvas/UltraCanvasDesktopEntry.md`.
+
+- **UltraCanvasPropertyList** (`UltraCanvasPropertyList.h`) — Apple property
+  lists in both encodings (XML through tinyxml2, binary `bplist00` parsed in
+  `core/UltraCanvasPropertyList.cpp`). Deliberately not a general plist
+  library: it serves the **top-level dictionary, flattened to text**, which
+  is what a bundle or a web location is asked for; nested containers are
+  skipped rather than half-modelled. Every offset in a binary plist is
+  bounds-checked. `UCPropertyList::Read` / `ReadBytes`, then `Has`,
+  `GetString`, `GetBool`, `GetInteger`, `Values`.
+  See `Docs/UltraCanvas/UltraCanvasPropertyList.md`.
+
+- **UltraCanvasMacBundle** (`UltraCanvasMacBundle.h`) — macOS application
+  bundles and the shortcut files a Mac desktop uses, the third desktop's
+  answer beside `UltraCanvasShellLink` and `UltraCanvasDesktopEntry`. Read
+  from the files themselves (`core/UltraCanvasMacBundle.cpp`), so a Mac disk
+  mounted anywhere shows its applications with their real names and icons.
+  Public surface:
+  - `IsBundlePath` / `IsApplicationBundlePath` — the packages the Finder
+    presents as one object, and the narrower "is it an application".
+  - `ReadApplicationBundle` — `UCAppBundle` (display name, identifier,
+    version, the executable inside it, the `.icns` it is drawn with, whether
+    it is an application). False for a directory with no readable
+    Info.plist. The icon search covers the usual omissions: the named file,
+    the name plus `.icns`, `CFBundleIconName`, then the `.icns` in Resources.
+  - `IsWebLocationPath` / `ReadWebLocation` — the address in a `.webloc`.
+  - `IsFinderAliasFile` / `ResolveFinderAlias` — an alias is recognised by
+    its bookmark-data magic anywhere, but only macOS can follow one
+    (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
+    false rather than guessing.
+  See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
+  other two desktops keep their applications' faces in, read without either
+  of them: the frames of an `.ico`, the `RT_GROUP_ICON` / `RT_ICON` resources
+  of a PE binary, and the renditions of an Apple `.icns`. In
   `core/UltraCanvasIconResource.cpp`; reads only the header range and the
   resource section of a program rather than the whole file, and treats every
   offset in the format as untrusted. Public surface:
-  - `HasIconResourceExtension` — `.ico`, `.exe`, `.dll`, `.icl`, `.cpl`,
-    `.ocx`, `.scr`, `.mun`, by extension alone.
+  - `HasIconResourceExtension` — `.ico`, `.icns`, `.exe`, `.dll`, `.icl`,
+    `.cpl`, `.ocx`, `.scr`, `.mun`, by extension alone.
   - `LoadIconResource(path, index, desiredSize)` — the frame nearest the
     wanted size as a `UCPixmap`. Windows' index convention: negative names a
     resource id, non-negative counts icons in resource order.

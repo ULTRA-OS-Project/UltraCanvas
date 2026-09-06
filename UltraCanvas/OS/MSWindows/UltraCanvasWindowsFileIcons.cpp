@@ -11,6 +11,7 @@
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
 #include "UltraCanvasIconResource.h"
+#include "UltraCanvasMacBundle.h"
 #include "UltraCanvasShellLink.h"
 
 #include <windows.h>
@@ -33,7 +34,11 @@ namespace UltraCanvas {
     // (UltraCanvasIconResource / UltraCanvasShellLink) so a file display
     // shows the same icons wherever the disk is being read from.
     bool NativeFileIconAvailable(const std::string& path) {
-        return HasIconResourceExtension(path) || IsShellLinkPath(path);
+        // Bundles too: a Mac disk read from Windows should show its
+        // applications with their own icons, which is a matter of reading
+        // files and needs nothing from the shell.
+        return HasIconResourceExtension(path) || IsShellLinkPath(path) ||
+               IsBundlePath(path);
     }
 
     namespace {
@@ -188,6 +193,13 @@ namespace UltraCanvas {
     std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string& path,
                                                        int desiredSize) {
         if (!NativeFileIconAvailable(path)) return nullptr;
+
+        if (IsBundlePath(path)) {
+            UCAppBundle bundle;
+            if (!ReadApplicationBundle(path, bundle) || bundle.iconFile.empty())
+                return nullptr;
+            return LoadIconResource(bundle.iconFile, 0, desiredSize);
+        }
 
         if (IsShellLinkPath(path)) {
             // A shortcut carries no icon of its own: it names one, in a file

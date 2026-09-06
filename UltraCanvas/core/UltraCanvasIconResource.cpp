@@ -1,9 +1,10 @@
 // core/UltraCanvasIconResource.cpp
-// Portable reader for Windows icon resources: ".ico" files and the
-// RT_GROUP_ICON / RT_ICON resources of a PE binary. No Windows API and no
-// new dependency - the PE resource directory is a simple tree of records,
-// and an icon frame is either a PNG (handed to the image pipeline) or a DIB
-// with a 1-bit transparency mask (decoded here).
+// Portable reader for the icon files the other two desktops use: Windows
+// ".ico" files and the RT_GROUP_ICON / RT_ICON resources of a PE binary, and
+// Apple ".icns" files. No platform API and no new dependency - the PE
+// resource directory is a simple tree of records, an icns is a flat list of
+// them, and a frame inside either is either a PNG (handed to the image
+// pipeline) or a bitmap with a separate transparency mask (decoded here).
 //
 // Sizes: an icon file holds the same picture several times over, and the
 // frame nearest the requested size is the one picked - upscaling a 16px
@@ -37,8 +38,11 @@ namespace UltraCanvas {
         constexpr uint32_t kMaxResourceSectionBytes = 128u * 1024 * 1024;
         // Icon frames are small; anything claiming more is a broken record.
         constexpr uint32_t kMaxFrameBytes = 16u * 1024 * 1024;
-        // The format's ceiling: a 0 in the one-byte size field means 256.
-        constexpr int kMaxIconEdge = 256;
+        // The largest rendition either container can hold - an .icns goes to
+        // 1024 - and, separately, what a 0 in an .ico's one-byte size field
+        // means, which is 256 and not "the biggest there is".
+        constexpr int kMaxIconEdge = 1024;
+        constexpr int kIcoImpliedEdge = 256;
         // Resource trees are three levels deep (type / name / language); the
         // guard is against a file whose records point back at themselves.
         constexpr int kMaxResourceDepth = 8;
@@ -286,7 +290,7 @@ namespace UltraCanvas {
         }
 
         int DeclaredEdge(uint8_t value) {
-            return value == 0 ? kMaxIconEdge : value;
+            return value == 0 ? kIcoImpliedEdge : value;
         }
 
         // ===== ".ico" FILES =====
@@ -552,16 +556,260 @@ namespace UltraCanvas {
             return nullptr;
         }
 
+        // ===== APPLE ICON FILES (.icns) =====
+        // A flat list of elements - a four-character type, a length, and the
+        // data - inside an 8-byte header. Every element is one rendition of
+        // the same icon: modern ones hold a PNG, older ones a run-length
+        // encoded bitmap whose transparency arrives as a separate element.
+        struct IcnsElement {
+            std::string type;
+            size_t offset = 0;
+            uint32_t size = 0;
+        };
+
+        uint32_t U32Big(const std::vector<uint8_t>& b, size_t at) {
+            if (at + 4 > b.size()) return 0;
+            return (static_cast<uint32_t>(b[at]) << 24) |
+                   (static_cast<uint32_t>(b[at + 1]) << 16) |
+                   (static_cast<uint32_t>(b[at + 2]) << 8) |
+                   static_cast<uint32_t>(b[at + 3]);
+        }
+
+        // The edge length an element type stands for, and whether it is the
+        // 24-bit RLE form (which needs the mask element beside it) or the
+        // ARGB form. 0 = a type that is not a rendition of the icon (the
+        // table of contents, the version, the 1-bit ancestors).
+        struct IcnsType {
+            int edge = 0;
+            bool rleRgb = false;    // is32 / il32 / ih32 / it32
+            bool rleArgb = false;   // ic04 / ic05
+        };
+
+        IcnsType ClassifyIcnsType(const std::string& type) {
+            // Modern renditions: the data is a PNG (or a JPEG 2000, which the
+            // image pipeline may or may not read).
+            if (type == "icp4") return {16, false, false};
+            if (type == "icp5") return {32, false, false};
+            if (type == "icp6") return {64, false, false};
+            if (type == "ic07") return {128, false, false};
+            if (type == "ic08") return {256, false, false};
+            if (type == "ic09") return {512, false, false};
+            if (type == "ic10") return {1024, false, false};
+            if (type == "ic11") return {32, false, false};
+            if (type == "ic12") return {64, false, false};
+            if (type == "ic13") return {256, false, false};
+            if (type == "ic14") return {512, false, false};
+            // Small ARGB renditions, run-length encoded.
+            if (type == "ic04") return {16, false, true};
+            if (type == "ic05") return {32, false, true};
+            // The classic 24-bit renditions, with their masks below.
+            if (type == "is32") return {16, true, false};
+            if (type == "il32") return {32, true, false};
+            if (type == "ih32") return {48, true, false};
+            if (type == "it32") return {128, true, false};
+            return {};
+        }
+
+        // The mask element that belongs to a 24-bit rendition.
+        std::string IcnsMaskType(const std::string& type) {
+            if (type == "is32") return "s8mk";
+            if (type == "il32") return "l8mk";
+            if (type == "ih32") return "h8mk";
+            if (type == "it32") return "t8mk";
+            return {};
+        }
+
+        // Apple's variant of PackBits, run over one channel at a time: a
+        // lead byte < 0x80 means (n+1) literal bytes, >= 0x80 means the next
+        // byte repeated (n - 0x7D) times.
+        bool DecodeIcnsRuns(const std::vector<uint8_t>& b, size_t at, size_t end,
+                            size_t& cursor, std::vector<uint8_t>& out,
+                            size_t wanted) {
+            out.clear();
+            out.reserve(wanted);
+            cursor = at;
+            while (out.size() < wanted) {
+                if (cursor >= end) return false;
+                const uint8_t lead = b[cursor++];
+                if (lead < 0x80) {
+                    const size_t count = static_cast<size_t>(lead) + 1;
+                    if (cursor + count > end) return false;
+                    out.insert(out.end(), b.begin() + cursor,
+                               b.begin() + cursor + count);
+                    cursor += count;
+                } else {
+                    const size_t count = static_cast<size_t>(lead) - 0x7D;
+                    if (cursor >= end) return false;
+                    const uint8_t value = b[cursor++];
+                    out.insert(out.end(), count, value);
+                }
+            }
+            return out.size() >= wanted;
+        }
+
+        std::shared_ptr<UCPixmap> BuildPixmapFromChannels(
+                int edge, const std::vector<uint8_t>& red,
+                const std::vector<uint8_t>& green,
+                const std::vector<uint8_t>& blue,
+                const std::vector<uint8_t>& alpha) {
+            const size_t pixels = static_cast<size_t>(edge) * edge;
+            if (red.size() < pixels || green.size() < pixels || blue.size() < pixels)
+                return nullptr;
+            auto pixmap = std::make_shared<UCPixmap>(edge, edge);
+            if (!pixmap->IsValid()) return nullptr;
+            for (int y = 0; y < edge; ++y) {
+                for (int x = 0; x < edge; ++x) {
+                    const size_t i = static_cast<size_t>(y) * edge + x;
+                    const uint8_t a = i < alpha.size() ? alpha[i] : 255;
+                    const uint32_t pixel =
+                            (static_cast<uint32_t>(a) << 24) |
+                            (static_cast<uint32_t>(red[i] * a / 255) << 16) |
+                            (static_cast<uint32_t>(green[i] * a / 255) << 8) |
+                            static_cast<uint32_t>(blue[i] * a / 255);
+                    pixmap->SetPixel(x, y, pixel);
+                }
+            }
+            pixmap->MarkDirty();
+            return pixmap;
+        }
+
+        // A 24-bit rendition: the three colour channels run-length encoded one
+        // after another, with the transparency in a separate element. The
+        // 128px rendition starts with four bytes of padding.
+        std::shared_ptr<UCPixmap> DecodeIcnsRgbElement(
+                const std::vector<uint8_t>& b, const IcnsElement& element,
+                int edge, const std::vector<uint8_t>& alpha) {
+            size_t at = element.offset;
+            const size_t end = element.offset + element.size;
+            if (edge == 128 && at + 4 <= end && U32Big(b, at) == 0) at += 4;
+            const size_t pixels = static_cast<size_t>(edge) * edge;
+            std::vector<uint8_t> channels[3];
+            size_t cursor = at;
+            for (std::vector<uint8_t>& channel : channels) {
+                if (!DecodeIcnsRuns(b, cursor, end, cursor, channel, pixels))
+                    return nullptr;
+            }
+            return BuildPixmapFromChannels(edge, channels[0], channels[1],
+                                           channels[2], alpha);
+        }
+
+        // An ARGB rendition: the same encoding with an alpha channel first,
+        // behind an "ARGB" marker.
+        std::shared_ptr<UCPixmap> DecodeIcnsArgbElement(
+                const std::vector<uint8_t>& b, const IcnsElement& element,
+                int edge) {
+            size_t at = element.offset;
+            const size_t end = element.offset + element.size;
+            if (at + 4 <= end && b[at] == 'A' && b[at + 1] == 'R' &&
+                b[at + 2] == 'G' && b[at + 3] == 'B')
+                at += 4;
+            const size_t pixels = static_cast<size_t>(edge) * edge;
+            std::vector<uint8_t> channels[4];
+            size_t cursor = at;
+            for (std::vector<uint8_t>& channel : channels) {
+                if (!DecodeIcnsRuns(b, cursor, end, cursor, channel, pixels))
+                    return nullptr;
+            }
+            return BuildPixmapFromChannels(edge, channels[1], channels[2],
+                                           channels[3], channels[0]);
+        }
+
+        std::shared_ptr<UCPixmap> DecodeIcnsBytes(const std::vector<uint8_t>& b,
+                                                  int desiredSize) {
+            if (b.size() < 8 || b[0] != 'i' || b[1] != 'c' || b[2] != 'n' ||
+                b[3] != 's')
+                return nullptr;
+            const uint32_t declared = U32Big(b, 4);
+            const size_t end = std::min<size_t>(
+                    b.size(), declared >= 8 ? declared : b.size());
+
+            std::vector<IcnsElement> elements;
+            size_t at = 8;
+            while (at + 8 <= end) {
+                IcnsElement element;
+                element.type.assign(b.begin() + at, b.begin() + at + 4);
+                const uint32_t size = U32Big(b, at + 4);
+                if (size < 8 || at + size > end) break;
+                element.offset = at + 8;
+                element.size = size - 8;
+                elements.push_back(std::move(element));
+                at += size;
+            }
+            if (elements.empty()) return nullptr;
+
+            // Every rendition, as a frame the shared size preference can
+            // choose between.
+            std::vector<IconFrame> frames;
+            std::vector<const IcnsElement*> sources;
+            std::vector<IcnsType> kinds;
+            for (const IcnsElement& element : elements) {
+                const IcnsType kind = ClassifyIcnsType(element.type);
+                if (kind.edge == 0) continue;
+                IconFrame frame;
+                frame.width = frame.height = kind.edge;
+                frame.bitCount = kind.rleRgb ? 24 : 32;
+                frame.offset = element.offset;
+                frame.size = element.size;
+                frames.push_back(frame);
+                sources.push_back(&element);
+                kinds.push_back(kind);
+            }
+            if (frames.empty()) return nullptr;
+
+            std::vector<size_t> order;
+            order.push_back(PickFrame(frames, desiredSize));
+            for (size_t i = 0; i < frames.size(); ++i)
+                if (i != order.front()) order.push_back(i);
+
+            for (size_t index : order) {
+                const IcnsElement& element = *sources[index];
+                const IcnsType& kind = kinds[index];
+                if (kind.rleArgb) {
+                    if (auto pixmap = DecodeIcnsArgbElement(b, element, kind.edge))
+                        return pixmap;
+                    continue;
+                }
+                if (kind.rleRgb) {
+                    // The transparency of a classic rendition lives in its
+                    // own element; without it the icon is a solid square.
+                    std::vector<uint8_t> alpha;
+                    const std::string maskType = IcnsMaskType(element.type);
+                    for (const IcnsElement& mask : elements) {
+                        if (mask.type != maskType) continue;
+                        const size_t pixels =
+                                static_cast<size_t>(kind.edge) * kind.edge;
+                        if (mask.size >= pixels)
+                            alpha.assign(b.begin() + mask.offset,
+                                         b.begin() + mask.offset + pixels);
+                        break;
+                    }
+                    if (auto pixmap = DecodeIcnsRgbElement(b, element, kind.edge,
+                                                           alpha))
+                        return pixmap;
+                    continue;
+                }
+                // A modern rendition: PNG, or a JPEG 2000 this build may not
+                // read - either way it is the image pipeline's to decode.
+                if (auto pixmap = DecodePngFrame(b, element.offset, element.size))
+                    return pixmap;
+            }
+            return nullptr;
+        }
+
     } // namespace
 
     bool HasIconResourceExtension(const std::string& path) {
         const std::string ext = LowerExtensionOf(path);
-        return ext == "ico" || ext == "exe" || ext == "dll" || ext == "icl" ||
-               ext == "cpl" || ext == "ocx" || ext == "scr" || ext == "mun";
+        return ext == "ico" || ext == "icns" || ext == "exe" || ext == "dll" ||
+               ext == "icl" || ext == "cpl" || ext == "ocx" || ext == "scr" ||
+               ext == "mun";
     }
 
     std::shared_ptr<UCPixmap> DecodeIconFileBytes(const std::vector<uint8_t>& bytes,
                                                   int desiredSize) {
+        // The two icon containers are told apart by their first bytes, not by
+        // the name they arrived under.
+        if (auto pixmap = DecodeIcnsBytes(bytes, desiredSize)) return pixmap;
         std::vector<IconFrame> frames;
         if (!ParseIconDirectory(bytes, frames)) return nullptr;
         const size_t best = PickFrame(frames, desiredSize);

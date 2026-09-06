@@ -69,6 +69,8 @@
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasDesktopEntry.h"
+#include "UltraCanvasMacBundle.h"
 #include "UltraCanvasShellLink.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
@@ -2102,10 +2104,16 @@ namespace UltraCanvas {
         std::string needle = nameFilter;
         std::transform(needle.begin(), needle.end(), needle.begin(),
                        [](unsigned char c) { return std::tolower(c); });
-        std::string name = e.name;
-        std::transform(name.begin(), name.end(), name.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        return name.find(needle) != std::string::npos;
+        auto matches = [&needle](std::string value) {
+            std::transform(value.begin(), value.end(), value.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return value.find(needle) != std::string::npos;
+        };
+        // The name on screen counts as well as the name on disk: typing
+        // "firefox" has to find a launcher shown as "Firefox Web Browser",
+        // whatever its file is called.
+        return matches(e.name) ||
+               (!e.linkDisplayName.empty() && matches(e.linkDisplayName));
     }
 
     void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
@@ -2240,14 +2248,26 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::ApplyEntryTypeInfo(FilerEntry& e) const {
         if (e.isDirectory) {
+            // A macOS bundle is a directory the platform presents as one
+            // object; what it actually is (ResolveBundleEntry, once the
+            // Info.plist has been read) refines this.
+            if (IsBundlePath(e.name)) {
+                e.category = FilerFileCategory::Executable;
+                e.typeName = IsApplicationBundlePath(e.name) ? "Application"
+                                                             : "Bundle";
+                return;
+            }
             e.category = FilerFileCategory::Folder;
             e.typeName = "Folder";
             return;
         }
-        if (e.extension == "lnk") {
-            // A shortcut is not a kind of file, it is a reference to one.
-            // The name says so; what it points at (ResolveShortcutEntry,
-            // once the file has actually been read) says the rest.
+        if (e.extension == "lnk" || e.extension == "desktop" ||
+            e.extension == "webloc") {
+            // A shortcut is not a kind of file, it is a reference to one — a
+            // Windows .lnk, a freedesktop desktop entry, or a macOS web
+            // location. The name says so; what it points at
+            // (ResolveShortcutEntry, once the file has actually been read)
+            // says the rest.
             e.category = FilerFileCategory::Other;
             e.typeName = "Shortcut";
             return;
@@ -2313,8 +2333,11 @@ namespace UltraCanvas {
             uint64_t size = 0;
             std::time_t modifiedTime = 0;
             bool isShortcut = false;
+            bool isBundle = false;
             std::string linkTarget;
+            std::string displayName;
             std::string info;
+            std::string typeName;
             FilerFileCategory category = FilerFileCategory::Other;
         };
         // Bounded: a listing of a Start-Menu tree can hold thousands of
@@ -2331,7 +2354,20 @@ namespace UltraCanvas {
     } // namespace
 
     void UltraCanvasFilerWidget::ResolveShortcutEntry(FilerEntry& e) const {
-        if (e.isDirectory || e.extension != "lnk") return;
+        if (e.isDirectory) return;
+        const bool shortcutExtension = e.extension == "lnk" ||
+                                       e.extension == "desktop" ||
+                                       e.extension == "webloc";
+#ifdef __APPLE__
+        // A Finder alias carries no extension to recognise it by, so the file
+        // itself has to be asked - and only on macOS, which is the only place
+        // its bookmark data can be resolved. Everywhere else an alias stays
+        // the plain file nothing can follow.
+        const bool alias = !shortcutExtension && IsFinderAliasFile(e.path);
+#else
+        constexpr bool alias = false;
+#endif
+        if (!shortcutExtension && !alias) return;
 
         {
             std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
@@ -2341,6 +2377,7 @@ namespace UltraCanvas {
                 if (!it->second.isShortcut) return;
                 e.isShortcut = true;
                 e.linkTarget = it->second.linkTarget;
+                e.linkDisplayName = it->second.displayName;
                 e.info = it->second.info;
                 e.category = it->second.category;
                 return;
@@ -2350,8 +2387,64 @@ namespace UltraCanvas {
         ShortcutCacheEntry cached;
         cached.size = e.size;
         cached.modifiedTime = e.modifiedTime;
+        UCDesktopEntry desktop;
         UCShellLink link;
-        if (ReadShellLink(e.path, link)) {
+        std::string webUrl;
+        std::string aliasTarget;
+        if (e.extension == "webloc" && ReadWebLocation(e.path, webUrl)) {
+            // A web location holds an address, which is not a file: there is
+            // nothing for linkTarget, and the address is what to show.
+            cached.isShortcut = true;
+            cached.category = FilerFileCategory::Other;
+            cached.info = webUrl;
+        } else if (alias && ResolveFinderAlias(e.path, aliasTarget)) {
+            cached.isShortcut = true;
+            cached.linkTarget = aliasTarget;
+            cached.info = aliasTarget;
+            std::error_code aec;
+            if (fs::is_directory(aliasTarget, aec) && !aec) {
+                cached.category = FilerFileCategory::Folder;
+            } else {
+                FilerEntry probe;
+                probe.extension =
+                        LowerExtension(fs::path(aliasTarget).filename().string());
+                if (!probe.extension.empty()) {
+                    ApplyEntryTypeInfo(probe);
+                    cached.category = probe.category;
+                }
+            }
+        } else if (e.extension == "desktop" && ReadDesktopEntry(e.path, desktop)) {
+            cached.isShortcut = true;
+            // A launcher is called what it says it is called: the file name
+            // of a desktop entry is an id ("org.mozilla.firefox.desktop"),
+            // not something to show anyone.
+            cached.displayName = desktop.name;
+            switch (desktop.kind) {
+                case UCDesktopEntry::Kind::Application:
+                    cached.category = FilerFileCategory::Executable;
+                    // The program it starts, resolved on this machine when
+                    // it is installed; the raw command otherwise, which is
+                    // still what the entry says it runs.
+                    cached.linkTarget = desktop.program;
+                    cached.info = desktop.program.empty() ? desktop.exec
+                                                          : desktop.program;
+                    break;
+                case UCDesktopEntry::Kind::Link:
+                    // A web shortcut: the address is the target, and it is
+                    // not a file, so linkTarget (a host path) stays empty.
+                    cached.category = FilerFileCategory::Other;
+                    cached.info = desktop.url;
+                    break;
+                case UCDesktopEntry::Kind::Directory:
+                    cached.category = FilerFileCategory::Folder;
+                    cached.info = desktop.comment;
+                    break;
+                case UCDesktopEntry::Kind::Unknown:
+                    cached.category = FilerFileCategory::Other;
+                    cached.info = desktop.comment;
+                    break;
+            }
+        } else if (ReadShellLink(e.path, link)) {
             cached.isShortcut = true;
             cached.linkTarget = link.hostTargetPath;
             // The info column shows the target the way Windows writes it -
@@ -2392,16 +2485,77 @@ namespace UltraCanvas {
         if (!cached.isShortcut) return;
         e.isShortcut = true;
         e.linkTarget = cached.linkTarget;
+        e.linkDisplayName = cached.displayName;
         e.info = cached.info;
         e.category = cached.category;
+    }
+
+    void UltraCanvasFilerWidget::ResolveBundleEntry(FilerEntry& e) const {
+        if (!e.isDirectory || !IsBundlePath(e.name)) return;
+
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto it = ShortcutCache().find(e.path);
+            if (it != ShortcutCache().end() && it->second.size == e.size &&
+                it->second.modifiedTime == e.modifiedTime) {
+                // The type is applied either way: a directory that only ends
+                // in ".app" is a folder, and was named an application on the
+                // strength of its name alone until the read settled it.
+                e.category = it->second.category;
+                e.typeName = it->second.typeName;
+                if (!it->second.isBundle) return;
+                e.isBundle = true;
+                e.linkTarget = it->second.linkTarget;
+                e.linkDisplayName = it->second.displayName;
+                e.info = it->second.info;
+                return;
+            }
+        }
+
+        ShortcutCacheEntry cached;
+        cached.size = e.size;
+        cached.modifiedTime = e.modifiedTime;
+        // Until the Info.plist says otherwise this is a plain folder that
+        // happens to be named like a package.
+        cached.category = FilerFileCategory::Folder;
+        cached.typeName = "Folder";
+        UCAppBundle bundle;
+        if (ReadApplicationBundle(e.path, bundle)) {
+            cached.isBundle = true;
+            // The application's own name, not the directory's: a bundle is
+            // called "Visual Studio Code", its folder "Visual Studio
+            // Code.app", and localized installs differ by more than that.
+            cached.displayName = bundle.displayName;
+            cached.linkTarget = bundle.executable;
+            cached.info = bundle.identifier.empty() ? bundle.version
+                                                    : bundle.identifier;
+            cached.category = bundle.isApplication ? FilerFileCategory::Executable
+                                                   : FilerFileCategory::Other;
+            cached.typeName = bundle.isApplication ? "Application" : "Bundle";
+        }
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto& cache = ShortcutCache();
+            if (cache.size() >= kShortcutCacheLimit) cache.clear();
+            cache[e.path] = cached;
+        }
+        e.category = cached.category;
+        e.typeName = cached.typeName;
+        if (!cached.isBundle) return;
+        e.isBundle = true;
+        e.linkTarget = cached.linkTarget;
+        e.linkDisplayName = cached.displayName;
+        e.info = cached.info;
     }
 
     void UltraCanvasFilerWidget::DecorateEntry(FilerEntry& e) const {
         e.effectiveSize = e.size;
         // A shortcut takes its type, category and info column from the file
-        // it points at; everything below (attributes, the info column the
-        // host may override) then applies to the entry as resolved.
+        // it points at, and an application bundle from the application it
+        // holds; everything below (attributes, the info column the host may
+        // override) then applies to the entry as resolved.
         ResolveShortcutEntry(e);
+        ResolveBundleEntry(e);
 
         std::string attr;
         if (e.isDirectory) attr += 'D';
@@ -3132,6 +3286,12 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
+        // A launcher that carries its own name is shown by it: the file name
+        // of a desktop entry is an id nobody reads
+        // ("org.mozilla.firefox.desktop"), while its Name= is what the menus
+        // of the machine call it. Only the drawn name changes — renaming,
+        // sorting and every file operation still use the real one.
+        if (!e.linkDisplayName.empty()) return e.linkDisplayName;
         if (fileExtensionsInNames) return e.name;
         // Only a plausible file type is dropped: the tail of
         // "UCDemo-Windows-0.3.27-x86_64" is a version, not an extension, and a
@@ -7139,7 +7299,9 @@ namespace UltraCanvas {
         // thumbnail still wins below. The cache key is the shortcut's own
         // path, not the icon file's: two shortcuts into the same library can
         // name different icons in it.
-        if (!e.isDirectory && e.thumbnailPath.empty() &&
+        // A bundle is a directory, and the one directory that has an icon of
+        // its own to draw.
+        if ((!e.isDirectory || e.isBundle) && e.thumbnailPath.empty() &&
             NativeFileIconAvailable(e.path))
             return e.path;
         // Display > Thumbnails: a switched-off kind (or format) is never read
@@ -9764,6 +9926,14 @@ namespace UltraCanvas {
         // any other file instead of navigating into an empty view.
         bool enters = e.isDirectory;
 #endif
+#ifdef __APPLE__
+        // On the system that can run them, an application bundle is launched
+        // rather than opened as the folder it is — the Finder's rule.
+        // Everywhere else navigating in is the only thing the machine can do
+        // with a Mac application, so it keeps the folder behaviour.
+        if (e.isBundle && e.category == FilerFileCategory::Executable)
+            enters = false;
+#endif
         if (enters) {
             SetPath(e.path);
             return;
@@ -9788,10 +9958,52 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::OpenEntryWithOS(const FilerEntry& e) {
+        std::error_code ec;
+        // An application bundle is a directory, and launching it is the
+        // platform's business: the "Other application" launch path already
+        // knows what a .app is on macOS.
+        if (e.isBundle && fs::is_directory(e.path, ec) && !ec) {
+            std::string bundleError;
+            if (!FileAssociations::OpenWithApplicationPath(e.path, {}, bundleError))
+                ReportError(bundleError);
+            return;
+        }
         // Only a real file — an entry inside an archive is a virtual path no
         // external application (or the kernel) can read.
-        std::error_code ec;
         if (!fs::is_regular_file(e.path, ec) || ec) return;
+        // A web location holds an address, and opening the file itself would
+        // hand a property list to a text editor.
+        if (e.isShortcut && e.extension == "webloc") {
+            std::string url;
+            if (ReadWebLocation(e.path, url) && !url.empty()) {
+                OpenURL(url);
+                return;
+            }
+        }
+        // A desktop entry is a launcher: what it means is the program it
+        // names, or the address it points at. Opening the file itself would
+        // hand a text file to a text editor.
+        if (e.isShortcut && e.extension == "desktop") {
+            UCDesktopEntry desktop;
+            if (ReadDesktopEntry(e.path, desktop)) {
+                if (desktop.kind == UCDesktopEntry::Kind::Link &&
+                    !desktop.url.empty()) {
+                    OpenURL(desktop.url);
+                    return;
+                }
+                if (!desktop.exec.empty()) {
+                    // The platform's launcher expands the Exec line and
+                    // detaches the process; on a system that does not know
+                    // desktop entries this falls back to running the file,
+                    // which fails cleanly and is reported.
+                    std::string launchError;
+                    if (!FileAssociations::OpenWithApplicationPath(
+                                e.path, {}, launchError))
+                        ReportError(launchError);
+                    return;
+                }
+            }
+        }
 #ifndef _WIN32
         // Off Windows nothing knows what a .lnk is, so opening the shortcut
         // would open the shortcut - what the user means is the file it
