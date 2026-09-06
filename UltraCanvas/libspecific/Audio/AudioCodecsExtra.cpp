@@ -4,8 +4,10 @@
 // encode+decode), libopusenc (Opus encode), opusfile (Opus decode) and
 // LAME (MP3 encode). Each is compile-gated on the ULTRACANVAS_HAS_* define
 // its CMake detection sets; anything missing degrades to false / null.
-// Version: 0.1.0
-// Last Modified: 2026-08-06
+// The AAC (M4A) and platform-media decode routes TryDecode falls through to
+// live in AudioCodecsAAC.cpp.
+// Version: 0.2.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_ENABLE_AUDIO
@@ -530,14 +532,22 @@ bool Encode(const std::string& path, const UCAudio& audio, AudioFormat format) {
 }
 
 std::shared_ptr<UCAudio> TryDecode(const std::string& path) {
-    if (!LooksLikeOgg(path)) return nullptr;
+    if (LooksLikeOgg(path)) {
 #ifdef ULTRACANVAS_HAS_VORBIS
-    if (auto audio = DecodeVorbis(path)) return audio;
+        if (auto audio = DecodeVorbis(path)) return audio;
 #endif
 #ifdef ULTRACANVAS_HAS_OPUSFILE
-    if (auto audio = DecodeOpus(path)) return audio;
+        if (auto audio = DecodeOpus(path)) return audio;
 #endif
-    return nullptr;
+        return nullptr;
+    }
+    // AAC (M4A / raw .aac) through the dedicated decoder libraries, which are
+    // cheaper than spinning up a media pipeline. See AudioCodecsAAC.cpp.
+    if (auto audio = TryDecodeAac(path)) return audio;
+    // Last resort for everything else miniaudio cannot read - ALAC, WMA, AIFF,
+    // an M4A whose AAC profile the library above declined - handed to whatever
+    // the platform media plugins can decode.
+    return TryDecodePlatform(path);
 }
 
 } // namespace AudioCodecs

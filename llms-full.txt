@@ -1547,6 +1547,8 @@ their *License* is likewise marked **—** (OS component).
 | Credential Manager (Windows) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/wincred/) | — | — |
 | CUPS | [openprinting.github.io/cups](https://openprinting.github.io/cups/) | [github.com/OpenPrinting/cups](https://github.com/OpenPrinting/cups) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | EGL | [khronos.org/egl](https://www.khronos.org/egl/) | [github.com/KhronosGroup/EGL-Registry](https://github.com/KhronosGroup/EGL-Registry) | — |
+| FAAD2 (libfaad) | [github.com/knik0/faad2](https://github.com/knik0/faad2) | [github.com/knik0/faad2](https://github.com/knik0/faad2) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
+| fdk-aac | [github.com/mstorsjo/fdk-aac](https://github.com/mstorsjo/fdk-aac) | [github.com/mstorsjo/fdk-aac](https://github.com/mstorsjo/fdk-aac) | [Fraunhofer FDK AAC](https://spdx.org/licenses/FDK-AAC.html) |
 | FFmpeg | [ffmpeg.org](https://ffmpeg.org/) | [git.ffmpeg.org/ffmpeg.git](https://git.ffmpeg.org/ffmpeg.git) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | FFTW3 | [fftw.org](https://www.fftw.org/) | [github.com/FFTW/fftw3](https://github.com/FFTW/fftw3) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -1656,6 +1658,8 @@ their *License* is likewise marked **—** (OS component).
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |
 | Audio encode FLAC / OGG / Opus / MP3, decode OGG / Opus | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) |
+| Audio decode AAC (.m4a / .aac) | FAAD2 or fdk-aac (optional), else the GStreamer plugins | FAAD2 or fdk-aac (optional) | FAAD2 or fdk-aac (optional) |
+| Audio decode M4A-ALAC / WMA / AIFF | GStreamer (optional) | — | — |
 | Video playback & capture | GStreamer (optional) | AVFoundation (optional) | Media Foundation (optional) |
 | OpenGL 3D surface | OpenGL, EGL / GLX (optional) | OpenGL, CGL (optional) | OpenGL, GLEW / WGL (optional) |
 | QR / barcode decoding | zbar (optional) | zbar (optional) | zbar (optional) |
@@ -5941,8 +5945,9 @@ Implemented. `ULTRACANVAS_ENABLE_AUDIO=ON` (the default) builds the
 `libspecific/Audio/miniaudio.h`): device enumeration, playback and capture
 streams, WAV/MP3/FLAC decode and WAV encode. The optional system codec
 libraries below extend the format matrix with FLAC/OGG/Opus/MP3 encoding and
-OGG/Opus decoding. With the option OFF a null backend keeps the API surface
-compiling (see Build below).
+OGG/Opus/AAC decoding, and the platform media framework covers whatever is
+left. With the option OFF a null backend keeps the API surface compiling
+(see Build below).
 
 ## Format support
 
@@ -5953,13 +5958,25 @@ compiling (see Build below).
 | FLAC | always | with **libFLAC** | miniaudio (dr_flac) + libFLAC |
 | OGG Vorbis (`ogg`, `oga`) | with **libvorbis** | with **libvorbis** | vorbisfile + vorbisenc |
 | Opus | with **opusfile** | with **libopusenc** | opusfile + libopusenc |
+| AAC in MPEG-4 (`m4a`, `m4b`) | with **FAAD2**, **fdk-aac** *or* the **GStreamer** plugins | never | in-tree MP4 demuxer + FAAD2 / fdk-aac, else GStreamer |
+| Raw AAC (`aac`, ADTS) | with **FAAD2**, **fdk-aac** *or* the **GStreamer** plugins | never | FAAD2 / fdk-aac, else GStreamer |
+| ALAC in `m4a`, WMA, AIFF | with the **GStreamer** plugins | never | GStreamer `decodebin` |
+
+The matrix itself lives in the codec registry —
+[UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md) — which is
+also where an application registers a codec of its own, and where the media
+viewer asks whether a file is audio at all. A format the registry recognises
+but cannot decode is deliberately absent from the table above and present in
+the registry, so a viewer classifies the file correctly and says what is
+missing rather than treating it as something else.
 
 "Always" means whenever the audio backend is compiled in. The optional codec
 libraries are system packages detected via pkg-config at configure time
 (`libflac-dev`, `libvorbis-dev` + `libogg-dev`, `libopusenc-dev`,
-`libopusfile-dev`, `libmp3lame-dev` on Debian/Ubuntu); each one found unlocks
-its column independently. **The authoritative answer at runtime** is the
-supported-format inventory — never hardcode the matrix:
+`libopusfile-dev`, `libmp3lame-dev`, `libfaad-dev` or `libfdk-aac-dev` on
+Debian/Ubuntu); each one found unlocks its column independently. **The
+authoritative answer at runtime** is the supported-format inventory — never
+hardcode the matrix:
 
 ```cpp
 auto audio = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
@@ -5978,6 +5995,34 @@ if (fmt == AudioFormat::Unknown) fmt = AudioFormat::WAV;
 audio->SaveToFile(path, fmt);
 ```
 
+### AAC and M4A
+
+An `.m4a` is an MPEG-4 container, so playing one is two jobs. The container is
+read in-tree by `libspecific/Audio/Mp4AudioDemux.{h,cpp}` — a dependency-free
+ISO-BMFF walker that finds the audio track, its `esds` AudioSpecificConfig and
+the per-sample byte ranges (`Tests/Mp4AudioDemuxTest.cpp` covers it). The AAC
+bitstream itself needs a decoder library, tried in this order:
+
+1. **FAAD2** (`libfaad`) — AAC-LC and HE-AAC, fed raw access units.
+2. **fdk-aac** — the alternative, used only when FAAD2 is absent.
+3. **The GStreamer plugins** — `uridecodebin` over whatever the system has,
+   which is the route that needs no extra package on a desktop that already
+   has the plugins installed for video, and the only one that also covers
+   **ALAC**, **WMA** and **AIFF**.
+
+A build with none of the three reports M4A as unsupported in the inventory, and
+`UltraCanvasAudioPlayer::GetLastError()` says which codec the file turned out
+to hold and what would decode it, rather than leaving a silent transport bar.
+
+> **Licensing:** FAAD2 is GPL-2.0 and fdk-aac carries the Fraunhofer FDK AAC
+> license; linking either imposes its terms on the resulting binary. Neither is
+> bundled and neither is required — see `THIRD_PARTY_LICENSES.md`. The
+> GStreamer route (LGPL 2.1, already a dependency of the video backend) changes
+> nothing about the framework's licensing.
+
+Fragmented MP4 files (`moof`-based, no complete sample table in the `moov`) are
+recognised and reported, not played.
+
 Encoding details: FLAC keeps 16-bit sources bit-exact and writes wider/float
 sources as 24-bit; Vorbis encodes VBR (quality 0.4); Opus is Ogg-encapsulated
 and resamples internally (decode is always 48 kHz — Opus by design); MP3 is
@@ -5991,6 +6036,29 @@ VBR with a Xing header, mono/stereo only. `Tests/AudioCodecTests.cpp`
 `UltraCanvasAudio.h` — `UCAudio` holds decoded PCM + `AudioBufferInfo`. Mirrors
 `UCImage`. Decoders are pluggable (`Plugins/Audio/`); WAV will be the built-in
 default.
+
+### Adding a codec
+
+`UCAudio::LoadFromFile` and `SaveToFile` fall through to the codec registry once
+the built-in backend and codec libraries have declined a file, so an application
+that brings its own decoder registers it and everything else follows — the
+viewer's classification, the Filer's categories, the format inventory and the
+open/save dialogs:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ape";
+codec.description = "Monkey's Audio";
+codec.kind        = MediaCodecKind::Audio;
+codec.canDecode   = true;
+codec.provider    = "MyApp (libMAC)";
+codec.decodeAudio = [](const std::string& p) { return MyApp::DecodeApe(p); };
+RegisterMediaCodec(codec);
+```
+
+See [UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md) for the
+rest — encode callbacks, content probes for an ambiguous extension, and the
+upgrade rules when two registrations claim the same format.
 
 ### Playback (non-visual)
 
@@ -6112,6 +6180,21 @@ sudo apt install libflac-dev libvorbis-dev libogg-dev \
 # macOS
 brew install flac libvorbis opus opusfile libopusenc lame
 ```
+
+AAC decode is separate because of its licensing (see above). Add **one** of:
+
+```
+# Debian/Ubuntu - FAAD2 (GPL-2.0) or fdk-aac (Fraunhofer FDK AAC license)
+sudo apt install libfaad-dev
+sudo apt install libfdk-aac-dev
+# ...or nothing at all: the GStreamer plugins already installed for video
+#    decode M4A, and ALAC/WMA/AIFF with them
+sudo apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+```
+
+The configure log says which route was taken — `Audio codec: AAC/M4A decode
+(FAAD2 …)`, `(fdk-aac …)`, `Audio codec: platform decode fallback (GStreamer
+…)`, or `Audio codec: AAC/M4A decode unavailable`.
 
 ## Architecture notes
 
@@ -18318,7 +18401,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
-| `Audio` | Audio | mp3, flac, wav, ogg, m4a, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
+| `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
 | `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. The mirror image of Audio: there is no font viewer yet, so the Detail view switches are the ones with nothing behind them, and woff / woff2 report as unsupported unless the installed FreeType was built with zlib / Brotli |
 
 Notes:
@@ -28647,6 +28730,165 @@ items and level ids, so `Validate()` mainly matters when you have assembled a
   the other component that calls itself a "matrix"
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md
+==============================================================================
+
+# UltraCanvas Media Codec Registry
+
+`UltraCanvasMediaCodecRegistry.h` — the one place that knows which audio and
+video formats a build can handle, and the extension point for adding more.
+
+## Why it exists
+
+Two questions get confused constantly, and answering them from the same list is
+what breaks:
+
+| Question | Answer from | Used for |
+|---|---|---|
+| Is this file audio/video **at all**? | `IsMediaFileOfKind` | classification: which viewer, which error |
+| Can this build **decode** it? | `CanDecodeMediaFile` | the format inventory, dialog filters, whether to attempt a load |
+
+Before the registry, the media viewer carried hardcoded extension lists that had
+to be kept in step by hand with the codecs CMake actually linked — and were not.
+That is how an `.m4a` came to be classified as audio by a build with no AAC
+decoder in it: the viewer built a player, the decode failed, and the transport
+bar sat there silently with nothing to say.
+
+Keeping the two answers apart is the point. A format that is **recognised but
+unsupported** stays registered with `canDecode = false`, so the viewer still
+shows an audio player and names what is missing, instead of falling through and
+mistaking the file for a picture.
+
+## Reading the registry
+
+```cpp
+#include "UltraCanvasMediaCodecRegistry.h"
+
+if (IsMediaFileOfKind(MediaCodecKind::Audio, path)) {
+    if (!CanDecodeMediaFile(MediaCodecKind::Audio, path)) {
+        auto codec = FindMediaCodecForFile(MediaCodecKind::Audio, path);
+        // codec->description  "MPEG-4 audio (AAC)"
+        // codec->notes        "needs FAAD2, fdk-aac, or the GStreamer plugins"
+    }
+}
+```
+
+| Call | Returns |
+|---|---|
+| `IsMediaFileOfKind(kind, path)` | the file is that kind, decodable or not |
+| `CanDecodeMediaFile(kind, path)` | a decoder for it exists in this build |
+| `CanEncodeMediaExtension(kind, ext)` | an encoder for that extension exists |
+| `FindMediaCodecForFile(kind, path)` | the registration claiming the file, honouring its content probe |
+| `FindMediaCodecByExtension(kind, ext)` | the registration for an extension, ignoring probes — for a file about to be written |
+| `GetRegisteredMediaCodecs(kind)` | everything registered, in registration order |
+
+`UltraCanvasSupportedFormats` is built from this: its Audio and Video categories
+are the registry's entries filtered down to the ones that decode or encode, so
+the inventory, the Filer's categories and every file dialog follow the registry
+automatically. Nothing else needs to hold a list.
+
+## Registering a codec
+
+Registration is how an application or plugin adds a format. Do it once at
+start-up, before the first folder listing:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ape";                 // leading dot and case are normalised
+codec.aliases     = { "apl" };
+codec.description = "Monkey's Audio";
+codec.kind        = MediaCodecKind::Audio;
+codec.canDecode   = true;
+codec.provider    = "MyApp (libMAC)";
+codec.decodeAudio = [](const std::string& path) -> std::shared_ptr<UCAudio> {
+    return MyApp::DecodeMonkeysAudio(path);   // null if it turns out not to be one
+};
+RegisterMediaCodec(codec);
+```
+
+That is all. The media viewer now classifies `.ape` as audio, the Filer files it
+under Audio, `UltraCanvasSupportedFormats` lists it, `UltraCanvasFileLoader::OpenAudio`
+offers it in the dialog, and `UCAudio::LoadFromFile` returns its PCM.
+
+**Where the callbacks run.** `decodeAudio` and `encodeAudio` are tried *after*
+the built-in backend and codec libraries have declined the file. Running last
+means a plugin is reachable without displacing anything — and it means a
+plugin's decoder must never call back into `UCAudio::LoadFromFile`, which would
+recurse. `encodeAudio` is found by the target path's extension, because
+`AudioFormat` cannot name a format a plugin brought with it:
+
+```cpp
+audio->SaveToFile("out.ape", AudioFormat::Unknown);   // reaches encodeAudio
+```
+
+**Re-registering upgrades, it does not duplicate.** A second registration for
+the same extension and kind OR-s the capabilities, unions the aliases, and takes
+every other field the incoming registration carries. So adding an encoder for a
+format that already had a decoder keeps the decoder. To replace an entry
+outright, `UnregisterMediaCodec` first.
+
+**Declaring without implementing is useful.** A registration with neither
+`canDecode` nor `canEncode` — and no callbacks — teaches the framework that the
+extension is audio or video. It stays out of the format inventory, but files
+with it are classified correctly and get an honest error. That is exactly how
+the framework registers `.m4a` on a build with no AAC decoder.
+
+### Content probes: when the extension is not enough
+
+`.ts` is TypeScript source far more often than it is an MPEG transport stream,
+and file classification runs the video test before the text one — so claiming
+the extension by name turned every `.ts` in a source tree into a video the
+player could not open. A registration can settle it by content instead:
+
+```cpp
+codec.probeFile = [](const std::string& path) {
+    return LooksLikeTransportStream(path);   // 0x47 at every 188-byte boundary
+};
+```
+
+`FindMediaCodecForFile` and `IsMediaFileOfKind` honour the probe; it runs
+outside the registry's lock, so a probe may touch the filesystem freely. An
+entry carrying a probe is **left out of `UltraCanvasSupportedFormats`**, which
+is keyed on extensions alone and could not honour it — which is why the built-in
+transport-stream entry in the inventory is the unambiguous `m2ts`/`mts`, and the
+bare `.ts` lives only in the registry.
+
+## What the framework registers
+
+Built-ins register on first query (or explicitly via `RegisterBuiltinMediaCodecs`,
+which an application only needs in order to force them in before replacing one).
+They are compile-gated on what CMake found, so the registry describes *this*
+build:
+
+- **Audio** — WAV/MP3/FLAC from miniaudio; Ogg Vorbis, Opus, FLAC and MP3
+  encoding from the optional system codec libraries; AAC (`m4a`/`m4b`, `aac`)
+  from FAAD2, fdk-aac or the GStreamer plugins; `wma`, `aiff`, `mka` from the
+  platform media plugins. See [UltraCanvasAudio.md](UltraCanvasAudio.md).
+- **Video** — the platform backend's demuxer/muxer matrix (GStreamer, Media
+  Foundation, AVFoundation). `canEncode` is true only for the containers the
+  capture session can actually mux; everything else the backend demuxes is
+  registered decode-only.
+
+Video *decoding* itself still goes through `IVideoBackend`, not through a
+registry callback: what a video registration contributes is recognition and
+capability. An application that wants to add a video container has to teach the
+platform backend about it as well.
+
+## Threading
+
+Registration and every query take an internal mutex, so codecs may be registered
+from any thread at any time; a query sees the state at the moment it is made.
+Entries are copy-on-write, so a `FindMediaCodecForFile` result stays valid
+however the registry changes afterwards.
+
+## Test
+
+`Tests/MediaCodecRegistryTest.cpp` (`BUILD_TESTS=ON`) covers the built-ins, the
+recognised-versus-decodable split, inventory agreement, probe gating, the
+upgrade-not-duplicate rule, and a registered codec being reached through
+`UCAudio::LoadFromFile` and `SaveToFile`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewer.md
 ==============================================================================
 
@@ -28675,8 +28917,19 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Text` | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
-| `Video` | MP4, MKV, WebM, MOV, AVI, … | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
-| `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A, … | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
+| `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
+| `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
+
+Those two rows are not a list in this file: `IsAudioFile` and `IsVideoFile` ask
+the codec registry
+([UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md)) what this
+build was compiled with, so a format an application registers is classified too,
+and a format the build cannot decode still gets a player-shaped error naming
+what is missing rather than a broken image. `UltraCanvasSupportedFormats` — also
+built from the registry — is the authoritative answer to what actually decodes.
+`.ts` is the one extension settled by content instead of by name: it is
+TypeScript far more often than an MPEG transport stream, so its registration
+carries a probe for the 188-byte packet sync bytes.
 
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —

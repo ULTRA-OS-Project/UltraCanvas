@@ -142,6 +142,32 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## AAC decoders (optional, and copyleft — read before enabling)
+
+- **Used by:** `UltraCanvas/libspecific/Audio/AudioCodecsAAC.cpp`, to decode
+  the AAC bitstream inside `.m4a` / `.m4b` files and raw `.aac` streams. The
+  MPEG-4 container itself is parsed in-tree by `Mp4AudioDemux`, so only the
+  bitstream decode comes from outside.
+- **Neither is vendored, and neither is required.** CMake looks for them on
+  the build host and compiles the binding only when one is present:
+  FAAD2 via `find_library(faad)`, fdk-aac via `pkg_check_modules(fdk-aac)`.
+  A build with neither still plays M4A wherever the GStreamer plugins are
+  installed, because the audio decoder falls back to the same media framework
+  the video backend already uses (LGPL 2.1, and already a dependency there).
+- **FAAD2** — https://github.com/knik0/faad2, **GPL-2.0-or-later**. Linking it
+  makes the resulting binary a GPL work: a distributor who enables it must
+  ship under the GPL. That is why it is opt-in-by-presence rather than a
+  declared dependency.
+- **fdk-aac** — https://github.com/mstorsjo/fdk-aac, **Fraunhofer FDK AAC
+  license** — a permissive-style license with its own attribution and patent
+  clauses, and explicitly *not* granting the AAC patent rights themselves.
+  Used only when FAAD2 is absent.
+- **Patents:** AAC's core patents have expired, but a distributor shipping an
+  AAC decoder should still confirm the position for their jurisdiction and
+  product. UltraCanvas ships no AAC codec of its own.
+
+---
+
 ## External services UltraAI talks to (no code bundled)
 
 These are separate programs or hosted APIs that UltraAI adapters
