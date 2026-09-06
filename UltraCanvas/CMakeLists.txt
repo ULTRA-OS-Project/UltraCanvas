@@ -463,6 +463,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVolumeMonitor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Layout.cpp
@@ -980,6 +981,8 @@ if(ULTRACANVAS_ENABLE_AUDIO)
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioCodecsExtra.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioCodecsAAC.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/Mp4AudioDemux.cpp
     )
     message(STATUS "Audio backend: miniaudio (${miniaudio_SOURCE_DIR})")
 
@@ -990,17 +993,31 @@ if(ULTRACANVAS_ENABLE_AUDIO)
     #   libvorbis(enc/file)  -> Ogg Vorbis encode + decode
     #   libopusenc / opusfile-> Opus encode + decode
     #   LAME (mp3lame)       -> MP3 encode   (decode already via miniaudio/dr_mp3)
+    #   FAAD2 / fdk-aac      -> AAC decode   (M4A and raw .aac; the MP4 sample
+    #                           table is read by the in-tree Mp4AudioDemux, so
+    #                           only the raw AAC decoder comes from outside)
     # All are optional: missing ones simply leave their formats save- (or
     # load-) disabled, exactly as reported by UltraCanvasSupportedFormats.
+    #
+    # NOTE on AAC licensing: FAAD2 is GPL-2.0 and fdk-aac ships under the
+    # Fraunhofer FDK AAC license - neither is bundled here, and neither is
+    # required. Linking one in imposes that library's terms on the resulting
+    # binary, which is why this is opt-out-by-default: the libraries are used
+    # only when the build host already has them. A build with neither still
+    # plays M4A wherever the GStreamer plugins below are installed.
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
         pkg_check_modules(UC_FLAC flac)
         pkg_check_modules(UC_VORBIS vorbisenc vorbisfile vorbis ogg)
         pkg_check_modules(UC_OPUSENC libopusenc)
         pkg_check_modules(UC_OPUSFILE opusfile)
+        pkg_check_modules(UC_FDKAAC fdk-aac)
     endif()
     find_library(UC_MP3LAME_LIBRARY mp3lame)
     find_path(UC_MP3LAME_INCLUDE_DIR lame/lame.h)
+    # FAAD2 ships no pkg-config file on most distributions.
+    find_library(UC_FAAD_LIBRARY faad)
+    find_path(UC_FAAD_INCLUDE_DIR neaacdec.h)
 endif()
 
 # Video sources (always-compiled API surface; backend is a stub unless
@@ -1605,6 +1622,35 @@ if(ULTRACANVAS_ENABLE_AUDIO)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_MP3LAME_INCLUDE_DIR})
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_MP3LAME_LIBRARY})
         message(STATUS "Audio codec: MP3 encode (LAME ${UC_MP3LAME_LIBRARY})")
+    endif()
+
+    # AAC decode. FAAD2 first (packaged nearly everywhere on Linux); fdk-aac is
+    # the alternative. Only one is compiled in - AudioCodecsAAC.cpp tries them
+    # in that order, so linking both would just be dead weight.
+    if(UC_FAAD_LIBRARY AND UC_FAAD_INCLUDE_DIR)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_FAAD=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_FAAD_INCLUDE_DIR})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FAAD_LIBRARY})
+        message(STATUS "Audio codec: AAC/M4A decode (FAAD2 ${UC_FAAD_LIBRARY})")
+    elseif(UC_FDKAAC_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_FDKAAC=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_FDKAAC_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FDKAAC_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FDKAAC_LIBRARIES})
+        message(STATUS "Audio codec: AAC/M4A decode (fdk-aac ${UC_FDKAAC_VERSION})")
+    endif()
+
+    # Catch-all decode through the media framework already linked for video.
+    # This is what makes M4A (AAC *and* ALAC), WMA and AIFF play on a desktop
+    # that has the GStreamer plugins but no AAC development library, so it is
+    # wired up whether or not one of the two above was found.
+    if(GSTREAMER_FOUND AND ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME}
+                                   PRIVATE ULTRACANVAS_HAS_GST_AUDIO_DECODE=1)
+        message(STATUS "Audio codec: platform decode fallback (GStreamer ${GSTREAMER_VERSION})")
+    elseif(NOT (UC_FAAD_LIBRARY AND UC_FAAD_INCLUDE_DIR) AND NOT UC_FDKAAC_FOUND)
+        message(STATUS "Audio codec: AAC/M4A decode unavailable (install libfaad-dev, "
+                       "fdk-aac, or the GStreamer plugins)")
     endif()
 endif()
 

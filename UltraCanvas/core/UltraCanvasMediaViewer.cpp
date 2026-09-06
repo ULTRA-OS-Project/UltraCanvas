@@ -46,6 +46,9 @@
 #ifdef ULTRACANVAS_ENABLE_AUDIO
 #include "UltraCanvasAudioPlayerElement.h"
 #endif
+// Always: file classification asks the codec registry what this build can
+// play, and with neither backend compiled in it correctly answers "nothing".
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1275,35 +1278,19 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
 }
 
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
-    // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
-    // real video backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_VIDEO
-    static const std::vector<std::string> v = {
-        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv",
-        "flv", "mpg", "mpeg", "ogv", "3gp", "ts"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(v.begin(), v.end(), e) != v.end();
-#else
-    (void)path;
-    return false;
-#endif
+    // The codec registry is the single source of truth: it knows which
+    // containers the platform video backend was built with, honours the
+    // content probe for an extension shared with another kind of file (".ts"
+    // is TypeScript far more often than a transport stream), and returns true
+    // for a format that is recognised but has no decoder — so the viewer can
+    // show a player and the reason it is empty rather than mistaking the file
+    // for a picture. With no video backend compiled in nothing is registered,
+    // and this is false for everything.
+    return IsMediaFileOfKind(MediaCodecKind::Video, path);
 }
 
 bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
-    // Audio plays through UltraCanvasAudioPlayerElement; only advertised when a
-    // real audio backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_AUDIO
-    static const std::vector<std::string> a = {
-        "mp3", "wav", "flac", "ogg", "oga", "m4a",
-        "aac", "opus", "wma", "aif", "aiff"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(a.begin(), a.end(), e) != a.end();
-#else
-    (void)path;
-    return false;
-#endif
+    return IsMediaFileOfKind(MediaCodecKind::Audio, path);
 }
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
@@ -1774,7 +1761,15 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ap = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get());
         if (!ap->LoadFromFile(path)) {
-            if (infoLabel) infoLabel->SetText("Failed to open audio: " + BaseName(path));
+            // The player's reason names the codec and what would decode it,
+            // which is the difference between a silent dead transport and an
+            // answer the user can act on.
+            const std::string& why = ap->GetLastError();
+            if (infoLabel) {
+                infoLabel->SetText(why.empty()
+                                       ? "Failed to open audio: " + BaseName(path)
+                                       : BaseName(path) + " - " + why);
+            }
         } else {
             ap->Play();
         }

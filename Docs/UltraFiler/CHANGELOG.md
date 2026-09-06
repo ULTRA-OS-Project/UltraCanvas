@@ -15,7 +15,7 @@
 - **Up from a drive root goes to the Computer page**, the way Explorer's Up
   from a drive lands on *This PC*; the Up button is no longer greyed out at
   a root. The breadcrumb's leading *Computer* node opens the page too
-  (framework 0.3.104: `FolderBreadcrumbOptions::onComputerClick`), and its
+  (framework 0.3.106: `FolderBreadcrumbOptions::onComputerClick`), and its
   dropdown still lists the drives. Esc, any navigation, Back / Forward or a
   tab switch returns to the folder display, with the tree, the breadcrumb
   and the status bar describing the folder again.

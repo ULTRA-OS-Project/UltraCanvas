@@ -23,8 +23,19 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Text` | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
-| `Video` | MP4, MKV, WebM, MOV, AVI, … | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
-| `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A, … | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
+| `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
+| `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
+
+Those two rows are not a list in this file: `IsAudioFile` and `IsVideoFile` ask
+the codec registry
+([UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md)) what this
+build was compiled with, so a format an application registers is classified too,
+and a format the build cannot decode still gets a player-shaped error naming
+what is missing rather than a broken image. `UltraCanvasSupportedFormats` — also
+built from the registry — is the authoritative answer to what actually decodes.
+`.ts` is the one extension settled by content instead of by name: it is
+TypeScript far more often than an MPEG transport stream, so its registration
+carries a probe for the 188-byte packet sync bytes.
 
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
