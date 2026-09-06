@@ -1218,6 +1218,21 @@ if (BUILD_TESTS)
     )
     add_test(NAME AudioCodecTests COMMAND AudioCodecTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # ISO-BMFF audio demuxer (the M4A half of the AAC decode path). Builds the
+    # MP4 buffers it parses in memory, so it needs neither media assets nor the
+    # audio backend - just the two demuxer sources.
+    add_executable(Mp4AudioDemuxTest
+        Tests/Mp4AudioDemuxTest.cpp
+        UltraCanvas/libspecific/Audio/Mp4AudioDemux.cpp)
+    target_include_directories(Mp4AudioDemuxTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/libspecific/Audio)
+    target_compile_features(Mp4AudioDemuxTest PRIVATE cxx_std_20)
+    set_target_properties(Mp4AudioDemuxTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME Mp4AudioDemuxTest COMMAND Mp4AudioDemuxTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
 if (BUILD_FILEMANAGER_APP)

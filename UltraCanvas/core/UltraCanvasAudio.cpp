@@ -1,8 +1,8 @@
 // core/UltraCanvasAudio.cpp
 // UCAudio resource implementation. Decode/encode is delegated to the active
 // IAudioBackend (miniaudio when ULTRACANVAS_ENABLE_AUDIO=ON; null otherwise).
-// Version: 0.1.0
-// Last Modified: 2026-06-12
+// Version: 0.1.1
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudio.h"
@@ -24,7 +24,7 @@ AudioFormat AudioFormatFromExtension(const std::string& extension) {
     if (e == "mp3")                 return AudioFormat::MP3;
     if (e == "ogg" || e == "oga")   return AudioFormat::OGG;
     if (e == "flac")                return AudioFormat::FLAC;
-    if (e == "aac" || e == "m4a")   return AudioFormat::AAC;
+    if (e == "aac" || e == "m4a" || e == "m4b") return AudioFormat::AAC;
     if (e == "opus")                return AudioFormat::Opus;
     if (e == "pcm" || e == "raw")   return AudioFormat::PCM;
     return AudioFormat::Unknown;

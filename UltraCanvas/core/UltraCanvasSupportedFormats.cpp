@@ -14,15 +14,19 @@
 //   Audio        — the miniaudio backend (WAV/MP3/FLAC decode, WAV encode)
 //                  plus the optional system codec libraries: libFLAC (FLAC
 //                  encode), libvorbis (OGG encode+decode), libopusenc/opusfile
-//                  (Opus encode/decode), LAME (MP3 encode). AAC stays absent.
+//                  (Opus encode/decode), LAME (MP3 encode), FAAD2 / fdk-aac
+//                  (AAC decode), and the GStreamer plugins as a catch-all
+//                  decoder for M4A/WMA/AIFF when no in-tree codec covers them.
 //   Video        — the platform backend's demuxer/muxer matrix (GStreamer /
-//                  Media Foundation / AVFoundation).
+//                  Media Foundation / AVFoundation). Saving is limited to the
+//                  containers the capture session muxes; everything else the
+//                  backend demuxes is listed load-only.
 //   Font         — FreeType, a hard dependency, so the list is fixed. "Load"
 //                  means UltraCanvasFontFile can read the name records and
 //                  rasterize a specimen, not that the image pipeline decodes
 //                  it (CanImagePipelineLoad stays false for every font).
-// Version: 1.0.0
-// Last Modified: 2026-07-12
+// Version: 1.1.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
@@ -313,8 +317,44 @@ namespace {
                             "opusfile + libopusenc", "" });
         }
 #endif
-        // NOTE deliberately absent: aac/m4a (no codec is wired). Add an entry
-        // here only after a codec actually lands in libspecific/Audio.
+        // AAC lives in two shapes: a raw .aac bitstream and the MPEG-4
+        // container .m4a/.m4b. Both decode through AudioCodecsAAC.cpp, which
+        // needs FAAD2 or fdk-aac for the bitstream itself - or, failing that,
+        // the GStreamer plugins the video backend already links. Encoding is
+        // not wired for either.
+#if defined(ULTRACANVAS_HAS_FAAD) || defined(ULTRACANVAS_HAS_FDKAAC) || \
+    defined(ULTRACANVAS_HAS_GST_AUDIO_DECODE)
+        {
+#if defined(ULTRACANVAS_HAS_FAAD)
+            const char* aacBackend = "FAAD2";
+#elif defined(ULTRACANVAS_HAS_FDKAAC)
+            const char* aacBackend = "fdk-aac";
+#else
+            const char* aacBackend = "GStreamer (system plugins)";
+#endif
+            out.push_back({ "m4a", { "m4b" }, "MPEG-4 audio (AAC)",
+                            MediaFormatCategory::Audio, true, false,
+                            aacBackend, "saving is not supported" });
+            out.push_back({ "aac", {}, "Raw AAC bitstream (ADTS)",
+                            MediaFormatCategory::Audio, true, false,
+                            aacBackend, "saving is not supported" });
+        }
+#endif
+        // Whatever else the platform media plugins cover. Listed only when the
+        // fallback is compiled in, because without it none of these decode.
+#ifdef ULTRACANVAS_HAS_GST_AUDIO_DECODE
+        out.push_back({ "wma", {}, "Windows Media Audio",
+                        MediaFormatCategory::Audio, true, false,
+                        "GStreamer (system plugins)",
+                        "decode depends on the installed plugins" });
+        out.push_back({ "aiff", { "aif", "aifc" }, "Audio Interchange File Format",
+                        MediaFormatCategory::Audio, true, false,
+                        "GStreamer (system plugins)", "saving is not supported" });
+        out.push_back({ "mka", {}, "Matroska audio",
+                        MediaFormatCategory::Audio, true, false,
+                        "GStreamer (system plugins)",
+                        "decode depends on the installed plugins" });
+#endif
 #else
         (void)out;
 #endif
@@ -357,32 +397,51 @@ namespace {
             bool load;
             bool save;
         };
+        // canSave is true only for the containers the capture session can
+        // actually mux into (MuxerFor() in the platform backend). Everything
+        // else the backend can demux is listed load-only rather than left out:
+        // omitting it made the open dialog refuse files the player then played
+        // perfectly well, and left the Filer with no category for them.
 #if defined(__linux__)
         const char* provider = "GStreamer";
         const char* notes = "codec availability depends on installed GStreamer plugins";
         static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" }, "MPEG-4 container", true, true  },
-            { "mov",  {},        "QuickTime movie",  true, true  },
-            { "mkv",  {},        "Matroska video",   true, true  },
-            { "webm", {},        "WebM video",       true, true  },
-            { "avi",  {},        "AVI video",        true, true  },
+            { "mp4",  { "m4v" },        "MPEG-4 container",   true, true  },
+            { "mov",  {},               "QuickTime movie",    true, true  },
+            { "mkv",  {},               "Matroska video",     true, true  },
+            { "webm", {},               "WebM video",         true, true  },
+            { "avi",  {},               "AVI video",          true, true  },
+            { "wmv",  { "asf" },        "Windows Media video", true, false },
+            { "flv",  {},               "Flash video",        true, false },
+            { "mpg",  { "mpeg", "mpe", "m2v" }, "MPEG program stream", true, false },
+            { "ogv",  { "ogm" },        "Ogg video",          true, false },
+            { "3gp",  { "3g2" },        "3GPP video",         true, false },
+            // Deliberately keyed on m2ts/mts, not the bare "ts": in a source
+            // tree that extension is TypeScript far more often than it is a
+            // transport stream, and an extension-only lookup cannot tell them
+            // apart. The media viewer sniffs the sync bytes for that one.
+            { "m2ts", { "mts" },        "MPEG transport stream", true, false },
         };
 #elif defined(_WIN32)
         const char* provider = "Media Foundation";
         const char* notes = "codec availability depends on installed Media Foundation codecs";
         static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" }, "MPEG-4 container", true, true  },
-            { "mov",  {},        "QuickTime movie",  true, false },
-            { "mkv",  {},        "Matroska video",   true, false },
-            { "webm", {},        "WebM video",       true, false },
-            { "avi",  {},        "AVI video",        true, false },
+            { "mp4",  { "m4v" },        "MPEG-4 container",   true, true  },
+            { "mov",  {},               "QuickTime movie",    true, false },
+            { "mkv",  {},               "Matroska video",     true, false },
+            { "webm", {},               "WebM video",         true, false },
+            { "avi",  {},               "AVI video",          true, false },
+            { "wmv",  { "asf" },        "Windows Media video", true, false },
+            { "3gp",  { "3g2" },        "3GPP video",         true, false },
+            { "m2ts", { "mts" },        "MPEG transport stream", true, false },
         };
 #else   // macOS / AVFoundation
         const char* provider = "AVFoundation";
         const char* notes = "";
         static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" }, "MPEG-4 container", true, true  },
-            { "mov",  {},        "QuickTime movie",  true, true  },
+            { "mp4",  { "m4v" },        "MPEG-4 container",   true, true  },
+            { "mov",  {},               "QuickTime movie",    true, true  },
+            { "3gp",  { "3g2" },        "3GPP video",         true, false },
         };
 #endif
         for (const auto& c : candidates) {

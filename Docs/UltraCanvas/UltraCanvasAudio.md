@@ -9,8 +9,9 @@ Implemented. `ULTRACANVAS_ENABLE_AUDIO=ON` (the default) builds the
 `libspecific/Audio/miniaudio.h`): device enumeration, playback and capture
 streams, WAV/MP3/FLAC decode and WAV encode. The optional system codec
 libraries below extend the format matrix with FLAC/OGG/Opus/MP3 encoding and
-OGG/Opus decoding. With the option OFF a null backend keeps the API surface
-compiling (see Build below).
+OGG/Opus/AAC decoding, and the platform media framework covers whatever is
+left. With the option OFF a null backend keeps the API surface compiling
+(see Build below).
 
 ## Format support
 
@@ -21,13 +22,17 @@ compiling (see Build below).
 | FLAC | always | with **libFLAC** | miniaudio (dr_flac) + libFLAC |
 | OGG Vorbis (`ogg`, `oga`) | with **libvorbis** | with **libvorbis** | vorbisfile + vorbisenc |
 | Opus | with **opusfile** | with **libopusenc** | opusfile + libopusenc |
+| AAC in MPEG-4 (`m4a`, `m4b`) | with **FAAD2**, **fdk-aac** *or* the **GStreamer** plugins | never | in-tree MP4 demuxer + FAAD2 / fdk-aac, else GStreamer |
+| Raw AAC (`aac`, ADTS) | with **FAAD2**, **fdk-aac** *or* the **GStreamer** plugins | never | FAAD2 / fdk-aac, else GStreamer |
+| ALAC in `m4a`, WMA, AIFF | with the **GStreamer** plugins | never | GStreamer `decodebin` |
 
 "Always" means whenever the audio backend is compiled in. The optional codec
 libraries are system packages detected via pkg-config at configure time
 (`libflac-dev`, `libvorbis-dev` + `libogg-dev`, `libopusenc-dev`,
-`libopusfile-dev`, `libmp3lame-dev` on Debian/Ubuntu); each one found unlocks
-its column independently. **The authoritative answer at runtime** is the
-supported-format inventory — never hardcode the matrix:
+`libopusfile-dev`, `libmp3lame-dev`, `libfaad-dev` or `libfdk-aac-dev` on
+Debian/Ubuntu); each one found unlocks its column independently. **The
+authoritative answer at runtime** is the supported-format inventory — never
+hardcode the matrix:
 
 ```cpp
 auto audio = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
@@ -45,6 +50,34 @@ AudioFormat fmt = AudioFormatFromExtension("flac");   // ".OGG", "oga", ... also
 if (fmt == AudioFormat::Unknown) fmt = AudioFormat::WAV;
 audio->SaveToFile(path, fmt);
 ```
+
+### AAC and M4A
+
+An `.m4a` is an MPEG-4 container, so playing one is two jobs. The container is
+read in-tree by `libspecific/Audio/Mp4AudioDemux.{h,cpp}` — a dependency-free
+ISO-BMFF walker that finds the audio track, its `esds` AudioSpecificConfig and
+the per-sample byte ranges (`Tests/Mp4AudioDemuxTest.cpp` covers it). The AAC
+bitstream itself needs a decoder library, tried in this order:
+
+1. **FAAD2** (`libfaad`) — AAC-LC and HE-AAC, fed raw access units.
+2. **fdk-aac** — the alternative, used only when FAAD2 is absent.
+3. **The GStreamer plugins** — `uridecodebin` over whatever the system has,
+   which is the route that needs no extra package on a desktop that already
+   has the plugins installed for video, and the only one that also covers
+   **ALAC**, **WMA** and **AIFF**.
+
+A build with none of the three reports M4A as unsupported in the inventory, and
+`UltraCanvasAudioPlayer::GetLastError()` says which codec the file turned out
+to hold and what would decode it, rather than leaving a silent transport bar.
+
+> **Licensing:** FAAD2 is GPL-2.0 and fdk-aac carries the Fraunhofer FDK AAC
+> license; linking either imposes its terms on the resulting binary. Neither is
+> bundled and neither is required — see `THIRD_PARTY_LICENSES.md`. The
+> GStreamer route (LGPL 2.1, already a dependency of the video backend) changes
+> nothing about the framework's licensing.
+
+Fragmented MP4 files (`moof`-based, no complete sample table in the `moov`) are
+recognised and reported, not played.
 
 Encoding details: FLAC keeps 16-bit sources bit-exact and writes wider/float
 sources as 24-bit; Vorbis encodes VBR (quality 0.4); Opus is Ogg-encapsulated
@@ -180,6 +213,21 @@ sudo apt install libflac-dev libvorbis-dev libogg-dev \
 # macOS
 brew install flac libvorbis opus opusfile libopusenc lame
 ```
+
+AAC decode is separate because of its licensing (see above). Add **one** of:
+
+```
+# Debian/Ubuntu - FAAD2 (GPL-2.0) or fdk-aac (Fraunhofer FDK AAC license)
+sudo apt install libfaad-dev
+sudo apt install libfdk-aac-dev
+# ...or nothing at all: the GStreamer plugins already installed for video
+#    decode M4A, and ALAC/WMA/AIFF with them
+sudo apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+```
+
+The configure log says which route was taken — `Audio codec: AAC/M4A decode
+(FAAD2 …)`, `(fdk-aac …)`, `Audio codec: platform decode fallback (GStreamer
+…)`, or `Audio codec: AAC/M4A decode unavailable`.
 
 ## Architecture notes
 

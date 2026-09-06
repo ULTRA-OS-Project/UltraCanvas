@@ -1274,16 +1274,37 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     return tokenizer.SetLanguageByExtension(e);
 }
 
+namespace {
+// Three consecutive 188-byte packet boundaries carrying the MPEG-TS sync byte.
+// Enough to separate a transport stream from a TypeScript file that happens to
+// begin with a 'G'.
+bool LooksLikeMpegTransportStream(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    char buf[188 * 2 + 1] = {0};
+    f.read(buf, sizeof(buf));
+    if (f.gcount() < static_cast<std::streamsize>(sizeof(buf))) return false;
+    return buf[0] == 0x47 && buf[188] == 0x47 && buf[188 * 2] == 0x47;
+}
+} // namespace
+
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
     // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
     // real video backend is compiled in.
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     static const std::vector<std::string> v = {
-        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv",
-        "flv", "mpg", "mpeg", "ogv", "3gp", "ts"
+        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv", "asf",
+        "flv", "mpg", "mpeg", "mpe", "m2v", "ogv", "ogm",
+        "3gp", "3g2", "m2ts", "mts"
     };
     std::string e = LowerExt(path);
-    return !e.empty() && std::find(v.begin(), v.end(), e) != v.end();
+    if (e.empty()) return false;
+    // ".ts" is TypeScript far more often than it is an MPEG transport stream,
+    // and this test runs before the text one - so it is settled by content, not
+    // by the extension. A transport stream is 188-byte packets each starting
+    // with the sync byte 0x47; source code does not survive that test.
+    if (e == "ts") return LooksLikeMpegTransportStream(path);
+    return std::find(v.begin(), v.end(), e) != v.end();
 #else
     (void)path;
     return false;
@@ -1295,8 +1316,8 @@ bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
     // real audio backend is compiled in.
 #ifdef ULTRACANVAS_ENABLE_AUDIO
     static const std::vector<std::string> a = {
-        "mp3", "wav", "flac", "ogg", "oga", "m4a",
-        "aac", "opus", "wma", "aif", "aiff"
+        "mp3", "wav", "flac", "ogg", "oga", "m4a", "m4b",
+        "aac", "opus", "wma", "aif", "aiff", "aifc", "mka"
     };
     std::string e = LowerExt(path);
     return !e.empty() && std::find(a.begin(), a.end(), e) != a.end();
@@ -1774,7 +1795,15 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ap = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get());
         if (!ap->LoadFromFile(path)) {
-            if (infoLabel) infoLabel->SetText("Failed to open audio: " + BaseName(path));
+            // The player's reason names the codec and what would decode it,
+            // which is the difference between a silent dead transport and an
+            // answer the user can act on.
+            const std::string& why = ap->GetLastError();
+            if (infoLabel) {
+                infoLabel->SetText(why.empty()
+                                       ? "Failed to open audio: " + BaseName(path)
+                                       : BaseName(path) + " - " + why);
+            }
         } else {
             ap->Play();
         }

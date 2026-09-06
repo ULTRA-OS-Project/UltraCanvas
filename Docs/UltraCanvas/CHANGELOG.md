@@ -1,3 +1,73 @@
+#### 2026-09-06 *0.3.104*
+- **M4A plays.** UltraFiler showed an audio player for an `.m4a` and then sat
+  there: the viewer advertised the extension as audio, but nothing in the
+  build could decode it — miniaudio reads WAV/MP3/FLAC only, and the optional
+  codec layer covered Ogg and Opus. Two pieces were missing, and both are now
+  in place.
+- **New `libspecific/Audio/Mp4AudioDemux.{h,cpp}` — the container half.** A
+  dependency-free ISO base media file format walker: it finds the audio track
+  through `moov/trak/mdia/minf/stbl`, identifies the codec from the sample
+  entry (and, for `mp4a`, from the `esds` objectTypeIndication, which is what
+  tells AAC apart from an MP3 hiding in an MP4), recovers the
+  AudioSpecificConfig or ALAC magic cookie, and expands `stsc`/`stsz`/`stco`
+  into the flat list of access units a decoder wants. It handles the layouts
+  real encoders emit — 64-bit box sizes and `co64` offsets, `stz2` packed
+  sizes, uniform sample sizes, multi-sample chunks, `mdat` written before the
+  `moov` — and reports a fragmented file as fragmented rather than
+  half-parsing it. For HE-AAC it reads the *extension* sampling frequency, not
+  the core one, so those files no longer come out half-length. Every box size
+  and table index is bounds-checked; `Tests/Mp4AudioDemuxTest.cpp` builds the
+  MP4s it parses in memory, so it needs no media assets, and it walks a
+  truncation of every length past the parser.
+- **New `libspecific/Audio/AudioCodecsAAC.cpp` — the bitstream half**, with
+  three routes tried in order: **FAAD2** (`libfaad`), **fdk-aac**, and
+  **GStreamer's `decodebin`**. The third is the one that matters most in
+  practice: a desktop that already has the GStreamer plugins installed for
+  video now plays M4A with no new package at all — and ALAC, WMA and AIFF
+  with it, which nothing here could read before. It exposes only the audio
+  stream (`expose-all-streams=false`), so a cover-art track cannot wedge the
+  pipeline, pulls with a timeout rather than blocking forever on a stalled
+  decoder, and watches the bus so an undecodable file fails instead of
+  hanging.
+- **Licensing stayed on the right side of the line.** FAAD2 is GPL-2.0 and
+  fdk-aac carries the Fraunhofer FDK AAC license, so neither is bundled and
+  neither is required: CMake compiles the binding only when the build host
+  already has one, and the GStreamer route (LGPL 2.1, already a dependency of
+  the video backend) changes nothing about the framework's own MIT terms. The
+  consequences are written down in `THIRD_PARTY_LICENSES.md`.
+- **A dead transport bar now says why.** `IAudioBackend::DescribeDecodeFailure`
+  lets the optional-codec layer name what the container actually held — "this
+  MPEG-4 file holds Apple Lossless (ALAC) audio", "this is a fragmented MP4",
+  "no AAC decoder is compiled into this build", and what would unlock it —
+  and `UltraCanvasAudioPlayer` puts that in `GetLastError()` in place of the
+  generic "unsupported or damaged". The media viewer shows the reason instead
+  of "Failed to open audio: <name>".
+- **The format inventory tells the truth again.** `aac`, `m4a`/`m4b` and,
+  where the platform fallback is compiled in, `wma`, `aiff`/`aif`/`aifc` and
+  `mka` now appear in `UltraCanvasSupportedFormats` as load-only, naming the
+  backend that will actually decode them — and they still do not appear when
+  no decoder was found, which is the state the old "AAC stays absent" comment
+  described. `AudioFormatFromExtension` and the Filer's type table learned
+  `m4b` along the way.
+- **The same audit, on the video side.** The viewer offered WMV, FLV, MPG,
+  OGV, 3GP and transport streams and the GStreamer backend played them, but
+  the inventory listed only the five containers the *capture* path can mux —
+  so the video open dialog refused files the player then played perfectly
+  well, and the Filer had no category for them. They are now listed load-only
+  (saving stays limited to what `MuxerFor()` writes: MP4, MKV, WebM, MOV,
+  AVI), with the Windows and macOS candidate lists extended to what those
+  backends actually demux.
+- **`.ts` is decided by content, not by its name.** Claiming it for video
+  turned every TypeScript file in a source tree into a video the player could
+  not open — the viewer classifies video before text, so the extension alone
+  was never going to be enough. The viewer now checks for the MPEG transport
+  stream's 188-byte packet sync bytes, and the format inventory is keyed on
+  the unambiguous `m2ts`/`mts` instead.
+- **Media metadata reads a few more files.** The Filer's probe covers `m4b`
+  and `3g2` as MPEG-4, and `.asf`/`.wma` through the ASF reader it already had
+  for `.wmv`; its MP4 codec table learned `.mp3`, DTS, AMR-WB and the 24/32-bit
+  PCM sample entries instead of showing their raw four-character codes.
+
 #### 2026-09-05 *0.3.103*
 - **macOS applications and shortcuts read like the other two desktops'.** An
   application bundle was a folder called `Example Editor.app`, a `.webloc` a

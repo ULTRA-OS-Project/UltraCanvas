@@ -51,6 +51,8 @@ their *License* is likewise marked **—** (OS component).
 | Credential Manager (Windows) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/wincred/) | — | — |
 | CUPS | [openprinting.github.io/cups](https://openprinting.github.io/cups/) | [github.com/OpenPrinting/cups](https://github.com/OpenPrinting/cups) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | EGL | [khronos.org/egl](https://www.khronos.org/egl/) | [github.com/KhronosGroup/EGL-Registry](https://github.com/KhronosGroup/EGL-Registry) | — |
+| FAAD2 (libfaad) | [github.com/knik0/faad2](https://github.com/knik0/faad2) | [github.com/knik0/faad2](https://github.com/knik0/faad2) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
+| fdk-aac | [github.com/mstorsjo/fdk-aac](https://github.com/mstorsjo/fdk-aac) | [github.com/mstorsjo/fdk-aac](https://github.com/mstorsjo/fdk-aac) | [Fraunhofer FDK AAC](https://spdx.org/licenses/FDK-AAC.html) |
 | FFmpeg | [ffmpeg.org](https://ffmpeg.org/) | [git.ffmpeg.org/ffmpeg.git](https://git.ffmpeg.org/ffmpeg.git) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | FFTW3 | [fftw.org](https://www.fftw.org/) | [github.com/FFTW/fftw3](https://github.com/FFTW/fftw3) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | FLAC (libFLAC) | [xiph.org/flac](https://xiph.org/flac/) | [github.com/xiph/flac](https://github.com/xiph/flac) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -160,6 +162,8 @@ their *License* is likewise marked **—** (OS component).
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |
 | Audio encode FLAC / OGG / Opus / MP3, decode OGG / Opus | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) |
+| Audio decode AAC (.m4a / .aac) | FAAD2 or fdk-aac (optional), else the GStreamer plugins | FAAD2 or fdk-aac (optional) | FAAD2 or fdk-aac (optional) |
+| Audio decode M4A-ALAC / WMA / AIFF | GStreamer (optional) | — | — |
 | Video playback & capture | GStreamer (optional) | AVFoundation (optional) | Media Foundation (optional) |
 | OpenGL 3D surface | OpenGL, EGL / GLX (optional) | OpenGL, CGL (optional) | OpenGL, GLEW / WGL (optional) |
 | QR / barcode decoding | zbar (optional) | zbar (optional) | zbar (optional) |

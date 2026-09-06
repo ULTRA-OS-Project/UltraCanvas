@@ -283,6 +283,7 @@ namespace UltraCanvas {
                 {"flac", {"FLAC", FilerFileCategory::Audio}},
                 {"ogg",  {"OGG",  FilerFileCategory::Audio}},
                 {"m4a",  {"M4A",  FilerFileCategory::Audio}},
+                {"m4b",  {"M4B",  FilerFileCategory::Audio}},
                 {"aac",  {"AAC",  FilerFileCategory::Audio}},
                 {"opus", {"Opus", FilerFileCategory::Audio}},
                 {"mp4",  {"MP4",  FilerFileCategory::Video}},
@@ -1641,7 +1642,10 @@ namespace UltraCanvas {
                 {"Opus", "Opus", false},  {"opus", "Opus", false},
                 {"fLaC", "FLAC", false},  {"twos", "PCM", false},
                 {"sowt", "PCM", false},   {"lpcm", "PCM", false},
-                {"samr", "AMR", false},
+                {"in24", "PCM", false},   {"fl32", "PCM", false},
+                {"samr", "AMR", false},   {"sawb", "AMR-WB", false},
+                {".mp3", "MP3", false},   {"dtsc", "DTS", false},
+                {"dtse", "DTS Express", false},
             };
             for (const Map& m : map)
                 if (fcc == m.fcc) { isVideo = m.video; return m.name; }
@@ -1920,13 +1924,13 @@ namespace UltraCanvas {
             if (ext == "mp3")  return ProbeMp3(f, fileSize, out);
             if (ext == "ogg" || ext == "oga" || ext == "opus")
                 return ProbeOgg(f, fileSize, out);
-            if (ext == "mp4" || ext == "m4a" || ext == "m4v" || ext == "mov" ||
-                ext == "3gp")
+            if (ext == "mp4" || ext == "m4a" || ext == "m4b" || ext == "m4v" ||
+                ext == "mov" || ext == "3gp" || ext == "3g2")
                 return ProbeMp4(f, fileSize, out);
             if (ext == "avi")  return ProbeAvi(f, out);
             if (ext == "mkv" || ext == "webm" || ext == "mka")
                 return ProbeMkv(f, fileSize, out);
-            if (ext == "wmv")  return ProbeAsf(f, out);
+            if (ext == "wmv" || ext == "asf" || ext == "wma") return ProbeAsf(f, out);
             return false;
         }
     }
