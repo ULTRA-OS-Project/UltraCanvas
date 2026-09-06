@@ -5,6 +5,11 @@
   drive root of the shown path (its dropdown lists the drives as before).
   UltraFiler uses it for its Computer page; a host that leaves it unset gets
   the old behaviour.
+- **A pie chart handed a new data source draws the new slices.**
+  `UltraCanvasPieChartElement` cut its slices once and only its own setters
+  told it to cut again, so `SetDataSource()` on a chart already on screen
+  changed the centre text and nothing else. The slices now follow every
+  base-cache invalidation (the data source, the plot area).
 
 #### 2026-09-05 *0.3.103*
 - **macOS applications and shortcuts read like the other two desktops'.** An
