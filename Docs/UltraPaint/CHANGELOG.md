@@ -2,7 +2,7 @@
 - **First release of UltraPaint**, the UltraCanvas bitmap editor, built on the
   new raster-editing layer of the framework (`UCRasterDocument`,
   `UCRasterLayer`, `UCRasterSelection`, the brush engine and
-  `UltraCanvasPaintSurface`, all in UltraCanvas 0.3.106) with PixelFX
+  `UltraCanvasPaintSurface`, all in UltraCanvas 0.3.107) with PixelFX
   (libvips) doing the whole-image work.
 - **Tools:** move, rectangle / ellipse / lasso / magic-wand selection with
   add / subtract / intersect and feathering, crop, eyedropper, pencil,

@@ -1,4 +1,4 @@
-#### 2026-09-06 *0.3.106*
+#### 2026-09-06 *0.3.107*
 - **Raster editing layer — what a bitmap editor needs and the framework did
   not have.** PixelFX has always been a complete whole-image engine (filters,
   colour, resampling, formats), but a paint program also needs the pixels
@@ -54,6 +54,8 @@
   arithmetic, selection algebra, brush engine, document undo / redo,
   selection-aware filters and the PNG / `.ucraster` round trips headless —
   112 checks, no window.
+
+#### 2026-09-06 *0.3.106*
 - **The folder breadcrumb's "Computer" node can open a page of the host's
   own.** `FolderBreadcrumbOptions::onComputerClick` — when set, a click on
   the strip's leading *Computer* node calls it instead of navigating to the
