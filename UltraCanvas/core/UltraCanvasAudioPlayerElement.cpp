@@ -360,6 +360,11 @@ void UltraCanvasAudioPlayerElement::ShowOpenDialog() {
 void UltraCanvasAudioPlayerElement::Play()   { player->Play();   if (onPlay)  onPlay(); }
 void UltraCanvasAudioPlayerElement::Pause()  { player->Pause();  if (onPause) onPause(); }
 void UltraCanvasAudioPlayerElement::Stop()   { player->Stop();   if (onStop)  onStop(); }
+void UltraCanvasAudioPlayerElement::Unload() {
+    player->Stop();
+    player->Unload();      // releases the audio and the file behind it
+    RequestRedraw();
+}
 void UltraCanvasAudioPlayerElement::Seek(double s) { player->Seek(s); if (onSeek) onSeek(s); }
 
 void UltraCanvasAudioPlayerElement::TogglePlayPause() {

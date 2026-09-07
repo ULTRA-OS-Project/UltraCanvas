@@ -152,6 +152,15 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
 endif()
 
+# Which platforms can answer "is this file in use by another program"
+# (UltraCanvasFileLock: Windows share-mode probe + Restart Manager, Linux
+# /proc). Decided here for the same reason as the folder watch above: the core
+# file compiles a null-returning fallback unless this is set, and the library
+# and Tests/ must agree about which side defines the backend.
+if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
 # Same decision, same reasons, for the volume monitor (UltraCanvasVolumeMonitor:
 # WM_DEVICECHANGE / poll() on /proc/self/mountinfo / NSWorkspace mount
 # notifications). macOS is included here where it is absent above, because a

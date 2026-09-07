@@ -1417,8 +1417,18 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
     if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
     ucdDetails.clear();
-    // Spreadsheets and 3D models are parsed into memory by their loaders, and
-    // the video / audio backends expose no release beyond Stop() (done above).
+    // A stopped clip is still an OPEN clip: the decoder keeps the file until
+    // it is unloaded, and on Windows that handle is what makes the file
+    // impossible to rename, replace or delete - the very operations a file
+    // manager offers next to the preview it just closed.
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (videoPlayer) static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->Unload();
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Unload();
+#endif
+    // Spreadsheets and 3D models are parsed into memory by their loaders, so
+    // they hold nothing open once loaded.
 }
 
 void UltraCanvasMediaViewer::ShowOpenDialog() {

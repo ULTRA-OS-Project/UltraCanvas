@@ -33,6 +33,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasFileLock.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
@@ -63,6 +64,7 @@ namespace {
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
+    constexpr const char* kPageFilesInUse = "display/files-in-use";
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageMediaViewer = "media-viewer";
     constexpr const char* kPageTransparentImages = "media-viewer/transparent-images";
@@ -93,6 +95,8 @@ namespace {
         // one radio per thumbnail tag mode (None / Bar / Icon), in the order
         // the widget lists them.
         std::shared_ptr<UltraCanvasCheckbox> extensionsInNamesBox;
+        // Display > Files in use: the "mark held files" checkbox.
+        std::shared_ptr<UltraCanvasCheckbox> lockMarkingBox;
         std::vector<std::pair<FilerExtensionBadge,
                               std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
         UltraCanvasRadioGroup                extensionBadgeGroup;
@@ -812,6 +816,56 @@ namespace {
         return page;
     }
 
+    std::shared_ptr<UltraCanvasContainer> BuildFilesInUsePage(DialogState* d) {
+        auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-inuse");
+        page->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        page->SetPadding(16, 18, 16, 18);
+
+        page->AddChild(MakeLabel("ufl-set-inuse-title", "Files in use", 12.0f));
+        page->AddChild(MakeLabel("ufl-set-inuse-caption",
+                "Whether the file display marks files another program is "
+                "holding open:"));
+
+        d->lockMarkingBox = MakeFormatCheckbox("ufl-set-inuse-mark",
+                "Mark files that are in use", 460,
+                d->settings->showLockState, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->showLockState = on;
+            ApplyAndSave(d);
+        });
+        d->lockMarkingBox->SetFontSize(kFontSize + 1.0f);
+        page->AddChild(d->lockMarkingBox);
+
+        if (!FileLockProbeAvailable()) {
+            page->AddChild(MakeLabel("ufl-set-inuse-unsupported",
+                    "This system cannot be asked which program holds a file, "
+                    "so nothing is marked here."));
+            d->lockMarkingBox->SetDisabled(true);
+        }
+
+        page->AddChild(MakeLabel("ufl-set-inuse-note1",
+                "A held file wears a padlock on its icon and an X among its "
+                "attributes, and the info"));
+        page->AddChild(MakeLabel("ufl-set-inuse-note2",
+                "bar says so - which is the answer to a copy, a rename or a "
+                "delete that fails with"));
+        page->AddChild(MakeLabel("ufl-set-inuse-note3",
+                "\"the file is open in another program\". The Attributes "
+                "dialog names that program."));
+        page->AddChild(MakeLabel("ufl-set-inuse-note4",
+                "A file merely open elsewhere - which on this kind of system "
+                "blocks nothing - is"));
+        page->AddChild(MakeLabel("ufl-set-inuse-note5",
+                "marked O instead, and wears no padlock."));
+        page->AddChild(MakeLabel("ufl-set-inuse-note6",
+                "Off, nothing is asked: each shown file costs one open, which "
+                "is worth avoiding on"));
+        page->AddChild(MakeLabel("ufl-set-inuse-note7",
+                "a slow network volume."));
+        return page;
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildHomeFolderPage(DialogState* d) {
         auto page = std::make_shared<UltraCanvasContainer>("ufl-set-page-home");
         page->layout.SetFlexColumn().SetFlexGap(8)
@@ -1379,6 +1433,11 @@ namespace {
         fileExtensions.text = "File extensions";
         d->tree->AddNode(kPageDisplay, fileExtensions);
 
+        TreeNodeData filesInUse;
+        filesInUse.nodeId = kPageFilesInUse;
+        filesInUse.text = "Files in use";
+        d->tree->AddNode(kPageDisplay, filesInUse);
+
         TreeNodeData pdfInventory;
         pdfInventory.nodeId = kPagePdfInventory;
         pdfInventory.text = "PDF Inventory";
@@ -1458,6 +1517,12 @@ namespace {
                                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         d->pages[kPageFileExtensions] = fileExtensionsPage;
         d->pageArea->AddChild(fileExtensionsPage);
+
+        auto filesInUsePage = BuildFilesInUsePage(d);
+        filesInUsePage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        d->pages[kPageFilesInUse] = filesInUsePage;
+        d->pageArea->AddChild(filesInUsePage);
 
         auto pdfInventoryPage = BuildPdfInventoryPage(d);
         pdfInventoryPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)

@@ -2721,11 +2721,14 @@ namespace UltraCanvas {
             aspectCache.clear();
             mediaQueue.clear();
             mediaInfoCache.clear();
+            lockQueue.clear();
+            lockCache.clear();
         }
         DropThumbnailCache();
 
         std::error_code ec;
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
+        listingIsRealDirectory = fileListMode || isRealDir;
 
         if (fileListMode) {
             for (const std::string& p : fileListPaths) {
@@ -3369,8 +3372,9 @@ namespace UltraCanvas {
         if (has(FilerDatasetField::CreatedDate) && e.createdTime != 0) {
             lines.push_back(FormatTime(e.createdTime));
         }
-        if (has(FilerDatasetField::Attributes) && !e.attributes.empty()) {
-            lines.push_back(e.attributes);
+        if (has(FilerDatasetField::Attributes)) {
+            std::string attrs = EntryAttributeText(e);
+            if (!attrs.empty()) lines.push_back(attrs);
         }
         // Length (audio / video) and Dimensions (bitmaps) both come from the
         // lazily-probed, cached media info — gated by category so each only
@@ -8015,14 +8019,22 @@ namespace UltraCanvas {
                                                ImageFitMode imageFit) {
         if (rect.width <= 2 || rect.height <= 2) return;
         // A shortcut wears the icon of what it points at, so the arrow badge
-        // drawn over it afterwards is the only thing that says it is one.
-        struct ShortcutBadge {
+        // drawn over it afterwards is the only thing that says it is one; the
+        // padlock is the same idea for a file another program is holding, and
+        // sits in the opposite corner so a locked shortcut shows both. Asking
+        // whether it is held only queues the probe - the answer arrives with a
+        // repaint, which is why this is read here and not waited for.
+        struct EntryBadges {
             UltraCanvasFilerWidget* widget;
             IRenderContext* ctx;
             const Rect2Di& rect;
-            bool wanted;
-            ~ShortcutBadge() { if (wanted) widget->DrawShortcutOverlay(ctx, rect); }
-        } badge{this, ctx, rect, e.isShortcut};
+            bool shortcut;
+            bool locked;
+            ~EntryBadges() {
+                if (shortcut) widget->DrawShortcutOverlay(ctx, rect);
+                if (locked) widget->DrawLockOverlay(ctx, rect);
+            }
+        } badge{this, ctx, rect, e.isShortcut, EntryLockInfo(e).Blocks()};
 
         // Real image thumbnails (explicit thumbnail, else the bitmap itself).
         // Never decoded here: the frame must not wait for image files, so the
@@ -8144,6 +8156,40 @@ namespace UltraCanvas {
                 Point2Dd(head.x - barb, head.y),
                 Point2Dd(head.x, head.y + barb)};
         ctx->FillLinePath(arrowHead);
+    }
+
+    void UltraCanvasFilerWidget::DrawLockOverlay(IRenderContext* ctx,
+                                                 const Rect2Di& rect) {
+        // Bottom-right, mirroring the shortcut badge on the left: a white tile
+        // with a padlock in it. Same size rule - below it the badge would be a
+        // smudge over the icon it annotates, and the attribute letter and the
+        // info bar still say the file is held.
+        const int edge = std::min(rect.width, rect.height);
+        if (edge < 24) return;
+        const double box = std::max(10.0, edge * 0.38);
+        const Rect2Dd badge(rect.x + rect.width - box - 1,
+                            rect.y + rect.height - box - 1, box, box);
+
+        ctx->SetFillPaint(Color(255, 255, 255, 235));
+        ctx->FillRoundedRectangle(badge, 2);
+        ctx->SetStrokePaint(Color(0, 0, 0, 60));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(badge, 2);
+
+        // The padlock: a shackle arc over a body block, in the warning ink the
+        // rest of the widget uses for "this will not work".
+        const Color ink(176, 58, 46, 255);
+        const double bodyW = box * 0.52;
+        const double bodyH = box * 0.34;
+        const Rect2Dd body(badge.x + (box - bodyW) / 2.0,
+                           badge.y + box * 0.52, bodyW, bodyH);
+        ctx->SetFillPaint(ink);
+        ctx->FillRoundedRectangle(body, 1);
+
+        const double shackleR = bodyW * 0.34;
+        ctx->SetStrokePaint(ink);
+        ctx->SetStrokeWidth(std::max(1.0f, static_cast<float>(box * 0.09)));
+        ctx->DrawArc(body.x + bodyW / 2.0, body.y, shackleR, M_PI, 2.0 * M_PI);
     }
 
     void UltraCanvasFilerWidget::DrawTextPreview(IRenderContext* ctx,
@@ -8307,7 +8353,9 @@ namespace UltraCanvas {
                     value = FormatTime(e.createdTime);
                     break;
                 case FilerDetailsColumn::Attributes:
-                    value = e.attributes;
+                    // Not e.attributes: the lock letter is only known once the
+                    // background probe has answered, so it is added here.
+                    value = EntryAttributeText(e);
                     break;
                 case FilerDetailsColumn::Info:
                     value = e.info;
@@ -8916,6 +8964,7 @@ namespace UltraCanvas {
             statsQueue.clear();
             aspectQueue.clear();
             mediaQueue.clear();
+            lockQueue.clear();
         }
         statsCond.notify_all();
         if (statsWorker.joinable()) statsWorker.join();
@@ -8926,20 +8975,28 @@ namespace UltraCanvas {
             std::string path;
             std::string aspectPath;
             MediaProbeRequest media;
+            std::vector<std::string> lockBatch;
             bool haveMedia = false;
             uint64_t gen;
             {
                 std::unique_lock<std::mutex> lk(statsMutex);
                 statsCond.wait(lk, [this]() {
                     return statsShutdown || !statsQueue.empty() ||
-                           !aspectQueue.empty() || !mediaQueue.empty();
+                           !aspectQueue.empty() || !mediaQueue.empty() ||
+                           !lockQueue.empty();
                 });
                 if (statsShutdown) return;
-                // Shortest jobs first: aspect probes (one header read) settle
-                // the grid geometry the user is looking at, media probes are a
-                // few reads for the info bar / dataset lines, and a recursive
+                // Shortest jobs first: lock probes are one open per file and
+                // the whole queue goes in ONE call (on Linux the open-file
+                // information is system-wide, so a batch costs what a single
+                // file costs), aspect probes (one header read) settle the grid
+                // geometry the user is looking at, media probes are a few
+                // reads for the info bar / dataset lines, and a recursive
                 // folder walk can run for seconds.
-                if (!aspectQueue.empty()) {
+                if (!lockQueue.empty()) {
+                    lockBatch.assign(lockQueue.begin(), lockQueue.end());
+                    lockQueue.clear();
+                } else if (!aspectQueue.empty()) {
                     aspectPath = std::move(aspectQueue.front());
                     aspectQueue.pop_front();
                 } else if (!mediaQueue.empty()) {
@@ -8951,6 +9008,32 @@ namespace UltraCanvas {
                     statsQueue.pop_front();
                 }
                 gen = statsGeneration;
+            }
+
+            if (!lockBatch.empty()) {
+                std::vector<FileLockInfo> found;
+                RunGuarded("file lock probe", lockBatch.front(), [&]() {
+                    // No holder names here: naming the program costs a
+                    // Restart Manager session per file on Windows, and the
+                    // listing only needs to know THAT a file is held. The
+                    // info bar asks for the name of the one selected file.
+                    found = ProbeFileLocks(lockBatch, false);
+                });
+                bool report = false;
+                {
+                    std::lock_guard<std::mutex> lk(statsMutex);
+                    if (statsShutdown) return;
+                    if (gen == statsGeneration) {
+                        for (size_t i = 0; i < lockBatch.size() && i < found.size(); ++i) {
+                            lockCache[lockBatch[i]] = found[i];
+                            // Only a file somebody holds changes what is drawn;
+                            // "free" is what the pending slot already showed.
+                            report = report || found[i].InUse();
+                        }
+                    }
+                }
+                if (report) PostFolderStatsRedraw();
+                continue;
             }
 
             if (haveMedia) {
@@ -9549,6 +9632,55 @@ namespace UltraCanvas {
         return "";
     }
 
+    FileLockInfo UltraCanvasFilerWidget::EntryLockInfo(const FilerEntry& e) {
+        // Directories are not probed (what holds one is a program's current
+        // directory, which no probe here looks at), and neither is anything
+        // inside an archive - those paths are not files on disk.
+        if (!showLockState || e.isDirectory || e.path.empty()) return FileLockInfo{};
+        if (!listingIsRealDirectory) return FileLockInfo{};
+        if (!FileLockProbeAvailable()) return FileLockInfo{};
+
+        std::lock_guard<std::mutex> lk(statsMutex);
+        auto it = lockCache.find(e.path);
+        if (it != lockCache.end()) return it->second;
+
+        // The probe opens the file, and this is asked from the paint path, so
+        // it goes to the worker. The pending slot (Unknown) keeps a file drawn
+        // every frame from being queued more than once; the finished probe
+        // posts a redraw that picks the answer up.
+        lockCache.emplace(e.path, FileLockInfo{});
+        lockQueue.push_back(e.path);
+        StartFolderStatsWorkerLocked();
+        statsCond.notify_one();
+        return FileLockInfo{};
+    }
+
+    std::string UltraCanvasFilerWidget::EntryAttributeText(const FilerEntry& e) {
+        std::string text = e.attributes;
+        if (char letter = FileLockAttributeLetter(EntryLockInfo(e).state))
+            text += letter;
+        return text;
+    }
+
+    void UltraCanvasFilerWidget::SetShowLockState(bool show) {
+        if (showLockState == show) return;
+        showLockState = show;
+        {
+            // Turning it off drops what was probed; turning it on starts from
+            // nothing, so every shown file is asked about again.
+            std::lock_guard<std::mutex> lk(statsMutex);
+            lockQueue.clear();
+            lockCache.clear();
+        }
+        RequestRedraw();
+    }
+
+    FileLockState UltraCanvasFilerWidget::GetEntryLockState(const std::string& path) const {
+        std::lock_guard<std::mutex> lk(statsMutex);
+        auto it = lockCache.find(path);
+        return it == lockCache.end() ? FileLockState::Unknown : it->second.state;
+    }
+
     void UltraCanvasFilerWidget::BuildSelectionInfoText(std::string& primary,
                                                         std::string& secondary) {
         primary.clear();
@@ -9614,7 +9746,11 @@ namespace UltraCanvas {
             if (extra.empty()) extra = e.info;   // provider / compression fallback
             addPart(extra);
             addPart(FormatTime(e.modifiedTime));
-            if (!e.attributes.empty()) addPart("[" + e.attributes + "]");
+            std::string attrs = EntryAttributeText(e);
+            if (!attrs.empty()) addPart("[" + attrs + "]");
+            // Spelled out for the one file the user is looking at: the letter
+            // says something is holding it, this says what that means.
+            addPart(FileLockText(EntryLockInfo(e)));
             return;
         }
 

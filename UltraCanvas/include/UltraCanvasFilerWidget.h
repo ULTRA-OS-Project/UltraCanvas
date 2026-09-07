@@ -89,6 +89,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasFolderWatcher.h"
+#include "UltraCanvasFileLock.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTimer.h"
@@ -548,6 +549,21 @@ namespace UltraCanvas {
 
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
+
+        // "In use" marking: whether the display says that another program is
+        // holding a file - the reason an overwrite, a rename or a delete of it
+        // fails. Each shown file is probed in the background (one open that is
+        // closed again, nothing written) and marked with an attribute letter,
+        // X for a file the system will not let be replaced right now and O for
+        // one merely open elsewhere; the info bar spells it out for a single
+        // selected file, naming the program where the platform can. On by
+        // default, and a no-op where nothing can answer
+        // (UltraCanvasFileLock::FileLockProbeAvailable()).
+        void SetShowLockState(bool show);
+        bool GetShowLockState() const { return showLockState; }
+        // What the last probe found for `path`, without probing: Unknown when
+        // it has not been looked at (or cannot be).
+        FileLockState GetEntryLockState(const std::string& path) const;
 
         // Curated home-folder display: while set, displaying `homePath` lists
         // only the given main folders — each by its resolved full path, so a
@@ -1076,6 +1092,13 @@ namespace UltraCanvas {
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
+        bool showLockState = true;
+        // Whether the shown entries are files on disk (a real folder, or the
+        // file-list display's found paths) rather than the interior of an
+        // archive, whose "paths" no system call can be asked about. Set by
+        // every scan; read by the lock probe, which has nothing to ask about
+        // a file that only exists inside a .zip.
+        bool listingIsRealDirectory = false;
         // Curated home display (SetCuratedHomeFolder): the folder whose
         // listing is curated, and the main folders it shows.
         std::string curatedHomePath;
@@ -1632,7 +1655,19 @@ namespace UltraCanvas {
         std::unordered_map<std::string, MediaInfoSlot> mediaInfoCache;
         std::deque<MediaProbeRequest> mediaQueue;
 
-        std::mutex statsMutex;              // guards caches/queues/generation
+        // "Is another program holding this file" per shown file, filled by the
+        // same worker: the probe is one open that is closed again, but it is
+        // an open, and the paint path may not make one. A slot exists from the
+        // moment a file is queued (state Unknown), which is what keeps a file
+        // drawn every frame from being queued every frame. Dropped with the
+        // rest on a rescan, so a refresh - and the folder watch's rescan after
+        // a change - is what makes the marking current.
+        std::unordered_map<std::string, FileLockInfo> lockCache;
+        std::deque<std::string> lockQueue;
+
+        // Mutable so a const getter (GetEntryLockState) can read a cache the
+        // worker writes; the lock is what makes that read safe.
+        mutable std::mutex statsMutex;      // guards caches/queues/generation
         std::condition_variable statsCond;
         std::thread statsWorker;
         bool statsShutdown = false;
@@ -1850,6 +1885,12 @@ namespace UltraCanvas {
         // mark that tells a shortcut apart from the file it points at, whose
         // icon it otherwise wears exactly.
         void DrawShortcutOverlay(IRenderContext* ctx, const Rect2Di& rect);
+        // The padlock badge in the opposite corner: another program is
+        // holding this file, so replacing, renaming or deleting it fails
+        // until that program lets go. Only for a file the system actually
+        // refuses (FileLockState::Locked) - a file merely open elsewhere
+        // blocks nothing and is left to the attribute letter.
+        void DrawLockOverlay(IRenderContext* ctx, const Rect2Di& rect);
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         // True when the entry sits on the clipboard as a pending "cut", so the
         // view can ghost it until the move completes (Explorer-style).
@@ -1878,6 +1919,16 @@ namespace UltraCanvas {
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
         std::string EntryExtraInfo(const FilerEntry& e);
+        // Cached "is another program holding this file", queueing the probe
+        // on the first ask. Called from the paint path, so it never probes
+        // itself: a miss returns an empty (Unknown) answer and the finished
+        // probe posts a redraw. Empty as well while the marking is off, or
+        // where the platform cannot answer.
+        FileLockInfo EntryLockInfo(const FilerEntry& e);
+        // The attribute letters of an entry - what DecorateEntry() worked out
+        // from the file itself, plus the lock letter, which is only known once
+        // the background probe has answered.
+        std::string EntryAttributeText(const FilerEntry& e);
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
         // Plain cut to a width, without the "…" — for the cells of a
