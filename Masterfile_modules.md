@@ -324,6 +324,44 @@ the backing implementation can be replaced without affecting callers.
   application half in `Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp`).
   See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
 
+**Raster editing section** — the editable-bitmap layer under UltraPaint
+(`UltraCanvas/{include,core}/UltraCanvasRaster*.{h,cpp}`,
+`UltraCanvasBrushEngine.{h,cpp}`, `UltraCanvasPaintSurface.{h,cpp}`; doc:
+`Docs/UltraCanvas/UltraCanvasPaintSurface.md`). PixelFX stays the whole-image
+engine; these classes hold the pixels being edited and hand them to it.
+
+- **UCRasterLayer** — straight-RGBA 8-bit layer with name / visible / locked /
+  opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
+  BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
+  `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+- **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
+  SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
+  (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
+  `Coverage/GetBounds/GetOutline`.
+- **UCRasterDocument** — layer stack + selection + history: `AddLayer/
+  DuplicateLayer/RemoveLayer/MoveLayer/MergeLayerDown/FlattenImage`, layer
+  attribute setters, `ScaleImage/ResizeCanvas/CropTo/Flip*/Rotate*`,
+  `BeginEdit/EndEdit/RecordEdit/NotifyChanged`, `ApplyFilter/
+  ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
+  `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
+  `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
+  notifications.
+- **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
+  strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
+  pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
+  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+- **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
+  fit, checkerboard, pixel grid, marching ants, brush cursor,
+  `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
+  `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
+  coordinates.
+- **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
+  drawing for zoomed pixel display (Cairo backend implemented).
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,

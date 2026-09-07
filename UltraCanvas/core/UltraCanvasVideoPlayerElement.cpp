@@ -145,6 +145,12 @@ void UltraCanvasVideoPlayerElement::Stop() {
     if (onStop) onStop();
     RequestRedraw();
 }
+void UltraCanvasVideoPlayerElement::Unload() {
+    player->Stop();
+    player->Unload();      // the decoder closes the file; Stop() would not
+    haveFrame = false;
+    RequestRedraw();
+}
 void UltraCanvasVideoPlayerElement::Seek(double s) {
     player->Seek(s);
     if (onSeek) onSeek(s);

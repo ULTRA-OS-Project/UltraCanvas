@@ -33,8 +33,100 @@
   size bound still being applied, and unregistering a decoder while leaving the
   format recognised. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too — the
   case that shows a plugin working on a build with no platform backend.
+#### 2026-09-06 *0.3.107*
+- **Raster editing layer — what a bitmap editor needs and the framework did
+  not have.** PixelFX has always been a complete whole-image engine (filters,
+  colour, resampling, formats), but a paint program also needs the pixels
+  *under the brush*: a mutable layer, a layer stack, a selection, undo, dab
+  stamping and an element that edits rather than views. The investigation is
+  written up in `Docs/UltraPaint/FeatureGapAnalysis.md`; the additions are
+  framework code so the next application gets them too.
+- **New `UltraCanvasRasterLayer.h`** — `UCRasterLayer`, a straight-RGBA
+  8-bit pixel buffer with name / visibility / lock / opacity / blend mode
+  (`RasterBlendMode`: Normal, Multiply, Screen, Overlay, Darken, Lighten,
+  Difference, Addition, Subtract, Soft Light, Hard Light), whole-layer edits,
+  compositing onto a premultiplied ARGB32 pixmap with the blend arithmetic,
+  and a lossless PixelFX round trip (`ToPixelFX` / `FromPixelFX`).
+- **New `UltraCanvasRasterSelection.h`** — `UCRasterSelection`, a soft
+  coverage mask with rectangle / ellipse / polygon / mask shapes, replace /
+  add / subtract / intersect, feather / grow / shrink / invert / translate,
+  and the marching-ants outline.
+- **New `UltraCanvasRasterDocument.h`** — `UCRasterDocument`, the layer
+  stack of one canvas: layer operations, whole-image geometry, pixel-edit
+  brackets (`BeginEdit` / `EndEdit` / `RecordEdit`) and copy-on-write
+  structural snapshots for undo / redo under a memory budget,
+  selection-aware PixelFX filter application (`ApplyFilter`,
+  `PreviewFilter`), a cached composite pixmap re-drawn by dirty rectangle,
+  file load / save through PixelFX and a layered `.ucraster` project file
+  (ZIP of `document.json` plus one PNG per layer, via `UCZipPackage` and
+  `UltraCanvasJSON`).
+- **New `UltraCanvasBrushEngine.h`** — `UCBrushStroke` (round / square dabs
+  with hardness, opacity *capping the stroke* versus flow *per dab*, spacing
+  with carry-over so speed does not change density, anti-aliasing, pressure;
+  paint / erase / clone / smudge / dodge / burn) and `RasterPaint`
+  (anti-aliased line / rectangle / ellipse / polygon through 4×4 supersampled
+  coverage, scanline flood fill with tolerance and a global mode, magic-wand
+  mask, linear / radial / reflected gradients interpolated in premultiplied
+  space, mask stamping, eyedropper). None of it needs libvips.
+- **New element `UltraCanvasPaintSurface`** — displays a document's live
+  composite at any zoom (preset ladder, wheel about the pointer, fit, 100 %),
+  pans (middle button, Space+drag, or a pan mode), draws the checkerboard,
+  pixel grid from 8×, marching ants on a timer, a brush-size cursor, and
+  forwards pointer events to the host's tool **in image coordinates** with
+  an overlay hook for rubber bands. Added to the element catalogue.
+- **`IRenderContext::SetImageSmoothing(bool)`** — nearest-neighbour pixmap
+  drawing (Cairo: `CAIRO_FILTER_NEAREST`) so a zoomed bitmap shows square
+  pixels; default on, the surface switches it off above 200 %.
+- **New application `Apps/UltraPaint`** (own changelog
+  `Docs/UltraPaint/CHANGELOG.md`, `BUILD_ULTRAPAINT_APP`): the bitmap editor
+  on this layer — 23 tools, layers panel, PixelFX adjustments and filters
+  with live preview, Curves through `UltraCanvasCurvesDialog`, export through
+  `UltraCanvasImageExportDialog`. `ULTRAPAINT_VERSION` joins
+  `cmake/UltraCanvasVersion.cmake`; `package-linux.sh` bundles it.
+- **New doc `Docs/UltraCanvas/UltraCanvasPaintSurface.md`** covering the
+  five classes; Masterfile_modules.md gains the raster editing section.
+- **`Tests/RasterEditingTest.cpp`** (with `BUILD_TESTS`) runs the layer
+  arithmetic, selection algebra, brush engine, document undo / redo,
+  selection-aware filters and the PNG / `.ucraster` round trips headless —
+  112 checks, no window.
 
 #### 2026-09-06 *0.3.106*
+- **"Is this file in use by another program" is now a question the framework
+  can answer** (`UltraCanvasFileLock.h`). It is the question behind every
+  *"the action can't be completed because the file is open in another
+  program"*, and until now nothing here could ask it. `ProbeFileLock()`
+  answers for one file and `ProbeFileLocks()` for a whole folder in one pass;
+  the answer separates **Locked** (a write or a replace would fail right now)
+  from **OpenElsewhere** (somebody has it open, which on Unix stops nothing),
+  and can name the holding program where the platform allows. The probe asks
+  for the access an overwrite needs while granting every sharing flag itself,
+  then closes the handle: nothing is written, and a probe is never what
+  another program trips over. Windows answers through the share mode and the
+  Restart Manager, Linux through `/proc/locks` and `/proc/<pid>/fd`; on macOS
+  and the mobile targets `FileLockProbeAvailable()` is false and every probe
+  says Unknown. Tested by `Tests/FileLockTest.cpp` (ctest: `FileLockTest`).
+- **The file display marks files that are being held.** With
+  `SetShowLockState()` (default on) a held file wears a padlock badge in the
+  corner of its icon, carries `X` among its attributes (`O` for one merely
+  open elsewhere) and is described in the info bar — so a file that will
+  refuse to be copied over, renamed or deleted says so before the attempt.
+  Each shown file is probed once per listing on the folder-statistics worker,
+  never on the UI thread, and only the entries actually drawn are asked about.
+- **A closed media preview lets go of its file.** `UltraCanvasMediaViewer`
+  stopped playback when its file was closed, but a stopped clip is still an
+  open clip: the decoder kept the file, and on Windows that handle is exactly
+  what makes it impossible to rename, replace or delete — next to a preview
+  pane that offers all three. `CloseFile()` now unloads the video and audio
+  players as well, through the new `UltraCanvasVideoPlayerElement::Unload()`
+  and `UltraCanvasAudioPlayerElement::Unload()`.
+- **VirtualFS no longer holds an archive open after listing it.** The
+  libarchive provider kept a read handle on the archive for as long as it sat
+  in the manager's cache (up to ten at a time), although every operation
+  already opens its own handle — libarchive cannot rewind, so each pass needs
+  a fresh one anyway. On Windows that spare handle made a browsed `.zip`
+  impossible to overwrite or rename for the rest of the session, and it broke
+  *deleting an entry inside one*: that rewrites the archive and renames the
+  new file over the old, which the provider's own handle refused.
 - **The folder breadcrumb's "Computer" node can open a page of the host's
   own.** `FolderBreadcrumbOptions::onComputerClick` — when set, a click on
   the strip's leading *Computer* node calls it instead of navigating to the

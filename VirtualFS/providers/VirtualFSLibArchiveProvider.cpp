@@ -249,10 +249,21 @@ VirtualFSResult VirtualFSLibArchiveProvider::FinishOpen(
     const VirtualFSOpenOptions& options,
     uint64_t archiveSize) {
     
-    pImpl->readArchive = pImpl->NewReadHandle();
-    if (!pImpl->readArchive) {
-        pImpl->memoryData.reset();
-        return VirtualFSResult::ArchiveCorrupt;
+    // Opened only to establish that this IS an archive we can read, then
+    // closed again: an archive kept open holds an OS file handle on it for as
+    // long as the provider is cached, and on Windows that handle is what makes
+    // the file impossible to overwrite, rename or delete - including by this
+    // program, whose own entry-deleting rewrite renames a new archive over the
+    // old one. Every pass below opens its own handle and frees it (libarchive
+    // cannot rewind, so each pass needs a fresh one anyway), so nothing is
+    // lost by not holding one.
+    {
+        struct archive* probe = pImpl->NewReadHandle();
+        if (!probe) {
+            pImpl->memoryData.reset();
+            return VirtualFSResult::ArchiveCorrupt;
+        }
+        archive_read_free(probe);
     }
     
     pImpl->isOpen = true;
@@ -310,13 +321,23 @@ VirtualFSArchiveInfo VirtualFSLibArchiveProvider::GetArchiveInfo() const {
 void VirtualFSLibArchiveProvider::BuildEntryCache() {
     ClearEntryCache();
     
-    if (!pImpl->readArchive) return;
+    if (!pImpl->isOpen) return;
     
-    archive_read_free(pImpl->readArchive);
     pImpl->readArchive = pImpl->NewReadHandle();
     if (!pImpl->readArchive) {
         return;
     }
+    // The handle lives for this pass only - see FinishOpen: a provider sitting
+    // in the manager's cache must hold no handle on the file it describes.
+    struct HandleGuard {
+        Impl* impl;
+        ~HandleGuard() {
+            if (impl->readArchive) {
+                archive_read_free(impl->readArchive);
+                impl->readArchive = nullptr;
+            }
+        }
+    } handleGuard{pImpl.get()};
     
     struct archive_entry* entry;
     while (archive_read_next_header(pImpl->readArchive, &entry) == ARCHIVE_OK) {

@@ -101,6 +101,13 @@ public:
     bool showFileExtensions = true;
     FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
 
+    // Display > Files in use: whether the file display marks files another
+    // program is holding - the reason an overwrite, a rename or a delete of
+    // one fails. Each shown file is probed in the background; on a slow or
+    // busy network volume that is one extra open per file, which is the
+    // reason this can be turned off. On where the platform can answer at all.
+    bool showLockState = true;
+
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
     // them. Ctrl at the drop always copies and Shift always moves, whichever
@@ -182,6 +189,10 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
+        it = kv.find("display.inuse.marking");
+        if (it != kv.end())
+            showLockState =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("extras.prompt.application");
@@ -225,6 +236,8 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
+        file << "display.inuse.marking = "
+             << (showLockState ? "true" : "false") << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";

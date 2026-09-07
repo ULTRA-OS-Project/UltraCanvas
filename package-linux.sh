@@ -43,7 +43,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
     || echo "$(uname -m)-linux-gnu")"
 
 # Apps to include (executable target names, output to the build root).
-APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer)
+APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.

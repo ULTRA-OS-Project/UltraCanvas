@@ -182,6 +182,43 @@ add_test(NAME FolderWatcherTest COMMAND FolderWatcherTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FolderWatcherTest")
 
+# ===== FILE LOCK TEST =====
+# Same arrangement as the folder watcher above: UltraCanvasFileLock is built
+# from its own sources (core plus this platform's backend), needs no display
+# and does not link UltraCanvas. Platforms without a backend still build and
+# run it: there every probe answers Unknown by design and the test checks that.
+message(STATUS "  Building FileLockTest...")
+
+set(FILE_LOCK_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileLockTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFileLock.cpp
+)
+# Backend source and define chosen together, from the single
+# ULTRACANVAS_HAS_NATIVE_FILE_LOCK decision in the top-level CMakeLists - the
+# core file emits its fallback only when the define is absent.
+if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+    if(WIN32)
+        list(APPEND FILE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFileLock.cpp)
+    else()
+        list(APPEND FILE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFileLock.cpp)
+    endif()
+endif()
+
+add_executable(FileLockTest ${FILE_LOCK_SOURCES})
+target_include_directories(FileLockTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileLockTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+    target_compile_definitions(FileLockTest PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+endif()
+set_target_properties(FileLockTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileLockTest COMMAND FileLockTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileLockTest")
+
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
