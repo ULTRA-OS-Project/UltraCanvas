@@ -23,9 +23,17 @@ android {
 
         externalNativeBuild {
             cmake {
-                // arm64 only to start with. Every extra ABI multiplies both
-                // build time and the sysroot you must cross-compile.
-                abiFilters 'arm64-v8a'
+                // x86_64 FIRST, arm64 second - the opposite of what shipping
+                // order suggests, and deliberate: nothing on an x86_64 Linux
+                // desktop or CI runner can run an arm64-only APK without an
+                // unofficial translation layer or whole-CPU emulation, so an
+                // arm64-first build has nowhere to run until a phone is in the
+                // room. Build 'x86_64' alone until the pipeline works end to
+                // end, then add back 'arm64-v8a' - which is what ships.
+                // Every extra ABI multiplies both build time and the sysroot
+                // you must cross-compile
+                // (Docs/UltraCanvas/AndroidOnLinuxInvestigation.md section 3).
+                abiFilters 'x86_64'
                 arguments '-DANDROID_PLATFORM=android-26',
                           '-DANDROID_STL=c++_shared',
                           // Point pkg-config at the cross-compiled sysroot.
