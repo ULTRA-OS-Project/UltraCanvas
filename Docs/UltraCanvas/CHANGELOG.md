@@ -1,4 +1,4 @@
-#### 2026-09-07 *0.3.107*
+#### 2026-09-07 *0.3.108*
 - **A video codec an application brings is now actually used.** The codec
   registry landed in 0.3.105 could classify a video format and advertise it,
   but decoding still went through `IVideoBackend` alone — so "registering a

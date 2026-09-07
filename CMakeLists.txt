@@ -1317,6 +1317,8 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME VideoCodecPluginTest COMMAND VideoCodecPluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # The raster-editing layer under UltraPaint: layers, selection, brush
     # engine, document undo / redo, selection-aware PixelFX filters and the
     # PNG / .ucraster round trips. Headless; no window is created.
