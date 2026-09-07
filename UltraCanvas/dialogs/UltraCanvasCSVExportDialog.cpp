@@ -125,11 +125,10 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
 
     // ===== Preview =====
     contentSection->AddChild(makeLabel("lblExpPreview", "Preview", 300, true));
-    previewText_ = std::make_shared<UltraCanvasTextInput>("ExpPreview", 0, 0, 588, 200);
-    previewText_->SetInputType(TextInputType::Multiline);
+    previewText_ = std::make_shared<UltraCanvasTextArea>("ExpPreview", 0, 0, 588, 200);
     previewText_->SetReadOnly(true);
     previewText_->SetFontSize(11);
-    previewText_->SetShowValidationState(false);
+    previewText_->SetWordWrap(false);
     contentSection->AddChild(previewText_);
 
     AddChild(contentSection);

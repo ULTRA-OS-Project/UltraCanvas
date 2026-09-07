@@ -48,8 +48,8 @@ namespace UltraCanvas {
         multiLineLabel->SetFontSize(12);
         container->AddChild(multiLineLabel);
 
-        auto multiLineInput = std::make_shared<UltraCanvasTextInput>("MultiLineInput", 20, 155, 300, 100);
-        multiLineInput->SetInputType(TextInputType::Multiline);
+        auto multiLineInput = std::make_shared<UltraCanvasTextArea>("MultiLineInput", 20, 155, 300, 100);
+        multiLineInput->SetWordWrap(true);
         multiLineInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
         container->AddChild(multiLineInput);
 

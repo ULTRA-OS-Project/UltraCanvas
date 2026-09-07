@@ -74,7 +74,7 @@ std::shared_ptr<UltraCanvasContainer> FieldColumn(
 
 } // namespace
 
-void UltraAISettingsDialog::CreateSettingsDialog() {
+void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpointId) {
     DialogConfig cfg;
     cfg.title      = "UltraAI — Settings";
     cfg.width      = kW;
@@ -156,28 +156,38 @@ void UltraAISettingsDialog::CreateSettingsDialog() {
         "API key — cloud providers only; leave empty for local/self-hosted",
         "leave empty to keep the stored key", keyInput_));
 
-    // Mode checkboxes, two per flex row.
+    // Mode checkboxes in a fixed two-column grid so the second column lines up
+    // regardless of how wide each checkbox's label is (a flex row sized each
+    // cell to its content, leaving the right column ragged).
+    using namespace CSSLayout;
     form->AddChild(FlexLabel("set-modes-lbl", "Modes this endpoint can serve", 18));
     auto modesCol = std::make_shared<UltraCanvasContainer>("set-modes");
-    modesCol->layout.SetFlexColumn().SetFlexGap(4);
-    modesCol->layoutItem.SetFlexShrink(0);
     const auto& caps = AllCapabilities();
-    std::shared_ptr<UltraCanvasContainer> modeRow;
+    constexpr int kCols   = 2;
+    constexpr int kRowH   = 24;
+    constexpr int kRowGap = 4;
+    const int rows = static_cast<int>((caps.size() + kCols - 1) / kCols);
+
+    std::vector<GridTrackSize> colTracks(kCols, {GridTrackSizeKind::Fr, Dimension::Fr(1)});
+    std::vector<GridTrackSize> rowTracks(
+        static_cast<size_t>(std::max(0, rows)),
+        {GridTrackSizeKind::Fixed, Dimension::Px(kRowH)});
+    modesCol->layout.SetGrid()
+                    .SetGridColumns(colTracks)
+                    .SetGridRows(rowTracks)
+                    .SetGridGap(kRowGap, 8);   // rowGap, columnGap
+    modesCol->size.height =
+        Dimension::Px(static_cast<float>(rows * kRowH + std::max(0, rows - 1) * kRowGap));
+    modesCol->layoutItem.SetFlexShrink(0);
+
     for (size_t i = 0; i < caps.size(); ++i) {
-        if (i % 2 == 0) {
-            modeRow = std::make_shared<UltraCanvasContainer>(
-                "set-moderow-" + std::to_string(i));
-            modeRow->layout.SetFlexRow().SetFlexGap(8);
-            modeRow->size.height = Dimension::Px(24);
-            modeRow->layoutItem.SetFlexShrink(0);
-            modesCol->AddChild(modeRow);
-        }
         auto cb = std::make_shared<UltraCanvasCheckbox>(
             std::string("set-mode-") + caps[i].id, 0, 0, 0, 24, caps[i].label);
         cb->size.height = Dimension::Px(24);
-        cb->layoutItem.SetFlexGrow(1);
         modeChecks_[caps[i].cap] = cb;
-        modeRow->AddChild(cb);
+        modesCol->AddChild(cb);
+        cb->layoutItem.SetGridRowColSimplified(
+            static_cast<int>(i / kCols), static_cast<int>(i % kCols));
     }
     form->AddChild(modesCol);
 
@@ -208,8 +218,9 @@ void UltraAISettingsDialog::CreateSettingsDialog() {
     footer->AddChild(closeBtn);
     AddChild(footer);
 
-    // Populate the picker and load the first endpoint (or an empty editor).
-    RebuildEndpointPicker("");
+    // Populate the picker and load the requested endpoint (or the first one /
+    // an empty editor when selectEndpointId is empty or unknown).
+    RebuildEndpointPicker(selectEndpointId);
 }
 
 void UltraAISettingsDialog::RebuildEndpointPicker(const std::string& selectId) {

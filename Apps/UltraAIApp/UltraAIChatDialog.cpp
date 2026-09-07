@@ -117,6 +117,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     transcript_ = std::make_shared<UltraCanvasTextArea>("chat-transcript", 0, 0, 0, 0);
     transcript_->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
     transcript_->SetReadOnly(true);
+    transcript_->SetCaretVisible(false);   // read-only transcript: no blinking caret, still selectable
     transcript_->SetWordWrap(true);
     transcript_->SetText(kGreeting);
     transcript_->layoutItem.SetFlexGrow(1);
@@ -129,8 +130,9 @@ void UltraAIChatDialog::CreateChatDialog() {
     AddChild(chipsLabel_);
 
     // ===== Input =====
-    input_ = std::make_shared<UltraCanvasTextInput>("chat-input", 0, 0, 0, 90);
-    input_->SetInputType(TextInputType::Multiline);
+    input_ = std::make_shared<UltraCanvasTextArea>("chat-input", 0, 0, 0, 90);
+    input_->SetEditingMode(TextAreaEditingMode::PlainText);   // plain text, not markdown
+    input_->SetWordWrap(true);
     input_->SetPlaceholder("Type a message...");
     input_->size.height = Dimension::Px(90);
     input_->layoutItem.SetFlexShrink(0);
@@ -376,8 +378,18 @@ void UltraAIChatDialog::OnNewChat() {
 }
 
 void UltraAIChatDialog::OnOpenSettings() {
+    // Open the settings dialog on the endpoint currently selected in the chat
+    // picker so it can be edited directly, rather than the default "New endpoint".
+    std::string selectId;
+    if (endpointPicker_) {
+        const int idx = endpointPicker_->GetSelectedIndex();
+        if (idx >= 0 && idx < static_cast<int>(chatEndpoints_.size())) {
+            selectId = chatEndpoints_[static_cast<size_t>(idx)].id;
+        }
+    }
+
     auto dlg = std::make_shared<UltraAISettingsDialog>();
-    dlg->CreateSettingsDialog();
+    dlg->CreateSettingsDialog(selectId);
     dlg->ShowModal(this);
     // Reflect any endpoint changes made while the dialog was open.
     RebuildEndpointPicker();

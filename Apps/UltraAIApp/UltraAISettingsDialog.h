@@ -29,9 +29,10 @@ class UltraAISettingsDialog : public UltraCanvas::UltraCanvasModalDialog {
 public:
     UltraAISettingsDialog();
 
-    // Build the dialog shell and its widgets, then load the first endpoint (or
-    // an empty editor when none are configured).
-    void CreateSettingsDialog();
+    // Build the dialog shell and its widgets, then load the endpoint identified
+    // by selectEndpointId into the editor. When empty (the default), loads the
+    // first endpoint or an empty editor when none are configured.
+    void CreateSettingsDialog(const std::string& selectEndpointId = "");
 
 private:
     void RebuildEndpointPicker(const std::string& selectId);

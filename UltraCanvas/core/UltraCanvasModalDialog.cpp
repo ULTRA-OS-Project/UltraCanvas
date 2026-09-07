@@ -986,10 +986,6 @@ namespace UltraCanvas {
             case InputType::Email:
                 textInput->SetInputType(TextInputType::Email);
                 break;
-            case InputType::MultilineText:
-                textInput->SetInputType(TextInputType::Multiline);
-                textInput->SetSize(300, 80);
-                break;
             default:
                 textInput->SetInputType(TextInputType::Text);
                 break;

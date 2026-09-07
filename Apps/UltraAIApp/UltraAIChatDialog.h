@@ -62,7 +62,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  endpointPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  transcript_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     chipsLabel_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> input_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    sendButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
 

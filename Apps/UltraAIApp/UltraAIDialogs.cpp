@@ -143,8 +143,8 @@ long EmbeddingsDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("emb-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Inputs (one per line)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("emb-in", kMargin, y, kFormWidth, 120,
-                        "apple\nfruit\ncar", true);
+    input1_ = MakeTextArea("emb-in", kMargin, y, kFormWidth, 120,
+                        "apple\nfruit\ncar");
     AddDialogElement(input1_);
     y += 120 + kRowGap;
 
@@ -284,8 +284,8 @@ long TextToSpeechDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("tts-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Text to speak"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("tts-text", kMargin, y, kFormWidth, 80,
-                        "Hello world from UltraAI.", true);
+    input1_ = MakeTextArea("tts-text", kMargin, y, kFormWidth, 80,
+                        "Hello world from UltraAI.");
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
@@ -371,8 +371,8 @@ long ImageGenDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("ig-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("ig-prompt", kMargin, y, kFormWidth, 60,
-                        "a serene mountain lake at sunset", true);
+    input1_ = MakeTextArea("ig-prompt", kMargin, y, kFormWidth, 60,
+                        "a serene mountain lake at sunset");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -539,8 +539,8 @@ long TranslatorDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Texts (one per line)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("tr-text", kMargin, y, kFormWidth, 80,
-                        "ich bin der schnelle fuchs", true);
+    input1_ = MakeTextArea("tr-text", kMargin, y, kFormWidth, 80,
+                        "ich bin der schnelle fuchs");
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
@@ -605,8 +605,8 @@ long VideoGenDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("vg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("vg-prompt", kMargin, y, kFormWidth, 60,
-                        "ocean waves rolling at sunset", true);
+    input1_ = MakeTextArea("vg-prompt", kMargin, y, kFormWidth, 60,
+                        "ocean waves rolling at sunset");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -695,8 +695,8 @@ long MusicGenDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Prompt (style, mood, instruments)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("mg-prompt", kMargin, y, kFormWidth, 60,
-                        "uplifting jazz piano trio", true);
+    input1_ = MakeTextArea("mg-prompt", kMargin, y, kFormWidth, 60,
+                        "uplifting jazz piano trio");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -781,8 +781,8 @@ long CodeAssistDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Code snippet (used by Explain / Refactor / DetectBugs)"));
     y += kLabelHeight + 2;
-    input3_ = MakeInput("ca-code", kMargin, y, kFormWidth, 80,
-                        "if x = 1: pass", true);
+    input3_ = MakeTextArea("ca-code", kMargin, y, kFormWidth, 80,
+                        "if x = 1: pass");
     AddDialogElement(input3_);
     y += 80 + kRowGap;
     return y;

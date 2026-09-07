@@ -108,8 +108,7 @@ namespace UltraCanvas {
         Password,
         Number,
         Email,
-        URL,
-        MultilineText  // Changed from Multiline
+        URL
     };
 
 // ===== FILE DIALOG TYPE =====
