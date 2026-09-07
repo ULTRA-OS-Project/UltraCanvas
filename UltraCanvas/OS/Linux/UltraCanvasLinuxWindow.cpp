@@ -625,6 +625,12 @@ namespace UltraCanvas {
             // X11 window sizes are PHYSICAL px; config_ is LOGICAL.
             XResizeWindow(application->GetDisplay(), xWindow,
                           LogicalToPhysical(width), LogicalToPhysical(height));
+            // A non-resizable window pins its WM min==max size hints to config_'s
+            // size (SetWindowHints). config_ was just updated above, so refresh the
+            // hints to the new size — otherwise the WM clamps the XResizeWindow
+            // request straight back to the old size and programmatic resizes (e.g.
+            // autoResizeToContent) never take effect.
+            SetWindowHints();
             _needsResize = true;
 //            UpdateCairoSurface(width, height);
         } else {

@@ -28,6 +28,9 @@ public:
 private:
     void CreateButtons();
 
+    // Open the endpoints Settings dialog.
+    void OpenSettingsDialog();
+
     // Open a modal dialog for the chosen capability.
     void OpenChatDialog();
     void OpenEmbeddingsDialog();

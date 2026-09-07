@@ -982,6 +982,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIDashboard.cpp
         Apps/UltraAIApp/UltraAIServiceDialog.cpp
         Apps/UltraAIApp/UltraAIDialogs.cpp
+        Apps/UltraAIApp/UltraAIEndpoints.cpp
+        Apps/UltraAIApp/UltraAISettingsDialog.cpp
+        Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
 
     target_include_directories(UltraAIApp PRIVATE

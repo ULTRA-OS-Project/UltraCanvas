@@ -103,6 +103,20 @@ namespace UltraCanvas {
         // without re-rendering any widget (see UpdateAndRender).
         bool _needsCaretComposition = false;
 
+        // ===== AUTO-RESIZE-TO-CONTENT (config_.autoResizeToContent) =====
+        // Set once the user/WM has dragged this window to a size of their own,
+        // so continuous fit-to-content stops fighting the manual size.
+        bool _userResized = false;
+        // Set around our own SetWindowSize() call so the native resize event it
+        // provokes is not mistaken for a user drag (see HandleResizeEvent).
+        bool _expectProgrammaticResize = false;
+
+        // Measure the window's content with unbounded space and, when
+        // config_.autoResizeToContent is set, resize the window to fit it,
+        // clamped to [min,max] and the current monitor. Returns true when it
+        // changed the window size. See UltraCanvasWindow.cpp.
+        bool MaybeResizeToContent();
+
         UltraCanvasDirtyRectManager dirtyRectManager;
 
         std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};

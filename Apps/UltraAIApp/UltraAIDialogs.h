@@ -29,25 +29,15 @@ private:                                                                \
 };
 
 // Every dialog carries a provider picker (the base class helper, fed by
-// the capability's List<X>Providers). Chat, image generation and video
-// generation additionally have an optional model field and an API-key field
-// that stores into UltraVault as ai.<provider>.api_key instead of living in
-// the widget — the providers behind those three include cloud services
-// (Anthropic, OpenAI, MiniMax) and local ones (llama-cpp, qwen, comfyui)
-// whose "model" means a checkpoint file name.
-class ChatDialog : public UltraAIServiceDialog {
-public:
-    ChatDialog();
-protected:
-    long BuildForm(long formTop) override;
-    void RunCapability() override;
-private:
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input1_;   // system
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // user
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  modelInput_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  keyInput_;
-};
-
+// the capability's List<X>Providers). Image and video generation additionally
+// have an optional model field and an API-key field that stores into UltraVault
+// as ai.<provider>.api_key instead of living in the widget — the providers
+// behind them include cloud services (Anthropic, OpenAI, MiniMax) and local
+// ones (llama-cpp, qwen, comfyui) whose "model" means a checkpoint file name.
+//
+// NOTE: the Chat (LLM) capability no longer lives here — it has its own
+// multi-turn, streaming, attachment-capable dialog in UltraAIChatDialog.h,
+// driven by the endpoints configured in the Settings dialog.
 ULTRAAI_DECLARE_DIALOG(EmbeddingsDialog)
 ULTRAAI_DECLARE_DIALOG(SpeechToTextDialog)
 // Speech synthesis: text and voice id, plus the model and a credential —

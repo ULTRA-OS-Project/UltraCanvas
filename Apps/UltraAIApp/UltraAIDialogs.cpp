@@ -65,15 +65,9 @@ std::string ErrorLine(const Error& e) {
 } // namespace
 
 // ===================================================================
-// ChatDialog (ITextLLM)
+// Shared credential helpers (used by the cloud-capable dialogs below;
+// the Chat capability now lives in UltraAIChatDialog.cpp).
 // ===================================================================
-
-ChatDialog::ChatDialog()
-    : UltraAIServiceDialog("Chat (LLM)",
-        "Send a prompt to the LLM and receive a single-turn reply. The "
-        "provider list comes from the UltraAI registry; \"(default route)\" "
-        "follows the routing policy. Cloud API keys are stored in UltraVault, "
-        "never in this window.") {}
 
 namespace {
 // Read a whole text file. Used for the ComfyUI workflow field, which takes
@@ -132,78 +126,6 @@ bool ApplyCredential(const std::string& provider,
 }
 
 } // namespace
-
-long ChatDialog::BuildForm(long y) {
-    AddProviderAndModelRow(y, "chat", ListTextLLMProviders(),
-                           "Model (or GGUF path for llama-cpp; optional)",
-                           "provider default", modelInput_);
-    AddLabelledInput(y, "chat-key",
-                     "API key — cloud providers only, stored in UltraVault",
-                     "leave empty to use the stored key", keyInput_);
-
-    AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "System prompt (optional)"));
-    y += kLabelHeight + 2;
-    input1_ = MakeInput("chat-sys", kMargin, y, kFormWidth, kRowHeight,
-                        "You are a concise assistant...");
-    AddDialogElement(input1_);
-    y += kRowHeight + kRowGap;
-
-    AddDialogElement(MakeLabel("usr-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "User message"));
-    y += kLabelHeight + 2;
-    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 60,
-                        "Type your prompt...", true);
-    AddDialogElement(input2_);
-    y += 60 + kRowGap;
-    return y;
-}
-
-void ChatDialog::RunCapability() {
-    const std::string provider = SelectedProviderId();
-
-    TextLLMConfig cfg;
-    cfg.providerId = provider;
-    if (modelInput_ && !modelInput_->GetText().empty()) {
-        cfg.defaultModel = modelInput_->GetText();
-    }
-
-    std::string credentialStatus;
-    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
-        SetStatus(credentialStatus);
-        return;
-    }
-
-    ChatRequest req;
-    if (input1_ && !input1_->GetText().empty()) {
-        Message sys; sys.role = Role::System; sys.text = input1_->GetText();
-        req.messages.push_back(std::move(sys));
-    }
-    Message usr; usr.role = Role::User;
-    usr.text = input2_ ? input2_->GetText() : "";
-    req.messages.push_back(std::move(usr));
-
-    RunOffThread([cfg, req]() -> RunOutcome {
-        RunOutcome outcome;
-        Error createError;
-        auto llm = CreateTextLLM(cfg, &createError);
-        if (!llm) {
-            outcome.status = "Failed to create TextLLM";
-            outcome.result = createError.message;
-            return outcome;
-        }
-
-        auto resp = llm->Chat(req);
-        std::ostringstream os;
-        os << ErrorLine(resp.error) << resp.text
-           << "\n\n(provider=" << llm->GetCapabilities().providerId
-           << "  model=" << resp.model
-           << "  in=" << resp.usage.inputTokens
-           << "  out=" << resp.usage.outputTokens << ")";
-        outcome.result = os.str();
-        return outcome;
-    });
-}
 
 // ===================================================================
 // EmbeddingsDialog (IEmbeddings)
