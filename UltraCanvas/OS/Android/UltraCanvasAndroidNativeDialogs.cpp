@@ -2,13 +2,15 @@
 // Android implementation of the UltraCanvasNativeDialogs statics (link-time
 // selected).
 //
-// Message dialogs are real: they go through UltraCanvasAndroidDialogBridge to
-// an AlertDialog in UltraCanvasActivity. An app running a plain NativeActivity
-// has no such bridge, so those calls fall back to the "cancelled" stub below -
-// as do the file and input dialogs, which still need the Storage Access
-// Framework adapter (investigation §3.5).
-// Version: 1.1.0
-// Last Modified: 2026-08-23
+// Message dialogs, input dialogs and file opening/saving are real: they go
+// through UltraCanvasAndroidDialogBridge to an AlertDialog or the Storage
+// Access Framework in UltraCanvasActivity. An app running a plain
+// NativeActivity has no such bridge, so every one of them falls back to the
+// "cancelled" stub below. SaveFile and SelectFolder stay stubs for a different
+// reason - their path-returning contracts have no SAF implementation at all;
+// see the backend README.
+// Version: 1.2.0
+// Last Modified: 2026-09-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
@@ -190,6 +192,29 @@ namespace UltraCanvas {
             return SplitLines(outcome.value);
         }
 
+        // Real input dialog, or the stub when this app runs a plain
+        // NativeActivity. Only a positive answer produces a value: an empty
+        // string the user typed deliberately must stay distinguishable from a
+        // dialog they cancelled, which is what NativeInputResult::result is
+        // for.
+        NativeInputResult InputOrStub(const char* what, const std::string& prompt,
+                                      const std::string& title,
+                                      const std::string& defaultValue, bool password) {
+            const auto outcome = AndroidDialogs::ShowInputText(title, prompt,
+                                                               defaultValue, password);
+            if (!outcome.bridged) {
+                StubDialog(what, title);
+                return {};
+            }
+
+            NativeInputResult result;
+            if (outcome.result == AndroidDialogs::JavaResult::Positive) {
+                result.result = DialogResult::OK;
+                result.value = outcome.value;
+            }
+            return result;
+        }
+
         DialogResult ShowOrStub(const char* what, const std::string& message,
                                 const std::string& title,
                                 DialogType type, DialogButtons buttons) {
@@ -356,22 +381,23 @@ namespace UltraCanvas {
     // ===== INPUT DIALOGS =====
 
     NativeInputResult UltraCanvasNativeDialogs::InputText(
-            const std::string&, const std::string& title, const std::string&,
-            UltraCanvasWindowBase*) {
-        StubDialog("InputText", title);
-        return {};
+            const std::string& prompt, const std::string& title,
+            const std::string& defaultValue, UltraCanvasWindowBase*) {
+        return InputOrStub("InputText", prompt, title, defaultValue, false);
     }
 
     NativeInputResult UltraCanvasNativeDialogs::InputText(
             const NativeInputDialogOptions& options) {
-        StubDialog("InputText", options.title);
-        return {};
+        return InputOrStub("InputText", options.prompt, options.title,
+                           options.defaultValue, options.password);
     }
 
     NativeInputResult UltraCanvasNativeDialogs::InputPassword(
-            const std::string&, const std::string& title, UltraCanvasWindowBase*) {
-        StubDialog("InputPassword", title);
-        return {};
+            const std::string& prompt, const std::string& title,
+            UltraCanvasWindowBase*) {
+        // No default value on purpose: pre-filling a masked field with a
+        // password the user cannot read is a way to submit the wrong one.
+        return InputOrStub("InputPassword", prompt, title, std::string(), true);
     }
 
     // ===== CONVENIENCE FUNCTIONS =====

@@ -40,6 +40,9 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.view.WindowManager;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -129,6 +132,105 @@ public class UltraCanvasActivity extends NativeActivity {
                 } catch (Throwable t) {
                     // Activity finishing / bad window token: never leave the
                     // native thread pumping for a result that cannot arrive.
+                    if (!delivered[0]) {
+                        delivered[0] = true;
+                        nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Show a modal text-input AlertDialog and deliver what the user typed.
+     * Called from the native (glue) thread, which blocks until exactly one
+     * result arrives - so, exactly as in showMessageDialog, every way out of
+     * this dialog has to deliver one.
+     *
+     * Only RESULT_POSITIVE carries a value; every other outcome delivers null,
+     * so a cancelled dialog can never be mistaken for a deliberately empty
+     * string. Buttons use the platform's own OK/Cancel strings, which are
+     * localised for the user's device.
+     */
+    public void showInputDialog(final int requestId, final String title,
+                                final String prompt, final String defaultValue,
+                                final boolean password) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean[] delivered = { false };
+
+                final EditText input = new EditText(UltraCanvasActivity.this);
+                input.setSingleLine(true);
+                input.setInputType(password
+                        ? (InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD)
+                        : InputType.TYPE_CLASS_TEXT);
+                if (defaultValue != null) {
+                    input.setText(defaultValue);
+                    // Caret after the text, not before it: the common case is
+                    // editing a suggested name, not replacing it.
+                    input.setSelection(input.getText().length());
+                }
+
+                // An EditText handed straight to setView sits flush against the
+                // dialog's edges; the platform insets its own.
+                final int inset =
+                        (int) (getResources().getDisplayMetrics().density * 20);
+                FrameLayout container = new FrameLayout(UltraCanvasActivity.this);
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT);
+                lp.leftMargin = inset;
+                lp.rightMargin = inset;
+                container.addView(input, lp);
+
+                DialogInterface.OnClickListener onClick =
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                if (delivered[0]) return;
+                                delivered[0] = true;
+                                if (which == DialogInterface.BUTTON_POSITIVE) {
+                                    nativeOnDialogResult(requestId, RESULT_POSITIVE,
+                                                         input.getText().toString());
+                                } else {
+                                    nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                                }
+                            }
+                        };
+
+                AlertDialog.Builder builder =
+                        new AlertDialog.Builder(UltraCanvasActivity.this);
+                builder.setTitle(title);
+                if (prompt != null && prompt.length() > 0) {
+                    builder.setMessage(prompt);
+                }
+                builder.setView(container);
+                builder.setPositiveButton(getString(android.R.string.ok), onClick);
+                builder.setNegativeButton(getString(android.R.string.cancel), onClick);
+
+                builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
+                    @Override
+                    public void onDismiss(DialogInterface dialog) {
+                        if (!delivered[0]) {
+                            delivered[0] = true;
+                            nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                        }
+                    }
+                });
+
+                try {
+                    AlertDialog dialog = builder.create();
+                    // Raise the soft keyboard with the dialog. Without this the
+                    // user has to tap the field before they can type, which on a
+                    // phone reads as a broken dialog rather than a choice.
+                    if (dialog.getWindow() != null) {
+                        dialog.getWindow().setSoftInputMode(
+                                WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+                    }
+                    input.requestFocus();
+                    dialog.show();
+                } catch (Throwable t) {
                     if (!delivered[0]) {
                         delivered[0] = true;
                         nativeOnDialogResult(requestId, RESULT_CANCEL, null);

@@ -26,9 +26,9 @@ Android).
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
 | `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
-| `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile`, `SelectFolder` and input dialogs stay logged "Cancel" stubs — **Dialogs** below explains why the first two are blocked on an API decision rather than unfinished. |
+| `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
-| `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog`, the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
+| `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog` (message and text-input), the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
 | `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. |
 | `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
 | `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the sysroot blocker that stops one being built today. |
@@ -94,10 +94,20 @@ is raised against the decor view without an IME session — so an app that needs
 neither native dialogs nor composed text input can ship with no Java at all.
 
 Message dialogs (`ShowInfo` / `ShowWarning` / `ShowError` / `ShowQuestion` /
-`ShowMessage` / `Confirm` / `ConfirmYesNo`) and **opening** files
+`ShowMessage` / `Confirm` / `ConfirmYesNo`), input dialogs (`InputText` /
+`InputPassword` / `GetInput` / `GetPassword`) and **opening** files
 (`OpenFile` / `OpenMultipleFiles`) go through it for real, as does saving via
-`SaveContent`. `SaveFile`, `SelectFolder` and the input dialogs are still
-stubs — see below for why the first two are not merely unfinished.
+`SaveContent`. `SaveFile` and `SelectFolder` are still stubs — see below for
+why those are not merely unfinished.
+
+Input dialogs are an `AlertDialog` with a single-line `EditText`: the caret
+starts after any default value (the usual case is editing a suggested name,
+not replacing it), `InputPassword` masks the field and never pre-fills it, and
+the dialog raises the soft keyboard with itself — an input dialog the user has
+to tap before typing reads as broken on a phone. Only the OK button produces a
+value; every other way out delivers none, so an empty string the user typed
+deliberately stays distinguishable from a dialog they dismissed. The buttons
+use the platform's own localised OK/Cancel.
 
 ### Opening files: SAF, and why you get a copy
 
