@@ -373,7 +373,17 @@ and keep all existing path-based code working; `SetResourcesDir()`
 
 ## 6. Warnings from prior porting attempts (WASM, BSD)
 
-Both in-tree "ports" are non-building code drops; neither is a template.
+> **Historical (2026-08).** The `OS/WASM/` description below is what the
+> directory looked like when this investigation was written. It was replaced
+> wholesale in 2026-08 by a real Emscripten backend that reuses the Cairo
+> render context, is wired into `UltraCanvas/CMakeLists.txt`, and runs in a
+> browser - see `UltraCanvas/OS/WASM/README.md` and
+> `Docs/UltraCanvas/UltraCanvasWebAssembly.md`. The BSD paragraph still
+> applies. The process lessons that follow were drawn from the old state
+> and remain valid.
+
+Both in-tree "ports" were non-building code drops at the time; neither was a
+template.
 
 - **`OS/WASM/`** — never wired into any CMakeLists (`add_subdirectory` absent);
   header dispatch uses `__WASM__` (a macro Emscripten never defines) and points

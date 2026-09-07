@@ -1,3 +1,64 @@
+#### 2026-09-07 *0.3.108*
+- **WebAssembly: real applications link, and the browser clipboard works.**
+  The Emscripten backend (`UltraCanvas/OS/WASM/`) rendered and took input,
+  but it defined neither the `UltraCanvasNativeDialogs` statics nor
+  `UltraCanvasFileLoader::NotifyRecentFile`, which every other platform
+  directory supplies and the core references unconditionally - so any app
+  that used a dialog or the file loader failed to link, and the minimal demo
+  only passed because the static archive never pulled those objects in.
+  - **New `OS/WASM/UltraCanvasWASMNativeDialogs.cpp`**: message and question
+    dialogs through `window.alert()` / `window.confirm()` (two buttons, the
+    title becomes the first line), text input through `window.prompt()`
+    (password prompts report Cancel rather than echo), `SaveContent()` as a
+    browser download, `ShowPrintDialog()` through `window.print()`. The
+    synchronous file pickers report Cancel - a browser picker cannot answer
+    before the function returns - and the desktop `SaveContent()` in
+    `core/UltraCanvasFileLoader.cpp` is compiled out for `__EMSCRIPTEN__`
+    like it already was for Android.
+  - **New `OS/WASM/UltraCanvasWASMFileLoader.cpp`**: `NotifyRecentFile` as a
+    documented no-op.
+  - **New `OS/WASM/UltraCanvasWASMClipboard.h/.cpp`**, selected by
+    `core/UltraCanvasClipboard.cpp` under `__EMSCRIPTEN__` (Emscripten does
+    not define `__linux__`, so the clipboard used to report "not supported").
+    Text only: `SetClipboardText()` caches and calls
+    `navigator.clipboard.writeText()`; reading is asynchronous in the browser,
+    so `UltraCanvasWASMApplication` now lets the Ctrl/Cmd+V keydown reach the
+    browser, catches the `paste` event it answers with, hands the text to the
+    backend and *then* queues the Ctrl+V key event - the text field's paste
+    handler finds the text in place. `GetClipboardText()` also starts a
+    `readText()` refresh for menu-driven pastes.
+  - `OpenURL()` opens a new tab under Emscripten instead of calling
+    `system("xdg-open")`, which fails with ENOSYS in the sandbox.
+  - **`UltraCanvasWASMSupport.h/.cpp` rewritten.** The kept 2025 utilities
+    returned JavaScript promises through `EM_ASM_INT` (a garbage integer, at
+    once), downloaded empty blobs and stubbed most of their surface. Now:
+    IDBFS mount / sync with completion callbacks; file helpers over the
+    virtual FS; `fetch()`-based `FetchAsync` / `FetchTextAsync`;
+    `DownloadFile` with the actual bytes; **`PickFilesAsync`**, which opens
+    the browser's file picker and copies the picked files into the virtual FS
+    so any framework file API can load them; browser-decoded `LoadImage`;
+    `LoadFont` that fetches a font file into the virtual FS for
+    `RegisterFontFile()`; complete query-parameter access. Nothing in the
+    framework depends on these; they are for applications.
+  - The library's link options now export what those JavaScript bridges call
+    (`-sEXPORTED_FUNCTIONS=_main,_malloc,_free`, `-sEXPORTED_RUNTIME_METHODS=
+    UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS`).
+  - **New doc `Docs/UltraCanvas/UltraCanvasWebAssembly.md`** - the browser as
+    a platform from an application's point of view: what is identical, what
+    differs (table), the static-application rule, the utilities with
+    examples, serving, known limitations. `OS/WASM/README.md` keeps the build
+    guide and gains the clipboard/dialog rows and the EM_ASM top-level-comma
+    rule; `AndroidPortInvestigation.md` §6 is marked historical - it still
+    described `OS/WASM/` as unwired dead code.
+  - **New workflow `.github/workflows/wasm-build.yml`** (manual dispatch):
+    builds the wasm sysroot (cached on the script's hash) and the demo app
+    with Emscripten, so the backend is compiled somewhere other than one
+    developer's machine. Not in the per-PR matrix: the sysroot takes the
+    better part of an hour.
+  - These additions were syntax-checked against stub Emscripten headers on a
+    desktop compiler and are not yet exercised in a browser; run the workflow
+    against the branch before relying on them.
+
 #### 2026-09-06 *0.3.107*
 - **Raster editing layer — what a bitmap editor needs and the framework did
   not have.** PixelFX has always been a complete whole-image engine (filters,
