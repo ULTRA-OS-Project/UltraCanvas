@@ -70,7 +70,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 
 ```
 UltraCanvas/
-├── Apps/                 # Demo applications and examples
+├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, UltraMail, …)
 ├── Docs/                 # Component documentation
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations

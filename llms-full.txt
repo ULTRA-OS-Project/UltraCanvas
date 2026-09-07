@@ -80,7 +80,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 
 ```
 UltraCanvas/
-├── Apps/                 # Demo applications and examples
+├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, UltraMail, …)
 ├── Docs/                 # Component documentation
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
@@ -494,6 +494,44 @@ the backing implementation can be replaced without affecting callers.
   targets, autolinks, inline HTML, math and YAML front matter, with the
   application half in `Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp`).
   See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
+
+**Raster editing section** — the editable-bitmap layer under UltraPaint
+(`UltraCanvas/{include,core}/UltraCanvasRaster*.{h,cpp}`,
+`UltraCanvasBrushEngine.{h,cpp}`, `UltraCanvasPaintSurface.{h,cpp}`; doc:
+`Docs/UltraCanvas/UltraCanvasPaintSurface.md`). PixelFX stays the whole-image
+engine; these classes hold the pixels being edited and hand them to it.
+
+- **UCRasterLayer** — straight-RGBA 8-bit layer with name / visible / locked /
+  opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
+  BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
+  `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+- **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
+  SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
+  (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
+  `Coverage/GetBounds/GetOutline`.
+- **UCRasterDocument** — layer stack + selection + history: `AddLayer/
+  DuplicateLayer/RemoveLayer/MoveLayer/MergeLayerDown/FlattenImage`, layer
+  attribute setters, `ScaleImage/ResizeCanvas/CropTo/Flip*/Rotate*`,
+  `BeginEdit/EndEdit/RecordEdit/NotifyChanged`, `ApplyFilter/
+  ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
+  `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
+  `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
+  notifications.
+- **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
+  strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
+  pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
+  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+- **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
+  fit, checkerboard, pixel grid, marching ants, brush cursor,
+  `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
+  `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
+  coordinates.
+- **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
+  drawing for zoomed pixel display (Cairo backend implemented).
 
 ### **2. UltraAI**
 
@@ -33017,6 +33055,215 @@ std::function<void(int page)> onPageChanged;
   cells plus estimated text cells) for use when sizing the control in a layout.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPaintSurface.md
+==============================================================================
+
+# UltraCanvas Raster Editing: PaintSurface, RasterDocument, Brush Engine
+
+## Overview
+
+The **raster-editing layer** is what a bitmap editor needs on top of the
+image pipeline: an editable pixel model with layers, a selection, undo, a
+brush engine, and an element that displays and edits it. PixelFX (libvips)
+remains the engine for whole-image work — filters, colour adjustments,
+resampling, file formats — and the pieces below hand pixels to it and take
+them back. The first application built on it is **UltraPaint**
+(`Apps/UltraPaint`); the gap analysis that led to these classes is in
+[`Docs/UltraPaint/FeatureGapAnalysis.md`](../UltraPaint/FeatureGapAnalysis.md).
+
+| Class | What it is | Files |
+|---|---|---|
+| `UCRasterLayer` | One straight-RGBA 8-bit pixel buffer with name / visibility / lock / opacity / blend mode; blend arithmetic; compositing onto a premultiplied pixmap; PixelFX round trip | `include/UltraCanvasRasterLayer.h`, `core/UltraCanvasRasterLayer.cpp` |
+| `UCRasterSelection` | Soft coverage mask (0..255 per pixel): rectangle, ellipse, polygon, arbitrary mask; replace / add / subtract / intersect; feather, grow, shrink, invert; marching-ants outline | `include/UltraCanvasRasterSelection.h`, `core/UltraCanvasRasterSelection.cpp` |
+| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
+| `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
+| `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
+
+**Version**: 1.0.0
+**Last Modified**: 2026-09-06
+**Author**: UltraCanvas Framework
+
+None of the model classes touch a window; `UltraCanvasPaintSurface` is the
+only element. A batch tool can open a document, run a stroke or a filter and
+save it with no display at all.
+
+## Pixel conventions
+
+- A layer stores **straight (non-premultiplied) RGBA**, one byte per channel,
+  `R G B A` order, row-major, no row padding — exactly what libvips uses for
+  a 4-band `uchar` sRGB image, so `UCRasterLayer::ToPixelFX()` is a memory
+  copy and `FromPixelFX()` the reverse (with any needed cast, band trim and
+  alpha fill).
+- Compositing to the screen converts once, in `CompositeOnto()`, into
+  Cairo's premultiplied ARGB32 (`UCPixmap`). The document caches that
+  pixmap and re-composites only the rectangles that changed.
+- Blend modes (`RasterBlendMode`: Normal, Multiply, Screen, Overlay,
+  Darken, Lighten, Difference, Addition, Subtract, Soft Light, Hard Light)
+  use the separable W3C / Photoshop formulas on straight RGB, then the usual
+  alpha "over". `RasterBlendPixel()` exposes the same arithmetic to the brush
+  engine so a brush painting in Multiply matches a layer set to Multiply.
+
+## The document
+
+```cpp
+#include "UltraCanvasRasterDocument.h"
+
+auto doc = std::make_shared<UCRasterDocument>(1024, 768, RasterPixel(255, 255, 255, 255));
+doc->AddLayer("Sketch");                       // transparent, above the active layer
+doc->GetSelection().SetEllipse(Rect2Di(100, 100, 400, 300));
+doc->CommitSelectionChange("Ellipse Select");  // undoable, notifies views
+
+// A filter over the active layer, written back only inside the selection
+doc->ApplyFilter("Gaussian Blur", [](const PixelFX::PFXImage& img) {
+    return PixelFX::Convolution::GaussianBlur(img, 4.0);
+});
+
+doc->Undo();
+std::string err;
+doc->SaveToFile("out.png", err);               // flattened, format by extension
+doc->SaveProject("work.ucraster", err);        // layers kept
+```
+
+### Undo
+
+Two kinds of history entry keep memory in check:
+
+- **Pixel edits** snapshot one rectangle of one layer before and after.
+  Bracket a change with `BeginEdit(label, layerIndex, rect)` … `EndEdit()`,
+  or, when the extent is only known at the end (a brush stroke), keep a
+  copy of the layer yourself and call `RecordEdit(label, layerIndex, rect,
+  before)` — `UCBrushStroke` hands out exactly that copy through
+  `GetBefore()`.
+- **Structural edits** (add / remove / move / merge layers, canvas size,
+  scale, flip, rotate, selection changes, layer attributes) record the
+  layer *list* before and after. Structural operations never modify a layer
+  object in place — they replace it — so unchanged layers are shared
+  between snapshots and cost nothing.
+
+`SetUndoMemoryLimit()` bounds the history; the oldest entries go first.
+
+### Notifications
+
+| Callback | Fired when |
+|---|---|
+| `onPixelsChanged(rect)` | pixels of `rect` changed (a stroke calls it per dab) |
+| `onStructureChanged()` | layer list, attributes, active layer or canvas size changed |
+| `onSelectionChanged()` | the selection changed |
+| `onStateChanged()` | modified flag or undo / redo availability changed |
+
+`UltraCanvasPaintSurface::SetDocument()` installs the first three; a host
+that needs them too chains its own handler after the surface's (see
+`UltraPaintWindow::SetDocument`).
+
+## The brush engine
+
+```cpp
+#include "UltraCanvasBrushEngine.h"
+
+UCBrushSettings s;
+s.size = 24; s.hardness = 0.7f; s.opacity = 0.8f; s.flow = 1.0f; s.spacing = 0.15f;
+
+UCBrushStroke stroke;
+stroke.Begin(layer, &doc->GetSelection(), s, BrushMode::Paint, RasterPixel(200, 30, 30, 255));
+for (auto& p : pointerPath) {
+    Rect2Di changed = stroke.AddPoint(p.x, p.y, p.pressure);
+    if (changed.width > 0) doc->NotifyChanged(changed);
+}
+doc->RecordEdit("Paintbrush", doc->GetActiveLayerIndex(), stroke.GetDirtyBounds(), *stroke.GetBefore());
+stroke.End();
+```
+
+- **Opacity vs flow.** `flow` is what each dab deposits; `opacity` caps the
+  whole stroke. Overlapping dabs of one stroke never exceed `opacity`
+  because the stroke keeps a coverage mask and re-composites from the
+  "before" copy — the Photoshop convention.
+- **Spacing** is a fraction of the size; dabs are laid along the pointer
+  path at that interval with the remainder carried across segments, so a
+  fast stroke has the same density as a slow one.
+- **Modes:** `Paint` (blend mode applies), `Erase` (alpha), `Clone`
+  (`SetCloneSource(layer, dx, dy)`), `Smudge` (carries colour), `Dodge`,
+  `Burn`.
+- Everything is clipped to the layer and scaled by the selection's coverage.
+
+`RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
+`DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
+anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
+global, optionally sampling a merged layer), `MagicWandMask` (the same
+region test as a coverage map for `UCRasterSelection::SetMask`),
+`FillGradient` (linear / radial / reflected, interpolated in premultiplied
+space), `StampMask` (a coverage map in a colour — what the text tool uses
+with a `PixelFX::Generate::Text` mask), `SampleColour`.
+
+None of this needs libvips.
+
+## The element
+
+```cpp
+#include "UltraCanvasPaintSurface.h"
+
+auto surface = CreatePaintSurface("canvas");
+surface->SetDocument(doc);
+surface->onToolPress   = [&](const PaintPointerEvent& e) { tool->OnPress(e); };
+surface->onToolDrag    = [&](const PaintPointerEvent& e) { tool->OnDrag(e); };
+surface->onToolRelease = [&](const PaintPointerEvent& e) { tool->OnRelease(e); };
+surface->onDrawOverlay = [&](IRenderContext* ctx, const PaintViewTransform& v) {
+    tool->DrawPreview(ctx, v);        // rubber bands, in view coordinates
+};
+surface->SetCursorRadius(brush.size * 0.5);
+```
+
+`PaintPointerEvent` carries the pointer in **image coordinates** (sub-pixel
+`x`, `y`), the view position, button, modifiers, pressure and whether it is
+over the canvas. The surface handles what every tool shares:
+
+- **Zoom** with the wheel (about the pointer), `+` / `-`, `Ctrl+0` fit,
+  `Ctrl+1` 100 %, a preset ladder for `ZoomStep()`; nearest-neighbour above
+  200 % (see `IRenderContext::SetImageSmoothing`) so pixels read as pixels.
+- **Pan** with the middle button or Space+drag; `SetPanMode(true)` makes
+  every drag a pan (a Pan tool).
+- **Checkerboard** behind transparent pixels, a drop shadow and border, the
+  **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
+  outline** as marching ants (animated on an application timer only while
+  a selection exists), and a **brush cursor** circle / square of
+  `SetCursorRadius()`.
+- Keyboard events go to `onToolKey` first, then to the zoom keys.
+- Dropped files arrive through `onFilesDropped`.
+
+It is distinct from `UltraCanvasZoomPanImage` (a read-only viewer of a
+`UCImage`) and `UltraCanvasMediaSurface` (the media viewer's display): this
+one edits, and its picture is the document's live composite.
+
+## `IRenderContext::SetImageSmoothing`
+
+Added with this layer: `SetImageSmoothing(false)` makes `DrawPixmap` and
+`DrawPartOfPixmap` sample nearest-neighbour instead of bilinear (Cairo
+backend: `CAIRO_FILTER_NEAREST`). Default on; the surface turns it off above
+200 % zoom and back on afterwards.
+
+## Building without libvips
+
+The layer, selection, document, brush engine and surface compile without
+`HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
+`ApplyFilter` / `PreviewFilter`, file load / save and `.ucraster` projects;
+`ScaleImage` falls back to the layer's bilinear resample.
+
+## Tests
+
+`Tests/RasterEditingTest.cpp` (built with `BUILD_TESTS=ON`, target
+`RasterEditingTest`) covers the layer and blend arithmetic, the selection
+shapes and set algebra, strokes (opacity cap, erase, selection clipping, the
+one-pixel pencil), shapes / fills / gradients / wand, document undo / redo
+across pixel and structural edits, selection-aware `ApplyFilter`, and the
+PNG and `.ucraster` round trips.
+
+## See also
+
+- [`UltraCanvasCurveEditor.md`](UltraCanvasCurveEditor.md) — the Curves
+  dialog UltraPaint uses with `PreviewFilter`
+- [`Docs/Modules/PixelFX/README.md`](../Modules/PixelFX/README.md)
+- [`Apps/UltraPaint/README.md`](../../Apps/UltraPaint/README.md)
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md
 ==============================================================================
 
@@ -49336,6 +49583,7 @@ from an external "Show password" checkbox. See
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
+| **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
@@ -59327,3 +59575,97 @@ The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
+
+==============================================================================
+FILE: Docs/UltraPaint/FeatureGapAnalysis.md
+==============================================================================
+
+# UltraPaint — feature gap analysis
+
+What a bitmap editor of the Paint Shop Pro / GIMP class needs, what the
+UltraCanvas framework and PixelFX already provided when UltraPaint was
+started (2026-09-06), and what had to be built. This is the investigation
+behind the raster-editing layer described in
+[`Docs/UltraCanvas/UltraCanvasPaintSurface.md`](../UltraCanvas/UltraCanvasPaintSurface.md).
+
+## What PixelFX already covered
+
+PixelFX (`UltraCanvas/include/PixelFX/PixelFX.h`, libvips) is a complete
+**whole-image** engine and UltraPaint uses it as such. Everything in the
+Adjust and Filter menus is one PixelFX call chain:
+
+| Need | PixelFX |
+|---|---|
+| Load / save every raster format | `FileIO::Load`, `FileIO::Save`, `SaveToBuffer`, `LoadFromMemory`; `ExportVImage` with the framework's format-options dialog |
+| Colour adjustments | `Colour::Brightness / Contrast / Saturation / Gamma / Invert / Grayscale / Sepia / HistEqual / MapLut`, `SrgbToHsv` / `HsvToSrgb` |
+| Blur / sharpen | `Convolution::GaussianBlur / BoxBlur / Sharpen / UnsharpMask`, custom kernels via `conv` |
+| Edges | `Convolution::Sobel / Laplacian / Canny / Prewitt / Scharr` |
+| Noise, morphology, stylise | `Generate::Gaussnoise`, `Morphology::Median / Rank / Erode / Dilate`, `Resample::Shrink` + `Conversion::Zoom` (pixelate) |
+| Geometry | `Resample::ResizeTo / Rotate / Flip`, `Conversion::Embed / Crop / ExtractArea`, `Autorot` |
+| Alpha | `Colour::Premultiply / Unpremultiply / AddAlpha / Flatten / HasAlpha` |
+| Text rasterisation | `Generate::Text` (Pango) — the text tool stamps its mask |
+| Region growing | `Draw::FloodFillTolerance`, `Draw::MagicWandMask` (kept as reference; the editor has its own so it works without libvips and on merged samples) |
+| Histogram / curves | `Colour::HistFind`, `MapLut` with `UltraCanvasToneCurve` LUTs |
+
+## What the UI framework already covered
+
+| Need | Element (reused as-is) |
+|---|---|
+| Foreground / background colour with wheel, sliders, hex, eyedropper | `UltraCanvasColorPicker` |
+| Palette strip | `UltraCanvasColorSwatchBar` |
+| Curves dialog with histogram | `UltraCanvasCurvesDialog` / `UltraCanvasCurveEditor` / `ToneCurveSet` |
+| Export with per-format options | `UltraCanvasImageExportDialog` |
+| Menus with shortcuts and icons, toolbars (horizontal and vertical), sliders, spinners, dropdowns, checkboxes, text input, labels, scrollable panels, modal / native dialogs, clipboard (text, files, images as encoded bytes), timers, event filters | `UltraCanvasMenu`, `UltraCanvasToolbar`, `UltraCanvasSlider`, `UltraCanvasSpinner`, `UltraCanvasDropdown`, `UltraCanvasCheckbox`, `UltraCanvasTextInput`, `UltraCanvasContainer`, `UltraCanvasDialogManager`, `UltraCanvasClipboard`, `UltraCanvasApplication::StartTimer`, `InstallEventFilter` |
+| Read-only zoom / pan of an image | `UltraCanvasZoomPanImage`, `UltraCanvasMediaSurface` — view only, no editing hooks |
+
+## What did not exist — and was added to the framework
+
+These were the real gaps. Each is a framework addition
+(`UltraCanvas/{include,core}`), not application code, so the next
+application (an icon editor, a screenshot annotator, a sprite tool) gets
+them too.
+
+| Gap | Why PixelFX / the elements did not cover it | Added |
+|---|---|---|
+| **An editable pixel model.** PixelFX images are lazy libvips pipelines: fine for "blur the whole image", wrong for "change 40 pixels under the brush 200 times a second". Nothing held a mutable layer. | Interactive painting needs direct, in-place pixel writes and cheap partial recomposites. | `UCRasterLayer` — straight-RGBA buffer with in-place access, blend arithmetic, partial compositing to the Cairo pixmap, and a lossless PixelFX round trip so filters still run on it. |
+| **Layers.** No layer stack, blend modes, opacity, visibility anywhere in the framework. | `UCImage` / `UCPixmap` are single pictures. | `UCRasterDocument` — ordered stack, per-layer attributes, add / duplicate / delete / move / merge / flatten, cached composite with dirty rectangles, layered `.ucraster` project file. |
+| **Selection.** Nothing represented "the part of the image an operation applies to". `MagicWandMask` returned a byte map but nothing consumed one. | Filters, fills, strokes, copy / paste all need coverage per pixel, with soft (feathered) edges. | `UCRasterSelection` — coverage mask, shape setters, set algebra, feather / grow / shrink / invert, outline segments for marching ants. Every brush op and `ApplyFilter` consult it. |
+| **Undo / redo for pixels.** The framework had undo only inside text controls and the spreadsheet. | An editor needs rect-snapshot undo for strokes and structural undo for layer operations, under a memory budget. | The document's `BeginEdit` / `EndEdit` / `RecordEdit` brackets and copy-on-write structural snapshots. |
+| **Brush surface / brush engine.** `PixelFX::Draw::Line / Circle` are hard-edged, single-shot libvips draw ops with no softness, opacity accumulation, spacing, pressure, erase, clone or smudge. | Painting is dab stamping with sub-pixel interpolation and the opacity-vs-flow model; it also must not depend on libvips for the interactive path. | `UCBrushStroke` (round / square dabs, hardness, opacity, flow, spacing, anti-aliasing, pressure, paint / erase / clone / smudge / dodge / burn) and `RasterPaint` (anti-aliased line / rectangle / ellipse / polygon, flood fill with tolerance and global mode, magic wand, gradients, mask stamping, eyedropper). |
+| **An editing canvas element.** `UltraCanvasZoomPanImage` zooms a `UCImage`; it has no tool callbacks, no image-coordinate mapping for the host, no overlay hook, no selection display, no pixel grid, and it draws with bilinear filtering so zoomed pixels blur. | The tool needs sub-pixel image coordinates, the host needs to draw rubber bands and the brush outline, and pixel art needs nearest-neighbour. | `UltraCanvasPaintSurface` — zoom ladder, pan, checkerboard, grid, marching ants, brush cursor, `onToolPress / Drag / Release / Hover / Key`, `onDrawOverlay`. |
+| **Nearest-neighbour image drawing.** `IRenderContext` had no way to choose the sampling filter. | Above 200 % an editor must show square pixels. | `IRenderContext::SetImageSmoothing(bool)` with the Cairo implementation. |
+| **New Image dialog.** `UltraCanvasNewDocumentDialog` chooses a file *type*; an image editor needs width / height / background with presets. | Different question. | `UltraPaintNewImageDialog` (app-level; small enough to stay there for now). |
+
+## What is still missing (candidates for later releases)
+
+Listed so the next session does not rediscover them:
+
+- **Tablet pressure on Linux/X11.** `UCEvent::pressure` exists and the brush
+  honours it, but the X11 backend reports 1.0 (no XInput2 valuators yet).
+- **Airbrush time accumulation.** The airbrush deposits per pointer
+  movement; a true airbrush also deposits while the pointer rests (needs a
+  timer-driven `AddPoint` in the tool).
+- **Brush tips beyond round / square** (texture / image brushes), brush
+  dynamics (scatter, jitter, angle), and a brush preset library.
+- **Selection transform** (scale / rotate the floating selection), the
+  perspective / free-transform tool, and content-aware fill.
+- **Adjustment layers and layer masks.** Blend modes and opacity exist; a
+  non-destructive adjustment stack does not.
+- **Vector / text layers.** Text is rasterised on placement; there is no
+  editable text object. The Vectorizer plugin (raster → SVG) could be
+  offered as *Image → Trace to SVG*.
+- **Colour management.** PixelFX has `IccImport / IccExport`; the editor
+  works in sRGB only.
+- **16-bit / HDR editing.** Layers are 8-bit; PixelFX handles 16-bit and
+  float, so a `UCRasterLayer` with a selectable band format is the natural
+  extension.
+- **Batch / scripting.** The document is UI-free by design; a command-line
+  driver (`ultrapaint --apply gaussian-blur=3 in.png out.png`) is a small
+  addition.
+- **System clipboard images.** `UltraCanvasClipboard::GetImage / SetImage`
+  exist, and UltraPaint uses them (PNG); the X11 backend's image target
+  support should be verified on a real desktop (this session ran under Xvfb
+  only).
+- **Animation frames** (GIF / WebP animation as a frame timeline).
+- **Plugins.** A filter-plugin interface so third parties can add entries to
+  `PaintFilterCatalogue()` without recompiling the app.

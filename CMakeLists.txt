@@ -64,6 +64,7 @@ if(ANDROID)
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
+    set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
     set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
@@ -96,6 +97,7 @@ endif()
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
 option(BUILD_ULTRAVIEWER_APP "Build the UltraViewer universal media viewer application" ON)
+option(BUILD_ULTRAPAINT_APP "Build the UltraPaint bitmap editor application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
@@ -917,6 +919,54 @@ if (BUILD_ULTRAVIEWER_APP)
     message(STATUS "  UltraViewer executable: UltraViewer")
 endif()
 
+# ===== ULTRAPAINT APPLICATION =====
+# Bitmap editor on the framework's raster-editing layer (UCRasterDocument,
+# brush engine, UltraCanvasPaintSurface) with PixelFX for the filters.
+if (BUILD_ULTRAPAINT_APP)
+    message(STATUS "")
+    message(STATUS "── Building UltraPaint Application ──")
+
+    add_executable(UltraPaint
+            Apps/UltraPaint/main.cpp
+            Apps/UltraPaint/UltraPaintWindow.cpp
+            Apps/UltraPaint/UltraPaintTools.cpp
+            Apps/UltraPaint/UltraPaintFilters.cpp
+            Apps/UltraPaint/UltraPaintDialogs.cpp
+    )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraPaint PROPERTIES ENABLE_EXPORTS ON)
+
+    target_include_directories(UltraPaint PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraPaint
+    )
+
+    target_link_libraries(UltraPaint PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+
+    target_compile_features(UltraPaint PRIVATE cxx_std_20)
+
+    target_compile_definitions(UltraPaint PRIVATE
+            # UltraPaint versions itself: Docs/UltraPaint/CHANGELOG.md is the
+            # single source of this number (cmake/UltraCanvasVersion.cmake).
+            ULTRAPAINT_VERSION="${ULTRAPAINT_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/UltraPaint.png"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraPaint
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraPaint.png")
+
+    # Embed manifest with UTF-8 active code page (Windows only) - the editor
+    # opens arbitrary paths, so narrow Win32/CRT calls must read them as UTF-8.
+    ultracanvas_embed_windows_manifest(UltraPaint)
+
+    message(STATUS "  UltraPaint executable: UltraPaint")
+endif()
+
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
@@ -1254,6 +1304,19 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME MediaCodecRegistryTest COMMAND MediaCodecRegistryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The raster-editing layer under UltraPaint: layers, selection, brush
+    # engine, document undo / redo, selection-aware PixelFX filters and the
+    # PNG / .ucraster round trips. Headless; no window is created.
+    add_executable(RasterEditingTest Tests/RasterEditingTest.cpp)
+    target_include_directories(RasterEditingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(RasterEditingTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(RasterEditingTest PRIVATE cxx_std_20)
+    set_target_properties(RasterEditingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RasterEditingTest COMMAND RasterEditingTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
