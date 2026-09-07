@@ -123,7 +123,7 @@ and reports the true code.
 |---|---|
 | *unset* | Debug builds log to stderr; Release builds log nothing. |
 | `0`, `off`, `no`, `none`, `false` | Off, in every build configuration. |
-| `1`, `on`, `yes`, `true`, `stderr`, `-` | On, to stderr. |
+| `1`, `on`, `yes`, `true`, `stderr`, `logcat`, `-` | On, to stderr. (`logcat` is a keyword on every platform so it is never mistaken for a filename; it only means anything on Android.) |
 | *any other value* | On, appending to that file. |
 
 This works in **Release** builds. It used to not: `debugOutput` compiled to a

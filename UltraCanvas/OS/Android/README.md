@@ -25,6 +25,7 @@ Android).
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text only (images/files need the SAF `content://` adapter — later phase); change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "no text" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
+| `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile`, `SelectFolder` and input dialogs stay logged "Cancel" stubs — **Dialogs** below explains why the first two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
 | `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog`, the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
@@ -231,6 +232,47 @@ so the keyboard is raised against the decor view and only committed key events
 arrive. Printable keys — soft and physical alike — are still translated through
 the device's `KeyCharacterMap` into `UCEvent::text`, so non-US layouts type
 correctly. Dead-key composition needs the `InputConnection` path.
+
+## Diagnostics: seeing anything at all
+
+The single thing to set up before a first run on a device or emulator, because
+without it a failure to start looks identical to a black screen.
+
+Android gives a native app no console: `stdout` and `stderr` are `/dev/null`.
+That is the same failure the runtime sink in `UltraCanvasDebug.h` was written
+for on Windows (GUI-subsystem processes have no console either), so Android
+uses the same mechanism with a different sink — **`debugOutput` writes straight
+to logcat**, under the tag `UltraCanvas`. The backend's own 20 `debugOutput`
+call sites, and every one in shared framework code, land there.
+
+Anything that does *not* go through `debugOutput` — the dependency stack's
+warnings (fontconfig with no cache dir, cairo failing a surface, Pango missing
+a font), the EGL manager's messages, the ~50 legacy `std::cout`/`std::cerr`
+sites in core — is captured by the stdio pump instead, under the tag
+`UltraCanvas-stdio`.
+
+```sh
+adb logcat -s UltraCanvas:V UltraCanvas-stdio:V
+```
+
+An APK inherits no environment, so `ULTRACANVAS_DEBUG_LOG` cannot be set on a
+device. The Android knob is the system property:
+
+```sh
+adb shell setprop debug.ultracanvas.log 1        # on, to logcat
+adb shell setprop debug.ultracanvas.log /sdcard/Download/uc.log
+adb shell setprop debug.ultracanvas.log 0        # off
+```
+
+Read once, when the first line is logged — set it before launching the app.
+`ULTRACANVAS_DEBUG_LOG` still wins where something does set it (a test
+harness, a wrapper activity); the property is consulted only when it is unset.
+Debug builds log by default (`ULTRACANVAS_DEBUG` is defined for
+`CMAKE_BUILD_TYPE=Debug`), Release builds do not until asked — same rule as
+every other platform.
+
+Native crashes are separate: those go to the tombstone, and
+`adb logcat | $ANDROID_NDK_HOME/ndk-stack -sym <obj dir>` symbolicates them.
 
 ## Building
 
