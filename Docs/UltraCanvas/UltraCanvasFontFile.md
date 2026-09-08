@@ -137,6 +137,70 @@ back, which is what it should do.
 This is why a folder of `C:\Windows\Fonts` shows letters rather than a wall
 of `!"#$%`: those `.fon` files were being read as symbol fonts.
 
+## Browsing every glyph: a face held open
+
+`ReadFontFileInfo()` and `RenderFontSpecimenPixmap()` each open the file, work,
+and close it again. That is what makes them safe on several threads at once,
+and it is right for one thumbnail. It is wrong for a browser: a grid of
+hundreds of cells, re-rasterized on every scroll and every size change, cannot
+re-open the file per glyph.
+
+`UltraCanvasFontFace` is the session type for that — open once, enumerate the
+coverage once, then rasterize from the face that is already open.
+
+```cpp
+UltraCanvas::UltraCanvasFontFace face;
+if (face.Open(path)) {
+    for (const auto& range : face.Ranges())
+        std::cout << range.name << "  " << range.count << " glyphs\n";
+
+    const size_t entry = face.FindCodepoint(U'A');
+    if (entry < face.Glyphs().size()) {
+        auto cell = face.RenderGlyph(entry, 48, 48, deviceScale);
+        std::cout << "glyph name: " << face.GlyphName(entry) << "\n";
+    }
+}
+```
+
+One instance is **single-threaded** — it owns a live `FT_Face`, which is not
+re-entrant. Give each thread its own. It is move-only and closes itself.
+
+### Coverage
+
+`Glyphs()` is every glyph the face offers, as `FontGlyphEntry{glyphIndex,
+codepoint}`. Where the face has a usable charmap the list is in **codepoint
+order** and `GlyphsAreByCodepoint()` is true; where it has none the list is in
+**glyph-index order** with `codepoint == 0`, and a browser should label cells
+by index rather than by character. `FindCodepoint()` binary-searches the
+codepoint-ordered case so a browser can jump to a character.
+
+`GlyphName()` is queried on demand rather than stored: a CJK face has tens of
+thousands of glyphs and a browser only ever labels the few under the pointer.
+It is empty for formats that carry no glyph names (PCF, most bitmap fonts).
+
+`Ranges()` cuts the coverage into runs of consecutive codepoints and names each
+after the Unicode block it starts in — so a font carrying three quarters of
+Cyrillic gets one `Cyrillic` entry rather than the whole block whether it has
+it or not. The ranges are a **partition**: contiguous, non-empty, and together
+exactly the coverage. Runs the block table does not name are labelled by their
+codepoints (`U+2FF0-U+2FFB`), and an index-ordered face gets even slices
+(`Glyphs 256-511`) since that is the only structure it has.
+
+### Cell rendering
+
+`RenderGlyph()` draws one glyph into a cell of `width × height` logical pixels,
+with `scale` as the device scale exactly as elsewhere. By default it scales
+**the face's own bounding box** into the cell, not the individual glyph:
+
+- no glyph in the face can overflow its cell, and
+- every cell shares a baseline, so a row reads as text rather than as a set of
+  unrelated pictures — an `A` sits above the baseline and a `g` hangs below it.
+
+`FontGlyphOptions::fitInkToCell` trades that away for one glyph drawn as large
+as the cell allows, which is what a detail pane wants and a grid does not. A
+glyph that rasterizes to nothing — a space — comes back as an empty cell rather
+than null, because a blank is a real answer.
+
 ## Recognition
 
 - `IsFontFileExtension(pathOrExtension)` — true for an extension this module

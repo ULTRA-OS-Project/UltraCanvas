@@ -21,6 +21,24 @@
   than its A — the option documented as taking any string quietly ignored the
   shortest ones. It now falls back only when nothing resolves at all; a font
   covering part of the sample draws the part it covers.
+- **A font file can be held open and browsed glyph by glyph.**
+  `UltraCanvasFontFace` opens one face, enumerates its coverage once and then
+  rasterizes individual glyphs from the face that is already open — the
+  session type a glyph browser needs, where the existing one-shot calls
+  re-open the file every time (which is what makes *them* safe on the
+  thumbnail workers, and useless for a grid). `Glyphs()` lists every glyph in
+  codepoint order where the face has a usable charmap and in glyph-index order
+  where it has none; `Ranges()` cuts that into runs and names each after its
+  Unicode block, as a partition, so a range picker cannot silently hide part
+  of a font; `FindCodepoint()` jumps to a character and `GlyphName()` reads the
+  font's own name for a glyph on demand — a CJK face has tens of thousands and
+  a browser labels only the few under the pointer. `RenderGlyph()` scales the
+  face's *bounding box* into the cell rather than the individual glyph, so no
+  glyph can overflow and every cell shares a baseline: an `A` sits above it and
+  a `g` hangs below it, which is what makes a grid read as text instead of as
+  unrelated pictures. `FontGlyphOptions::fitInkToCell` opts into the other
+  behaviour for a detail pane. Move-only, self-closing, and single-threaded:
+  it owns a live `FT_Face`, which is not re-entrant.
 - `Tests/FontFileTest.cpp` pins both. The discriminator is pixel identity
   rather than ink volume: when a sample fails to resolve, *every* request
   falls back to the same six glyphs, so two different single characters come
