@@ -1,6 +1,6 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-07-20
+// Last Modified: 2026-09-08
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <vector>
@@ -1357,6 +1357,14 @@ namespace UltraCanvas {
                 if (showFirstChildOnExpand) {
                     ExpandFirstChildNode(focusedNode);
                 }
+            } else if (showFirstChildOnExpand && !addToSelection &&
+                       focusedNode->IsExpanded()) {
+                // "Jump to first entry" is about selecting a heading, not only
+                // about opening it: a click on a parent that is already open
+                // (an ExpandAll'd settings tree, say) moves on to its first
+                // child too, so a heading whose page is its first sub page is
+                // never the row left selected.
+                ExpandFirstChildNode(focusedNode);
             }
 
             // If a parent node sitting at the bottom of the view was clicked,
@@ -1510,10 +1518,21 @@ namespace UltraCanvas {
         }
     }
 
+    // With "jump to first entry" on, an open heading is never the row left
+    // selected, so the arrow keys step over it: from the first child of one
+    // heading straight to the last child of the one before, the way a list
+    // of pages reads. A closed heading is still stepped onto - it can be
+    // opened from there - and so is one that opted out per node.
+    bool UltraCanvasTreeView::IsSteppedOverByKeys(const TreeNode* node) const {
+        return node && showFirstChildOnExpand && node->data.showFirstChildOnExpand &&
+               node->HasChildren() && node->IsExpanded();
+    }
+
     void UltraCanvasTreeView::NavigateUp() {
         if (!focusedNode) return;
 
         TreeNode *prevNode = GetPreviousVisibleNode(focusedNode);
+        while (IsSteppedOverByKeys(prevNode)) prevNode = GetPreviousVisibleNode(prevNode);
         if (prevNode) {
             SelectNode(prevNode);
             focusedNode = prevNode;
@@ -1531,6 +1550,7 @@ namespace UltraCanvas {
         if (!focusedNode) return;
 
         TreeNode *nextNode = GetNextVisibleNode(focusedNode);
+        while (IsSteppedOverByKeys(nextNode)) nextNode = GetNextVisibleNode(nextNode);
         if (nextNode) {
             SelectNode(nextNode);
             focusedNode = nextNode;
@@ -1624,6 +1644,8 @@ namespace UltraCanvas {
         // keep the selection on themselves instead of jumping to the first child.
         if (!node->data.showFirstChildOnExpand) return;
         SelectNode(node->FirstChild(), false);
+        // The row the jump selects is the one the arrow keys continue from.
+        focusedNode = node->FirstChild();
     }
 
     void UltraCanvasTreeView::SetWindow(UltraCanvasWindowBase *win) {

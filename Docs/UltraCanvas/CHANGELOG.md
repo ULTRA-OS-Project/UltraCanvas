@@ -1,3 +1,19 @@
+#### 2026-09-08 *0.3.109*
+- **`UltraCanvasTreeView`: "jump to first entry" also answers a click on an
+  open parent.** `SetShowFirstChildOnExpand(true)` moved the selection on to
+  a parent's first child when the parent was expanded - by its button, a
+  double click or Enter - but a single click on a parent that was already
+  open (every heading of an `ExpandAll()`'d tree) left the parent selected.
+  For a tree whose headings show their first sub page, that was two rows
+  showing the same content. The click now moves on too; a node still opts
+  out through `TreeNodeData::showFirstChildOnExpand`, and Ctrl+click in
+  multi-select mode keeps adding the parent itself. The jump also gives the
+  keyboard focus to the child it selects, and the arrow keys step over open
+  parents - from the first child of one heading straight to the last child
+  of the one before - so a heading is never the row left selected from the
+  keyboard either; a closed parent is still stepped onto, since it can be
+  opened from there.
+
 #### 2026-09-07 *0.3.108*
 - **WebAssembly: real applications link, and the browser clipboard works.**
   The Emscripten backend (`UltraCanvas/OS/WASM/`) rendered and took input,

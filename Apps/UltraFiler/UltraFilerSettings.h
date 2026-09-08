@@ -48,6 +48,8 @@ public:
     // ===== THE SETTINGS =====
     // Media viewer: backdrop behind transparent images — the checkered
     // pattern used by image editors, or a preset solid colour (default white).
+    // Chosen from the colour strip the viewer shows under a transparent
+    // image; the settings window has no page for it.
     bool  previewCheckeredBackground = false;
     Color previewTransparentColor    = Color(255, 255, 255, 255);
 
