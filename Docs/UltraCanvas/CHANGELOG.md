@@ -39,6 +39,35 @@
   unrelated pictures. `FontGlyphOptions::fitInkToCell` opts into the other
   behaviour for a detail pane. Move-only, self-closing, and single-threaded:
   it owns a live `FT_Face`, which is not re-entrant.
+- **A font file now has a detail view: every glyph in it, scrolling.**
+  `UltraCanvasFontViewer` is a new element - a grid of the font's own glyphs
+  with a picker for the ranges it covers, a size control and an information
+  line naming the glyph under the pointer. `UltraCanvasMediaViewer` shows it
+  for the new `MediaKind::Font`, which is what finally puts something behind
+  the Display > Detail view > Fonts switch: that switch existed but could
+  never fire, because `UltraFilerWindow::CanShowInDetailView()` asks
+  `IsSupportedMedia()` first and a font never got past it. Nothing is
+  installed or registered to show one - the grid rasterizes straight from the
+  file, so a folder of downloaded candidates browses exactly like a folder of
+  installed ones. The range picker is what makes a 20 000-glyph CJK font
+  navigable: scrolling to Hiragana is one choice rather than a long drag.
+  Only the rows on screen are rasterized, and cells are cached by (entry,
+  device-pixel edge), so the cost is a screenful rather than the font. The
+  grid is a self-rendered view in the sense the house rules allow - the cells
+  are content, painted as the filer paints its tiles - while every control is
+  a real element: `UltraCanvasDropdown` for the pickers, `UltraCanvasSlider`
+  for the size, `UltraCanvasLabel` for the information line,
+  `UltraCanvasScrollbar` for the bar, and `UltraCanvasSmoothScroll` for the
+  easing, so a wheel notch feels the same as it does in the filer.
+- **`UltraCanvasDropdown::SetSelectedIndex(index, false)` notified anyway.**
+  The flag suppressed the `onSelectionChanged` callback but the method still
+  posted a `DropdownSelect` event, which is a notification by any measure -
+  and every caller passing `false` does so precisely to move the control
+  without anything reacting ("don't fire SetInputDevice yet"). The event is
+  now inside the flag, and the application singleton it is posted through is
+  null-checked the way the rest of the core reaches it, so constructing a
+  dropdown before (or without) an application is no longer a crash. Surfaced
+  by the font viewer's tests, which build one headlessly.
 - `Tests/FontFileTest.cpp` pins both. The discriminator is pixel identity
   rather than ink volume: when a sample fails to resolve, *every* request
   falls back to the same six glyphs, so two different single characters come

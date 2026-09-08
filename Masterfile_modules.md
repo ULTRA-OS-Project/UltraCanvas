@@ -182,6 +182,29 @@ the backing implementation can be replaced without affecting callers.
   Process-private and permanent: there is no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+- **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
+  scrolling grid of a font file's own glyphs, a picker for the ranges it
+  covers, a size control and an information line. Built on
+  `UltraCanvasFontFace`, so the font need not be installed. Embedded by
+  `UltraCanvasMediaViewer` as the display for `MediaKind::Font` (which is what
+  gives a file manager's detail pane something to show for a font), and usable
+  standalone by a font manager or a coverage-aware font picker. Public surface:
+  - `LoadFont` / `CloseFont` / `IsFontLoaded` / `GetFontPath` / `GetFace`, and
+    `GetFaceCount` / `GetFaceIndex` / `SetFaceIndex` for a `.ttc` collection.
+  - `SetCellSize`, `ShowRange`, `ScrollToCodepoint`, `ScrollToEntry`,
+    `SetSelectedEntry` / `GetSelectedEntry`, `onGlyphSelected` /
+    `onGlyphActivated`.
+  - `SetControlsVisible` / `SetStyle` (`FontViewerStyle`) for a host with its
+    own chrome.
+  - Geometry, public because it is what silently breaks: `GetColumnCount`,
+    `GetRowCount`, `GetMaxScroll`, `GetScrollOffset`, `EntryAtPoint`,
+    `GetCellRect`.
+
+  A self-rendered view of its *content* only: every control is a real element
+  (Dropdown, Slider, Label, Scrollbar) and scrolling eases through
+  `UltraCanvasSmoothScroll`.
+  See `Docs/UltraCanvas/UltraCanvasFontViewer.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.

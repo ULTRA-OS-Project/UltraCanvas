@@ -1,0 +1,253 @@
+// Tests/FontViewerTest.cpp
+// The glyph browser's geometry: how many columns fit, how far it scrolls,
+// which glyph is under a point, and where a cell lands.
+//
+// These are the parts that break silently. A wrong column count or a scroll
+// range that stops short of the last row is invisible until a font is open in
+// front of someone, and the painting itself cannot be checked without a
+// window - so what can be checked headlessly is checked here, thoroughly.
+// Version: 1.0.0
+// Last Modified: 2026-09-08
+// Author: UltraCanvas Framework
+
+#include "UltraCanvasFontViewer.h"
+#include "UltraCanvasMediaViewer.h"
+
+#include <filesystem>
+#include <iostream>
+#include <set>
+#include <string>
+
+namespace fs = std::filesystem;
+using namespace UltraCanvas;
+
+namespace {
+
+int g_failures = 0;
+
+void Check(bool condition, const std::string& what) {
+    std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << "\n";
+    if (!condition) ++g_failures;
+}
+
+fs::path BundledFont(const std::string& name) {
+    return fs::path(UC_MEDIA_DIR) / "fonts" / name;
+}
+
+void TestEmptyViewer() {
+    std::cout << "\nWith no font\n";
+    auto viewer = CreateFontViewer("empty", 0, 0, 600, 400);
+    Check(!viewer->IsFontLoaded(), "starts with no font");
+    Check(viewer->GetRowCount() == 0, "no rows");
+    Check(viewer->GetMaxScroll() == 0, "nothing to scroll");
+    Check(viewer->GetColumnCount() >= 1, "still reports at least one column");
+    Check(viewer->EntryAtPoint(100, 100) == UltraCanvasFontViewer::NoEntry,
+          "no glyph under any point");
+    Check(viewer->GetSelectedEntry() == UltraCanvasFontViewer::NoEntry,
+          "nothing selected");
+    // None of these may crash on an empty viewer.
+    viewer->ScrollToCodepoint('A');
+    viewer->ShowRange(0);
+    viewer->SetSelectedEntry(5);
+    Check(viewer->GetSelectedEntry() == UltraCanvasFontViewer::NoEntry,
+          "selecting a glyph that does not exist is refused");
+    Check(!viewer->LoadFont("/no/such/font.ttf"), "a missing file fails to load");
+}
+
+void TestGridGeometry() {
+    std::cout << "\nGrid geometry\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+    auto viewer = CreateFontViewer("grid", 0, 0, 600, 400);
+    Check(viewer->LoadFont(regular.string()), "the font loads");
+    Check(viewer->IsFontLoaded(), "and reports loaded");
+    Check(viewer->GetFace().Glyphs().size() > 100, "its coverage came through");
+
+    const size_t glyphs = viewer->GetFace().Glyphs().size();
+    const int columns = viewer->GetColumnCount();
+    const int rows = viewer->GetRowCount();
+    std::cout << "    " << glyphs << " glyphs, " << columns << " columns, "
+              << rows << " rows, max scroll " << viewer->GetMaxScroll() << "\n";
+    Check(columns >= 1, "at least one column fits");
+    Check(rows >= 1, "at least one row");
+    // Every glyph must have a cell, and no more rows than needed.
+    Check(static_cast<size_t>(rows) * columns >= glyphs,
+          "the rows hold every glyph");
+    Check(static_cast<size_t>(rows - 1) * columns < glyphs,
+          "and there is no empty row at the end");
+    Check(viewer->GetMaxScroll() > 0,
+          "a font this size scrolls in a pane this size");
+
+    // Narrowing the pane must reduce the columns and lengthen the grid.
+    viewer->SetBounds(Rect2Df(0, 0, 300, 400));
+    const int narrowColumns = viewer->GetColumnCount();
+    Check(narrowColumns > 0 && narrowColumns < columns,
+          "a narrower pane fits fewer columns");
+    Check(viewer->GetRowCount() > rows, "and therefore needs more rows");
+    viewer->SetBounds(Rect2Df(0, 0, 600, 400));
+    Check(viewer->GetColumnCount() == columns, "restoring the width restores them");
+}
+
+void TestPointRoundTrip() {
+    std::cout << "\nPoints and cells\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+    auto viewer = CreateFontViewer("hit", 0, 0, 600, 400);
+    if (!viewer->LoadFont(regular.string())) {
+        std::cout << "  [SKIP] the font did not load\n";
+        return;
+    }
+
+    // The centre of a visible cell must hit that cell, and nothing else.
+    const int columns = viewer->GetColumnCount();
+    int checked = 0, matched = 0;
+    std::set<size_t> seen;
+    for (size_t entry = 0; entry < static_cast<size_t>(columns) * 3 &&
+                           entry < viewer->GetFace().Glyphs().size(); ++entry) {
+        const Rect2Di cell = viewer->GetCellRect(entry);
+        const int cx = cell.x + viewer->GetCellSize() / 2;
+        const int cy = cell.y + viewer->GetCellSize() / 2;
+        ++checked;
+        const size_t hit = viewer->EntryAtPoint(cx, cy);
+        if (hit == entry) ++matched;
+        seen.insert(hit);
+    }
+    Check(checked > 0 && matched == checked,
+          "every visible cell's centre hits its own entry");
+    Check(seen.size() == static_cast<size_t>(checked),
+          "and no two cells claim the same point");
+
+    // A point far outside the grid belongs to nothing.
+    Check(viewer->EntryAtPoint(-50, -50) == UltraCanvasFontViewer::NoEntry,
+          "a point above and left of the grid hits nothing");
+    Check(viewer->EntryAtPoint(100000, 100000) == UltraCanvasFontViewer::NoEntry,
+          "a point past the grid hits nothing");
+}
+
+void TestScrolling() {
+    std::cout << "\nScrolling and ranges\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+    auto viewer = CreateFontViewer("scroll", 0, 0, 600, 400);
+    if (!viewer->LoadFont(regular.string())) {
+        std::cout << "  [SKIP] the font did not load\n";
+        return;
+    }
+    Check(viewer->GetScrollOffset() == 0, "a freshly loaded font starts at the top");
+
+    // The last glyph must be reachable: a scroll range that stops short of it
+    // hides the end of the font with no way to tell.
+    const size_t last = viewer->GetFace().Glyphs().size() - 1;
+    viewer->ScrollToEntry(last);
+    const Rect2Di lastCell = viewer->GetCellRect(last);
+    Check(viewer->GetScrollOffset() == viewer->GetMaxScroll(),
+          "scrolling to the last glyph reaches the end of the range");
+    Check(lastCell.y >= 0 && lastCell.y < 400,
+          "and puts the last cell inside the pane");
+
+    viewer->ScrollToEntry(0);
+    Check(viewer->GetScrollOffset() == 0, "and back to the top again");
+
+    // A range picker's job: land on the first glyph of the chosen block.
+    const auto& ranges = viewer->GetFace().Ranges();
+    Check(!ranges.empty(), "the font offers ranges");
+    if (ranges.size() > 2) {
+        const size_t target = ranges[2].firstEntry;
+        viewer->ShowRange(2);
+        const Rect2Di cell = viewer->GetCellRect(target);
+        Check(cell.y >= 0 && cell.y < 400,
+              "showing a range brings its first glyph into view");
+    }
+    viewer->ShowRange(ranges.size() + 10);   // must be a no-op, not a crash
+    Check(true, "an out-of-range range index is ignored");
+
+    // Selecting scrolls the glyph into view, and reports it once.
+    int fired = 0;
+    size_t reported = UltraCanvasFontViewer::NoEntry;
+    viewer->onGlyphSelected = [&](size_t e) { ++fired; reported = e; };
+    viewer->SetSelectedEntry(last);
+    Check(fired == 1 && reported == last, "selection is reported once");
+    Check(viewer->GetCellRect(last).y >= 0, "and the glyph is scrolled into view");
+    viewer->SetSelectedEntry(last);
+    Check(fired == 1, "re-selecting the same glyph reports nothing");
+}
+
+void TestCellSize() {
+    std::cout << "\nCell size\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+    auto viewer = CreateFontViewer("size", 0, 0, 600, 400);
+    if (!viewer->LoadFont(regular.string())) {
+        std::cout << "  [SKIP] the font did not load\n";
+        return;
+    }
+    const int columnsAtDefault = viewer->GetColumnCount();
+
+    viewer->SetCellSize(120);
+    Check(viewer->GetCellSize() == 120, "the size is taken");
+    Check(viewer->GetColumnCount() < columnsAtDefault,
+          "bigger cells mean fewer columns");
+
+    viewer->SetCellSize(24);
+    Check(viewer->GetColumnCount() > columnsAtDefault,
+          "smaller cells mean more columns");
+
+    // Out-of-range sizes clamp rather than produce a degenerate grid.
+    viewer->SetCellSize(-10);
+    Check(viewer->GetCellSize() > 0 && viewer->GetColumnCount() >= 1,
+          "an absurd size clamps to something usable");
+    viewer->SetCellSize(100000);
+    Check(viewer->GetCellSize() <= 200 && viewer->GetRowCount() >= 1,
+          "and so does an enormous one");
+}
+
+
+// The detail pane only opens what UltraCanvasMediaViewer admits. Until fonts
+// were classified there, the Display > Detail view > Fonts switch was a
+// control with nothing behind it: UltraFilerWindow::CanShowInDetailView()
+// asks IsSupportedMedia() first, and a font never got past it. That gate is
+// the public one, and the one worth pinning.
+void TestMediaViewerIntegration() {
+    std::cout << "\nDetail-pane classification\n";
+    Check(UltraCanvasMediaViewer::IsSupportedMedia("Ubuntu-R.ttf"),
+          "the detail pane accepts a ttf");
+    Check(UltraCanvasMediaViewer::IsSupportedMedia("/a/b/SEGOEUI.TTF"),
+          "upper case and a path are fine");
+    Check(UltraCanvasMediaViewer::IsSupportedMedia("Legacy.otf"),
+          "and an otf");
+    // A Type 1 .pfa is ASCII that the syntax tokenizer recognises, so it has
+    // to be classified as a font before the text check or it opens as source.
+    Check(UltraCanvasMediaViewer::IsSupportedMedia("Legacy.pfa"),
+          "and a Type 1 .pfa");
+    Check(UltraCanvasMediaViewer::IsSupportedMedia("bitmap.fon"),
+          "and a Windows bitmap font");
+    Check(!UltraCanvasMediaViewer::IsSupportedMedia("archive.zip"),
+          "while a zip is still not media");
+}
+
+} // namespace
+
+int main() {
+    std::cout << "===== Font glyph browser =====\n";
+    TestEmptyViewer();
+    TestGridGeometry();
+    TestPointRoundTrip();
+    TestScrolling();
+    TestCellSize();
+    TestMediaViewerIntegration();
+    std::cout << "\n" << (g_failures ? "FAILED" : "PASSED") << " ("
+              << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";
+    return g_failures == 0 ? 0 : 1;
+}

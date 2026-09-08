@@ -235,10 +235,11 @@ namespace UltraCanvas {
     // thumbnail producer at all (nothing here reads cover art yet); its
     // switches govern the detail view, where a host's viewer does play the
     // file, and its Thumbnails rows report themselves as unsupported. Fonts
-    // is the opposite case, and the one kind that lines up exactly with its
-    // FilerFileCategory: a font file has no viewer yet, but FreeType
-    // rasterizes a line of its own glyphs for the tile without the font
-    // having to be installed (see UltraCanvasFontFile.h).
+    // is the one kind that lines up exactly with its FilerFileCategory, and
+    // it carries both halves: FreeType rasterizes a line of a font's own
+    // glyphs for the tile (UltraCanvasFontFile.h), and the detail view opens
+    // the glyph browser (UltraCanvasFontViewer.h) - neither needing the font
+    // to be installed.
     enum class FilerPreviewType : uint32_t {
         NonePreview    = 0,
         Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
