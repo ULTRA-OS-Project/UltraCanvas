@@ -15,6 +15,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <set>
 #include <string>
 
@@ -219,6 +220,59 @@ void TestCellSize() {
 // control with nothing behind it: UltraFilerWindow::CanShowInDetailView()
 // asks IsSupportedMedia() first, and a font never got past it. That gate is
 // the public one, and the one worth pinning.
+// The control bar sits where the viewer puts it only if it says so in CSS
+// terms: SetBounds writes finalBounds, and the parent's next layout pass
+// overwrites an in-flow child, stacking the whole bar in one column at the
+// top-left over the grid. That only shows up in a window, so what can be
+// checked here is the part that prevents it - every control out of flow, and
+// placed where the bar's arithmetic says.
+void TestControlPlacement() {
+    std::cout << "\nControl bar placement\n";
+    const float w = 900, h = 680;
+    auto viewer = CreateFontViewer("chrome", 0, 0, w, h);
+
+    std::map<std::string, std::shared_ptr<UltraCanvasUIElement>> byId;
+    for (const auto& child : viewer->GetChildren()) {
+        if (child) byId[child->GetIdentifier()] = child;
+    }
+    Check(byId.count("chrome-range") == 1, "the range picker is a child");
+    Check(byId.count("chrome-size") == 1, "so is the size slider");
+    Check(byId.count("chrome-info") == 1, "so is the information line");
+    Check(byId.count("chrome-scroll") == 1, "so is the scrollbar");
+
+    for (const auto& [id, el] : byId) {
+        Check(el->layoutItem.positionType != CSSLayout::PositionType::Static,
+              id + " is out of flow, so a layout pass leaves it alone");
+    }
+
+    auto boundsOf = [&](const std::string& id) {
+        return byId.count(id) ? byId[id]->GetBounds() : Rect2Df(0, 0, 0, 0);
+    };
+    const Rect2Df range = boundsOf("chrome-range");
+    const Rect2Df slider = boundsOf("chrome-size");
+    const Rect2Df info = boundsOf("chrome-info");
+    const Rect2Df bar = boundsOf("chrome-scroll");
+
+    Check(range.x > 0 && range.y >= 0 && range.y < 30,
+          "the range picker is in the control bar, not at the origin");
+    Check(slider.x > range.x + range.width,
+          "the size slider is to the right of it, not under it");
+    Check(slider.x + slider.width <= w, "and inside the viewer");
+    Check(info.y > h - 30, "the information line is along the bottom");
+    Check(info.width > w * 0.5f, "and spans the width");
+    Check(bar.x + bar.width <= w && bar.x > w * 0.5f,
+          "the scrollbar is down the right edge");
+    Check(bar.height > 100, "and is as tall as the grid");
+
+    // A resize has to move them, not just re-flow the grid.
+    viewer->SetBounds(Rect2Df(0, 0, 500, 400));
+    const Rect2Df narrowSlider = boundsOf("chrome-size");
+    const Rect2Df narrowInfo = boundsOf("chrome-info");
+    Check(narrowSlider.x + narrowSlider.width <= 500,
+          "a narrower viewer pulls the slider in");
+    Check(narrowInfo.y > 400 - 30, "and lifts the information line");
+}
+
 void TestMediaViewerIntegration() {
     std::cout << "\nDetail-pane classification\n";
     Check(UltraCanvasMediaViewer::IsSupportedMedia("Ubuntu-R.ttf"),
@@ -246,6 +300,7 @@ int main() {
     TestPointRoundTrip();
     TestScrolling();
     TestCellSize();
+    TestControlPlacement();
     TestMediaViewerIntegration();
     std::cout << "\n" << (g_failures ? "FAILED" : "PASSED") << " ("
               << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";

@@ -67,7 +67,13 @@ pictures: an `A` sits above the baseline and a `g` hangs below it.
 
 The **range picker** lists the runs of coverage the font actually has, named
 after their Unicode blocks. That is what makes a 20 000-glyph CJK font
-navigable — scrolling to Hiragana is one choice rather than a long drag.
+navigable — scrolling to Hiragana is one choice rather than a long drag. It
+also follows the grid: a wheel out of Basic Latin and into Latin Extended-A
+moves it, so it always names what you are looking at rather than the last
+thing that was picked.
+
+The scrollbar appears only when there is something to scroll. A font that fits
+in the view, and the empty state before a font is loaded, show none.
 
 ## Controls are real elements
 
@@ -79,6 +85,14 @@ face pickers are `UltraCanvasDropdown`, the size control an
 the right an `UltraCanvasScrollbar`. Scrolling eases through
 `UltraCanvasSmoothScroll`, the same animator the filer and album use, so a
 wheel notch feels identical everywhere.
+
+Because they are real elements they go through the layout engine, and the
+viewer places them **out of flow** — `SetElementSize()` plus
+`SetElementAbsolutePosition()`, not `SetBounds()` alone. `SetBounds()` writes
+`finalBounds`, which the parent's next `Arrange()` pass overwrites: an in-flow
+child is re-stacked at the top-left however it was placed, which puts the whole
+control bar in one column on top of the grid. Any container that positions its
+own chrome has the same obligation.
 
 ## Performance
 

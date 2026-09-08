@@ -129,6 +129,18 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    // Chrome the viewer places itself has to say so in CSS terms. SetBounds
+    // writes finalBounds only, and the parent's next Arrange pass overwrites
+    // it: an in-flow child is re-stacked at the top-left however it was
+    // placed, which puts the whole control bar in one column over the grid.
+    static void PlaceChild(const std::shared_ptr<UltraCanvasUIElement>& el,
+                           float x, float y, float w, float h) {
+        if (!el) return;
+        el->SetElementSize(Size2Df(w, h));
+        el->SetElementAbsolutePosition(Point2Df(x, y));
+        el->SetBounds(Rect2Df(x, y, w, h));
+    }
+
     void UltraCanvasFontViewer::LayoutControls() {
         const float w = GetWidth(), h = GetHeight();
         if (w <= 0 || h <= 0) return;
@@ -137,40 +149,41 @@ namespace UltraCanvas {
         if (controlsVisible) {
             float cursor = pad;
             const float rowY = (kControlBarHeight - 24) * 0.5f;
-            if (facePicker && faceCount > 1) {
-                facePicker->SetVisible(true);
-                facePicker->SetBounds(cursor, rowY, 150, 24);
-                cursor += 150 + pad;
-            } else if (facePicker) {
-                facePicker->SetVisible(false);
+            if (facePicker) {
+                // Placed whether or not it is shown: only a collection needs
+                // it, but the rule "every control is out of flow" holds for
+                // all of them or it holds for none.
+                const bool collection = faceCount > 1;
+                facePicker->SetVisible(collection);
+                PlaceChild(facePicker, cursor, rowY, 150, 24);
+                if (collection) cursor += 150 + pad;
             }
             if (rangePicker) {
                 rangePicker->SetVisible(true);
                 // Give the range picker whatever is left before the slider.
                 const float sliderRoom = 120 + pad * 2;
-                const float width = std::max(120.0f, w - cursor - sliderRoom - pad);
-                rangePicker->SetBounds(cursor, rowY, std::min(280.0f, width), 24);
-                cursor += std::min(280.0f, width) + pad;
+                const float width = std::min(
+                        280.0f, std::max(120.0f, w - cursor - sliderRoom - pad));
+                PlaceChild(rangePicker, cursor, rowY, width, 24);
+                cursor += width + pad;
             }
             if (sizeSlider) {
                 sizeSlider->SetVisible(true);
-                sizeSlider->SetBounds(std::max(cursor, w - 120 - pad), rowY, 120, 24);
+                PlaceChild(sizeSlider, std::max(cursor, w - 120 - pad), rowY, 120, 24);
             }
             if (infoLabel) {
                 infoLabel->SetVisible(true);
-                infoLabel->SetBounds(pad, h - kInfoBarHeight + 3.0f,
-                                     std::max(10.0f, w - pad * 2), 16);
+                PlaceChild(infoLabel, pad, h - kInfoBarHeight + 3.0f,
+                           std::max(10.0f, w - pad * 2), 16);
             }
         }
 
         if (scrollbar) {
             const Rect2Di grid = GridArea();
-            // Rect2Df, not the four-float overload: the scrollbar overrides
-            // SetBounds(const Rect2Df&), which hides the base's other form.
-            scrollbar->SetBounds(Rect2Df(static_cast<float>(grid.x + grid.width),
-                                         static_cast<float>(grid.y),
-                                         static_cast<float>(kScrollbarWidth),
-                                         static_cast<float>(std::max(1, grid.height))));
+            PlaceChild(scrollbar, static_cast<float>(grid.x + grid.width),
+                       static_cast<float>(grid.y),
+                       static_cast<float>(kScrollbarWidth),
+                       static_cast<float>(std::max(1, grid.height)));
         }
         SyncScrollbar();
     }
@@ -333,12 +346,32 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFontViewer::SyncScrollbar() {
-        if (!scrollbar) return;
         syncingControls = true;
-        const Rect2Di grid = GridArea();
-        scrollbar->SetScrollDimensions(std::max(1, grid.height),
-                                       std::max(1, GetRowCount() * CellStride()));
-        scrollbar->SetScrollPosition(scrollOffsetY);
+        if (scrollbar) {
+            const Rect2Di grid = GridArea();
+            scrollbar->SetScrollDimensions(std::max(1, grid.height),
+                                           std::max(1, GetRowCount() * CellStride()));
+            scrollbar->SetScrollPosition(scrollOffsetY);
+            // A font that fits, or no font at all, has nothing to scroll: a
+            // full-height thumb down the edge is noise.
+            scrollbar->SetVisible(GetMaxScroll() > 0);
+        }
+        // The picker names the range you are looking at, not the last one
+        // picked: a wheel out of Basic Latin and into Latin Extended-A has to
+        // move it, or it stands there contradicting the grid. Every scroll
+        // path passes through here, which is why the two travel together.
+        if (rangePicker && !face.Ranges().empty()) {
+            const size_t top = static_cast<size_t>(
+                    (scrollOffsetY / std::max(1, CellStride())) * GetColumnCount());
+            const auto& ranges = face.Ranges();
+            size_t which = 0;
+            for (size_t i = 0; i < ranges.size(); ++i) {
+                if (ranges[i].firstEntry > top) break;
+                which = i;
+            }
+            if (rangePicker->GetSelectedIndex() != static_cast<int>(which))
+                rangePicker->SetSelectedIndex(static_cast<int>(which), false);
+        }
         syncingControls = false;
     }
 
@@ -482,15 +515,20 @@ namespace UltraCanvas {
         ctx->FillRectangle(Rect2Dd(local));
 
         if (face.Glyphs().empty()) {
-            // An empty state that says which of the two reasons it is.
+            // An empty state that says which of the two reasons it is, in the
+            // middle of the grid area - the whole element starts under the
+            // control bar, which would hide the line behind the pickers.
+            const Rect2Di area = GridArea();
             FontStyle fs;
             fs.fontFamily = style.fontFamily;
             fs.fontSize = style.fontSize + 1;
             ctx->SetFontStyle(fs);
+            ctx->SetTextAlignment(TextAlignment::Center);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
             ctx->SetTextPaint(style.captionColor);
             ctx->DrawTextInRect(face.IsOpen() ? "This font contains no glyphs"
                                               : "No font loaded",
-                                Rect2Dd(local));
+                                Rect2Dd(area.x, area.y, area.width, area.height));
             UltraCanvasContainer::Render(ctx, dirtyRect);
             return;
         }

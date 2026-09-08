@@ -59,6 +59,22 @@
   for the size, `UltraCanvasLabel` for the information line,
   `UltraCanvasScrollbar` for the bar, and `UltraCanvasSmoothScroll` for the
   easing, so a wheel notch feels the same as it does in the filer.
+- **The font viewer's control bar landed in one column on top of the grid.**
+  Putting the viewer in a window for the first time showed the range picker,
+  the size slider and the information line stacked at the top-left over the
+  first row of glyphs, and no scrollbar at the right edge at all. The bar's
+  arithmetic was right; the placement was not applied. `SetBounds()` writes
+  `finalBounds` only, and the parent's next `Arrange()` pass overwrites it —
+  an in-flow child is re-stacked wherever the layout engine wants it, which
+  for these was a column at the origin. The viewer now places every control
+  out of flow (`SetElementSize()` + `SetElementAbsolutePosition()`), the way
+  the filer places its rename editor and the toolbar builder its toolbar. Three
+  smaller things the same first look found: the range picker did not follow the
+  grid, so it went on claiming "Basic Latin" while the view was in Latin
+  Extended-B; the empty state's "No font loaded" was drawn in the element's own
+  rectangle and so sat behind the control bar rather than in the middle of the
+  grid; and the scrollbar drew a full-height thumb down the edge when there was
+  nothing to scroll.
 - **`UltraCanvasDropdown::SetSelectedIndex(index, false)` notified anyway.**
   The flag suppressed the `onSelectionChanged` callback but the method still
   posted a `DropdownSelect` event, which is a notification by any measure -
