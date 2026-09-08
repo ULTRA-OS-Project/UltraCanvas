@@ -1385,6 +1385,28 @@ else()
     message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== VECTOR MODEL TEST =====
+# The shared vector document model: Matrix3x3 at double precision, group
+# and document bounds through nested transforms, and hit-testing that
+# carries the point through ancestor transforms.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorModelTest...")
+    add_executable(VectorModelTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorModelTest.cpp
+    )
+    target_include_directories(VectorModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorModelTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorModelTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorModelTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorModelTest COMMAND VectorModelTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorModelTest")
+else()
+    message(STATUS "  VectorModelTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # The whole converter matrix through the graphics plugin registry: saving
 # all ten formats via SaveGraphicsFile, loading the formats with readers

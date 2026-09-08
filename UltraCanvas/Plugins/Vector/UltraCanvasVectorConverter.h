@@ -235,83 +235,11 @@ public:
     virtual bool ValidateData(const std::string& data) const = 0;
 };
 
-// ===== CONVERTER FACTORY =====
-
-class VectorConverterFactory {
-public:
-    static VectorConverterFactory& Instance();
-    
-    // Register converters
-    void RegisterConverter(
-        VectorFormat format,
-        std::function<std::unique_ptr<IVectorFormatConverter>()> factory
-    );
-    
-    // Get converter
-    std::unique_ptr<IVectorFormatConverter> CreateConverter(VectorFormat format) const;
-    std::unique_ptr<IVectorFormatConverter> CreateConverterForFile(const std::string& filename) const;
-    
-    // Get information
-    std::vector<VectorFormat> GetSupportedFormats() const;
-    FormatCapabilities GetFormatCapabilities(VectorFormat format) const;
-    bool IsFormatSupported(VectorFormat format) const;
-    
-    // Detect format
-    VectorFormat DetectFormat(const std::string& filename) const;
-    VectorFormat DetectFormatFromData(const std::string& data) const;
-    
-private:
-    VectorConverterFactory() = default;
-    std::map<VectorFormat, std::function<std::unique_ptr<IVectorFormatConverter>()>> converters;
-};
-
-// ===== CONVERSION MANAGER =====
-
-class VectorConversionManager {
-public:
-    // Direct conversion
-    static std::shared_ptr<VectorStorage::VectorDocument> Convert(
-        const std::string& inputFile,
-        VectorFormat outputFormat,
-        const std::string& outputFile,
-        const ConversionOptions& options = ConversionOptions()
-    );
-    
-    // Multi-step conversion (for formats without direct conversion)
-    static std::shared_ptr<VectorStorage::VectorDocument> ConvertViaIntermediate(
-        const std::string& inputFile,
-        VectorFormat inputFormat,
-        VectorFormat outputFormat,
-        const std::string& outputFile,
-        const ConversionOptions& options = ConversionOptions()
-    );
-    
-    // Batch conversion
-    static void BatchConvert(
-        const std::vector<std::string>& inputFiles,
-        VectorFormat outputFormat,
-        const std::string& outputDirectory,
-        const ConversionOptions& options = ConversionOptions()
-    );
-    
-    // Format validation
-    static bool CanConvert(VectorFormat from, VectorFormat to);
-    static std::vector<VectorFormat> GetConversionPath(VectorFormat from, VectorFormat to);
-    
-    // Loss assessment
-    struct ConversionLossReport {
-        bool LosslessPossible;
-        std::vector<std::string> LossyFeatures;
-        std::vector<std::string> UnsupportedFeatures;
-        std::vector<std::string> Warnings;
-        float EstimatedQualityLoss;  // 0.0 (lossless) to 1.0 (total loss)
-    };
-    
-    static ConversionLossReport AssessConversionLoss(
-        const VectorStorage::VectorDocument& document,
-        VectorFormat targetFormat
-    );
-};
+// Format dispatch by extension lives in UltraCanvasVectorFormatsPlugin
+// (CreateConverterForExtension); the graphics plugin registry is the
+// factory. A registry keyed by VectorFormat, multi-step conversion paths
+// and a pre-conversion loss report were sketched here early on but never
+// built - see Docs/Research/UltraCanvasVectorModelProposal.md.
 
 // ===== FORMAT-SPECIFIC CONVERTERS =====
 
@@ -437,25 +365,6 @@ public:
     bool ValidateFile(const std::string& filename) const override;
     bool ValidateData(const std::string& data) const override;
 };
-
-// ===== HELPER FUNCTIONS =====
-
-// Format detection
-VectorFormat DetectFormatFromExtension(const std::string& filename);
-VectorFormat DetectFormatFromMagicBytes(const uint8_t* data, size_t size);
-
-// Feature compatibility checking
-bool IsFeatureSupported(const VectorStorage::VectorElement& element, VectorFormat format);
-std::vector<std::string> GetUnsupportedFeatures(
-    const VectorStorage::VectorDocument& document,
-    VectorFormat format
-);
-
-// Optimization
-void OptimizeDocument(VectorStorage::VectorDocument& document);
-void SimplifyPaths(VectorStorage::VectorDocument& document, float tolerance);
-void MergeDuplicateStyles(VectorStorage::VectorDocument& document);
-void RemoveInvisibleElements(VectorStorage::VectorDocument& document);
 
 } // namespace VectorConverter
 } // namespace UltraCanvas
