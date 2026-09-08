@@ -15,6 +15,7 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasSmartHomePanel.h"
 #include "UltraCanvasSmartHomeDeviceControl.h"
+#include "UltraCanvasSmartHomeAdvancedWidgets.h"
 #include <cstdio>
 
 using namespace UltraCanvas;
@@ -266,6 +267,94 @@ int main() {
         wizard.OnEvent(esc);
         if (cancels != 1) { std::puts("FAIL: wizard Escape should cancel"); return 1; }
         std::puts("ok  wizard: Escape cancels");
+    }
+
+    // ----- scene editor -----
+    {
+        SmartHomeSceneEditor editor("sceneEd", 0, 0, 340, 420);
+        editor.NewScene();
+        editor.SetSceneName("Movie Night");
+        editor.AddAction("light-1", "off", {});
+        editor.AddAction("blind-1", "close", {});
+        if (editor.GetScene().Actions.size() != 2) { std::puts("FAIL: scene actions"); return 1; }
+
+        editor.RemoveAction(0);
+        if (editor.GetScene().Actions.size() != 1 ||
+            editor.GetScene().Actions[0].DeviceId != "blind-1") {
+            std::puts("FAIL: RemoveAction removed the wrong one"); return 1;
+        }
+        // A stale index must not erase anything.
+        editor.RemoveAction(99);
+        if (editor.GetScene().Actions.size() != 1) {
+            std::puts("FAIL: an out-of-range index erased an action"); return 1;
+        }
+        std::puts("ok  scene editor: add, remove, and ignore a stale index");
+
+        int saved = 0;
+        editor.SetOnSave([&](const SmartHomeScene&){ ++saved; });
+        editor.OnEvent(Ev(UCEventType::MouseDown, 289, 390));   // "Save"
+        if (saved != 1 || editor.GetScene().SceneId.empty()) {
+            std::puts("FAIL: scene save"); return 1;
+        }
+        std::puts("ok  scene editor: save assigns an id and reports");
+    }
+
+    // ----- automation editor: the trigger round-trips through JSON -----
+    {
+        SmartHomeAutomationEditor editor("autoEd", 0, 0, 340, 420);
+        editor.NewAutomation();
+        editor.SetName("Porch light at dusk");
+
+        AutomationTrigger t;
+        t.Type = AutomationTriggerType::DeviceState;
+        t.DeviceId = "sensor-1";
+        t.Attribute = "motion";
+        // A quote and a backslash: pasting strings together would produce
+        // invalid JSON here, which is why this goes through the JSON writer.
+        t.Value = "say \"hi\" \\ now";
+        editor.AddTrigger(t);
+        editor.AddAction([]{ SmartHomeCommand c; c.DeviceId = "light-1"; c.Command = "on"; return c; }());
+
+        int saved = 0;
+        editor.SetOnSave([&](const SmartHomeAutomation&){ ++saved; });
+        editor.OnEvent(Ev(UCEventType::MouseDown, 289, 390));   // "Save"
+        if (saved != 1) { std::puts("FAIL: automation save"); return 1; }
+
+        const std::string id = editor.GetAutomation().AutomationId;
+        if (id.empty()) { std::puts("FAIL: automation got no id"); return 1; }
+        if (editor.GetAutomation().TriggerType != "device") {
+            std::puts("FAIL: trigger type not flattened"); return 1;
+        }
+        std::puts("ok  automation editor: save flattens the trigger");
+
+        // Read it back and confirm the awkward value survived.
+        SmartHomeAutomationEditor reopened("autoEd2", 0, 0, 340, 420);
+        reopened.EditAutomation(id);
+        if (reopened.GetAutomation().Name != "Porch light at dusk") {
+            std::puts("FAIL: automation did not round-trip"); return 1;
+        }
+        // Saving the reopened copy re-serialises from the parsed trigger. If the
+        // quote and backslash survived parse and write, the config is identical;
+        // if either step mangled them, this diverges.
+        const std::string configBefore = editor.GetAutomation().TriggerConfig;
+        reopened.OnEvent(Ev(UCEventType::MouseDown, 289, 390));
+        if (reopened.GetAutomation().TriggerConfig != configBefore) {
+            std::printf("FAIL: trigger config did not survive the round trip\n  was: %s\n  now: %s\n",
+                        configBefore.c_str(), reopened.GetAutomation().TriggerConfig.c_str());
+            return 1;
+        }
+        if (configBefore.find("hi") == std::string::npos) {
+            std::puts("FAIL: the trigger value never reached the config"); return 1;
+        }
+        std::puts("ok  automation editor: a quoted value survives parse and re-serialise");
+
+        // Toggling enabled is a separate control from saving.
+        const bool before = editor.GetAutomation().Enabled;
+        editor.OnEvent(Ev(UCEventType::MouseDown, 40, 390));    // "Enabled"
+        if (editor.GetAutomation().Enabled == before) {
+            std::puts("FAIL: enable toggle"); return 1;
+        }
+        std::puts("ok  automation editor: enable toggles");
     }
 
     std::puts("\nPASS - the ported widget API works against the real framework");
