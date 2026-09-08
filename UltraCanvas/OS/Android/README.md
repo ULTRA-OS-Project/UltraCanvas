@@ -43,6 +43,21 @@ Android — so the Android UltraNet build reuses those files directly
 that would drift. DNS always goes through **c-ares** (`ULTRANET_HAS_CARES` is
 mandatory for Android; bionic has no `res_n*`/libresolv).
 
+`UltraNetTlsImpl.cpp` needed one genuinely Android-only thing, and it lives
+there rather than here for the same anti-drift reason: **trust roots**. There
+is no `/etc/ssl` in an app sandbox, so `SSL_CTX_set_default_verify_paths()`
+leaves the store empty and every verification fails with "unable to get local
+issuer certificate" on every host. The Android arm reads the platform's own
+roots from `/apex/com.android.conscrypt/cacerts` (Android 14+) or
+`/system/etc/security/cacerts`, parsed once per process and added to each
+`SSL_CTX`. They are **enumerated, not handed to OpenSSL as a hash directory**:
+Android names those files with the pre-1.0 subject hash
+(`openssl x509 -subject_hash_old`), so a modern `X509_LOOKUP_hash_dir` computes
+a different name, finds nothing, and reports no error — the exact silent-empty
+failure this replaces. If the store still ends up empty and the caller asked
+for verification, `Wrap()` fails with a message naming that cause instead of
+letting the handshake fail obscurely; verification is never quietly disabled.
+
 ## Lifecycle (background / foreground / rotation)
 
 `Run()` survives the whole activity lifecycle; only `APP_CMD_DESTROY`
@@ -314,7 +329,7 @@ spells out what the sysroot needs to contain.
 
 The cross-compiled dependency sysroot and a real APK build (the blocker for
 everything below, since nothing can be observed until then), clipboard
-images/files via the `content://` adapter, UltraNet CA bundle, gesture
+images/files via the `content://` adapter, gesture
 recognition on top of the touch stream (pinch/rotate → `PinchZoom`), inline
 IME composition (a cross-platform core change, not an Android one), and
 audio/video/PDF.

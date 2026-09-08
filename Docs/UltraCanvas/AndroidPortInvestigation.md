@@ -159,7 +159,7 @@ exists. Required files and their contracts:
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` stub |
 | `GLContextManagerEGL_Android.cpp` | Near-copy of `GLContextManagerEGL_Linux.cpp` (201 lines, zero X11 references) with `eglBindAPI(EGL_OPENGL_ES_API)`, `EGL_OPENGL_ES3_BIT`, and the desktop core/compat profile attribs removed |
 | `UltraNetSupport.cpp` | Copy of the Linux one (pure `getenv`, fully bionic-compatible); optionally improved later via JNI `ConnectivityManager` proxy query |
-| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI |
+| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI. **Status: done, and neither of those two ways.** The Linux file is reused as-is with an `__ANDROID__` arm that reads the platform's own roots straight off disk (`/apex/com.android.conscrypt/cacerts`, else `/system/etc/security/cacerts`) — no JNI, and no bundled roots to go stale. They must be enumerated rather than used as a hash directory: Android names them with the pre-1.0 subject hash, so a modern `X509_LOOKUP_hash_dir` finds nothing and says nothing |
 | `UltraNetDnsImpl.cpp` | Do **not** port the Linux one — it uses `res_ninit`/`res_nquery`/`ns_parserr`, which bionic does not export, and links `-lresolv`, which doesn't exist on Android. Use the existing **c-ares** path instead: when `ULTRANET_HAS_CARES` is set, `core/UltraNet/UltraNetDnsCares.cpp` supplies the resolver and the per-platform DNS file is excluded entirely. Make c-ares mandatory for the Android target |
 
 ### 3.3 Event loop and lifecycle
@@ -434,8 +434,9 @@ Process lessons for the Android effort:
   committed-text path.
 - Native dialogs via SAF/AlertDialog with the async bridge + `content://`
   URI adapter.
-- UltraNet fully on: vendored curl + OpenSSL + c-ares, CA bundle from the
-  system trust store via JNI.
+- UltraNet fully on: vendored curl + OpenSSL + c-ares. ~~CA bundle from the
+  system trust store via JNI~~ — done, and without JNI: the roots are read
+  from the platform's cacerts directory directly (§3.2).
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
