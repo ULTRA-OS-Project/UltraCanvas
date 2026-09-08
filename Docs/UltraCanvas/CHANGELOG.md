@@ -1,4 +1,24 @@
 #### 2026-09-08 *0.3.109*
+- **The vector sample media moved under `media/vector/`.** The format folders
+  that sat at the media root — `media/SVG/`, `media/cdr/`, `media/eps/` and
+  `media/xar/` — now live beside the existing `AI`, `DWG`, `DXF` and `STL`
+  sets as `media/vector/SVG/`, `media/vector/CDR/`, `media/vector/EPS/` and
+  `media/vector/XAR/`, so every vector sample is in one place with one folder
+  per format. `media/cdr/demo.jpg` (the reference render for `demo.cdr`)
+  travelled with its drawing. Every path that named them was rewritten: the
+  demo's SVG, CDR, EPS and XAR pages
+  (`Apps/DemoApp/UltraCanvas{SVG,CDR,EPS,XAR}Examples.cpp`), the
+  `EPS_SAMPLES_DIR` / `XAR_SAMPLES_DIR` compile definitions in
+  `Tests/CMakeLists.txt` that feed `EPSProbeTest` and `XARProbeTest`, and the
+  component docs. No other application referenced these folders — the rest of
+  `Apps/` reaches only `media/icons/`, `media/appicon/` and
+  `media/Logo_Texter.png` — and the packaging scripts copy `media/` whole, so
+  nothing else needed touching.
+- **Seven unused icons deleted from `media/icons/`**: `about.png`, `exit.png`,
+  `image1.png`, `image2.png`, `images.png`, `keyboard.png` and
+  `light 001.jpg`. No application loaded any of them (`exit.svg` is the icon
+  the toolbars actually use); the only mention anywhere was `light 001.jpg`
+  as an illustrative path in the mind map docs, which now name `info.png`.
 - **DWG files open and preview natively.** The Vector plugin's
   `DWGConverter` read a drawing only by shelling out to GNU LibreDWG's
   `dwg2dxf`, so on any machine without that GPL tool a `.dwg` produced no

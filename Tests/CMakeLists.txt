@@ -1198,7 +1198,7 @@ add_test(
 message(STATUS "    Test registered: ElementPluginTest")
 
 # ===== EPS PROBE TEST =====
-# Parses the shipped media/eps samples through the EPS plugin and reports
+# Parses the shipped media/vector/EPS samples through the EPS plugin and reports
 # the interpreter's diagnostics; with cairo it also rasterizes to PNG for
 # comparison against a ghostscript rendering of the same file.
 if(TARGET UltraCanvasEPSPlugin)
@@ -1211,7 +1211,7 @@ if(TARGET UltraCanvasEPSPlugin)
     )
     target_compile_features(EPSProbeTest PRIVATE cxx_std_20)
     target_compile_definitions(EPSProbeTest PRIVATE
-        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/eps"
+        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/vector/EPS"
     )
     target_link_libraries(EPSProbeTest PRIVATE UltraCanvasEPSPlugin UltraCanvas)
     if(NOT WIN32)
@@ -1452,7 +1452,7 @@ if(TARGET UltraCanvasXARPlugin)
     target_compile_features(XARProbeTest PRIVATE cxx_std_20)
     target_link_libraries(XARProbeTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
     target_compile_definitions(XARProbeTest PRIVATE
-        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/xar"
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
     )
     # --render mode writes PNGs through cairo; probing works without it.
     find_package(PkgConfig QUIET)

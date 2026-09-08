@@ -320,7 +320,7 @@ auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>(
 cdrElement1->SetFitMode(CDRFitMode::FitPage);
 
 // Resolve the demo asset path and load
-std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/cdr/demo.cdr");
+std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo.cdr");
 if (cdrElement1->LoadFromFile(cdrFile1)) {
     statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
                          std::to_string(cdrElement1->GetPageCount()) + " pages)");
@@ -494,7 +494,7 @@ Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API a
 ```cpp
 auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 10, 10, 280, 220);
 cdrElement4->SetFitMode(CDRFitMode::FitPage);
-std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
+std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/vector/CDR/logo.cdr");
 cdrElement4->LoadFromFile(cdrFile4);
 
 auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 60, 25);
