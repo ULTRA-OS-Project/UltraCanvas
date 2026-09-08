@@ -1,3 +1,29 @@
+#### 2026-09-08 *1.22.0*
+- **The settings window reads the same on every page.** The pages had grown
+  one at a time and it showed: a title smaller than the choices under it,
+  choice labels in a different size from the checkboxes, explanations mixed
+  in among the controls at the same size as the choices, a radio label cut
+  off at the page's edge, and a *Restore default ...* button sitting wherever
+  the page happened to end. Every page is now built the same way: a bold
+  title, one line saying what the choice is about, the controls, all in one
+  text size, and the notes that explain the setting set apart in a tinted
+  block with an accent bar at the foot of the page, a step smaller and
+  greyed, so what is acted on and what is read about it are never
+  confused. Texts wrap instead of being cut off.
+  - The *Restore default colours* / *Restore default widths* button of a
+    page now sits at the left end of the window's bottom bar, opposite
+    *Close*, the same spot on every page that has one; it is hidden while
+    the shown page has nothing to restore.
+  - Clicking a heading in the tree (*Display*, *Handling*, *Extras*, or
+    *Settings* itself) moves on to its first page: a heading has no page of
+    its own, so it and its first entry used to show the same content with
+    two different rows selected.
+- **Media Viewer > Transparent Images is gone.** The backdrop behind a
+  transparent image is chosen from the colour strip the preview shows right
+  under the picture, which previews the choice in place; the page that
+  duplicated it with a full colour picker had nothing left to do. The
+  setting itself is unchanged and still saved from the strip.
+
 #### 2026-09-06 *1.21.0*
 - **The file display says when a file is in use.** A file another program is
   holding — a running program, a document something has open, an archive being

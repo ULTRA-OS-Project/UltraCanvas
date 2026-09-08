@@ -1,6 +1,6 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-06-04
+// Last Modified: 2026-09-08
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -416,6 +416,13 @@ public:
     std::vector<TreeNode*> GetCheckedNodes() const;
     void SetAllChecked(bool checked);
 
+    // "Jump to first entry": expanding a parent - by its button, a double
+    // click or Enter - selects its first child, and so does a single click on
+    // a parent that is already open; the arrow keys step over open parents.
+    // For a tree whose headings have no content of their own (a settings
+    // tree, where a heading shows its first sub page) the heading is then
+    // never the row left selected. A node opts out through
+    // TreeNodeData::showFirstChildOnExpand.
     void SetShowFirstChildOnExpand(bool show) { showFirstChildOnExpand = show; }
     bool GetShowFirstChildOnExpand() const { return showFirstChildOnExpand; }
 
@@ -635,6 +642,8 @@ private:
     
     void NavigateUp();
     void NavigateDown();
+    // An open parent the arrow keys pass over under "jump to first entry".
+    bool IsSteppedOverByKeys(const TreeNode* node) const;
     
     TreeNode* GetPreviousVisibleNode(TreeNode* current);
     TreeNode* GetNextVisibleNode(TreeNode* current);

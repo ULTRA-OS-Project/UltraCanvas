@@ -28,6 +28,77 @@
     `GetLaTeXModuleError()` instead of the misleading "needs TikZ" note.
   - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search-order and diagnostics
     sections updated.
+- **`UltraCanvasTreeView`: "jump to first entry" also answers a click on an
+  open parent.** `SetShowFirstChildOnExpand(true)` moved the selection on to
+  a parent's first child when the parent was expanded - by its button, a
+  double click or Enter - but a single click on a parent that was already
+  open (every heading of an `ExpandAll()`'d tree) left the parent selected.
+  For a tree whose headings show their first sub page, that was two rows
+  showing the same content. The click now moves on too; a node still opts
+  out through `TreeNodeData::showFirstChildOnExpand`, and Ctrl+click in
+  multi-select mode keeps adding the parent itself. The jump also gives the
+  keyboard focus to the child it selects, and the arrow keys step over open
+  parents - from the first child of one heading straight to the last child
+  of the one before - so a heading is never the row left selected from the
+  keyboard either; a closed parent is still stepped onto, since it can be
+  opened from there.
+#### 2026-09-08 *0.3.110*
+- **Vector document model: precision, bounds, hit-testing, units and CAD
+  layers.** First step of the shared-model work for the vector converter
+  matrix, with the survey and plan in
+  `Docs/Research/UltraCanvasVectorModelProposal.md`.
+  - `VectorStorage::Matrix3x3` is double precision throughout (CAD
+    drawings carry 10⁶-unit offsets with 10⁻³ detail; the DXF reader had
+    grown its own double affine to cope) and gains `IsIdentity()`. Its
+    row-major `FromValues` order is documented; the unused XAR matrix
+    helper that passed PostScript order straight through is corrected.
+  - `VectorGroup::GetBoundingBox` / `VectorDocument::GetBoundingBox` skip
+    empty children instead of unioning them with the origin, so a group
+    holding an empty group or an unsupported element no longer reports a
+    box dragged to (0,0); a transformed empty group stays empty; an empty
+    document reports its page.
+  - `HitTestDocument` carries the point through each layer's and group's
+    inverse transform, so children of a transformed group (every CAD block
+    insert, every mirrored entity) are hit where they are drawn; an
+    element without bounds never hits.
+  - Units: `LengthUnit`, `PointsPerUnit()`, `LengthUnitSymbol()`, and
+    `VectorDocument::SourceUnit` / `PointsPerSourceUnit` record the unit a
+    file measured in and the scale the reader applied. The DXF reader
+    sets them from `$INSUNITS` and uses the physical scale when a unit is
+    declared and gives a usable page (an A4 plan in millimetres becomes
+    842 × 595 pt); the DXF writer emits `$INSUNITS` and writes the source
+    unit back, keeping lineweights physical.
+  - CAD layer properties on `VectorLayer`: `Frozen`, `Plottable`,
+    `DefaultColor`, `DefaultStrokeWidth`, `LineTypeName`,
+    `DefaultDashArray`. The DXF reader fills them (with `Locked` and
+    `Visible`) from the LAYER table; the DXF writer emits the layer table
+    from them and writes hidden layers as *off* layers.
+  - `UltraCanvasVectorConverter.h` drops the never-implemented
+    `VectorConverterFactory`, `VectorConversionManager` and helper
+    declarations; the registry is `UltraCanvasVectorFormatsPlugin`.
+  - New `Tests/VectorModelTest.cpp` (CTest `VectorModelTest`).
+
+#### 2026-09-08 *0.3.109*
+- **The vector sample media moved under `media/vector/`.** The format folders
+  that sat at the media root — `media/SVG/`, `media/cdr/`, `media/eps/` and
+  `media/xar/` — now live beside the existing `AI`, `DWG`, `DXF` and `STL`
+  sets as `media/vector/SVG/`, `media/vector/CDR/`, `media/vector/EPS/` and
+  `media/vector/XAR/`, so every vector sample is in one place with one folder
+  per format. `media/cdr/demo.jpg` (the reference render for `demo.cdr`)
+  travelled with its drawing. Every path that named them was rewritten: the
+  demo's SVG, CDR, EPS and XAR pages
+  (`Apps/DemoApp/UltraCanvas{SVG,CDR,EPS,XAR}Examples.cpp`), the
+  `EPS_SAMPLES_DIR` / `XAR_SAMPLES_DIR` compile definitions in
+  `Tests/CMakeLists.txt` that feed `EPSProbeTest` and `XARProbeTest`, and the
+  component docs. No other application referenced these folders — the rest of
+  `Apps/` reaches only `media/icons/`, `media/appicon/` and
+  `media/Logo_Texter.png` — and the packaging scripts copy `media/` whole, so
+  nothing else needed touching.
+- **Seven unused icons deleted from `media/icons/`**: `about.png`, `exit.png`,
+  `image1.png`, `image2.png`, `images.png`, `keyboard.png` and
+  `light 001.jpg`. No application loaded any of them (`exit.svg` is the icon
+  the toolbars actually use); the only mention anywhere was `light 001.jpg`
+  as an illustrative path in the mind map docs, which now name `info.png`.
 - **DWG files open and preview natively.** The Vector plugin's
   `DWGConverter` read a drawing only by shelling out to GNU LibreDWG's
   `dwg2dxf`, so on any machine without that GPL tool a `.dwg` produced no

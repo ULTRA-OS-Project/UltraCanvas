@@ -109,7 +109,29 @@ struct LayerDef {
     std::string linetype = "Continuous";
     int lineweight = -3;
     bool visible = true;   // off (negative colour) or frozen layers hide
+    bool frozen = false;
+    bool locked = false;
+    bool plottable = true;
 };
+
+// $INSUNITS codes (DXF reference, HEADER section).
+LengthUnit UnitFromInsunits(int code) {
+    switch (code) {
+        case 1:  return LengthUnit::Inch;
+        case 2:  return LengthUnit::Foot;
+        case 3:  return LengthUnit::Mile;
+        case 4:  return LengthUnit::Millimeter;
+        case 5:  return LengthUnit::Centimeter;
+        case 6:  return LengthUnit::Meter;
+        case 7:  return LengthUnit::Kilometer;
+        case 9:  return LengthUnit::Mil;
+        case 10: return LengthUnit::Yard;
+        case 12: return LengthUnit::Nanometer;
+        case 13: return LengthUnit::Micrometer;
+        case 14: return LengthUnit::Decimeter;
+        default: return LengthUnit::Unspecified;   // 0 unitless, exotic units
+    }
+}
 
 struct TableData {
     std::map<std::string, LayerDef> layers;
@@ -259,14 +281,21 @@ public:
         pageH = extMaxY - extMinY;
         if (!(pageW > 0) || !(pageH > 0)) { pageW = 595; pageH = 842; }
 
-        // Drawing units are arbitrary (a car in metres is 5 units wide, a
-        // house in millimetres 20000); the page is in points, so a drawing
-        // whose page came from its own extents is scaled to a sensible size
-        // - lineweights and default strokes then read the same everywhere,
-        // and float transforms stay precise. A declared page is the author's.
+        // A file that declares its unit ($INSUNITS) gets its physical size
+        // in points, as long as that lands on a page a viewer can use (an
+        // A4 plan in millimetres becomes 842 x 595 pt; a 100 km site plan
+        // in millimetres would not). Otherwise drawing units are arbitrary
+        // (a car in metres is 5 units wide, a house in millimetres 20000);
+        // the page is in points, so a drawing whose page came from its own
+        // extents is scaled to a sensible size - lineweights and default
+        // strokes then read the same everywhere, and float transforms stay
+        // precise. A declared page is the author's.
         unitScale = 1.0;
-        if (!declaredPage) {
-            double maxDim = std::max(pageW, pageH);
+        double physical = PointsPerUnit(sourceUnit);
+        double maxDim = std::max(pageW, pageH);
+        if (physical > 0 && maxDim * physical >= 200 && maxDim * physical <= 20000) {
+            unitScale = physical;
+        } else if (!declaredPage) {
             if (maxDim < 1000) unitScale = 1000.0 / maxDim;
             else if (maxDim > 10000) unitScale = 10000.0 / maxDim;
         }
@@ -281,6 +310,8 @@ public:
         doc = Build();
         if (!doc) return nullptr;
         doc->Size = Size2Dd{pageW, pageH};
+        doc->SourceUnit = sourceUnit;
+        doc->PointsPerSourceUnit = unitScale;
 
         if (!skipped.empty()) {
             std::ostringstream msg;
@@ -306,6 +337,7 @@ private:
     double pageW = 0, pageH = 0;    // page in points (after unitScale)
     double unitsH = 0;              // page height in drawing units
     double unitScale = 1.0;         // drawing units -> points
+    LengthUnit sourceUnit = LengthUnit::Unspecified;   // $INSUNITS
     bool declaredPage = false;      // the page is the file's $EXTMIN/$EXTMAX
     bool quiet = false;
     std::shared_ptr<VectorDocument> doc;
@@ -403,6 +435,10 @@ private:
                 grab(10, extMaxX);
                 grab(20, extMaxY);
                 hasExtents = true;
+            } else if (var == "$INSUNITS") {
+                double code = 0;
+                grab(70, code);
+                sourceUnit = UnitFromInsunits(static_cast<int>(code));
             }
         }
         if (hasExtents && (extMaxX <= extMinX || extMaxY <= extMinY)) {
@@ -441,11 +477,16 @@ private:
                                       rgb & 0xFF, 255);
                 }
                 if (const std::string* fl = field(70)) {
-                    if (std::atoi(fl->c_str()) & 1) def.visible = false;   // frozen
+                    int flags = std::atoi(fl->c_str());
+                    if (flags & 1) { def.frozen = true; def.visible = false; }
+                    if (flags & 4) def.locked = true;
                 }
                 if (const std::string* lt = field(6)) def.linetype = *lt;
                 if (const std::string* lw = field(370)) {
                     def.lineweight = std::atoi(lw->c_str());
+                }
+                if (const std::string* pl = field(290)) {
+                    def.plottable = std::atoi(pl->c_str()) != 0;
                 }
                 if (!tables.layers.count(*name)) tables.layerOrder.push_back(*name);
                 tables.layers[*name] = def;
@@ -619,8 +660,37 @@ private:
         auto it = layerGroups.find(name);
         if (it != layerGroups.end()) return it->second;
         auto layer = doc->AddLayer(name.empty() ? "0" : name);
+        auto def = tables.layers.find(name);
+        if (def != tables.layers.end()) {
+            const LayerDef& d = def->second;
+            layer->Visible = d.visible;
+            layer->Frozen = d.frozen;
+            layer->Locked = d.locked;
+            layer->Plottable = d.plottable;
+            layer->DefaultColor = d.color;
+            layer->LineTypeName = d.linetype;
+            layer->DefaultDashArray = LinetypeDashes(d.linetype);
+            if (d.lineweight > 0) {
+                layer->DefaultStrokeWidth =
+                        static_cast<float>(d.lineweight / 100.0 * 72.0 / 25.4);
+            } else if (d.lineweight == 0) {
+                layer->DefaultStrokeWidth = 0.25f;
+            }
+        }
         layerGroups[name] = layer;
         return layer;
+    }
+
+    // A linetype's dash pattern in points; empty for Continuous/unknown.
+    std::vector<double> LinetypeDashes(const std::string& lt) const {
+        if (lt.empty() || lt == "Continuous" || lt == "CONTINUOUS") return {};
+        auto it = tables.linetypes.find(lt);
+        if (it == tables.linetypes.end() || it->second.empty()) return {};
+        std::vector<double> dashes;
+        for (double d : it->second) {
+            dashes.push_back(d == 0 ? 0.5 : S(std::fabs(d)));   // dots become short dashes
+        }
+        return dashes;
     }
 
     // ===== STYLE RESOLUTION =====
@@ -689,13 +759,7 @@ private:
             else return {};
         }
         if (lt == "ByLayer" || lt == "BYLAYER") lt = layer.linetype;
-        auto it = tables.linetypes.find(lt);
-        if (it == tables.linetypes.end() || it->second.empty()) return {};
-        std::vector<double> dashes;
-        for (double d : it->second) {
-            dashes.push_back(d == 0 ? 0.5 : S(std::fabs(d)));   // dots become short dashes
-        }
-        return dashes;
+        return LinetypeDashes(lt);
     }
 
     float EntityWidth(const std::vector<Tag>& e, const LayerDef& layer) {

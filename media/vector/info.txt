@@ -1,2 +1,2 @@
 This folder holds all vector graphic files
-svg, xar, dwf, dwg, cdr, eps
+ai, cdr, dwg, dxf, eps, stl, svg, xar

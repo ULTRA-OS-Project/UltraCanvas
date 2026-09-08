@@ -299,7 +299,7 @@ map->Style().connectorBadgeRadius = 9.0;
 ## Node content
 
 ```cpp
-map->SetTopicIcon(topicId, "media/icons/light 001.jpg");   // inline, before the label
+map->SetTopicIcon(topicId, "media/icons/info.png");   // inline, before the label
 map->SetTopicImage(topicId, "media/images/brain.png");     // image as the node body
 map->SetTopicNote(topicId, "Longer note text");            // corner triangle indicator
 map->SetTopicLink(topicId, "https://example.com");         // clickable ring indicator

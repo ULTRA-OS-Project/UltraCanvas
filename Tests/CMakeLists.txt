@@ -1198,7 +1198,7 @@ add_test(
 message(STATUS "    Test registered: ElementPluginTest")
 
 # ===== EPS PROBE TEST =====
-# Parses the shipped media/eps samples through the EPS plugin and reports
+# Parses the shipped media/vector/EPS samples through the EPS plugin and reports
 # the interpreter's diagnostics; with cairo it also rasterizes to PNG for
 # comparison against a ghostscript rendering of the same file.
 if(TARGET UltraCanvasEPSPlugin)
@@ -1211,7 +1211,7 @@ if(TARGET UltraCanvasEPSPlugin)
     )
     target_compile_features(EPSProbeTest PRIVATE cxx_std_20)
     target_compile_definitions(EPSProbeTest PRIVATE
-        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/eps"
+        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/vector/EPS"
     )
     target_link_libraries(EPSProbeTest PRIVATE UltraCanvasEPSPlugin UltraCanvas)
     if(NOT WIN32)
@@ -1385,6 +1385,28 @@ else()
     message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== VECTOR MODEL TEST =====
+# The shared vector document model: Matrix3x3 at double precision, group
+# and document bounds through nested transforms, and hit-testing that
+# carries the point through ancestor transforms.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorModelTest...")
+    add_executable(VectorModelTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorModelTest.cpp
+    )
+    target_include_directories(VectorModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorModelTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorModelTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorModelTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorModelTest COMMAND VectorModelTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorModelTest")
+else()
+    message(STATUS "  VectorModelTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # The whole converter matrix through the graphics plugin registry: saving
 # all ten formats via SaveGraphicsFile, loading the formats with readers
@@ -1452,7 +1474,7 @@ if(TARGET UltraCanvasXARPlugin)
     target_compile_features(XARProbeTest PRIVATE cxx_std_20)
     target_link_libraries(XARProbeTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
     target_compile_definitions(XARProbeTest PRIVATE
-        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/xar"
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
     )
     # --render mode writes PNGs through cairo; probing works without it.
     find_package(PkgConfig QUIET)

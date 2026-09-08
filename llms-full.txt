@@ -10265,7 +10265,7 @@ auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>(
 cdrElement1->SetFitMode(CDRFitMode::FitPage);
 
 // Resolve the demo asset path and load
-std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/cdr/demo.cdr");
+std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo.cdr");
 if (cdrElement1->LoadFromFile(cdrFile1)) {
     statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
                          std::to_string(cdrElement1->GetPageCount()) + " pages)");
@@ -10439,7 +10439,7 @@ Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API a
 ```cpp
 auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 10, 10, 280, 220);
 cdrElement4->SetFitMode(CDRFitMode::FitPage);
-std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
+std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/vector/CDR/logo.cdr");
 cdrElement4->LoadFromFile(cdrFile4);
 
 auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 60, 25);
@@ -16649,13 +16649,13 @@ std::string program = eps.ExportToString(*document);
 
 ```cpp
 auto eps = std::make_shared<UltraCanvasEPSElement>("Logo", 20, 20, 300, 280);
-if (!eps->LoadFromFile("media/eps/demo.eps")) {
+if (!eps->LoadFromFile("media/vector/EPS/demo.eps")) {
     std::cerr << eps->GetLastError() << std::endl;
 }
 window->AddChild(eps);
 ```
 
-The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/eps/` with a fullscreen viewer and zoom controls.
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/vector/EPS/` with a fullscreen viewer and zoom controls.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasERDiagram.md
@@ -30549,7 +30549,7 @@ map->Style().connectorBadgeRadius = 9.0;
 ## Node content
 
 ```cpp
-map->SetTopicIcon(topicId, "media/icons/light 001.jpg");   // inline, before the label
+map->SetTopicIcon(topicId, "media/icons/info.png");   // inline, before the label
 map->SetTopicImage(topicId, "media/images/brain.png");     // image as the node body
 map->SetTopicNote(topicId, "Longer note text");            // corner triangle indicator
 map->SetTopicLink(topicId, "https://example.com");         // clickable ring indicator
@@ -49112,6 +49112,32 @@ void CollapseAll()
 ```
 Expands or collapses all nodes in the tree.
 
+#### Jump to first entry
+```cpp
+void SetShowFirstChildOnExpand(bool show)   // default false
+bool GetShowFirstChildOnExpand() const
+void SetAutoExpandSelectedNode(bool expand) // default false
+bool GetAutoExpandSelectedNode() const
+```
+With "jump to first entry" on, expanding a parent - by its button, a double
+click or Enter - selects its first child, and so does a single click on a
+parent that is already open; the arrow keys step over open parents, from the
+first child of one heading straight to the last child of the one before. It
+suits a tree whose headings have no content
+of their own, such as a settings tree where a heading shows its first sub
+page: the heading is then never the row left selected. A node opts out
+through `TreeNodeData::showFirstChildOnExpand = false`, keeping the
+selection on itself (an overview page, say). With `SetAutoExpandSelectedNode`
+on as well, selecting a collapsed parent opens it first, so the jump happens
+from a click on a closed heading too.
+
+```cpp
+tree->SetShowFirstChildOnExpand(true);
+tree->SetAutoExpandSelectedNode(true);
+tree->ExpandAll();
+tree->onNodeSelected = [](TreeNode* node) { ShowPage(node->data.nodeId); };
+```
+
 ### Visual Properties
 
 #### Row Height
@@ -49478,7 +49504,9 @@ The tree view supports comprehensive keyboard navigation:
 ## Mouse Interaction
 
 ### Click Behaviors
-- **Single Click**: Select node
+- **Single Click**: Select node. With `SetShowFirstChildOnExpand(true)`, a
+  click on a parent that is already open selects its first child instead
+  (see [Jump to first entry](#jump-to-first-entry))
 - **Ctrl+Click**: Add to selection (multi-select mode)
 - **Double Click**: Toggle expansion or trigger action
 - **Right Click**: Context menu
@@ -50176,12 +50204,22 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | EMF | `EMFConverter` | ✓ | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. The reader parses the GDI object table, path records, immediate polygon/polyline/bezier records and text (`TA_UPDATECP` chains merge back into spans). |
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
 | AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
-| DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), scaled to a sensible point size when it comes from the geometry, since drawing units are arbitrary. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
+| DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
 | DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
 
 Unsupported features never change meaning silently: each converter reports its fallbacks (gradient flattening, opacity flattening, skipped element types, encoding limits) through `ConversionOptions::WarningCallback`.
+
+## The document model
+
+`VectorStorage::VectorDocument` (`UltraCanvasVectorStorage.h`) is the hub every converter meets: `Layers` → groups → elements, each element with an optional `Fill`/`Stroke` style, an optional `Matrix3x3` transform (double precision, row-major — `FromValues(a, b, c, d, e, f)` means x' = a·x + b·y + e, so SVG/PostScript `matrix()` values pass as `FromValues(a, c, b, d, e, f)`) and `GetBoundingBox()` in its parent's space. Group and document boxes are the union of their children with empty boxes skipped, then transformed; `HitTestDocument` carries the point through each ancestor's inverse transform so children of a transformed group (a block insert, a mirrored entity) are found where they are drawn.
+
+**Units.** Coordinates and `Size` are always points (1/72 in). Readers of formats that carry a unit record it in `SourceUnit` (`LengthUnit`: `Point`, `Pixel`, `Inch`, `Foot`, `Yard`, `Mile`, `Mil`, `Millimeter`, `Centimeter`, `Decimeter`, `Meter`, `Kilometer`, `Micrometer`, `Nanometer`, or `Unspecified`) with the scale they applied in `PointsPerSourceUnit`, so `source = points / PointsPerSourceUnit` recovers the file's measurements; `PointsPerUnit()` and `LengthUnitSymbol()` are the helpers. The DXF reader sets them from `$INSUNITS`, using the physical scale when it is declared and yields a usable page (200–20 000 pt), and the DXF writer emits `$INSUNITS` and writes coordinates in the source unit when the document has one.
+
+**CAD layers.** `VectorLayer` carries the layer-table properties of DXF/DWG drawings besides `Name`/`Visible`/`Locked`: `Frozen`, `Plottable`, `DefaultColor`, `DefaultStrokeWidth` (points), `LineTypeName` and `DefaultDashArray`. Entities keep their resolved ByLayer style, so these only feed writers with a layer table (the DXF writer emits colour, lineweight, linetype, frozen/locked/plot flags and marks hidden layers *off*).
+
+The survey of what each converter reads and writes, the dead model surface and the planned steps live in [UltraCanvasVectorModelProposal](../Research/UltraCanvasVectorModelProposal.md).
 
 ## Usage
 
@@ -50245,7 +50283,7 @@ structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when
 installed), and `VectorFormatsPluginTest` (the whole matrix through the
 plugin registry: save all ten formats via `SaveGraphicsFile`, load the
 readable ones back via `LoadGraphicsFile` with geometry/style round-trip
-checks, plus the supported-format inventory). `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG).
+checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG).
 
 ## See Also
 
@@ -52356,7 +52394,7 @@ FILE: Docs/UltraCanvas/UltraCanvasXARExamples.md
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/xar/` with a fullscreen viewer, page navigation and zoom.
+XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/vector/XAR/` with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -52546,7 +52584,7 @@ incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
 
 `Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
 target exists) runs this triage from the command line: it prints the node
-tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
+tree by type, the unhandled tags and the warnings for the repo's `media/vector/XAR/`
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
@@ -52770,7 +52808,7 @@ auto xarElement1 = std::make_shared<UltraCanvasXARElement>(
     "XAR1", 10, 10, 280, 220);
 
 // Resolve the demo asset path and load
-std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/xar/demo.xar");
+std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/vector/XAR/demo.xar");
 if (xarElement1->LoadFromFile(xarFile1)) {
     statusLabel->SetText("Loaded: " + xarFile1);
 } else {
@@ -52903,7 +52941,7 @@ auto xarElement = XARElementBuilder()
     .SetIdentifier("Logo")
     .SetPosition(10, 10)
     .SetSize(280, 220)
-    .SetFilePath(NormalizePath(GetResourcesDir() + "media/xar/logo.xar"))
+    .SetFilePath(NormalizePath(GetResourcesDir() + "media/vector/XAR/logo.xar"))
     .SetPreserveAspectRatio(true)
     .SetScale(1.0f)
     .Build();   // file is loaded inside Build()
