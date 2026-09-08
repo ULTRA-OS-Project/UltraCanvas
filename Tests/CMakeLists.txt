@@ -1408,6 +1408,33 @@ else()
     message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== DWG READER TEST =====
+# The CAD import path: the DXF reader's block machinery (BLOCKS, nested/
+# arrayed/mirrored INSERTs, DIMENSION blocks, visibility, geometry-derived
+# extents) on a synthetic drawing, and the native DWG decoder on the R2000
+# fixture in DataFormats. Extra DWG files on the command line are decoded
+# and reported (DWG_TEST_SVG_DIR exports them as SVG).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building DWGReaderTest...")
+    add_executable(DWGReaderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DWGReaderTest.cpp
+    )
+    target_include_directories(DWGReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DWGReaderTest PRIVATE cxx_std_20)
+    target_compile_definitions(DWGReaderTest PRIVATE
+        DWG_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/DataFormats"
+    )
+    target_link_libraries(DWGReaderTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(DWGReaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DWGReaderTest COMMAND DWGReaderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DWGReaderTest")
+else()
+    message(STATUS "  DWGReaderTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

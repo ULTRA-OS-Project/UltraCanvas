@@ -277,7 +277,9 @@ private:
         return "";
     }
 
-    std::string StyleAttrs(const VectorStyle& s) {
+    // `shape` marks a geometric element: with no fill in the model it has
+    // no fill at all, which SVG must be told (its default is black).
+    std::string StyleAttrs(const VectorStyle& s, bool shape = false) {
         std::ostringstream a;
         if (s.Fill) {
             float alpha = 1.0f;
@@ -285,8 +287,9 @@ private:
             if (!v.empty()) a << " fill=\"" << v << "\"";
             float fo = alpha * s.FillOpacity;
             if (!NearlyOne(fo)) a << " fill-opacity=\"" << Num(fo) << "\"";
-        } else if (!NearlyOne(s.FillOpacity)) {
-            a << " fill-opacity=\"" << Num(s.FillOpacity) << "\"";
+        } else {
+            if (shape) a << " fill=\"none\"";
+            if (!NearlyOne(s.FillOpacity)) a << " fill-opacity=\"" << Num(s.FillOpacity) << "\"";
         }
         if (s.Stroke) {
             const StrokeData& st = *s.Stroke;
@@ -334,7 +337,15 @@ private:
             std::string t = SerializeTransform(*e.Transform);
             if (!t.empty()) a << " transform=\"" << t << "\"";
         }
-        a << StyleAttrs(e.Style);
+        const bool shape = e.Type == VectorElementType::Rectangle ||
+                           e.Type == VectorElementType::RoundedRectangle ||
+                           e.Type == VectorElementType::Circle ||
+                           e.Type == VectorElementType::Ellipse ||
+                           e.Type == VectorElementType::Line ||
+                           e.Type == VectorElementType::Polyline ||
+                           e.Type == VectorElementType::Polygon ||
+                           e.Type == VectorElementType::Path;
+        a << StyleAttrs(e.Style, shape);
         return a.str();
     }
 

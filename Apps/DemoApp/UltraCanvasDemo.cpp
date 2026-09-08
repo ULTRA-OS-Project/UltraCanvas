@@ -971,6 +971,13 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasEPSExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasEPSExamples.md");
 #endif
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        vectorBuilder.AddItem("dwgdrawings", "DWG / DXF Drawings", "AutoCAD drawings decoded natively (R13 to R2018) through the Vector plugin's converter matrix",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateDWGVectorExamples(); },
+                              "DemoApp/UltraCanvasDWGExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
+#endif
 
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
