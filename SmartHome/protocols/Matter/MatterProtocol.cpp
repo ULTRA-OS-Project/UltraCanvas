@@ -1093,7 +1093,9 @@ bool MatterProtocol::CancelOTAUpdate(const std::string& deviceId) {
 
 // ===== SECURITY =====
 
-int MatterProtocol::GetSecurityLevel() const { return 5; }
+SmartHomeSecurityLevel MatterProtocol::GetSecurityLevel() const {
+    return SmartHomeSecurityLevel::Certified;  // device attestation certificates
+}
 bool MatterProtocol::SetNetworkKey(const std::vector<uint8_t>& key) { return true; }
 
 // ===== CONFIGURATION =====

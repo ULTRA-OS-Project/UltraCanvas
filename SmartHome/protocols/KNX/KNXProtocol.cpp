@@ -903,7 +903,7 @@ void KNXProtocol::StopDiscovery() {
     discovering = false;
 }
 
-std::vector<SmartHomeDeviceInfo> KNXProtocol::GetDiscoveredDevices() {
+std::vector<SmartHomeDeviceInfo> KNXProtocol::GetDiscoveredDevices() const {
     std::lock_guard<std::mutex> lock(discoveredMutex);
     return discoveredDevices;
 }

@@ -1421,8 +1421,8 @@ bool ZigbeeProtocol::CancelOTAUpdate(const std::string& deviceId) {
 
 // ===== SECURITY =====
 
-int ZigbeeProtocol::GetSecurityLevel() const {
-    return 5;  // Zigbee uses AES-128-CCM
+SmartHomeSecurityLevel ZigbeeProtocol::GetSecurityLevel() const {
+    return SmartHomeSecurityLevel::Encrypted;  // Zigbee uses AES-128-CCM
 }
 
 bool ZigbeeProtocol::SetNetworkKey(const std::vector<uint8_t>& key) {

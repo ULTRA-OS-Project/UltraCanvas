@@ -212,7 +212,7 @@ void ZWaveProtocol::StopDiscovery() {
     discovering = false;
 }
 
-std::vector<SmartHomeDeviceInfo> ZWaveProtocol::GetDiscoveredDevices() {
+std::vector<SmartHomeDeviceInfo> ZWaveProtocol::GetDiscoveredDevices() const {
     std::lock_guard<std::mutex> lock(discoveredMutex);
     return discoveredDevices;
 }

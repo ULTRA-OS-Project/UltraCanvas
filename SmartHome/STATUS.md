@@ -28,7 +28,9 @@ the `UltraCanvas` prefix.
 
 ## Compile status
 
-Measured with the repository's own include paths, `-std=gnu++20`.
+Header syntax checked with the repository's own include paths, `-std=gnu++20`.
+This is a header check: the `.cpp` files cannot be compiled yet because the
+vendor SDKs they include are absent (see §2).
 
 | Component | Errors | State |
 |---|---|---|
@@ -37,28 +39,49 @@ Measured with the repository's own include paths, `-std=gnu++20`.
 | `include/ISmartHomeProtocol.h` | 0 | clean |
 | `include/SmartHomeProtocolBase.h` | 0 | clean (was 6) |
 | `core/UltraCanvasSmartHomeManager.h` | 0 | clean |
-| `protocols/ZWave` | 5 | signature mismatches |
-| `protocols/KNX` | 6 | missing `<condition_variable>`, signatures |
-| `protocols/Zigbee` | 23 | signature mismatches |
-| `protocols/Thread` | 30 | signature mismatches |
-| `protocols/Matter` | 32 | undeclared callbacks, signatures |
+| `protocols/Matter` | 0 | clean (was 32) |
+| `protocols/Thread` | 0 | clean (was 30) |
+| `protocols/Zigbee` | 0 | clean (was 23) |
+| `protocols/ZWave` | 0 | clean (was 5) |
+| `protocols/KNX` | 0 | clean (was 6) |
 | `ui/*.h` | 116 | wrong base class and event model |
 
-### Already fixed
+### How the backends were fixed
 
-The protocol base class disagreed with its own interface; this blocked all
-five backends at once. Fixed in `include/`:
+One pattern accounted for nearly all 96 backend errors: **the interfaces in
+`ISmartHomeProtocol.h` were an early sketch, and the backends had moved on.**
+Where all five backends agreed with each other — and with the two programs in
+`examples/` — the interface was treated as the stale side and brought up to
+the code that actually works.
 
-- `GetCapabilities()` returned `uint32_t` against the interface's
-  `ProtocolCapability`.
-- `GetDeviceIds()` / `GetDeviceInfo()` / `HasDevice()` were marked `override`
-  but are base-class conveniences the interface never declared.
-- `GetDiagnostics()` returned three different types in three files. The
-  interface now returns the `std::map<std::string, std::string>` the base
-  already builds, and Thread's protocol-specific variant was renamed
-  `GetThreadDiagnostics()` so it no longer hides the virtual.
-- `SetState()` invoked `onStateChange` with two arguments; the callback takes
-  one.
+- `FormNetwork()` took no arguments; every backend and both examples pass a
+  network name. Now `FormNetwork(const std::string& = "")`.
+- The info-level device API (`GetPairedDevices`, `PairDevice`, `UnpairDevice`,
+  `GetDeviceState`) existed in all five backends and in no interface.
+- Groups, binding and OTA had capability queries (`SupportsGroups()` and
+  friends) but no methods behind them. Added with default implementations, so
+  Z-Wave and KNX — which do not implement them — stay concrete.
+- `IZigbeeProtocol` and `IThreadProtocol` were stringly typed
+  (`std::string GetPanId()`); the backends and the examples use the protocols'
+  real widths (`uint16_t` PAN ID, `uint64_t` extended PAN ID), Thread datasets
+  as TLV byte vectors, and a commissioner/joiner API the sketch lacked.
+- `GetSecurityLevel()` returned a bare `int` — `return 5`, against a four-value
+  `SmartHomeSecurityLevel` enum. Now returns the enum: `Encrypted` for
+  Zigbee and Thread, `Certified` for Matter, which has attestation.
+- Protocol-internal types stay out of the core header: the ZCL calls
+  (`ReadAttribute` with `ZigbeeAttributeValue`) and Matter's fabric objects are
+  backend-only and no longer claim to override anything.
+- Matter used `OnAttributeChange` as a callback type that was never defined,
+  and declared `OnCommissioningComplete` twice. `KNXProtocol.h` used
+  `std::condition_variable` without including `<condition_variable>`.
+
+### Known latent bug
+
+`MatterProtocol::SubscribeAttribute` stores its callback in
+`attributeSubscriptions` but nothing ever invokes it — the map is only written
+and cleared. Attribute subscriptions will never fire until
+`OnAttributeChanged` dispatches to it. Left as-is: fixing it is behaviour, not
+integration.
 
 ## What is left
 
@@ -81,14 +104,11 @@ framework's `Color`.
 `SmartHomeAutomationEditor::AddAction` takes `SmartHomeSceneAction`, a type
 that is never defined anywhere; scene actions are `SmartHomeCommand`.
 
-### 2. Protocol backends (96 errors)
+No `.cpp` files were supplied for the UI layer at all, and `SmartHomeAPI` in
+the public header declares a pImpl whose implementation is likewise absent —
+only `SmartHomeManager` has one.
 
-Mostly backend methods whose signatures drifted from `ISmartHomeProtocol`
-(e.g. `FormNetwork(const std::string&)` against the interface's
-`FormNetwork()`), plus missing includes. Mechanical, once decided per case
-whether the interface or the backend is right.
-
-### 3. Third-party dependencies — not yet resolved
+### 2. Third-party dependencies — not yet resolved
 
 - **Matter** includes the connectedhomeip SDK (`chip::`), which is not
   vendored and not fetched by CMake. It also uses
@@ -101,7 +121,7 @@ whether the interface or the backend is right.
   the licence rows (connectedhomeip Apache 2.0, OpenThread BSD, OpenZWave
   LGPL) to `THIRD_PARTY_LICENSES.md`.
 
-### 4. Two framework gaps the design assumes
+### 3. Two framework gaps the design assumes
 
 - **No BLE transport.** Matter commissioning needs Bluetooth LE; the only
   Bluetooth here is adapter *detection* in `UltraCanvasHardwareInfo`.
@@ -113,8 +133,14 @@ mDNS/DNS-SD, by contrast, already exists
 (`UltraCanvas/Plugins/UltraNet/mdns/MdnsPlugin.cpp`, Avahi / Bonjour / Win32),
 but resolves IPv4 only — Matter and Thread need AAAA.
 
-### 5. No implementation for the UI layer
+### 4. Examples
 
-The three `ui/` headers declare widgets; no `.cpp` files were supplied for
-them. `SmartHomeAPI` in the public header is likewise declared with a pImpl
-whose implementation is absent — only `SmartHomeManager` has a `.cpp`.
+`examples/DevicePairing.cpp` (Thread) and `examples/ZigbeePairing.cpp` are
+interactive command-line drivers. They were decisive in resolving the
+interface-versus-backend disagreements above: where the sketch and the backend
+differed, these showed which side real calling code uses. Two fixes were needed
+in them: `DevicePairing.cpp` used `std::istringstream` without including
+`<sstream>`, and its call to `GetDiagnostics()` became `GetThreadDiagnostics()`
+after that method was renamed to stop it hiding the interface's virtual.
+
+Neither is wired into CMake yet; they need the backends to link first.

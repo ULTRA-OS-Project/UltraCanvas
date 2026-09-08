@@ -172,7 +172,7 @@ public:
     
     // ===== SECURITY =====
     
-    int GetSecurityLevel() const override;
+    SmartHomeSecurityLevel GetSecurityLevel() const override;
     bool SetNetworkKey(const std::vector<uint8_t>& key) override;
     
     // ===== CONFIGURATION =====

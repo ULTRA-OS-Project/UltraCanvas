@@ -122,7 +122,9 @@ public:
     virtual bool SelectAdapter(const std::string& adapterId) = 0;
     
     // ===== NETWORK MANAGEMENT =====
-    virtual bool FormNetwork() = 0;
+    // Backends and the shipped examples all pass a network name; the default
+    // keeps 'form me a network, any name' callers working.
+    virtual bool FormNetwork(const std::string& networkName = "") = 0;
     virtual bool JoinNetwork(const std::string& networkId) = 0;
     virtual bool LeaveNetwork() = 0;
     virtual bool HasNetwork() const = 0;
@@ -152,6 +154,15 @@ public:
     virtual std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string& deviceId) const = 0;
     virtual bool RemoveDevice(const std::string& deviceId) = 0;
     virtual bool InterviewDevice(const std::string& deviceId) = 0;  // Re-query device info
+
+    // Info-level view of the same devices. Every backend implements these; the
+    // shared_ptr API above is the object-level view of the same registry.
+    virtual std::vector<SmartHomeDeviceInfo> GetPairedDevices() = 0;
+    virtual bool PairDevice(const std::string& deviceId,
+                            const std::map<std::string, std::string>& params) = 0;
+    virtual bool UnpairDevice(const std::string& deviceId) = 0;
+    virtual bool GetDeviceState(const std::string& deviceId,
+                                std::map<std::string, std::string>& state) = 0;
     
     // ===== COMMAND EXECUTION =====
     virtual bool SendCommand(const std::string& deviceId, 
@@ -179,6 +190,30 @@ public:
     
     // ===== OTA UPDATES =====
     virtual bool SupportsOTA() const { return HasCapability(ProtocolCapability::OTA); }
+
+    // Optional capability surfaces. Backends that advertise the matching
+    // capability override these; the defaults keep backends without it
+    // (Z-Wave, KNX) concrete rather than abstract.
+
+    // --- Groups (SupportsGroups) ---
+    virtual bool CreateGroup(uint16_t groupId, const std::string& name) { return false; }
+    virtual bool DeleteGroup(uint16_t groupId) { return false; }
+    virtual bool AddToGroup(const std::string& deviceId, uint16_t groupId) { return false; }
+    virtual bool RemoveFromGroup(const std::string& deviceId, uint16_t groupId) { return false; }
+    virtual std::vector<uint16_t> GetGroups() const { return {}; }
+    virtual std::vector<std::string> GetGroupMembers(uint16_t groupId) const { return {}; }
+    virtual bool SendGroupCommand(uint16_t groupId, const std::string& command,
+                                  const std::map<std::string, std::string>& params) { return false; }
+
+    // --- Binding (SupportsBinding) ---
+    virtual bool BindDevices(const std::string& sourceId, const std::string& targetId) { return false; }
+    virtual bool UnbindDevices(const std::string& sourceId, const std::string& targetId) { return false; }
+    virtual std::vector<std::string> GetBindings(const std::string& deviceId) const { return {}; }
+
+    // --- OTA firmware update (SupportsOTA) ---
+    virtual bool StartOTAUpdate(const std::string& deviceId, const std::string& imagePath) { return false; }
+    virtual int GetOTAProgress(const std::string& deviceId) const { return -1; }
+    virtual bool CancelOTAUpdate(const std::string& deviceId) { return false; }
     virtual std::vector<std::string> GetDevicesWithUpdates() const { return {}; }
     virtual bool StartDeviceUpdate(const std::string& deviceId) { return false; }
     virtual int GetUpdateProgress(const std::string& deviceId) const { return -1; }
@@ -216,56 +251,73 @@ class IMatterProtocol : public ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::Matter; }
     
-    // Matter-specific features
-    virtual bool AddFabric(const std::string& fabricId) = 0;
-    virtual bool RemoveFabric(const std::string& fabricId) = 0;
-    virtual std::vector<std::string> GetFabrics() const = 0;
-    
-    virtual bool OpenCommissioningWindow(int timeoutSeconds = 180) = 0;
-    virtual void CloseCommissioningWindow() = 0;
-    
-    virtual std::string GenerateSetupCode() const = 0;
-    virtual std::string GenerateQRPayload() const = 0;
+    // Matter-specific features. Fabric objects and attribute subscriptions take
+    // Matter types declared in MatterProtocol.h, so they stay backend-only;
+    // what is expressible in core types lives here.
+    virtual bool OpenCommissioningWindow(const std::string& deviceId,
+                                         int timeoutSeconds = 180) = 0;
+    virtual bool CloseCommissioningWindow(const std::string& deviceId) = 0;
+
+    virtual std::string GenerateSetupCode(const std::string& deviceId) const = 0;
+    virtual std::string GenerateQRCode(const std::string& deviceId) const = 0;
+
+    virtual bool ReadAttribute(const std::string& deviceId, uint16_t endpoint,
+                               uint32_t clusterId, uint32_t attributeId,
+                               std::string& outValue) = 0;
+    virtual bool WriteAttribute(const std::string& deviceId, uint16_t endpoint,
+                                uint32_t clusterId, uint32_t attributeId,
+                                const std::string& value) = 0;
+    virtual bool InvokeCommand(const std::string& deviceId, uint16_t endpoint,
+                               uint32_t clusterId, uint32_t commandId,
+                               const std::map<std::string, std::string>& fields) = 0;
 };
 
 class IThreadProtocol : public ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::Thread; }
     
-    // Thread-specific features
+    // Thread-specific features, carrying the protocol's own widths.
     virtual bool IsBorderRouter() const = 0;
-    virtual bool EnableBorderRouter() = 0;
-    virtual bool DisableBorderRouter() = 0;
-    
-    virtual std::string GetExtendedPanId() const = 0;
-    virtual std::string GetMeshLocalPrefix() const = 0;
-    virtual std::string GetNetworkKey() const = 0;
-    
-    virtual int GetRouterCount() const = 0;
-    virtual int GetChildCount() const = 0;
-    virtual int GetLeaderWeight() const = 0;
+    virtual bool EnableBorderRouter(bool enable) = 0;
+
+    virtual uint64_t GetExtendedPanId() const = 0;
+    virtual uint16_t GetPanId() const = 0;
+    virtual uint16_t GetChannel() const = 0;
+
+    // Operational and pending datasets, as raw Thread TLVs.
+    virtual std::vector<uint8_t> GetActiveDataset() const = 0;
+    virtual bool SetActiveDataset(const std::vector<uint8_t>& dataset) = 0;
+    virtual std::vector<uint8_t> GetPendingDataset() const = 0;
+    virtual bool SetPendingDataset(const std::vector<uint8_t>& dataset) = 0;
+
+    // Commissioner role: a joiner is authorised by EUI-64 plus its PSKd.
+    virtual bool StartCommissioner() = 0;
+    virtual void StopCommissioner() = 0;
+    virtual bool IsCommissionerActive() const = 0;
+    virtual bool AddJoiner(const std::string& eui64, const std::string& pskd,
+                           uint32_t timeout) = 0;
+    virtual bool RemoveJoiner(const std::string& eui64) = 0;
+
+    virtual std::string GetMeshLocalAddress() const = 0;
+    virtual std::vector<std::string> GetIPv6Addresses() const = 0;
 };
 
 class IZigbeeProtocol : public ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::Zigbee; }
     
-    // Zigbee-specific features
-    virtual std::string GetPanId() const = 0;
-    virtual std::string GetExtendedPanId() const = 0;
-    virtual int GetChannel() const = 0;
+    // Zigbee-specific features. These carry the protocol's own widths: a PAN ID
+    // is 16 bits, an extended PAN ID 64, a channel 8. The ZCL attribute calls
+    // (ReadAttribute / WriteAttribute / ConfigureReporting / SendZCLCommand)
+    // are deliberately NOT here: they take Zigbee cluster types declared in
+    // ZigbeeProtocol.h, which this header must not depend on.
+    virtual uint16_t GetPanId() const = 0;
+    virtual uint64_t GetExtendedPanId() const = 0;
+    virtual uint8_t GetChannel() const = 0;
     virtual bool SetChannel(int channel) = 0;
-    
+
     virtual bool TouchLink(int durationSeconds = 60) = 0;  // Zigbee Light Link
-    
-    virtual std::vector<std::string> GetClusters(const std::string& deviceId) const = 0;
-    virtual bool ReadAttribute(const std::string& deviceId, 
-                               const std::string& cluster,
-                               const std::string& attribute) = 0;
-    virtual bool WriteAttribute(const std::string& deviceId,
-                                const std::string& cluster,
-                                const std::string& attribute,
-                                const std::string& value) = 0;
+    virtual bool FactoryReset(const std::string& deviceId) = 0;
 };
 
 class IZWaveProtocol : public ISmartHomeProtocol {

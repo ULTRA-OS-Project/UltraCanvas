@@ -17,6 +17,15 @@
 namespace UltraCanvas {
 namespace SmartHome {
 
+// Reported when a subscribed attribute changes. Mirrors the arguments of the
+// internal OnAttributeChanged handler, but addresses the device by its
+// UltraCanvas id rather than the Matter node id.
+using OnAttributeChange = std::function<void(const std::string& deviceId,
+                                             uint16_t endpoint,
+                                             uint32_t clusterId,
+                                             uint32_t attributeId,
+                                             const std::string& value)>;
+
 /**
  * @brief Matter fabric information
  */
@@ -163,7 +172,7 @@ public:
     
     // ===== SECURITY =====
     
-    int GetSecurityLevel() const override;
+    SmartHomeSecurityLevel GetSecurityLevel() const override;
     bool SetNetworkKey(const std::vector<uint8_t>& key) override;
     
     // ===== CONFIGURATION =====
@@ -175,9 +184,9 @@ public:
     
     // ===== MATTER-SPECIFIC (IMatterProtocol) =====
     
-    bool AddFabric(const MatterFabric& fabric) override;
-    bool RemoveFabric(uint64_t fabricId) override;
-    std::vector<MatterFabric> GetFabrics() const override;
+    bool AddFabric(const MatterFabric& fabric);
+    bool RemoveFabric(uint64_t fabricId);
+    std::vector<MatterFabric> GetFabrics() const;
     
     bool OpenCommissioningWindow(const std::string& deviceId, int timeoutSeconds) override;
     bool CloseCommissioningWindow(const std::string& deviceId) override;
@@ -199,7 +208,7 @@ public:
     
     bool SubscribeAttribute(const std::string& deviceId, uint16_t endpoint,
                             uint32_t clusterId, uint32_t attributeId,
-                            OnAttributeChange callback) override;
+                            OnAttributeChange callback);
     
     bool InvokeCommand(const std::string& deviceId, uint16_t endpoint,
                        uint32_t clusterId, uint32_t commandId,
@@ -256,7 +265,6 @@ private:
     
     // ===== INTERNAL CALLBACKS =====
     
-    void OnCommissioningComplete(uint64_t nodeId, bool success, const std::string& error);
     void UpdateNodeAttribute(uint64_t nodeId, const std::string& attrName, const std::string& value);
     
     // ===== STATE =====

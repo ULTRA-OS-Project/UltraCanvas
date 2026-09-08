@@ -477,7 +477,7 @@ public:
     bool StartDiscovery(int timeoutSeconds) override;
     void StopDiscovery() override;
     bool IsDiscovering() const override { return discovering; }
-    std::vector<SmartHomeDeviceInfo> GetDiscoveredDevices() override;
+    std::vector<SmartHomeDeviceInfo> GetDiscoveredDevices() const override;
     
     bool PairDevice(const std::string& deviceId, 
                    const std::map<std::string, std::string>& params) override;

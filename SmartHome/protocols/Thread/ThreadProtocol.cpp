@@ -935,8 +935,8 @@ bool ThreadProtocol::CancelOTAUpdate(const std::string& deviceId) {
 
 // ===== SECURITY =====
 
-int ThreadProtocol::GetSecurityLevel() const {
-    return 5;  // Thread uses AES-128-CCM with replay protection
+SmartHomeSecurityLevel ThreadProtocol::GetSecurityLevel() const {
+    return SmartHomeSecurityLevel::Encrypted;  // Thread uses AES-128-CCM with replay protection
 }
 
 bool ThreadProtocol::SetNetworkKey(const std::vector<uint8_t>& key) {

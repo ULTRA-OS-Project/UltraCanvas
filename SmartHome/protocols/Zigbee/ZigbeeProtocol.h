@@ -192,7 +192,7 @@ public:
     
     // ===== SECURITY =====
     
-    int GetSecurityLevel() const override;
+    SmartHomeSecurityLevel GetSecurityLevel() const override;
     bool SetNetworkKey(const std::vector<uint8_t>& key) override;
     
     // ===== CONFIGURATION =====
@@ -213,21 +213,21 @@ public:
     
     bool ReadAttribute(const std::string& deviceId, uint8_t endpoint,
                        uint16_t clusterId, uint16_t attributeId,
-                       ZigbeeAttributeValue& outValue) override;
+                       ZigbeeAttributeValue& outValue);
     
     bool WriteAttribute(const std::string& deviceId, uint8_t endpoint,
                         uint16_t clusterId, uint16_t attributeId,
-                        const std::vector<uint8_t>& value) override;
+                        const std::vector<uint8_t>& value);
     
     bool ConfigureReporting(const std::string& deviceId, uint8_t endpoint,
                             uint16_t clusterId, uint16_t attributeId,
                             uint16_t minInterval, uint16_t maxInterval,
-                            uint16_t reportableChange) override;
+                            uint16_t reportableChange);
     
     bool SendZCLCommand(const std::string& deviceId, uint8_t endpoint,
                         uint16_t clusterId, uint8_t commandId,
                         const std::vector<uint8_t>& payload,
-                        bool clusterSpecific = true) override;
+                        bool clusterSpecific = true);
     
     // ===== ADDITIONAL ZIGBEE METHODS =====
     
