@@ -20,6 +20,7 @@
 #include "UltraCanvasDWGDecoder.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -802,7 +803,9 @@ bool LoadR2004(const std::string& file, DrawingData& d) {
             p += 4;   // type
             p += 4;   // encrypted
             const char* name = reinterpret_cast<const char*>(&info[p]);
-            in.name.assign(name, strnlen(name, 64));
+            size_t nameLen = 0;
+            while (nameLen < 64 && name[nameLen] != '\0') ++nameLen;
+            in.name.assign(name, nameLen);
             p += 64;
             if (in.numPages > 1000000) break;
             for (uint32_t j = 0; j < in.numPages && p + 16 <= info.size(); ++j) {
@@ -1544,7 +1547,7 @@ private:
         } else if (n == "TEXT" || n == "ATTRIB" || n == "ATTDEF") {
             if (n == "ATTDEF") return false;
             e.type = n;
-            ParseTextBody(e, s, o, n == "ATTRIB");
+            ParseTextBody(s, o);
         } else if (n == "MTEXT") {
             e.type = "MTEXT";
             pt3(10);
@@ -1830,7 +1833,7 @@ private:
         o.Tag(1, t.substr(pos));
     }
 
-    void ParseTextBody(Ent& e, Streams& s, DxfOut& o, bool attrib) {
+    void ParseTextBody(Streams& s, DxfOut& o) {
         BitReader& d = s.dat;
         double elevation = 0, ix, iy, ax, ay, ex = 0, ey = 0, ez = 1;
         double oblique = 0, rotation = 0, height, width = 1;
@@ -1867,7 +1870,6 @@ private:
             if (!(df & 0x40)) halign = d.BS();
             if (!(df & 0x80)) valign = d.BS();
         }
-        (void)attrib;
         o.Pt(10, ix, iy, elevation);
         o.Pt(11, ax, ay, elevation);
         o.Tag(40, height);
