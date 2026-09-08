@@ -10,22 +10,26 @@
 //                  LWPOLYLINE (with bulges)/POLYLINE/SPLINE/HATCH/SOLID/
 //                  TEXT/MTEXT with the LAYER/LTYPE/STYLE tables, ACI and
 //                  true colours, lineweights and dash linetypes.
-//   DWGConverter - AutoCAD Drawing. DWG is a proprietary binary format with
-//                  no public specification; the only open-source
-//                  implementation is GNU LibreDWG. This converter delegates
-//                  both directions to LibreDWG's command-line tools when
-//                  they are available (on PATH or named by environment
-//                  variable): writing goes through the DXF writer plus
-//                  dxf2dwg (ULTRACANVAS_DXF2DWG), reading through dwg2dxf
-//                  (ULTRACANVAS_DWG2DXF) plus the DXF reader. Without the
-//                  tools it warns and fails cleanly - DXF is AutoCAD's own
-//                  exchange format and opens everywhere DWG does.
+//   DWGConverter - AutoCAD Drawing. Reading is native (UltraCanvasDWGDecoder):
+//                  the R13-R2018 binary drawing database - bit-coded objects,
+//                  the R2004+ compressed page layout, the R2007 Reed-Solomon
+//                  pages, object map, CLASSES, block definitions - is decoded
+//                  and rendered as DXF for the DXF reader, so .dwg files open
+//                  and preview without any external program. Writing
+//                  delegates to GNU LibreDWG's dxf2dwg when it is installed
+//                  (ULTRACANVAS_DXF2DWG or PATH): DWG has no public
+//                  specification and the only open implementation is GPL,
+//                  so it stays an optional external process; dwg2dxf is
+//                  likewise only a fallback for files the native decoder
+//                  declines. Without the tool the export warns and fails
+//                  cleanly - DXF is AutoCAD's own exchange format and opens
+//                  everywhere DWG does.
 //
 // DXF has no alpha channel that pre-2011 consumers honour, so style opacity
 // is reported through the warning callback and colours are written at full
 // strength.
-// Version: 1.1.0
-// Last Modified: 2026-08-26
+// Version: 1.2.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -84,10 +88,19 @@ namespace UltraCanvas {
             bool ValidateFile(const std::string& filename) const override;
             bool ValidateData(const std::string& data) const override;
 
-            // The LibreDWG executables used for the conversions: the
-            // ULTRACANVAS_DXF2DWG / ULTRACANVAS_DWG2DXF environment
-            // variables when set, otherwise "dxf2dwg" / "dwg2dxf" found on
-            // PATH. Empty when neither exists.
+            // Native DWG -> DXF conversion: the tagged DXF text the decoder
+            // produces for a DWG file image, empty (with a warning) when the
+            // file cannot be decoded. This is what ImportFromString feeds
+            // to the DXF reader; it is also a DWG-to-DXF converter in its
+            // own right.
+            static std::string DecodeToDxf(const std::string& data,
+                                           const ConversionOptions& options = ConversionOptions());
+
+            // The LibreDWG executables: the ULTRACANVAS_DXF2DWG /
+            // ULTRACANVAS_DWG2DXF environment variables when set, otherwise
+            // "dxf2dwg" / "dwg2dxf" found on PATH. Empty when neither
+            // exists. dxf2dwg is what the export needs; dwg2dxf is only a
+            // fallback for files the native decoder declines.
             static std::string FindDxf2Dwg();
             static std::string FindDwg2Dxf();
         };

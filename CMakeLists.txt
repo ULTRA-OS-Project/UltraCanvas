@@ -420,6 +420,10 @@ if(BUILD_DEMO_APP)
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasEPSExamples.cpp)
         endif()
 
+        if(PLUGIN_TARGET MATCHES "UltraCanvasVectorPlugin")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasDWGExamples.cpp)
+        endif()
+
         if(PLUGIN_TARGET MATCHES "OCR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)
         endif()

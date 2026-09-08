@@ -16,8 +16,8 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | EMF | `EMFConverter` | ✓ | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. The reader parses the GDI object table, path records, immediate polygon/polyline/bezier records and text (`TA_UPDATECP` chains merge back into spans). |
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
 | AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
-| DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE/SPLINE/HATCH/SOLID/TEXT/MTEXT with the LAYER/LTYPE/STYLE tables; piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
-| DWG | `DWGConverter` | ✓* | ✓* | DWG is proprietary and undocumented; both directions delegate to GNU LibreDWG's tools — writing through `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH), reading through `dwg2dxf` (`ULTRACANVAS_DWG2DXF` or PATH) plus the DXF reader. Without the tools the converter warns and declines — use DXF instead, AutoCAD's own exchange format. LibreDWG's DXF output carries ACI colours only, so colours quantise to the nearest palette entry. |
+| DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), scaled to a sensible point size when it comes from the geometry, since drawing units are arbitrary. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
+| DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
 
@@ -40,6 +40,8 @@ WMFConverter().Export(*doc, "drawing.wmf");
 AIConverter().Export(*doc, "drawing.ai");
 DXFConverter().Export(*doc, "drawing.dxf");
 DWGConverter().Export(*doc, "drawing.dwg");   // needs LibreDWG's dxf2dwg
+auto fromDwg = DWGConverter().Import("plan.dwg");   // native, no external tool
+std::string dxfText = DWGConverter::DecodeToDxf(dwgBytes);   // DWG -> DXF text
 
 auto fromCad = DXFConverter().Import("plan.dxf");
 auto fromEmf = EMFConverter().Import("clip.emf");
@@ -57,7 +59,7 @@ auto element = LoadGraphicsFile("plan.dxf");   // UltraCanvasVectorElement
 SaveGraphicsFile(element, "plan.svg");         // any of the ten formats
 ```
 
-Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF, DWG*) and
+Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF, DWG) and
 yields an `UltraCanvasVectorElement` holding the editable `VectorDocument`;
 saving covers the whole matrix from any such element. The
 `IGraphicsPlugin` save interface (`GetSaveExtensions`/`SaveGraphics`) is new
@@ -83,7 +85,7 @@ structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when
 installed), and `VectorFormatsPluginTest` (the whole matrix through the
 plugin registry: save all ten formats via `SaveGraphicsFile`, load the
 readable ones back via `LoadGraphicsFile` with geometry/style round-trip
-checks, plus the supported-format inventory).
+checks, plus the supported-format inventory). `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG).
 
 ## See Also
 
