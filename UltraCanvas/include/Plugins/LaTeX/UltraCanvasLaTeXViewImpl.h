@@ -6,8 +6,8 @@
 // module-internal - it pulls in MicroTeX and is only included by the module's
 // .cpp files, never by the core or by applications.
 //
-// Version: 1.0.0
-// Last Modified: 2026-06-29
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -15,6 +15,7 @@
 
 #include "Plugins/LaTeX/UltraCanvasLaTeXView.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -48,6 +49,9 @@ public:
 private:
     bool EnsureRender(IRenderContext* ctx);
     void ReleaseRender();
+    // The error message shown in place of a formula that could not be typeset.
+    // Returns nullptr when there is nothing to show (no error, or no context).
+    ITextLayout* EnsureErrorLayout(IRenderContext* ctx);
 
     std::string latex_;
     float textSize_ = 20.f;
@@ -57,6 +61,14 @@ private:
     microtex::Render* render_ = nullptr;
     bool needsReparse_ = true;
     std::string lastError_;
+    // Set when the engine itself could not be initialised (math font not
+    // found), together with the font-dir generation at that moment, so the
+    // parse is retried once SetLaTeXFontSearchDir() changes the search path.
+    bool engineInitFailed_ = false;
+    unsigned engineInitFailedGeneration_ = 0;
+
+    std::unique_ptr<ITextLayout> errorLayout_;
+    std::string errorLayoutText_;   // the text errorLayout_ was built from
 };
 
 } // namespace UltraCanvas

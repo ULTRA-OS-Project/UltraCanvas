@@ -1,3 +1,34 @@
+#### 2026-09-08 *0.3.109*
+- **LaTeX: the on-demand module now finds its math font (and itself) in a
+  normal build, and a view that cannot typeset says why.** The demo's
+  "LaTeX Documents" page showed no formula at all: the plugin loaded, but
+  `Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp` looked for
+  `latinmodern-math.clm2` under `<exe>/media/microtex` and
+  `<exe>/share/UltraCanvas/media/microtex`, while the top-level CMake copies
+  `media/` to `<build>/share/media` (and a package installs it to
+  `<exe>/../share/media`). The font was only found when the working
+  directory happened to be the repository root, and a failed engine
+  initialisation left the view blank with the error reachable only through
+  `GetLastError()`.
+  - The font search now starts at `GetResourcesDir() + "media/microtex"` —
+    the framework's own resource root, the one every other `media/` consumer
+    uses — followed by the `share/media` layouts next to the executable; the
+    old candidates are kept. A view whose font lookup failed retries once
+    `SetLaTeXFontSearchDir()` is called, instead of staying dead.
+  - The loader (`core/UltraCanvasLaTeXModuleLoader.cpp`) also probes
+    `<exe>/lib/`: in a dev build the executable sits at the build root and
+    the module in `<build>/lib`, which no previous candidate covered — with a
+    static core there is no rpath to fall back on, so `CreateLaTeXView()`
+    returned `nullptr`.
+  - `UltraCanvasLaTeXView` draws its `GetLastError()` text in red, sized as
+    its content, whenever there is no render (engine not initialised, parse
+    error), so a broken formula is visible in the UI rather than an empty
+    box.
+  - Demo: a plain-math document with no live view now reports
+    `GetLaTeXModuleError()` instead of the misleading "needs TikZ" note.
+  - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search-order and diagnostics
+    sections updated.
+
 #### 2026-09-07 *0.3.108*
 - **WebAssembly: real applications link, and the browser clipboard works.**
   The Emscripten backend (`UltraCanvas/OS/WASM/`) rendered and took input,
