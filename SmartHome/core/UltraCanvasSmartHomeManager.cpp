@@ -149,10 +149,21 @@ std::shared_ptr<ISmartHomeProtocol> SmartHomeManager::GetProtocol(SmartHomeProto
 }
 
 bool SmartHomeManager::EnableProtocol(SmartHomeProtocolType type) {
+    // No backend for this type yet? Build one from its registered factory.
+    // Both calls take protocolMutex themselves, so this has to happen before
+    // we lock: the mutex is not recursive.
+    if (!GetProtocol(type)) {
+        if (auto backend = CreateSmartHomeProtocol(type)) {
+            RegisterProtocol(type, backend);
+        }
+    }
+
     std::lock_guard<std::mutex> lock(protocolMutex);
-    
+
     auto it = protocols.find(type);
     if (it == protocols.end()) {
+        DispatchError(-3, "No backend registered for protocol: " +
+                              ProtocolTypeToString(type));
         return false;
     }
     
@@ -860,7 +871,25 @@ SmartHomeAPI& SmartHomeAPI::Instance() {
 SmartHomeAPI::SmartHomeAPI() : pImpl(std::make_unique<Impl>()) {}
 SmartHomeAPI::~SmartHomeAPI() = default;
 
-bool SmartHomeAPI::Initialize() { return SmartHomeManager::Instance().Initialize(); }
+bool SmartHomeAPI::Initialize() {
+    // Make every backend compiled into this build available to
+    // EnableProtocol() before the manager starts its threads.
+    RegisterBuiltinProtocols();
+    return SmartHomeManager::Instance().Initialize();
+}
+
+bool SmartHomeAPI::RegisterProtocol(SmartHomeProtocolType protocol,
+                                    std::shared_ptr<ISmartHomeProtocol> backend) {
+    return SmartHomeManager::Instance().RegisterProtocol(protocol, std::move(backend));
+}
+
+bool SmartHomeAPI::UnregisterProtocol(SmartHomeProtocolType protocol) {
+    return SmartHomeManager::Instance().UnregisterProtocol(protocol);
+}
+
+bool SmartHomeAPI::HasProtocolBackend(SmartHomeProtocolType protocol) const {
+    return SmartHomeManager::Instance().GetProtocol(protocol) != nullptr;
+}
 void SmartHomeAPI::Shutdown() { SmartHomeManager::Instance().Shutdown(); }
 bool SmartHomeAPI::IsInitialized() const { return SmartHomeManager::Instance().IsInitialized(); }
 

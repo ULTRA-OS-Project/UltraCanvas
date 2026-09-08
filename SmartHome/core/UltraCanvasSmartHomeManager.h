@@ -180,7 +180,7 @@ private:
     
     // Command queue
     std::queue<PendingCommand> commandQueue;
-    std::mutex commandMutex;
+    mutable std::mutex commandMutex;
     std::condition_variable commandCondition;
     
     // Scenes and automations

@@ -29,8 +29,9 @@ the `UltraCanvas` prefix.
 ## Compile status
 
 Header syntax checked with the repository's own include paths, `-std=gnu++20`.
-This is a header check: the `.cpp` files cannot be compiled yet because the
-vendor SDKs they include are absent (see §2).
+The `core/` sources and the facade test are fully compiled, linked and run.
+The protocol backends remain a header-only check: their `.cpp` files include
+vendor SDKs that are absent (see §2).
 
 | Component | Errors | State |
 |---|---|---|
@@ -44,6 +45,8 @@ vendor SDKs they include are absent (see §2).
 | `protocols/Zigbee` | 0 | clean (was 23) |
 | `protocols/ZWave` | 0 | clean (was 5) |
 | `protocols/KNX` | 0 | clean (was 6) |
+| `core/*.cpp` | 0 | **compiles and links** |
+| `tests/FacadeTest.cpp` | 0 | **compiles, links and passes** |
 | `ui/*.h` | 116 | wrong base class and event model |
 
 ### How the backends were fixed
@@ -74,6 +77,52 @@ the code that actually works.
 - Matter used `OnAttributeChange` as a callback type that was never defined,
   and declared `OnCommissioningComplete` twice. `KNXProtocol.h` used
   `std::condition_variable` without including `<condition_variable>`.
+
+### The two-layer split, settled
+
+`SmartHomeAPI` (public, `include/`) and `SmartHomeManager` (engine, `core/`)
+are two layers, not duplicates, and both stay:
+
+| | `SmartHomeAPI` | `SmartHomeManager` |
+|---|---|---|
+| Audience | application developer, and the widgets | protocol-backend author |
+| Vocabulary | `SmartHomeDeviceInfo`, `SmartHomeLightState` — values | `shared_ptr<ISmartHomeProtocol>` — live objects |
+| Owns | nothing; it delegates | registries, command queue, three worker threads |
+
+Neither is touched by the end user, who sees only the widgets.
+
+The facade used to be incomplete: it had no way to register a protocol backend,
+so an application could `EnableProtocol(Zigbee)` but never supply a Zigbee
+backend — `examples/DevicePairing.cpp` had the call commented out with the note
+"In real code, this would be done through SmartHomeManager". It is complete now:
+
+- `SmartHomeAPI::RegisterProtocol` / `UnregisterProtocol` / `HasProtocolBackend`,
+  taking the backend as a `shared_ptr` to a forward-declared type, so
+  applications that only drive devices never see `ISmartHomeProtocol`.
+- `RegisterProtocolFactory` / `UnregisterProtocolFactory` /
+  `CreateSmartHomeProtocol` — declared in the original source but **never
+  defined**, so any caller would have failed to link. Defined in
+  `core/SmartHomeProtocolRegistry.cpp`.
+- `RegisterBuiltinProtocols()` registers whichever backends CMake compiled in
+  (`ULTRACANVAS_SMARTHOME_<NAME>`); `SmartHomeAPI::Initialize()` calls it, and
+  `EnableProtocol()` builds a backend on demand from its factory.
+
+**The rule worth keeping: if application code has to include `core/`, the
+facade has a hole.**
+
+`tests/FacadeTest.cpp` holds this line. It compiles and passes today.
+
+### Bugs this uncovered
+
+Two were found by actually building and running the module for the first time:
+
+- `SmartHomeProtocolBase`'s destructor called `Shutdown()`, which is pure
+  virtual on the interface — undefined behaviour during destruction, and an
+  undefined reference at link time. Every backend already shuts itself down in
+  its own destructor, so the base call was redundant as well as wrong. Removed.
+- `SmartHomeManager::commandMutex` was the only one of five mutexes not
+  declared `mutable`, while `GetPendingCommandCount() const` locks it. Would
+  not compile. Fixed.
 
 ### Known latent bug
 

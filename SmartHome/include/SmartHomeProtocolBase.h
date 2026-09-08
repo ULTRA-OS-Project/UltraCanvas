@@ -33,11 +33,12 @@ public:
         , discovering(false)
         , pairing(false) {}
     
-    virtual ~SmartHomeProtocolBase() {
-        if (IsInitialized()) {
-            Shutdown();
-        }
-    }
+    // Deliberately does NOT call Shutdown(). Shutdown() is pure virtual on the
+    // interface, and by the time this destructor runs the derived part is gone,
+    // so the call is undefined behaviour — in practice a pure-virtual call, or
+    // an undefined reference at link time. Every backend already shuts itself
+    // down in its own destructor, which is the correct place for it.
+    virtual ~SmartHomeProtocolBase() = default;
     
     // ===== IDENTIFICATION =====
     

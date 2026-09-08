@@ -175,9 +175,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "(This may be normal if no Thread hardware is present)\n";
     }
     
-    // Get SmartHomeManager instance and register protocol
-    // In real code, this would be done through SmartHomeManager
-    // SMARTHOME_API.RegisterProtocol(SmartHomeProtocolType::Thread, threadProtocol);
+    // Hand the backend to the module. Builds with the Thread backend compiled
+    // in get this for free from Initialize(); doing it explicitly also covers
+    // the case of substituting your own.
+    SMARTHOME_API.RegisterProtocol(SmartHomeProtocolType::Thread, threadProtocol);
     
     PrintUsage();
     

@@ -358,12 +358,9 @@ public:
 
 std::shared_ptr<ISmartHomeProtocol> CreateSmartHomeProtocol(SmartHomeProtocolType type);
 
-// ===== PROTOCOL REGISTRATION =====
-
-using ProtocolFactory = std::function<std::shared_ptr<ISmartHomeProtocol>()>;
-
-void RegisterProtocolFactory(SmartHomeProtocolType type, ProtocolFactory factory);
-void UnregisterProtocolFactory(SmartHomeProtocolType type);
+// Protocol backend registration lives in UltraCanvasSmartHome.h, next to the
+// SmartHomeAPI calls that use it: RegisterProtocolFactory,
+// UnregisterProtocolFactory and RegisterBuiltinProtocols.
 
 } // namespace SmartHome
 } // namespace UltraCanvas

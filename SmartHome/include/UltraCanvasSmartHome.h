@@ -204,6 +204,18 @@ public:
     void Shutdown();
     bool IsInitialized() const;
     
+    // ===== PROTOCOL BACKENDS =====
+    // A protocol type is only usable once a backend is registered for it.
+    // Initialize() registers every backend compiled into this build, so the
+    // common case needs none of these; they are for supplying a backend of
+    // your own, or replacing a built-in one. The backend is taken by
+    // shared_ptr to an incomplete type on purpose: applications that only
+    // drive devices never need to see ISmartHomeProtocol.
+    bool RegisterProtocol(SmartHomeProtocolType protocol,
+                          std::shared_ptr<ISmartHomeProtocol> backend);
+    bool UnregisterProtocol(SmartHomeProtocolType protocol);
+    bool HasProtocolBackend(SmartHomeProtocolType protocol) const;
+
     // ===== PROTOCOL MANAGEMENT =====
     bool EnableProtocol(SmartHomeProtocolType protocol);
     bool DisableProtocol(SmartHomeProtocolType protocol);
@@ -291,6 +303,21 @@ private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
 };
+
+// ===== PROTOCOL BACKEND REGISTRATION =====
+
+// Registers a factory for a protocol backend. EnableProtocol() uses it to
+// build a backend on demand for any type that has no backend registered yet.
+using SmartHomeProtocolFactory =
+    std::function<std::shared_ptr<ISmartHomeProtocol>()>;
+void RegisterProtocolFactory(SmartHomeProtocolType type,
+                             SmartHomeProtocolFactory factory);
+void UnregisterProtocolFactory(SmartHomeProtocolType type);
+
+// Registers a factory for every backend compiled into this build. Called by
+// SmartHomeAPI::Initialize(); safe to call again. Returns how many were
+// registered — zero is normal in a build with no protocol backends enabled.
+int RegisterBuiltinProtocols();
 
 // ===== UTILITY FUNCTIONS =====
 

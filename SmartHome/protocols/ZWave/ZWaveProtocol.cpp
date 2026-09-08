@@ -2008,8 +2008,8 @@ void ZWaveProtocol::ProcessNotificationQueue() {
 // FACTORY FUNCTION
 // ============================================================================
 
-std::unique_ptr<ISmartHomeProtocol> CreateZWaveProtocol() {
-    return std::make_unique<ZWaveProtocol>();
+std::shared_ptr<ISmartHomeProtocol> CreateZWaveProtocol() {
+    return std::make_shared<ZWaveProtocol>();
 }
 
 } // namespace SmartHome

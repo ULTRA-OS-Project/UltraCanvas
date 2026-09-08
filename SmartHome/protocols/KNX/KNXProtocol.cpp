@@ -1838,8 +1838,8 @@ void KNXProtocol::NotifyGroupValue(const KNXGroupAddress& address, const std::ve
 // FACTORY FUNCTION
 // ============================================================================
 
-std::unique_ptr<ISmartHomeProtocol> CreateKNXProtocol() {
-    return std::make_unique<KNXProtocol>();
+std::shared_ptr<ISmartHomeProtocol> CreateKNXProtocol() {
+    return std::make_shared<KNXProtocol>();
 }
 
 } // namespace SmartHome

@@ -1107,7 +1107,7 @@ private:
  * @brief Create Z-Wave protocol instance
  * @return Protocol instance
  */
-std::unique_ptr<ISmartHomeProtocol> CreateZWaveProtocol();
+std::shared_ptr<ISmartHomeProtocol> CreateZWaveProtocol();
 
 } // namespace SmartHome
 } // namespace UltraCanvas

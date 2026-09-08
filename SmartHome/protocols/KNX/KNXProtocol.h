@@ -1071,7 +1071,7 @@ private:
  * @brief Create KNX protocol instance
  * @return Protocol instance
  */
-std::unique_ptr<ISmartHomeProtocol> CreateKNXProtocol();
+std::shared_ptr<ISmartHomeProtocol> CreateKNXProtocol();
 
 } // namespace SmartHome
 } // namespace UltraCanvas
