@@ -1,32 +1,47 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasDXFReader.cpp
 // DXF (AutoCAD Drawing Exchange Format) reader - the import side of
-// DXFConverter (the writer lives in UltraCanvasDXFConverter.cpp).
+// DXFConverter (the writer lives in UltraCanvasDXFConverter.cpp). The
+// native DWG decoder renders drawings as DXF, so this reader is the import
+// path of both CAD formats.
 //
 // Parses tagged ASCII DXF per Autodesk's public reference: the HEADER
-// extents, the LAYER/LTYPE/STYLE tables and the ENTITIES section with
-// LINE, CIRCLE, ARC, ELLIPSE, LWPOLYLINE (bulges included), legacy
-// POLYLINE/VERTEX, SPLINE, HATCH, SOLID, TEXT and MTEXT. Curved geometry
-// comes back as real cubics: arcs and bulges convert exactly (to within
-// the standard bezier arc approximation), and splines whose knot vector is
-// the piecewise-bezier form (the writer's own output, clamped with interior
-// multiplicity = degree) reproduce their cubics exactly; general NURBS are
-// sampled with de Boor evaluation and reported through the warning
-// callback. DXF's Y-up world maps to the document's Y-down page using the
-// $EXTMIN/$EXTMAX extents (computed from the entities when a file declares
-// none). Entities keep their real layers; unsupported entity types are
+// extents, the LAYER/LTYPE/STYLE tables, the BLOCKS section and the
+// ENTITIES section with LINE, CIRCLE, ARC, ELLIPSE, LWPOLYLINE (bulges
+// included), legacy POLYLINE/VERTEX (2D, 3D, polyface and polygon meshes
+// projected onto the XY plane), SPLINE, HATCH, SOLID,
+// 3DFACE, LEADER, TEXT, ATTRIB, MTEXT, INSERT (nested, scaled, rotated,
+// mirrored through the OCS extrusion, MINSERT arrays, "0"-layer and
+// ByBlock inheritance) and DIMENSION (through its rendered block). Curved
+// geometry comes back as real cubics: arcs and bulges convert exactly (to
+// within the standard bezier arc approximation), and splines whose knot
+// vector is the piecewise-bezier form (the writer's own output, clamped
+// with interior multiplicity = degree) reproduce their cubics exactly;
+// general NURBS are sampled with de Boor evaluation and reported through
+// the warning callback. Entities with an object coordinate system other
+// than the world's (the 210 extrusion, typically a mirrored block) are
+// wrapped in a transformed group. DXF's Y-up world maps to the document's
+// Y-down page using the drawing's real extents - computed from the built
+// geometry, block content included, and reconciled with $EXTMIN/$EXTMAX
+// when a file declares them; a page derived from the extents is scaled to
+// a sensible point size, since drawing units are arbitrary (metres or
+// millimetres). Entities keep their real layers; layers that
+// are off or frozen, invisible entities and paper-space entities (when the
+// model space has content) are not imported; unsupported entity types are
 // counted and reported, never dropped silently.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCADConverters.h"
 #include "UltraCanvasVectorStorage.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -93,7 +108,7 @@ struct LayerDef {
     Color color = Color(0, 0, 0, 255);
     std::string linetype = "Continuous";
     int lineweight = -3;
-    bool plottable = true;
+    bool visible = true;   // off (negative colour) or frozen layers hide
 };
 
 struct TableData {
@@ -102,6 +117,94 @@ struct TableData {
     std::map<std::string, std::vector<double>> linetypes;   // name -> dashes (on/off)
     std::map<std::string, std::string> textStyles;          // style name -> family
 };
+
+struct BlockDef {
+    double baseX = 0, baseY = 0;
+    size_t start = 0, end = 0;   // tag range of the block's entities
+};
+
+// Double-precision affine map, x' = a x + c y + e, y' = b x + d y + f
+// (the SVG matrix layout). Matrix3x3 is float; composing insert
+// transforms in double keeps large drawing coordinates exact.
+struct Affine {
+    double a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
+    static Affine Translate(double tx, double ty) { Affine m; m.e = tx; m.f = ty; return m; }
+    static Affine Scale(double sx, double sy) { Affine m; m.a = sx; m.d = sy; return m; }
+    static Affine Rotate(double rad) {
+        Affine m;
+        m.a = std::cos(rad); m.b = std::sin(rad);
+        m.c = -m.b; m.d = m.a;
+        return m;
+    }
+    // this * o : apply o first, then this.
+    Affine operator*(const Affine& o) const {
+        Affine r;
+        r.a = a * o.a + c * o.b;
+        r.b = b * o.a + d * o.b;
+        r.c = a * o.c + c * o.d;
+        r.d = b * o.c + d * o.d;
+        r.e = a * o.e + c * o.f + e;
+        r.f = b * o.e + d * o.f + f;
+        return r;
+    }
+    Affine Inverse() const {
+        double det = a * d - b * c;
+        if (std::fabs(det) < 1e-300) return Affine();
+        Affine r;
+        r.a = d / det; r.b = -b / det; r.c = -c / det; r.d = a / det;
+        r.e = -(r.a * e + r.c * f);
+        r.f = -(r.b * e + r.d * f);
+        return r;
+    }
+    Point2Dd Apply(double x, double y) const {
+        return Point2Dd(a * x + c * y + e, b * x + d * y + f);
+    }
+    bool IsIdentity() const {
+        return std::fabs(a - 1) < 1e-12 && std::fabs(d - 1) < 1e-12 &&
+               std::fabs(b) < 1e-12 && std::fabs(c) < 1e-12 &&
+               std::fabs(e) < 1e-9 && std::fabs(f) < 1e-9;
+    }
+    // Matrix3x3::FromValues is row-major (x' = A x + B y + e), so b and c
+    // swap places.
+    Matrix3x3 ToMatrix() const {
+        return Matrix3x3::FromValues(static_cast<float>(a), static_cast<float>(c),
+                                     static_cast<float>(b), static_cast<float>(d),
+                                     static_cast<float>(e), static_cast<float>(f));
+    }
+    static Affine FromMatrix(const Matrix3x3& m) {
+        Affine r;
+        r.a = m.m[0][0]; r.c = m.m[0][1]; r.e = m.m[0][2];
+        r.b = m.m[1][0]; r.d = m.m[1][1]; r.f = m.m[1][2];
+        return r;
+    }
+};
+
+// The Arbitrary Axis Algorithm: the 2D projection of an entity's object
+// coordinate system for an extrusion (normal) vector. Identity for the
+// usual (0,0,1); a mirror for (0,0,-1); a general 2x2 for tilted planes.
+Affine OcsProjection(double nx, double ny, double nz) {
+    double len = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (len < 1e-12) return Affine();
+    nx /= len; ny /= len; nz /= len;
+    if (std::fabs(nx) < 1e-9 && std::fabs(ny) < 1e-9 && nz > 0) return Affine();
+    double ax, ay, az;
+    if (std::fabs(nx) < 1.0 / 64 && std::fabs(ny) < 1.0 / 64) {
+        // Ax = Wy x N
+        ax = 1 * nz - 0 * ny; ay = 0 * nx - 0 * nz; az = 0 * ny - 1 * nx;
+    } else {
+        // Ax = Wz x N
+        ax = 0 * nz - 1 * ny; ay = 1 * nx - 0 * nz; az = 0 * ny - 0 * nx;
+    }
+    double al = std::sqrt(ax * ax + ay * ay + az * az);
+    if (al < 1e-12) return Affine();
+    ax /= al; ay /= al; az /= al;
+    // Ay = N x Ax
+    double bx = ny * az - nz * ay, by = nz * ax - nx * az;
+    Affine m;
+    m.a = ax; m.b = ay;   // column for x
+    m.c = bx; m.d = by;   // column for y
+    return m;
+}
 
 class DxfReader {
 public:
@@ -120,26 +223,64 @@ public:
             warn("DXF import: no ENTITIES section");
             return nullptr;
         }
+        ScanSpaces();
 
-        if (!hasExtents) ComputeExtentsFromEntities();
+        // Pass 1: build with a plain Y flip to measure the drawing's real
+        // extents (block content, arcs and text included).
+        quiet = true;
+        extMinX = extMinY = 0;
+        pageH = unitsH = 0;
+        unitScale = 1.0;
+        auto probe = Build();
+        double bx0, by0, bx1, by1;
+        bool haveBounds = probe && DocumentBounds(*probe, bx0, by0, bx1, by1);
+        if (haveBounds) {
+            // Raw y = -docY under the flip-only mapping.
+            double gx0 = bx0, gx1 = bx1, gy0 = -by1, gy1 = -by0;
+            double margin = std::max(gx1 - gx0, gy1 - gy0) * 0.01;
+            if (margin < 1e-9) margin = 1;
+            gx0 -= margin; gy0 -= margin; gx1 += margin; gy1 += margin;
+            bool declaredContains = hasExtents &&
+                    extMinX <= gx0 + margin && extMinY <= gy0 + margin &&
+                    extMaxX >= gx1 - margin && extMaxY >= gy1 - margin &&
+                    (extMaxX - extMinX) < 4 * (gx1 - gx0) + 1 &&
+                    (extMaxY - extMinY) < 4 * (gy1 - gy0) + 1;
+            declaredPage = declaredContains;
+            if (!declaredContains) {
+                extMinX = gx0; extMinY = gy0; extMaxX = gx1; extMaxY = gy1;
+                hasExtents = true;
+            }
+        } else if (!hasExtents) {
+            ComputeExtentsFromTags();
+        } else {
+            declaredPage = true;
+        }
         pageW = extMaxX - extMinX;
         pageH = extMaxY - extMinY;
-        if (pageW <= 0 || pageH <= 0) { pageW = 595; pageH = 842; }
+        if (!(pageW > 0) || !(pageH > 0)) { pageW = 595; pageH = 842; }
 
-        doc = std::make_shared<VectorDocument>();
+        // Drawing units are arbitrary (a car in metres is 5 units wide, a
+        // house in millimetres 20000); the page is in points, so a drawing
+        // whose page came from its own extents is scaled to a sensible size
+        // - lineweights and default strokes then read the same everywhere,
+        // and float transforms stay precise. A declared page is the author's.
+        unitScale = 1.0;
+        if (!declaredPage) {
+            double maxDim = std::max(pageW, pageH);
+            if (maxDim < 1000) unitScale = 1000.0 / maxDim;
+            else if (maxDim > 10000) unitScale = 10000.0 / maxDim;
+        }
+        unitsH = pageH;
+        pageW *= unitScale;
+        pageH *= unitScale;
+
+        // Pass 2: the real document.
+        quiet = false;
+        skipped.clear();
+        warnedSplineApprox = warnedHatchPattern = false;
+        doc = Build();
+        if (!doc) return nullptr;
         doc->Size = Size2Dd{pageW, pageH};
-
-        for (const auto& name : tables.layerOrder) GetLayer(name);
-        ParseEntities();
-
-        // Table-only layers that received no entities are noise in a
-        // drawing document; keep only layers that hold content.
-        doc->Layers.erase(
-                std::remove_if(doc->Layers.begin(), doc->Layers.end(),
-                               [](const std::shared_ptr<VectorLayer>& l) {
-                                   return !l || l->Children.empty();
-                               }),
-                doc->Layers.end());
 
         if (!skipped.empty()) {
             std::ostringstream msg;
@@ -157,18 +298,43 @@ private:
     std::vector<Tag> tags;
     size_t entStart = 0, entEnd = 0;   // ENTITIES section tag range
     bool sawEntities = false;
+    bool hasModelSpace = true;         // ENTITIES has entities without 67=1
     TableData tables;
+    std::map<std::string, BlockDef> blocks;
     double extMinX = 0, extMinY = 0, extMaxX = 0, extMaxY = 0;
     bool hasExtents = false;
-    double pageW = 0, pageH = 0;
+    double pageW = 0, pageH = 0;    // page in points (after unitScale)
+    double unitsH = 0;              // page height in drawing units
+    double unitScale = 1.0;         // drawing units -> points
+    bool declaredPage = false;      // the page is the file's $EXTMIN/$EXTMAX
+    bool quiet = false;
     std::shared_ptr<VectorDocument> doc;
     std::map<std::string, std::shared_ptr<VectorLayer>> layerGroups;
     std::map<std::string, int> skipped;
     bool warnedSplineApprox = false, warnedHatchPattern = false;
 
-    // Document coordinates: shift to the extents origin, flip Y.
+    // Parsing context: where entities go and what they inherit.
+    struct Ctx {
+        std::shared_ptr<VectorGroup> parent;   // null: the entity's layer
+        std::string layerOverride;             // insert's layer for "0" entities
+        const Color* byBlock = nullptr;        // insert's colour for ByBlock
+        int depth = 0;
+        std::vector<std::string> blockStack;   // cycle guard
+    };
+
+    void Warn(const std::string& msg) { if (!quiet) warn(msg); }
+
+    // Document coordinates: shift to the extents origin, flip Y, scale.
     Point2Dd P(double x, double y) const {
-        return Point2Dd(x - extMinX, pageH - (y - extMinY));
+        return Point2Dd((x - extMinX) * unitScale, (unitsH - (y - extMinY)) * unitScale);
+    }
+    // A length in drawing units, in document units.
+    double S(double v) const { return v * unitScale; }
+    Affine PageMap() const {
+        Affine m;
+        m.a = unitScale; m.b = 0; m.c = 0; m.d = -unitScale;
+        m.e = -extMinX * unitScale; m.f = (unitsH + extMinY) * unitScale;
+        return m;
     }
 
     void Tokenize(const std::string& data) {
@@ -207,6 +373,7 @@ private:
                 }
                 if (section == "HEADER") ParseHeader(start, end);
                 else if (section == "TABLES") ParseTables(start, end);
+                else if (section == "BLOCKS") ParseBlocks(start, end);
                 else if (section == "ENTITIES") {
                     entStart = start;
                     entEnd = end;
@@ -241,6 +408,10 @@ private:
         if (hasExtents && (extMaxX <= extMinX || extMaxY <= extMinY)) {
             hasExtents = false;   // declared but degenerate; recompute
         }
+        // AutoCAD writes +/-1e20 when the extents are unknown.
+        if (hasExtents && (std::fabs(extMinX) > 1e15 || std::fabs(extMaxX) > 1e15)) {
+            hasExtents = false;
+        }
     }
 
     void ParseTables(size_t start, size_t end) {
@@ -249,27 +420,28 @@ private:
             const std::string& rec = tags[i].value;
             size_t recEnd = i + 1;
             while (recEnd < end && tags[recEnd].code != 0) ++recEnd;
-
             auto field = [&](int code) -> const std::string* {
                 for (size_t j = i + 1; j < recEnd; ++j) {
                     if (tags[j].code == code) return &tags[j].value;
                 }
                 return nullptr;
             };
-
             if (rec == "LAYER") {
                 const std::string* name = field(2);
                 if (!name) continue;
                 LayerDef def;
                 if (const std::string* c = field(62)) {
                     int aci = std::atoi(c->c_str());
-                    def.plottable = aci >= 0;   // negative = layer off
+                    def.visible = aci >= 0;   // negative = layer off
                     def.color = AciPaletteColor(std::abs(aci));
                 }
                 if (const std::string* tc = field(420)) {
                     long rgb = std::atol(tc->c_str());
                     def.color = Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF,
                                       rgb & 0xFF, 255);
+                }
+                if (const std::string* fl = field(70)) {
+                    if (std::atoi(fl->c_str()) & 1) def.visible = false;   // frozen
                 }
                 if (const std::string* lt = field(6)) def.linetype = *lt;
                 if (const std::string* lw = field(370)) {
@@ -304,7 +476,53 @@ private:
         }
     }
 
-    void ComputeExtentsFromEntities() {
+    void ParseBlocks(size_t start, size_t end) {
+        size_t i = start;
+        while (i < end) {
+            if (!(tags[i].code == 0 && tags[i].value == "BLOCK")) { ++i; continue; }
+            size_t hdrEnd = i + 1;
+            while (hdrEnd < end && tags[hdrEnd].code != 0) ++hdrEnd;
+            std::string name;
+            BlockDef def;
+            for (size_t j = i + 1; j < hdrEnd; ++j) {
+                if (tags[j].code == 2 && name.empty()) name = tags[j].value;
+                else if (tags[j].code == 10) def.baseX = tags[j].D();
+                else if (tags[j].code == 20) def.baseY = tags[j].D();
+            }
+            size_t blkEnd = hdrEnd;
+            while (blkEnd < end && !(tags[blkEnd].code == 0 && tags[blkEnd].value == "ENDBLK")) {
+                ++blkEnd;
+            }
+            def.start = hdrEnd;
+            def.end = blkEnd;
+            if (!name.empty()) blocks[name] = def;
+            i = blkEnd + 1;
+        }
+    }
+
+    // Paper-space entities (67 = 1) are skipped when the model space has
+    // content of its own.
+    void ScanSpaces() {
+        bool model = false, paper = false;
+        for (size_t i = entStart; i < entEnd; ++i) {
+            if (tags[i].code != 0) continue;
+            size_t recEnd = i + 1;
+            bool ps = false;
+            while (recEnd < entEnd && tags[recEnd].code != 0) {
+                if (tags[recEnd].code == 67 && tags[recEnd].I() == 1) ps = true;
+                ++recEnd;
+            }
+            const std::string& t = tags[i].value;
+            if (t != "SEQEND" && t != "VERTEX" && t != "ATTRIB" && t != "VIEWPORT") {
+                if (ps) paper = true; else model = true;
+            }
+            i = recEnd - 1;
+        }
+        hasModelSpace = model || !paper;
+    }
+
+    // Fallback extents from the raw ENTITIES coordinates.
+    void ComputeExtentsFromTags() {
         bool first = true;
         for (size_t i = entStart; i < entEnd; ++i) {
             int c = tags[i].code;
@@ -321,10 +539,80 @@ private:
             else     { extMinY = std::min(extMinY, v); extMaxY = std::max(extMaxY, v); }
         }
         if (!first) {
-            // A margin keeps zero-extent files usable.
             if (extMaxX - extMinX < 1) extMaxX = extMinX + 1;
             if (extMaxY - extMinY < 1) extMaxY = extMinY + 1;
         }
+    }
+
+    // ===== BUILD =====
+
+    std::shared_ptr<VectorDocument> Build() {
+        doc = std::make_shared<VectorDocument>();
+        layerGroups.clear();
+        for (const auto& name : tables.layerOrder) GetLayer(name);
+        Ctx ctx;
+        ParseEntityRange(entStart, entEnd, ctx, true);
+
+        // Table-only layers that received no entities are noise in a
+        // drawing document; keep only layers that hold content.
+        doc->Layers.erase(
+                std::remove_if(doc->Layers.begin(), doc->Layers.end(),
+                               [](const std::shared_ptr<VectorLayer>& l) {
+                                   return !l || l->Children.empty();
+                               }),
+                doc->Layers.end());
+        return doc;
+    }
+
+    // Bounds of everything in the document, transforms applied.
+    static void AccumulateBounds(const std::shared_ptr<VectorElement>& el, const Affine& acc,
+                                 bool& any, double& x0, double& y0, double& x1, double& y1) {
+        if (!el) return;
+        if (auto group = std::dynamic_pointer_cast<VectorGroup>(el)) {
+            Affine next = acc;
+            if (group->Transform.has_value()) next = acc * Affine::FromMatrix(*group->Transform);
+            for (const auto& child : group->Children) {
+                AccumulateBounds(child, next, any, x0, y0, x1, y1);
+            }
+            return;
+        }
+        if (el->Type == VectorElementType::Text) {
+            // The text box is a character-count estimate; only the anchor
+            // is trusted for the extents.
+            const auto* t = static_cast<const VectorText*>(el.get());
+            Point2Dd p = acc.Apply(t->Position.x, t->Position.y);
+            if (!std::isfinite(p.x) || !std::isfinite(p.y)) return;
+            if (!any) { x0 = x1 = p.x; y0 = y1 = p.y; any = true; }
+            x0 = std::min(x0, p.x); x1 = std::max(x1, p.x);
+            y0 = std::min(y0, p.y); y1 = std::max(y1, p.y);
+            return;
+        }
+        Rect2Dd box = el->GetBoundingBox();
+        if (box.width <= 0 && box.height <= 0 && box.x == 0 && box.y == 0) return;
+        Affine local = acc;
+        if (el->Transform.has_value()) {
+            local = acc * Affine::FromMatrix(*el->Transform);
+        }
+        const double xs[2] = {static_cast<double>(box.x), static_cast<double>(box.x + box.width)};
+        const double ys[2] = {static_cast<double>(box.y), static_cast<double>(box.y + box.height)};
+        for (double px : xs) {
+            for (double py : ys) {
+                Point2Dd p = local.Apply(px, py);
+                if (!std::isfinite(p.x) || !std::isfinite(p.y)) continue;
+                if (!any) { x0 = x1 = p.x; y0 = y1 = p.y; any = true; }
+                x0 = std::min(x0, p.x); x1 = std::max(x1, p.x);
+                y0 = std::min(y0, p.y); y1 = std::max(y1, p.y);
+            }
+        }
+    }
+
+    static bool DocumentBounds(const VectorDocument& d, double& x0, double& y0,
+                               double& x1, double& y1) {
+        bool any = false;
+        for (const auto& layer : d.Layers) {
+            AccumulateBounds(layer, Affine(), any, x0, y0, x1, y1);
+        }
+        return any && (x1 - x0 > 1e-9 || y1 - y0 > 1e-9);
     }
 
     std::shared_ptr<VectorLayer> GetLayer(const std::string& name) {
@@ -337,7 +625,42 @@ private:
 
     // ===== STYLE RESOLUTION =====
 
-    Color EntityColor(const std::vector<Tag>& e, const LayerDef& layer) {
+    static const std::string* FS(const std::vector<Tag>& e, int code) {
+        for (const Tag& t : e) {
+            if (t.code == code) return &t.value;
+        }
+        return nullptr;
+    }
+    static double F(const std::vector<Tag>& e, int code, double def = 0) {
+        for (const Tag& t : e) {
+            if (t.code == code) return t.D();
+        }
+        return def;
+    }
+    static int FI(const std::vector<Tag>& e, int code, int def = 0) {
+        for (const Tag& t : e) {
+            if (t.code == code) return t.I();
+        }
+        return def;
+    }
+
+    // The layer an entity draws with: its own, or the insert's for "0"
+    // entities inside a block.
+    std::string EffectiveLayerName(const std::vector<Tag>& e, const Ctx& ctx) const {
+        std::string name = "0";
+        if (const std::string* l = FS(e, 8)) name = *l;
+        if (!ctx.layerOverride.empty() && (name == "0" || name.empty())) name = ctx.layerOverride;
+        return name;
+    }
+
+    const LayerDef& LayerOf(const std::vector<Tag>& e, const Ctx& ctx, std::string& nameOut) const {
+        static const LayerDef fallback;
+        nameOut = EffectiveLayerName(e, ctx);
+        auto it = tables.layers.find(nameOut);
+        return it != tables.layers.end() ? it->second : fallback;
+    }
+
+    Color EntityColor(const std::vector<Tag>& e, const LayerDef& layer, const Ctx& ctx) {
         for (const Tag& t : e) {
             if (t.code == 420) {
                 long rgb = std::atol(t.value.c_str());
@@ -347,7 +670,8 @@ private:
         for (const Tag& t : e) {
             if (t.code == 62) {
                 int aci = t.I();
-                if (aci == 0 || aci == 256) break;   // ByBlock/ByLayer
+                if (aci == 0) return ctx.byBlock ? *ctx.byBlock : layer.color;
+                if (aci == 256) break;   // ByLayer
                 return AciPaletteColor(std::abs(aci));
             }
         }
@@ -369,7 +693,7 @@ private:
         if (it == tables.linetypes.end() || it->second.empty()) return {};
         std::vector<double> dashes;
         for (double d : it->second) {
-            dashes.push_back(d == 0 ? 0.5 : std::fabs(d));   // dots become short dashes
+            dashes.push_back(d == 0 ? 0.5 : S(std::fabs(d)));   // dots become short dashes
         }
         return dashes;
     }
@@ -385,9 +709,9 @@ private:
         return static_cast<float>(lw / 100.0 * 72.0 / 25.4);   // 1/100 mm -> pt
     }
 
-    StrokeData MakeStroke(const std::vector<Tag>& e, const LayerDef& layer) {
+    StrokeData MakeStroke(const std::vector<Tag>& e, const LayerDef& layer, const Ctx& ctx) {
         StrokeData stroke;
-        stroke.Fill = EntityColor(e, layer);
+        stroke.Fill = EntityColor(e, layer, ctx);
         stroke.Width = EntityWidth(e, layer);
         auto dashes = EntityDashes(e, layer);
         if (!dashes.empty()) stroke.DashArray = dashes;
@@ -527,10 +851,10 @@ private:
         // General NURBS: sample with de Boor.
         if (!warnedSplineApprox) {
             warnedSplineApprox = true;
-            warn("DXF import: general NURBS splines are sampled "
+            Warn("DXF import: general NURBS splines are sampled "
                  "(only piecewise-bezier knot vectors convert exactly)");
         }
-        if (knots.size() < ctrl.size() + degree + 1) {
+        if (degree < 1 || knots.size() < ctrl.size() + degree + 1) {
             // Malformed: fall back to the control polygon.
             if (moveFirst) {
                 path.MoveTo(static_cast<float>(ctrl[0].x),
@@ -558,126 +882,175 @@ private:
 
     // ===== ENTITIES =====
 
-    void ParseEntities() {
-        size_t i = entStart;
-        while (i < entEnd) {
+    // Parses the entity records in [start, end) into the context. `top`
+    // marks the ENTITIES section (paper-space filtering applies there).
+    void ParseEntityRange(size_t start, size_t end, Ctx& ctx, bool top) {
+        size_t i = start;
+        while (i < end) {
             if (tags[i].code != 0) { ++i; continue; }
             std::string type = tags[i].value;
             size_t recEnd = i + 1;
-            while (recEnd < entEnd && tags[recEnd].code != 0) ++recEnd;
+            while (recEnd < end && tags[recEnd].code != 0) ++recEnd;
 
             // Legacy POLYLINE owns its VERTEX/SEQEND records.
             if (type == "POLYLINE") {
                 size_t seqEnd = recEnd;
-                while (seqEnd < entEnd &&
+                while (seqEnd < end &&
                        !(tags[seqEnd].code == 0 && tags[seqEnd].value == "SEQEND")) {
                     ++seqEnd;
                 }
                 size_t seqRecEnd = seqEnd;
-                while (seqRecEnd < entEnd &&
+                while (seqRecEnd < end &&
                        (seqRecEnd == seqEnd || tags[seqRecEnd].code != 0)) {
                     ++seqRecEnd;
                 }
-                ParsePolylineChain(i + 1, seqEnd);
+                std::vector<Tag> header(tags.begin() + i + 1, tags.begin() + recEnd);
+                if (Draws(header, ctx, top)) ParsePolylineChain(header, recEnd, seqEnd, ctx);
                 i = seqRecEnd;
                 continue;
             }
 
             std::vector<Tag> e(tags.begin() + i + 1, tags.begin() + recEnd);
-            if (type == "LINE") ParseLine(e);
-            else if (type == "CIRCLE") ParseCircle(e);
-            else if (type == "ARC") ParseArc(e);
-            else if (type == "ELLIPSE") ParseEllipse(e);
-            else if (type == "LWPOLYLINE") ParseLwPolyline(e);
-            else if (type == "SPLINE") ParseSpline(e);
-            else if (type == "HATCH") ParseHatch(e);
-            else if (type == "SOLID") ParseSolid(e);
-            else if (type == "TEXT") ParseText(e);
-            else if (type == "MTEXT") ParseMText(e);
-            else if (type != "SEQEND" && type != "VERTEX") ++skipped[type];
-            i = recEnd;
+
+            // INSERT with attributes owns the ATTRIB/SEQEND records after it.
+            std::vector<std::vector<Tag>> attribs;
+            size_t next = recEnd;
+            if (type == "INSERT" && FI(e, 66) == 1) {
+                size_t j = recEnd;
+                while (j < end && !(tags[j].code == 0 && tags[j].value == "SEQEND")) {
+                    if (tags[j].code == 0 && tags[j].value == "ATTRIB") {
+                        size_t aEnd = j + 1;
+                        while (aEnd < end && tags[aEnd].code != 0) ++aEnd;
+                        attribs.emplace_back(tags.begin() + j + 1, tags.begin() + aEnd);
+                        j = aEnd;
+                    } else {
+                        ++j;
+                    }
+                }
+                next = j;
+                while (next < end && (next == j || tags[next].code != 0)) ++next;
+            }
+
+            if (Draws(e, ctx, top)) {
+                if (type == "LINE") ParseLine(e, ctx);
+                else if (type == "CIRCLE") WithOcs(e, ctx, [&](Ctx& c) { ParseCircle(e, c); });
+                else if (type == "ARC") WithOcs(e, ctx, [&](Ctx& c) { ParseArc(e, c); });
+                else if (type == "ELLIPSE") ParseEllipse(e, ctx);
+                else if (type == "LWPOLYLINE") WithOcs(e, ctx, [&](Ctx& c) { ParseLwPolyline(e, c); });
+                else if (type == "SPLINE") ParseSpline(e, ctx);
+                else if (type == "HATCH") WithOcs(e, ctx, [&](Ctx& c) { ParseHatch(e, c); });
+                else if (type == "SOLID" || type == "TRACE") WithOcs(e, ctx, [&](Ctx& c) { ParseSolid(e, c); });
+                else if (type == "3DFACE") Parse3DFace(e, ctx);
+                else if (type == "TEXT" || type == "ATTRIB" || type == "ATTDEF") {
+                    if (type != "ATTDEF" && !(type == "ATTRIB" && (FI(e, 70) & 1))) {
+                        WithOcs(e, ctx, [&](Ctx& c) { ParseText(e, c); });
+                    }
+                }
+                else if (type == "MTEXT") ParseMText(e, ctx);
+                else if (type == "LEADER") ParseLeader(e, ctx);
+                else if (type == "INSERT") {
+                    ParseInsert(e, ctx);
+                    for (const auto& a : attribs) {
+                        if (FI(a, 70) & 1) continue;   // invisible attribute
+                        if (Draws(a, ctx, false)) WithOcs(a, ctx, [&](Ctx& c) { ParseText(a, c); });
+                    }
+                }
+                else if (type == "DIMENSION") ParseDimension(e, ctx);
+                else if (type == "POINT" || type == "SEQEND" || type == "VERTEX" ||
+                         type == "VIEWPORT" || type == "ATTDEF") {
+                    // nothing to draw
+                } else {
+                    ++skipped[type];
+                }
+            }
+            i = next;
         }
     }
 
-    const LayerDef& LayerOf(const std::vector<Tag>& e, std::string& nameOut) {
-        static const LayerDef fallback;
-        nameOut = "0";
-        for (const Tag& t : e) {
-            if (t.code == 8) { nameOut = t.value; break; }
-        }
-        auto it = tables.layers.find(nameOut);
-        return it != tables.layers.end() ? it->second : fallback;
-    }
-
-    void Add(const std::vector<Tag>& e, std::shared_ptr<VectorElement> el) {
+    // Visibility gate: layer on, entity visible, right space.
+    bool Draws(const std::vector<Tag>& e, const Ctx& ctx, bool top) const {
+        if (top && hasModelSpace && FI(e, 67) == 1) return false;
+        if (FI(e, 60) == 1) return false;
         std::string layerName;
-        LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
+        return layer.visible;
+    }
+
+    void AddTo(const std::vector<Tag>& e, const Ctx& ctx, std::shared_ptr<VectorElement> el) {
+        if (ctx.parent) {
+            ctx.parent->AddChild(std::move(el));
+            return;
+        }
+        std::string layerName;
+        LayerOf(e, ctx, layerName);
         GetLayer(layerName)->AddChild(std::move(el));
     }
 
-    static double F(const std::vector<Tag>& e, int code, double def = 0) {
-        for (const Tag& t : e) {
-            if (t.code == code) return t.D();
+    // Runs `fn` for an entity whose coordinates are in its own object
+    // coordinate system: identity for the usual extrusion, otherwise the
+    // entity lands in a group carrying the OCS projection.
+    template <typename Fn>
+    void WithOcs(const std::vector<Tag>& e, Ctx& ctx, Fn fn) {
+        double nx = F(e, 210, 0), ny = F(e, 220, 0), nz = F(e, 230, 1);
+        Affine ocs = OcsProjection(nx, ny, nz);
+        if (ocs.IsIdentity()) {
+            fn(ctx);
+            return;
         }
-        return def;
-    }
-    static int FI(const std::vector<Tag>& e, int code, int def = 0) {
-        for (const Tag& t : e) {
-            if (t.code == code) return t.I();
-        }
-        return def;
-    }
-    static const std::string* FS(const std::vector<Tag>& e, int code) {
-        for (const Tag& t : e) {
-            if (t.code == code) return &t.value;
-        }
-        return nullptr;
+        Affine pm = PageMap();
+        auto group = std::make_shared<VectorGroup>();
+        group->Transform = (pm * ocs * pm.Inverse()).ToMatrix();
+        Ctx sub = ctx;
+        sub.parent = group;
+        fn(sub);
+        if (!group->Children.empty()) AddTo(e, ctx, group);
     }
 
-    void ParseLine(const std::vector<Tag>& e) {
+    void ParseLine(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         auto line = std::make_shared<VectorLine>();
         line->Start = P(F(e, 10), F(e, 20));
         line->End = P(F(e, 11), F(e, 21));
-        line->Style.Stroke = MakeStroke(e, layer);
-        Add(e, line);
+        line->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, line);
     }
 
-    void ParseCircle(const std::vector<Tag>& e) {
+    void ParseCircle(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         auto circle = std::make_shared<VectorCircle>();
         circle->Center = P(F(e, 10), F(e, 20));
-        circle->Radius = static_cast<float>(F(e, 40));
-        circle->Style.Stroke = MakeStroke(e, layer);
-        Add(e, circle);
+        circle->Radius = static_cast<float>(S(F(e, 40)));
+        circle->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, circle);
     }
 
-    void ParseArc(const std::vector<Tag>& e) {
+    void ParseArc(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         Point2Dd c = P(F(e, 10), F(e, 20));
-        double r = F(e, 40);
+        double r = S(F(e, 40));
         double a1 = F(e, 50) * kPi / 180.0;
         double a2 = F(e, 51) * kPi / 180.0;
         while (a2 <= a1) a2 += 2 * kPi;   // DXF arcs run CCW from 50 to 51
         auto path = std::make_shared<VectorPath>();
         // Y-flip mirrors the sweep: use V = (0,-r) so angles keep meaning.
         AppendArc(*path, c, Point2Dd(r, 0), Point2Dd(0, -r), a1, a2, true);
-        path->Style.Stroke = MakeStroke(e, layer);
-        Add(e, path);
+        path->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, path);
     }
 
-    void ParseEllipse(const std::vector<Tag>& e) {
+    void ParseEllipse(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         Point2Dd c = P(F(e, 10), F(e, 20));
         // Major-axis endpoint is relative to the centre; flip its Y.
-        Point2Dd u(F(e, 11), -F(e, 21));
+        Point2Dd u(S(F(e, 11)), -S(F(e, 21)));
         double ratio = F(e, 40, 1.0);
         double t1 = F(e, 41, 0.0);
         double t2 = F(e, 42, 2 * kPi);
+        while (t2 <= t1) t2 += 2 * kPi;
         // The minor axis is ratio * perp(major); the Y-flip mirrors it so
         // the parameter range keeps its meaning in document space.
         Point2Dd v(u.y * ratio, -u.x * ratio);
@@ -685,13 +1058,13 @@ private:
         AppendArc(*path, c, u, v, t1, t2, true);
         bool full = std::fabs((t2 - t1) - 2 * kPi) < 1e-9;
         if (full) path->ClosePath();
-        path->Style.Stroke = MakeStroke(e, layer);
-        Add(e, path);
+        path->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, path);
     }
 
     struct PolyVertex { double x, y, bulge; };
 
-    void EmitPolyline(const std::vector<Tag>& e, std::vector<PolyVertex> verts,
+    void EmitPolyline(const std::vector<Tag>& e, const Ctx& ctx, std::vector<PolyVertex> verts,
                       bool closed) {
         // A closed polyline whose last vertex repeats the first carries a
         // redundant point; the closed flag already draws that segment.
@@ -703,7 +1076,7 @@ private:
         }
         if (verts.size() < 2) return;
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         bool hasBulge = false;
         for (const auto& v : verts) hasBulge |= std::fabs(v.bulge) > 1e-12;
 
@@ -711,13 +1084,13 @@ private:
             if (closed) {
                 auto poly = std::make_shared<VectorPolygon>();
                 for (const auto& v : verts) poly->Points.push_back(P(v.x, v.y));
-                poly->Style.Stroke = MakeStroke(e, layer);
-                Add(e, poly);
+                poly->Style.Stroke = MakeStroke(e, layer, ctx);
+                AddTo(e, ctx, poly);
             } else {
                 auto poly = std::make_shared<VectorPolyline>();
                 for (const auto& v : verts) poly->Points.push_back(P(v.x, v.y));
-                poly->Style.Stroke = MakeStroke(e, layer);
-                Add(e, poly);
+                poly->Style.Stroke = MakeStroke(e, layer, ctx);
+                AddTo(e, ctx, poly);
             }
             return;
         }
@@ -733,11 +1106,11 @@ private:
                         verts.back().bulge);
             path->ClosePath();
         }
-        path->Style.Stroke = MakeStroke(e, layer);
-        Add(e, path);
+        path->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, path);
     }
 
-    void ParseLwPolyline(const std::vector<Tag>& e) {
+    void ParseLwPolyline(const std::vector<Tag>& e, const Ctx& ctx) {
         std::vector<PolyVertex> verts;
         bool haveX = false;
         double x = 0;
@@ -752,39 +1125,136 @@ private:
                 verts.back().bulge = t.D();
             }
         }
-        EmitPolyline(e, verts, (FI(e, 70) & 1) != 0);
+        EmitPolyline(e, ctx, verts, (FI(e, 70) & 1) != 0);
     }
 
-    void ParsePolylineChain(size_t start, size_t seqEnd) {
-        std::vector<Tag> header;
+    // Vertices of a POLYLINE chain as raw tag records.
+    std::vector<std::vector<Tag>> ChainVertices(size_t start, size_t seqEnd) {
+        std::vector<std::vector<Tag>> out;
         size_t i = start;
-        while (i < seqEnd && tags[i].code != 0) {
-            header.push_back(tags[i]);
-            ++i;
-        }
-        int flags = FI(header, 70);
-        if (flags & 0x58) {   // 3D mesh variants
-            ++skipped["POLYLINE(3D/mesh)"];
-            return;
-        }
-        std::vector<PolyVertex> verts;
         while (i < seqEnd) {
             if (tags[i].code == 0 && tags[i].value == "VERTEX") {
                 size_t recEnd = i + 1;
                 while (recEnd < seqEnd && tags[recEnd].code != 0) ++recEnd;
-                std::vector<Tag> v(tags.begin() + i + 1, tags.begin() + recEnd);
-                verts.push_back({F(v, 10), F(v, 20), F(v, 42)});
+                out.emplace_back(tags.begin() + i + 1, tags.begin() + recEnd);
                 i = recEnd;
             } else {
                 ++i;
             }
         }
-        EmitPolyline(header, verts, (flags & 1) != 0);
+        return out;
     }
 
-    void ParseSpline(const std::vector<Tag>& e) {
+    void EmitFace(const std::vector<Tag>& header, const Ctx& ctx, const std::vector<Point2Dd>& pts) {
+        if (pts.size() < 2) return;
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(header, ctx, layerName);
+        if (pts.size() == 2) {
+            auto line = std::make_shared<VectorLine>();
+            line->Start = pts[0];
+            line->End = pts[1];
+            line->Style.Stroke = MakeStroke(header, layer, ctx);
+            AddTo(header, ctx, line);
+            return;
+        }
+        auto poly = std::make_shared<VectorPolygon>();
+        poly->Points = pts;
+        poly->Style.Stroke = MakeStroke(header, layer, ctx);
+        AddTo(header, ctx, poly);
+    }
+
+    // Polyface mesh (70 & 64): position vertices (70 & 128 clear... 192)
+    // followed by face records (70 = 128) naming 1-based indices in 71-74;
+    // a negative index hides that edge. Projected onto the XY plane.
+    void ParsePolyfaceMesh(const std::vector<Tag>& header, size_t start, size_t seqEnd, Ctx& ctx) {
+        std::vector<Point2Dd> verts;
+        std::vector<std::array<int, 4>> faces;
+        for (const auto& v : ChainVertices(start, seqEnd)) {
+            int vflags = FI(v, 70);
+            if ((vflags & 128) && !(vflags & 64)) {
+                faces.push_back({FI(v, 71), FI(v, 72), FI(v, 73), FI(v, 74)});
+            } else {
+                verts.push_back(P(F(v, 10), F(v, 20)));
+            }
+        }
+        if (verts.empty() || faces.empty()) return;
+        if (faces.size() > 200000) { ++skipped["POLYLINE(polyface too large)"]; return; }
+        for (const auto& f : faces) {
+            std::vector<Point2Dd> pts;
+            for (int idx : f) {
+                int k = std::abs(idx);
+                if (k >= 1 && static_cast<size_t>(k) <= verts.size()) pts.push_back(verts[k - 1]);
+            }
+            if (pts.size() >= 3 && std::fabs(pts.back().x - pts[pts.size() - 2].x) < 1e-9 &&
+                std::fabs(pts.back().y - pts[pts.size() - 2].y) < 1e-9) {
+                pts.pop_back();
+            }
+            EmitFace(header, ctx, pts);
+        }
+    }
+
+    // Polygon mesh (70 & 16): an M x N grid of vertices, quads between
+    // neighbours, closed in M (1) and/or N (32).
+    void ParsePolygonMesh(const std::vector<Tag>& header, size_t start, size_t seqEnd, Ctx& ctx) {
+        int flags = FI(header, 70);
+        int m = FI(header, 71), n = FI(header, 72);
+        std::vector<Point2Dd> verts;
+        for (const auto& v : ChainVertices(start, seqEnd)) {
+            verts.push_back(P(F(v, 10), F(v, 20)));
+        }
+        if (m < 2 || n < 2 || static_cast<size_t>(m) * n > verts.size()) {
+            ++skipped["POLYLINE(mesh)"];
+            return;
+        }
+        bool closedM = (flags & 1) != 0, closedN = (flags & 32) != 0;
+        int mm = closedM ? m : m - 1, nn = closedN ? n : n - 1;
+        for (int i = 0; i < mm; ++i) {
+            for (int j = 0; j < nn; ++j) {
+                int i2 = (i + 1) % m, j2 = (j + 1) % n;
+                EmitFace(header, ctx, {verts[i * n + j], verts[i2 * n + j],
+                                       verts[i2 * n + j2], verts[i * n + j2]});
+            }
+        }
+    }
+
+    void ParsePolylineChain(const std::vector<Tag>& header, size_t start, size_t seqEnd,
+                            Ctx& ctx) {
+        int flags = FI(header, 70);
+        if (flags & 64) { ParsePolyfaceMesh(header, start, seqEnd, ctx); return; }
+        if (flags & 16) { ParsePolygonMesh(header, start, seqEnd, ctx); return; }
+        bool splineFit = (flags & 4) != 0;
+        std::vector<PolyVertex> verts, fitVerts;
+        size_t i = start;
+        while (i < seqEnd) {
+            if (tags[i].code == 0 && tags[i].value == "VERTEX") {
+                size_t recEnd = i + 1;
+                while (recEnd < seqEnd && tags[recEnd].code != 0) ++recEnd;
+                std::vector<Tag> v(tags.begin() + i + 1, tags.begin() + recEnd);
+                int vflags = FI(v, 70);
+                PolyVertex pv{F(v, 10), F(v, 20), F(v, 42)};
+                if (splineFit) {
+                    // Spline-fit polylines carry the frame (16) and the
+                    // fitted curve points (8); draw the curve points.
+                    if (vflags & 8) fitVerts.push_back(pv);
+                    else if (!(vflags & 16)) verts.push_back(pv);
+                } else {
+                    verts.push_back(pv);
+                }
+                i = recEnd;
+            } else {
+                ++i;
+            }
+        }
+        if (splineFit && !fitVerts.empty()) verts = fitVerts;
+        // 3D polylines (8) project onto the XY plane; the OCS only applies
+        // to 2D polylines.
+        if (flags & 8) EmitPolyline(header, ctx, verts, (flags & 1) != 0);
+        else WithOcs(header, ctx, [&](Ctx& c) { EmitPolyline(header, c, verts, (flags & 1) != 0); });
+    }
+
+    void ParseSpline(const std::vector<Tag>& e, const Ctx& ctx) {
+        std::string layerName;
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         int flags = FI(e, 70);
         int degree = FI(e, 71, 3);
         std::vector<double> knots;
@@ -802,13 +1272,13 @@ private:
             else if (t.code == 21 && haveX) { fit.push_back(P(x, t.D())); haveX = false; }
         }
         if (rational) {
-            warn("DXF import: rational spline weights are ignored");
+            Warn("DXF import: rational spline weights are ignored");
         }
         auto path = std::make_shared<VectorPath>();
         if (!ctrl.empty()) {
             AppendSpline(*path, degree, knots, ctrl, true);
         } else if (fit.size() >= 2) {
-            warn("DXF import: spline with fit points only, connecting linearly");
+            Warn("DXF import: spline with fit points only, connecting linearly");
             path->MoveTo(static_cast<float>(fit[0].x), static_cast<float>(fit[0].y));
             for (size_t i = 1; i < fit.size(); ++i) {
                 path->LineTo(static_cast<float>(fit[i].x),
@@ -818,28 +1288,57 @@ private:
             return;
         }
         if (flags & 1) path->ClosePath();
-        path->Style.Stroke = MakeStroke(e, layer);
-        Add(e, path);
+        path->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, path);
     }
 
-    void ParseSolid(const std::vector<Tag>& e) {
+    void ParseSolid(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         // SOLID corner order is 1,2,4,3.
         Point2Dd p1 = P(F(e, 10), F(e, 20)), p2 = P(F(e, 11), F(e, 21));
         Point2Dd p3 = P(F(e, 12), F(e, 22)), p4 = P(F(e, 13), F(e, 23));
         auto poly = std::make_shared<VectorPolygon>();
         poly->Points = {p1, p2, p4, p3};
-        poly->Style.Fill = EntityColor(e, layer);
-        Add(e, poly);
+        poly->Style.Fill = EntityColor(e, layer, ctx);
+        AddTo(e, ctx, poly);
     }
 
-    void ParseHatch(const std::vector<Tag>& e) {
+    void Parse3DFace(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
+        std::vector<Point2Dd> pts = {P(F(e, 10), F(e, 20)), P(F(e, 11), F(e, 21)),
+                                     P(F(e, 12), F(e, 22)), P(F(e, 13), F(e, 23))};
+        if (std::fabs(pts[3].x - pts[2].x) < 1e-9 && std::fabs(pts[3].y - pts[2].y) < 1e-9) {
+            pts.pop_back();   // triangle
+        }
+        auto poly = std::make_shared<VectorPolygon>();
+        poly->Points = pts;
+        poly->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, poly);
+    }
+
+    void ParseLeader(const std::vector<Tag>& e, const Ctx& ctx) {
+        std::string layerName;
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
+        auto poly = std::make_shared<VectorPolyline>();
+        bool haveX = false;
+        double x = 0;
+        for (const Tag& t : e) {
+            if (t.code == 10) { x = t.D(); haveX = true; }
+            else if (t.code == 20 && haveX) { poly->Points.push_back(P(x, t.D())); haveX = false; }
+        }
+        if (poly->Points.size() < 2) return;
+        poly->Style.Stroke = MakeStroke(e, layer, ctx);
+        AddTo(e, ctx, poly);
+    }
+
+    void ParseHatch(const std::vector<Tag>& e, const Ctx& ctx) {
+        std::string layerName;
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         if (FI(e, 70) == 0 && !warnedHatchPattern) {
             warnedHatchPattern = true;
-            warn("DXF import: pattern hatches fill solid with the entity colour");
+            Warn("DXF import: pattern hatches fill solid with the entity colour");
         }
         auto path = std::make_shared<VectorPath>();
         size_t i = 0;
@@ -914,7 +1413,7 @@ private:
                     int ccw = 1;
                     if (const Tag* t = next(10)) cx = t->D();
                     if (i < e.size() && e[i].code == 20) cy = e[i++].D();
-                    if (const Tag* t = next(40)) r = t->D();
+                    if (const Tag* t = next(40)) r = S(t->D());
                     if (const Tag* t = next(50)) a1 = t->D();
                     if (const Tag* t = next(51)) a2 = t->D();
                     if (const Tag* t = next(73)) ccw = t->I();
@@ -938,7 +1437,7 @@ private:
                     if (const Tag* t = next(73)) ccw = t->I();
                     if (ccw) { while (a2 <= a1) a2 += 2 * kPi; }
                     else     { while (a2 >= a1) a2 -= 2 * kPi; }
-                    Point2Dd u(mx, -my);
+                    Point2Dd u(S(mx), -S(my));
                     Point2Dd v(u.y * ratio, -u.x * ratio);
                     AppendArc(*path, P(cx, cy), u, v, a1, a2, !started);
                     started = true;
@@ -973,22 +1472,27 @@ private:
             }
         }
         if (!emitted) return;
-        path->Style.Fill = EntityColor(e, layer);
-        Add(e, path);
+        path->Style.Fill = EntityColor(e, layer, ctx);
+        AddTo(e, ctx, path);
     }
 
-    void ParseText(const std::vector<Tag>& e) {
+    void ParseText(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         const std::string* value = FS(e, 1);
         if (!value || value->empty()) return;
         auto text = std::make_shared<VectorText>();
         int halign = FI(e, 72);
+        int valign = FI(e, 73);
         // With a non-default alignment the second alignment point anchors.
-        double ax = (halign != 0) ? F(e, 11, F(e, 10)) : F(e, 10);
-        double ay = (halign != 0) ? F(e, 21, F(e, 20)) : F(e, 20);
+        bool useAlign = (halign != 0 && halign != 3 && halign != 5) || valign != 0;
+        double ax = useAlign ? F(e, 11, F(e, 10)) : F(e, 10);
+        double ay = useAlign ? F(e, 21, F(e, 20)) : F(e, 20);
+        double size = S(F(e, 40, 12.0));
         text->Position = P(ax, ay);
-        text->BaseStyle.FontSize = static_cast<float>(F(e, 40, 12.0));
+        if (valign == 2) text->Position.y += size * 0.35;        // middle
+        else if (valign == 3) text->Position.y += size * 0.8;    // top
+        text->BaseStyle.FontSize = static_cast<float>(size);
         if (halign == 1 || halign == 4) text->BaseStyle.Anchor = TextAnchor::Middle;
         else if (halign == 2) text->BaseStyle.Anchor = TextAnchor::End;
         if (const std::string* styleName = FS(e, 7)) {
@@ -1006,13 +1510,13 @@ private:
                     Matrix3x3::Translate(-text->Position.x, -text->Position.y);
         }
         text->SetText(*value);
-        text->Style.Fill = EntityColor(e, layer);
-        Add(e, text);
+        text->Style.Fill = EntityColor(e, layer, ctx);
+        AddTo(e, ctx, text);
     }
 
-    void ParseMText(const std::vector<Tag>& e) {
+    void ParseMText(const std::vector<Tag>& e, const Ctx& ctx) {
         std::string layerName;
-        const LayerDef& layer = LayerOf(e, layerName);
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
         std::string raw;
         for (const Tag& t : e) {
             if (t.code == 3) raw += t.value;   // continuation chunks first
@@ -1043,7 +1547,7 @@ private:
         }
         if (plain.empty()) return;
 
-        double size = F(e, 40, 12.0);
+        double size = S(F(e, 40, 12.0));
         auto text = std::make_shared<VectorText>();
         int attach = FI(e, 71, 1);   // 1..9, TL TC TR ML MC MR BL BC BM
         int col = (attach - 1) % 3;
@@ -1054,6 +1558,7 @@ private:
         Point2Dd pos = P(F(e, 10), F(e, 20));
         int row = (attach - 1) / 3;
         if (row == 0) pos.y += size;
+        else if (row == 1) pos.y += size * 0.35;
         text->Position = pos;
         text->BaseStyle.FontSize = static_cast<float>(size);
         if (const std::string* styleName = FS(e, 7)) {
@@ -1062,9 +1567,92 @@ private:
                 text->BaseStyle.FontFamily = it->second;
             }
         }
+        // Rotation: the X-axis direction vector (11/21) or an angle (50).
+        double rotation = 0;
+        if (FS(e, 11) || FS(e, 21)) {
+            double dx = F(e, 11, 1), dy = F(e, 21, 0);
+            if (std::fabs(dx) > 1e-12 || std::fabs(dy) > 1e-12) rotation = std::atan2(dy, dx) * 180.0 / kPi;
+        } else {
+            rotation = F(e, 50);
+        }
+        if (std::fabs(rotation) > 1e-9) {
+            text->Transform =
+                    Matrix3x3::Translate(pos.x, pos.y) *
+                    Matrix3x3::RotateDegrees(-rotation) *
+                    Matrix3x3::Translate(-pos.x, -pos.y);
+        }
         text->SetText(plain);
-        text->Style.Fill = EntityColor(e, layer);
-        Add(e, text);
+        text->Style.Fill = EntityColor(e, layer, ctx);
+        AddTo(e, ctx, text);
+    }
+
+    // ===== BLOCK REFERENCES =====
+
+    // Expands a block definition under a raw-coordinate transform `T`
+    // (block -> world, DXF Y-up) into a group added for entity `e`.
+    void ExpandBlock(const std::vector<Tag>& e, Ctx& ctx, const std::string& name,
+                     const BlockDef& def, const Affine& T, const Color& byBlock) {
+        Affine pm = PageMap();
+        Affine G = pm * T * pm.Inverse();
+        auto group = std::make_shared<VectorGroup>();
+        if (!G.IsIdentity()) group->Transform = G.ToMatrix();
+        Ctx sub;
+        sub.parent = group;
+        sub.layerOverride = EffectiveLayerName(e, ctx);
+        sub.byBlock = &byBlock;
+        sub.depth = ctx.depth + 1;
+        sub.blockStack = ctx.blockStack;
+        sub.blockStack.push_back(name);
+        ParseEntityRange(def.start, def.end, sub, false);
+        if (!group->Children.empty()) AddTo(e, ctx, group);
+    }
+
+    void ParseInsert(const std::vector<Tag>& e, Ctx& ctx) {
+        const std::string* name = FS(e, 2);
+        if (!name) return;
+        auto it = blocks.find(*name);
+        if (it == blocks.end()) {
+            ++skipped["INSERT(missing block)"];
+            return;
+        }
+        if (ctx.depth > 16 ||
+            std::find(ctx.blockStack.begin(), ctx.blockStack.end(), *name) != ctx.blockStack.end()) {
+            ++skipped["INSERT(recursive)"];
+            return;
+        }
+        std::string layerName;
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
+        Color color = EntityColor(e, layer, ctx);
+        const BlockDef& def = it->second;
+        double ix = F(e, 10), iy = F(e, 20);
+        double sx = F(e, 41, 1.0), sy = F(e, 42, 1.0);
+        double rot = F(e, 50) * kPi / 180.0;
+        int cols = std::max(1, FI(e, 70, 1)), rows = std::max(1, FI(e, 71, 1));
+        double cs = F(e, 44), rs = F(e, 45);
+        if (cols * rows > 4096) { cols = rows = 1; }
+        Affine ocs = OcsProjection(F(e, 210, 0), F(e, 220, 0), F(e, 230, 1));
+        Affine rotate = Affine::Rotate(rot);
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                Point2Dd off = rotate.Apply(c * cs, r * rs);
+                Affine T = ocs * Affine::Translate(ix + off.x, iy + off.y) * rotate *
+                           Affine::Scale(sx, sy) * Affine::Translate(-def.baseX, -def.baseY);
+                ExpandBlock(e, ctx, *name, def, T, color);
+            }
+        }
+    }
+
+    // A dimension draws through the block AutoCAD rendered for it.
+    void ParseDimension(const std::vector<Tag>& e, Ctx& ctx) {
+        const std::string* name = FS(e, 2);
+        if (!name || name->empty()) { ++skipped["DIMENSION(no block)"]; return; }
+        auto it = blocks.find(*name);
+        if (it == blocks.end()) { ++skipped["DIMENSION(missing block)"]; return; }
+        if (ctx.depth > 16) return;
+        std::string layerName;
+        const LayerDef& layer = LayerOf(e, ctx, layerName);
+        Color color = EntityColor(e, layer, ctx);
+        ExpandBlock(e, ctx, *name, it->second, Affine(), color);
     }
 };
 
