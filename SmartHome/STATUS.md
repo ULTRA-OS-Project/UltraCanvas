@@ -52,6 +52,7 @@ vendor SDKs that are absent (see §2).
 | `ui/*.h` | 0 | clean (was 116) — ported |
 | `ui/UltraCanvasSmartHomeDeviceCard.cpp` | 0 | **builds and passes** |
 | `ui/UltraCanvasSmartHomePanel.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeDeviceControl.cpp` | 0 | **builds and passes** |
 
 ### How the backends were fixed
 
@@ -157,22 +158,35 @@ virtuals folded into one `OnEvent`. Mouse and touch now share a path, because
 `SmartHomeAutomationEditor::AddAction` took a `SmartHomeSceneAction` that was
 never defined anywhere; scene actions are `SmartHomeCommand`.
 
-**What is still missing is most of the bodies.** Three widgets are
-implemented: `SmartHomeDeviceCard` and `SmartHomeSceneCard` in
-`ui/UltraCanvasSmartHomeDeviceCard.cpp`, and the dashboard itself in
-`ui/UltraCanvasSmartHomePanel.cpp` — device refresh and filtering, sorting,
-room assignment, the six layout modes, scroll, the pairing overlay and event
-forwarding to the cards. The panel reads through `SmartHomeAPI` and never
-touches `SmartHomeManager`, which is the layering rule above applied to a
-widget: a widget is an application like any other.
+**What is still missing is most of the bodies.** Eight widgets are
+implemented:
 
-`tests/WidgetTest.cpp` builds all three against `libUltraCanvas` and exercises
-them: clicks, presses released outside the card, touches, mode-change
-callbacks, and room assign/reassign/remove.
+- `ui/UltraCanvasSmartHomeDeviceCard.cpp` — the device and scene cards.
+- `ui/UltraCanvasSmartHomePanel.cpp` — the dashboard: refresh and filtering,
+  sorting, room assignment, the six layout modes, scroll, the pairing overlay
+  and event forwarding to the cards.
+- `ui/UltraCanvasSmartHomeDeviceControl.cpp` — light (power, brightness,
+  colour temperature, colour wheel, presets), thermostat (dial, setpoint
+  clamped to range, mode selector, humidity), lock (button, battery, activity
+  log newest-first), blind (preview, position and tilt sliders, open/stop/close
+  and presets) and the read-only sensor display (value, history graph over the
+  configured window, thresholds).
 
-The remaining thirteen widgets are declarations with no `.cpp` — the per-device
-controls, the sensor display, the dialogs and wizard, the scene and automation
-editors, the topology view, energy monitor, scheduler and group control. They
+Each drives its device through `SmartHomeAPI` and also reports through its own
+callback, so a host can let the control talk to the module or intercept the
+change. Layout is computed from the element's local bounds, not fixed pixel
+positions, so the same control works in a dashboard cell and a detail pane.
+
+`tests/WidgetTest.cpp` builds them against `libUltraCanvas` and drives them
+with synthetic `UCEvent`s — 21 assertions covering clicks, presses released
+outside a card, touches, mode-change callbacks, room assign/reassign/remove,
+the light power button and presets, setpoint clamping, mode selection, a jammed
+lock refusing to toggle, blind quick actions and position clamping, and the
+sensor readout declining to consume a click it has no use for.
+
+The remaining eight widgets are declarations with no `.cpp` — the device
+dialog and pairing wizard, the scene and automation editors, the topology view,
+energy monitor, scheduler and group control. They
 follow the shape of the two implemented files. Add each `.cpp` to
 `SmartHomeUI` in `CMakeLists.txt` as it gains one; listing a declaration-only
 widget there fails the link.

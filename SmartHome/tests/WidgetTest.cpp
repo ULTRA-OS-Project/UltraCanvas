@@ -14,6 +14,7 @@
 //
 // Author: UltraCanvas Framework
 #include "UltraCanvasSmartHomePanel.h"
+#include "UltraCanvasSmartHomeDeviceControl.h"
 #include <cstdio>
 
 using namespace UltraCanvas;
@@ -112,6 +113,100 @@ int main() {
     panel.ClearFilters();
     if (!panel.GetFilter().SearchText.empty()) { std::puts("FAIL: ClearFilters"); return 1; }
     std::puts("ok  search and clear filters");
+
+    // ----- per-device controls -----
+    {
+        SmartHomeLightControl light("light", 0, 0, 260, 320);
+        SmartHomeLightState st; st.On = false; st.Brightness = 0;
+        light.SetState(st);
+        int changes = 0;
+        light.SetOnStateChange([&](const SmartHomeLightState&){ ++changes; });
+        light.OnEvent(Ev(UCEventType::MouseDown, 30, 20));   // the power button
+        if (!light.GetState().On || changes != 1) { std::puts("FAIL: light power"); return 1; }
+        light.OnEvent(Ev(UCEventType::MouseDown, 30, 20));
+        if (light.GetState().On) { std::puts("FAIL: light power does not toggle back"); return 1; }
+        std::puts("ok  light: power button toggles and reports");
+
+        light.AddColorPreset("Warm", 255, 180, 100);
+        light.OnEvent(Ev(UCEventType::MouseDown, 20, 305));  // the preset row
+        if (light.GetState().Red != 255) { std::puts("FAIL: light preset"); return 1; }
+        std::puts("ok  light: colour preset applies");
+    }
+
+    {
+        SmartHomeThermostatControl th("thermo", 0, 0, 240, 260);
+        th.SetTemperatureRange(10.0f, 30.0f);
+        SmartHomeThermostatState st; st.TargetTemperature = 29.8f;
+        th.SetState(st);
+        UCEvent up = Ev(UCEventType::MouseWheel, 120, 120); up.wheelDelta = 1;
+        th.OnEvent(up);
+        // 29.8 + 0.5 would be 30.3; the range has to hold it at 30.
+        if (th.GetState().TargetTemperature > 30.0f) {
+            std::puts("FAIL: thermostat exceeded its range"); return 1;
+        }
+        std::puts("ok  thermostat: wheel adjusts and clamps to range");
+
+        th.SetSupportedModes({"heat", "cool", "auto"});
+        th.OnEvent(Ev(UCEventType::MouseDown, 120, 245));    // the middle mode
+        if (th.GetState().Mode != "cool") { std::puts("FAIL: thermostat mode select"); return 1; }
+        std::puts("ok  thermostat: mode selector");
+    }
+
+    {
+        SmartHomeLockControl lock("lock", 0, 0, 240, 260);
+        SmartHomeLockState st; st.Locked = false;
+        lock.SetState(st);
+        int locked = 0;
+        lock.SetOnLock([&]{ ++locked; });
+        lock.OnEvent(Ev(UCEventType::MouseUp, 120, 54));     // the lock button
+        if (locked != 1 || !lock.GetState().Locked) { std::puts("FAIL: lock toggle"); return 1; }
+        std::puts("ok  lock: button locks and reports");
+
+        // A jammed lock must not be toggled blindly.
+        SmartHomeLockState jammed; jammed.Locked = false; jammed.Jammed = true;
+        lock.SetState(jammed);
+        lock.OnEvent(Ev(UCEventType::MouseUp, 120, 54));
+        if (lock.GetState().Locked) { std::puts("FAIL: jammed lock was toggled"); return 1; }
+        std::puts("ok  lock: a jammed lock refuses to toggle");
+
+        lock.AddActivity(100, "Unlocked", "ana");
+        lock.AddActivity(300, "Locked", "ben");
+        lock.AddActivity(200, "Unlocked", "cal");
+        lock.ClearActivity();   // no crash on an emptied log
+        std::puts("ok  lock: activity log");
+    }
+
+    {
+        SmartHomeBlindControl blind("blind", 0, 0, 220, 320);
+        int moves = 0;
+        uint8_t reported = 0;
+        blind.SetOnPositionChange([&](uint8_t p){ ++moves; reported = p; });
+        blind.OnEvent(Ev(UCEventType::MouseDown, 30, 88));   // "Open"
+        if (blind.GetPosition() != 100 || reported != 100 || moves != 1) {
+            std::puts("FAIL: blind open"); return 1;
+        }
+        blind.OnEvent(Ev(UCEventType::MouseDown, 180, 88));  // "Close"
+        if (blind.GetPosition() != 0) { std::puts("FAIL: blind close"); return 1; }
+        std::puts("ok  blind: open and close quick actions");
+
+        blind.SetPosition(250);                              // clamped to 100
+        if (blind.GetPosition() != 100) { std::puts("FAIL: blind clamp"); return 1; }
+        std::puts("ok  blind: position clamps to 100");
+    }
+
+    {
+        SmartHomeSensorDisplay sensor("sensor", 0, 0, 240, 180);
+        sensor.SetSensorType(SmartHomeSensorType::Temperature);
+        SmartHomeSensorReading r; r.Type = SmartHomeSensorType::Temperature;
+        r.Value = 21.5f; r.Unit = "°C"; r.Timestamp = 1000;
+        sensor.SetCurrentReading(r);
+        for (int i = 0; i < 10; ++i) { r.Timestamp = 1000 + i * 60000; r.Value = 20.0f + i; sensor.AddReading(r); }
+        // A readout has nothing to click and must not swallow the event.
+        if (sensor.OnEvent(Ev(UCEventType::MouseDown, 20, 20))) {
+            std::puts("FAIL: sensor display consumed a click"); return 1;
+        }
+        std::puts("ok  sensor: accepts readings, does not consume clicks");
+    }
 
     std::puts("\nPASS - the ported widget API works against the real framework");
     return 0;
