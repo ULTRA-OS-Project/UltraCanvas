@@ -83,7 +83,8 @@ endif()
 add_library(SmartHomeUI STATIC
     ui/UltraCanvasSmartHomeDeviceCard.cpp
     ui/UltraCanvasSmartHomePanel.cpp
-    ui/UltraCanvasSmartHomeDeviceControl.cpp)
+    ui/UltraCanvasSmartHomeDeviceControl.cpp
+    ui/UltraCanvasSmartHomeDialogs.cpp)
 set_target_properties(SmartHomeUI PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "smarthome_ui")

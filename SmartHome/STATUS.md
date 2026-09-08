@@ -53,6 +53,7 @@ vendor SDKs that are absent (see §2).
 | `ui/UltraCanvasSmartHomeDeviceCard.cpp` | 0 | **builds and passes** |
 | `ui/UltraCanvasSmartHomePanel.cpp` | 0 | **builds and passes** |
 | `ui/UltraCanvasSmartHomeDeviceControl.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeDialogs.cpp` | 0 | **builds and passes** |
 
 ### How the backends were fixed
 
@@ -128,6 +129,12 @@ Two were found by actually building and running the module for the first time:
 - `SmartHomeManager::commandMutex` was the only one of five mutexes not
   declared `mutable`, while `GetPendingCommandCount() const` locks it. Would
   not compile. Fixed.
+- `SmartHomeDeviceDialog` declared its own `IsVisible()` over a `bool visible`
+  member. `UltraCanvasUIElement::IsVisible()` is **not** virtual, so that only
+  hid it: the dialog would report itself closed while the framework's dispatch
+  and focus handling, which call the base, carried on as though it were open.
+  The member is gone; `Show()` and `Hide()` drive `SetVisible()`, so there is
+  one answer. `tests/WidgetTest.cpp` asserts the two agree.
 
 ### Known latent bug
 
@@ -158,7 +165,7 @@ virtuals folded into one `OnEvent`. Mouse and touch now share a path, because
 `SmartHomeAutomationEditor::AddAction` took a `SmartHomeSceneAction` that was
 never defined anywhere; scene actions are `SmartHomeCommand`.
 
-**What is still missing is most of the bodies.** Eight widgets are
+**What is still missing is the rest of the bodies.** Ten widgets are
 implemented:
 
 - `ui/UltraCanvasSmartHomeDeviceCard.cpp` — the device and scene cards.
@@ -171,6 +178,10 @@ implemented:
   log newest-first), blind (preview, position and tilt sliders, open/stop/close
   and presets) and the read-only sensor display (value, history graph over the
   configured window, thresholds).
+- `ui/UltraCanvasSmartHomeDialogs.cpp` — the device detail dialog, which picks
+  the right per-device control for whatever it is showing, and the pairing
+  wizard's five steps (select protocol, search, choose a device, configure,
+  done) plus its error state.
 
 Each drives its device through `SmartHomeAPI` and also reports through its own
 callback, so a host can let the control talk to the module or intercept the
@@ -184,9 +195,9 @@ the light power button and presets, setpoint clamping, mode selection, a jammed
 lock refusing to toggle, blind quick actions and position clamping, and the
 sensor readout declining to consume a click it has no use for.
 
-The remaining eight widgets are declarations with no `.cpp` — the device
-dialog and pairing wizard, the scene and automation editors, the topology view,
-energy monitor, scheduler and group control. They
+The remaining six widgets are declarations with no `.cpp` — the scene and
+automation editors, the topology view, energy monitor, scheduler and group
+control. They
 follow the shape of the two implemented files. Add each `.cpp` to
 `SmartHomeUI` in `CMakeLists.txt` as it gains one; listing a declaration-only
 widget there fails the link.

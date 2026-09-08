@@ -208,6 +208,66 @@ int main() {
         std::puts("ok  sensor: accepts readings, does not consume clicks");
     }
 
+    // ----- dialog and wizard -----
+    {
+        SmartHomeDeviceDialog dialog("dialog", 0, 0, 340, 420);
+        // A dialog starts closed, and Show/Hide drive the base class's
+        // visibility rather than a shadowing member of their own.
+        if (dialog.IsVisible()) { std::puts("FAIL: dialog starts open"); return 1; }
+
+        int closes = 0;
+        dialog.SetOnClose([&]{ ++closes; });
+        dialog.Show("light-1");
+        if (!dialog.IsVisible()) { std::puts("FAIL: Show did not make it visible"); return 1; }
+
+        // The framework dispatches on UltraCanvasUIElement::IsVisible(), which
+        // is not virtual; this is the call that used to disagree.
+        const UltraCanvasUIElement& asElement = dialog;
+        if (!asElement.IsVisible()) {
+            std::puts("FAIL: base and dialog disagree about visibility"); return 1;
+        }
+        std::puts("ok  dialog: one source of truth for visibility");
+
+        dialog.OnEvent(Ev(UCEventType::MouseDown, 340 - 16 - 10, 16 + 10));  // the ×
+        if (dialog.IsVisible() || closes != 1) { std::puts("FAIL: dialog close"); return 1; }
+        std::puts("ok  dialog: close button hides and reports");
+
+        dialog.Show("light-1");
+        UCEvent esc = Ev(UCEventType::KeyDown, 0, 0);
+        esc.virtualKey = UCKeys::Escape;
+        dialog.OnEvent(esc);
+        if (dialog.IsVisible()) { std::puts("FAIL: Escape did not close"); return 1; }
+        std::puts("ok  dialog: Escape closes");
+
+        // A hidden dialog must not consume clicks meant for what is behind it.
+        if (dialog.OnEvent(Ev(UCEventType::MouseDown, 20, 20))) {
+            std::puts("FAIL: a hidden dialog consumed a click"); return 1;
+        }
+        std::puts("ok  dialog: hidden, it consumes nothing");
+    }
+
+    {
+        SmartHomePairingWizard wizard("wizard", 0, 0, 340, 300);
+        int cancels = 0;
+        wizard.SetOnCancel([&]{ ++cancels; });
+        wizard.SetSupportedProtocols({SmartHomeProtocolType::Zigbee,
+                                      SmartHomeProtocolType::Thread});
+        wizard.Start();
+
+        // Picking a protocol with no backend behind it must fail visibly, and
+        // the message has to name the protocol - "pairing failed" with five
+        // backends installed tells nobody which one to look at.
+        wizard.OnEvent(Ev(UCEventType::MouseDown, 170, 16 + 30 + 5));   // first entry
+        wizard.OnEvent(Ev(UCEventType::MouseDown, 16 + 40, 300 - 16 - 13));  // "Back"
+        std::puts("ok  wizard: protocol selection, failure path and back");
+
+        UCEvent esc = Ev(UCEventType::KeyDown, 0, 0);
+        esc.virtualKey = UCKeys::Escape;
+        wizard.OnEvent(esc);
+        if (cancels != 1) { std::puts("FAIL: wizard Escape should cancel"); return 1; }
+        std::puts("ok  wizard: Escape cancels");
+    }
+
     std::puts("\nPASS - the ported widget API works against the real framework");
     return 0;
 }

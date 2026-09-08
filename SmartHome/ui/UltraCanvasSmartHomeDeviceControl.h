@@ -513,11 +513,11 @@ public:
      */
     void Hide();
     
-    /**
-     * @brief Check if dialog is visible
-     * @return true if visible
-     */
-    bool IsVisible() const { return visible; }
+    // Visibility is the base class's, deliberately. UltraCanvasUIElement::
+    // IsVisible() is NOT virtual, so declaring one here would only hide it:
+    // the dialog would think it was hidden while the framework's dispatch and
+    // focus handling — which call the base — carried on as if it were not.
+    // Show() and Hide() drive SetVisible(), so there is one answer.
     
     void SetOnClose(std::function<void()> callback) { onClose = callback; }
     void SetOnRename(std::function<void(const std::string&)> callback) { onRename = callback; }
@@ -537,7 +537,6 @@ private:
     
     std::string deviceId;
     SmartHomeDeviceInfo deviceInfo;
-    bool visible = false;
     
     std::shared_ptr<UltraCanvasUIElement> controlWidget;
     
