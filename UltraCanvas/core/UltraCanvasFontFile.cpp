@@ -252,6 +252,34 @@ namespace UltraCanvas {
         }
 
         // ===== GLYPH RUNS =====
+        // ===== CHARMAP SELECTION =====
+        // FreeType picks a default charmap when a face is opened, but it
+        // refuses to pick one whose encoding is FT_ENCODING_NONE - and that
+        // is exactly what the legacy bitmap formats usually expose (Windows
+        // FNT/FON, PCF, BDF). Those faces come back with face->charmap null,
+        // FT_Get_Char_Index then answers 0 for every character, and a font
+        // that plainly has an 'A' looks to the specimen like a symbol font
+        // with no Latin coverage at all. Selecting one explicitly is what
+        // keeps a folder of .fon files showing letters rather than whatever
+        // happens to sit at glyph index 1.
+        //
+        // Only ever called when FreeType selected nothing: a face that DID
+        // get a charmap keeps it. A symbol font whose only charmap is
+        // MS Symbol is a real symbol font, and its ASCII lookups are supposed
+        // to fail so the first-glyphs fallback takes over.
+        void EnsureCharmapSelected(FT_Face face) {
+            if (!face || face->charmap) return;
+            if (FT_Select_Charmap(face, FT_ENCODING_UNICODE) == 0) return;
+            if (FT_Select_Charmap(face, FT_ENCODING_APPLE_ROMAN) == 0) return;
+            // Whatever the face does have. FT_ENCODING_NONE means "the codes
+            // are the font's own", which for these formats is the platform
+            // codepage - close enough to ASCII in its lower half that the
+            // Latin sample text resolves.
+            for (FT_Int i = 0; i < face->num_charmaps; ++i) {
+                if (FT_Set_Charmap(face, face->charmaps[i]) == 0) return;
+            }
+        }
+
         // The specimen is a bare sequence of glyph indices: no shaping, no
         // bidi, no fallback face. That is enough for the Latin sample text a
         // specimen uses, and it is the only thing that can work here at all -
@@ -579,6 +607,7 @@ namespace UltraCanvas {
             return nullptr;
         }
         if (face.handle->num_glyphs <= 0) return nullptr;
+        EnsureCharmapSelected(face.handle);
 
         const int padding = std::max(0, static_cast<int>(std::lround(
                 options.padding * deviceScale)));
@@ -607,9 +636,17 @@ namespace UltraCanvas {
                 : availableWidth >= availableHeight * 2.0 ? std::string("AaBbCc")
                                                           : std::string("Ag");
         std::vector<FT_UInt> glyphs = GlyphsForText(face.handle, text);
-        if (glyphs.size() < 2) {
-            // Fewer than two of the sample characters exist in this font:
-            // a symbol or icon face. Show what it does have instead.
+        if (glyphs.empty()) {
+            // Not one of the sample characters exists in this font: a symbol
+            // or icon face. Show what it does have instead.
+            //
+            // Only when NOTHING resolved. An earlier "fewer than two" rule
+            // read a font that carries some of the sample as a symbol font,
+            // and worse, it silently ignored a caller who asked for a
+            // one-character specimen - options.text = "A" drew the font's
+            // first glyphs instead of its A. Drawing the part of the sample a
+            // font does have is both more truthful and what the caller asked
+            // for; a face with no Latin at all still gets its own glyphs.
             std::vector<FT_UInt> fallback = FirstGlyphsOf(face.handle, 6);
             if (!fallback.empty()) glyphs = std::move(fallback);
         }

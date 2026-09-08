@@ -119,9 +119,11 @@ namespace UltraCanvas {
         // box - "AaBbCc" where it is at least twice as wide as it is tall,
         // "Ag" otherwise, because a six-glyph line in a square tile is fitted
         // by its width and comes out too small to read the letterforms off.
-        // A font with no glyph for those characters (an icon or symbol font)
-        // falls back to drawing its own first glyphs instead, so a specimen
-        // is produced either way.
+        // A font with no glyph for ANY of those characters (an icon or symbol
+        // font) falls back to drawing its own first glyphs instead, so a
+        // specimen is produced either way; a font that has some of them draws
+        // the part it has, so a one-character text really does draw that one
+        // character.
         std::string text;
         Color textColor = Color(26, 26, 28, 255);
         Color backgroundColor = Color(255, 255, 255, 255);

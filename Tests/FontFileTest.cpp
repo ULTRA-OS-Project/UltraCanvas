@@ -52,6 +52,22 @@ double InkFraction(const std::shared_ptr<UCPixmap>& pm) {
     return static_cast<double>(inked) / (static_cast<double>(w) * h);
 }
 
+// True when two specimens are pixel-identical. The sharp end of the fallback
+// tests below: whenever the sample text fails to resolve, every request falls
+// back to the same six first glyphs, so two *different* requests come out
+// byte-for-byte equal. Resolving them properly makes them differ.
+bool SamePixels(const std::shared_ptr<UCPixmap>& a,
+                const std::shared_ptr<UCPixmap>& b) {
+    if (!a || !b) return false;
+    if (a->GetRawWidth() != b->GetRawWidth() ||
+        a->GetRawHeight() != b->GetRawHeight()) return false;
+    const uint32_t* pa = a->GetPixelData();
+    const uint32_t* pb = b->GetPixelData();
+    if (!pa || !pb) return false;
+    const long n = static_cast<long>(a->GetRawWidth()) * a->GetRawHeight();
+    return std::equal(pa, pa + n, pb);
+}
+
 void TestExtensionGate() {
     std::cout << "\nExtension recognition\n";
     Check(IsFontFileExtension("Ubuntu-R.ttf"), "ttf by file name");
@@ -234,6 +250,108 @@ void TestSpecimen() {
           "a negative height renders nothing");
 }
 
+// ===== CHARACTER LOOKUP AND THE SYMBOL FALLBACK =====
+// The specimen resolves its sample text through the face's charmap and only
+// falls back to drawing the font's own first glyphs when NOTHING resolves.
+// Two ways that used to go wrong, both visible as a folder of .fon files
+// showing `!"#$%` where letters belong:
+//   * FreeType selects no charmap at all for a face whose only charmap has
+//     encoding FT_ENCODING_NONE - the legacy bitmap formats (Windows FNT/FON,
+//     PCF, BDF with a non-Unicode registry). Every lookup then answered 0.
+//   * The fallback triggered on "fewer than two" resolved glyphs, so a
+//     caller asking for a one-character specimen never got it.
+void TestCharacterLookup() {
+    std::cout << "\nCharacter lookup\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+    const std::string path = regular.string();
+
+    // Two different one-character samples must render differently. Comparing
+    // ink volume would not settle it - the fallback run can happen to ink a
+    // similar amount - but two distinct letters cannot produce the identical
+    // image unless neither was looked up at all.
+    FontSpecimenOptions a;  a.text = "A";
+    FontSpecimenOptions w;  w.text = "W";
+    auto letterA = RenderFontSpecimenPixmap(path, 160, 80, 1.0f, a);
+    auto letterW = RenderFontSpecimenPixmap(path, 160, 80, 1.0f, w);
+    Check(letterA && letterW, "one-character specimens render");
+    Check(letterA && InkFraction(letterA) > 0.0, "a one-character specimen has ink");
+    Check(!SamePixels(letterA, letterW),
+          "a one-character sample is honoured, not replaced by the fallback");
+
+    // And a longer sample still differs from a short one.
+    FontSpecimenOptions six;  six.text = "AaBbCc";
+    auto sixGlyphs = RenderFontSpecimenPixmap(path, 160, 80, 1.0f, six);
+    Check(!SamePixels(letterA, sixGlyphs), "sample length changes the specimen");
+
+    // A face with no Latin coverage at all must still produce a specimen -
+    // that is what the fallback is for.
+    FontFileInfo info;
+    if (ReadFontFileInfo(path, info) && !info.faces.empty()) {
+        Check(info.faces[0].hasUnicodeCharmap,
+              "the bundled face reports a Unicode charmap");
+    }
+}
+
+// The charmap-selection fix itself needs a face whose only charmap carries
+// FT_ENCODING_NONE, and only the binary bitmap formats produce one - a BDF
+// written here would come back as ADOBE_STANDARD, which FreeType selects by
+// itself. So this probes the system's X11 bitmap fonts and skips when the
+// machine has none; the hermetic half of the behaviour is covered above.
+void TestLegacyBitmapCharmap() {
+    std::cout << "\nLegacy bitmap fonts (system-dependent)\n";
+    static const char* kDirs[] = {
+        "/usr/share/fonts/X11/misc", "/usr/share/fonts/X11/cyrillic",
+        "/usr/share/fonts/X11/100dpi", "/usr/share/fonts/X11/75dpi",
+        "/usr/share/fonts/misc", "/usr/share/fonts/pcf",
+    };
+    fs::path sample;
+    std::error_code ec;
+    for (const char* dir : kDirs) {
+        if (!fs::is_directory(dir, ec)) continue;
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            const std::string name = entry.path().filename().string();
+            // FreeType opens gzip-compressed PCF directly where it was built
+            // with zlib, which is the normal packaging on these systems.
+            if (name.size() > 4 && name.find(".pcf") != std::string::npos) {
+                sample = entry.path();
+                break;
+            }
+        }
+        if (!sample.empty()) break;
+    }
+    if (sample.empty()) {
+        std::cout << "  [SKIP] no X11 bitmap font on this machine\n";
+        return;
+    }
+
+    FontFileInfo info;
+    if (!ReadFontFileInfo(sample.string(), info)) {
+        std::cout << "  [SKIP] " << sample.filename().string()
+                  << " is not readable by this FreeType\n";
+        return;
+    }
+    std::cout << "    using " << sample.filename().string() << " ("
+              << (info.faces.empty() ? 0 : info.faces[0].glyphCount)
+              << " glyphs, unicode charmap: "
+              << (!info.faces.empty() && info.faces[0].hasUnicodeCharmap ? "yes" : "no")
+              << ")\n";
+
+    // Same discriminator as above. Before a charmap was selected explicitly,
+    // every lookup in such a face answered 0, both of these fell back to the
+    // identical six first glyphs, and the ink matched exactly.
+    FontSpecimenOptions a;  a.text = "A";
+    FontSpecimenOptions w;  w.text = "W";
+    auto letterA = RenderFontSpecimenPixmap(sample.string(), 160, 80, 1.0f, a);
+    auto letterW = RenderFontSpecimenPixmap(sample.string(), 160, 80, 1.0f, w);
+    Check(letterA && letterW, "specimens render from a bitmap font");
+    Check(!SamePixels(letterA, letterW),
+          "its Latin characters resolve through the selected charmap");
+}
+
 void TestClassification() {
     std::cout << "\nClassification\n";
     auto ttf = UltraCanvasSupportedFormats::FindByExtension("ttf");
@@ -307,6 +425,8 @@ int main() {
     TestMetadata();
     TestBadInput();
     TestSpecimen();
+    TestCharacterLookup();
+    TestLegacyBitmapCharmap();
     TestClassification();
     std::cout << "\n" << (g_failures ? "FAILED" : "PASSED") << " ("
               << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";

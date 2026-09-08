@@ -21085,10 +21085,32 @@ Two limits are worth knowing:
   enough for the Latin specimen text and is the only thing possible here —
   shaping through Pango would need the font registered and a context, which
   is exactly what this module exists to avoid. Pass ASCII-ish specimen text.
-- **Symbol and icon fonts** have no glyph for the sample characters at all.
+- **Symbol and icon fonts** have no glyph for *any* of the sample characters.
   Rather than produce an empty card, the specimen then falls back to drawing
   the face's own first few glyphs, so a Font Awesome or a dingbat file
-  previews as its own icons.
+  previews as its own icons. Only when nothing at all resolves: a font that
+  covers part of the sample draws the part it covers, so `options.text = "A"`
+  really does draw that font's A.
+
+### The charmap the lookup goes through
+
+Characters are resolved with `FT_Get_Char_Index` against the face's *selected*
+charmap, and FreeType will not select one whose encoding is
+`FT_ENCODING_NONE` — which is what the legacy bitmap formats normally expose
+(Windows FNT/FON, PCF, and BDF with a non-Unicode registry). Such a face
+arrives with no charmap selected at all, every lookup answers 0, and a font
+that plainly has an `A` looks exactly like a symbol font.
+
+So when FreeType selected nothing, one is chosen explicitly: Unicode first,
+then Apple Roman, then whatever the face does carry. `FT_ENCODING_NONE` means
+"the codes are the font's own", which for these formats is the platform
+codepage — close enough to ASCII in its lower half that a Latin sample
+resolves. A face that *did* get a charmap keeps it, so a genuine symbol font
+whose only charmap is MS Symbol still fails its ASCII lookups and still falls
+back, which is what it should do.
+
+This is why a folder of `C:\Windows\Fonts` shows letters rather than a wall
+of `!"#$%`: those `.fon` files were being read as symbol fonts.
 
 ## Recognition
 

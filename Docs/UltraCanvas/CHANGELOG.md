@@ -1,3 +1,34 @@
+#### 2026-09-09 *0.3.111*
+- **Legacy bitmap fonts previewed as `!"#$%` instead of letters.** A folder of
+  `C:\Windows\Fonts` showed every `.fon` file as a run of punctuation or DOS
+  box-drawing symbols while the TrueType files beside them correctly showed
+  their own `Ag`. The cause was one missing step: characters are resolved with
+  `FT_Get_Char_Index` against the face's *selected* charmap, and FreeType
+  refuses to select one whose encoding is `FT_ENCODING_NONE` — which is
+  precisely what the legacy bitmap formats expose (Windows FNT/FON, PCF, BDF
+  with a non-Unicode registry). Those faces arrived with `face->charmap` null,
+  every lookup answered 0, and the specimen concluded the font had no Latin
+  coverage and fell back to drawing its first glyphs by index — which in those
+  fonts are `!"#$%` (space is skipped as blank) or `☺☻♥♦♣` on the OEM
+  codepages. `UltraCanvasFontFile` now selects a charmap itself when FreeType
+  selected none — Unicode, then Apple Roman, then whatever the face carries —
+  so those fonts show their letters, and the Hebrew and Arabic codepage faces
+  show their own scripts. A face that did get a charmap keeps it, so a real
+  symbol font whose only charmap is MS Symbol still falls back as it should.
+- **A one-character specimen was silently replaced.** The same fallback fired
+  whenever *fewer than two* sample characters resolved, so a caller passing
+  `FontSpecimenOptions::text = "A"` got the font's first six glyphs rather
+  than its A — the option documented as taking any string quietly ignored the
+  shortest ones. It now falls back only when nothing resolves at all; a font
+  covering part of the sample draws the part it covers.
+- `Tests/FontFileTest.cpp` pins both. The discriminator is pixel identity
+  rather than ink volume: when a sample fails to resolve, *every* request
+  falls back to the same six glyphs, so two different single characters come
+  out byte-for-byte equal — an ink-volume comparison passes by luck, and did.
+  The charmap half needs a face whose only charmap is `FT_ENCODING_NONE`,
+  which only the binary bitmap formats produce (a BDF written by the test
+  comes back as `ADOBE_STANDARD`, which FreeType selects by itself), so it
+  probes the system's X11 bitmap fonts and skips where a machine has none.
 #### 2026-09-08 *0.3.109*
 - **LaTeX: the on-demand module now finds its math font (and itself) in a
   normal build, and a view that cannot typeset says why.** The demo's
