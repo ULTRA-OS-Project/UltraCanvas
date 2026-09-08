@@ -22,9 +22,9 @@
 // QOI and XAR are intentionally NOT listed: those formats are implemented by
 // UltraCanvas itself, not pulled in as third-party libraries. The same goes
 // for the Vector formats plugin's converters (SVG, XAR, EPS, CDR, PDF, EMF,
-// WMF, AI, DXF) — all written in-tree; only DWG involves a third party:
-// GNU LibreDWG's dxf2dwg / dwg2dxf command-line tools, invoked as external
-// executables (never linked).
+// WMF, AI, DXF, DWG reading) — all written in-tree; only DWG *writing*
+// involves a third party: GNU LibreDWG's dxf2dwg command-line tool, invoked
+// as an external executable (never linked).
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
 // Version: 5.4.0
@@ -150,7 +150,7 @@ namespace UltraCanvas {
         {"librevenge",        "https://sourceforge.net/p/libwpd/wiki/librevenge/",                 "https://sourceforge.net/p/libwpd/librevenge/",                  "MPL 2.0"},
         {"LCMS2",             "https://www.littlecms.com/",                                        "https://github.com/mm2/Little-CMS",                             "MIT"},
         {"ICU",               "https://icu.unicode.org/",                                          "https://github.com/unicode-org/icu",                            "Unicode"},
-        // --- Vector formats plugin (DWG only; the other converters are in-tree) ---
+        // --- Vector formats plugin (DWG writing only; reading and every other converter are in-tree) ---
         {"LibreDWG",          "https://www.gnu.org/software/libredwg/",                            "https://github.com/LibreDWG/libredwg",                          "GPL 3"},
         // --- OCR plugin ---
         {"Tesseract",         "https://tesseract-ocr.github.io/",                                  "https://github.com/tesseract-ocr/tesseract",                    "Apache 2"},
@@ -625,8 +625,8 @@ namespace UltraCanvas {
         dep("Color mgmt / Unicode (optional)", "LCMS2 (MIT)\nICU (Unicode)", "LCMS2 (MIT)\nICU (Unicode)", "– (not available)");
 
         header("Vector formats plugin (optional)");
-        dep("Vector converters: SVG, XAR, EPS,\nCDR, PDF, EMF, WMF, AI, DXF\n(read & write)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)");
-        dep("DWG read & write (via DXF)", "LibreDWG (GPL 3) (optional)\ndxf2dwg / dwg2dxf CLI tools\n(external processes, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg / dwg2dxf CLI tools\n(external processes, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg / dwg2dxf CLI tools\n(external processes, not linked)");
+        dep("Vector converters: SVG, XAR, EPS,\nCDR, PDF, EMF, WMF, AI, DXF\n(read & write), DWG (read, R13-R2018)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)");
+        dep("DWG write (via DXF)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)");
 
         header("OCR plugin (optional)");
         dep("Optical character recognition", "Tesseract (Apache 2)\nLeptonica (BSD 2)", "Tesseract (Apache 2)\nLeptonica (BSD 2)", "Tesseract (Apache 2)\nLeptonica (BSD 2)");

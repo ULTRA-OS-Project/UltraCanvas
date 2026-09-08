@@ -51,6 +51,13 @@
   framework's own test document converted with dxf2dwg; extra `.dwg` files
   on the command line are decoded, reported and optionally exported as
   SVG).
+- DemoApp: new "DWG / DXF Drawings" page in the Vector Graphics category
+  (`Apps/DemoApp/UltraCanvasDWGExamples.cpp`) showing the samples in
+  `media/vector/DWG/` in `UltraCanvasVectorElement` tiles with a fullscreen
+  pan/zoom viewer, the decoder's statistics and warnings per drawing, and a
+  walk-through of the DWG → DXF → `VectorDocument` pipeline. The
+  Dependencies page now lists DWG reading as in-tree and LibreDWG as the
+  optional writer only.
 
 #### 2026-09-07 *0.3.108*
 - **WebAssembly: real applications link, and the browser clipboard works.**
