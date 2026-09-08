@@ -104,9 +104,8 @@ framework's `Color`.
 `SmartHomeAutomationEditor::AddAction` takes `SmartHomeSceneAction`, a type
 that is never defined anywhere; scene actions are `SmartHomeCommand`.
 
-No `.cpp` files were supplied for the UI layer at all, and `SmartHomeAPI` in
-the public header declares a pImpl whose implementation is likewise absent —
-only `SmartHomeManager` has one.
+No `.cpp` files were supplied for the UI layer at all. (`SmartHomeAPI` *is*
+implemented — in `core/UltraCanvasSmartHomeManager.cpp`, alongside the manager.)
 
 ### 2. Third-party dependencies — not yet resolved
 
