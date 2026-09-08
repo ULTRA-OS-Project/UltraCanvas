@@ -1590,6 +1590,11 @@ if(ULTRACANVAS_ENABLE_AUDIO)
     # pulled in via gdi32/ole32/etc.
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC dl pthread m)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # Nothing to add: bionic bundles pthread and the maths functions, and
+        # miniaudio reaches AAudio and OpenSL ES through dlopen rather than a
+        # link line - `dl` is already on the Android platform link list above.
+        # Playback needs no manifest permission; capture needs RECORD_AUDIO.
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
         find_library(COREAUDIO_FRAMEWORK CoreAudio REQUIRED)

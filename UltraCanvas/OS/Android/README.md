@@ -337,7 +337,7 @@ cmake -B build-android \
 ```
 
 The root CMakeLists defaults everything except the core library OFF for
-Android (apps, plugins, vips, audio/video, UltraNet, database, VirtualFS);
+Android (apps, plugins, vips, video, UltraNet, database, VirtualFS);
 each is an ordinary cache option that `-D...=ON` re-enables once its
 dependency exists in the sysroot. GL surfaces stay ON: EGL and GLESv3 come
 from the NDK sysroot itself (no pkg-config probing), wired through
@@ -358,4 +358,11 @@ images/files **copying** (pasting is done — it needs an app-declared
 `ContentProvider`, see above), gesture
 recognition on top of the touch stream (pinch/rotate → `PinchZoom`), inline
 IME composition (a cross-platform core change, not an Android one), and
-audio/video/PDF.
+video and PDF. **Audio is on**: its backend is miniaudio, which is vendored
+rather than waiting on the sysroot and speaks AAudio (with OpenSL ES beneath
+it) natively — both runtime-linked, so there is nothing extra to link. Only
+the optional codec libraries are missing from a minimal sysroot, which costs
+formats rather than the backend. Playback needs no manifest permission;
+capture needs `RECORD_AUDIO`. Like everything else here it is compiled, not
+observed — the CI syntax check now builds the whole
+`MINIAUDIO_IMPLEMENTATION` for aarch64.
