@@ -13,6 +13,122 @@
   of the one before - so a heading is never the row left selected from the
   keyboard either; a closed parent is still stepped onto, since it can be
   opened from there.
+#### 2026-09-08 *0.3.110*
+- **Vector document model: precision, bounds, hit-testing, units and CAD
+  layers.** First step of the shared-model work for the vector converter
+  matrix, with the survey and plan in
+  `Docs/Research/UltraCanvasVectorModelProposal.md`.
+  - `VectorStorage::Matrix3x3` is double precision throughout (CAD
+    drawings carry 10⁶-unit offsets with 10⁻³ detail; the DXF reader had
+    grown its own double affine to cope) and gains `IsIdentity()`. Its
+    row-major `FromValues` order is documented; the unused XAR matrix
+    helper that passed PostScript order straight through is corrected.
+  - `VectorGroup::GetBoundingBox` / `VectorDocument::GetBoundingBox` skip
+    empty children instead of unioning them with the origin, so a group
+    holding an empty group or an unsupported element no longer reports a
+    box dragged to (0,0); a transformed empty group stays empty; an empty
+    document reports its page.
+  - `HitTestDocument` carries the point through each layer's and group's
+    inverse transform, so children of a transformed group (every CAD block
+    insert, every mirrored entity) are hit where they are drawn; an
+    element without bounds never hits.
+  - Units: `LengthUnit`, `PointsPerUnit()`, `LengthUnitSymbol()`, and
+    `VectorDocument::SourceUnit` / `PointsPerSourceUnit` record the unit a
+    file measured in and the scale the reader applied. The DXF reader
+    sets them from `$INSUNITS` and uses the physical scale when a unit is
+    declared and gives a usable page (an A4 plan in millimetres becomes
+    842 × 595 pt); the DXF writer emits `$INSUNITS` and writes the source
+    unit back, keeping lineweights physical.
+  - CAD layer properties on `VectorLayer`: `Frozen`, `Plottable`,
+    `DefaultColor`, `DefaultStrokeWidth`, `LineTypeName`,
+    `DefaultDashArray`. The DXF reader fills them (with `Locked` and
+    `Visible`) from the LAYER table; the DXF writer emits the layer table
+    from them and writes hidden layers as *off* layers.
+  - `UltraCanvasVectorConverter.h` drops the never-implemented
+    `VectorConverterFactory`, `VectorConversionManager` and helper
+    declarations; the registry is `UltraCanvasVectorFormatsPlugin`.
+  - New `Tests/VectorModelTest.cpp` (CTest `VectorModelTest`).
+
+#### 2026-09-08 *0.3.109*
+- **The vector sample media moved under `media/vector/`.** The format folders
+  that sat at the media root — `media/SVG/`, `media/cdr/`, `media/eps/` and
+  `media/xar/` — now live beside the existing `AI`, `DWG`, `DXF` and `STL`
+  sets as `media/vector/SVG/`, `media/vector/CDR/`, `media/vector/EPS/` and
+  `media/vector/XAR/`, so every vector sample is in one place with one folder
+  per format. `media/cdr/demo.jpg` (the reference render for `demo.cdr`)
+  travelled with its drawing. Every path that named them was rewritten: the
+  demo's SVG, CDR, EPS and XAR pages
+  (`Apps/DemoApp/UltraCanvas{SVG,CDR,EPS,XAR}Examples.cpp`), the
+  `EPS_SAMPLES_DIR` / `XAR_SAMPLES_DIR` compile definitions in
+  `Tests/CMakeLists.txt` that feed `EPSProbeTest` and `XARProbeTest`, and the
+  component docs. No other application referenced these folders — the rest of
+  `Apps/` reaches only `media/icons/`, `media/appicon/` and
+  `media/Logo_Texter.png` — and the packaging scripts copy `media/` whole, so
+  nothing else needed touching.
+- **Seven unused icons deleted from `media/icons/`**: `about.png`, `exit.png`,
+  `image1.png`, `image2.png`, `images.png`, `keyboard.png` and
+  `light 001.jpg`. No application loaded any of them (`exit.svg` is the icon
+  the toolbars actually use); the only mention anywhere was `light 001.jpg`
+  as an illustrative path in the mind map docs, which now name `info.png`.
+- **DWG files open and preview natively.** The Vector plugin's
+  `DWGConverter` read a drawing only by shelling out to GNU LibreDWG's
+  `dwg2dxf`, so on any machine without that GPL tool a `.dwg` produced no
+  document and no preview. Reading is now a native decoder
+  (`Plugins/Vector/UltraCanvasDWGDecoder.h/.cpp`, no third-party code)
+  that handles every release from R13 to R2018 (AC1012, AC1014, AC1015,
+  AC1018, AC1021, AC1024, AC1027, AC1032): the bit-coded value types, the
+  R13–R2000 section locators, the R2004+ encrypted file header with its
+  LZ77-compressed system and data pages, the R2007 Reed-Solomon coded
+  pages, the object map, the CLASSES table for variable-type entities and
+  the per-entity field layouts. It renders the drawing database as tagged
+  DXF for the DXF reader, so both CAD formats share one import path and
+  `DWGConverter::DecodeToDxf()` doubles as a DWG-to-DXF converter.
+  - Entities: LINE, POINT, CIRCLE, ARC, ELLIPSE, LWPOLYLINE, POLYLINE (2D,
+    3D, polyface and polygon meshes with their VERTEX chains), SPLINE,
+    HATCH (every boundary edge type, solid/pattern/gradient), SOLID, TRACE,
+    3DFACE, TEXT, ATTRIB, MTEXT, LEADER, INSERT/MINSERT with their block
+    definitions, the seven DIMENSION types through their rendered blocks,
+    plus the LAYER/LTYPE/STYLE tables, true colours, lineweights, linetypes
+    and visibility. Unsupported types (3D solids, images, proxies, tables,
+    multileaders) are counted and reported through the warning callback.
+  - Validated against LibreDWG's sample corpus (R13, R14, 2000, 2004,
+    2007, 2010, 2013 and 2018 editions of the same drawing decode to the
+    same entity set as the reference DXFs) and real-world 2007/2013
+    drawings; 130+ files run clean under AddressSanitizer/UBSan.
+  - `dwg2dxf` remains only a fallback for files the decoder declines
+    (pre-R13 drawings); writing still needs `dxf2dwg`, since the format has
+    no public specification and the framework is MIT-licensed.
+- **DXF reader: blocks, inserts and dimensions.** The reader drew only the
+  ENTITIES section, so the block references that make up most real
+  drawings were missing. It now parses the BLOCKS section and expands
+  INSERT/MINSERT (nested, scaled, rotated, arrayed, and mirrored through
+  the OCS extrusion), with "0"-layer and ByBlock inheritance, draws
+  DIMENSION entities through their rendered blocks, and adds ATTRIB, LEADER,
+  3DFACE, 3D polylines, polyface and polygon meshes (projected onto the XY
+  plane), MTEXT rotation and TEXT vertical alignment. Entities whose object
+  coordinate system is not the world's are wrapped in a transformed group.
+  Off/frozen layers, invisible entities and paper-space entities (when the
+  model space has content) are no longer imported. The page is the
+  drawing's real extents — computed from the built geometry, block content
+  included, and reconciled with `$EXTMIN`/`$EXTMAX` — and a page derived
+  from the extents is scaled to a sensible point size, since drawing units
+  are arbitrary (a car in metres and a house in millimetres both come out
+  with legible strokes).
+- **SVG writer: shapes without a fill are written `fill="none"`.** The
+  model's "no fill" was written as no attribute, which SVG renders black -
+  every closed outline exported from a drawing came out as a solid blob.
+- New `DWGReaderTest` (block machinery on a synthetic drawing; the native
+  decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the
+  framework's own test document converted with dxf2dwg; extra `.dwg` files
+  on the command line are decoded, reported and optionally exported as
+  SVG).
+- DemoApp: new "DWG / DXF Drawings" page in the Vector Graphics category
+  (`Apps/DemoApp/UltraCanvasDWGExamples.cpp`) showing the samples in
+  `media/vector/DWG/` in `UltraCanvasVectorElement` tiles with a fullscreen
+  pan/zoom viewer, the decoder's statistics and warnings per drawing, and a
+  walk-through of the DWG → DXF → `VectorDocument` pipeline. The
+  Dependencies page now lists DWG reading as in-tree and LibreDWG as the
+  optional writer only.
 
 #### 2026-09-07 *0.3.108*
 - **WebAssembly: real applications link, and the browser clipboard works.**

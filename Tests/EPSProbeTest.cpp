@@ -8,7 +8,7 @@
 // approximation the renderer took.
 //
 // Usage: EPSProbeTest [--render <outdir>] [file.eps ...]
-// With no arguments it probes the repo samples (media/eps/*.eps). Exit code
+// With no arguments it probes the repo samples (media/vector/EPS/*.eps). Exit code
 // is the number of files that failed to load, so it doubles as a regression
 // test: the shipped samples must always parse.
 //

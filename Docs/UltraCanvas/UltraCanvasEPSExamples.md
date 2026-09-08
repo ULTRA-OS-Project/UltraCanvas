@@ -130,10 +130,10 @@ std::string program = eps.ExportToString(*document);
 
 ```cpp
 auto eps = std::make_shared<UltraCanvasEPSElement>("Logo", 20, 20, 300, 280);
-if (!eps->LoadFromFile("media/eps/demo.eps")) {
+if (!eps->LoadFromFile("media/vector/EPS/demo.eps")) {
     std::cerr << eps->GetLastError() << std::endl;
 }
 window->AddChild(eps);
 ```
 
-The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/eps/` with a fullscreen viewer and zoom controls.
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/vector/EPS/` with a fullscreen viewer and zoom controls.
