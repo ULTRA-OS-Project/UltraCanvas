@@ -25,6 +25,7 @@ package org.ultraos.ultracanvas;
 import android.app.AlertDialog;
 import android.app.NativeActivity;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
@@ -405,6 +406,67 @@ public class UltraCanvasActivity extends NativeActivity {
      * The cost is a copy, and edits land in the cache copy rather than the
      * original document - which is why only *opening* goes through here.
      */
+    // ===== CLIPBOARD (content:// items) =====
+    //
+    // The C++ backend talks to ClipboardManager over JNI directly for text.
+    // URI items cannot be handled that way: reading one means going through
+    // this app's ContentResolver, and the framework's API is path-based. So
+    // the same copy-to-cache treatment the document picker uses applies here,
+    // and for the same reason - a content:// URI is not openable by any POSIX
+    // call, and some providers stream from the network with no file behind
+    // them at all.
+    //
+    // Consequence, identical to the picker's: the caller reads a snapshot.
+    // Writing to the returned path does not reach the original document.
+
+    /**
+     * Copy every content:// item on the clipboard into the app cache and
+     * return their paths, newline-separated. Returns null when the clipboard
+     * holds no URI items, or cannot be read at all - which on Android 10+
+     * includes every read taken while this app does not have input focus.
+     */
+    public String getClipboardUriPaths() {
+        try {
+            ClipboardManager manager =
+                    (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (manager == null || !manager.hasPrimaryClip()) return null;
+            ClipData clip = manager.getPrimaryClip();
+            if (clip == null) return null;
+
+            StringBuilder paths = new StringBuilder();
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri == null) continue;          // a text item among URIs
+                String path = copyToCache(uri);
+                if (path == null) continue;         // unreadable provider
+                if (paths.length() > 0) paths.append('\n');
+                paths.append(path);
+            }
+            return paths.length() > 0 ? paths.toString() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * MIME type the clipboard advertises for its first item, or null. Used to
+     * tell "an image was copied" from "a file was copied" before paying for
+     * the copy in getClipboardUriPaths.
+     */
+    public String getClipboardMimeType() {
+        try {
+            ClipboardManager manager =
+                    (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (manager == null || !manager.hasPrimaryClip()) return null;
+            ClipData clip = manager.getPrimaryClip();
+            if (clip == null || clip.getDescription() == null) return null;
+            if (clip.getDescription().getMimeTypeCount() < 1) return null;
+            return clip.getDescription().getMimeType(0);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     private String copyToCache(Uri uri) {
         InputStream in = null;
         OutputStream out = null;

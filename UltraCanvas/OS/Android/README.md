@@ -22,7 +22,7 @@ Android).
 |---|---|
 | `UltraCanvasAndroidApplication.{h,cpp}` | All `UltraCanvasApplicationBase` pure virtuals + `GetInstance()`. `CollectAndProcessNativeEvents` pumps the glue's `ALooper` (activity commands + input); cross-thread wakeup is `ALooper_wake` (no eventfd needed). Touch → mouse translation (pointer 0, with double-tap synthesis), `AKEYCODE_*` → `UCKeys` mapping with layout-aware Unicode text via JNI `KeyCharacterMap` (US-ASCII derivation kept as fallback), back button → `WindowCloseRequest`, fontconfig/Pango bundled-font registration, Roboto / Droid Sans Mono defaults. Soft keyboard: `Show/HideSoftKeyboard()` (JNI `InputMethodManager` — the NDK's `ANativeActivity_showSoftInput` is unreliable by long-standing platform bug), driven automatically by `UltraCanvasCaret::onTextEditingChanged` with hides deferred one loop turn so focus moves between text widgets don't flicker the IME. Cursor + mouse-capture virtuals are folded in as accepted no-ops (no separate cursor file). |
 | `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, jstring→std::string. |
-| `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text only (images/files need the SAF `content://` adapter — later phase); change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "no text" then. |
+| `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
 | `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
@@ -258,6 +258,31 @@ arrive. Printable keys — soft and physical alike — are still translated thro
 the device's `KeyCharacterMap` into `UCEvent::text`, so non-US layouts type
 correctly. Dead-key composition needs the `InputConnection` path.
 
+## Clipboard: pasting works, copying does not
+
+Reading a copied image or file is implemented: the clip's items are
+`content://` URIs, so `UltraCanvasActivity` copies each through this app's
+`ContentResolver` into the cache and the backend hands back paths (image bytes
+for `GetClipboardImage`). It is the same copy-to-cache bargain the SAF picker
+makes, for the same reason — no POSIX call opens a `content://` URI, and some
+providers stream from the network with no file behind them — so the caller
+reads a snapshot.
+
+`SetClipboardImage` and `SetClipboardFiles` return false, and that is a
+deliberate stopping point rather than an unfinished one. Putting a file on the
+Android clipboard means publishing a `content://` URI that *other* apps may
+read, which requires a `ContentProvider` declared in the **application's**
+manifest. Framework code cannot supply one on an app's behalf, and the
+plausible-looking alternative — putting the filesystem path on the clipboard —
+would produce a string no other app can open, which is worse than a clean
+"no": it looks like the copy worked.
+
+Whoever implements it needs a `ContentProvider` subclass (`openFile` plus
+`OpenableColumns` in `query`), a `<provider>` entry in the app manifest with
+`android:grantUriPermissions="true"`, and `FLAG_GRANT_READ_URI_PERMISSION` on
+the `ClipData` — hand-written rather than AndroidX's `FileProvider`, since the
+Java here is compiled against `android.jar` alone.
+
 ## Diagnostics: seeing anything at all
 
 The single thing to set up before a first run on a device or emulator, because
@@ -329,7 +354,8 @@ spells out what the sysroot needs to contain.
 
 The cross-compiled dependency sysroot and a real APK build (the blocker for
 everything below, since nothing can be observed until then), clipboard
-images/files via the `content://` adapter, gesture
+images/files **copying** (pasting is done — it needs an app-declared
+`ContentProvider`, see above), gesture
 recognition on top of the touch stream (pinch/rotate → `PinchZoom`), inline
 IME composition (a cross-platform core change, not an Android one), and
 audio/video/PDF.
