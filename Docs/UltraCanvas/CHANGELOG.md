@@ -1,3 +1,64 @@
+#### 2026-09-08 *0.3.109*
+- **DWG files open and preview natively.** The Vector plugin's
+  `DWGConverter` read a drawing only by shelling out to GNU LibreDWG's
+  `dwg2dxf`, so on any machine without that GPL tool a `.dwg` produced no
+  document and no preview. Reading is now a native decoder
+  (`Plugins/Vector/UltraCanvasDWGDecoder.h/.cpp`, no third-party code)
+  that handles every release from R13 to R2018 (AC1012, AC1014, AC1015,
+  AC1018, AC1021, AC1024, AC1027, AC1032): the bit-coded value types, the
+  R13–R2000 section locators, the R2004+ encrypted file header with its
+  LZ77-compressed system and data pages, the R2007 Reed-Solomon coded
+  pages, the object map, the CLASSES table for variable-type entities and
+  the per-entity field layouts. It renders the drawing database as tagged
+  DXF for the DXF reader, so both CAD formats share one import path and
+  `DWGConverter::DecodeToDxf()` doubles as a DWG-to-DXF converter.
+  - Entities: LINE, POINT, CIRCLE, ARC, ELLIPSE, LWPOLYLINE, POLYLINE (2D,
+    3D, polyface and polygon meshes with their VERTEX chains), SPLINE,
+    HATCH (every boundary edge type, solid/pattern/gradient), SOLID, TRACE,
+    3DFACE, TEXT, ATTRIB, MTEXT, LEADER, INSERT/MINSERT with their block
+    definitions, the seven DIMENSION types through their rendered blocks,
+    plus the LAYER/LTYPE/STYLE tables, true colours, lineweights, linetypes
+    and visibility. Unsupported types (3D solids, images, proxies, tables,
+    multileaders) are counted and reported through the warning callback.
+  - Validated against LibreDWG's sample corpus (R13, R14, 2000, 2004,
+    2007, 2010, 2013 and 2018 editions of the same drawing decode to the
+    same entity set as the reference DXFs) and real-world 2007/2013
+    drawings; 130+ files run clean under AddressSanitizer/UBSan.
+  - `dwg2dxf` remains only a fallback for files the decoder declines
+    (pre-R13 drawings); writing still needs `dxf2dwg`, since the format has
+    no public specification and the framework is MIT-licensed.
+- **DXF reader: blocks, inserts and dimensions.** The reader drew only the
+  ENTITIES section, so the block references that make up most real
+  drawings were missing. It now parses the BLOCKS section and expands
+  INSERT/MINSERT (nested, scaled, rotated, arrayed, and mirrored through
+  the OCS extrusion), with "0"-layer and ByBlock inheritance, draws
+  DIMENSION entities through their rendered blocks, and adds ATTRIB, LEADER,
+  3DFACE, 3D polylines, polyface and polygon meshes (projected onto the XY
+  plane), MTEXT rotation and TEXT vertical alignment. Entities whose object
+  coordinate system is not the world's are wrapped in a transformed group.
+  Off/frozen layers, invisible entities and paper-space entities (when the
+  model space has content) are no longer imported. The page is the
+  drawing's real extents — computed from the built geometry, block content
+  included, and reconciled with `$EXTMIN`/`$EXTMAX` — and a page derived
+  from the extents is scaled to a sensible point size, since drawing units
+  are arbitrary (a car in metres and a house in millimetres both come out
+  with legible strokes).
+- **SVG writer: shapes without a fill are written `fill="none"`.** The
+  model's "no fill" was written as no attribute, which SVG renders black -
+  every closed outline exported from a drawing came out as a solid blob.
+- New `DWGReaderTest` (block machinery on a synthetic drawing; the native
+  decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the
+  framework's own test document converted with dxf2dwg; extra `.dwg` files
+  on the command line are decoded, reported and optionally exported as
+  SVG).
+- DemoApp: new "DWG / DXF Drawings" page in the Vector Graphics category
+  (`Apps/DemoApp/UltraCanvasDWGExamples.cpp`) showing the samples in
+  `media/vector/DWG/` in `UltraCanvasVectorElement` tiles with a fullscreen
+  pan/zoom viewer, the decoder's statistics and warnings per drawing, and a
+  walk-through of the DWG → DXF → `VectorDocument` pipeline. The
+  Dependencies page now lists DWG reading as in-tree and LibreDWG as the
+  optional writer only.
+
 #### 2026-09-07 *0.3.108*
 - **WebAssembly: real applications link, and the browser clipboard works.**
   The Emscripten backend (`UltraCanvas/OS/WASM/`) rendered and took input,

@@ -1,21 +1,25 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasDWGConverter.cpp
 // DWG (AutoCAD Drawing) converter - see UltraCanvasCADConverters.h.
 //
-// DWG is a proprietary, undocumented binary format; the only open-source
-// implementation is GNU LibreDWG. Rather than embed a reverse-engineered
-// binary codec of uncertain fidelity, this converter delegates both
-// directions to LibreDWG's command-line tools: writing produces the DXF
-// writer's output and converts it with dxf2dwg (ULTRACANVAS_DXF2DWG names
-// the executable, otherwise PATH), reading converts with dwg2dxf
-// (ULTRACANVAS_DWG2DXF, otherwise PATH) and parses the result with the
-// DXF reader. When no tool is available the converter warns with that
-// guidance and fails cleanly; the DXF the conversion is built on is
-// AutoCAD's own exchange format and opens everywhere DWG does.
-// Version: 1.1.0
-// Last Modified: 2026-08-26
+// Reading is native: UltraCanvasDWGDecoder.cpp decodes the R13-R2018
+// drawing database (bit-coded objects, compressed R2004+ pages, Reed-
+// Solomon R2007 pages) and renders it as tagged DXF, which the DXF reader
+// turns into the document - so a .dwg previews and opens without any
+// external program. GNU LibreDWG's dwg2dxf, when installed, is only tried
+// for files the native decoder declines (pre-R13 drawings, damaged files).
+//
+// Writing still delegates to LibreDWG's dxf2dwg (ULTRACANVAS_DXF2DWG names
+// the executable, otherwise PATH): DWG is a proprietary format with no
+// public specification and the framework is MIT-licensed, so the GPL
+// implementation stays an optional external process. Without the tool the
+// export warns with that guidance and fails cleanly; the DXF the export is
+// built on is AutoCAD's own exchange format and opens everywhere DWG does.
+// Version: 1.2.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCADConverters.h"
+#include "UltraCanvasDWGDecoder.h"
 #include "UltraCanvasVectorStorage.h"
 
 #include <cstdio>
@@ -47,6 +51,18 @@ std::string DWGConverter::FindDwg2Dxf() {
     return {};
 }
 
+std::string DWGConverter::DecodeToDxf(const std::string& data,
+                                      const ConversionOptions& options) {
+    DWGDecodeResult res = DecodeDWG(data, options.WarningCallback);
+    if (!res.ok) {
+        if (options.WarningCallback) {
+            options.WarningCallback("DWG import: " + res.error);
+        }
+        return {};
+    }
+    return res.dxf;
+}
+
 std::shared_ptr<VectorStorage::VectorDocument> DWGConverter::ImportFromString(
         const std::string& data, const ConversionOptions& options) {
     if (!ValidateData(data)) {
@@ -55,13 +71,26 @@ std::shared_ptr<VectorStorage::VectorDocument> DWGConverter::ImportFromString(
         }
         return nullptr;
     }
+
+    // Native decoder first.
+    if (DWGDecoderSupportsVersion(data)) {
+        std::string dxf = DecodeToDxf(data, options);
+        if (!dxf.empty()) {
+            auto doc = DXFConverter().ImportFromString(dxf, options);
+            if (doc) return doc;
+        }
+    } else if (options.WarningCallback) {
+        options.WarningCallback("DWG import: " + data.substr(0, 6) +
+                                " (pre-R13) drawings are not decoded natively");
+    }
+
+    // Fallback: LibreDWG's dwg2dxf when it is installed.
     std::string tool = FindDwg2Dxf();
     if (tool.empty()) {
         if (options.WarningCallback) {
             options.WarningCallback(
-                    "DWG import needs LibreDWG's dwg2dxf tool (set "
-                    "ULTRACANVAS_DWG2DXF or put dwg2dxf on PATH); DWG is a "
-                    "proprietary format with no public specification.");
+                    "DWG import failed; LibreDWG's dwg2dxf (ULTRACANVAS_DWG2DXF "
+                    "or PATH) would be tried as a fallback when installed");
         }
         return nullptr;
     }

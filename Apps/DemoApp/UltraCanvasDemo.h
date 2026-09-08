@@ -411,6 +411,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateEPSVectorExamples();
 #endif
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        std::shared_ptr<UltraCanvasUIElement> CreateDWGVectorExamples();
+#endif
 #ifdef ULTRACANVAS_HAS_OCR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateOCRExamples();
 #endif
