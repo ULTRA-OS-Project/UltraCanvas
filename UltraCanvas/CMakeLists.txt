@@ -1416,6 +1416,13 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
+            # The backend's EM_ASM bridges (clipboard, dialogs, downloads,
+            # UltraCanvasWASMSupport) call these from JavaScript. Emscripten
+            # only emits runtime helpers something references, and EM_ASM
+            # bodies are not scanned for references, so name them explicitly.
+            # EXPORTED_FUNCTIONS replaces the default list, hence _main.
+            -sEXPORTED_FUNCTIONS=_main,_malloc,_free
+            -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS
     )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
