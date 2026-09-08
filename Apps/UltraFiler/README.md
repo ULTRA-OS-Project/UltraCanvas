@@ -207,8 +207,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   document (SVG) - shows a strip of backdrop colours right under the picture:
   greys and colours to click, and the checkered swatch to go back to the
   transparency pattern. What is picked there is saved, so the next preview
-  opens with it (it is the same setting as *Settings > Media Viewer >
-  Transparent Images*).
+  opens with it; the strip is the only place this is set.
   While the preview is enabled, **deleting the previewed file selects its
   neighbour** (the next entry, or the previous one when it was the last), so
   the pane moves on to that file instead of folding away and snapping the
@@ -253,7 +252,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 ## Settings
 
 The **Settings > Settings...** menu entry opens the settings window: a tree of
-pages on the left, the selected page on the right. Every change applies to the
+pages on the left, the selected page on the right. Every page reads the same
+way: a title, one line saying what the choice is about, the controls, and the
+notes explaining the setting set apart in a tinted block at the foot of the
+page. A page's *Restore default ...* button sits at the left end of the
+window's bottom bar, opposite *Close*. Clicking a heading in the tree
+(*Display*, *Handling*, ...) moves on to its first page, since a heading has
+no page of its own. Every change applies to the
 running application immediately and is saved to the config file
 (`~/.config/UltraFiler/config.ini`, `%APPDATA%\UltraFiler\config.ini`,
 `~/Library/Application Support/UltraFiler/config.ini`).
@@ -263,7 +268,6 @@ running application immediately and is saved to the config file
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
-| Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker`. The colour strip under a transparent image in the preview writes to the same setting |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
 | History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |

@@ -287,6 +287,32 @@ void CollapseAll()
 ```
 Expands or collapses all nodes in the tree.
 
+#### Jump to first entry
+```cpp
+void SetShowFirstChildOnExpand(bool show)   // default false
+bool GetShowFirstChildOnExpand() const
+void SetAutoExpandSelectedNode(bool expand) // default false
+bool GetAutoExpandSelectedNode() const
+```
+With "jump to first entry" on, expanding a parent - by its button, a double
+click or Enter - selects its first child, and so does a single click on a
+parent that is already open; the arrow keys step over open parents, from the
+first child of one heading straight to the last child of the one before. It
+suits a tree whose headings have no content
+of their own, such as a settings tree where a heading shows its first sub
+page: the heading is then never the row left selected. A node opts out
+through `TreeNodeData::showFirstChildOnExpand = false`, keeping the
+selection on itself (an overview page, say). With `SetAutoExpandSelectedNode`
+on as well, selecting a collapsed parent opens it first, so the jump happens
+from a click on a closed heading too.
+
+```cpp
+tree->SetShowFirstChildOnExpand(true);
+tree->SetAutoExpandSelectedNode(true);
+tree->ExpandAll();
+tree->onNodeSelected = [](TreeNode* node) { ShowPage(node->data.nodeId); };
+```
+
 ### Visual Properties
 
 #### Row Height
@@ -653,7 +679,9 @@ The tree view supports comprehensive keyboard navigation:
 ## Mouse Interaction
 
 ### Click Behaviors
-- **Single Click**: Select node
+- **Single Click**: Select node. With `SetShowFirstChildOnExpand(true)`, a
+  click on a parent that is already open selects its first child instead
+  (see [Jump to first entry](#jump-to-first-entry))
 - **Ctrl+Click**: Add to selection (multi-select mode)
 - **Double Click**: Toggle expansion or trigger action
 - **Right Click**: Context menu
