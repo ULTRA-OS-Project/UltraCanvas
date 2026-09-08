@@ -10265,7 +10265,7 @@ auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>(
 cdrElement1->SetFitMode(CDRFitMode::FitPage);
 
 // Resolve the demo asset path and load
-std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/cdr/demo.cdr");
+std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo.cdr");
 if (cdrElement1->LoadFromFile(cdrFile1)) {
     statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
                          std::to_string(cdrElement1->GetPageCount()) + " pages)");
@@ -10439,7 +10439,7 @@ Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API a
 ```cpp
 auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 10, 10, 280, 220);
 cdrElement4->SetFitMode(CDRFitMode::FitPage);
-std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
+std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/vector/CDR/logo.cdr");
 cdrElement4->LoadFromFile(cdrFile4);
 
 auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 60, 25);
@@ -16649,13 +16649,13 @@ std::string program = eps.ExportToString(*document);
 
 ```cpp
 auto eps = std::make_shared<UltraCanvasEPSElement>("Logo", 20, 20, 300, 280);
-if (!eps->LoadFromFile("media/eps/demo.eps")) {
+if (!eps->LoadFromFile("media/vector/EPS/demo.eps")) {
     std::cerr << eps->GetLastError() << std::endl;
 }
 window->AddChild(eps);
 ```
 
-The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/eps/` with a fullscreen viewer and zoom controls.
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/vector/EPS/` with a fullscreen viewer and zoom controls.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasERDiagram.md
@@ -30528,7 +30528,7 @@ map->Style().connectorBadgeRadius = 9.0;
 ## Node content
 
 ```cpp
-map->SetTopicIcon(topicId, "media/icons/light 001.jpg");   // inline, before the label
+map->SetTopicIcon(topicId, "media/icons/info.png");   // inline, before the label
 map->SetTopicImage(topicId, "media/images/brain.png");     // image as the node body
 map->SetTopicNote(topicId, "Longer note text");            // corner triangle indicator
 map->SetTopicLink(topicId, "https://example.com");         // clickable ring indicator
@@ -52333,7 +52333,7 @@ FILE: Docs/UltraCanvas/UltraCanvasXARExamples.md
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/xar/` with a fullscreen viewer, page navigation and zoom.
+XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/vector/XAR/` with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -52523,7 +52523,7 @@ incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
 
 `Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
 target exists) runs this triage from the command line: it prints the node
-tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
+tree by type, the unhandled tags and the warnings for the repo's `media/vector/XAR/`
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
@@ -52747,7 +52747,7 @@ auto xarElement1 = std::make_shared<UltraCanvasXARElement>(
     "XAR1", 10, 10, 280, 220);
 
 // Resolve the demo asset path and load
-std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/xar/demo.xar");
+std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/vector/XAR/demo.xar");
 if (xarElement1->LoadFromFile(xarFile1)) {
     statusLabel->SetText("Loaded: " + xarFile1);
 } else {
@@ -52880,7 +52880,7 @@ auto xarElement = XARElementBuilder()
     .SetIdentifier("Logo")
     .SetPosition(10, 10)
     .SetSize(280, 220)
-    .SetFilePath(NormalizePath(GetResourcesDir() + "media/xar/logo.xar"))
+    .SetFilePath(NormalizePath(GetResourcesDir() + "media/vector/XAR/logo.xar"))
     .SetPreserveAspectRatio(true)
     .SetScale(1.0f)
     .Build();   // file is loaded inside Build()
