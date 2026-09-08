@@ -7,6 +7,8 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasEvent.h"
+#include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasSmartHome.h"
 #include <memory>
 #include <functional>
@@ -24,9 +26,15 @@ namespace SmartHome {
  * - RGB color picker
  * - Color presets
  */
-class SmartHomeLightControl : public UIElement {
+class SmartHomeLightControl : public UltraCanvasUIElement {
 public:
-    SmartHomeLightControl();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeLightControl(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeLightControl(const std::string& identifier, float w, float h)
+        : SmartHomeLightControl(identifier, -1, -1, w, h) {}
+    explicit SmartHomeLightControl(const std::string& identifier)
+        : SmartHomeLightControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeLightControl();
     
     /**
@@ -95,13 +103,8 @@ public:
         onStateChange = callback;
     }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
-    bool OnMouseMove(int x, int y) override;
-    bool OnTouchStart(int touchId, float x, float y) override;
-    bool OnTouchMove(int touchId, float x, float y) override;
-    bool OnTouchEnd(int touchId, float x, float y) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderPowerButton(IRenderContext* context);
@@ -150,9 +153,15 @@ private:
  * - Mode selection (heat/cool/auto/off)
  * - Schedule preview
  */
-class SmartHomeThermostatControl : public UIElement {
+class SmartHomeThermostatControl : public UltraCanvasUIElement {
 public:
-    SmartHomeThermostatControl();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeThermostatControl(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeThermostatControl(const std::string& identifier, float w, float h)
+        : SmartHomeThermostatControl(identifier, -1, -1, w, h) {}
+    explicit SmartHomeThermostatControl(const std::string& identifier)
+        : SmartHomeThermostatControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeThermostatControl();
     
     void SetDevice(const std::string& deviceId);
@@ -184,11 +193,8 @@ public:
         onStateChange = callback;
     }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
-    bool OnMouseMove(int x, int y) override;
-    bool OnMouseWheel(int x, int y, float delta) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderTemperatureDial(IRenderContext* context);
@@ -227,9 +233,15 @@ private:
  * - Battery level
  * - Recent activity log
  */
-class SmartHomeLockControl : public UIElement {
+class SmartHomeLockControl : public UltraCanvasUIElement {
 public:
-    SmartHomeLockControl();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeLockControl(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeLockControl(const std::string& identifier, float w, float h)
+        : SmartHomeLockControl(identifier, -1, -1, w, h) {}
+    explicit SmartHomeLockControl(const std::string& identifier)
+        : SmartHomeLockControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeLockControl();
     
     void SetDevice(const std::string& deviceId);
@@ -255,9 +267,8 @@ public:
     void SetOnLock(std::function<void()> callback) { onLock = callback; }
     void SetOnUnlock(std::function<void()> callback) { onUnlock = callback; }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderLockButton(IRenderContext* context);
@@ -295,9 +306,15 @@ private:
  * - Tilt control
  * - Preset positions
  */
-class SmartHomeBlindControl : public UIElement {
+class SmartHomeBlindControl : public UltraCanvasUIElement {
 public:
-    SmartHomeBlindControl();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeBlindControl(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeBlindControl(const std::string& identifier, float w, float h)
+        : SmartHomeBlindControl(identifier, -1, -1, w, h) {}
+    explicit SmartHomeBlindControl(const std::string& identifier)
+        : SmartHomeBlindControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeBlindControl();
     
     void SetDevice(const std::string& deviceId);
@@ -347,10 +364,8 @@ public:
         onTiltChange = callback; 
     }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
-    bool OnMouseMove(int x, int y) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderBlindPreview(IRenderContext* context);
@@ -390,9 +405,15 @@ private:
  * - Historical graph
  * - Threshold alerts
  */
-class SmartHomeSensorDisplay : public UIElement {
+class SmartHomeSensorDisplay : public UltraCanvasUIElement {
 public:
-    SmartHomeSensorDisplay();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeSensorDisplay(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeSensorDisplay(const std::string& identifier, float w, float h)
+        : SmartHomeSensorDisplay(identifier, -1, -1, w, h) {}
+    explicit SmartHomeSensorDisplay(const std::string& identifier)
+        : SmartHomeSensorDisplay(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeSensorDisplay();
     
     void SetDevice(const std::string& deviceId);
@@ -437,7 +458,8 @@ public:
      */
     void SetGraphRange(int hours) { graphHours = hours; }
     
-    void Render(IRenderContext* context) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderCurrentValue(IRenderContext* context);
@@ -447,7 +469,7 @@ private:
     
     std::string GetUnitString() const;
     std::string FormatValue(float value) const;
-    uint32_t GetValueColor() const;
+    Color GetValueColor() const;
     
     std::string deviceId;
     SmartHomeSensorType sensorType = SmartHomeSensorType::Unknown;
@@ -469,9 +491,15 @@ private:
  * 
  * Modal dialog showing detailed device information and controls.
  */
-class SmartHomeDeviceDialog : public UIElement {
+class SmartHomeDeviceDialog : public UltraCanvasUIElement {
 public:
-    SmartHomeDeviceDialog();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeDeviceDialog(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeDeviceDialog(const std::string& identifier, float w, float h)
+        : SmartHomeDeviceDialog(identifier, -1, -1, w, h) {}
+    explicit SmartHomeDeviceDialog(const std::string& identifier)
+        : SmartHomeDeviceDialog(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeDeviceDialog();
     
     /**
@@ -495,10 +523,8 @@ public:
     void SetOnRename(std::function<void(const std::string&)> callback) { onRename = callback; }
     void SetOnRemove(std::function<void()> callback) { onRemove = callback; }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
-    bool OnKeyDown(int keyCode, int modifiers) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderHeader(IRenderContext* context);
@@ -507,13 +533,13 @@ private:
     void RenderActions(IRenderContext* context);
     
     void LoadDeviceInfo();
-    std::shared_ptr<UIElement> CreateControlWidget();
+    std::shared_ptr<UltraCanvasUIElement> CreateControlWidget();
     
     std::string deviceId;
     SmartHomeDeviceInfo deviceInfo;
     bool visible = false;
     
-    std::shared_ptr<UIElement> controlWidget;
+    std::shared_ptr<UltraCanvasUIElement> controlWidget;
     
     std::function<void()> onClose;
     std::function<void(const std::string&)> onRename;
@@ -525,9 +551,15 @@ private:
  * 
  * Step-by-step wizard for pairing new devices.
  */
-class SmartHomePairingWizard : public UIElement {
+class SmartHomePairingWizard : public UltraCanvasUIElement {
 public:
-    SmartHomePairingWizard();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomePairingWizard(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomePairingWizard(const std::string& identifier, float w, float h)
+        : SmartHomePairingWizard(identifier, -1, -1, w, h) {}
+    explicit SmartHomePairingWizard(const std::string& identifier)
+        : SmartHomePairingWizard(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomePairingWizard();
     
     /**
@@ -551,9 +583,8 @@ public:
     }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnKeyDown(int keyCode, int modifiers) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     enum class WizardStep {
@@ -595,13 +626,13 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 
-std::shared_ptr<UIElement> CreateSmartHomeLightControlElement();
-std::shared_ptr<UIElement> CreateSmartHomeThermostatControlElement();
-std::shared_ptr<UIElement> CreateSmartHomeLockControlElement();
-std::shared_ptr<UIElement> CreateSmartHomeBlindControlElement();
-std::shared_ptr<UIElement> CreateSmartHomeSensorDisplayElement();
-std::shared_ptr<UIElement> CreateSmartHomeDeviceDialogElement();
-std::shared_ptr<UIElement> CreateSmartHomePairingWizardElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeLightControlElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeThermostatControlElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeLockControlElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeBlindControlElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeSensorDisplayElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeDeviceDialogElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomePairingWizardElement();
 
 } // namespace SmartHome
 } // namespace UltraCanvas

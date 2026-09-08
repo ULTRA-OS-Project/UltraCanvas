@@ -47,7 +47,8 @@ vendor SDKs that are absent (see §2).
 | `protocols/KNX` | 0 | clean (was 6) |
 | `core/*.cpp` | 0 | **compiles and links** |
 | `tests/FacadeTest.cpp` | 0 | **compiles, links and passes** |
-| `ui/*.h` | 116 | wrong base class and event model |
+| `ui/*.h` | 0 | clean (was 116) — ported |
+| `ui/UltraCanvasSmartHomeDeviceCard.cpp` | 0 | **compiles, links and passes** |
 
 ### How the backends were fixed
 
@@ -134,27 +135,32 @@ integration.
 
 ## What is left
 
-### 1. UI layer — the real work (116 errors)
+### 1. UI layer — ported, mostly unimplemented
 
-The widgets were written against a different framework shape:
+The three widget headers were written against a different element API. That
+port is done and they compile clean:
 
 | Written against | This framework |
 |---|---|
 | `class UIElement` | `UltraCanvasUIElement` — no `UIElement` type exists |
 | `Render(IRenderContext*)` | `Render(IRenderContext*, const Rect2Df&)` |
 | `OnMouseDown/Up/Move/Wheel/KeyDown/TouchStart/Move/End` | one `OnEvent(const UCEvent&)` |
-| `OnResize(int,int)` | no such virtual |
+| raw `uint32_t` colours | `Color` (the literals were RGBA, so `Color::FromRGBA` takes them as they stand) |
 
-Every `override` in the three UI headers therefore fails. This is a port, not
-a rename: the per-event virtuals must fold into a single `OnEvent` switch on
-`UCEvent`. Colours are raw `uint32_t` literals and should become the
-framework's `Color`.
+Sixteen widgets were rebased, given the framework's `(id, x, y, w, h)`
+constructor — the base has no default constructor — and had their per-event
+virtuals folded into one `OnEvent`. Mouse and touch now share a path, because
+`UCEvent` carries both in the same `pointer` / `pointerId` fields.
+`SmartHomeAutomationEditor::AddAction` took a `SmartHomeSceneAction` that was
+never defined anywhere; scene actions are `SmartHomeCommand`.
 
-`SmartHomeAutomationEditor::AddAction` takes `SmartHomeSceneAction`, a type
-that is never defined anywhere; scene actions are `SmartHomeCommand`.
-
-No `.cpp` files were supplied for the UI layer at all. (`SmartHomeAPI` *is*
-implemented — in `core/UltraCanvasSmartHomeManager.cpp`, alongside the manager.)
+**What is still missing is the bodies.** Only `SmartHomeDeviceCard` and
+`SmartHomeSceneCard` are implemented, in
+`ui/UltraCanvasSmartHomeDeviceCard.cpp`. They exist to prove the ported API
+against the real framework — `tests/WidgetTest.cpp` builds against
+`libUltraCanvas`, constructs a card, and drives clicks, cancelled presses and
+touches through `OnEvent`. The other fourteen widgets are declarations with no
+`.cpp`, and follow that file's shape.
 
 ### 2. Third-party dependencies — not yet resolved
 

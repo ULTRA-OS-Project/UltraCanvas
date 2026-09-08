@@ -7,6 +7,8 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasEvent.h"
+#include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasSmartHome.h"
 #include <memory>
 #include <vector>
@@ -99,9 +101,15 @@ using OnPanelModeChange = std::function<void(SmartHomePanelMode mode)>;
  * parent->AddChild(panel);
  * @endcode
  */
-class SmartHomePanel : public UIElement {
+class SmartHomePanel : public UltraCanvasUIElement {
 public:
-    SmartHomePanel();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomePanel(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomePanel(const std::string& identifier, float w, float h)
+        : SmartHomePanel(identifier, -1, -1, w, h) {}
+    explicit SmartHomePanel(const std::string& identifier)
+        : SmartHomePanel(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomePanel();
     
     // ===== LIFECYCLE =====
@@ -166,8 +174,8 @@ public:
      * @param text Text color
      * @param accent Accent color
      */
-    void SetCustomColors(uint32_t background, uint32_t cardBackground,
-                         uint32_t text, uint32_t accent);
+    void SetCustomColors(const Color& background, const Color& cardBackground,
+                         const Color& text, const Color& accent);
     
     // ===== FILTERING =====
     
@@ -300,18 +308,10 @@ public:
     void SetOnAddDevice(OnAddDevice callback) { onAddDevice = callback; }
     void SetOnPanelModeChange(OnPanelModeChange callback) { onPanelModeChange = callback; }
     
-    // ===== UIElement OVERRIDES =====
+    // ===== UltraCanvasUIElement OVERRIDES =====
     
-    void Render(IRenderContext* context) override;
-    void OnResize(int width, int height) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
-    bool OnMouseMove(int x, int y) override;
-    bool OnMouseWheel(int x, int y, float delta) override;
-    bool OnKeyDown(int keyCode, int modifiers) override;
-    bool OnTouchStart(int touchId, float x, float y) override;
-    bool OnTouchMove(int touchId, float x, float y) override;
-    bool OnTouchEnd(int touchId, float x, float y) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 protected:
     // ===== INTERNAL METHODS =====
@@ -385,14 +385,14 @@ protected:
     std::string pairingStatus;
     
     // Theme colors
-    uint32_t colorBackground = 0xF5F5F5FF;
-    uint32_t colorCardBackground = 0xFFFFFFFF;
-    uint32_t colorText = 0x212121FF;
-    uint32_t colorTextSecondary = 0x757575FF;
-    uint32_t colorAccent = 0x2196F3FF;
-    uint32_t colorOnline = 0x4CAF50FF;
-    uint32_t colorOffline = 0x9E9E9EFF;
-    uint32_t colorError = 0xF44336FF;
+    Color colorBackground = Color::FromRGBA(0xF5F5F5FF);
+    Color colorCardBackground = Color::FromRGBA(0xFFFFFFFF);
+    Color colorText = Color::FromRGBA(0x212121FF);
+    Color colorTextSecondary = Color::FromRGBA(0x757575FF);
+    Color colorAccent = Color::FromRGBA(0x2196F3FF);
+    Color colorOnline = Color::FromRGBA(0x4CAF50FF);
+    Color colorOffline = Color::FromRGBA(0x9E9E9EFF);
+    Color colorError = Color::FromRGBA(0xF44336FF);
     
     // Callbacks
     OnDeviceSelected onDeviceSelected;
@@ -419,9 +419,15 @@ protected:
  * Individual card representing a smart home device.
  * Shows device icon, name, status, and provides quick actions.
  */
-class SmartHomeDeviceCard : public UIElement {
+class SmartHomeDeviceCard : public UltraCanvasUIElement {
 public:
-    SmartHomeDeviceCard();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeDeviceCard(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeDeviceCard(const std::string& identifier, float w, float h)
+        : SmartHomeDeviceCard(identifier, -1, -1, w, h) {}
+    explicit SmartHomeDeviceCard(const std::string& identifier)
+        : SmartHomeDeviceCard(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeDeviceCard();
     
     void SetDevice(const SmartHomeDeviceInfo& device);
@@ -441,11 +447,8 @@ public:
     void AnimateState(bool newState);
     void UpdateState();
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
-    bool OnTouchStart(int touchId, float x, float y) override;
-    bool OnTouchEnd(int touchId, float x, float y) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     void RenderLightCard(IRenderContext* context);
@@ -456,7 +459,7 @@ private:
     void RenderGenericCard(IRenderContext* context);
     
     std::string GetDeviceIcon() const;
-    uint32_t GetStateColor() const;
+    Color GetStateColor() const;
     
     SmartHomeDeviceInfo device;
     bool selected = false;
@@ -477,9 +480,15 @@ private:
 /**
  * @brief Scene card widget
  */
-class SmartHomeSceneCard : public UIElement {
+class SmartHomeSceneCard : public UltraCanvasUIElement {
 public:
-    SmartHomeSceneCard();
+    // UltraCanvasUIElement has no default constructor: every widget is
+    // built with an id and its bounds, like the rest of the framework.
+    SmartHomeSceneCard(const std::string& identifier, float x, float y, float w, float h);
+    SmartHomeSceneCard(const std::string& identifier, float w, float h)
+        : SmartHomeSceneCard(identifier, -1, -1, w, h) {}
+    explicit SmartHomeSceneCard(const std::string& identifier)
+        : SmartHomeSceneCard(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeSceneCard();
     
     void SetScene(const SmartHomeScene& scene);
@@ -487,9 +496,8 @@ public:
     
     void SetOnActivate(std::function<void()> callback) { onActivate = callback; }
     
-    void Render(IRenderContext* context) override;
-    bool OnMouseDown(int x, int y, int button) override;
-    bool OnMouseUp(int x, int y, int button) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
 
 private:
     SmartHomeScene scene;
@@ -500,7 +508,7 @@ private:
 /**
  * @brief Factory function for SmartHomePanel
  */
-std::shared_ptr<UIElement> CreateSmartHomePanelElement();
+std::shared_ptr<UltraCanvasUIElement> CreateSmartHomePanelElement();
 
 } // namespace SmartHome
 } // namespace UltraCanvas
