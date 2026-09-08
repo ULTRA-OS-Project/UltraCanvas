@@ -77,15 +77,14 @@ if(NOT ULTRACANVAS_LIBRARY)
     return()
 endif()
 
-# The dashboard and its two card widgets have bodies; the rest of ui/ is still
-# declarations, so listing them here would fail to link. Add each .cpp as it
-# gains an implementation.
+# Every widget the headers declare now has an implementation.
 add_library(SmartHomeUI STATIC
     ui/UltraCanvasSmartHomeDeviceCard.cpp
     ui/UltraCanvasSmartHomePanel.cpp
     ui/UltraCanvasSmartHomeDeviceControl.cpp
     ui/UltraCanvasSmartHomeDialogs.cpp
-    ui/UltraCanvasSmartHomeEditors.cpp)
+    ui/UltraCanvasSmartHomeEditors.cpp
+    ui/UltraCanvasSmartHomeAdvanced.cpp)
 set_target_properties(SmartHomeUI PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "smarthome_ui")

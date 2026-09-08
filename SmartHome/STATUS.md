@@ -55,6 +55,7 @@ vendor SDKs that are absent (see §2).
 | `ui/UltraCanvasSmartHomeDeviceControl.cpp` | 0 | **builds and passes** |
 | `ui/UltraCanvasSmartHomeDialogs.cpp` | 0 | **builds and passes** |
 | `ui/UltraCanvasSmartHomeEditors.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeAdvanced.cpp` | 0 | **builds and passes** |
 
 ### How the backends were fixed
 
@@ -147,10 +148,10 @@ integration.
 
 ## What is left
 
-### 1. UI layer — ported, mostly unimplemented
+### 1. UI layer — done
 
 The three widget headers were written against a different element API. That
-port is done and they compile clean:
+port is finished, and **all sixteen widgets now have implementations**:
 
 | Written against | This framework |
 |---|---|
@@ -159,58 +160,32 @@ port is done and they compile clean:
 | `OnMouseDown/Up/Move/Wheel/KeyDown/TouchStart/Move/End` | one `OnEvent(const UCEvent&)` |
 | raw `uint32_t` colours | `Color` (the literals were RGBA, so `Color::FromRGBA` takes them as they stand) |
 
-Sixteen widgets were rebased, given the framework's `(id, x, y, w, h)`
-constructor — the base has no default constructor — and had their per-event
-virtuals folded into one `OnEvent`. Mouse and touch now share a path, because
-`UCEvent` carries both in the same `pointer` / `pointerId` fields.
-`SmartHomeAutomationEditor::AddAction` took a `SmartHomeSceneAction` that was
-never defined anywhere; scene actions are `SmartHomeCommand`.
+Mouse and touch share a path, because `UCEvent` carries both in the same
+`pointer` / `pointerId` fields.
 
-**What is still missing is the rest of the bodies.** Twelve widgets are
-implemented:
+| File | Widgets |
+|---|---|
+| `ui/UltraCanvasSmartHomeDeviceCard.cpp` | device card, scene card |
+| `ui/UltraCanvasSmartHomePanel.cpp` | the dashboard |
+| `ui/UltraCanvasSmartHomeDeviceControl.cpp` | light, thermostat, lock, blind, sensor display |
+| `ui/UltraCanvasSmartHomeDialogs.cpp` | device dialog, pairing wizard |
+| `ui/UltraCanvasSmartHomeEditors.cpp` | scene editor, automation editor |
+| `ui/UltraCanvasSmartHomeAdvanced.cpp` | topology, energy monitor, scheduler, group control |
 
-- `ui/UltraCanvasSmartHomeDeviceCard.cpp` — the device and scene cards.
-- `ui/UltraCanvasSmartHomePanel.cpp` — the dashboard: refresh and filtering,
-  sorting, room assignment, the six layout modes, scroll, the pairing overlay
-  and event forwarding to the cards.
-- `ui/UltraCanvasSmartHomeDeviceControl.cpp` — light (power, brightness,
-  colour temperature, colour wheel, presets), thermostat (dial, setpoint
-  clamped to range, mode selector, humidity), lock (button, battery, activity
-  log newest-first), blind (preview, position and tilt sliders, open/stop/close
-  and presets) and the read-only sensor display (value, history graph over the
-  configured window, thresholds).
-- `ui/UltraCanvasSmartHomeDialogs.cpp` — the device detail dialog, which picks
-  the right per-device control for whatever it is showing, and the pairing
-  wizard's five steps (select protocol, search, choose a device, configure,
-  done) plus its error state.
-- `ui/UltraCanvasSmartHomeEditors.cpp` — the scene editor (name, action list,
-  device picker, save as create or update) and the automation editor
-  (when / and-if / then sections, enable toggle, save).
+Every widget drives its device through `SmartHomeAPI` and also reports through
+its own callback, so a host can let the widget talk to the module or intercept
+the change. Layout is computed from each element's local bounds rather than
+fixed pixel positions.
 
-  `SmartHomeAutomation` stores its trigger as a type string plus a
-  `TriggerConfig` the public header documents as JSON, while the editor works
-  in the structured `AutomationTrigger`. The two are bridged with
-  UltraCanvasJSON rather than by pasting strings together, so a config holding a
-  quote or a backslash survives the round trip — the test asserts exactly that,
-  by saving, reopening, saving again and comparing the two configs.
+`SmartHomeAutomation` stores its trigger as a type string plus a
+`TriggerConfig` the public header documents as JSON, while the editor works in
+the structured `AutomationTrigger`. The two are bridged with UltraCanvasJSON
+rather than by pasting strings together, so a config holding a quote or a
+backslash survives the round trip; the test asserts it by saving, reopening,
+saving again and comparing the two configs.
 
-Each drives its device through `SmartHomeAPI` and also reports through its own
-callback, so a host can let the control talk to the module or intercept the
-change. Layout is computed from the element's local bounds, not fixed pixel
-positions, so the same control works in a dashboard cell and a detail pane.
-
-`tests/WidgetTest.cpp` builds them against `libUltraCanvas` and drives them
-with synthetic `UCEvent`s — 32 assertions covering clicks, presses released
-outside a card, touches, mode-change callbacks, room assign/reassign/remove,
-the light power button and presets, setpoint clamping, mode selection, a jammed
-lock refusing to toggle, blind quick actions and position clamping, and the
-sensor readout declining to consume a click it has no use for.
-
-The remaining four widgets are declarations with no `.cpp` — the topology
-view, energy monitor, scheduler and group control. They
-follow the shape of the two implemented files. Add each `.cpp` to
-`SmartHomeUI` in `CMakeLists.txt` as it gains one; listing a declaration-only
-widget there fails the link.
+`tests/WidgetTest.cpp` builds them all against `libUltraCanvas` and drives them
+with synthetic `UCEvent`s — 36 assertions.
 
 ### 2. Third-party dependencies — not yet resolved
 

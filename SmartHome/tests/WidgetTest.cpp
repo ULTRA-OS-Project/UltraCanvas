@@ -357,6 +357,81 @@ int main() {
         std::puts("ok  automation editor: enable toggles");
     }
 
+    // ----- topology, energy, scheduler, groups -----
+    {
+        SmartHomeNetworkTopology topo("topo", 0, 0, 480, 360);
+        topo.SetLayout("radial");
+        topo.RefreshTopology();          // no devices: must not divide by zero
+        topo.SetLayout("tree");
+        topo.RefreshTopology();
+        topo.SetLayout("force");
+        topo.RefreshTopology();
+        if (!topo.GetSelectedNode().empty()) { std::puts("FAIL: topology selection"); return 1; }
+        std::puts("ok  topology: all three layouts survive an empty network");
+    }
+
+    {
+        SmartHomeEnergyMonitor energy("energy", 0, 0, 360, 280);
+        energy.SetCostRate(0.30f, "€");
+        // A cumulative meter: 5 kWh consumed across the window, peaking at 900 W.
+        for (int i = 0; i < 12; ++i) {
+            EnergyReading r;
+            r.Timestamp = 1000ull + static_cast<uint64_t>(i) * 60000ull;
+            r.Power = (i == 6) ? 900.0f : 100.0f;
+            r.Energy = 10.0f + i * 0.5f;   // starts at 10, ends at 15.5
+            energy.AddReading(r);
+        }
+        const EnergyStats st = energy.GetStats();
+        if (st.PeakPower < 899.0f) { std::puts("FAIL: peak power"); return 1; }
+        // Energy is cumulative, so usage is the span, not the sum of samples.
+        if (st.TotalEnergyMonth < 5.4f || st.TotalEnergyMonth > 5.6f) {
+            std::printf("FAIL: expected ~5.5 kWh across the window, got %.2f\n",
+                        st.TotalEnergyMonth);
+            return 1;
+        }
+        if (st.EstimatedCost < 1.6f || st.EstimatedCost > 1.7f) {
+            std::printf("FAIL: cost should be 5.5 * 0.30, got %.2f\n", st.EstimatedCost);
+            return 1;
+        }
+        std::puts("ok  energy: cumulative usage is a span, and costs follow the rate");
+    }
+
+    {
+        SmartHomeScheduler sched("sched", 0, 0, 480, 360);
+        ScheduledEvent e;
+        e.EventId = "e1"; e.Name = "Porch on"; e.Time = "18:30";
+        e.Days = {1, 2, 3}; e.Enabled = true;
+        sched.AddEvent(e);
+        // The same id again is an edit, not a duplicate.
+        e.Name = "Porch on (later)"; e.Time = "19:00";
+        sched.AddEvent(e);
+        sched.ToggleEvent("e1");
+
+        sched.SetViewMode("list");
+        sched.SetViewMode("nonsense");   // rejected, so the view stays "list"
+        sched.SetViewMode("day");
+        sched.RemoveEvent("e1");
+        sched.RemoveEvent("e1");         // removing twice must not misbehave
+        std::puts("ok  scheduler: add is an edit on a repeat id, remove is idempotent");
+    }
+
+    {
+        SmartHomeGroupControl grp("grp", 0, 0, 300, 360);
+        int changes = 0;
+        grp.SetOnGroupChanged([&](const DeviceGroup&){ ++changes; });
+        grp.CreateGroup("Kitchen", {"light-1", "light-2"});
+        grp.AddDevice("light-3");
+        grp.AddDevice("light-3");        // already there: must not double up
+        if (changes != 2) {
+            std::printf("FAIL: adding a device twice reported %d changes\n", changes);
+            return 1;
+        }
+        grp.RemoveDevice("light-1");
+        grp.SetGroupBrightness(200);     // clamped to 100
+        grp.AllOff();
+        std::puts("ok  group: no duplicate members, brightness clamps");
+    }
+
     std::puts("\nPASS - the ported widget API works against the real framework");
     return 0;
 }
