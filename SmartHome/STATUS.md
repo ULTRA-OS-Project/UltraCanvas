@@ -5,9 +5,11 @@ Source dropped in 2025-12-08, written against the design in
 This file records what compiles today and what is still to do. It is a
 working document: delete it once the module builds.
 
-**The module is NOT in the build.** No `add_subdirectory(SmartHome)` exists
-yet, deliberately — the protocol backends and the UI layer do not compile
-against this framework yet (see below). Nothing here can break other targets.
+**The module is in the build.** `BUILD_SMARTHOME` is ON by default and builds
+two targets: `SmartHome` (engine and facade) and `SmartHomeUI` (the widgets
+that have implementations). Every protocol backend is behind its own option and
+all of them are OFF, because none can compile until its vendor SDK is vendored.
+`ULTRACANVAS_BUILD_SMARTHOME_TESTS=ON` adds the two test executables to ctest.
 
 ## Layout
 
@@ -48,7 +50,8 @@ vendor SDKs that are absent (see §2).
 | `core/*.cpp` | 0 | **compiles and links** |
 | `tests/FacadeTest.cpp` | 0 | **compiles, links and passes** |
 | `ui/*.h` | 0 | clean (was 116) — ported |
-| `ui/UltraCanvasSmartHomeDeviceCard.cpp` | 0 | **compiles, links and passes** |
+| `ui/UltraCanvasSmartHomeDeviceCard.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomePanel.cpp` | 0 | **builds and passes** |
 
 ### How the backends were fixed
 
@@ -154,13 +157,25 @@ virtuals folded into one `OnEvent`. Mouse and touch now share a path, because
 `SmartHomeAutomationEditor::AddAction` took a `SmartHomeSceneAction` that was
 never defined anywhere; scene actions are `SmartHomeCommand`.
 
-**What is still missing is the bodies.** Only `SmartHomeDeviceCard` and
-`SmartHomeSceneCard` are implemented, in
-`ui/UltraCanvasSmartHomeDeviceCard.cpp`. They exist to prove the ported API
-against the real framework — `tests/WidgetTest.cpp` builds against
-`libUltraCanvas`, constructs a card, and drives clicks, cancelled presses and
-touches through `OnEvent`. The other fourteen widgets are declarations with no
-`.cpp`, and follow that file's shape.
+**What is still missing is most of the bodies.** Three widgets are
+implemented: `SmartHomeDeviceCard` and `SmartHomeSceneCard` in
+`ui/UltraCanvasSmartHomeDeviceCard.cpp`, and the dashboard itself in
+`ui/UltraCanvasSmartHomePanel.cpp` — device refresh and filtering, sorting,
+room assignment, the six layout modes, scroll, the pairing overlay and event
+forwarding to the cards. The panel reads through `SmartHomeAPI` and never
+touches `SmartHomeManager`, which is the layering rule above applied to a
+widget: a widget is an application like any other.
+
+`tests/WidgetTest.cpp` builds all three against `libUltraCanvas` and exercises
+them: clicks, presses released outside the card, touches, mode-change
+callbacks, and room assign/reassign/remove.
+
+The remaining thirteen widgets are declarations with no `.cpp` — the per-device
+controls, the sensor display, the dialogs and wizard, the scene and automation
+editors, the topology view, energy monitor, scheduler and group control. They
+follow the shape of the two implemented files. Add each `.cpp` to
+`SmartHomeUI` in `CMakeLists.txt` as it gains one; listing a declaration-only
+widget there fails the link.
 
 ### 2. Third-party dependencies — not yet resolved
 

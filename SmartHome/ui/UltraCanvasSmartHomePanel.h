@@ -345,6 +345,11 @@ protected:
     std::shared_ptr<SmartHomeDeviceCard> CreateDeviceCard(const SmartHomeDeviceInfo& device);
     std::shared_ptr<SmartHomeSceneCard> CreateSceneCard(const SmartHomeScene& scene);
     
+    // Cards are laid out by this panel rather than added as child elements,
+    // so events must be rebased into a card's own coordinates before it can
+    // hit-test them against its local bounds.
+    UCEvent TranslatedTo(const UltraCanvasUIElement& child, const UCEvent& event) const;
+
     void HandleDeviceClick(const std::string& deviceId, int x, int y);
     void HandleDeviceLongPress(const std::string& deviceId);
     void HandleDragStart(const std::string& deviceId, int x, int y);

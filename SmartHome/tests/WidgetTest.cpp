@@ -72,6 +72,47 @@ int main() {
     if (activations != 1) { std::puts("FAIL: scene activate"); return 1; }
     std::puts("ok  SmartHomeSceneCard activates");
 
+    // ----- the dashboard itself -----
+    SmartHomePanel panel("panel", 0, 0, 800, 600);
+    if (!panel.Initialize()) { std::puts("FAIL: panel Initialize"); return 1; }
+    std::puts("ok  SmartHomePanel::Initialize() through the facade");
+
+    SmartHomePanelMode seen = SmartHomePanelMode::DeviceGrid;
+    int modeChanges = 0;
+    panel.SetOnPanelModeChange([&](SmartHomePanelMode m){ seen = m; ++modeChanges; });
+    panel.SetMode(SmartHomePanelMode::SceneView);
+    if (modeChanges != 1 || seen != SmartHomePanelMode::SceneView) {
+        std::puts("FAIL: mode change callback"); return 1;
+    }
+    // Setting the same mode again must not re-fire.
+    panel.SetMode(SmartHomePanelMode::SceneView);
+    if (modeChanges != 1) { std::puts("FAIL: mode change refired"); return 1; }
+    std::puts("ok  SetMode fires once, and not on a no-op");
+
+    panel.AddRoom("Kitchen");
+    panel.AddRoom("Hall");
+    panel.AssignDeviceToRoom("light-1", "Kitchen");
+    if (panel.GetRooms().size() != 2) { std::puts("FAIL: GetRooms"); return 1; }
+    if (panel.GetDevicesInRoom("Kitchen").size() != 1) { std::puts("FAIL: room members"); return 1; }
+
+    // Reassigning must move the device, not list it in both rooms.
+    panel.AssignDeviceToRoom("light-1", "Hall");
+    if (!panel.GetDevicesInRoom("Kitchen").empty() ||
+        panel.GetDevicesInRoom("Hall").size() != 1) {
+        std::puts("FAIL: reassigning a device left it in both rooms"); return 1;
+    }
+    std::puts("ok  rooms: assign, reassign, membership");
+
+    panel.RemoveRoom("Hall");
+    if (panel.GetRooms().size() != 1) { std::puts("FAIL: RemoveRoom"); return 1; }
+    std::puts("ok  RemoveRoom");
+
+    panel.SearchDevices("hall");
+    if (panel.GetFilter().SearchText != "hall") { std::puts("FAIL: SearchDevices"); return 1; }
+    panel.ClearFilters();
+    if (!panel.GetFilter().SearchText.empty()) { std::puts("FAIL: ClearFilters"); return 1; }
+    std::puts("ok  search and clear filters");
+
     std::puts("\nPASS - the ported widget API works against the real framework");
     return 0;
 }
