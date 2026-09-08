@@ -1,7 +1,12 @@
 // core/UltraCanvasVideoPlayer.cpp
 // Non-visual video playback engine; wraps a backend decode session
-// Version: 0.1.2
-// Last Modified: 2026-08-06
+// Version: 0.1.3
+// Last Modified: 2026-09-07
+// V0.1.3: Open() consults the codecs registered through
+//   RegisterVideoCodecPlugin, so an application can add a container without
+//   patching the platform backend. A registered codec takes precedence for the
+//   sources it claims — the backend accepts any source optimistically and only
+//   fails later on its bus, so a fallback ordering could never reach one.
 // V0.1.2: Open() no longer pushes the default 1.0 playback rate into a freshly
 //   opened session. Backends apply a rate via a flushing seek, which — issued
 //   while the initial preroll is still settling — flushed away the prerolled
@@ -13,6 +18,7 @@
 
 #include "UltraCanvasVideoPlayer.h"
 #include "../libspecific/Video/IVideoBackend.h"
+#include "../libspecific/Video/VideoCodecPlugin.h"
 #include <algorithm>
 #include <mutex>
 
@@ -39,14 +45,31 @@ struct UltraCanvasVideoPlayer::Impl {
 
     bool Open(const std::string& source) {
         Reset();
-        auto* backend = GetVideoBackend();
-        if (!backend) { Fail("No video backend available"); return false; }
-
         SetState(VideoPlaybackState::Loading);
         VideoDecodeOptions opts;
         opts.disableAudio = config.disableAudio;
-        session = backend->OpenDecoder(source, opts);
-        if (!session) { Fail("Failed to open video source: " + source); return false; }
+
+        // A codec an application registered goes first — unlike the audio side,
+        // where a plugin runs last. The platform video backend does not decline
+        // a source it cannot decode: it builds a pipeline and reports the
+        // failure asynchronously on its bus, so "backend first, plugin
+        // fallback" would never reach a plugin at all. Precedence is safe here
+        // because the lookup only matches an extension a plugin explicitly
+        // claimed; everything else still goes straight to the backend. A
+        // plugin's factory must therefore never call back into the player.
+        if (auto openDecoder = FindVideoDecoderFor(source)) {
+            session = openDecoder(source, opts);
+        }
+        if (!session) {
+            if (auto* backend = GetVideoBackend()) {
+                session = backend->OpenDecoder(source, opts);
+            }
+        }
+        if (!session) {
+            Fail(GetVideoBackend() ? "Failed to open video source: " + source
+                                   : "No video backend or registered codec can open: " + source);
+            return false;
+        }
 
         HookSession();
 

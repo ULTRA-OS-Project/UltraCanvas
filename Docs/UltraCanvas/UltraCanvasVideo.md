@@ -176,6 +176,32 @@ rec->ShowSaveDialog();   // pick a path, then records to it
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
 
+## Adding a container or codec
+
+The platform backend (GStreamer / Media Foundation / AVFoundation) is not the
+only way a video source can be decoded. An application that brings its own
+container registers it with `RegisterVideoCodecPlugin`
+(`libspecific/Video/VideoCodecPlugin.h`), supplying a factory that returns an
+`IVideoDecodeSession`:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ivf";
+codec.description = "Indexed Video Format";
+codec.kind        = MediaCodecKind::Video;
+RegisterVideoCodecPlugin(codec, [](const std::string& source,
+                                   const VideoDecodeOptions& opts) {
+    return MyApp::OpenIvf(source, opts);
+});
+```
+
+`UltraCanvasVideoPlayer` then opens it, `CaptureVideoThumbnail` grabs a poster
+frame from the same factory, and the media viewer, the Filer's categories, the
+format inventory and the file dialogs all pick the format up. A registered codec
+takes precedence over the platform backend for the sources it claims — the
+backend never declines one, so a fallback ordering could not reach a plugin. See
+[UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md).
+
 ## Build
 
 ```

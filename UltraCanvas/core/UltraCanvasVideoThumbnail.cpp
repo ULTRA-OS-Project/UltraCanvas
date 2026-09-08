@@ -1,18 +1,22 @@
 // core/UltraCanvasVideoThumbnail.cpp
 // High-level cross-platform video thumbnail extraction. Uses the backend's fast
 // single-frame grab when available, otherwise falls back to a generic
-// decode-session approach driven through the IVideoBackend interface.
-// Version: 0.1.0
-// Last Modified: 2026-06-21
+// decode-session approach — driven through the IVideoBackend interface, or
+// through a codec registered with RegisterVideoCodecPlugin for a source the
+// platform backend cannot read.
+// Version: 0.2.0
+// Last Modified: 2026-09-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoThumbnail.h"
 #include "../libspecific/Video/IVideoBackend.h"
+#include "../libspecific/Video/VideoCodecPlugin.h"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -90,16 +94,22 @@ UCVideoFramePtr FitWithin(const UCVideoFramePtr& src, int maxW, int maxH) {
     return out;
 }
 
-// Generic, backend-agnostic grab: open a decode session, mute it, seek to the
-// requested time, briefly run it and capture the first frame that arrives. Used
-// for backends that don't implement IVideoBackend::GrabThumbnail.
-UCVideoFramePtr GrabViaDecodeSession(IVideoBackend* backend,
-                                     const std::string& source,
-                                     const VideoThumbnailRequest& req) {
+// Generic grab: open a decode session, mute it, seek to the requested time,
+// briefly run it and capture the first frame that arrives. Used for anything
+// that can open a session but has no dedicated single-frame path — a backend
+// that doesn't implement IVideoBackend::GrabThumbnail, or a registered codec
+// plugin that supplied only a decoder. `openSession` is what makes it
+// source-agnostic: it is the backend's OpenDecoder or the plugin's factory.
+UCVideoFramePtr GrabViaDecodeSession(
+        const std::function<std::unique_ptr<IVideoDecodeSession>(
+                const std::string&, const VideoDecodeOptions&)>& openSession,
+        const std::string& source,
+        const VideoThumbnailRequest& req) {
+    if (!openSession) return nullptr;
     // A one-frame grab must never open (or stall on) an audio device.
     VideoDecodeOptions opts;
     opts.disableAudio = true;
-    auto session = backend->OpenDecoder(source, opts);
+    auto session = openSession(source, opts);
     if (!session) return nullptr;
 
     std::mutex m;
@@ -205,12 +215,29 @@ bool SaveFrameAsQoi(const UCVideoFramePtr& frame, const std::string& path) {
 UCVideoFramePtr CaptureVideoThumbnail(const std::string& source,
                                       const VideoThumbnailRequest& req) {
     if (source.empty()) return nullptr;
-    IVideoBackend* backend = GetVideoBackend();
-    if (!backend) return nullptr;
+    UCVideoFramePtr frame;
 
-    // Prefer the backend's dedicated fast path; fall back to a generic decode.
-    UCVideoFramePtr frame = backend->GrabThumbnail(source, req);
-    if (!frame) frame = GrabViaDecodeSession(backend, source, req);
+    // A codec an application registered goes first, matching the player's
+    // precedence (see UltraCanvasVideoPlayer::Open for why): its own fast path,
+    // then the generic decode driven through its factory, so a plugin that
+    // supplied only a decoder still produces thumbnails. The lookup only
+    // matches an extension a plugin claimed, so everything else falls straight
+    // through to the backend's fast path and then to a generic decode with it.
+    if (auto grab = FindVideoThumbnailGrabberFor(source)) frame = grab(source, req);
+    if (!frame) frame = GrabViaDecodeSession(FindVideoDecoderFor(source), source, req);
+
+    if (!frame) {
+        if (IVideoBackend* backend = GetVideoBackend()) {
+            frame = backend->GrabThumbnail(source, req);
+            if (!frame) {
+                frame = GrabViaDecodeSession(
+                    [backend](const std::string& s, const VideoDecodeOptions& o) {
+                        return backend->OpenDecoder(s, o);
+                    },
+                    source, req);
+            }
+        }
+    }
     if (!frame || !frame->IsValid()) return nullptr;
 
     return FitWithin(frame, req.maxWidth, req.maxHeight);

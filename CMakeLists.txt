@@ -1309,6 +1309,19 @@ if (BUILD_TESTS)
     add_test(NAME MediaCodecRegistryTest COMMAND MediaCodecRegistryTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # The video half of the codec plugin path: a synthetic in-process codec
+    # driven through UltraCanvasVideoPlayer and CaptureVideoThumbnail. Needs no
+    # media assets and no platform video backend.
+    add_executable(VideoCodecPluginTest Tests/VideoCodecPluginTest.cpp)
+    target_include_directories(VideoCodecPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoCodecPluginTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(VideoCodecPluginTest PRIVATE cxx_std_20)
+    set_target_properties(VideoCodecPluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoCodecPluginTest COMMAND VideoCodecPluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # The raster-editing layer under UltraPaint: layers, selection, brush
     # engine, document undo / redo, selection-aware PixelFX filters and the
     # PNG / .ucraster round trips. Headless; no window is created.
