@@ -3272,6 +3272,15 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
 void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
                                           const std::string& environment) {
     const bool firstLaunch = !UltraWin_EnvironmentExists(environment);
+    // The pointer says a launch is under way for as long as this one can
+    // plausibly still be starting — a first launch runs wineboot first, and
+    // that is a minute in which nothing appears on screen. Unlike a plain
+    // spawn this path does learn when the run started, and takes the busy
+    // pointer down then.
+    if (window)
+        window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
+                                firstLaunch ? 120000
+                                            : UltraCanvasWindowBase::kBusyPointerHoldMs);
     const char* verb =
         entry.extension == "msi" ? "Installing " : "Launching ";
     if (statusLabel)
@@ -3302,7 +3311,9 @@ void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
         app->PostToUIThread([this, alive, name, result]() {
-            if (!alive->load() || !statusLabel) return;
+            if (!alive->load()) return;
+            if (window) window->HideBusyPointer();
+            if (!statusLabel) return;
             statusLabel->SetText(result ? "Launched " + name
                                         : "Could not launch " + name + ": " +
                                               result.message);
