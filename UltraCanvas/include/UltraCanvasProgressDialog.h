@@ -17,6 +17,10 @@
 // A negative fraction means "no total known": the ring shows a busy sweep and
 // the centre reads "…" instead of a percentage.
 //
+// The window carries no severity badge by default: the ring is the dialog's
+// graphic, and an icon column to its left would push it off centre. Pass
+// showIcon = true to get the classic Information badge back.
+//
 // Version: 1.0.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
@@ -42,11 +46,14 @@ namespace UltraCanvas {
         // responsible for actually stopping its work. Returns nullptr when no
         // dialog could be created (dialogs disabled / headless) — callers must
         // handle that and simply run without a progress window.
+        // `showIcon` adds the coloured Information badge on the left of the
+        // caption; with it off (the default) the ring is centred in the window.
         static std::shared_ptr<UltraCanvasProgressDialog> Show(
                 UltraCanvasWindowBase* parent,
                 const std::string& title,
                 const std::string& caption,
-                std::function<void()> onCancel = nullptr);
+                std::function<void()> onCancel = nullptr,
+                bool showIcon = false);
 
         ~UltraCanvasProgressDialog();
 
