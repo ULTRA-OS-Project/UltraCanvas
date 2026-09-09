@@ -107,6 +107,13 @@ public:
     
     // ===== LIFECYCLE =====
     
+    // Both SmartHomeProtocolBase and IThreadProtocol override GetType();
+    // under virtual inheritance neither dominates, so the concrete class has
+    // to name the winner itself.
+    SmartHomeProtocolType GetType() const override {
+        return SmartHomeProtocolType::Thread;
+    }
+
     bool Initialize() override;
     void Shutdown() override;
     

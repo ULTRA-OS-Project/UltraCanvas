@@ -127,6 +127,27 @@ public:
     
     // ===== LIFECYCLE =====
     
+    // Both SmartHomeProtocolBase and IZigbeeProtocol override GetType();
+    // under virtual inheritance neither dominates, so the concrete class has
+    // to name the winner itself.
+    SmartHomeProtocolType GetType() const override {
+        return SmartHomeProtocolType::Zigbee;
+    }
+
+    // The remaining ISmartHomeProtocol members. Zigbee addresses devices by
+    // network address and endpoint rather than by device object, so the
+    // info-level view is the one that carries anything.
+    std::string GetHardwareInfo() const override;
+    bool GetDeviceState(const std::string& deviceId,
+                        std::map<std::string, std::string>& state) override;
+    bool SetChannel(int channel) override;
+    std::vector<SmartHomeDeviceInfo> GetPairedDevices() override;
+    bool PairDevice(const std::string& deviceId,
+                    const std::map<std::string, std::string>& params) override;
+    bool UnpairDevice(const std::string& deviceId) override;
+    std::vector<std::shared_ptr<ISmartHomeDevice>> GetDevices() const override;
+    std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string& deviceId) const override;
+
     bool Initialize() override;
     void Shutdown() override;
     

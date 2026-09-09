@@ -111,18 +111,9 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
         # the choice would only invite someone to pick the half that does
         # nothing. Those branches stay inert: nothing defines
         # ULTRACANVAS_WITH_ZSTACK.
-        # The backend has no transport at all: every EZSP_* and ZStack_* function
-        # is "return false; // Not implemented", so installing a stack would not
-        # make it work. Refuse the option outright rather than producing
-        # something that links, runs, and silently talks to nothing.
-        message(FATAL_ERROR
-            "ULTRACANVAS_SMARTHOME_ZIGBEE=ON, but the Zigbee backend has no "
-            "transport: every EZSP_* and ZStack_* function in "
-            "protocols/Zigbee/ZigbeeProtocol.cpp returns false and is marked "
-            "\"Not implemented\". Installing a Zigbee stack will not change "
-            "that. The 2000 lines there model ZCL clusters and endpoints; what "
-            "is missing is the serial/ASH transport underneath. Leave this "
-            "option OFF until that exists — see SmartHome/STATUS.md.")
+        # The ASH framing and EZSP frame layers are in ezsp/ in this repository,
+        # so this backend needs no vendor library. What it does need is a serial
+        # NCP at run time.
     elseif(_sh_proto STREQUAL "ZWave")
         find_path(OPENZWAVE_INCLUDE_DIR openzwave/Manager.h)
         if(NOT OPENZWAVE_INCLUDE_DIR)
@@ -157,6 +148,12 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
     endif()
 
     list(APPEND SMARTHOME_SOURCES protocols/${_sh_proto}/${_sh_proto}Protocol.cpp)
+    if(_sh_proto STREQUAL "Zigbee")
+        list(APPEND SMARTHOME_SOURCES
+             protocols/Zigbee/ezsp/AshCodec.cpp
+             protocols/Zigbee/ezsp/EzspFrame.cpp
+             protocols/Zigbee/ezsp/AshTransport.cpp)
+    endif()
     list(APPEND _sh_backends ${_sh_proto})
 endforeach()
 
@@ -195,7 +192,6 @@ foreach(_sh_proto ${_sh_backends})
     if(_sh_proto STREQUAL "Zigbee")
         # Selects the EZSP half of the backend's #ifdef pairs.
         target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_EZSP=1)
-        target_include_directories(SmartHome PRIVATE ${EZSP_INCLUDE_DIR})
     endif()
     target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/protocols/${_sh_proto})
 endforeach()
@@ -256,6 +252,13 @@ message(STATUS "  [✓] SmartHomeUI - ENABLED (target: SmartHomeUI)")
 if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     add_executable(SmartHomeFacadeTest tests/FacadeTest.cpp)
     target_link_libraries(SmartHomeFacadeTest PRIVATE SmartHome)
+
+    # Pure framing, so it builds whether or not the Zigbee backend is on.
+    add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp
+                   protocols/Zigbee/ezsp/AshCodec.cpp)
+    target_include_directories(SmartHomeAshCodecTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Zigbee/ezsp)
+    add_test(NAME SmartHomeAshCodec COMMAND SmartHomeAshCodecTest)
 
     add_executable(SmartHomeWidgetTest tests/WidgetTest.cpp)
     target_link_libraries(SmartHomeWidgetTest PRIVATE SmartHomeUI)

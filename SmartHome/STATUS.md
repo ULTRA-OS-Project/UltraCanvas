@@ -225,24 +225,44 @@ compile and link while calling nothing at all):
 | KNX | 1994 | none needed — implements KNXnet/IP itself | **builds and links** |
 | Thread | 1816 | 80 × `ot*` | real, but needs a *built* OpenThread |
 | Matter | 1324 | 5 × `chip::` | thin wrapper; deferred |
-| Zigbee | 2036 | **0** | **no transport at all** |
+| Zigbee | 2036 + 550 | ASH/EZSP written in-tree | **builds and links** |
 
-**Correction: Zigbee is not close, and EZSP-versus-ZNP was a false choice.**
-An earlier note here said the Z-Stack path was all `return false` while EZSP was
-the one to use. Both are. Every `EZSP_*` and `ZStack_*` function in
-`protocols/Zigbee/ZigbeeProtocol.cpp` is `return false; // Not implemented`,
-including `InitializeEZSP()`. The 2000 lines model ZCL clusters, endpoints and
-attributes competently; what is missing is the serial/ASH transport underneath,
-and no library install supplies that. `ULTRACANVAS_SMARTHOME_ZIGBEE=ON` now
-fails at configure time saying so, rather than building something that links,
-runs and silently talks to nothing.
+**Zigbee: the transport is now written, in-tree.** The backend's `EZSP_*` and
+`ZStack_*` functions were all `return false; // Not implemented`, including
+`InitializeEZSP()`, and the includes named Silicon Labs' own host headers
+(`ezsp/ash-host.h`) which this project does not ship — Legrand's libezsp has no
+such header, so no library install would have satisfied them either.
 
-Two further facts about Zigbee, if it is picked up later. The include
-`ezsp/ash-host.h` is **not** Legrand's libezsp — that library (BSD 3-Clause,
-`github.com/Legrandgroup/libezsp`) has no such header; `ash-host.h` belongs to
-Silicon Labs' own EmberZNet host code. So the file was written against Silicon
-Labs' host library, and adopting libezsp would mean rewriting the includes and
-the twenty `EZSP_*` functions against a different API.
+Rather than adopt a vendor library, the two layers underneath are implemented
+here, in `protocols/Zigbee/ezsp/`:
+
+- `AshCodec` — ASH framing per UG101: byte stuffing, CRC-16/CCITT, data
+  randomisation, the frame types, and a stream reader that reassembles frames
+  split across serial reads. Every rule is a function from bytes to bytes,
+  which is the point: `tests/AshCodecTest.cpp` exercises all of it with no
+  radio attached, and checks the CRC against the published CRC-16/CCITT-FALSE
+  value for "123456789" (0x29B1) rather than against itself, so a wrong
+  polynomial or seed cannot pass by agreeing with its own mistake.
+- `AshTransport` — the part that genuinely needs a port and a clock: termios
+  setup, the RST/RSTACK handshake, sequence numbers, acknowledgement,
+  retransmission on NAK or timeout.
+- `EzspFrame` — EZSP frame encode/decode for both header formats, and the
+  version command, which has to go out in the legacy format because its answer
+  is what decides the format of everything after it.
+
+`InitializeEZSP()` now opens the port, resets the NCP, negotiates the protocol
+version and starts the receive pump. Form/permit-join/leave/unicast/multicast
+are wired to real EZSP commands.
+
+**What is still stubbed, and honestly:** the ZDO queries (active endpoints,
+simple and node descriptors, IEEE lookup), binding, and unpacking an incoming
+message's APS frame. Those need the asynchronous request/response plumbing that
+the ZDO layer expects; guessing at the APS layout would deliver attribute
+reports against the wrong cluster, which is worse than delivering none.
+
+**None of it has met a real NCP.** It is verified by compilation and by the
+framing tests. First contact with hardware should be at 115200 8N1 on the
+adapter's serial node, watching for RSTACK.
 
 **Thread needs a built OpenThread, not a checkout.** Its headers are fine — one
 rename, `openthread/tasklets.h` became `tasklet.h`, now fixed — but the backend

@@ -247,7 +247,7 @@ public:
 
 // ===== PROTOCOL-SPECIFIC BASE CLASSES =====
 
-class IMatterProtocol : public ISmartHomeProtocol {
+class IMatterProtocol : public virtual ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::Matter; }
     
@@ -272,7 +272,7 @@ public:
                                const std::map<std::string, std::string>& fields) = 0;
 };
 
-class IThreadProtocol : public ISmartHomeProtocol {
+class IThreadProtocol : public virtual ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::Thread; }
     
@@ -302,7 +302,7 @@ public:
     virtual std::vector<std::string> GetIPv6Addresses() const = 0;
 };
 
-class IZigbeeProtocol : public ISmartHomeProtocol {
+class IZigbeeProtocol : public virtual ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::Zigbee; }
     
@@ -320,7 +320,7 @@ public:
     virtual bool FactoryReset(const std::string& deviceId) = 0;
 };
 
-class IZWaveProtocol : public ISmartHomeProtocol {
+class IZWaveProtocol : public virtual ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::ZWave; }
     
@@ -338,7 +338,7 @@ public:
     virtual std::vector<uint8_t> GetCommandClasses(uint8_t nodeId) const = 0;
 };
 
-class IKNXProtocol : public ISmartHomeProtocol {
+class IKNXProtocol : public virtual ISmartHomeProtocol {
 public:
     virtual SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::KNX; }
     

@@ -24,7 +24,10 @@ namespace SmartHome {
  * - Device registry
  * - Thread-safe operations
  */
-class SmartHomeProtocolBase : public ISmartHomeProtocol {
+// Virtual, because a backend that also implements its protocol-specific
+// interface (IZigbeeProtocol and friends) would otherwise inherit
+// ISmartHomeProtocol twice and every call into it would be ambiguous.
+class SmartHomeProtocolBase : public virtual ISmartHomeProtocol {
 public:
     SmartHomeProtocolBase(SmartHomeProtocolType type, const std::string& name)
         : protocolType(type)

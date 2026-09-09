@@ -16,9 +16,13 @@
 
 // Conditional Zigbee stack includes
 #ifdef ULTRACANVAS_WITH_EZSP
-// Silicon Labs EZSP (Ember Serial Protocol)
-#include "ezsp/ezsp.h"
-#include "ezsp/ash-host.h"
+// The ASH framing and EZSP frame layers are implemented in this repository
+// rather than taken from a vendor library: what was here before was
+// #include "ezsp/ezsp.h" and "ezsp/ash-host.h", Silicon Labs' own host headers,
+// against functions that were all "return false; // Not implemented". Those
+// includes named a library this project does not ship and never called it.
+#include "ezsp/AshTransport.h"
+#include "ezsp/EzspFrame.h"
 #endif
 
 #ifdef ULTRACANVAS_WITH_ZSTACK
@@ -479,35 +483,160 @@ private:
     }
 
 #ifdef ULTRACANVAS_WITH_EZSP
+    // ===== EZSP over ASH =====
+    //
+    // The transport does the framing, sequence numbers and retries; what is
+    // left here is the EZSP conversation on top of it.
+
+    Ash::Transport ashTransport;
+    uint8_t ezspVersion = 0;        // negotiated with the NCP at start-up
+    uint8_t ezspSequence = 0;
+
+    uint8_t NextSequence() { return ezspSequence++; }
+
     bool InitializeEZSP() {
-        // Initialize EZSP over ASH protocol
-        // This would set up the serial connection and EZSP handshake
-        return false;  // Not implemented
+        Ash::TransportConfig config;
+        config.SerialPort = serialPort.empty() ? std::string("/dev/ttyUSB0") : serialPort;
+
+        ashTransport.SetOnEzspFrame([this](const std::vector<uint8_t>& raw) {
+            OnEzspFrameReceived(raw);
+        });
+        ashTransport.SetOnLinkDown([this](const std::string& reason) {
+            Log(0, "EZSP link down: " + reason);
+        });
+
+        if (!ashTransport.Open(config)) {
+            Log(0, "ASH transport did not come up: " + ashTransport.LastError());
+            return false;
+        }
+
+        // The version command is the one exchange whose encoding is fixed, and
+        // it has to happen before anything else: its answer decides how every
+        // later frame is framed.
+        const std::vector<uint8_t> command =
+            Ezsp::EncodeVersionCommand(NextSequence(), 8);
+        if (!ashTransport.Send(command)) {
+            Log(0, "the NCP did not answer the version command");
+            ashTransport.Close();
+            return false;
+        }
+
+        // OnEzspFrameReceived fills ezspVersion in when the answer arrives.
+        for (int waited = 0; waited < 50 && ezspVersion == 0; ++waited) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        if (ezspVersion == 0) {
+            Log(0, "no version response from the NCP");
+            ashTransport.Close();
+            return false;
+        }
+        Log(2, "EZSP v" + std::to_string(static_cast<int>(ezspVersion)) + " negotiated");
+        return true;
     }
-    
-    void ShutdownEZSP() {}
-    
-    bool EZSP_FormNetwork(uint16_t panId, uint8_t channel, 
-                          const std::array<uint8_t, 16>& networkKey) { return false; }
-    bool EZSP_PermitJoining(uint8_t duration) { return false; }
-    bool EZSP_LeaveNetwork() { return false; }
-    bool EZSP_SendUnicast(uint16_t nwk, uint8_t ep, uint16_t cluster, 
-                          const std::vector<uint8_t>& data) { return false; }
+
+    void OnEzspFrameReceived(const std::vector<uint8_t>& raw) {
+        // Before the version is known, the only frame that can arrive is the
+        // version response, and it is in the legacy format.
+        if (ezspVersion == 0) {
+            if (auto version = Ezsp::DecodeVersionResponse(raw)) {
+                ezspVersion = version->ProtocolVersion;
+            }
+            return;
+        }
+        auto frame = Ezsp::DecodeFrame(ezspVersion, raw);
+        if (!frame) return;
+
+        if (frame->Overflow) {
+            // The NCP ran out of buffers and dropped callbacks. Devices may have
+            // reported things nobody will ever hear about, so say so rather than
+            // letting the node table quietly drift out of date.
+            Log(1, "NCP callback overflow — some device reports were lost");
+        }
+        switch (frame->Id) {
+            case Ezsp::kIncomingMessage:
+                HandleIncomingZclMessage(frame->Parameters);
+                break;
+            case Ezsp::kStackStatus:
+                Log(2, "stack status changed");
+                break;
+            default:
+                break;   // command responses are consumed by their senders
+        }
+    }
+
+    void HandleIncomingZclMessage(const std::vector<uint8_t>& params) {
+        // An EZSP incomingMessageHandler carries the message type, an APS frame
+        // and then the payload. The APS frame gives the cluster and endpoints;
+        // the class above already knows how to read a ZCL payload from there.
+        //
+        // Not yet unpacked: doing it correctly means following the APS frame
+        // layout for the negotiated EZSP version, and getting it wrong would
+        // deliver attribute reports against the wrong cluster, which is worse
+        // than delivering none. Left explicit rather than guessed.
+        (void)params;
+    }
+
+    bool SendEzsp(uint16_t frameId, const std::vector<uint8_t>& params) {
+        if (ezspVersion == 0) return false;
+        return ashTransport.Send(
+            Ezsp::EncodeCommand(ezspVersion, NextSequence(), frameId, params));
+    }
+
+    void ShutdownEZSP() {
+        ashTransport.Close();
+        ezspVersion = 0;
+    }
+
+    bool EZSP_FormNetwork(uint16_t panId, uint8_t channel,
+                          const std::array<uint8_t, 16>& networkKey) {
+        std::vector<uint8_t> params;
+        Ezsp::AppendU16(params, panId);
+        params.push_back(channel);
+        params.insert(params.end(), networkKey.begin(), networkKey.end());
+        return SendEzsp(Ezsp::kFormNetwork, params);
+    }
+
+    bool EZSP_PermitJoining(uint8_t duration) {
+        return SendEzsp(Ezsp::kPermitJoining, {duration});
+    }
+
+    bool EZSP_LeaveNetwork() {
+        return SendEzsp(Ezsp::kLeaveNetwork, {});
+    }
+
+    bool EZSP_SendUnicast(uint16_t nwk, uint8_t ep, uint16_t cluster,
+                          const std::vector<uint8_t>& data) {
+        std::vector<uint8_t> params;
+        Ezsp::AppendU16(params, nwk);
+        params.push_back(ep);
+        Ezsp::AppendU16(params, cluster);
+        params.push_back(static_cast<uint8_t>(data.size()));
+        params.insert(params.end(), data.begin(), data.end());
+        return SendEzsp(Ezsp::kSendUnicast, params);
+    }
+
     bool EZSP_SendMulticast(uint16_t group, uint8_t ep, uint16_t cluster,
-                            const std::vector<uint8_t>& data) { return false; }
-    bool EZSP_ActiveEndpoints(uint16_t nwk, 
-                              std::function<void(bool, const std::vector<uint8_t>&)> cb) { return false; }
-    bool EZSP_SimpleDescriptor(uint16_t nwk, uint8_t ep,
-                               std::function<void(bool, const ZigbeeEndpoint&)> cb) { return false; }
-    bool EZSP_NodeDescriptor(uint16_t nwk, 
-                             std::function<void(bool, ZigbeeDeviceType)> cb) { return false; }
-    bool EZSP_IeeeAddress(uint16_t nwk,
-                          std::function<void(bool, uint64_t)> cb) { return false; }
-    bool EZSP_Bind(uint64_t src, uint8_t srcEp, uint16_t cluster,
-                   uint64_t dst, uint8_t dstEp) { return false; }
-    bool EZSP_Unbind(uint64_t src, uint8_t srcEp, uint16_t cluster,
-                     uint64_t dst, uint8_t dstEp) { return false; }
-    bool EZSP_RemoveDevice(uint64_t ieee) { return false; }
+                            const std::vector<uint8_t>& data) {
+        std::vector<uint8_t> params;
+        Ezsp::AppendU16(params, group);
+        params.push_back(ep);
+        Ezsp::AppendU16(params, cluster);
+        params.push_back(static_cast<uint8_t>(data.size()));
+        params.insert(params.end(), data.begin(), data.end());
+        return SendEzsp(Ezsp::kSendMulticast, params);
+    }
+
+    // ZDO queries. These go out as ZDO requests over a unicast rather than as
+    // EZSP commands of their own, and their answers come back asynchronously as
+    // incoming messages. Wiring the callbacks through is the next piece of work
+    // and they are honest about not being done rather than reporting success.
+    bool EZSP_ActiveEndpoints(uint16_t, std::function<void(bool, const std::vector<uint8_t>&)>) { return false; }
+    bool EZSP_SimpleDescriptor(uint16_t, uint8_t, std::function<void(bool, const ZigbeeEndpoint&)>) { return false; }
+    bool EZSP_NodeDescriptor(uint16_t, std::function<void(bool, ZigbeeDeviceType)>) { return false; }
+    bool EZSP_IeeeAddress(uint16_t, std::function<void(bool, uint64_t)>) { return false; }
+    bool EZSP_Bind(uint64_t, uint8_t, uint16_t, uint64_t, uint8_t) { return false; }
+    bool EZSP_Unbind(uint64_t, uint8_t, uint16_t, uint64_t, uint8_t) { return false; }
+    bool EZSP_RemoveDevice(uint64_t) { return false; }
 #endif
 
 #ifdef ULTRACANVAS_WITH_ZSTACK
@@ -762,7 +891,7 @@ bool ZigbeeProtocol::FormNetwork(const std::string& networkName) {
     info.NetworkName = networkName;
     info.PanId = networkParams.PanId;
     info.Channel = networkParams.Channel;
-    info.IsOpen = false;
+    info.Active = false;
     SetNetworkInfo(info);
     
     Log(2, "Zigbee network formed: PAN 0x" + 
@@ -798,25 +927,24 @@ bool ZigbeeProtocol::LeaveNetwork() {
 
 NetworkTopology ZigbeeProtocol::GetTopology() const {
     NetworkTopology topology;
-    topology.Protocol = SmartHomeProtocolType::Zigbee;
     
     std::lock_guard<std::mutex> lock(nodeMutex);
     
     // Add coordinator
     NetworkNode coordNode;
     coordNode.NodeId = "coordinator";
-    coordNode.NodeType = "Coordinator";
+    coordNode.IsCoordinator = true;
     coordNode.IsRouter = true;
-    coordNode.IsOnline = hasNetwork;
+    coordNode.Depth = 0;
     topology.Nodes.push_back(coordNode);
     
     // Add all nodes
     for (const auto& [deviceId, node] : zigbeeNodes) {
         NetworkNode netNode;
         netNode.NodeId = deviceId;
-        netNode.NodeType = (node.Type == ZigbeeDeviceType::Router) ? "Router" : "EndDevice";
         netNode.IsRouter = (node.Type == ZigbeeDeviceType::Router);
-        netNode.IsOnline = node.IsOnline;
+        netNode.IsRouter = (node.Type == ZigbeeDeviceType::Router);
+        netNode.Depth = 1;
         netNode.LinkQuality = node.Lqi;
         netNode.ParentId = "coordinator";  // Simplified - would track actual parent
         topology.Nodes.push_back(netNode);
@@ -899,7 +1027,7 @@ bool ZigbeeProtocol::PermitJoin(int timeoutSeconds) {
     
     // Update network info
     SmartHomeNetworkInfo info = GetNetworkInfo();
-    info.IsOpen = (duration > 0);
+    info.Active = (duration > 0);
     SetNetworkInfo(info);
     
     // Start timeout countdown
@@ -910,7 +1038,7 @@ bool ZigbeeProtocol::PermitJoin(int timeoutSeconds) {
             pairing = false;
             
             SmartHomeNetworkInfo info = GetNetworkInfo();
-            info.IsOpen = false;
+            info.Active = false;
             SetNetworkInfo(info);
         }).detach();
     }
@@ -2027,6 +2155,82 @@ uint64_t ZigbeeProtocol::StringToIeeeAddress(const std::string& str) const {
 }
 
 // ===== FACTORY FUNCTION =====
+
+bool ZigbeeProtocol::GetDeviceState(const std::string& deviceId,
+                                    std::map<std::string, std::string>& state) {
+    ZigbeeNode node;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return false;
+        node = it->second;
+    }
+    state["online"] = node.IsOnline ? "true" : "false";
+    state["nwk"] = std::to_string(node.NwkAddress);
+    state["ieee"] = IeeeAddressToString(node.IeeeAddress);
+    state["lqi"] = std::to_string(static_cast<int>(node.Lqi));
+    state["rssi"] = std::to_string(static_cast<int>(node.Rssi));
+    state["endpoints"] = std::to_string(node.Endpoints.size());
+    return true;
+}
+
+bool ZigbeeProtocol::SetChannel(int newChannel) {
+    // 802.15.4 channels 11-26 in the 2.4 GHz band; anything else is not a
+    // Zigbee channel and would be silently ignored by the NCP.
+    if (newChannel < 11 || newChannel > 26) return false;
+    // Changing channel means moving the whole network, which the coordinator
+    // announces to its children; without a formed network there is nothing to
+    // move.
+    if (!HasNetwork()) return false;
+    return ChangeChannel(static_cast<uint8_t>(newChannel));
+}
+
+std::string ZigbeeProtocol::GetHardwareInfo() const {
+    std::string info = "Zigbee NCP on " +
+        (selectedAdapter.empty() ? std::string("(no adapter selected)") : selectedAdapter);
+    if (HasNetwork()) {
+        char buf[64];
+        std::snprintf(buf, sizeof buf, ", PAN 0x%04X channel %u",
+                      static_cast<unsigned>(GetPanId()),
+                      static_cast<unsigned>(GetChannel()));
+        info += buf;
+    }
+    return info;
+}
+
+std::vector<SmartHomeDeviceInfo> ZigbeeProtocol::GetPairedDevices() {
+    std::vector<SmartHomeDeviceInfo> devices;
+    std::lock_guard<std::mutex> lock(nodeMutex);
+    devices.reserve(zigbeeNodes.size());
+    for (const auto& [id, node] : zigbeeNodes) {
+        devices.push_back(NodeToDeviceInfo(node));
+    }
+    return devices;
+}
+
+bool ZigbeeProtocol::PairDevice(const std::string&,
+                                const std::map<std::string, std::string>& params) {
+    // Zigbee devices are not paired individually: the coordinator opens the
+    // network and whatever is in pairing mode joins. Anything else would be
+    // reporting a per-device handshake that does not exist.
+    int duration = 60;
+    if (auto it = params.find("duration"); it != params.end()) {
+        duration = std::atoi(it->second.c_str());
+    }
+    return PermitJoin(duration);
+}
+
+bool ZigbeeProtocol::UnpairDevice(const std::string& deviceId) {
+    return RemoveDevice(deviceId);
+}
+
+std::vector<std::shared_ptr<ISmartHomeDevice>> ZigbeeProtocol::GetDevices() const {
+    return {};
+}
+
+std::shared_ptr<ISmartHomeDevice> ZigbeeProtocol::GetDevice(const std::string&) const {
+    return nullptr;
+}
 
 std::shared_ptr<ISmartHomeProtocol> CreateZigbeeProtocol() {
     return std::make_shared<ZigbeeProtocol>();
