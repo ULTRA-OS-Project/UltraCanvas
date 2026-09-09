@@ -433,20 +433,16 @@ CpuInfoFields ReadProcCpuInfo() {
     return fields;
 }
 
-// The flags worth naming on a panel: the ones an application actually branches
-// on. The full flag list is hundreds of entries of kernel trivia.
+// Non-x86 capabilities, as the kernel spells them in /proc/cpuinfo. x86 does not
+// come from here: its features are read from CPUID by the shared detector, which
+// covers extensions the kernel's flag list and the OS feature queries both miss
+// (GFNI, VAES, VPCLMULQDQ) and which yields the psABI level with them.
 std::vector<std::string> SelectInstructionSets(const std::string& flags) {
     static const std::pair<const char*, const char*> kInteresting[] = {
-        { "sse2", "SSE2" }, { "sse4_1", "SSE4.1" }, { "sse4_2", "SSE4.2" },
-        { "avx", "AVX" }, { "avx2", "AVX2" }, { "avx512f", "AVX-512" },
-        { "avx512bw", "AVX-512 BW" }, { "avx_vnni", "AVX-VNNI" }, { "amx_tile", "AMX" },
-        { "aes", "AES-NI" }, { "sha_ni", "SHA-NI" }, { "vaes", "VAES" },
-        { "pclmulqdq", "PCLMULQDQ" }, { "rdrand", "RDRAND" }, { "f16c", "F16C" },
-        { "fma", "FMA3" }, { "bmi2", "BMI2" }, { "vmx", "VT-x" }, { "svm", "AMD-V" },
-        // AArch64 spells its capabilities out in the same field.
         { "asimd", "NEON" }, { "neon", "NEON" }, { "sve", "SVE" }, { "sve2", "SVE2" },
-        { "crc32", "CRC32" }, { "sha2", "SHA2" }, { "sha3", "SHA3" }, { "i8mm", "I8MM" },
-        { "bf16", "BF16" }, { "dotprod", "DotProd" }
+        { "crc32", "CRC32" }, { "aes", "AES" }, { "sha2", "SHA2" }, { "sha3", "SHA3" },
+        { "i8mm", "I8MM" }, { "bf16", "BF16" }, { "dotprod", "DotProd" },
+        { "fphp", "FP16" }, { "atomics", "LSE" }, { "sme", "SME" }
     };
     std::set<std::string> present;
     std::stringstream stream(flags);
@@ -653,7 +649,13 @@ void QueryCPU(CPUInfo& out, bool includeSensors, std::vector<std::string>& warni
 
     ReadCPUCaches(out);
     ReadCoreGroups(out);
-    out.instructionSets = SelectInstructionSets(field("flags") + " " + field("Features"));
+    X86CpuFeatures x86Features;
+    if (ReadX86CpuFeatures(x86Features)) {
+        AppendX86FeatureNames(x86Features, out.instructionSets);
+        out.x86MicroarchitectureLevel = X86MicroarchitectureLevel(x86Features);
+    } else {
+        out.instructionSets = SelectInstructionSets(field("Features") + " " + field("flags"));
+    }
 
     const uint64_t baseKilohertz = ReadUnsigned("/sys/devices/system/cpu/cpu0/cpufreq/base_frequency", 0);
     if (baseKilohertz > 0) out.baseClockMHz = static_cast<double>(baseKilohertz) / 1000.0;

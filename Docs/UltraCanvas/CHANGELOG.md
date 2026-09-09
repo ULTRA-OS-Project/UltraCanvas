@@ -9,6 +9,50 @@
   `onChecked` finds a consistent group and the selection callback still fires
   exactly once, and returns early when the button is already the selection.
 
+#### 2026-09-09 *0.3.116*
+- **Cross-checked against the Ladybird port's processor-detection findings**
+  (`OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`), which changed three things
+  here. **x86 instruction sets are read from CPUID** — leaf 1, leaf 7 subleaf 0,
+  leaf 0x80000001 — on every platform, sharing the bit assignments and the
+  psABI-level rules that file verified flag-by-flag against `/proc/cpuinfo`.
+  Neither Win32's `IsProcessorFeaturePresent` nor a filtered `/proc/cpuinfo`
+  list names GFNI, VAES or VPCLMULQDQ, which are exactly the VEX-encoded
+  extensions `-march=native` picks up without AVX-512 — so a CPU could hold
+  every feature the panel printed and still refuse the binary, which is how an
+  AVX2-capable Ryzen 5 5500U came to fault on `VGF2P8AFFINEQB`. New
+  `CPUInfo::x86MicroarchitectureLevel` names the highest x86-64 psABI level the
+  machine satisfies, shown as *Baseline level: x86-64-v3*: that is a flag a
+  packager can paste, and GFNI/VAES/VPCLMULQDQ/SHA are listed without raising
+  it, because no `-march=x86-64-vN` emits them. The detection is guarded on the
+  **architecture**, not the compiler, since MSYS2's CLANGARM64 defines
+  `__clang__`.
+- **`CPUInfo::emulation` reports a process that is not running natively** on the
+  CPU it describes — `IsWow64Process2` on Windows, `sysctl.proc_translated`
+  (Rosetta) on macOS — shown as a *Running under* row. Under emulation the two
+  halves of `CPUInfo` describe different things: the model and core counts are
+  the silicon's, the instruction sets are the emulator's, and Windows on ARM
+  offers no AVX-512 at all. That is the gap that reached the field as
+  `lagom-gfx.dll` faulting with `ILLEGAL_INSTRUCTION` on Windows 11 while the
+  same package ran on Windows 10.
+
+#### 2026-09-09 *0.3.112*
+- **Work that was pushed but never published now announces itself.** A branch
+  can carry days of finished work and still be invisible to `main`: no pull
+  request was ever opened for it, or its pull request was merged and the
+  commits pushed afterwards are stranded on a branch nothing tracks. Neither
+  announces itself — the push succeeds, the session ends, and the change is
+  simply not in the product, which surfaces days later as "the fix did not
+  arrive". `scripts/check_publication.py` answers it mechanically: run with no
+  arguments it lists the commits on the current branch that are not in `main`
+  and exits non-zero when there are any; `--all` sweeps every branch on the
+  remote and separates the ones fully merged, the ones carrying unpublished
+  work, and the ones that share no history with `main` (they predate a history
+  rewrite, so nothing can be concluded from their commits). It cannot see pull
+  request state — that needs GitHub — so it names the check to run there and
+  what each answer means. `AGENTS.md` rule 3 now requires running it after a
+  push and **saying so unprompted** when there is no open pull request: not
+  opening one unasked is the rule, leaving the user to discover that nothing
+  was published is not.
 #### 2026-09-09 *0.3.111*
 - **A double-click that starts a program now says so: the busy pointer.**
   Spawning a program takes milliseconds, the program appearing takes seconds,
