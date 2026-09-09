@@ -47,6 +47,11 @@ namespace UltraCanvas {
             case UCMouseCursor::Wait:
                 cursorId = IDC_WAIT;
                 break;
+            case UCMouseCursor::AppStarting:
+                // Arrow plus busy ring - Explorer's "the program is starting"
+                // pointer. The window stays clickable while it is up.
+                cursorId = IDC_APPSTARTING;
+                break;
             case UCMouseCursor::Cross:
                 cursorId = IDC_CROSS;
                 break;

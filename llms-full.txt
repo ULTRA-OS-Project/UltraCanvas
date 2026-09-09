@@ -19192,6 +19192,41 @@ its own `Exec=` line. See [Shortcuts](#shortcuts).
 Entries inside archives are virtual paths nothing external can read, so
 activation never tries to run or open them.
 
+### Launch feedback — the busy pointer
+
+Spawning is over in milliseconds; the program the double-click started is not.
+It appears when it appears, and nothing tells the file manager when that is —
+so a heavy application looks for a few seconds exactly like a double-click
+that never arrived, and gets double-clicked again.
+
+Every launch path therefore arms the window's **busy pointer**
+(`UltraCanvasWindowBase::ShowBusyPointer`, `UltraCanvasWindow.h`): after
+**one second** the pointer changes to `UCMouseCursor::AppStarting` — the arrow with a busy
+sign, so the window stays as usable as it was — and it goes back on its own
+after **eight seconds**. The delay is the point: a program that is on screen
+before the second is up never changes the pointer at all, so the feedback only
+appears where it is telling the user something.
+
+```cpp
+// What the window offers; the filer arms it for you on every launch.
+win->ShowBusyPointer();                 // 1 s delay, 8 s hold, AppStarting
+win->ShowBusyPointer(1500, 120000);     // slower to appear, long-running work
+win->HideBusyPointer();                 // work finished (or failed) early
+```
+
+Nothing in a plain spawn can end it early, so the hold does. A caller that
+*does* learn when its work finished calls `HideBusyPointer()` instead —
+UltraFiler does exactly that around the UltraWin launch path, whose first run
+prepares a Windows environment and is given a two-minute hold. A launch that
+fails immediately takes the pointer down through `onError`.
+
+While it is up the busy shape wins over the cursor of whatever element the
+pointer is over; when it comes down, the element under the pointer gets its
+own cursor back without waiting for the next mouse move.
+
+On macOS the pointer does not change: AppKit has no arrow-with-busy-sign
+shape, and launch feedback there belongs to the Dock's bouncing icon.
+
 ### Delete problems (locked / failing entries)
 
 A delete that runs into trouble pauses on a **problem dialog** styled like the
