@@ -105,7 +105,7 @@ UltraCanvas/
 -   **Text Rendering:** FreeType, Pango, HarfBuzz
 -   **Image Processing:** libvips
 -   **Utilities:** glib-2.0, tinyxml2, fmt (JSON support is built in via the vendored yyjson engine behind UltraCanvasJSON)
--   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI and DXF are implemented in-tree; DWG conversion uses GNU LibreDWG's `dxf2dwg`/`dwg2dxf` command-line tools (optional, external processes — found on PATH or named by `ULTRACANVAS_DXF2DWG`/`ULTRACANVAS_DWG2DXF`)
+-   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG are implemented in-tree — DWG reading is a native decoder for R13 through R2018 (no external program); DWG *writing* uses GNU LibreDWG's `dxf2dwg` command-line tool (optional, external process — found on PATH or named by `ULTRACANVAS_DXF2DWG`)
 
 ----------
 
@@ -2700,7 +2700,17 @@ and keep all existing path-based code working; `SetResourcesDir()`
 
 ## 6. Warnings from prior porting attempts (WASM, BSD)
 
-Both in-tree "ports" are non-building code drops; neither is a template.
+> **Historical (2026-08).** The `OS/WASM/` description below is what the
+> directory looked like when this investigation was written. It was replaced
+> wholesale in 2026-08 by a real Emscripten backend that reuses the Cairo
+> render context, is wired into `UltraCanvas/CMakeLists.txt`, and runs in a
+> browser - see `UltraCanvas/OS/WASM/README.md` and
+> `Docs/UltraCanvas/UltraCanvasWebAssembly.md`. The BSD paragraph still
+> applies. The process lessons that follow were drawn from the old state
+> and remain valid.
+
+Both in-tree "ports" were non-building code drops at the time; neither was a
+template.
 
 - **`OS/WASM/`** — never wired into any CMakeLists (`add_subdirectory` absent);
   header dispatch uses `__WASM__` (a macro Emscripten never defines) and points
@@ -4945,6 +4955,37 @@ UltraCanvasAlert::Warning("Leave without saving?", "Unsaved changes",
                           parentWindow);
 ```
 
+## Alerts without the severity icon
+
+The coloured severity badge sits in its own column on the left of the message,
+so the message column — and everything the caller adds to it — starts to the
+right of it. When the alert's body carries **its own graphic** (a progress ring,
+a chart, an image preview) that offset leaves the graphic visibly off centre.
+Set `showIcon = false` (or use the `Plain()` one-liner) and the badge is removed
+from the layout entirely, so the content column spans the full width of the
+dialog and a centred element is centred **in the window**:
+
+```cpp
+// One-liner: no badge, OK button.
+UltraCanvasAlert::Plain("Unpacking \"photos.zip\"", "Extracting");
+
+// Rich form: no badge, with a graphic of the alert's own centred in it.
+AlertOptions opts;
+opts.title    = "Extracting";
+opts.message  = "Unpacking \"photos.zip\"";
+opts.showIcon = false;          // <- content column gets the whole width
+UltraCanvasAlert::Show(opts);
+```
+
+`showIcon` only hides the badge; the severity still drives the window title and
+the accent colour used elsewhere. The same switch exists one level down as
+`DialogConfig::showIcon`, and on a live dialog as
+`UltraCanvasModalDialog::SetIconVisible(bool)` / `IsIconVisible()`.
+
+This is what [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md) uses:
+its ring is the dialog's graphic, so it opens without a badge and the ring is
+horizontally centred.
+
 ## Rich form
 
 ```cpp
@@ -4970,6 +5011,7 @@ struct AlertOptions {
     std::string title;        // empty => derived from severity
     std::string details;      // optional secondary line
     AlertSeverity severity = AlertSeverity::Info;
+    bool showIcon = true;     // false => no severity badge, content full width
     DialogButtons buttons = DialogButtons::OK;
     DialogButton  defaultButton = DialogButton::OK;
     UltraCanvasWindowBase* parent = nullptr;
@@ -4985,6 +5027,13 @@ class UltraCanvasAlert {
     static void Successful(/* same signature */);
     static void Warning   (/* same signature */);
     static void Error     (/* same signature */);
+
+    // Icon-less message box: no severity badge, so the content column is
+    // centred in the full width of the dialog.
+    static void Plain(const std::string& message, const std::string& title = "",
+                      std::function<void(DialogResult)> onResult = nullptr,
+                      UltraCanvasWindowBase* parent = nullptr,
+                      AlertSeverity severity = AlertSeverity::Info);
 
     static void Confirm(const std::string& message, const std::string& title,
                         std::function<void(bool confirmed)> onConfirmed,
@@ -5008,6 +5057,11 @@ class UltraCanvasAlert {
 - Alerts inherit the dialog keyboard model: Return activates the default button,
   Escape cancels, and each button carries an underlined mnemonic letter that
   activates it. See [`UltraCanvasDialogKeyboard.md`](UltraCanvasDialogKeyboard.md).
+- **`showIcon = false`** (and `Plain()`) removes the severity badge from the
+  layout, not just from view: the message column then spans the whole content
+  width, which is what makes a centred element in the alert body — a progress
+  ring, a chart — centre in the window. It applies to the internal dialog;
+  native OS message boxes draw their own icon.
 - For transient, non-blocking status messages that should *not* interrupt the
   user, prefer a Toast (`UltraCanvasToast`) instead — an Alert is intentionally
   interruptive.
@@ -10260,7 +10314,7 @@ auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>(
 cdrElement1->SetFitMode(CDRFitMode::FitPage);
 
 // Resolve the demo asset path and load
-std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/cdr/demo.cdr");
+std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo.cdr");
 if (cdrElement1->LoadFromFile(cdrFile1)) {
     statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
                          std::to_string(cdrElement1->GetPageCount()) + " pages)");
@@ -10434,7 +10488,7 @@ Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API a
 ```cpp
 auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 10, 10, 280, 220);
 cdrElement4->SetFitMode(CDRFitMode::FitPage);
-std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
+std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/vector/CDR/logo.cdr");
 cdrElement4->LoadFromFile(cdrFile4);
 
 auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 60, 25);
@@ -16644,13 +16698,13 @@ std::string program = eps.ExportToString(*document);
 
 ```cpp
 auto eps = std::make_shared<UltraCanvasEPSElement>("Logo", 20, 20, 300, 280);
-if (!eps->LoadFromFile("media/eps/demo.eps")) {
+if (!eps->LoadFromFile("media/vector/EPS/demo.eps")) {
     std::cerr << eps->GetLastError() << std::endl;
 }
 window->AddChild(eps);
 ```
 
-The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/eps/` with a fullscreen viewer and zoom controls.
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/vector/EPS/` with a fullscreen viewer and zoom controls.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasERDiagram.md
@@ -19265,6 +19319,10 @@ Extract dialogs all run the work on a background worker behind an
 [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
 percentage, the file being handled, and Cancel. The UI stays live throughout —
 packing a few hundred megabytes no longer freezes the window.
+
+The progress window is opened **without the severity badge**
+(`showIcon = false`), so the ring is horizontally centred in the dialog instead
+of being pushed to the right of a blue `i` that says nothing the ring does not.
 
 Cancel stops the backend at its next progress callback. A cancelled **pack**
 deletes the half-written archive (nobody wants that in the listing); a cancelled
@@ -26311,14 +26369,35 @@ height of `0` lets the element size itself to the formula via the layout engine.
 On first use the loader searches for the module in this order:
 1. a path set via `SetLaTeXModulePath(...)`,
 2. `$ULTRACANVAS_PLUGIN_DIR`,
-3. `<exe>/`, `<exe>/plugins/`, `<exe>/../lib/`, `<exe>/../lib/ultracanvas/`,
+3. `<exe>/`, `<exe>/plugins/`, `<exe>/lib/` (dev build: executable at the
+   build root, module in `<build>/lib`), `<exe>/../lib/` (package: executable
+   in `bin/`), `<exe>/../lib/ultracanvas/`,
 4. the dynamic linker's own search path (rpath / `LD_LIBRARY_PATH`).
 
-The module then loads `latinmodern-math.clm2` (+ `.otf`) from `media/microtex`
-relative to the executable (or `$MICROTEX_FONTDIR`, or `SetLaTeXFontSearchDir`).
-The top-level CMake copies `media/` into the build/install tree.
+The module then loads `latinmodern-math.clm2` (+ `.otf`) from the first
+directory that has it:
+1. `SetLaTeXFontSearchDir(...)`, then `$MICROTEX_FONTDIR`,
+2. `GetResourcesDir() + "media/microtex"` — the framework's own resource root,
+   which is where the top-level CMake copies `media/` (`<build>/share/media`)
+   and where a package installs it (`<exe>/../share/media`),
+3. `<exe>/media/microtex`, `<exe>/../media/microtex`,
+   `<exe>/share/media/microtex`, `<exe>/../share/media/microtex`,
+   `<exe>/share/UltraCanvas/media/microtex`,
+   `<exe>/../share/UltraCanvas/media/microtex`,
+4. the same `media/microtex`, `share/media/microtex` and
+   `share/UltraCanvas/media/microtex` relative to the working directory.
 
 If `CreateLaTeXView` returns `nullptr`, check `GetLaTeXModuleError()`.
+
+## Diagnostics
+
+A view never fails silently. When the formula cannot be typeset — the math
+font was not found, or the source has a syntax error — the element draws the
+reason as a short red message in place of the formula and sizes itself to
+that message, so the problem is visible in the UI and not just through
+`IsValid()` / `GetLastError()`. A font lookup that failed is retried after
+`SetLaTeXFontSearchDir(...)` is called, so an application can recover a view
+at runtime instead of recreating it.
 
 ## Build / deployment
 
@@ -28926,6 +29005,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md
 
 `UltraCanvasMediaCodecRegistry.h` — the one place that knows which audio and
 video formats a build can handle, and the extension point for adding more.
+Video decoding is registered through its companion,
+`libspecific/Video/VideoCodecPlugin.h`.
 
 ## Why it exists
 
@@ -29056,12 +29137,66 @@ build:
 - **Video** — the platform backend's demuxer/muxer matrix (GStreamer, Media
   Foundation, AVFoundation). `canEncode` is true only for the containers the
   capture session can actually mux; everything else the backend demuxes is
-  registered decode-only.
+  registered decode-only. Decoding for these goes through `IVideoBackend`;
+  a codec an application adds brings its own — see below.
 
-Video *decoding* itself still goes through `IVideoBackend`, not through a
-registry callback: what a video registration contributes is recognition and
-capability. An application that wants to add a video container has to teach the
-platform backend about it as well.
+## Registering a video codec
+
+A video registration carries its decoding in a companion header,
+`libspecific/Video/VideoCodecPlugin.h`, rather than on `MediaCodecRegistration`
+itself: it deals in `IVideoDecodeSession`, and this header has to stay
+includable from anywhere — including a build with no video backend at all.
+
+```cpp
+#include "../libspecific/Video/VideoCodecPlugin.h"
+
+MediaCodecRegistration codec;
+codec.extension   = "ivf";
+codec.description = "Indexed Video Format";
+codec.kind        = MediaCodecKind::Video;
+codec.provider    = "MyApp";
+
+RegisterVideoCodecPlugin(codec,
+    [](const std::string& source, const VideoDecodeOptions& opts)
+            -> std::unique_ptr<IVideoDecodeSession> {
+        return MyApp::OpenIvf(source, opts);      // null if it is not one
+    });
+```
+
+Supplying a decoder implies `canDecode`, so a format cannot be registered with a
+working decoder and then advertised as unplayable. `UltraCanvasVideoPlayer`
+opens the session, and `CaptureVideoThumbnail` drives the same factory to
+produce a poster frame — so a plugin gets thumbnails for free. Pass an optional
+third argument only when the codec has something cheaper than opening a session
+and waiting for a frame:
+
+```cpp
+RegisterVideoCodecPlugin(codec, openDecoder,
+    [](const std::string& source, const VideoThumbnailRequest& req) {
+        return MyApp::GrabIvfPoster(source, req);
+    });
+```
+
+`UnregisterVideoCodecPlugin` drops the callbacks but leaves the registry entry,
+so a format can stay *recognised* after its decoder goes away;
+`UnregisterMediaCodec` removes it entirely.
+
+### Precedence: video plugins run first, audio plugins run last
+
+An audio plugin is tried **after** the built-in backend and codec libraries have
+declined a file. A video plugin is tried **before** the platform backend, for
+the sources it claims. The asymmetry is deliberate and not a matter of taste:
+
+`IVideoBackend::OpenDecoder` does not decline a source it cannot decode. The
+GStreamer backend builds a `playbin` and reports an undecodable file
+asynchronously on its bus; Media Foundation and AVFoundation behave similarly.
+A "backend first, plugin fallback" ordering would therefore hand every source to
+the backend and leave a registered codec permanently unreachable.
+
+Precedence is safe because the lookup is keyed on extensions a plugin
+*explicitly registered*. A source no plugin claimed goes straight to the
+backend, untouched — that is what `Tests/VideoCodecPluginTest.cpp` asserts, so
+the rule cannot quietly become interception.
 
 ## Threading
 
@@ -29070,12 +29205,20 @@ from any thread at any time; a query sees the state at the moment it is made.
 Entries are copy-on-write, so a `FindMediaCodecForFile` result stays valid
 however the registry changes afterwards.
 
-## Test
+## Tests
 
-`Tests/MediaCodecRegistryTest.cpp` (`BUILD_TESTS=ON`) covers the built-ins, the
-recognised-versus-decodable split, inventory agreement, probe gating, the
-upgrade-not-duplicate rule, and a registered codec being reached through
-`UCAudio::LoadFromFile` and `SaveToFile`.
+`BUILD_TESTS=ON` builds two, both headless and both needing no media assets:
+
+- `Tests/MediaCodecRegistryTest.cpp` — the built-ins, the
+  recognised-versus-decodable split, inventory agreement, probe gating, the
+  upgrade-not-duplicate rule, and a registered codec being reached through
+  `UCAudio::LoadFromFile` and `SaveToFile`.
+- `Tests/VideoCodecPluginTest.cpp` — a synthetic in-process video codec driven
+  through `UltraCanvasVideoPlayer` and `CaptureVideoThumbnail`, including the
+  generic thumbnail fallback, the precedence rule, and that a source no plugin
+  claimed is left alone. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too,
+  which is the case that shows a plugin working on a build with no platform
+  backend at all.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewer.md
@@ -30459,7 +30602,7 @@ map->Style().connectorBadgeRadius = 9.0;
 ## Node content
 
 ```cpp
-map->SetTopicIcon(topicId, "media/icons/light 001.jpg");   // inline, before the label
+map->SetTopicIcon(topicId, "media/icons/info.png");   // inline, before the label
 map->SetTopicImage(topicId, "media/images/brain.png");     // image as the node body
 map->SetTopicNote(topicId, "Longer note text");            // corner triangle indicator
 map->SetTopicLink(topicId, "https://example.com");         // clickable ring indicator
@@ -35039,7 +35182,7 @@ dlg->Close();
 
 | Call | Meaning |
 |---|---|
-| `Show(parent, title, caption, onCancel)` | Opens the window over `parent`. Returns `nullptr` when no dialog could be created (dialogs disabled / headless) — handle that and run without a window. |
+| `Show(parent, title, caption, onCancel, showIcon = false)` | Opens the window over `parent`. Returns `nullptr` when no dialog could be created (dialogs disabled / headless) — handle that and run without a window. `showIcon = true` adds the blue Information badge on the left of the caption; leave it off (the default) to keep the ring centred. |
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
@@ -35099,6 +35242,21 @@ Two details worth copying:
 - **Own the leftovers.** A cancelled *write* usually has to be undone — the
   Filer deletes the half-written archive — while a cancelled *extraction*
   keeps what it already wrote, because those are real files the user may want.
+
+## No severity badge: the ring is centred
+
+A message dialog puts a coloured severity badge (the blue `i`) in its own column
+on the left, and the whole content column starts to the right of it. In a
+progress window that column holds the ring, so the badge pushes the ring off the
+centre of the window — the ring is this dialog's graphic, and a second one adds
+nothing.
+
+So the window opens with `DialogConfig::showIcon = false` and the ring is
+horizontally centred in the full width of the dialog. Pass `showIcon = true` to
+`Show()` if a caller really wants the classic badge back. The same switch is
+available on any alert or modal dialog — see
+[`UltraCanvasAlert`](UltraCanvasAlert.md) (`AlertOptions::showIcon`,
+`UltraCanvasAlert::Plain`) and `UltraCanvasModalDialog::SetIconVisible()`.
 
 ## Where the ring comes from
 
@@ -49022,6 +49180,32 @@ void CollapseAll()
 ```
 Expands or collapses all nodes in the tree.
 
+#### Jump to first entry
+```cpp
+void SetShowFirstChildOnExpand(bool show)   // default false
+bool GetShowFirstChildOnExpand() const
+void SetAutoExpandSelectedNode(bool expand) // default false
+bool GetAutoExpandSelectedNode() const
+```
+With "jump to first entry" on, expanding a parent - by its button, a double
+click or Enter - selects its first child, and so does a single click on a
+parent that is already open; the arrow keys step over open parents, from the
+first child of one heading straight to the last child of the one before. It
+suits a tree whose headings have no content
+of their own, such as a settings tree where a heading shows its first sub
+page: the heading is then never the row left selected. A node opts out
+through `TreeNodeData::showFirstChildOnExpand = false`, keeping the
+selection on itself (an overview page, say). With `SetAutoExpandSelectedNode`
+on as well, selecting a collapsed parent opens it first, so the jump happens
+from a click on a closed heading too.
+
+```cpp
+tree->SetShowFirstChildOnExpand(true);
+tree->SetAutoExpandSelectedNode(true);
+tree->ExpandAll();
+tree->onNodeSelected = [](TreeNode* node) { ShowPage(node->data.nodeId); };
+```
+
 ### Visual Properties
 
 #### Row Height
@@ -49388,7 +49572,9 @@ The tree view supports comprehensive keyboard navigation:
 ## Mouse Interaction
 
 ### Click Behaviors
-- **Single Click**: Select node
+- **Single Click**: Select node. With `SetShowFirstChildOnExpand(true)`, a
+  click on a parent that is already open selects its first child instead
+  (see [Jump to first entry](#jump-to-first-entry))
 - **Ctrl+Click**: Add to selection (multi-select mode)
 - **Double Click**: Toggle expansion or trigger action
 - **Right Click**: Context menu
@@ -50086,12 +50272,22 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | EMF | `EMFConverter` | ✓ | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. The reader parses the GDI object table, path records, immediate polygon/polyline/bezier records and text (`TA_UPDATECP` chains merge back into spans). |
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
 | AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
-| DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE/SPLINE/HATCH/SOLID/TEXT/MTEXT with the LAYER/LTYPE/STYLE tables; piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
-| DWG | `DWGConverter` | ✓* | ✓* | DWG is proprietary and undocumented; both directions delegate to GNU LibreDWG's tools — writing through `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH), reading through `dwg2dxf` (`ULTRACANVAS_DWG2DXF` or PATH) plus the DXF reader. Without the tools the converter warns and declines — use DXF instead, AutoCAD's own exchange format. LibreDWG's DXF output carries ACI colours only, so colours quantise to the nearest palette entry. |
+| DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
+| DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
 
 Unsupported features never change meaning silently: each converter reports its fallbacks (gradient flattening, opacity flattening, skipped element types, encoding limits) through `ConversionOptions::WarningCallback`.
+
+## The document model
+
+`VectorStorage::VectorDocument` (`UltraCanvasVectorStorage.h`) is the hub every converter meets: `Layers` → groups → elements, each element with an optional `Fill`/`Stroke` style, an optional `Matrix3x3` transform (double precision, row-major — `FromValues(a, b, c, d, e, f)` means x' = a·x + b·y + e, so SVG/PostScript `matrix()` values pass as `FromValues(a, c, b, d, e, f)`) and `GetBoundingBox()` in its parent's space. Group and document boxes are the union of their children with empty boxes skipped, then transformed; `HitTestDocument` carries the point through each ancestor's inverse transform so children of a transformed group (a block insert, a mirrored entity) are found where they are drawn.
+
+**Units.** Coordinates and `Size` are always points (1/72 in). Readers of formats that carry a unit record it in `SourceUnit` (`LengthUnit`: `Point`, `Pixel`, `Inch`, `Foot`, `Yard`, `Mile`, `Mil`, `Millimeter`, `Centimeter`, `Decimeter`, `Meter`, `Kilometer`, `Micrometer`, `Nanometer`, or `Unspecified`) with the scale they applied in `PointsPerSourceUnit`, so `source = points / PointsPerSourceUnit` recovers the file's measurements; `PointsPerUnit()` and `LengthUnitSymbol()` are the helpers. The DXF reader sets them from `$INSUNITS`, using the physical scale when it is declared and yields a usable page (200–20 000 pt), and the DXF writer emits `$INSUNITS` and writes coordinates in the source unit when the document has one.
+
+**CAD layers.** `VectorLayer` carries the layer-table properties of DXF/DWG drawings besides `Name`/`Visible`/`Locked`: `Frozen`, `Plottable`, `DefaultColor`, `DefaultStrokeWidth` (points), `LineTypeName` and `DefaultDashArray`. Entities keep their resolved ByLayer style, so these only feed writers with a layer table (the DXF writer emits colour, lineweight, linetype, frozen/locked/plot flags and marks hidden layers *off*).
+
+The survey of what each converter reads and writes, the dead model surface and the planned steps live in [UltraCanvasVectorModelProposal](../Research/UltraCanvasVectorModelProposal.md).
 
 ## Usage
 
@@ -50110,6 +50306,8 @@ WMFConverter().Export(*doc, "drawing.wmf");
 AIConverter().Export(*doc, "drawing.ai");
 DXFConverter().Export(*doc, "drawing.dxf");
 DWGConverter().Export(*doc, "drawing.dwg");   // needs LibreDWG's dxf2dwg
+auto fromDwg = DWGConverter().Import("plan.dwg");   // native, no external tool
+std::string dxfText = DWGConverter::DecodeToDxf(dwgBytes);   // DWG -> DXF text
 
 auto fromCad = DXFConverter().Import("plan.dxf");
 auto fromEmf = EMFConverter().Import("clip.emf");
@@ -50127,7 +50325,7 @@ auto element = LoadGraphicsFile("plan.dxf");   // UltraCanvasVectorElement
 SaveGraphicsFile(element, "plan.svg");         // any of the ten formats
 ```
 
-Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF, DWG*) and
+Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF, DWG) and
 yields an `UltraCanvasVectorElement` holding the editable `VectorDocument`;
 saving covers the whole matrix from any such element. The
 `IGraphicsPlugin` save interface (`GetSaveExtensions`/`SaveGraphics`) is new
@@ -50153,7 +50351,7 @@ structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when
 installed), and `VectorFormatsPluginTest` (the whole matrix through the
 plugin registry: save all ten formats via `SaveGraphicsFile`, load the
 readable ones back via `LoadGraphicsFile` with geometry/style round-trip
-checks, plus the supported-format inventory).
+checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG).
 
 ## See Also
 
@@ -50745,6 +50943,32 @@ rec->ShowSaveDialog();   // pick a path, then records to it
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Adding a container or codec
+
+The platform backend (GStreamer / Media Foundation / AVFoundation) is not the
+only way a video source can be decoded. An application that brings its own
+container registers it with `RegisterVideoCodecPlugin`
+(`libspecific/Video/VideoCodecPlugin.h`), supplying a factory that returns an
+`IVideoDecodeSession`:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ivf";
+codec.description = "Indexed Video Format";
+codec.kind        = MediaCodecKind::Video;
+RegisterVideoCodecPlugin(codec, [](const std::string& source,
+                                   const VideoDecodeOptions& opts) {
+    return MyApp::OpenIvf(source, opts);
+});
+```
+
+`UltraCanvasVideoPlayer` then opens it, `CaptureVideoThumbnail` grabs a poster
+frame from the same factory, and the media viewer, the Filer's categories, the
+format inventory and the file dialogs all pick the format up. A registered codec
+takes precedence over the platform backend for the sources it claims — the
+backend never declines one, so a fallback ordering could not reach a plugin. See
+[UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md).
 
 ## Build
 
@@ -51373,6 +51597,170 @@ player's `onPositionChanged` into `SetPlayheadTime()`, and feed the waveform's
 `onSeek` into the player's `Seek()`. See
 `Apps/DemoApp/UltraCanvasWaveformExamples.cpp` for a complete demo that decodes a
 bundled MP3 into an envelope and keeps both views in sync.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasWebAssembly.md
+==============================================================================
+
+# UltraCanvas on WebAssembly
+
+**Status: experimental.** The framework builds with Emscripten and runs in
+Chromium: windows render through the same Cairo/Pango pipeline as the desktop
+backends, and mouse, wheel, touch and keyboard input drive the widgets. This
+page is what an *application* author needs to know about the browser as a
+platform. The build itself (the wasm sysroot, the Emscripten flags, the demo
+app) is documented in
+[`UltraCanvas/OS/WASM/README.md`](../../UltraCanvas/OS/WASM/README.md).
+
+## What is the same
+
+Everything in `UltraCanvas/include` and `UltraCanvas/core`. An application
+uses `UltraCanvasApplication`, `CreateWindow`, the element catalogue and the
+file APIs exactly as on the desktop; `Initialize()`, `CreateWindow()` and
+`Run()` are the same calls. Text layout, HiDPI, dirty-rect composition,
+popups and the caret are pixel-identical to Linux because the render context
+is the same code drawing into an offscreen Cairo surface that is then blitted
+onto an HTML `<canvas>`.
+
+## What is different
+
+| Concern | On the desktop | In the browser |
+|---|---|---|
+| `app.Run()` | Blocks until the last window closes | **Never returns.** The browser owns the event loop; each animation frame runs one framework iteration. The application object must have static or heap storage (see below). |
+| Files | The user's disk | The Emscripten virtual filesystem (MEMFS), lost on reload. `WASMFileSystem` can mount an IndexedDB-backed subtree that persists. |
+| Open / Save dialogs | Native pickers | Synchronous pickers are impossible; `UltraCanvasNativeDialogs::OpenFile` / `SaveFile` / `SelectFolder` return "cancelled". Use `SaveContent()` to save (it becomes a browser download) and `WASMBrowser::PickFilesAsync()` to import. |
+| Message boxes | Native message dialogs | `window.alert` / `window.confirm`; two buttons at most, the title becomes the first line. |
+| Text input dialog | Native | `window.prompt`. Password prompts report Cancel (prompt() echoes the text). |
+| Clipboard | System clipboard, all formats | Text only, through the async Clipboard API plus a `paste`-event bridge. Copy (Ctrl+C) writes to the system clipboard; paste works with Ctrl+V / Cmd+V. Menu-driven Paste sees the last text the browser let the page read. |
+| `OpenURL()` | Default browser | `window.open()` in a new tab (subject to popup blocking outside a user gesture). |
+| Recent files, file associations, launching programs | Native | No-ops or "not available" errors. |
+| Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
+| Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
+| Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
+
+### Application lifetime
+
+```cpp
+int main(int, char* argv[]) {
+    static UltraCanvasApplication app;   // static, NOT a stack local
+    if (!app.Initialize(argv[0])) return 1;
+    // ... create windows and elements as on the desktop ...
+    app.Run();                           // never returns in the browser
+    return 0;
+}
+```
+
+`emscripten_set_main_loop` unwinds `main()`'s frame while the loop keeps
+ticking; a stack-local application would be destroyed under it.
+
+## Browser utilities (`UltraCanvasWASMSupport.h`)
+
+Optional helpers for the browser features that have no desktop equivalent.
+They are only declared when building for WebAssembly, so guard their use:
+
+```cpp
+#if defined(__EMSCRIPTEN__)
+#include "UltraCanvasWASMSupport.h"
+#endif
+```
+
+Browser APIs are asynchronous. Every method that needs one returns at once
+and calls back later on the main thread, between frames; the callback may
+touch UI elements.
+
+### Persistent storage
+
+```cpp
+// Mount /data on IndexedDB and load what it holds from the last session.
+WASMFileSystem::MountFileSystem("/data", [](bool loaded) {
+    if (loaded) settings->LoadFrom("/data/settings.json");
+});
+
+// Later, after writing files under /data:
+WASMFileSystem::SyncToBrowser([](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
+```
+
+`FileExists`, `ReadFile`, `WriteFile`, `DeleteFile`, `CreateDirectory` and
+`ListDirectory` are plain helpers over the virtual filesystem; `std::filesystem`
+and `std::fstream` see the same files.
+
+### Importing and exporting files
+
+```cpp
+// Let the user pick one or more images; they land in the virtual FS.
+WASMBrowser::PickFilesAsync(".png,.jpg,image/*", /*multiple=*/true,
+    [](const std::vector<std::string>& paths) {
+        for (const auto& path : paths) imageViewer->LoadImage(path);   // empty: cancelled
+    });
+
+// Save: the framework facade already does the right thing.
+UltraCanvasNativeDialogs::SaveContent(documentBytes, FileDialogOptions().SetDefaultFileName("drawing.svg"));
+// or directly:
+WASMBrowser::DownloadFile("drawing.svg", documentBytes, "image/svg+xml");
+```
+
+### Fetching
+
+```cpp
+WASMNetwork::FetchTextAsync("data/catalogue.json", [](bool ok, const std::string& text) {
+    if (ok) catalogue = UltraCanvasJSON::Parse(text);
+});
+```
+
+Same-origin URLs always work; cross-origin needs CORS on the server.
+
+### Images and fonts
+
+```cpp
+// Decode through the browser (any format it supports); pixels are straight RGBA.
+WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) { ... });
+
+// Fetch a font file into the virtual FS and register it with Pango.
+WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::string& path) {
+    if (ok) UltraCanvasApplication::GetInstance()->RegisterFontFile(path);
+});
+```
+
+### Page and browser
+
+`WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
+`navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
+page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
+and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
+and performance marks.
+
+## Serving an application
+
+Threads need `SharedArrayBuffer`, which browsers enable only on cross-origin
+isolated pages. Serve with
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+`UltraCanvas/OS/WASM/demo/serve.py` is a minimal server that sets both. The
+bundled fonts must be preloaded into the virtual FS at `/share/media/fonts`
+(`--preload-file media/fonts@/share/media/fonts`).
+
+## Known limitations
+
+- Keyboard: no IME composition events (dead keys and CJK input methods are not
+  handled); typed text arrives on KeyDown like the desktop backends.
+- Mouse: drags that leave the canvas stop receiving moves until the pointer
+  re-enters (no pointer capture yet).
+- Touch is synthesized into left-button mouse events.
+- Three-button message dialogs (Yes/No/Cancel, Abort/Retry/Ignore) lose their
+  third choice in `confirm()`.
+- Clipboard paste relies on the browser firing a `paste` event for the
+  Ctrl+V / Cmd+V chord; Shift+Insert and menu-driven Paste use whatever the
+  browser last let the page read (Chromium after a permission prompt; Firefox
+  and Safari usually refuse).
+- The whole surface is uploaded to the canvas on every composition.
+- Firefox and Safari are not yet validated; the backend has been exercised in
+  Chromium.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md
@@ -52074,7 +52462,7 @@ FILE: Docs/UltraCanvas/UltraCanvasXARExamples.md
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/xar/` with a fullscreen viewer, page navigation and zoom.
+XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/vector/XAR/` with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -52264,7 +52652,7 @@ incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
 
 `Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
 target exists) runs this triage from the command line: it prints the node
-tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
+tree by type, the unhandled tags and the warnings for the repo's `media/vector/XAR/`
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
@@ -52488,7 +52876,7 @@ auto xarElement1 = std::make_shared<UltraCanvasXARElement>(
     "XAR1", 10, 10, 280, 220);
 
 // Resolve the demo asset path and load
-std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/xar/demo.xar");
+std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/vector/XAR/demo.xar");
 if (xarElement1->LoadFromFile(xarFile1)) {
     statusLabel->SetText("Loaded: " + xarFile1);
 } else {
@@ -52621,7 +53009,7 @@ auto xarElement = XARElementBuilder()
     .SetIdentifier("Logo")
     .SetPosition(10, 10)
     .SetSize(280, 220)
-    .SetFilePath(NormalizePath(GetResourcesDir() + "media/xar/logo.xar"))
+    .SetFilePath(NormalizePath(GetResourcesDir() + "media/vector/XAR/logo.xar"))
     .SetPreserveAspectRatio(true)
     .SetScale(1.0f)
     .Build();   // file is loaded inside Build()
@@ -52667,6 +53055,268 @@ if (element->LoadFromFile(path)) {
 - [UltraCanvasCDRExamples](UltraCanvasCDRExamples.md) — sibling CorelDRAW vector plugin
 - [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG vector graphics plugin
 - [UltraCanvasBitmapExamples](UltraCanvasBitmapExamples.md) — Raster image display
+
+==============================================================================
+FILE: Docs/UltraCanvas/VersioningInvestigation.md
+==============================================================================
+
+# Version Level vs. Intended Architecture — Investigation
+
+Status: **Investigation.** No code change is proposed here. The question asked
+was narrow — *is `0.3.108` the appropriate version level for what the framework
+still intends to implement?* — and the answer has two independent halves:
+
+1. **The major/minor level is right.** `0.x` is correct and `1.0` would be
+   premature: three engine-level unifications are outstanding, and each one
+   changes public API. §4–§6 measure them.
+2. **The shape of the number is wrong.** 115 releases have been made inside
+   `0.3` — including a whole new platform backend — with the *patch* field
+   carrying every one of them. §2–§3.
+
+Everything below is measured from the tree at `0.3.108` (2026-09-07), not
+assumed.
+
+Author: UltraCanvas Framework
+Last Modified: 2026-09-08
+
+---
+
+## 1. Where the version comes from
+
+The first line of `Docs/UltraCanvas/CHANGELOG.md` (`#### YYYY-MM-DD *x.y.z*`)
+is the single source of truth. `cmake/UltraCanvasVersion.cmake` parses it at
+configure time for `project()` and the `ULTRACANVAS_VERSION` compile
+definition; the packaging scripts parse the same line for artefact names;
+`set-version.sh` propagates it into the Windows `.rc`/`.manifest` files that
+are read from disk. The mechanism is sound and cannot drift.
+
+What does not exist anywhere in the tree is a statement of what the three
+fields *mean* — no versioning policy, no release-readiness criteria, no `1.0`
+definition. `set-version.sh` documents the plumbing, not the semantics. This
+document is the first attempt at the semantics.
+
+There are also **no git tags** (`git tag` is empty), so the changelog is not
+merely the primary record of a release — it is the only one.
+
+## 2. What the numbering has actually been used for
+
+| Series | Releases | Span |
+|---|---|---|
+| `0.1.x` | 24 | 2026-04-06 … |
+| `0.2.x` | 33 | 2026-06 … |
+| `0.3.x` | **115** | 2026-07-04 … 2026-09-07 |
+
+172 changelog entries in five months. The two minor bumps that did happen mark
+module-scale additions — `0.3.0` is "Implemented UltraNet networking module".
+By that standard the `0.3` series contains several changes that should have
+bumped the minor field and did not:
+
+- **A new platform.** `0.3.108` links real applications on WebAssembly —
+  a new `OS/WASM/` backend with native dialogs, clipboard, file loader and a
+  CI workflow. A new supported platform is not a patch.
+- **New subsystems.** The chart engine model layer, the three-phase render
+  driver, the element plugin registry and DSO loader, the video codec plugin
+  contract, the selectable-chart CMake mechanism — all landed inside `0.3.x`.
+- **New public headers** appear in `0.3.x` releases routinely.
+
+Under any reading of semver (or of this repository's own precedent at `0.3.0`),
+the patch field is carrying feature work. `0.3.108` therefore understates the
+distance travelled since `0.3.0` and gives a downstream consumer no signal at
+all about which releases were additive.
+
+## 3. The applications contradict the framework
+
+The apps built *on* this framework keep their own changelogs, and several are
+already past `1.0`:
+
+| Component | Version |
+|---|---|
+| UltraCanvas (framework) | **0.3.108** |
+| UltraTexter | 1.41 |
+| UltraFiler | 1.21.0 |
+| UltraViewer | 1.0.0 |
+| UltraCleaner | 0.53 |
+| UltraMail | 0.6.0 |
+| UltraPaint / UltraSocial / UltraAuthenticator | 0.1.0 |
+
+Shipping `1.0` applications on a `0.3` framework is a defensible position — the
+apps are finished products, the framework's API is not yet frozen — but it is
+currently an *accident* rather than a stated policy, and three of these use a
+two-field scheme (`1.41`, `0.53`) that the framework's own parser only tolerates
+because it pads to four components. This is worth writing down before anyone
+outside the project has to interpret it.
+
+## 4. Outstanding item 1 — charts on the common engine
+
+**Intended:** one chart engine supplies background, grid, axes, legend, label
+plan and interaction; a chart type implements only its own content phase.
+Documented in `UltraCanvasChartEngine.md`, specified in
+`UltraCanvasChartEngineProposal.md`.
+
+**Implemented:** the engine itself — axes, projections, label plan, themes,
+highlights, the three-phase driver `UltraCanvasChartEngineElement`, and the
+CMake mechanism for selectable charts.
+
+**Adopted by:** one chart.
+
+| Measurement | Count |
+|---|---|
+| Chart element classes under `include/Plugins/Charts/` | 40 |
+| …deriving from `UltraCanvasChartEngineElement` | **1** (parallel coordinate) |
+| …deriving directly from `UltraCanvasChartElementBase` | 31 |
+| …deriving from `UltraCanvasHeatmapChartElement` | 4 |
+| …deriving from `UltraCanvasUIElement` / `UltraCanvasGLSurface` | 2 |
+| Entries in `UC_CHART_KEYS` (`UltraCanvas/CMakeLists.txt`) | **1** |
+| Files referencing the engine axis model outside `Engine/` | 4, all parallel-coordinate |
+| Files with their own legend renderer | 10 |
+| Files with their own axis/tick rendering | 13 |
+| Files with their own colour bar | 3 (heatmap, hexbin, contour) |
+
+Additionally, **8 diagram classes** (`CircleDiagram`, `FishboneDiagram`,
+`MatrixDiagram`, `SWOTDiagram`, `TimelineDiagram`, `TreeMapElement`,
+`VennDiagram`, `WordCloudDiagram`) also derive from
+`UltraCanvasChartElementBase`, so the engine's eventual scope is ~48 elements,
+not 40.
+
+The proposal states the position plainly: *"Not started: the Tier-1 adapter and
+the legacy chart migration."* That is unchanged in the tree. Migration will
+move ~47 elements off `UltraCanvasChartElementBase` onto a different base class
+with a different virtual contract — **a breaking change to the public API of
+every chart**, and the single strongest argument against `1.0` today.
+
+## 5. Outstanding item 2 — one internal vector storage format
+
+**Intended:** `VectorStorage::VectorDocument`
+(`Plugins/Vector/UltraCanvasVectorStorage.h`) as the framework's single
+in-memory vector model.
+
+**Where it holds:** the ten file-format converters. SVG, XAR, EPS, CDR, PDF,
+EMF, WMF, AI, DXF and DWG all import to and export from `VectorDocument`
+through `IVectorFormatConverter`, sharing one document walk and one path
+normaliser (`UltraCanvasVectorPathOps.h`). This part of the goal is met.
+
+**Where it does not hold:**
+
+- **A second, independent SVG model.** `Plugins/SVG/UltraCanvasSVGPlugin.{h,cpp}`
+  (1 847 lines) defines its own `SVGDocument`, `SVGStyle`, `SVGTransform`,
+  `SVGGradient`, `SVGFilter`, `PathCommand` and `SVGPathParser`, and its own
+  `UltraCanvasSVGElement`. It includes `UltraCanvasVectorStorage.h` nowhere.
+  `Plugins/Vector/UltraCanvasSVGConverter.cpp` (1 211 lines) parses SVG a
+  second time, with tinyxml2 again, into `VectorDocument`. Two parsers, two
+  models, two UI elements, one file format.
+- **A third SVG path for rasterization.** `libspecific/Cairo/SvgDocumentCairo.{h,cpp}`
+  retains a librsvg handle; `UltraCanvasSupportedFormats.cpp` advertises SVG as
+  "librsvg (via libvips)".
+- **The vectorizer does not produce the format.** `VectorizerResult::svg` is a
+  `std::string` of SVG text, so a raster→vector result must be re-parsed to
+  become a `VectorDocument`.
+- **Five hand-written SVG emitters** exist outside the converter — QRCode,
+  Sankey (`SaveToSVG`), GitGraph, GourceTree and MindMapIO each stream
+  `<svg …>` to an `ofstream` themselves — and a sixth path, the CDR plugin's
+  `ExportToSVG`, re-parses the source through librevenge's own SVG generator.
+  None of the six goes through `VectorDocument`, so none of them benefits from
+  the converter matrix: a Sankey diagram can be saved as SVG but not as PDF,
+  EPS, DXF or EMF, which the shared model would have given it for free.
+- **No vector output from the render context.** There is no
+  `cairo_svg_surface`/`cairo_pdf_surface` anywhere in the tree, and no
+  chart or diagram builds a `VectorDocument`. Every one of the ~48 chart and
+  diagram elements paints immediate-mode into `IRenderContext`, which is why
+  Sankey's "Export SVG" had to be hand-written and why no other chart has one
+  at all.
+
+The header still reads `Version: 2.0.0 · Last Modified: 2025-01-20` — it
+predates most of what now needs to share it. Making it genuinely common means
+retiring the SVG plugin's parallel model and giving `IRenderContext` a
+recording backend, both of which change public types.
+
+## 6. Outstanding item 3 — one internal 3D vector format
+
+**Intended:** the same, for 3D.
+
+**What exists:** `Vec3`, `Mat4`, `Mesh3D` and `BoundingBox3D` in
+`UltraCanvas/Plugins/Models/STL/UltraCanvas3DTypes.h`. Its own README calls
+them *"reusable by future 3D model plugins."*
+
+**Why that is not the common format yet:**
+
+- **It lives inside a file-type plugin.** `Masterfile_modules.md` states the
+  rule for framework-wide facilities: they are core services *"usable by core,
+  plugins and applications alike; never implemented inside a file-type
+  plugin."* The 3D types are implemented inside the STL plugin.
+- **Consumers reach across into it.** `UltraCanvasScatterPlot3D.h` and
+  `UltraCanvasContourSurface3D.h` both `#include "Models/STL/UltraCanvas3DTypes.h"`
+  — chart code depending on a file-format plugin's private directory.
+- **Three cameras, three projections.** `UltraCanvasScatterPlot3DElement::Camera`,
+  `UltraCanvasContourSurface3DElement::Camera` and
+  `UltraCanvasContourSurfaceGLElement::OverlayCamera` are three separate
+  structs, each with its own `Project()` and its own orbit handling. The chart
+  engine proposal counted the same three in its §2.1 duplication table; none
+  has been unified.
+- **A fourth copy exists.** `Apps/DemoApp/UltraCanvasGLDemoSupport.h` declares
+  its own `Vec3` and `Mat4`.
+- **`Mesh3D` has two consumers** — the STL plugin and `UltraCanvasFilerWidget`
+  (thumbnails). There is no scene, no material, no transform hierarchy, and
+  STL is the only 3D format in `Plugins/Models/`.
+
+So the 3D situation is one step behind the 2D one: 2D has a common format that
+some code bypasses, while 3D has a *shared struct file* in the wrong place and
+no common document at all.
+
+## 7. Assessment
+
+**Is `0.x` the appropriate major level? Yes — and `1.0` would be wrong today.**
+`1.0` is a promise of API stability. All three items above are resolved by
+changing public API:
+
+| Item | The breaking change it requires |
+|---|---|
+| Charts on the engine | ~47 elements change base class and virtual contract |
+| One vector format | the SVG plugin's `SVGDocument` model is retired; `IRenderContext` gains a vector-recording backend |
+| One 3D format | `Vec3`/`Mat4`/`Mesh3D` move out of a plugin into core; three chart cameras collapse into one |
+
+Publishing `1.0` before these land would either freeze the duplication in place
+or make the first post-`1.0` release a `2.0`.
+
+**Is `0.3.108` the appropriate *number*? No.** The patch field is doing minor
+field work. The `0.3` series has absorbed a new platform backend, several new
+subsystems and many new public headers across 115 releases.
+
+## 8. Recommendation
+
+1. **Stay in `0.x`.** Do not treat the size of the changelog as a reason to go
+   to `1.0`; the architecture, not the volume, decides.
+2. **Bump the minor field for the next feature release** — make it `0.4.0`
+   rather than `0.3.109`, and thereafter reserve the patch field for fixes and
+   documentation. On current practice a minor bump per month or two is honest.
+3. **Write the policy down** (this file or a `Docs/Versioning.md`): what each
+   field means, that applications version independently of the framework, and
+   that the changelog's first line stays the source of truth.
+4. **State the `1.0` gates explicitly.** The three items above are the natural
+   candidates, plus whatever API-freeze commitment the project wants to make:
+   - every chart and the 8 chart-derived diagrams render through
+     `UltraCanvasChartEngineElement`, and `UC_CHART_KEYS` lists them all;
+   - one vector model — the SVG plugin's parallel model retired, the
+     vectorizer producing `VectorDocument`, the ad-hoc SVG writers replaced,
+     and a vector-recording render context so charts and diagrams export
+     without hand-written emitters;
+   - one 3D model — the 3D types promoted out of `Plugins/Models/STL/` into
+     core, one camera/projection shared by the 3D charts and the GL surface.
+5. **Consider tagging releases in git.** With no tags, "what was in 0.3.42" is
+   answerable only by reading the changelog.
+
+## 9. Suggested milestone mapping
+
+| Milestone | Content |
+|---|---|
+| `0.4.x` | chart engine migration — Tier-1 adapter, then charts in batches; each batch a minor or patch release as it lands |
+| `0.5.x` | vector unification — one SVG model, vectorizer to `VectorDocument`, recording render context |
+| `0.6.x` | 3D unification — core 3D types, one camera, room for a second model format |
+| `1.0.0` | the three gates met and the public API declared stable |
+
+This ordering is deliberate: the chart migration is the largest consumer of a
+recording render context (chart→SVG export), and the 3D unification is
+partly *inside* the chart migration (the three 3D charts are chart elements),
+so doing charts first shrinks the other two.
 
 ==============================================================================
 FILE: Docs/Modules/AudioFX/README.md
@@ -55307,6 +55957,8 @@ providers.
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog`, `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing
 

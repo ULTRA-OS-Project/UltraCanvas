@@ -1,8 +1,9 @@
 // UltraCloud/ui/UltraCloudPickerDialog.cpp
-// Version: 0.1.0
-// Last Modified: 2026-09-03
+// Version: 0.2.0 - shared UiStyle: themed list, captions and buttons
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudPickerDialog.h"
+#include "UltraCloudUiStyle.h"
 #include "UltraCloudAccountDialog.h"
 
 #include "UltraCanvasApplication.h"
@@ -258,32 +259,39 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
     st->dlg     = dialog.get();
 
     dialog->layout.SetFlexColumn()
-                  .SetFlexGap(8)
+                  .SetFlexGap(UiStyle::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    dialog->SetPadding(14);
+    dialog->SetPadding(UiStyle::kPadding);
+    dialog->SetBackgroundColor(UiStyle::kSurface);
 
     // Row 1: account + add.
-    auto accountRow = CreateContainer("cloudPickAccountRow", 0, 0, 0, 30);
+    auto accountRow = CreateContainer("cloudPickAccountRow", 0, 0, 0, UiStyle::kControlHeight);
     accountRow->layout.SetFlexRow().SetFlexGap(8)
                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    accountRow->AddChild(CreateLabel("cloudPickAccountLbl", 0, 0, 70, 26, "Account"));
-    st->accountBox = CreateDropdown("cloudPickAccount", 0, 0, 300, 28);
+    accountRow->AddChild(UiStyle::MakeCaption("cloudPickAccountLbl", "Account", 70));
+    st->accountBox = CreateDropdown("cloudPickAccount", 0, 0, 300, UiStyle::kControlHeight);
     accountRow->AddChild(st->accountBox);
     st->accountBox->layoutItem.SetFlexGrow(1);
-    auto addBtn = CreateButton("cloudPickAdd", 0, 0, 120, 28, "Add account…");
+    auto addBtn = CreateButton("cloudPickAdd", 0, 0, 134, UiStyle::kControlHeight, "Add account…");
+    UiStyle::StyleSecondary(addBtn);
     accountRow->AddChild(addBtn);
     dialog->AddChild(accountRow);
 
     // Row 2: path + Up + Upload.
-    auto pathRow = CreateContainer("cloudPickPathRow", 0, 0, 0, 30);
+    auto pathRow = CreateContainer("cloudPickPathRow", 0, 0, 0, UiStyle::kControlHeight);
     pathRow->layout.SetFlexRow().SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    pathRow->AddChild(CreateLabel("cloudPickPathLbl", 0, 0, 70, 26, "Folder"));
-    st->pathLabel = CreateLabel("cloudPickPath", 0, 0, 0, 26, "/");
+    pathRow->AddChild(UiStyle::MakeCaption("cloudPickPathLbl", "Folder", 70));
+    st->pathLabel = CreateLabel("cloudPickPath", 0, 0, 0, UiStyle::kControlHeight, "/");
+    st->pathLabel->SetFontSize(UiStyle::kFontSize);
+    st->pathLabel->SetTextColor(UiStyle::kTextPrimary);
     pathRow->AddChild(st->pathLabel);
     st->pathLabel->layoutItem.SetFlexGrow(1);
-    st->upBtn = CreateButton("cloudPickUp", 0, 0, 60, 28, "↑ Up");
-    st->uploadBtn = CreateButton("cloudPickUpload", 0, 0, 120, 28, "Upload file…");
+    st->upBtn = CreateButton("cloudPickUp", 0, 0, 64, UiStyle::kControlHeight, "↑ Up");
+    st->uploadBtn = CreateButton("cloudPickUpload", 0, 0, 124, UiStyle::kControlHeight,
+                                 "Upload file…");
+    UiStyle::StyleSecondary(st->upBtn);
+    UiStyle::StyleSecondary(st->uploadBtn);
     pathRow->AddChild(st->upBtn);
     pathRow->AddChild(st->uploadBtn);
     dialog->AddChild(pathRow);
@@ -294,7 +302,12 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
     st->list->SetSelectionMode(TreeSelectionMode::Single);
     st->list->SetShowColumnHeader(true);
     st->list->SetRootVisible(false);
-    st->list->SetRowHeight(24);
+    st->list->SetRowHeight(28);
+    st->list->SetFontSize(UiStyle::kFontSize);
+    st->list->SetSelectionColor(UiStyle::kRowSelected);
+    st->list->SetHoverColor(UiStyle::kRowHover);
+    st->list->SetLineColor(Colors::Transparent);
+    st->list->SetBorders(1.0f, UiStyle::kBorder, UiStyle::kRadius);
     st->list->SetColumns({
         { "name",     "Name",     0,   160, 1.0f, TextAlignment::Left,
           Color(30, 30, 30), Colors::Transparent, 0, /*isTreeColumn=*/true },
@@ -303,28 +316,27 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
         { "modified", "Modified", 170, 0,   1.0f, TextAlignment::Left,
           Color(90, 90, 90), Colors::Transparent, 0, false },
     });
-    TreeColumnStyle columnStyle;
-    columnStyle.headerHeight      = 24;
-    columnStyle.headerBackground  = Color(240, 240, 240, 255);
-    columnStyle.headerTextColor   = Color(40, 40, 40, 255);
-    columnStyle.headerBorderColor = Color(205, 205, 205, 255);
-    st->list->SetColumnStyle(columnStyle);
+    st->list->SetColumnStyle(UiStyle::ListHeader());
     dialog->AddChild(st->list);
     st->list->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     st->status = CreateLabel("cloudPickStatus", 0, 0, 0, 22, "");
+    st->status->SetFontSize(UiStyle::kFontSize);
+    st->status->SetTextColor(UiStyle::kTextSecondary);
     dialog->AddChild(st->status);
 
-    // Buttons.
+    // Buttons: the status line stays visible on the left, Cancel then the
+    // primary action on the right.
     auto buttons = CreateContainer("cloudPickButtons", 0, 0, 0, 36);
-    buttons->layout.SetFlexRow().SetFlexGap(10)
+    buttons->layout.SetFlexRow().SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
-    st->linkBtn = CreateButton("cloudPickLink", 0, 0, 120, 28, "Insert link");
-    st->linkBtn->SetStyle(ButtonStyles::PrimaryStyle());
-    auto cancelBtn = CreateButton("cloudPickCancel", 0, 0, 80, 28, "Cancel");
-    buttons->AddChild(st->linkBtn);
+    auto cancelBtn = CreateButton("cloudPickCancel", 0, 0, 90, UiStyle::kControlHeight, "Cancel");
+    UiStyle::StyleSecondary(cancelBtn);
+    st->linkBtn = CreateButton("cloudPickLink", 0, 0, 120, UiStyle::kControlHeight, "Insert link");
+    UiStyle::StylePrimary(st->linkBtn);
     buttons->AddChild(cancelBtn);
+    buttons->AddChild(st->linkBtn);
     dialog->AddChild(buttons);
 
     // Wiring.

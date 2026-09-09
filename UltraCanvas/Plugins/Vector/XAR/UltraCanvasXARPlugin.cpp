@@ -243,7 +243,7 @@ namespace UltraCanvas {
         auto tinted = std::make_shared<UCPixmap>();
         if (!tinted->Init(w, h)) return def->fillPixmap.get();
         // Empirically verified against Xara's own renderings (the cogwheel in
-        // media/xar/demo.xar against the file's embedded preview, and a
+        // media/vector/XAR/demo.xar against the file's embedded preview, and a
         // flattened soft-shadow contone against its author's PDF export):
         // luminance 0 maps to the fill's START colour, luminance 255 to the
         // END colour, and the bitmap's own (inverted) alpha is preserved so

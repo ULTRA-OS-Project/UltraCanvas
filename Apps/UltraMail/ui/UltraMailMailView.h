@@ -3,8 +3,8 @@
 // of the selected account's inbox on the left (an "Inbox" group box holding a
 // columns list: state · from · subject · date) and the message details on the
 // right (a "Message" group box holding the MessagePreview). Driven by LocalStore.
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

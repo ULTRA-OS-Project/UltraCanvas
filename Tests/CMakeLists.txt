@@ -641,6 +641,38 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
 
+# ===== DIALOG ICON LAYOUT TEST =====
+# The modal dialog's content row with and without the severity icon: hiding it
+# must drop its column and the flex gap after it, so an element centred in the
+# message column (the progress dialog's ring) lands on the window's centre.
+# Pure geometry - the layout engine has no UI-stack dependencies.
+message(STATUS "  Building DialogIconLayoutTest...")
+add_executable(DialogIconLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DialogIconLayoutTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(DialogIconLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(DialogIconLayoutTest PRIVATE cxx_std_20)
+set_target_properties(DialogIconLayoutTest PROPERTIES
+    OUTPUT_NAME "DialogIconLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DialogIconLayoutTest
+    COMMAND DialogIconLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DialogIconLayoutTest")
+
 # ===== PACKET LAYOUT TEST =====
 # Packet structure model, layout engine (row splitting with continuation
 # edges, proportional clamping, lanes), validators, and the RFC-pinning
@@ -1198,7 +1230,7 @@ add_test(
 message(STATUS "    Test registered: ElementPluginTest")
 
 # ===== EPS PROBE TEST =====
-# Parses the shipped media/eps samples through the EPS plugin and reports
+# Parses the shipped media/vector/EPS samples through the EPS plugin and reports
 # the interpreter's diagnostics; with cairo it also rasterizes to PNG for
 # comparison against a ghostscript rendering of the same file.
 if(TARGET UltraCanvasEPSPlugin)
@@ -1211,7 +1243,7 @@ if(TARGET UltraCanvasEPSPlugin)
     )
     target_compile_features(EPSProbeTest PRIVATE cxx_std_20)
     target_compile_definitions(EPSProbeTest PRIVATE
-        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/eps"
+        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/vector/EPS"
     )
     target_link_libraries(EPSProbeTest PRIVATE UltraCanvasEPSPlugin UltraCanvas)
     if(NOT WIN32)
@@ -1385,6 +1417,28 @@ else()
     message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== VECTOR MODEL TEST =====
+# The shared vector document model: Matrix3x3 at double precision, group
+# and document bounds through nested transforms, and hit-testing that
+# carries the point through ancestor transforms.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorModelTest...")
+    add_executable(VectorModelTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorModelTest.cpp
+    )
+    target_include_directories(VectorModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorModelTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorModelTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorModelTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorModelTest COMMAND VectorModelTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorModelTest")
+else()
+    message(STATUS "  VectorModelTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # The whole converter matrix through the graphics plugin registry: saving
 # all ten formats via SaveGraphicsFile, loading the formats with readers
@@ -1408,6 +1462,33 @@ else()
     message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== DWG READER TEST =====
+# The CAD import path: the DXF reader's block machinery (BLOCKS, nested/
+# arrayed/mirrored INSERTs, DIMENSION blocks, visibility, geometry-derived
+# extents) on a synthetic drawing, and the native DWG decoder on the R2000
+# fixture in DataFormats. Extra DWG files on the command line are decoded
+# and reported (DWG_TEST_SVG_DIR exports them as SVG).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building DWGReaderTest...")
+    add_executable(DWGReaderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DWGReaderTest.cpp
+    )
+    target_include_directories(DWGReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DWGReaderTest PRIVATE cxx_std_20)
+    target_compile_definitions(DWGReaderTest PRIVATE
+        DWG_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/DataFormats"
+    )
+    target_link_libraries(DWGReaderTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(DWGReaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DWGReaderTest COMMAND DWGReaderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DWGReaderTest")
+else()
+    message(STATUS "  DWGReaderTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
@@ -1425,7 +1506,7 @@ if(TARGET UltraCanvasXARPlugin)
     target_compile_features(XARProbeTest PRIVATE cxx_std_20)
     target_link_libraries(XARProbeTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
     target_compile_definitions(XARProbeTest PRIVATE
-        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/xar"
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
     )
     # --render mode writes PNGs through cairo; probing works without it.
     find_package(PkgConfig QUIET)

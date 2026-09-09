@@ -116,6 +116,16 @@ public:
             if (pageH <= 0) pageH = 842;
         }
 
+        // A document that knows its source unit is written back in that
+        // unit ($INSUNITS) so measurements round-trip; anything else is
+        // written in points as unitless drawing units.
+        insunits = InsunitsCode(doc.SourceUnit);
+        if (insunits != 0 && doc.PointsPerSourceUnit > 0) {
+            unitsPerPoint = 1.0 / doc.PointsPerSourceUnit;
+        }
+        pageW *= unitsPerPoint;
+        pageH *= unitsPerPoint;
+
         // The model/paper space block record handles are referenced by every
         // entity's owner (330), so they must exist before the entity pass.
         msbr = NH();
@@ -129,17 +139,20 @@ public:
             if (std::find(layerNames.begin(), layerNames.end(), name) ==
                 layerNames.end()) {
                 layerNames.push_back(name);
+                layerProps[name] = layer.get();
             }
+            if (!layer->DefaultDashArray.empty()) RegisterDash(layer->DefaultDashArray);
             CollectResources(*layer);
         }
         if (layerNames.empty()) layerNames.push_back("Layer");
 
         // Entities render into a side buffer first (they allocate handles).
+        Matrix3x3 root = Matrix3x3::Scale(unitsPerPoint, unitsPerPoint);
         for (const auto& layer : doc.Layers) {
             if (!layer || !layer->Visible) continue;
             currentLayer = SanitizeName(layer->Name, "Layer");
             for (const auto& child : layer->Children) {
-                if (child) EmitElement(*child, layer->Style, Matrix3x3::Identity());
+                if (child) EmitElement(*child, layer->Style, root);
             }
         }
 
@@ -157,11 +170,14 @@ private:
     const VectorDocument& doc;
     std::function<void(const std::string&)> warn;
     std::ostringstream entities;
-    double pageW = 0, pageH = 0;
+    double pageW = 0, pageH = 0;    // in drawing units (points unless the document has a unit)
+    double unitsPerPoint = 1.0;     // drawing units per model point
+    int insunits = 0;               // $INSUNITS code written
     unsigned handle = 0x100;
     std::string msbr, psbr;   // block record handles
     std::string currentLayer = "Layer";
     std::vector<std::string> layerNames;
+    std::map<std::string, const VectorLayer*> layerProps;
     std::map<std::string, std::string> fontStyles;      // family -> style name
     std::map<std::string, std::string> dashLinetypes;   // pattern key -> name
     std::map<std::string, std::vector<double>> dashPatterns;
@@ -183,7 +199,31 @@ private:
         T(o, code, std::to_string(v));
     }
 
-    double Y(double yPt) const { return pageH - yPt; }
+    double Y(double y) const { return pageH - y; }
+
+    static int InsunitsCode(LengthUnit unit) {
+        switch (unit) {
+            case LengthUnit::Inch:       return 1;
+            case LengthUnit::Foot:       return 2;
+            case LengthUnit::Mile:       return 3;
+            case LengthUnit::Millimeter: return 4;
+            case LengthUnit::Centimeter: return 5;
+            case LengthUnit::Meter:      return 6;
+            case LengthUnit::Kilometer:  return 7;
+            case LengthUnit::Mil:        return 9;
+            case LengthUnit::Yard:       return 10;
+            case LengthUnit::Nanometer:  return 12;
+            case LengthUnit::Micrometer: return 13;
+            case LengthUnit::Decimeter:  return 14;
+            default:                     return 0;   // unitless, points, pixels
+        }
+    }
+
+    // Lineweights are physical (1/100 mm) whatever the drawing unit, so
+    // the unit scale in the CTM must not reach them.
+    int Lineweight(double widthPt, const Matrix3x3& ctm) const {
+        return SnapLineweight(widthPt * AvgScale(ctm) / unitsPerPoint);
+    }
 
     // ===== RESOURCE COLLECTION =====
 
@@ -226,7 +266,7 @@ private:
         T(o, 0, "SECTION"); T(o, 2, "HEADER");
         T(o, 9, "$ACADVER"); T(o, 1, "AC1015");
         T(o, 9, "$HANDSEED"); T(o, 5, "FFFF");
-        T(o, 9, "$INSUNITS"); T(o, 70, 0);
+        T(o, 9, "$INSUNITS"); T(o, 70, insunits);
         T(o, 9, "$EXTMIN"); T(o, 10, 0.0); T(o, 20, 0.0); T(o, 30, 0.0);
         T(o, 9, "$EXTMAX"); T(o, 10, pageW); T(o, 20, pageH); T(o, 30, 0.0);
         T(o, 0, "ENDSEC");
@@ -281,7 +321,29 @@ private:
                 T(o, 0, "LAYER"); T(o, 5, NH()); T(o, 330, th);
                 T(o, 100, "AcDbSymbolTableRecord");
                 T(o, 100, "AcDbLayerTableRecord");
-                T(o, 2, name); T(o, 70, 0); T(o, 62, 7); T(o, 6, "Continuous");
+                T(o, 2, name);
+                auto it = layerProps.find(name);
+                const VectorLayer* lp = it != layerProps.end() ? it->second : nullptr;
+                int flags = 0;
+                if (lp && lp->Frozen) flags |= 1;
+                if (lp && lp->Locked) flags |= 4;
+                T(o, 70, flags);
+                Color c(255, 255, 255, 255);
+                if (lp && lp->DefaultColor) c = *lp->DefaultColor;
+                int aci = NearestAci(c);
+                // A layer that is off keeps its colour as a negative index.
+                T(o, 62, lp && !lp->Visible && !lp->Frozen ? -aci : aci);
+                if (lp && lp->DefaultColor) {
+                    T(o, 420, static_cast<int>((static_cast<uint32_t>(c.r) << 16) |
+                                               (static_cast<uint32_t>(c.g) << 8) | c.b));
+                }
+                std::string lt = "Continuous";
+                if (lp && !lp->DefaultDashArray.empty()) lt = RegisterDash(lp->DefaultDashArray);
+                T(o, 6, lt);
+                if (lp && !lp->Plottable) T(o, 290, 0);
+                if (lp && lp->DefaultStrokeWidth > 0) {
+                    T(o, 370, SnapLineweight(lp->DefaultStrokeWidth));
+                }
             };
             layer("0");
             for (const auto& name : layerNames) {
@@ -619,7 +681,7 @@ private:
             if (const Color* c = std::get_if<Color>(&st.Fill)) sc = *c;
             else warn("DXF export: non-solid stroke paint replaced with black");
             NoteOpacity(style, sc.a);
-            int lw = SnapLineweight(st.Width * AvgScale(ctm));
+            int lw = Lineweight(st.Width, ctm);
             std::string linetype = st.DashArray.empty()
                     ? std::string() : RegisterDash(st.DashArray);
 

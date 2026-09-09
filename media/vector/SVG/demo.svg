@@ -1,0 +1,342 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="1800" viewBox="0 0 1200 1800">
+  <!-- UltraCanvas SVG Test Suite v1.0.0 -->
+  <!-- Comprehensive test of SVG features for rendering validation -->
+  
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="linearGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgb(255,255,0);stop-opacity:1" />
+      <stop offset="50%" style="stop-color:rgb(255,0,0);stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:rgb(0,0,255);stop-opacity:0.6" />
+    </linearGradient>
+    
+    <radialGradient id="radialGrad1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:white;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:navy;stop-opacity:1" />
+    </radialGradient>
+    
+    <!-- Patterns -->
+    <pattern id="checkPattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="10" height="10" fill="lightgray"/>
+      <rect x="10" y="10" width="10" height="10" fill="lightgray"/>
+    </pattern>
+    
+    <pattern id="imagePattern" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+      <circle cx="50" cy="50" r="40" fill="orange" opacity="0.5"/>
+      <rect x="25" y="25" width="50" height="50" fill="purple" opacity="0.5"/>
+    </pattern>
+    
+    <!-- Masks -->
+    <mask id="circleMask">
+      <rect x="0" y="0" width="100%" height="100%" fill="white"/>
+      <circle cx="50" cy="50" r="40" fill="black"/>
+    </mask>
+    
+    <!-- Filters -->
+    <filter id="blurFilter">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3"/>
+    </filter>
+    
+    <filter id="shadowFilter" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="5" dy="5" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.5"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Clip Paths -->
+    <clipPath id="starClip">
+      <polygon points="50,10 61,40 95,40 69,60 80,90 50,70 20,90 31,60 5,40 39,40"/>
+    </clipPath>
+    
+    <!-- Markers -->
+    <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0,0 10,3 0,6" fill="red"/>
+    </marker>
+    
+    <!-- Symbols -->
+    <symbol id="star" viewBox="0 0 100 100">
+      <polygon points="50,10 61,40 95,40 69,60 80,90 50,70 20,90 31,60 5,40 39,40" fill="gold" stroke="orange" stroke-width="2"/>
+    </symbol>
+  </defs>
+  
+  <!-- Title and Grid Background -->
+  <rect width="1200" height="1800" fill="#f0f0f0"/>
+  <text x="600" y="40" font-size="24" font-weight="bold" text-anchor="middle" fill="#333">
+    UltraCanvas SVG Feature Test Suite
+  </text>
+  <text x="600" y="65" font-size="14" text-anchor="middle" fill="#666">
+    Comprehensive rendering validation for cross-platform compatibility
+  </text>
+  
+  <!-- Section 1: Basic Shapes (100-300) -->
+  <g id="basicShapes">
+    <text x="50" y="120" font-size="18" font-weight="bold" fill="#333">1. Basic Shapes</text>
+    
+    <!-- Rectangle variations -->
+    <rect x="50" y="140" width="100" height="60" fill="blue" stroke="black" stroke-width="2"/>
+    <rect x="170" y="140" width="100" height="60" rx="10" ry="10" fill="green" stroke="red" stroke-width="3"/>
+    <rect x="290" y="140" width="100" height="60" fill="url(#linearGrad1)" stroke="purple" stroke-width="1" stroke-dasharray="5,5"/>
+    
+    <!-- Circles and Ellipses -->
+    <circle cx="460" cy="170" r="30" fill="yellow" stroke="orange" stroke-width="4"/>
+    <ellipse cx="560" cy="170" rx="40" ry="25" fill="pink" stroke="magenta" stroke-width="2"/>
+    <circle cx="660" cy="170" r="30" fill="url(#radialGrad1)"/>
+    
+    <!-- Lines and Polylines -->
+    <line x1="50" y1="230" x2="150" y2="280" stroke="black" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="170,230 220,280 270,250 320,270" fill="none" stroke="blue" stroke-width="3" stroke-linejoin="round"/>
+    <polyline points="350,230 400,280 450,250 500,270" fill="none" stroke="red" stroke-width="2" marker-end="url(#arrowHead)"/>
+    
+    <!-- Polygons -->
+    <polygon points="550,230 600,230 625,270 575,290 525,270" fill="lightblue" stroke="darkblue" stroke-width="2"/>
+    <polygon points="650,230 700,230 725,270 675,290 625,270" fill="url(#checkPattern)" stroke="black" stroke-width="1"/>
+  </g>
+  
+  <!-- Section 2: Paths and Curves (320-520) -->
+  <g id="pathsAndCurves">
+    <text x="50" y="340" font-size="18" font-weight="bold" fill="#333">2. Paths and Curves</text>
+    
+    <!-- Simple Path -->
+    <path d="M 50,360 L 100,410 L 150,380 Z" fill="coral" stroke="black" stroke-width="2"/>
+    
+    <!-- Quadratic Bezier -->
+    <path d="M 200,360 Q 250,410 300,360" fill="none" stroke="green" stroke-width="3"/>
+    
+    <!-- Cubic Bezier -->
+    <path d="M 350,360 C 380,410 420,410 450,360" fill="none" stroke="blue" stroke-width="3"/>
+    
+    <!-- Arc -->
+    <path d="M 500,380 A 30,30 0 0,1 560,380" fill="none" stroke="purple" stroke-width="3"/>
+    
+    <!-- Complex Path -->
+    <path d="M 620,360 L 650,370 Q 680,380 690,400 T 720,420 C 740,430 750,420 760,400 L 770,380 Z" 
+          fill="lightyellow" stroke="orange" stroke-width="2" stroke-linejoin="round"/>
+    
+    <!-- Heart Shape -->
+    <path d="M 850,380 C 850,365 835,350 820,350 C 805,350 795,365 795,380 C 795,365 785,350 770,350 C 755,350 740,365 740,380 Q 740,400 795,430 Q 850,400 850,380 Z" 
+          fill="red" stroke="darkred" stroke-width="2"/>
+  </g>
+  
+  <!-- Section 3: Text Features (540-740) -->
+  <g id="textFeatures">
+    <text x="50" y="560" font-size="18" font-weight="bold" fill="#333">3. Text Rendering</text>
+    
+    <!-- Basic Text -->
+    <text x="50" y="590" font-family="Arial" font-size="16" fill="black">Simple Text</text>
+    <text x="50" y="615" font-family="Times New Roman" font-size="16" font-style="italic" fill="blue">Italic Text</text>
+    <text x="50" y="640" font-family="Courier New" font-size="16" font-weight="bold" fill="red">Bold Monospace</text>
+    
+    <!-- Text Decoration -->
+    <text x="250" y="590" font-size="16" text-decoration="underline" fill="green">Underlined</text>
+    <text x="250" y="615" font-size="16" text-decoration="line-through" fill="purple">Strike Through</text>
+    <text x="250" y="640" font-size="16" letter-spacing="5" fill="orange">Spaced Letters</text>
+    
+    <!-- Text Along Path -->
+    <defs>
+      <path id="textPath1" d="M 450,600 Q 550,580 650,600"/>
+    </defs>
+    <text font-size="14" fill="navy">
+      <textPath xlink:href="#textPath1">Text following a curved path</textPath>
+    </text>
+    
+    <!-- Rotated Text -->
+    <text x="750" y="600" font-size="16" fill="brown" transform="rotate(-45 750 600)">Rotated -45°</text>
+    <text x="850" y="600" font-size="16" fill="teal" transform="rotate(30 850 600)">Rotated 30°</text>
+    
+    <!-- Multi-line Text with tspan -->
+    <text x="50" y="680" font-size="14" fill="black">
+      <tspan x="50" dy="0">Line 1: Normal text</tspan>
+      <tspan x="50" dy="20" font-weight="bold">Line 2: Bold text</tspan>
+      <tspan x="50" dy="20" fill="red">Line 3: Red text</tspan>
+    </text>
+    
+    <!-- Unicode and Special Characters -->
+    <text x="300" y="680" font-size="16" fill="black">Unicode: ★ ♥ © ½ π ∞</text>
+    <text x="300" y="710" font-size="16" fill="black">Chinese: 中文测试</text>
+    <text x="450" y="710" font-size="16" fill="black">Arabic: اختبار</text>
+    <text x="550" y="710" font-size="16" fill="black">Japanese: テスト</text>
+  </g>
+  
+  <!-- Section 4: Transformations (760-960) -->
+  <g id="transformations">
+    <text x="50" y="780" font-size="18" font-weight="bold" fill="#333">4. Transformations</text>
+    
+    <!-- Translate -->
+    <rect x="50" y="800" width="60" height="40" fill="lightcoral"/>
+    <rect x="50" y="800" width="60" height="40" fill="coral" transform="translate(20, 20)"/>
+    
+    <!-- Rotate -->
+    <rect x="200" y="820" width="60" height="40" fill="lightgreen"/>
+    <rect x="200" y="820" width="60" height="40" fill="green" transform="rotate(45 230 840)"/>
+    
+    <!-- Scale -->
+    <rect x="350" y="820" width="60" height="40" fill="lightblue"/>
+    <rect x="350" y="820" width="60" height="40" fill="blue" transform="scale(1.5 0.75)"/>
+    
+    <!-- Skew -->
+    <rect x="500" y="820" width="60" height="40" fill="lightyellow"/>
+    <rect x="500" y="820" width="60" height="40" fill="yellow" transform="skewX(30)"/>
+    
+    <!-- Combined Transformations -->
+    <g transform="translate(700, 840) rotate(30) scale(1.2)">
+      <rect x="-30" y="-20" width="60" height="40" fill="purple" opacity="0.7"/>
+      <circle cx="0" cy="0" r="5" fill="white"/>
+    </g>
+    
+    <!-- Matrix Transform -->
+    <rect x="850" y="820" width="60" height="40" fill="orange" transform="matrix(1,0.5,-0.5,1,0,0)"/>
+  </g>
+  
+  <!-- Section 5: Gradients and Patterns (980-1180) -->
+  <g id="gradientsPatterns">
+    <text x="50" y="1000" font-size="18" font-weight="bold" fill="#333">5. Gradients and Patterns</text>
+    
+    <!-- Linear Gradients -->
+    <rect x="50" y="1020" width="150" height="80" fill="url(#linearGrad1)"/>
+    
+    <!-- Radial Gradients -->
+    <circle cx="280" cy="1060" r="40" fill="url(#radialGrad1)"/>
+    
+    <!-- Pattern Fills -->
+    <rect x="370" y="1020" width="150" height="80" fill="url(#checkPattern)"/>
+    <circle cx="600" cy="1060" r="40" fill="url(#imagePattern)"/>
+    
+    <!-- Custom Gradient -->
+    <defs>
+      <linearGradient id="customGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:#ff0000;stop-opacity:1" />
+        <stop offset="33%" style="stop-color:#00ff00;stop-opacity:1" />
+        <stop offset="66%" style="stop-color:#0000ff;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#ff00ff;stop-opacity:1" />
+      </linearGradient>
+    </defs>
+    <rect x="700" y="1020" width="150" height="80" fill="url(#customGrad)"/>
+  </g>
+  
+  <!-- Section 6: Opacity and Blending (1200-1400) -->
+  <g id="opacityBlending">
+    <text x="50" y="1220" font-size="18" font-weight="bold" fill="#333">6. Opacity and Blending</text>
+    
+    <!-- Opacity Levels -->
+    <rect x="50" y="1240" width="80" height="60" fill="red" opacity="1.0"/>
+    <rect x="140" y="1240" width="80" height="60" fill="red" opacity="0.75"/>
+    <rect x="230" y="1240" width="80" height="60" fill="red" opacity="0.5"/>
+    <rect x="320" y="1240" width="80" height="60" fill="red" opacity="0.25"/>
+    
+    <!-- Overlapping with Opacity -->
+    <circle cx="480" cy="1270" r="30" fill="blue" opacity="0.7"/>
+    <circle cx="510" cy="1270" r="30" fill="yellow" opacity="0.7"/>
+    
+    <!-- Fill and Stroke Opacity -->
+    <rect x="580" y="1240" width="100" height="60" fill="green" fill-opacity="0.3" stroke="green" stroke-width="3" stroke-opacity="1"/>
+    
+    <!-- Group Opacity -->
+    <g opacity="0.5">
+      <rect x="720" y="1240" width="50" height="30" fill="purple"/>
+      <rect x="745" y="1255" width="50" height="30" fill="orange"/>
+    </g>
+  </g>
+  
+  <!-- Section 7: Clipping and Masking (1420-1620) -->
+  <g id="clippingMasking">
+    <text x="50" y="1440" font-size="18" font-weight="bold" fill="#333">7. Clipping and Masking</text>
+    
+    <!-- Clipping Path -->
+    <g clip-path="url(#starClip)" transform="translate(50, 1460)">
+      <rect x="0" y="0" width="100" height="100" fill="url(#linearGrad1)"/>
+      <text x="50" y="50" text-anchor="middle" font-size="14" fill="white">Clipped</text>
+    </g>
+    
+    <!-- Masking -->
+    <g mask="url(#circleMask)" transform="translate(200, 1460)">
+      <rect x="0" y="0" width="100" height="100" fill="blue"/>
+      <text x="50" y="50" text-anchor="middle" font-size="14" fill="white">Masked</text>
+    </g>
+    
+    <!-- Complex Clip Path -->
+    <defs>
+      <clipPath id="complexClip">
+        <path d="M 50,10 L 90,40 L 70,90 L 30,90 L 10,40 Z"/>
+      </clipPath>
+    </defs>
+    <image x="350" y="1460" width="100" height="100" xlink:href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj4KICA8cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2ZmMDAwMCIvPgogIDxyZWN0IHg9IjI1IiB5PSIyNSIgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjMDBmZjAwIi8+Cjwvc3ZnPg==" clip-path="url(#complexClip)"/>
+  </g>
+  
+  <!-- Section 8: Filters and Effects (1640-1780) -->
+  <g id="filtersEffects">
+    <text x="50" y="1660" font-size="18" font-weight="bold" fill="#333">8. Filters and Effects</text>
+    
+    <!-- Blur Filter -->
+    <rect x="50" y="1680" width="100" height="60" fill="red" filter="url(#blurFilter)"/>
+    
+    <!-- Shadow Filter -->
+    <circle cx="230" cy="1710" r="30" fill="green" filter="url(#shadowFilter)"/>
+    
+    <!-- Multiple Filters -->
+    <defs>
+      <filter id="complexFilter">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="blur"/>
+        <feColorMatrix in="blur" type="saturate" values="2" result="saturate"/>
+        <feComponentTransfer in="saturate" result="brightness">
+          <feFuncR type="linear" slope="1.5"/>
+          <feFuncG type="linear" slope="1.5"/>
+          <feFuncB type="linear" slope="1.5"/>
+        </feComponentTransfer>
+      </filter>
+    </defs>
+    <rect x="330" y="1680" width="100" height="60" fill="blue" filter="url(#complexFilter)"/>
+    
+    <!-- Use Symbol -->
+    <use xlink:href="#star" x="480" y="1670" width="80" height="80"/>
+    <use xlink:href="#star" x="580" y="1670" width="80" height="80" opacity="0.5" transform="rotate(45 620 1710)"/>
+  </g>
+  
+  <!-- Animation Examples (commented out for static testing) -->
+  <!--
+  <circle cx="900" cy="200" r="20" fill="red">
+    <animate attributeName="cx" from="900" to="1100" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  
+  <rect x="900" y="400" width="50" height="50" fill="blue">
+    <animateTransform attributeName="transform" type="rotate" from="0 925 425" to="360 925 425" dur="5s" repeatCount="indefinite"/>
+  </rect>
+  -->
+  
+  <!-- Nested Groups and Complex Structure -->
+  <g id="complexStructure" transform="translate(900, 1000)">
+    <g id="outerGroup" opacity="0.9">
+      <rect x="0" y="0" width="200" height="150" fill="lightgray" stroke="black" stroke-width="2"/>
+      <g id="innerGroup1" transform="translate(20, 20)">
+        <circle cx="30" cy="30" r="25" fill="url(#radialGrad1)"/>
+        <text x="30" y="35" text-anchor="middle" font-size="12" fill="white">Nested</text>
+      </g>
+      <g id="innerGroup2" transform="translate(100, 20) scale(0.8)">
+        <polygon points="30,10 50,40 10,40" fill="gold" stroke="orange" stroke-width="2"/>
+      </g>
+    </g>
+  </g>
+  
+  <!-- ViewBox and Preserve Aspect Ratio Test -->
+  <svg x="900" y="1400" width="200" height="150" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style="border: 1px solid black;">
+    <rect width="100" height="100" fill="lightblue"/>
+    <circle cx="50" cy="50" r="40" fill="white" stroke="blue" stroke-width="2"/>
+    <text x="50" y="55" text-anchor="middle" font-size="10" fill="blue">ViewBox</text>
+  </svg>
+  
+  <!-- Metadata and Comments -->
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about="">
+        <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">UltraCanvas SVG Test Suite</dc:title>
+        <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">UltraCanvas Framework</dc:creator>
+        <dc:description xmlns:dc="http://purl.org/dc/elements/1.1/">Comprehensive SVG feature test for cross-platform rendering validation</dc:description>
+      </rdf:Description>
+    </rdf:RDF>
+  </metadata>
+</svg>

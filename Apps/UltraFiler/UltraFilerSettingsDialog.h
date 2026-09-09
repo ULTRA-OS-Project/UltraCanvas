@@ -1,10 +1,12 @@
 // Apps/UltraFiler/UltraFilerSettingsDialog.h
 // UltraFiler settings window: a tree of settings pages on the left (main
-// pages with sub pages, e.g. Media Viewer > Transparent Images) and the
-// selected page on the right. Changes apply to the running application
-// immediately (via the onChanged callback) and are persisted right away.
-// Version: 1.3.0
-// Last Modified: 2026-09-04
+// pages with sub pages, e.g. Display > Treeview) and the selected page on
+// the right. Selecting a main page moves on to its first sub page, since a
+// main page has no content of its own. Changes apply to the running
+// application immediately (via the onChanged callback) and are persisted
+// right away.
+// Version: 1.4.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 #pragma once
 

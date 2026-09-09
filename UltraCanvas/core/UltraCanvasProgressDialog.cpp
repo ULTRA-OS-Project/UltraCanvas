@@ -42,11 +42,16 @@ namespace UltraCanvas {
             UltraCanvasWindowBase* parent,
             const std::string& title,
             const std::string& caption,
-            std::function<void()> onCancel) {
+            std::function<void()> onCancel,
+            bool showIcon) {
 
         DialogConfig cfg;
         cfg.title = title;
         cfg.dialogType = DialogType::Information;
+        // No severity badge unless the caller asks for one: the ring is this
+        // dialog's graphic, and an icon column beside the message would offset
+        // the whole content column, leaving the ring visibly off centre.
+        cfg.showIcon = showIcon;
         cfg.message = caption;
         cfg.details = " ";           // reserved for the detail line
         cfg.buttons = DialogButtons::NoButtons;   // Cancel is added below

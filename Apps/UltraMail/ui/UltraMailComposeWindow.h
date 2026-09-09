@@ -5,8 +5,8 @@
 // hands an updated Draft back through onSend. "Attach file" reads a local file
 // into the draft's attachments; "Attach cloud link" uploads through (or picks
 // from) an UltraCloud account and puts the share link into the body.
-// Version: 0.3.0
-// Last Modified: 2026-09-03
+// Version: 0.4.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -36,6 +36,8 @@ public:
     void SetCloud(UltraCloud::CloudService* cloud) { cloud_ = cloud; }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
+    // Size the view to the window's client area (call on window resize).
+    void Resize(float width, float height);
 
     // Add a local file to the draft's attachments (shown in the strip).
     bool AttachFile(const std::string& path);
@@ -53,6 +55,8 @@ private:
     Draft CollectDraft() const;
     void ChooseFileToAttach();
     void ChooseCloudLink();
+    // Rebuild the chips and show the attachment row only while there are any.
+    void RefreshAttachments();
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
@@ -62,6 +66,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> cc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> subject_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachWrap_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
 };
 

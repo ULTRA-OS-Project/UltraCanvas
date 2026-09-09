@@ -1,3 +1,288 @@
+#### 2026-09-09 *0.3.110*
+- **A dialog can drop the severity icon, and the extract window's progress ring
+  is centred again.** Every modal dialog put the coloured severity badge (the
+  blue `i`) in its own column left of the message, and the whole content column
+  started to the right of it. That is right for a message, and wrong for a
+  dialog whose content carries its own graphic: UltraFiler's compress / extract
+  window drew its progress ring inside that offset column, so the ring sat
+  visibly right of the window's centre with an empty strip beside it.
+  - `DialogConfig::showIcon` (default `true`) and
+    `UltraCanvasModalDialog::SetIconVisible()` / `IsIconVisible()` turn the
+    badge off. Hidden means `display:none`, not merely invisible — the icon
+    reserves no column and no flex gap, so the message column spans the full
+    content width and an element added with `AddDialogElement()` that centres
+    itself is centred **in the window**. `AutoSizeToContent()` no longer keeps
+    the icon's 48px floor for a dialog that has no icon.
+  - `AlertOptions::showIcon` passes the switch through the alert façade, and
+    `UltraCanvasAlert::Plain(message, title, ...)` is the icon-less one-liner
+    next to `Info()` / `Warning()` / `Error()`. The severity still names the
+    window and picks the accent colour.
+  - `UltraCanvasProgressDialog::Show()` gained a trailing `showIcon` argument
+    that **defaults to false**: the ring is that dialog's graphic, so a badge
+    beside it adds nothing and costs it the centre. `UltraCanvasFilerWidget`'s
+    archive jobs (Compress / Extract, the context-menu entries and the
+    multi-archive extract queue) open the window that way, so the
+    "Unpacking …" popup now shows the ring in the middle of the dialog.
+  - `Tests/DialogIconLayoutTest.cpp` lays the dialog's content row out on the
+    real layout engine and pins both halves: with the icon the ring's centre is
+    30px right of the window's, without it the two coincide at every window
+    width. The DemoApp's Alert page gained an *Alert Without Icon* button.
+
+#### 2026-09-08 *0.3.109*
+- **LaTeX: the on-demand module now finds its math font (and itself) in a
+  normal build, and a view that cannot typeset says why.** The demo's
+  "LaTeX Documents" page showed no formula at all: the plugin loaded, but
+  `Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp` looked for
+  `latinmodern-math.clm2` under `<exe>/media/microtex` and
+  `<exe>/share/UltraCanvas/media/microtex`, while the top-level CMake copies
+  `media/` to `<build>/share/media` (and a package installs it to
+  `<exe>/../share/media`). The font was only found when the working
+  directory happened to be the repository root, and a failed engine
+  initialisation left the view blank with the error reachable only through
+  `GetLastError()`.
+  - The font search now starts at `GetResourcesDir() + "media/microtex"` —
+    the framework's own resource root, the one every other `media/` consumer
+    uses — followed by the `share/media` layouts next to the executable; the
+    old candidates are kept. A view whose font lookup failed retries once
+    `SetLaTeXFontSearchDir()` is called, instead of staying dead.
+  - The loader (`core/UltraCanvasLaTeXModuleLoader.cpp`) also probes
+    `<exe>/lib/`: in a dev build the executable sits at the build root and
+    the module in `<build>/lib`, which no previous candidate covered — with a
+    static core there is no rpath to fall back on, so `CreateLaTeXView()`
+    returned `nullptr`.
+  - `UltraCanvasLaTeXView` draws its `GetLastError()` text in red, sized as
+    its content, whenever there is no render (engine not initialised, parse
+    error), so a broken formula is visible in the UI rather than an empty
+    box.
+  - Demo: a plain-math document with no live view now reports
+    `GetLaTeXModuleError()` instead of the misleading "needs TikZ" note.
+  - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search-order and diagnostics
+    sections updated.
+- **`UltraCanvasTreeView`: "jump to first entry" also answers a click on an
+  open parent.** `SetShowFirstChildOnExpand(true)` moved the selection on to
+  a parent's first child when the parent was expanded - by its button, a
+  double click or Enter - but a single click on a parent that was already
+  open (every heading of an `ExpandAll()`'d tree) left the parent selected.
+  For a tree whose headings show their first sub page, that was two rows
+  showing the same content. The click now moves on too; a node still opts
+  out through `TreeNodeData::showFirstChildOnExpand`, and Ctrl+click in
+  multi-select mode keeps adding the parent itself. The jump also gives the
+  keyboard focus to the child it selects, and the arrow keys step over open
+  parents - from the first child of one heading straight to the last child
+  of the one before - so a heading is never the row left selected from the
+  keyboard either; a closed parent is still stepped onto, since it can be
+  opened from there.
+#### 2026-09-08 *0.3.110*
+- **Vector document model: precision, bounds, hit-testing, units and CAD
+  layers.** First step of the shared-model work for the vector converter
+  matrix, with the survey and plan in
+  `Docs/Research/UltraCanvasVectorModelProposal.md`.
+  - `VectorStorage::Matrix3x3` is double precision throughout (CAD
+    drawings carry 10⁶-unit offsets with 10⁻³ detail; the DXF reader had
+    grown its own double affine to cope) and gains `IsIdentity()`. Its
+    row-major `FromValues` order is documented; the unused XAR matrix
+    helper that passed PostScript order straight through is corrected.
+  - `VectorGroup::GetBoundingBox` / `VectorDocument::GetBoundingBox` skip
+    empty children instead of unioning them with the origin, so a group
+    holding an empty group or an unsupported element no longer reports a
+    box dragged to (0,0); a transformed empty group stays empty; an empty
+    document reports its page.
+  - `HitTestDocument` carries the point through each layer's and group's
+    inverse transform, so children of a transformed group (every CAD block
+    insert, every mirrored entity) are hit where they are drawn; an
+    element without bounds never hits.
+  - Units: `LengthUnit`, `PointsPerUnit()`, `LengthUnitSymbol()`, and
+    `VectorDocument::SourceUnit` / `PointsPerSourceUnit` record the unit a
+    file measured in and the scale the reader applied. The DXF reader
+    sets them from `$INSUNITS` and uses the physical scale when a unit is
+    declared and gives a usable page (an A4 plan in millimetres becomes
+    842 × 595 pt); the DXF writer emits `$INSUNITS` and writes the source
+    unit back, keeping lineweights physical.
+  - CAD layer properties on `VectorLayer`: `Frozen`, `Plottable`,
+    `DefaultColor`, `DefaultStrokeWidth`, `LineTypeName`,
+    `DefaultDashArray`. The DXF reader fills them (with `Locked` and
+    `Visible`) from the LAYER table; the DXF writer emits the layer table
+    from them and writes hidden layers as *off* layers.
+  - `UltraCanvasVectorConverter.h` drops the never-implemented
+    `VectorConverterFactory`, `VectorConversionManager` and helper
+    declarations; the registry is `UltraCanvasVectorFormatsPlugin`.
+  - New `Tests/VectorModelTest.cpp` (CTest `VectorModelTest`).
+
+#### 2026-09-08 *0.3.109*
+- **The vector sample media moved under `media/vector/`.** The format folders
+  that sat at the media root — `media/SVG/`, `media/cdr/`, `media/eps/` and
+  `media/xar/` — now live beside the existing `AI`, `DWG`, `DXF` and `STL`
+  sets as `media/vector/SVG/`, `media/vector/CDR/`, `media/vector/EPS/` and
+  `media/vector/XAR/`, so every vector sample is in one place with one folder
+  per format. `media/cdr/demo.jpg` (the reference render for `demo.cdr`)
+  travelled with its drawing. Every path that named them was rewritten: the
+  demo's SVG, CDR, EPS and XAR pages
+  (`Apps/DemoApp/UltraCanvas{SVG,CDR,EPS,XAR}Examples.cpp`), the
+  `EPS_SAMPLES_DIR` / `XAR_SAMPLES_DIR` compile definitions in
+  `Tests/CMakeLists.txt` that feed `EPSProbeTest` and `XARProbeTest`, and the
+  component docs. No other application referenced these folders — the rest of
+  `Apps/` reaches only `media/icons/`, `media/appicon/` and
+  `media/Logo_Texter.png` — and the packaging scripts copy `media/` whole, so
+  nothing else needed touching.
+- **Seven unused icons deleted from `media/icons/`**: `about.png`, `exit.png`,
+  `image1.png`, `image2.png`, `images.png`, `keyboard.png` and
+  `light 001.jpg`. No application loaded any of them (`exit.svg` is the icon
+  the toolbars actually use); the only mention anywhere was `light 001.jpg`
+  as an illustrative path in the mind map docs, which now name `info.png`.
+- **DWG files open and preview natively.** The Vector plugin's
+  `DWGConverter` read a drawing only by shelling out to GNU LibreDWG's
+  `dwg2dxf`, so on any machine without that GPL tool a `.dwg` produced no
+  document and no preview. Reading is now a native decoder
+  (`Plugins/Vector/UltraCanvasDWGDecoder.h/.cpp`, no third-party code)
+  that handles every release from R13 to R2018 (AC1012, AC1014, AC1015,
+  AC1018, AC1021, AC1024, AC1027, AC1032): the bit-coded value types, the
+  R13–R2000 section locators, the R2004+ encrypted file header with its
+  LZ77-compressed system and data pages, the R2007 Reed-Solomon coded
+  pages, the object map, the CLASSES table for variable-type entities and
+  the per-entity field layouts. It renders the drawing database as tagged
+  DXF for the DXF reader, so both CAD formats share one import path and
+  `DWGConverter::DecodeToDxf()` doubles as a DWG-to-DXF converter.
+  - Entities: LINE, POINT, CIRCLE, ARC, ELLIPSE, LWPOLYLINE, POLYLINE (2D,
+    3D, polyface and polygon meshes with their VERTEX chains), SPLINE,
+    HATCH (every boundary edge type, solid/pattern/gradient), SOLID, TRACE,
+    3DFACE, TEXT, ATTRIB, MTEXT, LEADER, INSERT/MINSERT with their block
+    definitions, the seven DIMENSION types through their rendered blocks,
+    plus the LAYER/LTYPE/STYLE tables, true colours, lineweights, linetypes
+    and visibility. Unsupported types (3D solids, images, proxies, tables,
+    multileaders) are counted and reported through the warning callback.
+  - Validated against LibreDWG's sample corpus (R13, R14, 2000, 2004,
+    2007, 2010, 2013 and 2018 editions of the same drawing decode to the
+    same entity set as the reference DXFs) and real-world 2007/2013
+    drawings; 130+ files run clean under AddressSanitizer/UBSan.
+  - `dwg2dxf` remains only a fallback for files the decoder declines
+    (pre-R13 drawings); writing still needs `dxf2dwg`, since the format has
+    no public specification and the framework is MIT-licensed.
+- **DXF reader: blocks, inserts and dimensions.** The reader drew only the
+  ENTITIES section, so the block references that make up most real
+  drawings were missing. It now parses the BLOCKS section and expands
+  INSERT/MINSERT (nested, scaled, rotated, arrayed, and mirrored through
+  the OCS extrusion), with "0"-layer and ByBlock inheritance, draws
+  DIMENSION entities through their rendered blocks, and adds ATTRIB, LEADER,
+  3DFACE, 3D polylines, polyface and polygon meshes (projected onto the XY
+  plane), MTEXT rotation and TEXT vertical alignment. Entities whose object
+  coordinate system is not the world's are wrapped in a transformed group.
+  Off/frozen layers, invisible entities and paper-space entities (when the
+  model space has content) are no longer imported. The page is the
+  drawing's real extents — computed from the built geometry, block content
+  included, and reconciled with `$EXTMIN`/`$EXTMAX` — and a page derived
+  from the extents is scaled to a sensible point size, since drawing units
+  are arbitrary (a car in metres and a house in millimetres both come out
+  with legible strokes).
+- **SVG writer: shapes without a fill are written `fill="none"`.** The
+  model's "no fill" was written as no attribute, which SVG renders black -
+  every closed outline exported from a drawing came out as a solid blob.
+- New `DWGReaderTest` (block machinery on a synthetic drawing; the native
+  decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the
+  framework's own test document converted with dxf2dwg; extra `.dwg` files
+  on the command line are decoded, reported and optionally exported as
+  SVG).
+- DemoApp: new "DWG / DXF Drawings" page in the Vector Graphics category
+  (`Apps/DemoApp/UltraCanvasDWGExamples.cpp`) showing the samples in
+  `media/vector/DWG/` in `UltraCanvasVectorElement` tiles with a fullscreen
+  pan/zoom viewer, the decoder's statistics and warnings per drawing, and a
+  walk-through of the DWG → DXF → `VectorDocument` pipeline. The
+  Dependencies page now lists DWG reading as in-tree and LibreDWG as the
+  optional writer only.
+
+#### 2026-09-07 *0.3.108*
+- **WebAssembly: real applications link, and the browser clipboard works.**
+  The Emscripten backend (`UltraCanvas/OS/WASM/`) rendered and took input,
+  but it defined neither the `UltraCanvasNativeDialogs` statics nor
+  `UltraCanvasFileLoader::NotifyRecentFile`, which every other platform
+  directory supplies and the core references unconditionally - so any app
+  that used a dialog or the file loader failed to link, and the minimal demo
+  only passed because the static archive never pulled those objects in.
+  - **New `OS/WASM/UltraCanvasWASMNativeDialogs.cpp`**: message and question
+    dialogs through `window.alert()` / `window.confirm()` (two buttons, the
+    title becomes the first line), text input through `window.prompt()`
+    (password prompts report Cancel rather than echo), `SaveContent()` as a
+    browser download, `ShowPrintDialog()` through `window.print()`. The
+    synchronous file pickers report Cancel - a browser picker cannot answer
+    before the function returns - and the desktop `SaveContent()` in
+    `core/UltraCanvasFileLoader.cpp` is compiled out for `__EMSCRIPTEN__`
+    like it already was for Android.
+  - **New `OS/WASM/UltraCanvasWASMFileLoader.cpp`**: `NotifyRecentFile` as a
+    documented no-op.
+  - **New `OS/WASM/UltraCanvasWASMClipboard.h/.cpp`**, selected by
+    `core/UltraCanvasClipboard.cpp` under `__EMSCRIPTEN__` (Emscripten does
+    not define `__linux__`, so the clipboard used to report "not supported").
+    Text only: `SetClipboardText()` caches and calls
+    `navigator.clipboard.writeText()`; reading is asynchronous in the browser,
+    so `UltraCanvasWASMApplication` now lets the Ctrl/Cmd+V keydown reach the
+    browser, catches the `paste` event it answers with, hands the text to the
+    backend and *then* queues the Ctrl+V key event - the text field's paste
+    handler finds the text in place. `GetClipboardText()` also starts a
+    `readText()` refresh for menu-driven pastes.
+  - `OpenURL()` opens a new tab under Emscripten instead of calling
+    `system("xdg-open")`, which fails with ENOSYS in the sandbox.
+  - **`UltraCanvasWASMSupport.h/.cpp` rewritten.** The kept 2025 utilities
+    returned JavaScript promises through `EM_ASM_INT` (a garbage integer, at
+    once), downloaded empty blobs and stubbed most of their surface. Now:
+    IDBFS mount / sync with completion callbacks; file helpers over the
+    virtual FS; `fetch()`-based `FetchAsync` / `FetchTextAsync`;
+    `DownloadFile` with the actual bytes; **`PickFilesAsync`**, which opens
+    the browser's file picker and copies the picked files into the virtual FS
+    so any framework file API can load them; browser-decoded `LoadImage`;
+    `LoadFont` that fetches a font file into the virtual FS for
+    `RegisterFontFile()`; complete query-parameter access. Nothing in the
+    framework depends on these; they are for applications.
+  - The library's link options now export what those JavaScript bridges call
+    (`-sEXPORTED_FUNCTIONS=_main,_malloc,_free`, `-sEXPORTED_RUNTIME_METHODS=
+    UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS`).
+  - **New doc `Docs/UltraCanvas/UltraCanvasWebAssembly.md`** - the browser as
+    a platform from an application's point of view: what is identical, what
+    differs (table), the static-application rule, the utilities with
+    examples, serving, known limitations. `OS/WASM/README.md` keeps the build
+    guide and gains the clipboard/dialog rows and the EM_ASM top-level-comma
+    rule; `AndroidPortInvestigation.md` §6 is marked historical - it still
+    described `OS/WASM/` as unwired dead code.
+  - **New workflow `.github/workflows/wasm-build.yml`** (manual dispatch):
+    builds the wasm sysroot (cached on the script's hash) and the demo app
+    with Emscripten, so the backend is compiled somewhere other than one
+    developer's machine. Not in the per-PR matrix: the sysroot takes the
+    better part of an hour.
+  - These additions were syntax-checked against stub Emscripten headers on a
+    desktop compiler and are not yet exercised in a browser; run the workflow
+    against the branch before relying on them.
+- **A video codec an application brings is now actually used.** The codec
+  registry landed in 0.3.105 could classify a video format and advertise it,
+  but decoding still went through `IVideoBackend` alone — so "registering a
+  container" stopped short of the only part that plays it, and the doc had to
+  say so. `libspecific/Video/VideoCodecPlugin.h` closes that: a registration
+  carries a factory returning an `IVideoDecodeSession`, and
+  `UltraCanvasVideoPlayer` opens it while `CaptureVideoThumbnail` drives the
+  same factory for a poster frame. A plugin therefore gets thumbnails without
+  writing any — the generic decode-session grab was generalised from "the
+  backend's `OpenDecoder`" to any session opener — and may supply a dedicated
+  fast grab when it has something cheaper.
+- **The decoding half lives beside the backend, not in the public header.** It
+  deals in `IVideoDecodeSession`, and `UltraCanvasMediaCodecRegistry.h` has to
+  stay includable from anywhere — the media viewer includes it even on a build
+  with no video backend at all. So the registry keeps recognition and
+  capability, and `VideoCodecPlugin.h` keeps the callbacks, in a side table
+  keyed by the registry's own canonical extension so aliases and content probes
+  resolve the same way.
+- **Video plugins run first; audio plugins run last — and the asymmetry is the
+  point.** `IVideoBackend::OpenDecoder` never declines a source: the GStreamer
+  backend builds a `playbin` and reports an undecodable file asynchronously on
+  its bus. Ordering the plugin as a fallback therefore handed every source to
+  the backend and left a registered codec permanently unreachable, which is
+  exactly what the new test caught on its first run. Precedence is safe because
+  the lookup matches only extensions a plugin explicitly registered — a source
+  no plugin claimed still goes straight to the backend, untouched, and the test
+  asserts that so the rule cannot quietly become interception.
+- **`Tests/VideoCodecPluginTest.cpp`** drives a synthetic in-process codec
+  through the real `UltraCanvasVideoPlayer` and `CaptureVideoThumbnail`:
+  classification, the inventory entry, a decoded frame arriving on
+  `onFrameReady`, the thumbnail fallback, a dedicated grabber taking over, the
+  size bound still being applied, and unregistering a decoder while leaving the
+  format recognised. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too — the
+  case that shows a plugin working on a build with no platform backend.
 #### 2026-09-06 *0.3.107*
 - **Raster editing layer — what a bitmap editor needs and the framework did
   not have.** PixelFX has always been a complete whole-image engine (filters,

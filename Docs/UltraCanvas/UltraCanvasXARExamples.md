@@ -4,7 +4,7 @@
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/xar/` with a fullscreen viewer, page navigation and zoom.
+XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/vector/XAR/` with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -194,7 +194,7 @@ incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
 
 `Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
 target exists) runs this triage from the command line: it prints the node
-tree by type, the unhandled tags and the warnings for the repo's `media/xar/`
+tree by type, the unhandled tags and the warnings for the repo's `media/vector/XAR/`
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
@@ -418,7 +418,7 @@ auto xarElement1 = std::make_shared<UltraCanvasXARElement>(
     "XAR1", 10, 10, 280, 220);
 
 // Resolve the demo asset path and load
-std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/xar/demo.xar");
+std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/vector/XAR/demo.xar");
 if (xarElement1->LoadFromFile(xarFile1)) {
     statusLabel->SetText("Loaded: " + xarFile1);
 } else {
@@ -551,7 +551,7 @@ auto xarElement = XARElementBuilder()
     .SetIdentifier("Logo")
     .SetPosition(10, 10)
     .SetSize(280, 220)
-    .SetFilePath(NormalizePath(GetResourcesDir() + "media/xar/logo.xar"))
+    .SetFilePath(NormalizePath(GetResourcesDir() + "media/vector/XAR/logo.xar"))
     .SetPreserveAspectRatio(true)
     .SetScale(1.0f)
     .Build();   // file is loaded inside Build()

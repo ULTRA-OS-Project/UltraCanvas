@@ -1,9 +1,11 @@
 // Apps/UltraMail/ui/UltraMailPassphraseDialog.cpp
-// Version: 0.4.0 (Phase 2)
+// Version: 0.5.0 - themed inputs and buttons
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPassphraseDialog.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailTheme.h"
 
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasContainer.h"
@@ -34,9 +36,10 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
     auto* dlg = dialog.get();
 
     dialog->layout.SetFlexColumn()
-                  .SetFlexGap(12)
+                  .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    dialog->SetPadding(16);
+    dialog->SetPadding(20);
+    dialog->SetBackgroundColor(Theme::kCardBackground);
 
     auto content = CreateContainer("passForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -50,6 +53,8 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
               "will have to enter your mail passwords again."
             : "Enter your master password to unlock your mail account passwords.");
     intro->SetWrap(TextWrap::WrapWord);
+    intro->SetFontSize(Theme::kSizeBody);
+    intro->SetTextColor(Theme::kTextSecondary);
     content->AddChild(intro);
     intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -57,6 +62,8 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
     if (!errorText.empty()) {
         auto err = CreateLabel("passError", 0, 0, 420, 20, errorText);
         err->SetWrap(TextWrap::WrapWord);
+        err->SetFontSize(Theme::kSizeBody);
+        err->SetTextColor(Theme::kWaitingText);
         content->AddChild(err);
         err->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
@@ -64,25 +71,28 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
     // Build a [label + input] flex row and append it to the content column.
     auto addRow = [&content](const std::string& id, const std::string& labelText,
                              const std::shared_ptr<UltraCanvasTextInput>& input) {
-        auto row = CreateContainer(id + "Row", 0, 0, 0, 30);
+        auto row = CreateContainer(id + "Row", 0, 0, 0, Theme::kControlHeight);
         row->layout.SetFlexRow()
-                   .SetFlexGap(10)
+                   .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = CreateLabel(id + "Lbl", 0, 0, 140, 24, labelText);
+        auto label = Theme::MakeLine(id + "Lbl", labelText, Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(130.0f, Theme::kControlHeight));
         row->AddChild(label);
+        Theme::StyleInput(input);
         row->AddChild(input);
         input->layoutItem.SetFlexGrow(1);
         content->AddChild(row);
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     };
 
-    auto pass = CreatePasswordInput("passField", 0, 0, 260, 28);
+    auto pass = CreatePasswordInput("passField", 0, 0, 0, Theme::kControlHeight);
     pass->SetPlaceholder(firstRun ? "Choose a master password" : "Your master password");
     addRow("passMain", firstRun ? "Master password" : "Password", pass);
 
     std::shared_ptr<UltraCanvasTextInput> confirm;
     if (firstRun) {
-        confirm = CreatePasswordInput("passConfirm", 0, 0, 260, 28);
+        confirm = CreatePasswordInput("passConfirm", 0, 0, 0, Theme::kControlHeight);
         confirm->SetPlaceholder("Type it again");
         addRow("passConfirm", "Repeat", confirm);
     }
@@ -91,21 +101,22 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
     content->layoutItem.SetFlexGrow(1);
 
     // ===== BUTTON ROW =====
-    auto buttonRow = CreateContainer("passButtons", 0, 0, 0, 36);
+    auto buttonRow = CreateContainer("passButtons", 0, 0, 0, Theme::kToolbarHeight);
     buttonRow->layout.SetFlexRow()
-                     .SetFlexGap(10)
+                     .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto okBtn = std::make_shared<UltraCanvasButton>("passOk", 0, 0, 140, 28);
-    okBtn->SetText(firstRun ? "Set password" : "Unlock");
-    okBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
-    buttonRow->AddChild(okBtn);
-
-    auto cancelBtn = std::make_shared<UltraCanvasButton>("passCancel", 0, 0, 80, 28);
-    cancelBtn->SetText("Cancel");
+    auto cancelBtn = CreateButton("passCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
+
+    auto okBtn = CreateButton("passOk", 0, 0, 140, Theme::kControlHeight,
+                              firstRun ? "Set password" : "Unlock");
+    Theme::StylePrimary(okBtn);
+    okBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(okBtn);
 
     dialog->AddChild(buttonRow);
 

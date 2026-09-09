@@ -425,6 +425,10 @@ if(BUILD_DEMO_APP)
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasEPSExamples.cpp)
         endif()
 
+        if(PLUGIN_TARGET MATCHES "UltraCanvasVectorPlugin")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasDWGExamples.cpp)
+        endif()
+
         if(PLUGIN_TARGET MATCHES "OCR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)
         endif()
@@ -1312,6 +1316,19 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME MediaCodecRegistryTest COMMAND MediaCodecRegistryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The video half of the codec plugin path: a synthetic in-process codec
+    # driven through UltraCanvasVideoPlayer and CaptureVideoThumbnail. Needs no
+    # media assets and no platform video backend.
+    add_executable(VideoCodecPluginTest Tests/VideoCodecPluginTest.cpp)
+    target_include_directories(VideoCodecPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoCodecPluginTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(VideoCodecPluginTest PRIVATE cxx_std_20)
+    set_target_properties(VideoCodecPluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoCodecPluginTest COMMAND VideoCodecPluginTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # The raster-editing layer under UltraPaint: layers, selection, brush

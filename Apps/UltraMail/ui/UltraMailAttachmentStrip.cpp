@@ -1,7 +1,10 @@
 // Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 - chips are themed cards
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentStrip.h"
+
+#include "UltraMailTheme.h"
 
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasEvent.h"
@@ -47,11 +50,23 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
                                std::function<void()> onSaveAs)
     : UltraCanvasContainer(id, x, y, w, h),
       onOpen_(std::move(onOpen)), onSaveAs_(std::move(onSaveAs)) {
-    AddChild(CreateLabel(id + ".glyph", 6, 4, 28, 28, GlyphFor(att.mediaType)));
+    // A small white card with the type glyph, the name and the size.
+    SetBackgroundColor(Theme::kCardBackground);
+    SetBorders(1.0f, Theme::kCardBorder, 8.0f);
+    auto glyph = CreateLabel(id + ".glyph", 8, 6, 26, 32, GlyphFor(att.mediaType));
+    glyph->SetFontSize(16.0f);
+    AddChild(glyph);
 
     std::string name = att.filename.empty() ? "attachment" : att.filename;
-    AddChild(CreateLabel(id + ".name", 38, 4, w - 44, 20, name));
-    AddChild(CreateLabel(id + ".size", 38, 24, w - 44, 16, HumanSize(att.Size())));
+    auto nameLabel = CreateLabel(id + ".name", 40, 5, w - 48, 18, name);
+    nameLabel->SetFontSize(Theme::kSizeBody);
+    nameLabel->SetTextColor(Theme::kTextPrimary);
+    nameLabel->SetTooltip(name);
+    AddChild(nameLabel);
+    auto sizeLabel = CreateLabel(id + ".size", 40, 23, w - 48, 16, HumanSize(att.Size()));
+    sizeLabel->SetFontSize(Theme::kSizeSmall);
+    sizeLabel->SetTextColor(Theme::kTextMuted);
+    AddChild(sizeLabel);
 }
 
 bool AttachmentChip::OnEvent(const UCEvent& event) {

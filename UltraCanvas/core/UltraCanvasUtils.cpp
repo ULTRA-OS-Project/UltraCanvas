@@ -19,6 +19,10 @@
 #include <climits>    // PATH_MAX
 #endif
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>   // EM_ASM for OpenURL
+#endif
+
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <cerrno>
 #include <cstring>
@@ -502,6 +506,11 @@ namespace UltraCanvas {
         // Needs a JNI ACTION_VIEW Intent bridge (later phase); system() and
         // xdg-open do not exist inside an Android app sandbox.
         debugOutput << "UltraCanvas: OpenURL not implemented on Android: " << url << std::endl;
+#elif defined(__EMSCRIPTEN__)
+        // No processes in the browser sandbox (system() fails with ENOSYS);
+        // a new tab is the browser's "open URL". Popup blockers may refuse it
+        // outside a user gesture, which is when apps call this anyway.
+        EM_ASM({ window.open(UTF8ToString($0), '_blank', 'noopener'); }, url.c_str());
 #else
         system(("xdg-open \"" + url + "\"").c_str());
 #endif

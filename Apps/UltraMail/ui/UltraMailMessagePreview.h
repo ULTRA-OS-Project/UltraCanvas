@@ -3,8 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -68,6 +68,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     from_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     to_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     date_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;       // avatar · from/to · date · Reply
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> rule_;         // divider above the body
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> avatarHost_;   // sender initial
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
     AttachmentStrip attachmentStrip_;
     SourceMessage   current_;   // the shown message, for Reply
