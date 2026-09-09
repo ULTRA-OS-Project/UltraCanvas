@@ -2,10 +2,10 @@
 // The account bar at the top of the main window. With one account it is a
 // single summary strip: provider letter, account name, and three counters
 // (new today · unread before · waiting for reply). With several accounts it is
-// a row of square tiles carrying the same information, one per account; the
+// a row of card tiles carrying the same information, one per account; the
 // selected tile drives the mail view below.
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

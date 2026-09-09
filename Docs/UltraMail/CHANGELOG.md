@@ -1,3 +1,40 @@
+#### 2026-09-09 *0.7.0*
+- **Every window restyled on one theme.** `Apps/UltraMail/ui/UltraMailTheme.h`
+  now holds the app's colours (near-white page, white cards with hairline
+  borders, one blue accent, a primary / secondary / muted text scale), type
+  sizes, metrics, and the styling helpers (`StylePrimary`, `StyleSecondary`,
+  `StyleInput`, `CardGroupBox`, `MakeAvatar`, `ClickSurface`). The windows use
+  it instead of styling in place, so they cannot drift apart.
+- **Main window.** The 150px button column is gone; a single toolbar row
+  carries **New email** (the one filled button), **Reload**, **Contacts** and,
+  on the right, **Add account**. The account summary is a compact card:
+  provider initial in a tinted square, the local part with the domain under it
+  (full address on hover), and the three counters as tinted *count · caption*
+  pills (blue = new today, green = unread before, orange = waiting for reply).
+  With several accounts the tiles are the same cards, the selected one with an
+  accent frame; their height follows their content instead of a fixed square.
+- **Inbox and message panes** are white cards separated by an invisible
+  splitter gap. The list has 30px rows, a quiet header, soft hover / selection
+  tints and no expander column; the date column shortens the way mail clients
+  do (time today, "Sep 09" this year, "Jan 14, 2025" older; the full date is in
+  the row tooltip). The message header is one row — sender avatar, name over
+  address · recipients, date, **Reply** — above a rule and the body; with no
+  selection the pane shows a muted hint and no header chrome.
+- **Composer** is a flex layout that follows the window (760×620 by default):
+  To / Cc / Subject rows with captions, a rule, a borderless body that takes
+  the remaining height, an attachment row shown only while something is
+  attached, and a bottom toolbar with **Send** (primary), **Attach file…**,
+  **Attach cloud link…** and, apart on the right, **Cancel** — which now closes
+  the window.
+- **Contacts** is a sidebar + list layout that follows the window: sections
+  are selectable entries with counts in a tinted sidebar, the list is a titled
+  column of contact cards (initial, name, email · phone, organisation). The
+  contact dialog, the account wizard and the master-password dialog share the
+  same rows, inputs and button order (Cancel, then the primary action).
+- **UltraCloud dialogs** (`UltraCloud/ui/UltraCloudUiStyle.h`): the account
+  dialog and the link picker use the same palette — captions, styled inputs,
+  a quiet list header, secondary buttons and one primary action.
+
 #### 2026-09-04 *0.6.0*
 - **Account tiles grow with their counters.** The tile was a fixed 176×176 box,
   so a four- or five-digit unread count pushed the counter row past the rounded
