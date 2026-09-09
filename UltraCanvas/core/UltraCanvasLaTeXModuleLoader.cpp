@@ -8,8 +8,8 @@
 // UnloadLaTeXModule()); allocation/deallocation of views always happen inside
 // the module via the matching create/destroy entry points.
 //
-// Version: 1.0.0
-// Last Modified: 2026-06-29
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_PLUGIN_LATEX
@@ -116,6 +116,12 @@ std::vector<std::string> CandidatePaths() {
     if (!exe.empty()) {
         out.push_back(exe + "/" + fname);
         out.push_back(exe + "/plugins/" + fname);
+        // Dev build: the apps are emitted at the build root while the module
+        // (a CMake MODULE) goes to <build>/lib. With a static core there is
+        // no rpath for the bare-name dlopen below to fall back on, so this
+        // layout has to be probed explicitly.
+        out.push_back(exe + "/lib/" + fname);
+        // Package layout: executable in bin/, module in lib/.
         out.push_back(exe + "/../lib/" + fname);
         out.push_back(exe + "/../lib/ultracanvas/" + fname);
     }
