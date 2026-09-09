@@ -272,6 +272,8 @@ private:
     // Joins the workers of cancelled scans: the ones that have finished, or
     // all of them when `waitForAll` (window shutdown).
     void ReapSearchWorkers(bool waitForAll);
+    // Defers UpdateScanButton() off the layout pass that changed the answer.
+    void ApplyScanButtonFit();
     // The search field's in-field button: "Scan sub folder" while there is
     // something to search for, "Stop" while a scan runs.
     void UpdateScanButton();
@@ -642,6 +644,13 @@ private:
     std::string searchStatus;              // what the status bar says about it
     bool searchResultsShown = false;       // first batch already on display
     bool scanButtonStops = false;          // the in-field button reads "Stop"
+    // Whether the search box is still wide enough for the button and a
+    // readable field both. Answered by the box itself as the layout engine
+    // sizes it; false hides the button however much there is to search for.
+    bool scanButtonFits = true;
+    // Applies scanButtonFits on the next turn of the event loop - the layout
+    // pass that decides it must not also mutate it.
+    TimerId scanFitTimer = InvalidTimerId;
     // Workers of cancelled scans, waiting to be joined (ReapSearchWorkers).
     struct RetiredSearch {
         std::thread thread;

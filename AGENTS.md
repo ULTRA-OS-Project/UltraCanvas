@@ -261,10 +261,31 @@ For assistants:
    `--force-with-lease`, and tell the user a **new** PR is needed — a
    merged/closed PR cannot track new commits, and GitHub will not reopen it
    for a recreated branch.
-3. **Confirm delivery after pushing.** Verify an *open* PR exists for the
-   branch and that its head is the commit just pushed; report the PR number
-   and head SHA. "Pushed" is not "delivered" — only a commit reachable from
-   an open PR (or `main`) counts.
+3. **Confirm delivery after pushing, and say so unprompted.** Run
+
+   ```
+   python3 scripts/check_publication.py          # this branch
+   python3 scripts/check_publication.py --all    # every branch on the remote
+   ```
+
+   It lists the commits on the branch that are not in `main` and exits 1 when
+   there are any. Then verify on GitHub that an *open* PR has this branch as
+   its head and that its head is the commit just pushed, and report the PR
+   number and head SHA.
+
+   "Pushed" is not "delivered" — only a commit reachable from an open PR (or
+   `main`) counts. If there is no open PR, **say so in the reply, without
+   being asked**: name the branch, the number of commits, and that they are
+   not in `main` and will not reach it until a PR is opened and merged. Do
+   this at the end of every session that pushed, and whenever the user
+   reports that a change "did not arrive" — that report is almost always
+   this, and the first thing to check is whether `main` has the code at all
+   (`git fetch origin main && git log origin/main --oneline -- <file>`), not
+   the code itself.
+
+   Not opening a PR unasked is the rule; leaving the user to *discover* that
+   nothing was published is not. A session that ends with unpublished commits
+   and no warning has produced nothing.
 4. **Keep the base fresh.** Before the rebase in rule 2, always fetch —
    `main` usually moved while the session ran; resolve conflicts locally so
    the new PR is mergeable from the start.
