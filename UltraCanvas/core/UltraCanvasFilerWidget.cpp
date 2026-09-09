@@ -6220,6 +6220,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ReportError(const std::string& message) {
+        // A launch that failed is not a launch in progress: whatever the busy
+        // pointer was armed for is over, and the message says what happened.
+        if (auto* win = GetWindow()) win->HideBusyPointer();
         if (onError) onError(message);
         else std::cerr << "UltraCanvasFilerWidget: " << message << std::endl;
     }
@@ -10100,6 +10103,10 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::ShowLaunchPointer() {
+        if (auto* win = GetWindow()) win->ShowBusyPointer();
+    }
+
     void UltraCanvasFilerWidget::OpenEntryWithOS(const FilerEntry& e) {
         std::error_code ec;
         // An application bundle is a directory, and launching it is the
@@ -10107,6 +10114,7 @@ namespace UltraCanvas {
         // knows what a .app is on macOS.
         if (e.isBundle && fs::is_directory(e.path, ec) && !ec) {
             std::string bundleError;
+            ShowLaunchPointer();
             if (!FileAssociations::OpenWithApplicationPath(e.path, {}, bundleError))
                 ReportError(bundleError);
             return;
@@ -10119,6 +10127,7 @@ namespace UltraCanvas {
         if (e.isShortcut && e.extension == "webloc") {
             std::string url;
             if (ReadWebLocation(e.path, url) && !url.empty()) {
+                ShowLaunchPointer();
                 OpenURL(url);
                 return;
             }
@@ -10131,6 +10140,7 @@ namespace UltraCanvas {
             if (ReadDesktopEntry(e.path, desktop)) {
                 if (desktop.kind == UCDesktopEntry::Kind::Link &&
                     !desktop.url.empty()) {
+                    ShowLaunchPointer();
                     OpenURL(desktop.url);
                     return;
                 }
@@ -10140,6 +10150,7 @@ namespace UltraCanvas {
                     // desktop entries this falls back to running the file,
                     // which fails cleanly and is reported.
                     std::string launchError;
+                    ShowLaunchPointer();
                     if (!FileAssociations::OpenWithApplicationPath(
                                 e.path, {}, launchError))
                         ReportError(launchError);
@@ -10173,6 +10184,7 @@ namespace UltraCanvas {
                 // A native program: running it IS opening it (on Windows
                 // this case never fires — ShellExecute's "open" verb below
                 // already runs executables).
+                ShowLaunchPointer();
                 if (!FileAssociations::LaunchExecutable(e.path, error))
                     ReportError(error);
                 return;
@@ -10183,6 +10195,7 @@ namespace UltraCanvas {
             default:
                 break;
         }
+        ShowLaunchPointer();
         if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
             ReportError(error);
     }
@@ -10200,6 +10213,7 @@ namespace UltraCanvas {
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (!dialog) {   // dialogs disabled — open, the old fixed behavior
             std::string error;
+            ShowLaunchPointer();
             if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
                 ReportError(error);
             return;
@@ -10213,9 +10227,11 @@ namespace UltraCanvas {
         dialog->onResult = [self, path](DialogResult result) {
             std::string error;
             if (result == DialogResult::Yes) {
+                self->ShowLaunchPointer();
                 if (!FileAssociations::LaunchExecutable(path, error))
                     self->ReportError(error);
             } else if (result == DialogResult::No) {
+                self->ShowLaunchPointer();
                 if (!FileAssociations::OpenWithDefaultApplication({path}, error))
                     self->ReportError(error);
             }

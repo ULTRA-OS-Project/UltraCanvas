@@ -27,6 +27,8 @@ namespace UltraCanvas {
     }
 
     UltraCanvasWindowBase::~UltraCanvasWindowBase() {
+        busyPointerAlive->store(false);
+        CancelBusyPointerTimers();
         UltraCanvasCaret::GetInstance().OnWindowClosed(this);
         CloseAllPopups();
         _state = WindowState::Closed;
@@ -978,6 +980,67 @@ namespace UltraCanvas {
         return false;
     }
 
+
+    void UltraCanvasWindowBase::CancelBusyPointerTimers() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app) {
+            if (busyPointerDelayTimer != InvalidTimerId) app->StopTimer(busyPointerDelayTimer);
+            if (busyPointerHoldTimer != InvalidTimerId) app->StopTimer(busyPointerHoldTimer);
+        }
+        busyPointerDelayTimer = InvalidTimerId;
+        busyPointerHoldTimer = InvalidTimerId;
+    }
+
+    void UltraCanvasWindowBase::ShowBusyPointer(int delayMs, int holdMs, UCMouseCursor shape) {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        // A second launch while the first is still counting down restarts the
+        // wait: the newest one decides when the pointer changes and for how
+        // long it stays changed.
+        CancelBusyPointerTimers();
+        busyPointerShape = shape;
+        if (delayMs <= 0) {
+            ShowBusyPointerNow(holdMs);
+            return;
+        }
+        auto alive = busyPointerAlive;
+        busyPointerDelayTimer = app->StartTimer(
+                (unsigned int)delayMs, false, [this, alive, holdMs](TimerId) {
+                    if (!alive->load()) return;
+                    busyPointerDelayTimer = InvalidTimerId;
+                    ShowBusyPointerNow(holdMs);
+                });
+    }
+
+    void UltraCanvasWindowBase::ShowBusyPointerNow(int holdMs) {
+        busyPointerVisible = true;
+        SelectMouseCursor(busyPointerShape);
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app || holdMs <= 0) return;
+        auto alive = busyPointerAlive;
+        busyPointerHoldTimer = app->StartTimer(
+                (unsigned int)holdMs, false, [this, alive](TimerId) {
+                    if (!alive->load()) return;
+                    busyPointerHoldTimer = InvalidTimerId;
+                    HideBusyPointer();
+                });
+    }
+
+    void UltraCanvasWindowBase::HideBusyPointer() {
+        CancelBusyPointerTimers();
+        if (!busyPointerVisible) return;
+        busyPointerVisible = false;
+        // Back to whatever the pointer is over. The hovered element is the
+        // application's, so a pointer that has not moved since the launch gets
+        // its own cursor back without waiting for the next move.
+        UCMouseCursor restored = GetMouseCursor();
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app) {
+            UltraCanvasUIElement* hovered = app->GetHoveredElement();
+            if (hovered && hovered->GetWindow() == this) restored = hovered->GetMouseCursor();
+        }
+        SelectMouseCursor(restored);
+    }
 
     UltraCanvasWindowBase* UltraCanvasWindowBase::GetParentWindow() {
         if (config_.parentWindow && !UltraCanvasApplication::GetInstance()->IsWindowRegistered(config_.parentWindow)) {

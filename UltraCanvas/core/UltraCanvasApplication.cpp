@@ -1238,7 +1238,10 @@ namespace UltraCanvas {
                     }
                 }
                 // change mouse cursor
-                if (elementUnderPointer) {
+                if (targetWindow->IsBusyPointerVisible()) {
+                    // A launch this window is waiting on owns the pointer:
+                    // element cursors take over again once it comes down.
+                } else if (elementUnderPointer) {
                     if (targetWindow->GetCurrentMouseCursor() != elementUnderPointer->GetMouseCursor()) {
                         targetWindow->SelectMouseCursor(elementUnderPointer->GetMouseCursor());
                     }
