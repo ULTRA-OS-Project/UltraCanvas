@@ -1,4 +1,4 @@
-#### 2026-09-09 *1.23.0*
+#### 2026-09-09 *1.25.0*
 - **Double-clicking a font opens it, full size, in its own window.** A font was
   the one previewable kind whose whole point is the part the preview pane
   cannot hold: the pane shows a two-letter specimen, and what you

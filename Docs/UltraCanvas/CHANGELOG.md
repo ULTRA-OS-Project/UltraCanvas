@@ -1,4 +1,4 @@
-#### 2026-09-09 *0.3.111*
+#### 2026-09-09 *0.3.118*
 - **A font file opens full size in a window of its own.**
   `UltraCanvasMediaViewerWindow` is a new component: an
   `UltraCanvasMediaViewer` filling a top-level window, opened over the window
