@@ -224,7 +224,7 @@ compile and link while calling nothing at all):
 | Z-Wave | 2209 | 162 × `OpenZWave::` | **builds and links**, dynamically |
 | KNX | 1994 | none needed — implements KNXnet/IP itself | **builds and links** |
 | Thread | 1816 | 80 × `ot*` | **builds and links** against a built OpenThread |
-| Matter | 1324 | the SDK's controller, IM and platform layers | compiles against a built connectedhomeip; link test pending the SDK build |
+| Matter | 1324 | the SDK's controller, IM and platform layers | **builds and links** against a built connectedhomeip |
 | Zigbee | 2036 + 550 | ASH/EZSP written in-tree | **builds and links** |
 
 **Zigbee: the transport is now written, in-tree.** The backend's `EZSP_*` and
@@ -457,10 +457,18 @@ now follows chip-tool's own controller set-up:
 
 `tests/MatterLinkTest.cpp` checks that `GetHardwareInfo()` carries text the
 SDK's error formatter produced. It does not call `Initialize()`: that brings
-up the CHIP stack, which wants storage, mDNS and a network. As of this
-commit the backend compiles with 0 errors against the SDK's headers and
-chip-tool's compile flags; the full link through CMake is being verified
-while the SDK build (2106 steps) finishes.
+up the CHIP stack, which wants storage, mDNS and a network. Verified: the
+CMake build with `ULTRACANVAS_SMARTHOME_MATTER=ON` compiles the backend with
+0 errors, links it (the test binary defines 5583 `chip::` functions, 221 of
+them in `chip::Controller`), and the test passes — its description reads
+"connectedhomeip linked (Success)", which is `chip::ErrorStr(CHIP_NO_ERROR)`
+answering from inside the library.
+
+**None of it has met a Matter device.** Commissioning, commands, reads and
+subscriptions are written against the SDK's API as chip-tool uses it, and
+compile; whether the first `PairDevice` with a real setup code succeeds is
+the next thing to find out, on a machine with mDNS and a device in pairing
+mode.
 
 **Crypto backend: mbedTLS** (decided 2026-09-09). Matter's device attestation
 and OpenThread's commissioner both need X.509 and ECDSA on P-256. Neither asks
