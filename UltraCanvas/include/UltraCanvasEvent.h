@@ -304,6 +304,24 @@ namespace UltraCanvas {
         int wheelDelta = 0;                       // Wheel or zoom delta
         float pressure = 1.0f;               // Touch pressure (0.0-1.0)
 
+        // Multi-touch: identifies WHICH finger this event belongs to, stable
+        // from the finger's TouchStart to its TouchEnd (a lifted finger's id
+        // may be reused by a later one). 0 on every mouse event and on the
+        // primary finger, so single-pointer code can ignore this entirely.
+        int pointerId = 0;
+        // Fingers down when this event was generated (0 for mouse events).
+        // A widget can use `touchPointCount >= 2` to tell a gesture from a
+        // plain touch without tracking individual pointers itself.
+        int touchPointCount = 0;
+
+        // Two-finger transform, on PinchZoom events only. Both are measured
+        // against the moment the gesture began, NOT the previous event, so a
+        // handler can map them straight onto a zoom/rotation that started at
+        // that point without accumulating drift. `pointer` is the midpoint
+        // between the fingers.
+        float scale = 1.0f;      // 1.0 = unchanged, 2.0 = fingers twice as far apart
+        float rotation = 0.0f;   // radians, positive = clockwise on screen
+
         // Keyboard specific
         int nativeKeyCode = 0;                     // Platform-specific key code
         UCKeys virtualKey = UCKeys::Unknown;                  // Virtual key code (cross-platform)

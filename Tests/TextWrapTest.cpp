@@ -2,12 +2,14 @@
 // Unit tests for UltraCanvasTextWrapping.h — the caption wrapper behind the
 // Filer widget's tile names. Covers the "Logo CoderBox with text.png"
 // report: the name was broken inside the word ("Logo CoderBo" / "x with
-// text.png"), a break that bought the first line a single character.
+// text.png"), a break that bought the first line a single character — and
+// the PascalCase one: "UltraCanvasTexter.exe" read "UltraCanva" /
+// "sTexter.exe" where "UltraCanvas" / "Texter.exe" was wanted.
 // The wrapper measures text through a callable, so the test supplies a
 // synthetic proportional font instead of a render context: no display, no
 // framework link, and the widths are stable across platforms.
-// Version: 1.0.0
-// Last Modified: 2026-08-27
+// Version: 1.1.0
+// Last Modified: 2026-09-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextWrapping.h"
@@ -112,8 +114,9 @@ void TestWordIsNotSplitForOneCharacter() {
 }
 
 // The same name with no slack to lend: keeping the word whole would push
-// "CoderBox" off the caption entirely, so the mid-word break comes back —
-// characters of the name are worth more than a tidy break.
+// "CoderBox" off the caption entirely — as would backing off to the "Box"
+// inside it — so the mid-word break comes back: characters of the name are
+// worth more than a tidy break.
 void TestContentWinsOverTheWordBreak() {
     const std::string name = "Logo CoderBox with text.png";
     TW::Options o = CaptionOptions(Measure("x with text.png"));
@@ -133,6 +136,7 @@ void TestShortStubsAreNeverLeftBehind() {
     const std::string name = "Logo CoderBox.png";
     TW::Options o = CaptionOptions(Measure("Logo CoderBo"), 2);
     o.overflowSlack = 0;                      // no room to pull the "x" up
+    o.camelCaseBreaks = false;                // separators only (see below)
 
     std::vector<std::string> lines = TW::WrapGreedy(Measure, name, o, nullptr);
     Same(lines, {"Logo", "CoderBox.png"},
@@ -143,6 +147,109 @@ void TestShortStubsAreNeverLeftBehind() {
     lines = TW::WrapGreedy(Measure, name, o, nullptr);
     Same(lines, {"Logo CoderBo", "x.png"},
          "tolerance 0 keeps the exact-fit break");
+}
+
+// ===== PASCALCASE NAMES =====
+// The reported tile: "UltraCanvasTexter.exe" under an icon read "UltraCanva" /
+// "sTexter.exe" — the line ran to the pixel the name stopped fitting, one
+// letter past where the word "Texter" starts. A capital that opens a new
+// word is a break opportunity like a space, so the line ends before it.
+void TestPascalCaseNameBreaksBeforeTheCapital() {
+    const std::string name = "UltraCanvasTexter.exe";
+    const int width = Measure("UltraCanva") + 3;             // 66 px
+    CHECK(Measure("UltraCanvas") > width);                    // 69 px: 3 over
+
+    bool truncated = true;
+    std::vector<std::string> lines =
+            TW::Wrap(Measure, name, CaptionOptions(width), &truncated);
+    Same(lines, {"UltraCanvas", "Texter.exe"},
+         "the line ends before the capital that opens the next word");
+    CHECK(!truncated);
+    CHECK(TW::LineCount(Measure, name, CaptionOptions(width)) == 2);
+
+    lines = TW::Wrap(Measure, "UltraCanvasDemo.exe", CaptionOptions(width),
+                     &truncated);
+    Same(lines, {"UltraCanvas", "Demo.exe"}, "the second reported tile");
+    CHECK(!truncated);
+
+    // The same wrap with the case rule switched off is the reported break:
+    // nothing before ".exe" counts as a word end, so the line fills to the
+    // pixel.
+    TW::Options o = CaptionOptions(width);
+    o.camelCaseBreaks = false;
+    Same(TW::Wrap(Measure, name, o, nullptr), {"UltraCanva", "sTexter.exe"},
+         "camelCaseBreaks off keeps the exact-fit break");
+}
+
+// With no slack to pull "UltraCanvas" up, the line backs off to the previous
+// word start ("Ultra" / "Canvas") like it backs off to a space, and a caption
+// with room for three lines shows the three words the name is made of.
+void TestPascalCaseWordsMoveDownWhole() {
+    const std::string name = "UltraCanvasTexter.exe";
+    TW::Options o = CaptionOptions(Measure("UltraCanva"), 3);
+    o.overflowSlack = 0;
+    Same(TW::WrapGreedy(Measure, name, o, nullptr),
+         {"Ultra", "Canvas", "Texter.exe"},
+         "each capital starts a line when the name needs three");
+
+    // The balanced wrap lands on the same three words.
+    Same(TW::Wrap(Measure, name, CaptionOptions(56, 3), nullptr),
+         {"Ultra", "Canvas", "Texter.exe"}, "balanced over three lines");
+    // ... and never opens a third line where two hold the name.
+    Same(TW::Wrap(Measure, name, CaptionOptions(Measure("UltraCanvas"), 3), nullptr),
+         {"UltraCanvas", "Texter.exe"}, "two lines that hold the name stay two");
+}
+
+// A capital inside a separator-delimited word is a word start too, so the
+// stub rule now has "Coder" / "Box" to fall back on instead of moving all of
+// "CoderBox" down: the line keeps the word it can hold. Compare
+// TestShortStubsAreNeverLeftBehind, the same name with the rule switched off.
+void TestCaseBoundaryCountsAsAWordStart() {
+    const std::string name = "Logo CoderBox.png";
+    TW::Options o = CaptionOptions(Measure("Logo CoderBo"), 2);
+    o.overflowSlack = 0;
+    Same(TW::WrapGreedy(Measure, name, o, nullptr), {"Logo Coder", "Box.png"},
+         "the line ends at the last word start it holds");
+}
+
+// Where a word starts inside a run of letters — and where it does not.
+void TestCaseBoundaries() {
+    const std::string s = "UltraCanvasPDFView";
+    CHECK(TW::IsCaseBoundary(s, 5));           // Ultra|Canvas
+    CHECK(TW::IsCaseBoundary(s, 11));          // Canvas|PDF
+    CHECK(!TW::IsCaseBoundary(s, 12));         // P|D — inside the acronym
+    CHECK(!TW::IsCaseBoundary(s, 13));         // D|F
+    CHECK(TW::IsCaseBoundary(s, 14));          // PDF|View
+    CHECK(!TW::IsCaseBoundary(s, 0));          // a name never breaks before itself
+    CHECK(!TW::IsCaseBoundary(s, 1));          // U|l — no capital there
+    CHECK(TW::IsCaseBoundary("mp4Player", 3)); // after a digit
+    CHECK(TW::IsCaseBoundary("3DModel", 2));   // 3D|Model
+    CHECK(!TW::IsCaseBoundary("README", 3));   // all capitals: one word
+    CHECK(!TW::IsCaseBoundary("HEIC", 1));
+    CHECK(!TW::IsCaseBoundary("Ölçüm", 1));    // non-ASCII: separators only
+    for (size_t p = 0; p <= 7; ++p) CHECK(!TW::IsCaseBoundary("iphone", p));
+
+    // The boundary is a break opportunity only while the option is on.
+    CHECK(TW::IsBreakOpportunity(s, 5, true));
+    CHECK(!TW::IsBreakOpportunity(s, 5, false));
+    CHECK(TW::IsBreakOpportunity("a b", 2, false));      // after a separator
+    CHECK(!TW::IsBreakOpportunity("a b", 3, true));       // past the end
+
+    // An acronym stays whole: "PDF" / "View.cpp", never "PD" / "FView.cpp".
+    const std::string name = "UltraCanvasPDFView.cpp";
+    for (int width = 30; width <= Measure(name); width += 3) {
+        std::vector<std::string> lines =
+                TW::Wrap(Measure, name, CaptionOptions(width, 4), nullptr);
+        for (const std::string& ln : lines) {
+            ++checks;
+            if (ln == "UltraCanvasPD" || ln == "CanvasPD" || ln == "PD" ||
+                ln.rfind("FView", 0) == 0 || ln.rfind("DFView", 0) == 0) {
+                ++failures;
+                std::printf("FAIL width %d: acronym broken: %s\n",
+                            width, Join(lines).c_str());
+            }
+        }
+    }
 }
 
 // One long word with no separator to fall back on: the break moves left inside
@@ -241,6 +348,10 @@ void TestWidthSweepInvariants() {
         "IMG_20240817_121314.HEIC",
         "a.b",
         "singleverylongwordwithoutanyseparators.bin",
+        "UltraCanvasTexter.exe",
+        "UltraCanvasPDFView.cpp",
+        "myPhotoAlbum2024Backup.zip",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ.txt",
     };
     for (const char* raw : names) {
         const std::string name = raw;
@@ -301,6 +412,10 @@ int main() {
     TestWordIsNotSplitForOneCharacter();
     TestContentWinsOverTheWordBreak();
     TestShortStubsAreNeverLeftBehind();
+    TestPascalCaseNameBreaksBeforeTheCapital();
+    TestPascalCaseWordsMoveDownWhole();
+    TestCaseBoundaryCountsAsAWordStart();
+    TestCaseBoundaries();
     TestNoOrphanCharacterInAWordOnlyName();
     TestTruncatedNameKeepsTheMostText();
     TestLinesStayBalanced();

@@ -793,4 +793,33 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         }
     }
 
+    bool UltraCanvasMacOSApplication::RegisterFontFileNative(const std::string& fontFilePath) {
+        @autoreleasepool {
+            NSURL* url = [NSURL fileURLWithPath:
+                    [NSString stringWithUTF8String:fontFilePath.c_str()]];
+            if (!url) return false;
+            CFErrorRef err = nullptr;
+            if (CTFontManagerRegisterFontsForURL((__bridge CFURLRef)url,
+                                                 kCTFontManagerScopeProcess,
+                                                 &err)) {
+                return true;
+            }
+            // Registering a file this process already registered is a
+            // success as far as the caller is concerned - the faces are
+            // there either way.
+            bool alreadyRegistered = false;
+            if (err) {
+                alreadyRegistered =
+                        CFErrorGetCode(err) == kCTFontManagerErrorAlreadyRegistered;
+                if (!alreadyRegistered) {
+                    debugOutput << "UltraCanvas: CTFontManagerRegisterFontsForURL "
+                                   "failed for " << fontFilePath << " (code "
+                                << (long)CFErrorGetCode(err) << ")" << std::endl;
+                }
+                CFRelease(err);
+            }
+            return alreadyRegistered;
+        }
+    }
+
 } // namespace UltraCanvas

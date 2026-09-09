@@ -1174,28 +1174,8 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
         }
     }
     
-    // Extract the nested archive to a temp file; providers need a real
-    // file to open (archives inside archives cannot be streamed directly)
-    std::vector<uint8_t> data;
-    if (outerProvider->ReadFile(pathInOuter, data) != VirtualFSResult::Success) {
-        return nullptr;
-    }
-    
-    std::string tempPath = tempDirectory + "/vfs_nested_" +
-        std::to_string(std::hash<std::string>{}(cacheKey)) + "_" +
-        VirtualFSPath::GetFileName(pathInOuter);
-    
-    {
-        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
-        if (!out.write(reinterpret_cast<const char*>(data.data()),
-                       static_cast<std::streamsize>(data.size()))) {
-            return nullptr;
-        }
-    }
-    
     auto prototype = GetProviderForPath(pathInOuter);
     if (!prototype) {
-        std::filesystem::remove(tempPath);
         return nullptr;
     }
     auto instance = prototype->CreateInstance();
@@ -1203,22 +1183,58 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
         instance = prototype;
     }
     
-    if (instance->Open(tempPath) != VirtualFSResult::Success) {
-        std::filesystem::remove(tempPath);
+    auto data = std::make_shared<std::vector<uint8_t>>();
+    if (outerProvider->ReadFile(pathInOuter, *data) != VirtualFSResult::Success) {
+        return nullptr;
+    }
+    
+    // Preferred path: hand the bytes straight to the provider. The nested
+    // archive never touches the disk, which matters most for archives
+    // decrypted from a password-protected parent.
+    std::string tempPath;
+    VirtualFSResult opened = instance->OpenFromMemory(data, cacheKey);
+    
+    if (opened == VirtualFSResult::NotSupported) {
+        // Provider needs a real file - spill to the temp directory.
+        tempPath = tempDirectory + "/vfs_nested_" +
+            std::to_string(std::hash<std::string>{}(cacheKey)) + "_" +
+            VirtualFSPath::GetFileName(pathInOuter);
+        
+        {
+            std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+            if (!out.write(reinterpret_cast<const char*>(data->data()),
+                           static_cast<std::streamsize>(data->size()))) {
+                std::error_code ec;
+                std::filesystem::remove(tempPath, ec);
+                return nullptr;
+            }
+        }
+        opened = instance->Open(tempPath);
+    }
+    
+    if (opened != VirtualFSResult::Success) {
+        if (!tempPath.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(tempPath, ec);
+        }
         return nullptr;
     }
     
     std::lock_guard<std::mutex> lock(cacheMutex);
     auto it = openArchives.find(cacheKey);
     if (it != openArchives.end()) {
-        // Another thread extracted it concurrently - discard our copy
+        // Another thread opened it concurrently - discard our copy
         instance->Close();
-        std::filesystem::remove(tempPath);
+        if (!tempPath.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(tempPath, ec);
+        }
         it->second.lastAccess = std::chrono::steady_clock::now();
         return it->second.provider;
     }
     
-    // Nested archives are always cached: the entry owns the temp file
+    // Nested archives are always cached; the entry owns the temp file when
+    // one was needed (empty for memory-backed opens)
     OpenArchive cached;
     cached.provider = instance;
     cached.path = cacheKey;

@@ -102,6 +102,11 @@ public:
     void Play();
     void Pause();
     void Stop();
+    // Lets go of the loaded track: playback stops and the decoded audio is
+    // released along with the file it came from, which is what frees it for
+    // renaming, replacing or deleting. Stop() only rewinds. The element stays
+    // usable: a later LoadFromFile loads again.
+    void Unload();
     void Seek(double seconds);
     void TogglePlayPause();
 

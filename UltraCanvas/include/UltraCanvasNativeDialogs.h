@@ -130,6 +130,26 @@ namespace UltraCanvas {
         // Show save file dialog with options
         static std::string SaveFile(const FileDialogOptions& options);
 
+        // Show a save dialog AND write `data` to the chosen destination, in
+        // one call. Returns true only if the user picked a destination and
+        // every byte was written.
+        //
+        // Prefer this over SaveFile() in portable code. SaveFile()'s contract
+        // - hand back a path, let the caller write to it afterwards - cannot
+        // be honoured on Android: the Storage Access Framework yields a
+        // content:// URI rather than a filesystem path, and nothing tells the
+        // framework when the caller has finished writing, so there is no
+        // moment at which the bytes could be delivered to the document.
+        // Taking the content up front removes that ambiguity, and on desktop
+        // it is exactly SaveFile() followed by a write.
+        static bool SaveContent(const void* data, std::size_t size,
+                                const FileDialogOptions& options);
+
+        static bool SaveContent(const std::string& text,
+                                const FileDialogOptions& options) {
+            return SaveContent(text.data(), text.size(), options);
+        }
+
         // Show folder selection dialog
         static std::string SelectFolder(
                 const std::string& title = "Select Folder",

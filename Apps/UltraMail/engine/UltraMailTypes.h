@@ -1,8 +1,9 @@
 // Apps/UltraMail/engine/UltraMailTypes.h
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
-// account info-tile bar (short name · unread · needs-answer).
-// Version: 0.1.0 (Phase 1)
+// account bar (unread today · unread before · waiting for reply).
+// Version: 0.2.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -76,11 +77,14 @@ struct MessageEnvelope {
     bool automated = false;
 };
 
-// Per-account rollup for the info-tile bar.
+// Per-account rollup for the account bar (single-account summary / tiles).
 struct AccountStatus {
     std::string accountId;
     std::string shortName;
-    int unread = 0;       // unseen, non-deleted messages in the inbox
+    std::string email;
+    int unread = 0;       // unseen, non-deleted messages in the inbox (all)
+    int unreadToday = 0;  // ... of those, dated today (local midnight onwards)
+    int unreadOlder = 0;  // ... of those, dated before today
     int needsAnswer = 0;  // messages addressed to the user awaiting a reply
 };
 

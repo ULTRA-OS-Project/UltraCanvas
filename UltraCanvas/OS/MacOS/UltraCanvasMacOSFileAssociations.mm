@@ -6,7 +6,12 @@
 // from the bundle (CFBundleDisplayName / CFBundleName, localized name as a
 // fallback) and icons from -[NSWorkspace iconForFile:], written once as PNG
 // files into ~/Library/Caches/UltraCanvas/openwith-icons (the shared menu
-// API is image-file based, and the cache survives restarts).
+// API is image-file based, and the cache survives restarts). Because it
+// survives restarts it also has to be swept: an entry is keyed by the
+// application's bundle path, so an application that is moved or removed
+// orphans its PNG for good. Each file carries the day it was last served as
+// its modification time, and the first lookup of a process deletes
+// everything not served for two weeks.
 // Launching a specific application hands the whole selection to
 // -[NSWorkspace openURLs:withApplicationAtURL:configuration:completionHandler:],
 // exactly like a Finder "Open With"; default open stays /usr/bin/open, and
@@ -17,8 +22,8 @@
 // Filer menu falls back to its manual entries plus the picker.
 // All entry points are serialized by the core's backend mutex (see
 // UltraCanvasFileAssociationsBackend.h) — no locking here.
-// Version: 1.1.0
-// Last Modified: 2026-08-24
+// Version: 1.2.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociationsBackend.h"
@@ -35,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -116,9 +122,19 @@ namespace {
         const std::string bundlePath = ToStdString(applicationURL.path);
         const std::string dir = IconCacheDir();
         if (bundlePath.empty() || dir.empty()) return {};
+        // The cache survives restarts, so it also has to be expired: see
+        // SweepIconCache in UltraCanvasFileAssociationsBackend.h. Once per
+        // process, on the first lookup — cheap next to the icon rendering
+        // this same call is about to do, and on the prewarm worker rather
+        // than the main thread whenever that gets here first.
+        static std::once_flag sweepOnce;
+        std::call_once(sweepOnce, SweepIconCache, dir);
         const std::string path = dir + "/" + HashKey(bundlePath) + ".png";
         std::error_code ec;
-        if (fs::exists(path, ec) && !ec) return path;
+        if (fs::exists(path, ec) && !ec) {
+            StampIconCacheFile(path);   // keeps it out of the next sweep
+            return path;
+        }
 
         NSImage* icon = [[NSWorkspace sharedWorkspace]
                 iconForFile:applicationURL.path];

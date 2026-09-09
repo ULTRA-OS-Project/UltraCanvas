@@ -22,8 +22,9 @@
 // splitters between their columns (see COLUMN SPLITTERS), and names too long
 // for the space they are drawn in show the full name in a hover tooltip.
 // Tile captions (thumbnail grids, treemap) wrap long names over several lines
-// instead of cutting them off after one, keeping words whole and the breaks
-// balanced so the lines come out near equal (see WRAPPED CAPTIONS).
+// instead of cutting them off after one, keeping words whole — a PascalCase
+// name counting as the words it is made of — and the breaks balanced so the
+// lines come out near equal (see WRAPPED CAPTIONS).
 // Besides clicking, entries are selected with a rubber band: dragging from
 // empty space draws a selection rectangle and everything it touches becomes
 // the selection (Ctrl adds the rectangle to the selection held before).
@@ -38,10 +39,18 @@
 // pipeline for bitmaps and vectors, poster frame for videos, first page for
 // PDFs, a shaded software render for 3D models and a miniature page of the
 // file's own text for text, documents and spreadsheets. Each kind can be
-// switched off individually (Display > Preview), which drops its entries back
-// to the plain type glyph and stops the widget from reading those files.
-// Version: 1.19.2
-// Last Modified: 2026-08-27
+// switched off individually (Display > Thumbnails), which drops its entries
+// back to the plain type glyph and stops the widget from reading those files;
+// a single format can be switched off inside a kind, and Display > Detail view
+// carries the same switches for the detail pane a host opens beside the
+// display.
+// The names the display draws keep their file extension or drop it
+// (Display > File extensions), and a thumbnail tile can carry the extension
+// as a bar or a small tag over the foot of its icon box instead — the name
+// itself is never touched, so renaming and every file operation still work on
+// the real one.
+// Version: 1.24.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -57,7 +66,12 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasEmbeddedPreview.h"
+#include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasDesktopEntry.h"
+#include "UltraCanvasMacBundle.h"
+#include "UltraCanvasShellLink.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
@@ -91,6 +105,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <set>
 #include <sys/stat.h>
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
@@ -138,6 +153,30 @@ namespace UltraCanvas {
         // OS tells us immediately; this is only the hand-over to the UI thread,
         // so it is short - and it costs one atomic read per tick.
         constexpr unsigned int kNativeWatchApplyIntervalMs = 200;
+
+        // Runs one unit of background work so that an exception it throws is
+        // logged and the worker goes on to its next job. Nothing catches an
+        // exception that leaves a std::thread: the process ends, and on
+        // Windows all the user sees is the crash-reporter dialog with an
+        // unwinder address in ntdll (0xC00000FF / 0x20474343) - the throw and
+        // its text are lost. Every job a filer worker runs opens a file the
+        // user pointed at, and one file that makes a decoder throw must cost
+        // that file its thumbnail, not the user their file manager. `job`
+        // names the work and `path` the file it was on: the two facts the
+        // log line needs.
+        template <typename Fn>
+        void RunGuarded(const char* job, const std::string& path, Fn&& fn) {
+            try {
+                fn();
+            } catch (const std::exception& e) {
+                debugOutput << "UltraCanvasFilerWidget: " << job << " failed for \""
+                            << path << "\": " << e.what() << std::endl;
+            } catch (...) {
+                debugOutput << "UltraCanvasFilerWidget: " << job << " failed for \""
+                            << path << "\": exception of a non-std::exception type"
+                            << std::endl;
+            }
+        }
 
         // ===== RESIZABLE COLUMNS =====
         // Narrowest a column can be dragged; the Name column keeps more so it
@@ -205,10 +244,31 @@ namespace UltraCanvas {
                 {"tiff", {"TIFF", FilerFileCategory::Image}},
                 {"qoi",  {"QOI",  FilerFileCategory::Image}},
                 {"ico",  {"Icon", FilerFileCategory::Image}},
+                // Vector: every format the FileLoader inventory reports for
+                // MediaFormatCategory::Vector - the image pipeline's own
+                // (svg/svgz, and eps/ps where the libvips build has a
+                // PostScript loader) plus the whole load and save matrix of
+                // the vector graphics plugins. An extension no table here
+                // knows still lands in the right category through
+                // RegisteredCategoryForExtension below; these entries only
+                // give the well-known ones a proper name.
                 {"svg",  {"SVG",  FilerFileCategory::Vector}},
+                {"svgz", {"SVG (compressed)", FilerFileCategory::Vector}},
                 {"eps",  {"EPS",  FilerFileCategory::Vector}},
+                {"epsf", {"EPS",  FilerFileCategory::Vector}},
+                {"ps",   {"PostScript", FilerFileCategory::Vector}},
+                {"ai",   {"Illustrator", FilerFileCategory::Vector}},
                 {"cdr",  {"CorelDRAW", FilerFileCategory::Vector}},
+                {"cdt",  {"CorelDRAW Template", FilerFileCategory::Vector}},
+                {"cmx",  {"Corel Metafile", FilerFileCategory::Vector}},
+                {"ccx",  {"Corel Exchange", FilerFileCategory::Vector}},
                 {"xar",  {"Xara", FilerFileCategory::Vector}},
+                {"web",  {"Xara Web", FilerFileCategory::Vector}},
+                {"wix",  {"Xara Web", FilerFileCategory::Vector}},
+                {"emf",  {"Enhanced Metafile", FilerFileCategory::Vector}},
+                {"wmf",  {"Windows Metafile", FilerFileCategory::Vector}},
+                {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector}},
+                {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector}},
                 {"stl",  {"STL",  FilerFileCategory::Model3D}},
                 {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
                 {"ply",  {"PLY",  FilerFileCategory::Model3D}},
@@ -223,6 +283,7 @@ namespace UltraCanvas {
                 {"flac", {"FLAC", FilerFileCategory::Audio}},
                 {"ogg",  {"OGG",  FilerFileCategory::Audio}},
                 {"m4a",  {"M4A",  FilerFileCategory::Audio}},
+                {"m4b",  {"M4B",  FilerFileCategory::Audio}},
                 {"aac",  {"AAC",  FilerFileCategory::Audio}},
                 {"opus", {"Opus", FilerFileCategory::Audio}},
                 {"mp4",  {"MP4",  FilerFileCategory::Video}},
@@ -279,8 +340,81 @@ namespace UltraCanvas {
                 {"rpm",  {"RPM Package", FilerFileCategory::Executable}},
                 {"so",   {"Shared Library", FilerFileCategory::Executable}},
                 {"dll",  {"Library", FilerFileCategory::Executable}},
+                {"ttf",  {"TrueType Font", FilerFileCategory::Font}},
+                {"ttc",  {"TrueType Collection", FilerFileCategory::Font}},
+                {"otf",  {"OpenType Font", FilerFileCategory::Font}},
+                {"otc",  {"OpenType Collection", FilerFileCategory::Font}},
+                {"woff", {"Web Font", FilerFileCategory::Font}},
+                {"woff2",{"Web Font 2", FilerFileCategory::Font}},
+                {"pfb",  {"Type 1 Font", FilerFileCategory::Font}},
+                {"pfa",  {"Type 1 Font", FilerFileCategory::Font}},
+                {"bdf",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"pcf",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"fon",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"fnt",  {"Bitmap Font", FilerFileCategory::Font}},
             };
             return m;
+        }
+
+        // ===== FOLLOW THE FILE LOADER'S FORMAT INVENTORY =====
+        // The table above names the formats; the inventory the FileLoader
+        // offers decides which ones exist in this build - it is assembled
+        // from the installed libvips and from whatever graphics, document and
+        // media plugins the application registered, so it grows with the
+        // application while a table compiled into the widget cannot. An
+        // extension the table does not list is therefore looked up there
+        // before it is written off as "some file": that is what keeps a
+        // vector format the host can open from being displayed as a nameless
+        // blob with no preview.
+        //
+        // Built once, on the first miss: assembling the inventory probes
+        // libvips per format, far too much to repeat per directory entry.
+        // Plugins register at start-up, before any folder is listed.
+        FilerFileCategory CategoryFromMediaCategory(MediaFormatCategory c) {
+            switch (c) {
+                case MediaFormatCategory::Bitmap:      return FilerFileCategory::Image;
+                case MediaFormatCategory::Vector:      return FilerFileCategory::Vector;
+                case MediaFormatCategory::Model3D:     return FilerFileCategory::Model3D;
+                case MediaFormatCategory::Document:    return FilerFileCategory::Document;
+                case MediaFormatCategory::Spreadsheet: return FilerFileCategory::Spreadsheet;
+                case MediaFormatCategory::Audio:       return FilerFileCategory::Audio;
+                case MediaFormatCategory::Video:       return FilerFileCategory::Video;
+                case MediaFormatCategory::Font:        return FilerFileCategory::Font;
+            }
+            return FilerFileCategory::Other;
+        }
+
+        bool RegisteredCategoryForExtension(const std::string& ext,
+                                            FilerFileCategory& out) {
+            static std::map<std::string, FilerFileCategory> byExtension;
+            static std::mutex mutex;
+            static bool built = false;
+            if (ext.empty()) return false;
+            std::lock_guard<std::mutex> lk(mutex);
+            if (!built) {
+                for (const MediaFormatInfo& f : UltraCanvasSupportedFormats::GetAll()) {
+                    const FilerFileCategory c = CategoryFromMediaCategory(f.category);
+                    byExtension.emplace(f.extension, c);
+                    for (const std::string& alias : f.aliases)
+                        byExtension.emplace(alias, c);
+                }
+                built = true;
+            }
+            auto it = byExtension.find(ext);
+            if (it == byExtension.end()) return false;
+            out = it->second;
+            return true;
+        }
+
+        // The file category of an extension: the table first (it also carries
+        // the type name), the registered formats after it.
+        FilerFileCategory FilerCategoryForExtension(const std::string& ext) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(ext);
+            if (it != m.end()) return it->second.category;
+            FilerFileCategory c = FilerFileCategory::Other;
+            if (RegisteredCategoryForExtension(ext, c)) return c;
+            return FilerFileCategory::Other;
         }
 
         const char* CategoryNoun(FilerFileCategory c) {
@@ -296,6 +430,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Spreadsheet: return "Spreadsheet";
                 case FilerFileCategory::Archive:     return "Archive";
                 case FilerFileCategory::Executable:  return "Program";
+                case FilerFileCategory::Font:        return "Font";
                 default:                             return "File";
             }
         }
@@ -313,6 +448,7 @@ namespace UltraCanvas {
                 case FilerFileCategory::Spreadsheet: return Color(46, 125, 50, 255);
                 case FilerFileCategory::Archive:     return Color(141, 110, 99, 255);
                 case FilerFileCategory::Executable:  return Color(84, 110, 122, 255);
+                case FilerFileCategory::Font:        return Color(216, 67, 21, 255);
                 default:                             return Color(158, 158, 158, 255);
             }
         }
@@ -430,7 +566,8 @@ namespace UltraCanvas {
 
         // ===== SELECTIVE PREVIEWS =====
         // The preview kind a file belongs to — what a content preview for it
-        // would cost to produce, and therefore which Display > Preview switch
+        // would cost to produce, and therefore which Display > Thumbnails and
+        // Display > Detail view switch
         // governs it. The extension decides first because the kinds do not
         // line up with FilerFileCategory one to one: PDF is its own kind
         // (it renders a page) and CSV / TSV preview as a cell grid like the
@@ -444,9 +581,11 @@ namespace UltraCanvas {
                 case FilerFileCategory::Vector:      return FilerPreviewType::VectorGraphics;
                 case FilerFileCategory::Model3D:     return FilerPreviewType::Models3D;
                 case FilerFileCategory::Video:       return FilerPreviewType::Videos;
+                case FilerFileCategory::Audio:       return FilerPreviewType::Audio;
                 case FilerFileCategory::Document:    return FilerPreviewType::Docs;
                 case FilerFileCategory::Text:        return FilerPreviewType::Text;
                 case FilerFileCategory::Spreadsheet: return FilerPreviewType::Spreadsheets;
+                case FilerFileCategory::Font:        return FilerPreviewType::Fonts;
                 default:                             return FilerPreviewType::NonePreview;
             }
         }
@@ -456,10 +595,7 @@ namespace UltraCanvas {
         // thumbnail image rather than the entry itself).
         FilerPreviewType PreviewTypeForPath(const std::string& path) {
             const std::string ext = LowerExtension(path);
-            const auto& m = ExtensionTypeMap();
-            auto it = m.find(ext);
-            return PreviewTypeForFile(ext, it != m.end() ? it->second.category
-                                                         : FilerFileCategory::Other);
+            return PreviewTypeForFile(ext, FilerCategoryForExtension(ext));
         }
 
         // True when this build can render a PDF page into a preview.
@@ -469,6 +605,88 @@ namespace UltraCanvas {
 #else
             return false;
 #endif
+        }
+
+        // A PDF wearing another extension: every Illustrator file since CS2 is
+        // one, and so is the occasional .ai a converter wrote. Reading four
+        // bytes is cheaper than a failed parse, and it is what lets the PDF
+        // renderer produce a thumbnail for a format nothing else can draw.
+        bool FileStartsWithPdfSignature(const std::string& path) {
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
+            if (!f.is_open()) return false;
+            char sig[5] = {0};
+            f.read(sig, 4);
+            return f.gcount() == 4 && std::memcmp(sig, "%PDF", 4) == 0;
+        }
+
+        // An extension as the format switches store it: lowercase, no dot, so
+        // ".EPS", "EPS" and "eps" address the same format.
+        std::string NormalizedFormatExtension(const std::string& extension) {
+            std::string ext = extension;
+            if (!ext.empty() && ext.front() == '.') ext.erase(0, 1);
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return ext;
+        }
+
+        // Whether a text-shaped preview (Text / Docs / Spreadsheets) can be
+        // read out of this format at all. Everything in those kinds is either
+        // plain text already or has a reader in ExtractTextPreview below —
+        // except these, which are ZIP or record containers nothing here
+        // unpacks: reading their head yields a few bytes of container magic,
+        // which is neither a page of text nor an honest "no preview". Naming
+        // them in one place keeps the format lists' "this build cannot render
+        // it" and the extractor's answer the same fact.
+        bool TextPreviewReadable(const std::string& ext) {
+            static const std::set<std::string> containersWithoutReader = {
+                "xls",      // OLE2 workbook (the reader covers xlsx / ods)
+                "epub", "fb2.zip",   // ZIP e-book containers
+                "mobi", "prc", "azw", "azw3",   // Mobipocket record files
+            };
+            return containersWithoutReader.find(ext) == containersWithoutReader.end();
+        }
+
+        // Whether THIS build can produce a thumbnail for the format at all —
+        // the same question ThumbSourceFor answers per entry, asked of a bare
+        // extension so a settings list can grey out what no switch can turn
+        // on (no PostScript loader, no PDF plugin, no video backend).
+        bool ThumbnailProducibleFor(const std::string& ext, FilerPreviewType kind) {
+            switch (kind) {
+                case FilerPreviewType::Bitmaps:
+                    return ImagePipelineLoadsExtension(ext);
+                case FilerPreviewType::VectorGraphics:
+                    return ImagePipelineLoadsExtension(ext) ||
+                           FormatCarriesEmbeddedPreview(ext);
+                case FilerPreviewType::Models3D:
+                    return ext == "stl";
+                // FreeType is a hard dependency, so a specimen can always be
+                // rasterized - except for the two web formats, which need the
+                // zlib / Brotli support the installed FreeType may lack.
+                case FilerPreviewType::Fonts:
+                    return ext != "woff" && ext != "woff2";
+                case FilerPreviewType::PDF:
+                    return PdfPreviewAvailable();
+                case FilerPreviewType::Videos:
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+                    return true;
+#else
+                    return false;
+#endif
+                // Text-shaped kinds are read, not decoded - but only where
+                // there is something readable to find.
+                case FilerPreviewType::Text:
+                case FilerPreviewType::Docs:
+                case FilerPreviewType::Spreadsheets:
+                    return TextPreviewReadable(ext);
+                // Audio files have no picture in them that anything here
+                // reads (cover art is not extracted yet), so no switch can
+                // give them a thumbnail. They are listed all the same: the
+                // detail view does play them, and a row that says so is what
+                // explains the missing tile.
+                case FilerPreviewType::Audio:
+                default:
+                    return false;
+            }
         }
 
         // Straight (non-premultiplied) RGBA rows into a fresh pixmap. The
@@ -532,6 +750,23 @@ namespace UltraCanvas {
             (void)path; (void)w; (void)h; (void)scale;
             return nullptr;
 #endif
+        }
+
+        // ===== EMBEDDED PREVIEW (vector documents) =====
+        // Xara and the ZIP-based CorelDRAW files carry a preview bitmap of
+        // the drawing; decoding it costs a read and a normal image decode,
+        // which is the whole reason these formats can have a thumbnail at all
+        // without a renderer that needs a window. Runs on the thumbnail
+        // workers like every other producer here.
+        std::shared_ptr<UCPixmap> RenderEmbeddedPreviewPixmap(const std::string& path,
+                                                              int w, int h,
+                                                              ImageFitMode fit,
+                                                              float scale) {
+            std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+            if (bytes.empty()) return nullptr;
+            auto img = UCImage::LoadFromMemory(bytes);
+            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
+            return img->GetPixmap(w, h, fit, scale);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -1024,8 +1259,11 @@ namespace UltraCanvas {
             }
             // Everything else in the Text / Docs kinds is plain text already
             // (txt, log, json, xml, yaml, markdown, LaTeX, source code, ...).
-            // Binary formats we have no reader for (xls, epub) come back empty
-            // from ReadFileHead and fall back to the glyph.
+            // The container formats no reader here unpacks are refused rather
+            // than read as text: their head is a few bytes of ZIP or record
+            // magic before the first NUL, which would draw a "page" holding
+            // "PK" instead of leaving the honest type glyph.
+            if (!TextPreviewReadable(ext)) return false;
             const std::string head = ReadFileHead(path, kPreviewReadBytes);
             if (head.empty()) return false;
             SplitPreviewLines(head, lines);
@@ -1404,7 +1642,10 @@ namespace UltraCanvas {
                 {"Opus", "Opus", false},  {"opus", "Opus", false},
                 {"fLaC", "FLAC", false},  {"twos", "PCM", false},
                 {"sowt", "PCM", false},   {"lpcm", "PCM", false},
-                {"samr", "AMR", false},
+                {"in24", "PCM", false},   {"fl32", "PCM", false},
+                {"samr", "AMR", false},   {"sawb", "AMR-WB", false},
+                {".mp3", "MP3", false},   {"dtsc", "DTS", false},
+                {"dtse", "DTS Express", false},
             };
             for (const Map& m : map)
                 if (fcc == m.fcc) { isVideo = m.video; return m.name; }
@@ -1683,13 +1924,13 @@ namespace UltraCanvas {
             if (ext == "mp3")  return ProbeMp3(f, fileSize, out);
             if (ext == "ogg" || ext == "oga" || ext == "opus")
                 return ProbeOgg(f, fileSize, out);
-            if (ext == "mp4" || ext == "m4a" || ext == "m4v" || ext == "mov" ||
-                ext == "3gp")
+            if (ext == "mp4" || ext == "m4a" || ext == "m4b" || ext == "m4v" ||
+                ext == "mov" || ext == "3gp" || ext == "3g2")
                 return ProbeMp4(f, fileSize, out);
             if (ext == "avi")  return ProbeAvi(f, out);
             if (ext == "mkv" || ext == "webm" || ext == "mka")
                 return ProbeMkv(f, fileSize, out);
-            if (ext == "wmv")  return ProbeAsf(f, out);
+            if (ext == "wmv" || ext == "asf" || ext == "wma") return ProbeAsf(f, out);
             return false;
         }
     }
@@ -1788,6 +2029,64 @@ namespace UltraCanvas {
         ScanFolder();
     }
 
+    void UltraCanvasFilerWidget::AppendToFileList(const std::vector<std::string>& paths) {
+        if (!fileListMode) { ShowFileList(paths); return; }
+        if (paths.empty()) return;
+
+        // Only the new paths are stat-ed, and what is already on screen is
+        // left where it is: this runs once per batch of a search that is
+        // still walking the tree, so re-scanning the whole list per batch
+        // would cost O(n^2) stats and reset the scroll under the user.
+        std::vector<FilerEntry> added;
+        added.reserve(paths.size());
+        for (const std::string& p : paths) {
+            FilerEntry e;
+            if (!StatEntryForPath(p, e)) continue;
+            if (e.isHidden && !showHiddenFiles) continue;
+            DecorateEntry(e);
+            added.push_back(std::move(e));
+        }
+        fileListPaths.insert(fileListPaths.end(), paths.begin(), paths.end());
+        if (added.empty()) return;
+
+        // The selection is held by index, and the sort below moves the
+        // entries around - remember it by path and put it back afterwards.
+        std::unordered_set<std::string> selectedPaths;
+        for (size_t i : selection)
+            if (i < entries.size()) selectedPaths.insert(entries[i].path);
+
+        if (!nameFilter.empty()) {
+            // A filtered display keeps the unfiltered list beside it so the
+            // filter can be widened without a rescan - the new entries join
+            // both, and only the matching ones become visible.
+            filterAllEntries.insert(filterAllEntries.end(),
+                                    added.begin(), added.end());
+            for (FilerEntry& e : added)
+                if (EntryMatchesNameFilter(e)) entries.push_back(std::move(e));
+        } else {
+            for (FilerEntry& e : added) entries.push_back(std::move(e));
+        }
+
+        effectiveSizesValid = false;
+        SortEntries();
+
+        std::vector<size_t> restored;
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (selectedPaths.count(entries[i].path)) restored.push_back(i);
+        const bool changed = restored.size() != selectedPaths.size();
+        selection.swap(restored);
+        if (changed) FireSelectionChanged();
+
+        // Deliberately no scroll reset: the point of appending is that the
+        // user can already work with the results while more arrive.
+        if (nameTruncated.size() != entries.size())
+            nameTruncated.assign(entries.size(), 0);
+        InvalidateFilerLayout();
+        UpdateFilterEmptyButton();
+        RequestRedraw();
+        if (onFolderRefreshed) onFolderRefreshed();
+    }
+
     void UltraCanvasFilerWidget::SetFileListOrderPreserved(bool preserved) {
         if (preserveFileListOrder == preserved) return;
         preserveFileListOrder = preserved;
@@ -1809,10 +2108,16 @@ namespace UltraCanvas {
         std::string needle = nameFilter;
         std::transform(needle.begin(), needle.end(), needle.begin(),
                        [](unsigned char c) { return std::tolower(c); });
-        std::string name = e.name;
-        std::transform(name.begin(), name.end(), name.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        return name.find(needle) != std::string::npos;
+        auto matches = [&needle](std::string value) {
+            std::transform(value.begin(), value.end(), value.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return value.find(needle) != std::string::npos;
+        };
+        // The name on screen counts as well as the name on disk: typing
+        // "firefox" has to find a launcher shown as "Firefox Web Browser",
+        // whatever its file is called.
+        return matches(e.name) ||
+               (!e.linkDisplayName.empty() && matches(e.linkDisplayName));
     }
 
     void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
@@ -1947,8 +2252,28 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::ApplyEntryTypeInfo(FilerEntry& e) const {
         if (e.isDirectory) {
+            // A macOS bundle is a directory the platform presents as one
+            // object; what it actually is (ResolveBundleEntry, once the
+            // Info.plist has been read) refines this.
+            if (IsBundlePath(e.name)) {
+                e.category = FilerFileCategory::Executable;
+                e.typeName = IsApplicationBundlePath(e.name) ? "Application"
+                                                             : "Bundle";
+                return;
+            }
             e.category = FilerFileCategory::Folder;
             e.typeName = "Folder";
+            return;
+        }
+        if (e.extension == "lnk" || e.extension == "desktop" ||
+            e.extension == "webloc") {
+            // A shortcut is not a kind of file, it is a reference to one — a
+            // Windows .lnk, a freedesktop desktop entry, or a macOS web
+            // location. The name says so; what it points at
+            // (ResolveShortcutEntry, once the file has actually been read)
+            // says the rest.
+            e.category = FilerFileCategory::Other;
+            e.typeName = "Shortcut";
             return;
         }
         const auto& m = ExtensionTypeMap();
@@ -1958,11 +2283,17 @@ namespace UltraCanvas {
             e.typeName = std::string(it->second.label) + " "
                          + CategoryNoun(it->second.category);
         } else {
-            e.category = FilerFileCategory::Other;
+            // Not in the table: a format one of the registered plugins knows
+            // still gets its real category (and with it its colour, its
+            // grouping and the preview switch that governs it) - only the
+            // pretty name falls back to the extension.
+            e.category = FilerCategoryForExtension(e.extension);
             std::string upper = e.extension;
             std::transform(upper.begin(), upper.end(), upper.begin(),
                            [](unsigned char c) { return std::toupper(c); });
-            e.typeName = upper.empty() ? "File" : upper + " File";
+            e.typeName = upper.empty()
+                                 ? "File"
+                                 : upper + " " + CategoryNoun(e.category);
         }
         if (e.category == FilerFileCategory::Archive) e.isArchive = true;
     }
@@ -1995,6 +2326,259 @@ namespace UltraCanvas {
         }
         ApplyEntryTypeInfo(e);
         return true;
+    }
+
+    // What a shortcut resolved to, kept between rescans. A folder watcher
+    // fires a rescan on every change while a copy runs, and re-reading every
+    // .lnk in the folder each time would be paid on the UI thread; the file's
+    // size and modification time say when the cached answer is stale.
+    namespace {
+        struct ShortcutCacheEntry {
+            uint64_t size = 0;
+            std::time_t modifiedTime = 0;
+            bool isShortcut = false;
+            bool isBundle = false;
+            std::string linkTarget;
+            std::string displayName;
+            std::string info;
+            std::string typeName;
+            FilerFileCategory category = FilerFileCategory::Other;
+        };
+        // Bounded: a listing of a Start-Menu tree can hold thousands of
+        // shortcuts, and this is a convenience, not a store.
+        constexpr size_t kShortcutCacheLimit = 2048;
+        std::mutex& ShortcutCacheMutex() {
+            static std::mutex m;
+            return m;
+        }
+        std::unordered_map<std::string, ShortcutCacheEntry>& ShortcutCache() {
+            static std::unordered_map<std::string, ShortcutCacheEntry> cache;
+            return cache;
+        }
+    } // namespace
+
+    void UltraCanvasFilerWidget::ResolveShortcutEntry(FilerEntry& e) const {
+        if (e.isDirectory) return;
+        const bool shortcutExtension = e.extension == "lnk" ||
+                                       e.extension == "desktop" ||
+                                       e.extension == "webloc";
+#ifdef __APPLE__
+        // A Finder alias carries no extension to recognise it by, so the file
+        // itself has to be asked - and only on macOS, which is the only place
+        // its bookmark data can be resolved. Everywhere else an alias stays
+        // the plain file nothing can follow.
+        const bool alias = !shortcutExtension && IsFinderAliasFile(e.path);
+#else
+        constexpr bool alias = false;
+#endif
+        if (!shortcutExtension && !alias) return;
+
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto it = ShortcutCache().find(e.path);
+            if (it != ShortcutCache().end() && it->second.size == e.size &&
+                it->second.modifiedTime == e.modifiedTime) {
+                if (!it->second.isShortcut) return;
+                e.isShortcut = true;
+                e.linkTarget = it->second.linkTarget;
+                e.linkDisplayName = it->second.displayName;
+                e.info = it->second.info;
+                e.category = it->second.category;
+                return;
+            }
+        }
+
+        ShortcutCacheEntry cached;
+        cached.size = e.size;
+        cached.modifiedTime = e.modifiedTime;
+        UCDesktopEntry desktop;
+        UCShellLink link;
+        std::string webUrl;
+        std::string aliasTarget;
+        if (e.extension == "webloc" && ReadWebLocation(e.path, webUrl)) {
+            // A web location holds an address, which is not a file: there is
+            // nothing for linkTarget, and the address is what to show.
+            cached.isShortcut = true;
+            cached.category = FilerFileCategory::Other;
+            cached.info = webUrl;
+        } else if (alias && ResolveFinderAlias(e.path, aliasTarget)) {
+            cached.isShortcut = true;
+            cached.linkTarget = aliasTarget;
+            cached.info = aliasTarget;
+            std::error_code aec;
+            if (fs::is_directory(aliasTarget, aec) && !aec) {
+                cached.category = FilerFileCategory::Folder;
+            } else {
+                FilerEntry probe;
+                probe.extension =
+                        LowerExtension(fs::path(aliasTarget).filename().string());
+                if (!probe.extension.empty()) {
+                    ApplyEntryTypeInfo(probe);
+                    cached.category = probe.category;
+                }
+            }
+        } else if (e.extension == "desktop" && ReadDesktopEntry(e.path, desktop)) {
+            cached.isShortcut = true;
+            // A launcher is called what it says it is called: the file name
+            // of a desktop entry is an id ("org.mozilla.firefox.desktop"),
+            // not something to show anyone.
+            cached.displayName = desktop.name;
+            switch (desktop.kind) {
+                case UCDesktopEntry::Kind::Application:
+                    cached.category = FilerFileCategory::Executable;
+                    // The program it starts, resolved on this machine when
+                    // it is installed; the raw command otherwise, which is
+                    // still what the entry says it runs.
+                    cached.linkTarget = desktop.program;
+                    cached.info = desktop.program.empty() ? desktop.exec
+                                                          : desktop.program;
+                    break;
+                case UCDesktopEntry::Kind::Link:
+                    // A web shortcut: the address is the target, and it is
+                    // not a file, so linkTarget (a host path) stays empty.
+                    cached.category = FilerFileCategory::Other;
+                    cached.info = desktop.url;
+                    break;
+                case UCDesktopEntry::Kind::Directory:
+                    cached.category = FilerFileCategory::Folder;
+                    cached.info = desktop.comment;
+                    break;
+                case UCDesktopEntry::Kind::Unknown:
+                    cached.category = FilerFileCategory::Other;
+                    cached.info = desktop.comment;
+                    break;
+            }
+        } else if (ReadShellLink(e.path, link)) {
+            cached.isShortcut = true;
+            cached.linkTarget = link.hostTargetPath;
+            // The info column shows the target the way Windows writes it -
+            // that is the string the user recognizes from the shortcut's
+            // properties, and it stays informative for a link whose target is
+            // not on this machine.
+            cached.info = link.targetPath.empty() ? link.description
+                                                  : link.targetPath;
+            // The category comes from the target, so the entry sorts, groups
+            // and colours as the thing it stands for. The icon follows the
+            // same rule, but is drawn from the icon the link names rather
+            // than from the category (DrawEntryIcon / LoadNativeFileIconPixmap).
+            std::error_code ec;
+            const bool directory =
+                    link.targetIsDirectory ||
+                    (!link.hostTargetPath.empty() &&
+                     fs::is_directory(link.hostTargetPath, ec) && !ec);
+            if (directory) {
+                cached.category = FilerFileCategory::Folder;
+            } else {
+                const std::string target = link.hostTargetPath.empty()
+                                                   ? link.targetPath
+                                                   : link.hostTargetPath;
+                FilerEntry probe;
+                probe.extension = LowerExtension(fs::path(target).filename().string());
+                if (!probe.extension.empty()) {
+                    ApplyEntryTypeInfo(probe);
+                    cached.category = probe.category;
+                }
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto& cache = ShortcutCache();
+            if (cache.size() >= kShortcutCacheLimit) cache.clear();
+            cache[e.path] = cached;
+        }
+        if (!cached.isShortcut) return;
+        e.isShortcut = true;
+        e.linkTarget = cached.linkTarget;
+        e.linkDisplayName = cached.displayName;
+        e.info = cached.info;
+        e.category = cached.category;
+    }
+
+    void UltraCanvasFilerWidget::ResolveBundleEntry(FilerEntry& e) const {
+        if (!e.isDirectory || !IsBundlePath(e.name)) return;
+
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto it = ShortcutCache().find(e.path);
+            if (it != ShortcutCache().end() && it->second.size == e.size &&
+                it->second.modifiedTime == e.modifiedTime) {
+                // The type is applied either way: a directory that only ends
+                // in ".app" is a folder, and was named an application on the
+                // strength of its name alone until the read settled it.
+                e.category = it->second.category;
+                e.typeName = it->second.typeName;
+                if (!it->second.isBundle) return;
+                e.isBundle = true;
+                e.linkTarget = it->second.linkTarget;
+                e.linkDisplayName = it->second.displayName;
+                e.info = it->second.info;
+                return;
+            }
+        }
+
+        ShortcutCacheEntry cached;
+        cached.size = e.size;
+        cached.modifiedTime = e.modifiedTime;
+        // Until the Info.plist says otherwise this is a plain folder that
+        // happens to be named like a package.
+        cached.category = FilerFileCategory::Folder;
+        cached.typeName = "Folder";
+        UCAppBundle bundle;
+        if (ReadApplicationBundle(e.path, bundle)) {
+            cached.isBundle = true;
+            // The application's own name, not the directory's: a bundle is
+            // called "Visual Studio Code", its folder "Visual Studio
+            // Code.app", and localized installs differ by more than that.
+            cached.displayName = bundle.displayName;
+            cached.linkTarget = bundle.executable;
+            cached.info = bundle.identifier.empty() ? bundle.version
+                                                    : bundle.identifier;
+            cached.category = bundle.isApplication ? FilerFileCategory::Executable
+                                                   : FilerFileCategory::Other;
+            cached.typeName = bundle.isApplication ? "Application" : "Bundle";
+        }
+        {
+            std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
+            auto& cache = ShortcutCache();
+            if (cache.size() >= kShortcutCacheLimit) cache.clear();
+            cache[e.path] = cached;
+        }
+        e.category = cached.category;
+        e.typeName = cached.typeName;
+        if (!cached.isBundle) return;
+        e.isBundle = true;
+        e.linkTarget = cached.linkTarget;
+        e.linkDisplayName = cached.displayName;
+        e.info = cached.info;
+    }
+
+    void UltraCanvasFilerWidget::DecorateEntry(FilerEntry& e) const {
+        e.effectiveSize = e.size;
+        // A shortcut takes its type, category and info column from the file
+        // it points at, and an application bundle from the application it
+        // holds; everything below (attributes, the info column the host may
+        // override) then applies to the entry as resolved.
+        ResolveShortcutEntry(e);
+        ResolveBundleEntry(e);
+
+        std::string attr;
+        if (e.isDirectory) attr += 'D';
+        if (e.isSymlink)   attr += 'L';
+        if (e.isReadOnly)  attr += 'R';
+        if (e.isHidden)    attr += 'H';
+        if (e.isArchive)   attr += 'A';
+        e.attributes = attr;
+
+        if (e.compressedSize > 0 && e.size > 0 && e.compressedSize <= e.size) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.0f%% compressed",
+                     100.0 * (1.0 - double(e.compressedSize) / double(e.size)));
+            e.info = buf;
+        }
+        if (infoProvider) {
+            std::string s = infoProvider(e);
+            if (!s.empty()) e.info = s;
+        }
     }
 
     void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
@@ -2137,11 +2721,14 @@ namespace UltraCanvas {
             aspectCache.clear();
             mediaQueue.clear();
             mediaInfoCache.clear();
+            lockQueue.clear();
+            lockCache.clear();
         }
         DropThumbnailCache();
 
         std::error_code ec;
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
+        listingIsRealDirectory = fileListMode || isRealDir;
 
         if (fileListMode) {
             for (const std::string& p : fileListPaths) {
@@ -2249,28 +2836,7 @@ namespace UltraCanvas {
             }
         }
 
-        for (FilerEntry& e : entries) {
-            e.effectiveSize = e.size;
-
-            std::string attr;
-            if (e.isDirectory) attr += 'D';
-            if (e.isSymlink)   attr += 'L';
-            if (e.isReadOnly)  attr += 'R';
-            if (e.isHidden)    attr += 'H';
-            if (e.isArchive)   attr += 'A';
-            e.attributes = attr;
-
-            if (e.compressedSize > 0 && e.size > 0 && e.compressedSize <= e.size) {
-                char buf[32];
-                snprintf(buf, sizeof(buf), "%.0f%% compressed",
-                         100.0 * (1.0 - double(e.compressedSize) / double(e.size)));
-                e.info = buf;
-            }
-            if (infoProvider) {
-                std::string s = infoProvider(e);
-                if (!s.empty()) e.info = s;
-            }
-        }
+        for (FilerEntry& e : entries) DecorateEntry(e);
 
         // A live name filter narrows the listing; the full scan is kept so
         // the filter can be widened or dropped without another disk scan.
@@ -2450,6 +3016,10 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::SetCuratedHomeFolder(const std::string& homePath,
                                                       std::vector<std::string> mainFolders) {
+        // Hosts re-apply their settings wholesale; only a real change is
+        // worth the rescan a Refresh costs.
+        if (curatedHomePath == homePath && curatedHomeFolders == mainFolders)
+            return;
         curatedHomePath = homePath;
         curatedHomeFolders = std::move(mainFolders);
         Refresh();
@@ -2491,22 +3061,252 @@ namespace UltraCanvas {
         return PreviewTypeForFile(e.extension, e.category);
     }
 
-    bool UltraCanvasFilerWidget::PreviewEnabledFor(const FilerEntry& e) const {
+    bool UltraCanvasFilerWidget::PreviewAllowed(
+            const FilerEntry& e, uint32_t kinds,
+            const std::set<std::string>& disabled) {
         const FilerPreviewType type = PreviewTypeOf(e);
         // Entries of no preview kind (folders, audio, archives, programs) are
         // never gated: a host that attached an explicit thumbnail to one still
-        // gets it drawn.
+        // gets it drawn, and a folder is always worth a detail pane.
         if (type == FilerPreviewType::NonePreview) return true;
-        return (previewTypes & static_cast<uint32_t>(type)) != 0;
+        if ((kinds & static_cast<uint32_t>(type)) == 0) return false;
+        return disabled.find(e.extension) == disabled.end();
     }
 
-    void UltraCanvasFilerWidget::SetPreviewType(FilerPreviewType type, bool on) {
+    bool UltraCanvasFilerWidget::ThumbnailEnabledFor(const FilerEntry& e) const {
+        return PreviewAllowed(e, thumbnailKinds, disabledThumbnailFormats);
+    }
+
+    bool UltraCanvasFilerWidget::DetailViewEnabledFor(const FilerEntry& e) const {
+        return PreviewAllowed(e, detailViewKinds, disabledDetailViewFormats);
+    }
+
+    void UltraCanvasFilerWidget::SetThumbnailKind(FilerPreviewType type, bool on) {
         const uint32_t bit = static_cast<uint32_t>(type);
-        SetPreviewTypes(on ? (previewTypes | bit) : (previewTypes & ~bit));
+        SetThumbnailKinds(on ? (thumbnailKinds | bit) : (thumbnailKinds & ~bit));
     }
 
-    bool UltraCanvasFilerWidget::IsPreviewTypeEnabled(FilerPreviewType type) const {
-        return (previewTypes & static_cast<uint32_t>(type)) != 0;
+    bool UltraCanvasFilerWidget::IsThumbnailKindEnabled(FilerPreviewType type) const {
+        return (thumbnailKinds & static_cast<uint32_t>(type)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetDetailViewKind(FilerPreviewType type, bool on) {
+        const uint32_t bit = static_cast<uint32_t>(type);
+        SetDetailViewKinds(on ? (detailViewKinds | bit) : (detailViewKinds & ~bit));
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailViewKindEnabled(FilerPreviewType type) const {
+        return (detailViewKinds & static_cast<uint32_t>(type)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetThumbnailFormatEnabled(
+            const std::string& extension, bool on) {
+        const std::string ext = NormalizedFormatExtension(extension);
+        if (ext.empty()) return;
+        const bool changed = on ? (disabledThumbnailFormats.erase(ext) > 0)
+                                : disabledThumbnailFormats.insert(ext).second;
+        if (!changed) return;
+        // A tile that falls back to the type glyph fills its square again, so
+        // the shrink-to-image row heights of the thumbnail grid change with it.
+        InvalidateFilerLayout();
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::IsThumbnailFormatEnabled(
+            const std::string& extension) const {
+        const std::string ext = NormalizedFormatExtension(extension);
+        return disabledThumbnailFormats.find(ext) == disabledThumbnailFormats.end();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailViewFormatEnabled(
+            const std::string& extension, bool on) {
+        const std::string ext = NormalizedFormatExtension(extension);
+        if (ext.empty()) return;
+        const bool changed = on ? (disabledDetailViewFormats.erase(ext) > 0)
+                                : disabledDetailViewFormats.insert(ext).second;
+        if (!changed) return;
+        // Nothing of this widget is drawn from it — the host reads the answer
+        // when its selection changes — so there is nothing to repaint here.
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailViewFormatEnabled(
+            const std::string& extension) const {
+        const std::string ext = NormalizedFormatExtension(extension);
+        return disabledDetailViewFormats.find(ext) == disabledDetailViewFormats.end();
+    }
+
+    std::vector<std::string>
+    UltraCanvasFilerWidget::GetDisabledThumbnailFormats() const {
+        return {disabledThumbnailFormats.begin(), disabledThumbnailFormats.end()};
+    }
+
+    void UltraCanvasFilerWidget::SetDisabledThumbnailFormats(
+            const std::vector<std::string>& exts) {
+        std::set<std::string> next;
+        for (const std::string& e : exts) {
+            const std::string ext = NormalizedFormatExtension(e);
+            if (!ext.empty()) next.insert(ext);
+        }
+        if (next == disabledThumbnailFormats) return;
+        disabledThumbnailFormats = std::move(next);
+        InvalidateFilerLayout();
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    std::vector<std::string>
+    UltraCanvasFilerWidget::GetDisabledDetailViewFormats() const {
+        return {disabledDetailViewFormats.begin(), disabledDetailViewFormats.end()};
+    }
+
+    void UltraCanvasFilerWidget::SetDisabledDetailViewFormats(
+            const std::vector<std::string>& exts) {
+        std::set<std::string> next;
+        for (const std::string& e : exts) {
+            const std::string ext = NormalizedFormatExtension(e);
+            if (!ext.empty()) next.insert(ext);
+        }
+        if (next == disabledDetailViewFormats) return;
+        disabledDetailViewFormats = std::move(next);
+        NotifyDisplayFormatsChanged();
+    }
+
+    const char* UltraCanvasFilerWidget::PreviewTypeLabel(FilerPreviewType type) {
+        switch (type) {
+            case FilerPreviewType::Bitmaps:        return "Bitmaps";
+            case FilerPreviewType::VectorGraphics: return "Vector graphics";
+            case FilerPreviewType::Models3D:       return "3D";
+            case FilerPreviewType::PDF:            return "PDF";
+            case FilerPreviewType::Text:           return "Text";
+            case FilerPreviewType::Docs:           return "Docs";
+            case FilerPreviewType::Spreadsheets:   return "Spreadsheets";
+            case FilerPreviewType::Videos:         return "Videos";
+            case FilerPreviewType::Audio:          return "Audio";
+            case FilerPreviewType::Fonts:          return "Fonts";
+            default:                               return "";
+        }
+    }
+
+    const std::vector<FilerPreviewType>&
+    UltraCanvasFilerWidget::AllPreviewTypes() {
+        static const std::vector<FilerPreviewType> types = {
+            FilerPreviewType::Bitmaps,      FilerPreviewType::VectorGraphics,
+            FilerPreviewType::Models3D,     FilerPreviewType::PDF,
+            FilerPreviewType::Text,         FilerPreviewType::Docs,
+            FilerPreviewType::Spreadsheets, FilerPreviewType::Videos,
+            FilerPreviewType::Audio,        FilerPreviewType::Fonts,
+        };
+        return types;
+    }
+
+    // ===== THE "LIST OF FILES" =====
+    std::vector<FilerFormatInfo> UltraCanvasFilerWidget::GetPreviewableFormats() {
+        std::map<std::string, FilerFormatInfo> byExtension;
+        auto add = [&byExtension](const std::string& ext, const std::string& label,
+                                  FilerFileCategory category) {
+            if (ext.empty() || byExtension.count(ext)) return;
+            const FilerPreviewType kind = PreviewTypeForFile(ext, category);
+            if (kind == FilerPreviewType::NonePreview) return;
+            FilerFormatInfo info;
+            info.extension = ext;
+            info.label     = label;
+            info.kind      = kind;
+            info.thumbnailSupported = ThumbnailProducibleFor(ext, kind);
+            byExtension.emplace(ext, std::move(info));
+        };
+        // The widget's own table first — it carries the readable names — then
+        // whatever else the FileLoader inventory reports for this build, so a
+        // format a plugin registered is listed without the widget knowing it.
+        for (const auto& [ext, info] : ExtensionTypeMap())
+            add(ext, info.label, info.category);
+        for (const MediaFormatInfo& f : UltraCanvasSupportedFormats::GetAll()) {
+            const FilerFileCategory c = CategoryFromMediaCategory(f.category);
+            add(f.extension, f.description, c);
+            for (const std::string& alias : f.aliases) add(alias, f.description, c);
+        }
+        std::vector<FilerFormatInfo> out;
+        out.reserve(byExtension.size());
+        for (auto& [ext, info] : byExtension) out.push_back(info);
+        // Grouped by kind (the order the enum declares), extensions sorted
+        // inside each group — the order a settings list wants to show.
+        std::stable_sort(out.begin(), out.end(),
+                         [](const FilerFormatInfo& a, const FilerFormatInfo& b) {
+            if (a.kind != b.kind)
+                return static_cast<uint32_t>(a.kind) < static_cast<uint32_t>(b.kind);
+            return a.extension < b.extension;
+        });
+        return out;
+    }
+
+    void UltraCanvasFilerWidget::NotifyDisplayFormatsChanged() {
+        if (onDisplayFormatsChanged) onDisplayFormatsChanged();
+    }
+
+    // ===== FILE EXTENSIONS =====
+    // Whether a drawn name keeps its extension, and the tag a thumbnail tile
+    // carries instead of it. Both only change what is painted: `FilerEntry`
+    // keeps the real name throughout, so renaming, sorting and every file
+    // operation are untouched by either switch.
+
+    void UltraCanvasFilerWidget::SetFileExtensionsInNames(bool on) {
+        if (fileExtensionsInNames == on) return;
+        fileExtensionsInNames = on;
+        // A shorter name may fit a tile caption in fewer lines, which is what
+        // sizes the rows of the thumbnail grids.
+        InvalidateFilerLayout();
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    void UltraCanvasFilerWidget::SetExtensionBadge(FilerExtensionBadge badge) {
+        if (extensionBadge == badge) return;
+        extensionBadge = badge;
+        // The tag is painted over the icon box, so nothing is relaid out.
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    const char* UltraCanvasFilerWidget::ExtensionBadgeLabel(
+            FilerExtensionBadge badge) {
+        switch (badge) {
+            case FilerExtensionBadge::Bar:  return "Bar";
+            case FilerExtensionBadge::Icon: return "Icon";
+            default:                        return "None";
+        }
+    }
+
+    const std::vector<FilerExtensionBadge>&
+    UltraCanvasFilerWidget::AllExtensionBadges() {
+        static const std::vector<FilerExtensionBadge> all = {
+            FilerExtensionBadge::NoneBadge,
+            FilerExtensionBadge::Bar,
+            FilerExtensionBadge::Icon,
+        };
+        return all;
+    }
+
+    std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
+        if (e.isDirectory) return "";
+        return LooksLikeFileExtension(e.extension) ? e.extension : std::string();
+    }
+
+    std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
+        // A launcher that carries its own name is shown by it: the file name
+        // of a desktop entry is an id nobody reads
+        // ("org.mozilla.firefox.desktop"), while its Name= is what the menus
+        // of the machine call it. Only the drawn name changes — renaming,
+        // sorting and every file operation still use the real one.
+        if (!e.linkDisplayName.empty()) return e.linkDisplayName;
+        if (fileExtensionsInNames) return e.name;
+        // Only a plausible file type is dropped: the tail of
+        // "UCDemo-Windows-0.3.27-x86_64" is a version, not an extension, and a
+        // folder has no extension at all, so every dot in it belongs to it.
+        if (ExtensionTagOf(e).empty()) return e.name;
+        const size_t dot = e.name.find_last_of('.');
+        if (dot == std::string::npos || dot == 0) return e.name;
+        return e.name.substr(0, dot);
     }
 
     bool UltraCanvasFilerWidget::PreviewFitsRect(const FilerEntry& e,
@@ -2514,6 +3314,10 @@ namespace UltraCanvas {
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::PDF:
             case FilerPreviewType::Models3D:
+            // A specimen shrunk into the icon column of a Details row is a
+            // smear of ink that says nothing about the face; the type glyph
+            // with "TTF" on it says more.
+            case FilerPreviewType::Fonts:
                 return rect.width >= kContentPreviewMinEdge &&
                        rect.height >= kContentPreviewMinEdge;
             default:
@@ -2523,14 +3327,22 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasFilerWidget::SetPreviewTypes(uint32_t mask) {
+    void UltraCanvasFilerWidget::SetThumbnailKinds(uint32_t mask) {
         mask &= kFilerAllPreviewTypes;
-        if (previewTypes == mask) return;
-        previewTypes = mask;
+        if (thumbnailKinds == mask) return;
+        thumbnailKinds = mask;
         // A tile that falls back to the type glyph fills its square again, so
         // the shrink-to-image row heights of the thumbnail grid change with it.
         InvalidateFilerLayout();
         RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailViewKinds(uint32_t mask) {
+        mask &= kFilerAllPreviewTypes;
+        if (detailViewKinds == mask) return;
+        detailViewKinds = mask;
+        NotifyDisplayFormatsChanged();
     }
 
     int UltraCanvasFilerWidget::DatasetLineCount() const {
@@ -2560,8 +3372,9 @@ namespace UltraCanvas {
         if (has(FilerDatasetField::CreatedDate) && e.createdTime != 0) {
             lines.push_back(FormatTime(e.createdTime));
         }
-        if (has(FilerDatasetField::Attributes) && !e.attributes.empty()) {
-            lines.push_back(e.attributes);
+        if (has(FilerDatasetField::Attributes)) {
+            std::string attrs = EntryAttributeText(e);
+            if (!attrs.empty()) lines.push_back(attrs);
         }
         // Length (audio / video) and Dimensions (bitmaps) both come from the
         // lazily-probed, cached media info — gated by category so each only
@@ -4351,9 +5164,12 @@ namespace UltraCanvas {
 
         // The window is optional: without it (dialogs disabled, no parent) the
         // work still runs, it just runs unannounced.
+        // No severity badge on the pack / unpack window: the progress ring is
+        // its graphic, and the icon column would push the ring off centre.
         job->dialog = UltraCanvasProgressDialog::Show(
                 GetWindow(), title, caption,
-                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); });
+                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); },
+                /*showIcon=*/false);
 
         // The reporter is the worker's only way to talk to the UI: it stores
         // numbers the poll timer reads, and answers whether to keep going.
@@ -5404,6 +6220,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ReportError(const std::string& message) {
+        // A launch that failed is not a launch in progress: whatever the busy
+        // pointer was armed for is over, and the message says what happened.
+        if (auto* win = GetWindow()) win->HideBusyPointer();
         if (onError) onError(message);
         else std::cerr << "UltraCanvasFilerWidget: " << message << std::endl;
     }
@@ -5640,7 +6459,8 @@ namespace UltraCanvas {
             int rowNameLines = 1;
             for (size_t i = rowStart; mctx && i < rowEnd; ++i) {
                 rowNameLines = std::max(rowNameLines,
-                                        CaptionLinesFor(mctx, entries[i].name,
+                                        CaptionLinesFor(mctx,
+                                                        DisplayNameOf(entries[i]),
                                                         tileW - 8));
                 if (rowNameLines >= maxNameLines) break;
             }
@@ -6290,72 +7110,32 @@ namespace UltraCanvas {
     }
 
     namespace {
-        // Byte offset of every UTF-8 code point start in `s`, plus s.size() as
-        // the closing boundary: cutting on one never splits a multibyte
-        // sequence. Index i of the result addresses the prefix s[0, b[i]) and
-        // the suffix s[b[i], end).
-        std::vector<size_t> Utf8Boundaries(const std::string& s) {
-            std::vector<size_t> b;
-            b.reserve(s.size() + 1);
-            for (size_t i = 0; i < s.size(); ++i) {
-                if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) b.push_back(i);
+        // The wrapping itself lives in UltraCanvasTextWrapping.h, which measures
+        // text through a callable instead of a render context so it can be
+        // unit-tested against a synthetic font (Tests/TextWrapTest.cpp). This
+        // is the callable: the width of one line in the context's current font.
+        struct ContextMeasure {
+            IRenderContext* ctx;
+            int operator()(const std::string& s) const {
+                return ctx->GetTextLineDimensions(s).width;
             }
-            b.push_back(s.size());
-            return b;
-        }
-
-        // Break the line after one of these when it sits in the back half of
-        // what fits: a name reads much better broken at its own separators
-        // ("Holiday photos - Rome.jpg") than in the middle of a word.
-        bool IsNameBreakChar(char c) {
-            return c == ' ' || c == '-' || c == '_' || c == '.' || c == ',' ||
-                   c == ';' || c == '(' || c == ')' || c == '[' || c == ']';
-        }
+        };
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeText(IRenderContext* ctx,
                                                       const std::string& text,
                                                       int maxWidth) const {
-        if (maxWidth <= 0) return "";
-        Size2Di ts = ctx->GetTextLineDimensions(text);
-        if (ts.width <= maxWidth) return text;
-        // Longest prefix that fits with the trailing "…": binary search over
-        // the code-point boundaries (fit is monotone in prefix length). The
-        // one-code-point-at-a-time trim measured the text once per removed
-        // character — a long name in a narrow Details column cost hundreds of
-        // text measurements per cell, every frame.
-        std::vector<size_t> bounds = Utf8Boundaries(text);
-        size_t lo = 0, hi = bounds.size() - 1;   // prefix is text[0, bounds[i])
-        while (lo < hi) {
-            size_t mid = (lo + hi + 1) / 2;
-            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid]) + "…").width
-                    <= maxWidth)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-        if (lo == 0) return "…";
-        return text.substr(0, bounds[lo]) + "…";
+        if (!ctx) return "";
+        return TextWrapping::Ellipsize(ContextMeasure{ctx}, text, maxWidth);
     }
 
     std::string UltraCanvasFilerWidget::TruncateTextToWidth(IRenderContext* ctx,
                                                             const std::string& text,
                                                             int maxWidth) const {
-        if (maxWidth <= 0) return "";
-        if (ctx->GetTextLineDimensions(text).width <= maxWidth) return text;
-        // Same binary search as EllipsizeText, without the trailing "…": in a
-        // page preview the ellipsis would be most of what a narrow spreadsheet
-        // column has room for.
-        std::vector<size_t> bounds = Utf8Boundaries(text);
-        size_t lo = 0, hi = bounds.size() - 1;
-        while (lo < hi) {
-            size_t mid = (lo + hi + 1) / 2;
-            if (ctx->GetTextLineDimensions(text.substr(0, bounds[mid])).width <= maxWidth)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-        return text.substr(0, bounds[lo]);
+        // Without the trailing "…": in a page preview the marker would be most
+        // of what a narrow spreadsheet column has room for.
+        if (!ctx) return "";
+        return TextWrapping::Truncate(ContextMeasure{ctx}, text, maxWidth);
     }
 
     std::string UltraCanvasFilerWidget::EllipsizeEntryName(IRenderContext* ctx,
@@ -6374,125 +7154,54 @@ namespace UltraCanvas {
     // the name off after one line it is broken over up to captionMaxLines
     // lines; only what does not fit even then is dropped, from the front of the
     // last line, so the tail — the extension — always remains readable.
+    // Words are kept whole: a name is only broken *inside* a word when it has
+    // to be, and a line may run captionOverflowSlack pixels into the caption's
+    // inset to keep one whole ("Logo CoderBox" / "with text.png" rather than
+    // the "Logo CoderBo" / "x with text.png" the exact fit produced). A
+    // PascalCase name counts as the words it is made of, so "UltraCanvas" /
+    // "Texter.exe" rather than "UltraCanva" / "sTexter.exe"
+    // (captionCamelCaseBreaks).
     // A name that fits its lines completely is then re-broken so the lines
     // come out near equal — "CoderBox" / "compiler.png" rather than the
-    // greedy "CoderBox compiler" / ".png" (see WrapText).
+    // greedy "CoderBox compiler" / ".png" (see UltraCanvasTextWrapping.h).
+
+    int UltraCanvasFilerWidget::CaptionOverflowSlack() const {
+        if (style.captionOverflowSlack > 0) return style.captionOverflowSlack;
+        // Auto: about half a character of the caption font — enough for the
+        // one or two glyphs a word is regularly short by, and well inside the
+        // 4 px the caption is inset from the tile edge on either side.
+        return clampi(static_cast<int>(style.smallFontSize * 0.5f), 2, 6);
+    }
+
+    TextWrapping::Options UltraCanvasFilerWidget::CaptionWrapOptions(int lineWidth,
+                                                                int maxLines) const {
+        TextWrapping::Options o;
+        o.lineWidth = lineWidth;
+        o.maxLines = std::max(1, maxLines);
+        o.breakTolerance = std::max(0, style.captionBreakTolerance);
+        o.overflowSlack = CaptionOverflowSlack();
+        o.camelCaseBreaks = style.captionCamelCaseBreaks;
+        return o;
+    }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapTextGreedy(
             IRenderContext* ctx, const std::string& text,
             int lineWidth, int maxLines, bool* outTruncated) const {
-        std::vector<std::string> lines;
-        std::string rest = text;
-        for (int line = 0; line < maxLines && !rest.empty(); ++line) {
-            std::vector<size_t> bounds = Utf8Boundaries(rest);
-            const bool lastLine = (line == maxLines - 1);
-
-            if (lastLine) {
-                if (ctx->GetTextLineDimensions(rest).width <= lineWidth) {
-                    lines.push_back(rest);
-                    break;
-                }
-                // Longest tail that fits behind a leading "…" (the shorter the
-                // tail the narrower the line, so the fit is monotone in `lo`).
-                size_t lo = 0, hi = bounds.size() - 1;
-                while (lo < hi) {
-                    size_t mid = (lo + hi) / 2;
-                    std::string cand = "…" + rest.substr(bounds[mid]);
-                    if (ctx->GetTextLineDimensions(cand).width <= lineWidth) hi = mid;
-                    else lo = mid + 1;
-                }
-                lines.push_back("…" + rest.substr(bounds[lo]));
-                if (outTruncated) *outTruncated = true;
-                break;
-            }
-
-            // Longest prefix that still fits this line.
-            size_t lo = 0, hi = bounds.size() - 1;
-            while (lo < hi) {
-                size_t mid = (lo + hi + 1) / 2;
-                if (ctx->GetTextLineDimensions(rest.substr(0, bounds[mid])).width <= lineWidth)
-                    lo = mid;
-                else
-                    hi = mid - 1;
-            }
-            size_t fit = bounds[lo];
-            // Not even one code point fits: take one anyway so the loop always
-            // makes progress (a caption this narrow is unreadable regardless).
-            if (fit == 0) fit = bounds.size() > 1 ? bounds[1] : rest.size();
-
-            // The exact fit is kept when it already ends on a word boundary;
-            // otherwise the line backs off to the last separator inside it —
-            // unless that would leave more than half the line empty.
-            size_t cut = fit;
-            if (fit < rest.size() && !IsNameBreakChar(rest[fit])) {
-                for (size_t i = fit; i > 0; --i) {
-                    if (!IsNameBreakChar(rest[i - 1])) continue;
-                    if (i * 2 >= fit) cut = i;
-                    break;
-                }
-            }
-
-            std::string head = rest.substr(0, cut);
-            rest.erase(0, cut);
-            while (!head.empty() && head.back() == ' ') head.pop_back();
-            while (!rest.empty() && rest.front() == ' ') rest.erase(0, 1);
-            if (!head.empty()) lines.push_back(head);
-        }
-        return lines;
+        if (outTruncated) *outTruncated = false;
+        if (!ctx) return {};
+        return TextWrapping::WrapGreedy(ContextMeasure{ctx}, text,
+                                        CaptionWrapOptions(lineWidth, maxLines),
+                                        outTruncated);
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapText(
             IRenderContext* ctx, const std::string& text,
             int maxWidth, int maxLines, bool* outTruncated) const {
         if (outTruncated) *outTruncated = false;
-        std::vector<std::string> lines;
-        if (!ctx || maxWidth <= 0 || text.empty()) return lines;
-        if (maxLines < 1) maxLines = 1;
-
-        const int totalWidth = ctx->GetTextLineDimensions(text).width;
-        if (totalWidth <= maxWidth) {
-            lines.push_back(text);
-            return lines;                       // the common case: one measure
-        }
-        if (maxLines == 1) {
-            lines.push_back(EllipsizeText(ctx, text, maxWidth));
-            if (outTruncated) *outTruncated = true;
-            return lines;
-        }
-
-        bool truncated = false;
-        lines = WrapTextGreedy(ctx, text, maxWidth, maxLines, &truncated);
-        if (outTruncated) *outTruncated = truncated;
-
-        // ===== BALANCED BREAKS =====
-        // Greedy filling front-loads the lines and leaves a stub on the last
-        // one — "CoderBox compiler" / ".png". When the whole name fits its
-        // lines, it is re-broken at the smallest line width that still needs
-        // no extra line, which evens the lines out ("CoderBox" /
-        // "compiler.png") while the line count — and with it the caption
-        // band height — stays exactly the same.
-        if (!truncated && lines.size() >= 2) {
-            const size_t lineCount = lines.size();
-            // No re-break can make every line narrower than the average.
-            int lo = clampi(totalWidth / static_cast<int>(lineCount), 1, maxWidth);
-            int hi = maxWidth;
-            while (lo < hi) {
-                const int mid = lo + (hi - lo) / 2;
-                bool cut = false;
-                const size_t n =
-                        WrapTextGreedy(ctx, text, mid, maxLines, &cut).size();
-                if (!cut && n <= lineCount) hi = mid;
-                else lo = mid + 1;
-            }
-            if (hi < maxWidth) {
-                bool cut = false;
-                std::vector<std::string> balanced =
-                        WrapTextGreedy(ctx, text, hi, maxLines, &cut);
-                if (!cut && balanced.size() <= lineCount)
-                    lines = std::move(balanced);
-            }
-        }
-        return lines;
+        if (!ctx) return {};
+        return TextWrapping::Wrap(ContextMeasure{ctx}, text,
+                                  CaptionWrapOptions(maxWidth, maxLines),
+                                  outTruncated);
     }
 
     std::vector<std::string> UltraCanvasFilerWidget::WrapEntryName(
@@ -6511,12 +7220,8 @@ namespace UltraCanvas {
                                                 int maxWidth) const {
         int maxLines = std::max(1, style.captionMaxLines);
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
-        if (ctx->GetTextLineDimensions(name).width <= maxWidth) return 1;
-        // Balancing (WrapText) never changes the line count, so the cheaper
-        // greedy pass is enough to size the caption band.
-        int n = static_cast<int>(
-                WrapTextGreedy(ctx, name, maxWidth, maxLines, nullptr).size());
-        return clampi(n, 1, maxLines);
+        return TextWrapping::LineCount(ContextMeasure{ctx}, name,
+                                       CaptionWrapOptions(maxWidth, maxLines));
     }
 
     int UltraCanvasFilerWidget::NameLineHeight() const {
@@ -6526,6 +7231,52 @@ namespace UltraCanvas {
 
     int UltraCanvasFilerWidget::CaptionBandHeight(int lines) const {
         return style.captionHeight + (std::max(1, lines) - 1) * NameLineHeight();
+    }
+
+    int UltraCanvasFilerWidget::ExtensionBadgeHeight() const {
+        if (style.extensionBadgeHeight > 0) return style.extensionBadgeHeight;
+        return clampi(static_cast<int>(style.smallFontSize) + 5, 12, 24);
+    }
+
+    // ===== THE EXTENSION TAG OF A TILE =====
+    // Display > File extensions: "exe" in a dark tag at the foot of the icon
+    // box, either alone (Icon) or at the right end of a strip across the box
+    // (Bar). It is drawn *over* the box rather than under it, so switching it
+    // on never changes a tile's height and never relays out the grid.
+    void UltraCanvasFilerWidget::DrawExtensionBadge(IRenderContext* ctx,
+                                                    const FilerEntry& e,
+                                                    const Rect2Di& box) {
+        if (!ctx || extensionBadge == FilerExtensionBadge::NoneBadge) return;
+        const std::string tag = ExtensionTagOf(e);
+        if (tag.empty()) return;
+        const int h = ExtensionBadgeHeight();
+        if (box.width < 16 || box.height < h) return;
+
+        ctx->PushState();
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = std::max(8.0f, style.smallFontSize - 1.0f);
+        fsty.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fsty);
+
+        const Size2Di ts = ctx->GetTextLineDimensions(tag);
+        const int tagW = clampi(ts.width + 10, 16, box.width);
+        const int y = box.y + box.height - h;
+        if (extensionBadge == FilerExtensionBadge::Bar) {
+            ctx->SetFillPaint(style.extensionBarBackground);
+            ctx->FillRectangle(Rect2Dd(box.x, y, box.width, h));
+        }
+        const int tagX = box.x + box.width - tagW;
+        ctx->SetFillPaint(style.extensionTagBackground);
+        if (extensionBadge == FilerExtensionBadge::Bar)
+            ctx->FillRectangle(Rect2Dd(tagX, y, tagW, h));
+        else
+            ctx->FillRoundedRectangle(Rect2Dd(tagX, y, tagW, h), 3);
+
+        ctx->SetTextPaint(style.extensionTagTextColor);
+        ctx->DrawText(tag, Point2Dd(tagX + (tagW - ts.width) / 2.0,
+                                    y + (h - ts.height) / 2.0));
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawSelectionState(IRenderContext* ctx,
@@ -6555,24 +7306,42 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
-        // Executables show their embedded application icon (Windows .exe /
-        // .dll / .ico — Explorer-style). Not a content preview, so it is not
-        // gated by the Display > Preview toggles; an explicit thumbnail
-        // still wins below. On platforms without an extractor this is false
-        // for every path.
-        if (!e.isDirectory && e.thumbnailPath.empty() &&
+        // Programs show their embedded application icon (.exe / .dll / .ico —
+        // Explorer-style), and a shortcut shows the icon it names, which is
+        // normally the icon of the program it starts. Not a content preview,
+        // so it is not gated by the Display > Thumbnails toggles; an explicit
+        // thumbnail still wins below. The cache key is the shortcut's own
+        // path, not the icon file's: two shortcuts into the same library can
+        // name different icons in it.
+        // A bundle is a directory, and the one directory that has an icon of
+        // its own to draw.
+        if ((!e.isDirectory || e.isBundle) && e.thumbnailPath.empty() &&
             NativeFileIconAvailable(e.path))
             return e.path;
-        // Display > Preview: a switched-off kind is never read at all.
-        if (!PreviewEnabledFor(e)) return {};
+        // Display > Thumbnails: a switched-off kind (or format) is never read
+        // at all.
+        if (!ThumbnailEnabledFor(e)) return {};
         if (!e.thumbnailPath.empty()) return e.thumbnailPath;
         switch (PreviewTypeOf(e)) {
             case FilerPreviewType::Bitmaps:
-            case FilerPreviewType::VectorGraphics:
-                // The Image/Vector categories are wider than what the image
-                // pipeline decodes (cdr/xar render through graphics plugins).
+                // The Image category is wider than what the image pipeline
+                // decodes.
                 return ImagePipelineLoadsExtension(e.extension) ? e.path
                                                                 : std::string{};
+            case FilerPreviewType::VectorGraphics:
+                // svg/svgz rasterize through the built-in SVG renderer, and
+                // eps/ps through libvips where that build has a PostScript
+                // loader. The rest of the Vector category has no renderer
+                // that works without a window - but Xara, the ZIP-based
+                // CorelDRAW documents and the PostScript formats carry a
+                // preview bitmap of their own, which the workers extract and
+                // decode like any other image (and a PDF-compatible .ai is
+                // rendered as the PDF it is). What is left - emf, wmf, dxf,
+                // dwg, an EPS written without a preview - keeps the type
+                // glyph.
+                return (ImagePipelineLoadsExtension(e.extension) ||
+                        FormatCarriesEmbeddedPreview(e.extension))
+                               ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
             // clip), decoded by the same background workers. Without a video
             // backend the capture fails once, the slot is marked Failed and the
@@ -6587,6 +7356,13 @@ namespace UltraCanvas {
             case FilerPreviewType::Models3D:
                 return UltraCanvasSTLLoader::HasSTLExtension(e.path)
                                ? e.path : std::string{};
+            // A line of the font's own glyphs, rasterized by FreeType. The
+            // font does not have to be installed for this, so a folder of
+            // downloaded fonts previews as readily as one of photos; a
+            // format this FreeType cannot open (WOFF2 without Brotli) fails
+            // once and the tile keeps its glyph.
+            case FilerPreviewType::Fonts:
+                return e.path;
             // Text, Docs and Spreadsheets have no image to decode: they
             // preview through AcquireTextPreview instead.
             default:
@@ -6619,6 +7395,68 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Keeps the retained pixmap bytes bounded: browsing a huge folder in
+        // a big tile size cannot grow without limit.
+        //
+        // Two pools, because the two kinds of picture are not interchangeable.
+        // A content preview is a courtesy — the tile reads fine without it —
+        // and a single video poster frame can be megabytes. An application
+        // icon is the file's identity: an .exe drawn with the generic "EXE"
+        // glyph looks broken, and the icon costs a few hundred kilobytes at
+        // most. Sharing one budget let a folder of photos or videos evict
+        // every icon on screen, which is exactly what "the icons stopped
+        // showing" looked like.
+        constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
+        constexpr size_t kNativeIconBudgetBytes = 16 * 1024 * 1024;
+        // Tries an application icon gets from the shell before the tile
+        // settles on its type glyph.
+        constexpr uint8_t kNativeIconMaxAttempts = 3;
+    } // namespace
+
+    void UltraCanvasFilerWidget::ReleaseThumbSlotLocked(const std::string& key,
+                                                        ThumbSlot& slot) {
+        if (slot.state == ThumbState::Ready) {
+            size_t& pool = slot.nativeIcon ? thumbNativeBytes : thumbBytes;
+            pool -= std::min(pool, slot.bytes);
+        }
+        auto hit = thumbHot.find(key);
+        if (hit != thumbHot.end()) {
+            thumbHotBytes -= std::min(thumbHotBytes, hit->second.bytes);
+            thumbHot.erase(hit);
+        }
+    }
+
+    void UltraCanvasFilerWidget::EvictThumbSlotsLocked(const std::string& keepKey) {
+        struct Pool { size_t* held; size_t budget; bool native; };
+        const Pool pools[2] = {
+            { &thumbBytes,       kThumbBudgetBytes,      false },
+            { &thumbNativeBytes, kNativeIconBudgetBytes, true  },
+        };
+        for (const Pool& pool : pools) {
+            while (*pool.held > pool.budget) {
+                // Least recently drawn first: tiles the user scrolled past
+                // long ago go before the ones still on screen.
+                auto oldest = thumbSlots.end();
+                for (auto it = thumbSlots.begin(); it != thumbSlots.end(); ++it) {
+                    if (it->first == keepKey) continue;
+                    if (it->second.state != ThumbState::Ready) continue;
+                    if (it->second.nativeIcon != pool.native) continue;
+                    if (oldest == thumbSlots.end() ||
+                        it->second.tick < oldest->second.tick) {
+                        oldest = it;
+                    }
+                }
+                // Only the kept slot is left in this pool: it is over budget
+                // on its own, and dropping it would undo the decode that
+                // just finished.
+                if (oldest == thumbSlots.end()) break;
+                ReleaseThumbSlotLocked(oldest->first, oldest->second);
+                thumbSlots.erase(oldest);
+            }
+        }
+    }
+
     std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireThumbnail(
             const std::string& path, int w, int h,
             ImageFitMode fit, float scale) {
@@ -6629,6 +7467,8 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lk(thumbMutex);
             auto it = thumbSlots.find(key);
             if (it != thumbSlots.end()) {
+                // Touched by this frame — the eviction sweep reads this.
+                it->second.tick = ++thumbSlotTick;
                 if (it->second.state == ThumbState::Ready) {
                     if (it->second.pixmap) return it->second.pixmap;
                     // Compressed slot: serve from the hot cache, or take a
@@ -6646,7 +7486,10 @@ namespace UltraCanvas {
                     // item keeps its place when the queue is rebuilt.
                 }
             } else {
-                thumbSlots.emplace(key, ThumbSlot{});
+                ThumbSlot fresh;
+                fresh.tick = ++thumbSlotTick;
+                fresh.nativeIcon = NativeFileIconAvailable(path);
+                thumbSlots.emplace(key, std::move(fresh));
             }
         }
 
@@ -6737,6 +7580,7 @@ namespace UltraCanvas {
         for (auto it = thumbSlots.begin(); it != thumbSlots.end();) {
             if (it->second.state == ThumbState::Pending &&
                 wantedKeys.find(it->first) == wantedKeys.end()) {
+                ReleaseThumbSlotLocked(it->first, it->second);
                 it = thumbSlots.erase(it);
             } else {
                 ++it;
@@ -6832,6 +7676,7 @@ namespace UltraCanvas {
         thumbQueue.clear();
         thumbSlots.clear();
         thumbBytes = 0;
+        thumbNativeBytes = 0;
         thumbHot.clear();
         thumbHotBytes = 0;
         textQueue.clear();
@@ -6869,7 +7714,7 @@ namespace UltraCanvas {
         // Vectors scale to fill the tile, everything else draws a glyph — and
         // so does a bitmap whose preview kind is switched off.
         if (e.category != FilerFileCategory::Image) return 0.0f;
-        if (!PreviewEnabledFor(e)) return 0.0f;
+        if (!ThumbnailEnabledFor(e)) return 0.0f;
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
@@ -6917,11 +7762,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
-        // Keeps the retained pixmap bytes bounded: browsing a huge folder in a
-        // big tile size cannot grow without limit. On overflow the finished
-        // slots are simply dropped — anything still visible is re-queued by
-        // the next draw and comes straight back from the shared pixmap cache.
-        constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
+        // Where native icon extraction goes through the OS shell it wants
+        // the calling thread to have joined a COM apartment; held for the
+        // life of the worker rather than per extraction. A no-op where the
+        // icons are read from the files themselves.
+        NativeFileIconThreadScope nativeIconScope;
 
         for (;;) {
             ThumbRequest req;
@@ -6979,8 +7824,11 @@ namespace UltraCanvas {
             if (!textPath.empty()) {
                 // Reading + un-wrapping a document, outside the lock.
                 TextPreviewSnippet snippet;
-                const bool readable = ExtractTextPreview(
-                        textPath, snippet.lines, snippet.tabular);
+                bool readable = false;
+                RunGuarded("text preview", textPath, [&]() {
+                    readable = ExtractTextPreview(textPath, snippet.lines,
+                                                  snippet.tabular);
+                });
                 bool textReport = false;
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
@@ -7005,10 +7853,14 @@ namespace UltraCanvas {
             // Which producer runs is decided by the file itself, not by the
             // entry: the request may name an entry's explicit thumbnail image
             // rather than the entry's own file.
+            // A throw out of a decoder leaves `pm` empty: the slot is marked
+            // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
-            if (NativeFileIconAvailable(req.path)) {
-                // The icon embedded in an executable (or an .ico file),
-                // extracted by the OS shell at the nearest embedded size.
+            const bool nativeIcon = NativeFileIconAvailable(req.path);
+            RunGuarded("thumbnail decode", req.path, [&]() {
+            if (nativeIcon) {
+                // The icon a program, icon file or shortcut carries, at the
+                // nearest size it embeds.
                 const int edge = std::max(1, static_cast<int>(std::lround(
                         std::max(req.w, req.h) * req.scale)));
                 pm = LoadNativeFileIconPixmap(req.path, edge);
@@ -7031,6 +7883,34 @@ namespace UltraCanvas {
                 case FilerPreviewType::Models3D:
                     pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
                     break;
+                case FilerPreviewType::Fonts:
+                    pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
+                    break;
+                case FilerPreviewType::VectorGraphics: {
+                    // The image pipeline first (svg/svgz, and eps/ps on a
+                    // libvips build with a PostScript loader); a format it
+                    // does not rasterize - or one it fails on - falls back to
+                    // the preview bitmap the document carries.
+                    const std::string ext = LowerExtension(req.path);
+                    if (ImagePipelineLoadsExtension(ext)) {
+                        auto img = UCImage::Get(req.path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
+                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                    }
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
+                                                         req.fit, req.scale);
+                    }
+                    // PDF-compatible Illustrator files (CS2 and newer) carry
+                    // no EPS preview but are a PDF from the first byte, so
+                    // the page renderer draws them like any document.
+                    if (!pm && PdfPreviewAvailable() &&
+                        FileStartsWithPdfSignature(req.path)) {
+                        pm = RenderPdfPreviewPixmap(req.path, req.w, req.h,
+                                                    req.scale);
+                    }
+                    break;
+                }
                 default: {
                     auto img = UCImage::Get(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
@@ -7039,19 +7919,24 @@ namespace UltraCanvas {
                     break;
                 }
             }
+            });
 
             // "Compressed thumbnails": deflate here on the worker so the UI
             // thread never pays for compression; the slot then holds the
-            // blob instead of the raw pixmap.
+            // blob instead of the raw pixmap. (Should compression throw, the
+            // slot keeps the raw pixmap instead.)
             std::shared_ptr<std::vector<uint8_t>> blob;
             if (pm && compressedThumbs.load()) {
-                std::vector<uint8_t> v = QoiCompressPixmap(*pm);
-                if (!v.empty()) {
-                    blob = std::make_shared<std::vector<uint8_t>>(std::move(v));
-                }
+                RunGuarded("thumbnail compression", req.path, [&]() {
+                    std::vector<uint8_t> v = QoiCompressPixmap(*pm);
+                    if (!v.empty()) {
+                        blob = std::make_shared<std::vector<uint8_t>>(std::move(v));
+                    }
+                });
             }
 
             bool report = false;
+            bool producedNothing = false;
             {
                 std::lock_guard<std::mutex> lk(thumbMutex);
                 thumbPathsInFlight.erase(req.path);
@@ -7060,6 +7945,11 @@ namespace UltraCanvas {
                     const std::string key = ThumbSlotKey(req.path, req.w, req.h,
                                                          req.fit, req.scale);
                     ThumbSlot& slot = thumbSlots[key];
+                    // A re-decode into a slot that already holds something
+                    // (the request outlived a prune and came back) must not
+                    // count its bytes twice.
+                    ReleaseThumbSlotLocked(key, slot);
+                    slot.nativeIcon = nativeIcon;
                     if (pm) {
                         slot.state = ThumbState::Ready;
                         slot.rawBytes = static_cast<size_t>(pm->GetRawWidth())
@@ -7073,31 +7963,38 @@ namespace UltraCanvas {
                             slot.qoi = nullptr;
                             slot.bytes = slot.rawBytes;
                         }
-                        thumbBytes += slot.bytes;
-                        if (thumbBytes > kThumbBudgetBytes) {
-                            for (auto sit = thumbSlots.begin();
-                                 sit != thumbSlots.end();) {
-                                if (sit->first != key &&
-                                    sit->second.state == ThumbState::Ready) {
-                                    auto hit = thumbHot.find(sit->first);
-                                    if (hit != thumbHot.end()) {
-                                        thumbHotBytes -= hit->second.bytes;
-                                        thumbHot.erase(hit);
-                                    }
-                                    sit = thumbSlots.erase(sit);
-                                } else {
-                                    ++sit;
-                                }
-                            }
-                            thumbBytes = slot.bytes;
-                        }
+                        (slot.nativeIcon ? thumbNativeBytes : thumbBytes) += slot.bytes;
+                        EvictThumbSlotsLocked(key);
                     } else {
-                        slot.state = ThumbState::Failed;   // don't retry-loop
                         slot.pixmap = nullptr;
                         slot.qoi = nullptr;
+                        slot.bytes = 0;
+                        slot.rawBytes = 0;
+                        // A content decode that produced nothing produces
+                        // nothing the second time too, so the slot is retired
+                        // and the tile stops asking. An application icon can
+                        // fail on a file the shell would serve a moment later,
+                        // so it goes back to Pending for another try; the
+                        // attempt count keeps that from becoming a loop, and a
+                        // slot the view scrolls away from is pruned along with
+                        // its count, so coming back is a fresh start.
+                        if (nativeIcon && ++slot.attempts < kNativeIconMaxAttempts) {
+                            slot.state = ThumbState::Pending;
+                        } else {
+                            slot.state = ThumbState::Failed;
+                            producedNothing = true;
+                        }
                     }
                     report = true;
                 }
+            }
+            // A tile that silently keeps its type glyph is indistinguishable
+            // from one whose preview kind is switched off, so name the file
+            // that produced nothing: when a whole folder of pictures loses its
+            // thumbnails, this log is what says where it went.
+            if (producedNothing) {
+                debugOutput << "UltraCanvasFilerWidget: no thumbnail produced for \""
+                            << req.path << "\"" << std::endl;
             }
             // A sibling worker may be parked on a queued request for the
             // path just released.
@@ -7127,6 +8024,23 @@ namespace UltraCanvas {
                                                const Rect2Di& rect,
                                                ImageFitMode imageFit) {
         if (rect.width <= 2 || rect.height <= 2) return;
+        // A shortcut wears the icon of what it points at, so the arrow badge
+        // drawn over it afterwards is the only thing that says it is one; the
+        // padlock is the same idea for a file another program is holding, and
+        // sits in the opposite corner so a locked shortcut shows both. Asking
+        // whether it is held only queues the probe - the answer arrives with a
+        // repaint, which is why this is read here and not waited for.
+        struct EntryBadges {
+            UltraCanvasFilerWidget* widget;
+            IRenderContext* ctx;
+            const Rect2Di& rect;
+            bool shortcut;
+            bool locked;
+            ~EntryBadges() {
+                if (shortcut) widget->DrawShortcutOverlay(ctx, rect);
+                if (locked) widget->DrawLockOverlay(ctx, rect);
+            }
+        } badge{this, ctx, rect, e.isShortcut, EntryLockInfo(e).Blocks()};
 
         // Real image thumbnails (explicit thumbnail, else the bitmap itself).
         // Never decoded here: the frame must not wait for image files, so the
@@ -7148,7 +8062,7 @@ namespace UltraCanvas {
         // finished. Only where a page would be legible at all: the icon
         // column of the Details and List rows keeps the type glyph.
         if (thumb.empty() && !e.isDirectory && rect.width >= kContentPreviewMinEdge &&
-            rect.height >= kContentPreviewMinEdge && PreviewEnabledFor(e)) {
+            rect.height >= kContentPreviewMinEdge && ThumbnailEnabledFor(e)) {
             const FilerPreviewType kind = PreviewTypeOf(e);
             if (kind == FilerPreviewType::Text || kind == FilerPreviewType::Docs ||
                 kind == FilerPreviewType::Spreadsheets) {
@@ -7162,6 +8076,22 @@ namespace UltraCanvas {
 
         Color color = CategoryColor(e.category);
         if (e.isDirectory) {
+            // A folder the host gave an icon (the well-known user folders, or
+            // one the user picked) is drawn as that image instead of the
+            // shape. Cached by the shared image cache per path and size, so
+            // the same six icons cost one rasterization each however many
+            // folders and views show them.
+            if (folderIconProvider) {
+                const std::string icon = folderIconProvider(e);
+                // An icon file that cannot be read falls through to the shape:
+                // an empty box where a folder should be is worse than the
+                // look the host meant to replace.
+                auto img = icon.empty() ? nullptr : UCImage::Get(icon);
+                if (img && img->IsValid()) {
+                    ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
+                    return;
+                }
+            }
             // Folder shape: a tab above the body.
             double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
             ctx->SetFillPaint(color);
@@ -7198,6 +8128,74 @@ namespace UltraCanvas {
             ctx->DrawText(ext, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
                                         rect.y + (rect.height - bandH - ts.height) / 2.0));
         }
+    }
+
+    void UltraCanvasFilerWidget::DrawShortcutOverlay(IRenderContext* ctx,
+                                                     const Rect2Di& rect) {
+        // The badge Explorer and Finder both put in the bottom-left corner:
+        // a white tile with an arrow leaving it. Below a certain size
+        // it would be a smudge over the icon it is meant to annotate, so it
+        // is left off - the type column still says "Shortcut".
+        const int edge = std::min(rect.width, rect.height);
+        if (edge < 24) return;
+        const double box = std::max(10.0, edge * 0.38);
+        const Rect2Dd badge(rect.x + 1, rect.y + rect.height - box - 1, box, box);
+
+        ctx->SetFillPaint(Color(255, 255, 255, 235));
+        ctx->FillRoundedRectangle(badge, 2);
+        ctx->SetStrokePaint(Color(0, 0, 0, 60));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(badge, 2);
+
+        // The arrow: a shaft from the lower left to the upper right with a
+        // filled head, drawn in the same dark ink as the type glyph text.
+        const double pad = box * 0.26;
+        const Point2Dd tail(badge.x + pad, badge.y + box - pad);
+        const Point2Dd head(badge.x + box - pad, badge.y + pad);
+        ctx->SetStrokePaint(Color(45, 45, 52, 255));
+        ctx->SetStrokeWidth(std::max(1.2f, static_cast<float>(box * 0.12)));
+        ctx->DrawLine(tail, head);
+        const double barb = box * 0.34;
+        ctx->SetFillPaint(Color(45, 45, 52, 255));
+        std::vector<Point2Dd> arrowHead = {
+                head,
+                Point2Dd(head.x - barb, head.y),
+                Point2Dd(head.x, head.y + barb)};
+        ctx->FillLinePath(arrowHead);
+    }
+
+    void UltraCanvasFilerWidget::DrawLockOverlay(IRenderContext* ctx,
+                                                 const Rect2Di& rect) {
+        // Bottom-right, mirroring the shortcut badge on the left: a white tile
+        // with a padlock in it. Same size rule - below it the badge would be a
+        // smudge over the icon it annotates, and the attribute letter and the
+        // info bar still say the file is held.
+        const int edge = std::min(rect.width, rect.height);
+        if (edge < 24) return;
+        const double box = std::max(10.0, edge * 0.38);
+        const Rect2Dd badge(rect.x + rect.width - box - 1,
+                            rect.y + rect.height - box - 1, box, box);
+
+        ctx->SetFillPaint(Color(255, 255, 255, 235));
+        ctx->FillRoundedRectangle(badge, 2);
+        ctx->SetStrokePaint(Color(0, 0, 0, 60));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(badge, 2);
+
+        // The padlock: a shackle arc over a body block, in the warning ink the
+        // rest of the widget uses for "this will not work".
+        const Color ink(176, 58, 46, 255);
+        const double bodyW = box * 0.52;
+        const double bodyH = box * 0.34;
+        const Rect2Dd body(badge.x + (box - bodyW) / 2.0,
+                           badge.y + box * 0.52, bodyW, bodyH);
+        ctx->SetFillPaint(ink);
+        ctx->FillRoundedRectangle(body, 1);
+
+        const double shackleR = bodyW * 0.34;
+        ctx->SetStrokePaint(ink);
+        ctx->SetStrokeWidth(std::max(1.0f, static_cast<float>(box * 0.09)));
+        ctx->DrawArc(body.x + bodyW / 2.0, body.y, shackleR, M_PI, 2.0 * M_PI);
     }
 
     void UltraCanvasFilerWidget::DrawTextPreview(IRenderContext* ctx,
@@ -7342,7 +8340,7 @@ namespace UltraCanvas {
             Color color = style.secondaryTextColor;
             switch (c.id) {
                 case FilerDetailsColumn::Name:
-                    value = e.name;
+                    value = DisplayNameOf(e);
                     color = style.textColor;
                     break;
                 case FilerDetailsColumn::Path:
@@ -7361,7 +8359,9 @@ namespace UltraCanvas {
                     value = FormatTime(e.createdTime);
                     break;
                 case FilerDetailsColumn::Attributes:
-                    value = e.attributes;
+                    // Not e.attributes: the lock letter is only known once the
+                    // background probe has answered, so it is added here.
+                    value = EntryAttributeText(e);
                     break;
                 case FilerDetailsColumn::Info:
                     value = e.info;
@@ -7406,7 +8406,8 @@ namespace UltraCanvas {
         ctx->SetTextPaint(style.textColor);
         int textX = item.imageRect.x + item.imageRect.width + 6;
         int avail = item.rect.x + item.rect.width - textX - 4;
-        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name, avail);
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex,
+                                               DisplayNameOf(e), avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
         ctx->DrawText(shown, Point2Dd(textX,
                 item.rect.y + (item.rect.height - ts.height) / 2));
@@ -7433,6 +8434,10 @@ namespace UltraCanvas {
                           img.y + (img.height - h) / 2, w, h);
         }
         DrawEntryIcon(ctx, e, img, fit);
+        // Display > File extensions: the type tag over the foot of the icon
+        // box. The box, not the fitted image: a landscape photo leaves the
+        // tag hanging in the gap below it otherwise.
+        DrawExtensionBadge(ctx, e, item.imageRect);
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
@@ -7445,7 +8450,7 @@ namespace UltraCanvas {
         int capH = CaptionBandHeight(item.captionLines);
         int nameLineH = NameLineHeight();
         std::vector<std::string> nameLines = WrapEntryName(
-                ctx, item.entryIndex, e.name, item.rect.width - 8,
+                ctx, item.entryIndex, DisplayNameOf(e), item.rect.width - 8,
                 std::max(1, item.captionLines));
         double ny = capTop + (capH - static_cast<int>(nameLines.size()) * nameLineH) / 2.0;
         for (const std::string& ln : nameLines) {
@@ -7503,7 +8508,8 @@ namespace UltraCanvas {
         // widest value we can format ("NNN.N UU").
         BarSizeColumns cols = BarSizeColumnsFor(item, BarSizeValueWidthFor(ctx));
 
-        std::string shown = EllipsizeEntryName(ctx, item.entryIndex, e.name,
+        std::string shown = EllipsizeEntryName(ctx, item.entryIndex,
+                                               DisplayNameOf(e),
                                                cols.nameWidth - 8);
         ctx->SetTextPaint(style.textColor);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
@@ -7579,7 +8585,8 @@ namespace UltraCanvas {
             int maxLines = clampi(nameRoom / std::max(1, lineH), 1,
                                   std::max(1, style.captionMaxLines));
             std::vector<std::string> nameLines = WrapEntryName(
-                    ctx, item.entryIndex, e.name, item.rect.width - 8, maxLines);
+                    ctx, item.entryIndex, DisplayNameOf(e),
+                    item.rect.width - 8, maxLines);
             int ny = item.rect.y + 3;
             for (const std::string& ln : nameLines) {
                 ctx->DrawText(ln, Point2Dd(item.rect.x + 4, ny));
@@ -7963,6 +8970,7 @@ namespace UltraCanvas {
             statsQueue.clear();
             aspectQueue.clear();
             mediaQueue.clear();
+            lockQueue.clear();
         }
         statsCond.notify_all();
         if (statsWorker.joinable()) statsWorker.join();
@@ -7973,20 +8981,28 @@ namespace UltraCanvas {
             std::string path;
             std::string aspectPath;
             MediaProbeRequest media;
+            std::vector<std::string> lockBatch;
             bool haveMedia = false;
             uint64_t gen;
             {
                 std::unique_lock<std::mutex> lk(statsMutex);
                 statsCond.wait(lk, [this]() {
                     return statsShutdown || !statsQueue.empty() ||
-                           !aspectQueue.empty() || !mediaQueue.empty();
+                           !aspectQueue.empty() || !mediaQueue.empty() ||
+                           !lockQueue.empty();
                 });
                 if (statsShutdown) return;
-                // Shortest jobs first: aspect probes (one header read) settle
-                // the grid geometry the user is looking at, media probes are a
-                // few reads for the info bar / dataset lines, and a recursive
+                // Shortest jobs first: lock probes are one open per file and
+                // the whole queue goes in ONE call (on Linux the open-file
+                // information is system-wide, so a batch costs what a single
+                // file costs), aspect probes (one header read) settle the grid
+                // geometry the user is looking at, media probes are a few
+                // reads for the info bar / dataset lines, and a recursive
                 // folder walk can run for seconds.
-                if (!aspectQueue.empty()) {
+                if (!lockQueue.empty()) {
+                    lockBatch.assign(lockQueue.begin(), lockQueue.end());
+                    lockQueue.clear();
+                } else if (!aspectQueue.empty()) {
                     aspectPath = std::move(aspectQueue.front());
                     aspectQueue.pop_front();
                 } else if (!mediaQueue.empty()) {
@@ -8000,8 +9016,35 @@ namespace UltraCanvas {
                 gen = statsGeneration;
             }
 
+            if (!lockBatch.empty()) {
+                std::vector<FileLockInfo> found;
+                RunGuarded("file lock probe", lockBatch.front(), [&]() {
+                    // No holder names here: naming the program costs a
+                    // Restart Manager session per file on Windows, and the
+                    // listing only needs to know THAT a file is held. The
+                    // info bar asks for the name of the one selected file.
+                    found = ProbeFileLocks(lockBatch, false);
+                });
+                bool report = false;
+                {
+                    std::lock_guard<std::mutex> lk(statsMutex);
+                    if (statsShutdown) return;
+                    if (gen == statsGeneration) {
+                        for (size_t i = 0; i < lockBatch.size() && i < found.size(); ++i) {
+                            lockCache[lockBatch[i]] = found[i];
+                            // Only a file somebody holds changes what is drawn;
+                            // "free" is what the pending slot already showed.
+                            report = report || found[i].InUse();
+                        }
+                    }
+                }
+                if (report) PostFolderStatsRedraw();
+                continue;
+            }
+
             if (haveMedia) {
                 std::string out;
+                RunGuarded("media probe", media.path, [&]() {
                 if (media.isImage) {
                     int w = 0, h = 0;
                     if (!ProbeImageDimensions(media.path, w, h)) {
@@ -8023,6 +9066,7 @@ namespace UltraCanvas {
                         }
                     }
                 }
+                });
                 bool report = false;
                 {
                     std::lock_guard<std::mutex> lk(statsMutex);
@@ -8042,10 +9086,11 @@ namespace UltraCanvas {
 
             if (!aspectPath.empty()) {
                 int w = 0, h = 0;
-                const float aspect =
-                        (ProbeImageDimensions(aspectPath, w, h) && w > 0 && h > 0)
-                            ? static_cast<float>(w) / static_cast<float>(h)
-                            : 0.0f;
+                float aspect = 0.0f;
+                RunGuarded("image size probe", aspectPath, [&]() {
+                    if (ProbeImageDimensions(aspectPath, w, h) && w > 0 && h > 0)
+                        aspect = static_cast<float>(w) / static_cast<float>(h);
+                });
                 bool report = false;
                 {
                     std::lock_guard<std::mutex> lk(statsMutex);
@@ -8070,6 +9115,11 @@ namespace UltraCanvas {
             st.ready = true;
             std::error_code ec;
             if (fs::is_directory(path, ec)) {
+                // Guarded although every call takes an error_code: the
+                // iterator still builds a path object per entry, and a
+                // subtree the walk cannot represent must end the count, not
+                // the process. Whatever was counted up to there is reported.
+                RunGuarded("folder size walk", path, [&]() {
                 uint64_t visited = 0;
                 for (fs::recursive_directory_iterator rit(
                          path, fs::directory_options::skip_permission_denied, ec), end;
@@ -8085,6 +9135,7 @@ namespace UltraCanvas {
                         if (!fec) st.bytes += sz;
                     }
                 }
+                });
             }
 
             bool report = false;
@@ -8291,10 +9342,20 @@ namespace UltraCanvas {
         // already polls, so the rest of the machinery is unchanged.
         folderWatcher.Stop();
         nativeWatchActive = false;
+        // Stop() joined the previous backend, so nothing can still be about to
+        // report the folder we just left: whatever sets this from here on
+        // belongs to the watch started below.
+        nativeWatchLost.store(false);
         if (!target.empty()) {
-            nativeWatchActive = folderWatcher.Watch(target, [this]() {
-                folderWatchDirty.store(true);
-            });
+            nativeWatchActive = folderWatcher.Watch(target,
+                    [this]() { folderWatchDirty.store(true); },
+                    // A native watch can die on its own - the volume it is on
+                    // is unmounted, the share drops, the handle is
+                    // invalidated - and until this existed the widget simply
+                    // stopped noticing changes and looked frozen. Flagged
+                    // here, acted on by the UI timer: the recovery re-targets
+                    // the watch machinery, which is the UI thread's to touch.
+                    [this]() { nativeWatchLost.store(true); });
         }
 
         {
@@ -8319,6 +9380,35 @@ namespace UltraCanvas {
         folderWatchDirty.store(false);   // whatever was pending described the old folder
         folderWatchCond.notify_all();
         ArmFolderWatchTimer();
+    }
+
+    void UltraCanvasFilerWidget::HandleLostNativeWatch() {
+        if (!nativeWatchActive) return;
+        // The folder the dead watch was on. Taken before Stop(), which clears
+        // it - and Stop() is what joins the backend's finished thread and
+        // gives back its descriptor / handle.
+        const std::string target = folderWatcher.WatchedPath();
+        folderWatcher.Stop();
+        nativeWatchActive = false;
+
+        {
+            std::lock_guard<std::mutex> lk(folderWatchMutex);
+            if (folderWatchShutdown) return;
+            // Polled from here on, and deliberately polled even when the
+            // folder is gone: a signature of 0 is what a missing folder
+            // fingerprints to, so the same comparison notices the volume
+            // being plugged back in and re-lists it.
+            folderWatchPath = target;
+            folderWatchIncludeHidden = showHiddenFiles;
+            folderWatchHaveBaseline = false;   // first pass only measures
+            folderWatchSignature = 0;
+            if (!target.empty()) StartFolderWatchWorkerLocked();
+        }
+        folderWatchCond.notify_all();
+        // A watch normally dies *because* something happened to the folder:
+        // list it once now rather than waiting a poll interval to show that
+        // the volume it was on is gone.
+        if (!target.empty()) folderWatchDirty.store(true);
     }
 
     void UltraCanvasFilerWidget::StartFolderWatchWorkerLocked() {
@@ -8357,7 +9447,12 @@ namespace UltraCanvas {
             }
             if (path.empty()) continue;
 
-            const uint64_t now = FolderSignature(path, includeHidden);
+            // A fingerprint that cannot be taken reads as 0, the same as a
+            // folder that is gone: nothing is reported until it works again.
+            uint64_t now = 0;
+            RunGuarded("folder fingerprint", path, [&]() {
+                now = FolderSignature(path, includeHidden);
+            });
 
             std::lock_guard<std::mutex> lk(folderWatchMutex);
             if (folderWatchShutdown) return;
@@ -8400,6 +9495,9 @@ namespace UltraCanvas {
                 : static_cast<unsigned int>(folderWatchIntervalMs);
         folderWatchTimer = app->StartTimer(tick, true,
                                            [this](TimerId) {
+            // The native watch reported itself dead: move to polling before
+            // deciding whether anything needs re-listing.
+            if (nativeWatchLost.exchange(false)) HandleLostNativeWatch();
             if (!folderWatchDirty.load()) return;
             if (IsBusyForAutoRefresh()) return;   // try again on the next tick
             folderWatchDirty.store(false);
@@ -8469,7 +9567,14 @@ namespace UltraCanvas {
 
             PrefetchedListing listing;
             listing.dirMtime = st.st_mtime;
-            ScanRealDirectory(path, true, listing.entries);
+            bool scanned = false;
+            RunGuarded("folder prefetch", path, [&]() {
+                ScanRealDirectory(path, true, listing.entries);
+                scanned = true;
+            });
+            // A listing the scan could not finish is not cached: SetPath
+            // would show it as the folder's full content.
+            if (!scanned) continue;
             listing.when = std::chrono::steady_clock::now();
 
             // An oversized listing is not stored — the scan already warmed
@@ -8531,6 +9636,55 @@ namespace UltraCanvas {
         StartFolderStatsWorkerLocked();
         statsCond.notify_one();
         return "";
+    }
+
+    FileLockInfo UltraCanvasFilerWidget::EntryLockInfo(const FilerEntry& e) {
+        // Directories are not probed (what holds one is a program's current
+        // directory, which no probe here looks at), and neither is anything
+        // inside an archive - those paths are not files on disk.
+        if (!showLockState || e.isDirectory || e.path.empty()) return FileLockInfo{};
+        if (!listingIsRealDirectory) return FileLockInfo{};
+        if (!FileLockProbeAvailable()) return FileLockInfo{};
+
+        std::lock_guard<std::mutex> lk(statsMutex);
+        auto it = lockCache.find(e.path);
+        if (it != lockCache.end()) return it->second;
+
+        // The probe opens the file, and this is asked from the paint path, so
+        // it goes to the worker. The pending slot (Unknown) keeps a file drawn
+        // every frame from being queued more than once; the finished probe
+        // posts a redraw that picks the answer up.
+        lockCache.emplace(e.path, FileLockInfo{});
+        lockQueue.push_back(e.path);
+        StartFolderStatsWorkerLocked();
+        statsCond.notify_one();
+        return FileLockInfo{};
+    }
+
+    std::string UltraCanvasFilerWidget::EntryAttributeText(const FilerEntry& e) {
+        std::string text = e.attributes;
+        if (char letter = FileLockAttributeLetter(EntryLockInfo(e).state))
+            text += letter;
+        return text;
+    }
+
+    void UltraCanvasFilerWidget::SetShowLockState(bool show) {
+        if (showLockState == show) return;
+        showLockState = show;
+        {
+            // Turning it off drops what was probed; turning it on starts from
+            // nothing, so every shown file is asked about again.
+            std::lock_guard<std::mutex> lk(statsMutex);
+            lockQueue.clear();
+            lockCache.clear();
+        }
+        RequestRedraw();
+    }
+
+    FileLockState UltraCanvasFilerWidget::GetEntryLockState(const std::string& path) const {
+        std::lock_guard<std::mutex> lk(statsMutex);
+        auto it = lockCache.find(path);
+        return it == lockCache.end() ? FileLockState::Unknown : it->second.state;
     }
 
     void UltraCanvasFilerWidget::BuildSelectionInfoText(std::string& primary,
@@ -8598,7 +9752,11 @@ namespace UltraCanvas {
             if (extra.empty()) extra = e.info;   // provider / compression fallback
             addPart(extra);
             addPart(FormatTime(e.modifiedTime));
-            if (!e.attributes.empty()) addPart("[" + e.attributes + "]");
+            std::string attrs = EntryAttributeText(e);
+            if (!attrs.empty()) addPart("[" + attrs + "]");
+            // Spelled out for the one file the user is looking at: the letter
+            // says something is holding it, this says what that means.
+            addPart(FileLockText(EntryLockInfo(e)));
             return;
         }
 
@@ -8796,7 +9954,7 @@ namespace UltraCanvas {
                     IsOnItemName(item, content)) {
                     target = TooltipTarget::ItemName;
                     entry  = item.entryIndex;
-                    text   = entries[item.entryIndex].name;
+                    text   = DisplayNameOf(entries[item.entryIndex]);
                 }
                 break;
             }
@@ -8914,9 +10072,26 @@ namespace UltraCanvas {
         // any other file instead of navigating into an empty view.
         bool enters = e.isDirectory;
 #endif
+#ifdef __APPLE__
+        // On the system that can run them, an application bundle is launched
+        // rather than opened as the folder it is — the Finder's rule.
+        // Everywhere else navigating in is the only thing the machine can do
+        // with a Mac application, so it keeps the folder behaviour.
+        if (e.isBundle && e.category == FilerFileCategory::Executable)
+            enters = false;
+#endif
         if (enters) {
             SetPath(e.path);
             return;
+        }
+        // A shortcut to a folder opens that folder - the file it is stays
+        // out of the way, exactly as it does in Explorer.
+        if (e.isShortcut && !e.linkTarget.empty()) {
+            std::error_code lec;
+            if (fs::is_directory(e.linkTarget, lec) && !lec) {
+                SetPath(e.linkTarget);
+                return;
+            }
         }
         if (onFileActivated) {
             onFileActivated(e);
@@ -8928,17 +10103,88 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::ShowLaunchPointer() {
+        if (auto* win = GetWindow()) win->ShowBusyPointer();
+    }
+
     void UltraCanvasFilerWidget::OpenEntryWithOS(const FilerEntry& e) {
+        std::error_code ec;
+        // An application bundle is a directory, and launching it is the
+        // platform's business: the "Other application" launch path already
+        // knows what a .app is on macOS.
+        if (e.isBundle && fs::is_directory(e.path, ec) && !ec) {
+            std::string bundleError;
+            ShowLaunchPointer();
+            if (!FileAssociations::OpenWithApplicationPath(e.path, {}, bundleError))
+                ReportError(bundleError);
+            return;
+        }
         // Only a real file — an entry inside an archive is a virtual path no
         // external application (or the kernel) can read.
-        std::error_code ec;
         if (!fs::is_regular_file(e.path, ec) || ec) return;
+        // A web location holds an address, and opening the file itself would
+        // hand a property list to a text editor.
+        if (e.isShortcut && e.extension == "webloc") {
+            std::string url;
+            if (ReadWebLocation(e.path, url) && !url.empty()) {
+                ShowLaunchPointer();
+                OpenURL(url);
+                return;
+            }
+        }
+        // A desktop entry is a launcher: what it means is the program it
+        // names, or the address it points at. Opening the file itself would
+        // hand a text file to a text editor.
+        if (e.isShortcut && e.extension == "desktop") {
+            UCDesktopEntry desktop;
+            if (ReadDesktopEntry(e.path, desktop)) {
+                if (desktop.kind == UCDesktopEntry::Kind::Link &&
+                    !desktop.url.empty()) {
+                    ShowLaunchPointer();
+                    OpenURL(desktop.url);
+                    return;
+                }
+                if (!desktop.exec.empty()) {
+                    // The platform's launcher expands the Exec line and
+                    // detaches the process; on a system that does not know
+                    // desktop entries this falls back to running the file,
+                    // which fails cleanly and is reported.
+                    std::string launchError;
+                    ShowLaunchPointer();
+                    if (!FileAssociations::OpenWithApplicationPath(
+                                e.path, {}, launchError))
+                        ReportError(launchError);
+                    return;
+                }
+            }
+        }
+#ifndef _WIN32
+        // Off Windows nothing knows what a .lnk is, so opening the shortcut
+        // would open the shortcut - what the user means is the file it
+        // points at. (On Windows the shell resolves it, and better: it keeps
+        // the arguments and the working directory the link carries.) A host
+        // that can run Windows programs itself installs onFileActivated and
+        // never reaches this.
+        if (e.isShortcut && !e.linkTarget.empty() &&
+            fs::is_regular_file(e.linkTarget, ec) && !ec) {
+            FilerEntry target = e;
+            target.path = e.linkTarget;
+            target.name = fs::path(e.linkTarget).filename().string();
+            target.extension = LowerExtension(target.name);
+            target.isShortcut = false;
+            target.linkTarget.clear();
+            ApplyEntryTypeInfo(target);
+            OpenEntryWithOS(target);
+            return;
+        }
+#endif
         std::string error;
         switch (FileAssociations::ClassifyExecutable(e.path)) {
             case FileAssociations::ExecutableKind::Binary:
                 // A native program: running it IS opening it (on Windows
                 // this case never fires — ShellExecute's "open" verb below
                 // already runs executables).
+                ShowLaunchPointer();
                 if (!FileAssociations::LaunchExecutable(e.path, error))
                     ReportError(error);
                 return;
@@ -8949,6 +10195,7 @@ namespace UltraCanvas {
             default:
                 break;
         }
+        ShowLaunchPointer();
         if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
             ReportError(error);
     }
@@ -8966,6 +10213,7 @@ namespace UltraCanvas {
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (!dialog) {   // dialogs disabled — open, the old fixed behavior
             std::string error;
+            ShowLaunchPointer();
             if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
                 ReportError(error);
             return;
@@ -8979,9 +10227,11 @@ namespace UltraCanvas {
         dialog->onResult = [self, path](DialogResult result) {
             std::string error;
             if (result == DialogResult::Yes) {
+                self->ShowLaunchPointer();
                 if (!FileAssociations::LaunchExecutable(path, error))
                     self->ReportError(error);
             } else if (result == DialogResult::No) {
+                self->ShowLaunchPointer();
                 if (!FileAssociations::OpenWithDefaultApplication({path}, error))
                     self->ReportError(error);
             }
@@ -9274,31 +10524,61 @@ namespace UltraCanvas {
                         [this, f](bool on) { SetDatasetField(f, on); }));
             }
 
-            // Preview > which file kinds show their content instead of the
-            // plain type glyph. All on by default.
-            std::vector<MenuItemData> previewItems;
-            struct PreviewOption { const char* label; FilerPreviewType type; };
-            static const PreviewOption previewOptions[] = {
-                {"Bitmaps",         FilerPreviewType::Bitmaps},
-                {"Vector graphics", FilerPreviewType::VectorGraphics},
-                {"3D",              FilerPreviewType::Models3D},
-                {"PDF",             FilerPreviewType::PDF},
-                {"Text",            FilerPreviewType::Text},
-                {"Docs",            FilerPreviewType::Docs},
-                {"Spreadsheets",    FilerPreviewType::Spreadsheets},
-                {"Videos",          FilerPreviewType::Videos},
-            };
-            for (const PreviewOption& o : previewOptions) {
-                FilerPreviewType t = o.type;
-                previewItems.push_back(MenuItemData::Checkbox(
-                        o.label, IsPreviewTypeEnabled(t),
-                        [this, t](bool on) { SetPreviewType(t, on); }));
+            // Thumbnails > which file kinds show their content instead of
+            // the plain type glyph, and Detail view > which kinds the host
+            // may open its detail pane for. The same nine kinds in both, all
+            // on by default; the per-format lists behind them are the
+            // application's (UltraFiler: Settings > Display > Thumbnails /
+            // Detail view), because a hundred formats do not belong in a menu.
+            std::vector<MenuItemData> thumbnailItems;
+            std::vector<MenuItemData> detailViewItems;
+            for (FilerPreviewType t : AllPreviewTypes()) {
+                thumbnailItems.push_back(MenuItemData::Checkbox(
+                        PreviewTypeLabel(t), IsThumbnailKindEnabled(t),
+                        [this, t](bool on) { SetThumbnailKind(t, on); }));
+                detailViewItems.push_back(MenuItemData::Checkbox(
+                        PreviewTypeLabel(t), IsDetailViewKindEnabled(t),
+                        [this, t](bool on) { SetDetailViewKind(t, on); }));
+            }
+            // The host's own entry point into the per-format lists, appended
+            // to both submenus when it installed one (UltraFiler opens the
+            // matching settings page).
+            if (formatListMenuProvider) {
+                std::vector<MenuItemData> extra =
+                        formatListMenuProvider(FilerPreviewTarget::Thumbnails);
+                if (!extra.empty()) {
+                    thumbnailItems.push_back(MenuItemData::Separator());
+                    for (MenuItemData& item : extra)
+                        thumbnailItems.push_back(std::move(item));
+                }
+                extra = formatListMenuProvider(FilerPreviewTarget::DetailView);
+                if (!extra.empty()) {
+                    detailViewItems.push_back(MenuItemData::Separator());
+                    for (MenuItemData& item : extra)
+                        detailViewItems.push_back(std::move(item));
+                }
+            }
+
+            // File extensions > whether the drawn names carry them, and the
+            // tag the thumbnail tiles show instead of / beside them.
+            std::vector<MenuItemData> extensionItems;
+            extensionItems.push_back(MenuItemData::Checkbox(
+                    "Show in names", fileExtensionsInNames,
+                    [this](bool on) { SetFileExtensionsInNames(on); }));
+            extensionItems.push_back(MenuItemData::Separator());
+            for (FilerExtensionBadge b : AllExtensionBadges()) {
+                extensionItems.push_back(MenuItemData::Radio(
+                        ExtensionBadgeLabel(b), 4, extensionBadge == b,
+                        [this, b]() { SetExtensionBadge(b); }));
             }
 
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
-            displayItems.push_back(MenuItemData::Submenu("Preview", previewItems));
+            displayItems.push_back(MenuItemData::Submenu("File extensions",
+                                                         extensionItems));
+            displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
+            displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,

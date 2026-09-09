@@ -1,0 +1,44 @@
+{
+  "$comment": [
+    "Dependency manifest for cross-compiling UltraCanvas's rendering stack to",
+    "Android. Consumed by scripts/android-bootstrap-sysroot.sh.",
+    "",
+    "UNVERIFIED: no NDK exists in the environment this was written in, so this",
+    "manifest has never been resolved and no port here has been built for",
+    "arm64-android. It encodes which libraries the build actually needs (each",
+    "one is a pkg_check_modules call in UltraCanvas/CMakeLists.txt), not a",
+    "proven-working set. Expect to iterate: some ports may need patches or a",
+    "feature disabled for Android.",
+    "",
+    "Deliberately absent: libvips (~10 transitive libs; the build defaults it",
+    "off for Android), librsvg (Rust + gobject), GTK3/X11 (never referenced by",
+    "the Android platform arm), GStreamer (video is off; MediaCodec is the",
+    "right backend later). See AndroidPortInvestigation.md sections 4.1-4.2."
+  ],
+  "name": "ultracanvas-android",
+  "version-string": "0.1.0",
+  "description": "Cross-compiled dependency sysroot for the UltraCanvas Android backend",
+  "dependencies": [
+    "cairo",
+    "pango",
+    "fontconfig",
+    "freetype",
+    "harfbuzz",
+    "glib",
+    "tinyxml2",
+    "fmt"
+  ],
+  "features": {
+    "net": {
+      "description": "UltraNet support (-DULTRACANVAS_ENABLE_NET=ON). c-ares is mandatory on Android: bionic exports no res_n* API, so the per-platform DNS fallback cannot build.",
+      "dependencies": [
+        "openssl",
+        "c-ares",
+        {
+          "name": "curl",
+          "features": [ "openssl", "websockets" ]
+        }
+      ]
+    }
+  }
+}

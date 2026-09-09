@@ -1,7 +1,7 @@
 // Plugins/LaTeX/UltraCanvasLaTeXViewImpl.cpp
 // Concrete LaTeX view implementation (module-internal). See the header.
-// Version: 1.0.0
-// Last Modified: 2026-06-29
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/LaTeX/UltraCanvasLaTeXViewImpl.h"
@@ -73,15 +73,24 @@ void UltraCanvasLaTeXViewImpl::ReleaseRender() {
 }
 
 bool UltraCanvasLaTeXViewImpl::EnsureRender(IRenderContext* ctx) {
+    // A failed engine initialisation is retried once the font search path has
+    // changed (SetLaTeXFontSearchDir), so a view can recover at runtime.
+    if (!needsReparse_ && engineInitFailed_ &&
+        engineInitFailedGeneration_ != GetLaTeXEngineFontDirGeneration()) {
+        needsReparse_ = true;
+    }
     if (!needsReparse_) return render_ != nullptr;
     if (!ctx) return render_ != nullptr; // can't (re)parse without a context yet
 
     if (!EnsureLaTeXEngineInitialized()) {
-        lastError_ = "LaTeX engine not initialised (math font not found)";
+        lastError_ = "math font latinmodern-math.clm2 not found (engine not initialised)";
+        engineInitFailed_ = true;
+        engineInitFailedGeneration_ = GetLaTeXEngineFontDirGeneration();
         ReleaseRender();
         needsReparse_ = false;
         return false;
     }
+    engineInitFailed_ = false;
 
     const std::string tex = TrimWS(latex_);
     if (tex.empty()) {
@@ -112,47 +121,86 @@ bool UltraCanvasLaTeXViewImpl::EnsureRender(IRenderContext* ctx) {
     return render_ != nullptr;
 }
 
+// ===== error display =====
+
+namespace {
+constexpr float kErrorFontSize = 12.f;
+const Color     kErrorColor(180, 40, 40, 255);
+} // namespace
+
+ITextLayout* UltraCanvasLaTeXViewImpl::EnsureErrorLayout(IRenderContext* ctx) {
+    if (render_ || lastError_.empty()) {
+        errorLayout_.reset();
+        errorLayoutText_.clear();
+        return nullptr;
+    }
+    const std::string text = "LaTeX: " + lastError_;
+    if (errorLayout_ && errorLayoutText_ == text) return errorLayout_.get();
+    if (!ctx) return nullptr;
+
+    errorLayout_ = ctx->CreateTextLayout(text, /*isMarkup*/ false);
+    if (!errorLayout_) return nullptr;
+    UltraCanvas::FontStyle fs;
+    fs.fontFamily = "Sans";
+    fs.fontSize   = kErrorFontSize;
+    errorLayout_->SetFontStyle(fs);
+    errorLayout_->SetWrap(TextWrap::WrapWordChar);
+    errorLayoutText_ = text;
+    return errorLayout_.get();
+}
+
 // ===== element overrides =====
 
 void UltraCanvasLaTeXViewImpl::InvalidateLayout() {
     CSSLayout::Element::InvalidateLayout();
 }
 
-void UltraCanvasLaTeXViewImpl::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
-    IRenderContext* ctx = GetRenderContext();
-    if (!EnsureRender(ctx) || !render_) {
-        intrinsic.valid = true;
-        intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
-        intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
-        return;
-    }
-    const float w = static_cast<float>(render_->getWidth());
-    const float h = static_cast<float>(render_->getHeight());
+void UltraCanvasLaTeXViewImpl::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& lctx) {
+    const Size2Df content = MeasureOwnContent(std::nullopt, lctx);
     const float padH = static_cast<float>(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal());
     const float padV = static_cast<float>(GetTotalPaddingVertical()   + GetTotalBorderVertical());
 
     intrinsic.valid = true;
-    intrinsic.maxContentWidth  = w + padH;
-    intrinsic.maxContentHeight = h + padV;
-    intrinsic.minContentWidth  = w + padH;
-    intrinsic.minContentHeight = h + padV;
+    intrinsic.maxContentWidth  = content.width  + padH;
+    intrinsic.maxContentHeight = content.height + padV;
+    intrinsic.minContentWidth  = content.width  + padH;
+    intrinsic.minContentHeight = content.height + padV;
 }
 
 Size2Df UltraCanvasLaTeXViewImpl::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
                                                     const CSSLayout::LayoutContext& /*ctx*/) {
     IRenderContext* ctx = GetRenderContext();
-    if (!EnsureRender(ctx) || !render_) return Size2Df(0.f, 0.f);
-    return Size2Df(static_cast<float>(render_->getWidth()),
-                   static_cast<float>(render_->getHeight()));
+    if (EnsureRender(ctx) && render_) {
+        return Size2Df(static_cast<float>(render_->getWidth()),
+                       static_cast<float>(render_->getHeight()));
+    }
+    // No render: size to the error message so it is laid out (a 0x0 element
+    // is culled by its container and would never get to draw the message).
+    if (ITextLayout* err = EnsureErrorLayout(ctx)) {
+        err->SetExplicitWidth(-1);
+        return Size2Df(static_cast<float>(err->GetLayoutWidth()),
+                       static_cast<float>(err->GetLayoutHeight()));
+    }
+    return Size2Df(0.f, 0.f);
 }
 
 void UltraCanvasLaTeXViewImpl::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     UltraCanvasUIElement::Render(ctx, dirtyRect); // background / border
 
-    if (!EnsureRender(ctx) || !render_) return;
-
     const int contentX = GetBorderLeftWidth() + GetPaddingLeft();
     const int contentY = GetBorderTopWidth()  + GetPaddingTop();
+
+    if (!EnsureRender(ctx) || !render_) {
+        // Nothing could be typeset: show the reason instead of a blank box.
+        // The element is the LaTeX view itself painting its own content.
+        if (ITextLayout* err = EnsureErrorLayout(ctx)) {
+            ctx->PushState();
+            ctx->SetTextPaint(kErrorColor);
+            ctx->DrawTextLayout(*err, Point2Dd(contentX, contentY));
+            ctx->PopState();
+        }
+        return;
+    }
 
     SetLaTeXActiveContext(ctx);
     ctx->PushState();

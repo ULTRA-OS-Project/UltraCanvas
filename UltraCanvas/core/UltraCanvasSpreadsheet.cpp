@@ -41,8 +41,34 @@ UltraCanvasSpreadsheet::UltraCanvasSpreadsheet(
 // UIELEMENT INTERFACE - RENDER
 // ============================================================================
 
+// Declared in UltraCanvasSpreadsheet.h. Restores the context's font state
+// after measuring so callers can use it mid-render.
+CellTextMeasureFn MakeSpreadsheetTextMeasurer(IRenderContext* ctx) {
+    if (!ctx) return nullptr;
+    return [ctx](const std::string& text, const CellFont& font) {
+        ctx->PushState();
+        ctx->SetFontFace(font.family.empty() ? "Arial" : font.family,
+                         font.bold ? FontWeight::Bold : FontWeight::Normal,
+                         font.italic ? FontSlant::Italic : FontSlant::Normal);
+        ctx->SetFontSize(font.size > 0.0f ? font.size : 11.0f);
+        int width = ctx->GetTextLineWidth(text);
+        ctx->PopState();
+        return width;
+    };
+}
+
 void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx) return;
+
+    // A file loaded before the grid was on a window left its unsized columns
+    // waiting for real font metrics; this is the first moment we have them.
+    if (autoFitPending_) {
+        autoFitPending_ = false;
+        CellTextMeasureFn measure = MakeSpreadsheetTextMeasurer(ctx);
+        for (auto& sheet : sheets_) {
+            if (sheet) sheet->AutoFitUnsizedColumns(measure);
+        }
+    }
 
     ctx->PushState();
 
@@ -786,11 +812,33 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
     // routed here (the window only delivers KeyDown to the focused element).
     SetFocus(true);
 
+    HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
+
+    // Right-click puts up the cell-formatting menu. It selects the cell under
+    // the cursor first (unless it is already inside the selection, so a
+    // right-click on a multi-cell range formats the whole range), and never
+    // starts a drag-selection.
+    if (event.button == UCMouseButton::Right) {
+        if (hit.area == HitArea::Cell || hit.area == HitArea::ColumnHeader ||
+            hit.area == HitArea::RowHeader) {
+            if (IsEditing()) StopEditing(true);
+            if (hit.area == HitArea::ColumnHeader)      SelectColumn(hit.col);
+            else if (hit.area == HitArea::RowHeader)    SelectRow(hit.row);
+            else if (!IsCellSelected(hit.row, hit.col)) SelectCell(hit.row, hit.col);
+            Invalidate();
+
+            if (onCellContextMenu) {
+                onCellContextMenu(hit.row, hit.col, event.pointerWindow.x, event.pointerWindow.y);
+            } else if (formatMenuEnabled_) {
+                ShowFormatMenuAt(event.pointerWindow.x, event.pointerWindow.y);
+            }
+        }
+        return;
+    }
+
     mouseDown_ = true;
     mouseDownPos_ = Point2Di(event.pointer.x, event.pointer.y);
 
-    HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
-    
     switch (hit.area) {
         case HitArea::Cell: {
             if (IsEditing()) {
@@ -1772,20 +1820,25 @@ void UltraCanvasSpreadsheet::SetColumnWidth(int col, int width) {
 void UltraCanvasSpreadsheet::AutoFitColumnWidth(int col) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    
-    // Calculate max content width
-    int maxWidth = SpreadsheetLimits::DefaultColumnWidth;
-    CellRange used = sheet->GetUsedRange();
-    
-    for (int row = used.start.row; row <= used.end.row; ++row) {
-        if (auto* cell = sheet->GetCellIfExists(row, col)) {
-            std::string text = cell->GetDisplayValue();
-            int textWidth = static_cast<int>(text.length() * 8) + 10;
-            maxWidth = std::max(maxWidth, textWidth);
-        }
+
+    sheet->AutoFitColumnWidth(col, MakeSpreadsheetTextMeasurer(GetRenderContext()));
+    // Double-clicking a header divider is the user sizing the column, so the
+    // result must survive the next auto-width pass.
+    sheet->GetOrCreateColumnDefinition(col).explicitWidth = true;
+    Invalidate();
+}
+
+void UltraCanvasSpreadsheet::AutoFitUnsizedColumns() {
+    CellTextMeasureFn measure = MakeSpreadsheetTextMeasurer(GetRenderContext());
+    if (!measure) {
+        // No window yet: defer to the first render rather than fitting columns
+        // against guessed metrics.
+        autoFitPending_ = true;
+        return;
     }
-    
-    sheet->SetColumnWidth(col, std::min(maxWidth, 500));
+    for (auto& sheet : sheets_) {
+        if (sheet) sheet->AutoFitUnsizedColumns(measure);
+    }
     Invalidate();
 }
 
@@ -1869,7 +1922,7 @@ void UltraCanvasSpreadsheet::SetSelectionBold(bool bold) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
     
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
             sheet->GetCell(row, col)->SetBold(bold);
@@ -1882,7 +1935,7 @@ void UltraCanvasSpreadsheet::SetSelectionItalic(bool italic) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
     
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
             sheet->GetCell(row, col)->SetItalic(italic);
@@ -1895,7 +1948,7 @@ void UltraCanvasSpreadsheet::SetSelectionUnderline(UnderlineStyle style) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
     
-    CellRange sel = GetSelection();
+    CellRange sel = GetFormattingRange();
     for (int row = sel.start.row; row <= sel.end.row; ++row) {
         for (int col = sel.start.col; col <= sel.end.col; ++col) {
             sheet->GetCell(row, col)->SetUnderline(style);

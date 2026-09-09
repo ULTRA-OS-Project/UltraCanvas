@@ -107,6 +107,7 @@ enum class VirtualFSCapability : uint32_t {
     Comments        = 1 << 16,  // Supports file comments
     SolidArchive    = 1 << 17,  // Supports solid compression
     MultiVolume     = 1 << 18,  // Supports split archives
+    MemoryOpen      = 1 << 19,  // Can open an archive from a memory buffer
     
     // Composite capabilities
     ReadOnly        = Read | ListDirectory,

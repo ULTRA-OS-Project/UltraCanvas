@@ -10,6 +10,7 @@
 
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasButton.h"
@@ -70,7 +71,13 @@ protected:
 
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> MakeInput(
         const std::string& id, long x, long y, long w, long h,
-        const std::string& placeholder, bool multiline = false);
+        const std::string& placeholder);
+
+    // Editable multi-line field (word-wrapped) for prompts, source text, code,
+    // etc. Single-line fields use MakeInput; multi-line entry uses TextArea.
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> MakeTextArea(
+        const std::string& id, long x, long y, long w, long h,
+        const std::string& placeholder);
 
     // Provider picker shared by every service dialog: a labeled dropdown
     // seeded with "(default route)" plus the capability's registered
@@ -119,7 +126,7 @@ protected:
     std::string description_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> resultArea_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  resultArea_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  providerDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    runButton_;
 

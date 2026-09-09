@@ -3,7 +3,7 @@
 // (surviving restarts); Flush attempts to send each pending item via the SMTP
 // plug-in, removing successes and recording failures for retry. Keeps sending
 // off the compose path so Send never blocks and survives being offline.
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -33,6 +33,10 @@ class OutboxStore {
 public:
     UltraDbResult Open(const std::string& connectionName, const std::string& databasePath);
 
+    // Mirrors LocalStore / ContactStore, so the UI can tell "the queue is
+    // unavailable" from "the queue is empty" and say so.
+    bool IsOpen() const { return !connection_.empty(); }
+
     UltraDbResult Enqueue(const std::string& accountId, const std::string& serverUrl,
                           const Draft& draft, int64_t& outId);
     UltraDbResult ListPending(std::vector<OutboxItem>& out) const;
@@ -55,7 +59,14 @@ public:
         return store_.Enqueue(accountId, serverUrl, draft, outId);
     }
 
-    struct FlushStats { int sent = 0; int failed = 0; };
+    // `lastFailure` is the result of the most recent failed send, so the UI can
+    // tell the user *why* a message stayed in the queue instead of only that it
+    // did. Meaningless when `failed` is 0.
+    struct FlushStats {
+        int             sent = 0;
+        int             failed = 0;
+        UltraNetResult  lastFailure;
+    };
 
     // Attempt to send every pending item through `smtp`. `credentialFor` maps an
     // account id to its password / token (resolved from the credential vault).

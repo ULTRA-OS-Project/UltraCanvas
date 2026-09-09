@@ -84,6 +84,11 @@ namespace UltraCanvas {
         iconContainer->AddChild(iconLabel);
         contentSection->AddChild(iconContainer);
         iconContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+        // Apply the configured icon visibility. Hiding is display:none, not
+        // merely invisible, so the icon reserves neither a column nor the flex
+        // gap after it: the message — and anything AddDialogElement() puts in
+        // it — gets the full content width and centres in the window.
+        UpdateIconAppearance();
 
         // ===== MESSAGE CONTAINER =====
         messageContainer = std::make_shared<UltraCanvasContainer>(
@@ -398,6 +403,18 @@ namespace UltraCanvas {
         ApplyTypeDefaults();
     }
 
+    void UltraCanvasModalDialog::SetIconVisible(bool visible) {
+        if (dialogConfig.showIcon == visible) return;
+        dialogConfig.showIcon = visible;
+        UpdateIconAppearance();
+        InvalidateLayout();
+    }
+
+    bool UltraCanvasModalDialog::IsIconVisible() const {
+        return dialogConfig.showIcon &&
+               dialogConfig.dialogType != DialogType::Custom;
+    }
+
     void UltraCanvasModalDialog::SetDialogButtons(DialogButtons buttons) {
         dialogConfig.buttons = buttons;
 
@@ -575,7 +592,10 @@ namespace UltraCanvas {
         // the text (plus the extra elements) + the button bar. textPadding (5px)
         // is baked into the area's own content box, so add a little slack so the
         // last line clears it.
-        float contentBlock = std::max(static_cast<float>(style.iconSize),
+        // The icon only sets a floor for the content block while it is shown;
+        // an icon-less dialog is as tall as its own content needs.
+        const float iconBlock = IsIconVisible() ? style.iconSize : 0.0f;
+        float contentBlock = std::max(iconBlock,
                                       textHeight + 10.0f + extrasHeight);
         int desired = static_cast<int>(std::ceil(
                 2.0f * style.padding + contentBlock + style.buttonAreaHeight));
@@ -583,7 +603,7 @@ namespace UltraCanvas {
         // Clamp between the configured minimum and (most of) the monitor. Past
         // the cap the message area scrolls instead of the window growing.
         int minH = std::max(dialogConfig.minHeight,
-                            static_cast<int>(2.0f * style.padding + style.iconSize + style.buttonAreaHeight));
+                            static_cast<int>(2.0f * style.padding + iconBlock + style.buttonAreaHeight));
         int capH = desired;
         int screenW = 0, screenH = 0;
         GetScreenSize(screenW, screenH);
@@ -810,7 +830,8 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::UpdateIconAppearance() {
         if (iconContainer) {
             iconContainer->SetBackgroundColor(GetTypeColor());
-            iconContainer->SetVisible(dialogConfig.dialogType != DialogType::Custom);
+            iconContainer->SetVisible(dialogConfig.showIcon &&
+                                      dialogConfig.dialogType != DialogType::Custom);
         }
         if (iconLabel) {
             iconLabel->SetText(GetTypeIcon());
@@ -985,10 +1006,6 @@ namespace UltraCanvas {
                 break;
             case InputType::Email:
                 textInput->SetInputType(TextInputType::Email);
-                break;
-            case InputType::MultilineText:
-                textInput->SetInputType(TextInputType::Multiline);
-                textInput->SetSize(300, 80);
                 break;
             default:
                 textInput->SetInputType(TextInputType::Text);

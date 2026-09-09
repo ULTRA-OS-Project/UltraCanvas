@@ -18,6 +18,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTextArea.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasCSVImport.h"
 #include <string>
@@ -61,7 +62,7 @@ private:
     std::shared_ptr<UltraCanvasCheckbox>  quoteAllCheck_;
     std::shared_ptr<UltraCanvasCheckbox>  bomCheck_;
 
-    std::shared_ptr<UltraCanvasTextInput> previewText_;
+    std::shared_ptr<UltraCanvasTextArea>  previewText_;
 
     std::shared_ptr<UltraCanvasButton> okButton_;
     std::shared_ptr<UltraCanvasButton> cancelButton_;

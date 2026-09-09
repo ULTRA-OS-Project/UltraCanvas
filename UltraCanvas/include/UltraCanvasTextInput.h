@@ -39,7 +39,6 @@ enum class TextInputType {
     DateTime,       // Date and time
     URL,            // URL validation
     Search,         // Search field with clear button
-    Multiline,      // Multi-line text area
     Custom          // Custom validation rules
 };
 
@@ -523,18 +522,6 @@ private:
     
     void UpdateScrollOffset();
 
-    int GetCaretLineNumber() const;
-
-    /**
-     * Get the Y position for a specific line number
-     */
-    float GetLineYPosition(int lineNumber) const;
-
-    /**
-     * Get caret X position within current line
-     */
-    float GetCaretXInLine() const;
-
     float GetCaretXPosition();
     float GetCaretYPosition();
 
@@ -575,17 +562,11 @@ private:
     // UltraCanvasCaret, which paints and blinks it as a compositor overlay
     // (the widget itself no longer draws the caret).
     void UpdateCaret(const Rect2Dd& area, IRenderContext* ctx);
-    
-    void RenderMultilineText(const Rect2Dd& area, const std::string& displayText, const Point2Di& startPos, IRenderContext* ctx);
-    
+
     void RenderValidationFeedback(const Rect2Di& bounds, IRenderContext* ctx) const;
-    
+
     void DrawShadow(const Rect2Di& bounds, IRenderContext* ctx);
-    
-    std::vector<std::string> SplitTextIntoLines(const std::string& text, float maxWidth);
-    
-    std::vector<std::string> WrapLine(const std::string& line, float maxWidth);
-    
+
     bool IsClearButtonVisible() const;
     Rect2Di GetClearButtonBounds() const;
     void RenderClearButton(IRenderContext* ctx);
@@ -713,13 +694,6 @@ inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
     input->SetInputType(TextInputType::Number);
     return input;
 }
-
-//inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-//    const std::string& identifier, float x, float y, float w, float h) {
-//    auto input = CreateTextInput(identifier, x, y, w, h);
-//    input->SetInputType(TextInputType::Multiline);
-//    return input;
-//}
 
 // ===== BUILDER PATTERN =====
 class TextInputBuilder {

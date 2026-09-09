@@ -35,7 +35,8 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFolderWatcher::Watch(const std::string& path,
-                                         ChangedCallback onChanged) {
+                                         ChangedCallback onChanged,
+                                         FailedCallback onFailed) {
         Stop();
         if (path.empty() || !onChanged) return false;
 
@@ -45,7 +46,7 @@ namespace UltraCanvas {
         backend = CreateNativeFolderWatchBackend();
         if (!backend) return false;
 
-        if (!backend->Start(path, std::move(onChanged))) {
+        if (!backend->Start(path, std::move(onChanged), std::move(onFailed))) {
             backend.reset();
             return false;
         }

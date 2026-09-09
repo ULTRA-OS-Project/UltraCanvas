@@ -8,6 +8,7 @@
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
+#include "UltraAIEndpoints.h"
 #include "UltraCanvasApplication.h"
 #ifdef ULTRAAI_HAS_ULTRAVAULT
 #include <UltraVault/UltraVault.h>
@@ -83,6 +84,10 @@ int main(int argc, char* argv[]) {
         // Chat dialog land here, not in widgets.
         UltraVault::Initialize();
 #endif
+
+        // Load the configured endpoints (endpoints.json). A missing file is
+        // fine — the Settings dialog starts empty and writes it on first save.
+        UltraAIApp::EndpointStore::Instance().Load();
 
         UltraAIDashboard dashboard(app);
         if (!dashboard.Create()) {

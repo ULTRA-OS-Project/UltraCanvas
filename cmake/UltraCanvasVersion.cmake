@@ -5,8 +5,8 @@
 # package-macos.sh) already parse the changelog directly, which is why the
 # version in a built artefact's file name is always right. Everything compiled
 # *into* the binaries used to carry a hand-maintained copy of the same number,
-# refreshed only when someone remembered to run a script — so the demo app's
-# info window drifted (it showed 0.3.21 against a 0.3.31 changelog).
+# refreshed only when someone remembered to run set-version.sh — so the demo
+# app's info window drifted (it showed 0.3.21 against a 0.3.31 changelog).
 #
 # Including this module makes CMake read the same first changelog line the
 # packaging scripts read, so the displayed version cannot disagree with the
@@ -14,6 +14,7 @@
 #
 # Sets, in the including scope:
 #   ULTRACANVAS_VERSION        e.g. "0.3.31"   (Docs/UltraCanvas/CHANGELOG.md)
+#   ULTRACANVAS_VERSION_DATE   e.g. "2026-09-03"
 #   ULTRACANVAS_VERSION_DOT4   e.g. "0.3.31.0"
 #   ULTRACANVAS_VERSION_COMMA4 e.g. "0,3,31,0"
 #   ULTRATEXTER_VERSION        e.g. "1.40"     (Docs/Texter/CHANGELOG.md)
@@ -22,9 +23,6 @@
 #   ULTRACLEANER_VERSION        e.g. "0.50"    (Docs/UltraCleaner/CHANGELOG.md)
 #   ULTRACLEANER_VERSION_DOT4   e.g. "0.50.0.0"
 #   ULTRACLEANER_VERSION_COMMA4 e.g. "0,50,0,0"
-#   LADYBIRD_VERSION            e.g. "0.1.0"   (Docs/Ladybird/CHANGELOG.md)
-#   LADYBIRD_VERSION_DOT4       e.g. "0.1.0.0"
-#   LADYBIRD_VERSION_COMMA4     e.g. "0,1,0,0"
 #
 # and one <APP>_VERSION triple per application that keeps its own changelog:
 #
@@ -36,24 +34,19 @@
 #   ULTRAMAIL_VERSION          (Docs/UltraMail/CHANGELOG.md)
 #   ULTRASOCIAL_VERSION        (Docs/UltraSocial/CHANGELOG.md)
 #   ULTRAVIEWER_VERSION        (Docs/UltraViewer/CHANGELOG.md)
+#   ULTRAPAINT_VERSION         (Docs/UltraPaint/CHANGELOG.md)
 #   ULTRAWIN_VERSION           (Docs/Modules/UltraWin/CHANGELOG.md)
 #
-# Each of those also gets _DOT4 / _COMMA4 variants. An application with its own
+# Each of those also gets _VERSION_DATE (the date on the same changelog line —
+# when that release shipped, not when the build ran) and _DOT4 / _COMMA4
+# variants. An application with its own
 # changelog versions itself: it does not move when the framework releases, and
-# a change to it is described in its own file. Several have no consumer in the
-# build yet — like LADYBIRD_VERSION — and are set anyway, so that when one needs
-# a version it takes it from the same place everything else does rather than
-# growing a second copy of the number.
+# a change to it is described in its own file. 
 #
 # DemoApp is deliberately NOT in this list. It is the framework's own showcase:
 # its artefacts are named UCDemo-<ULTRACANVAS_VERSION> by the packaging scripts
 # and by CI, so it versions with the framework by design, and giving it a second
 # number would be exactly the duplication this module exists to prevent.
-#
-# The Ladybird port is built from its own tree, outside this repository, so
-# nothing here consumes LADYBIRD_VERSION yet; it is set so that tree gets the
-# port's version from the same place everything else does simply by including
-# this module, instead of keeping a second copy of the number.
 #
 # Expected first line of a changelog: `#### YYYY-MM-DD *x.y.z*`
 
@@ -79,14 +72,17 @@ function(_ultracanvas_version_variants VERSION OUT_DOT4 OUT_COMMA4)
     set(${OUT_COMMA4} "${_comma4}" PARENT_SCOPE)
 endfunction()
 
-# Read `#### YYYY-MM-DD *x.y.z*` from the first line of CHANGELOG.
-function(_ultracanvas_version_from_changelog CHANGELOG OUT_VAR)
+# Read `#### YYYY-MM-DD *x.y.z*` from the first line of CHANGELOG. The date is
+# that release's date and comes out of the same match, so an application that
+# shows when its version shipped takes it from here rather than stamping the
+# build clock into the binary — two builds of one release then agree.
+function(_ultracanvas_version_from_changelog CHANGELOG OUT_VAR OUT_DATE)
     if(NOT EXISTS "${CHANGELOG}")
         message(FATAL_ERROR "UltraCanvas version: changelog not found at ${CHANGELOG}")
     endif()
 
     file(STRINGS "${CHANGELOG}" _first_line LIMIT_COUNT 1)
-    string(REGEX MATCH "^#### [0-9-]+ \\*([0-9]+(\\.[0-9]+)*)\\*" _matched "${_first_line}")
+    string(REGEX MATCH "^#### ([0-9]+-[0-9]+-[0-9]+) \\*([0-9]+(\\.[0-9]+)*)\\*" _matched "${_first_line}")
     if(NOT _matched)
         message(FATAL_ERROR
             "UltraCanvas version: could not parse a version from the first line of\n"
@@ -95,17 +91,20 @@ function(_ultracanvas_version_from_changelog CHANGELOG OUT_VAR)
             "  expected: '#### YYYY-MM-DD *x.y.z*'")
     endif()
 
-    set(${OUT_VAR} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${OUT_VAR} "${CMAKE_MATCH_2}" PARENT_SCOPE)
+    set(${OUT_DATE} "${CMAKE_MATCH_1}" PARENT_SCOPE)
 endfunction()
 
-# Declare one product: sets <PREFIX>_CHANGELOG_FILE, _VERSION, _VERSION_DOT4
-# and _VERSION_COMMA4, and remembers the file so the configure step re-runs when
-# it gains an entry. A macro rather than a table of "PREFIX;path" rows, because
-# CMake flattens a list element that contains a semicolon and the rows would
-# come apart. Adding an application is one line below plus its changelog.
+# Declare one product: sets <PREFIX>_CHANGELOG_FILE, _VERSION, _VERSION_DATE,
+# _VERSION_DOT4 and _VERSION_COMMA4, and remembers the file so the configure
+# step re-runs when it gains an entry. A macro rather than a table of
+# "PREFIX;path" rows, because CMake flattens a list element that contains a
+# semicolon and the rows would come apart. Adding an application is one line
+# below plus its changelog.
 macro(_ultracanvas_declare_product PREFIX RELATIVE)
     set(${PREFIX}_CHANGELOG_FILE "${_ULTRACANVAS_REPO_ROOT}/${RELATIVE}")
-    _ultracanvas_version_from_changelog("${${PREFIX}_CHANGELOG_FILE}" ${PREFIX}_VERSION)
+    _ultracanvas_version_from_changelog("${${PREFIX}_CHANGELOG_FILE}"
+        ${PREFIX}_VERSION ${PREFIX}_VERSION_DATE)
     _ultracanvas_version_variants("${${PREFIX}_VERSION}"
         ${PREFIX}_VERSION_DOT4 ${PREFIX}_VERSION_COMMA4)
     list(APPEND _ULTRACANVAS_ALL_CHANGELOGS "${${PREFIX}_CHANGELOG_FILE}")
@@ -119,7 +118,6 @@ _ultracanvas_declare_product(ULTRACANVAS         "Docs/UltraCanvas/CHANGELOG.md"
 # Applications that keep their own changelog and version themselves.
 _ultracanvas_declare_product(ULTRATEXTER         "Docs/Texter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md")
-_ultracanvas_declare_product(LADYBIRD            "Docs/Ladybird/CHANGELOG.md")
 _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md")
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")
@@ -128,6 +126,7 @@ _ultracanvas_declare_product(ULTRAFILER          "Docs/UltraFiler/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAMAIL           "Docs/UltraMail/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRASOCIAL         "Docs/UltraSocial/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAVIEWER         "Docs/UltraViewer/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRAPAINT          "Docs/UltraPaint/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAWIN            "Docs/Modules/UltraWin/CHANGELOG.md")
 
 # Re-run the configure step when a changelog gains a new entry, so an
@@ -142,9 +141,41 @@ endif()
 set_property(DIRECTORY "${_uc_configure_depends_dir}" APPEND PROPERTY
     CMAKE_CONFIGURE_DEPENDS ${_ULTRACANVAS_ALL_CHANGELOGS})
 
-# Nothing downstream holds a literal version any more. The two Windows resource
-# pairs that used to (UltraTexter.rc/.manifest, UltraFiler.rc/.manifest) are
-# templates now, written into the build tree by
-# ultracanvas_add_windows_resources() in cmake/UltraCanvasWinResources.cmake
-# from the values above — so there is no staleness left to warn about and no
-# set-version.sh to remember to run.
+# The Windows resource scripts and manifests still hold literal version numbers
+# (they are compiled by windres/rc.exe from files on disk, not generated), and
+# set-version.sh writes them. Warn — on every platform, so a Linux or macOS
+# configure catches it too — when they have fallen behind the changelog. Every
+# other copy of a version is gone: what a binary displays comes from the
+# <PREFIX>_VERSION definitions above, which are read from the changelogs here.
+function(_ultracanvas_warn_if_version_stale FILE PATTERN EXPECTED WHAT)
+    if(NOT EXISTS "${FILE}")
+        return()
+    endif()
+    file(STRINGS "${FILE}" _hits REGEX "${PATTERN}")
+    foreach(_line IN LISTS _hits)
+        string(REGEX MATCH "${PATTERN}" _ignored "${_line}")
+        if(NOT CMAKE_MATCH_1 STREQUAL "${EXPECTED}")
+            message(WARNING
+                "${WHAT} is ${CMAKE_MATCH_1} but the changelog says ${EXPECTED}.\n"
+                "  ${FILE}\n"
+                "  Run ./set-version.sh to refresh the Windows resource files.")
+        endif()
+    endforeach()
+endfunction()
+
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/Texter/UltraTexter.rc"
+    "^ +FILEVERSION +([0-9,]+)" "${ULTRATEXTER_VERSION_COMMA4}"
+    "UltraTexter.rc FILEVERSION")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/Texter/UltraTexter.manifest"
+    "^        version=\"([0-9.]+)\"" "${ULTRATEXTER_VERSION_DOT4}"
+    "UltraTexter.manifest assembly version")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/UltraFiler/UltraFiler.rc"
+    "^ +FILEVERSION +([0-9,]+)" "${ULTRAFILER_VERSION_COMMA4}"
+    "UltraFiler.rc FILEVERSION")
+_ultracanvas_warn_if_version_stale(
+    "${_ULTRACANVAS_REPO_ROOT}/Apps/UltraFiler/UltraFiler.manifest"
+    "^        version=\"([0-9.]+)\"" "${ULTRAFILER_VERSION_DOT4}"
+    "UltraFiler.manifest assembly version")

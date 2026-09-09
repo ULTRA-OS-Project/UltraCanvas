@@ -1038,4 +1038,22 @@ namespace UltraCanvas {
 #endif
     }
 
+    bool UltraCanvasLinuxApplication::RegisterFontFileNative(const std::string& fontFilePath) {
+        // An application font: added to this process's FcConfig only, so
+        // nothing is installed for the user or for other applications.
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) {
+            debugOutput << "UltraCanvas: RegisterFontFileNative: no current "
+                           "fontconfig config" << std::endl;
+            return false;
+        }
+        if (!FcConfigAppFontAddFile(
+                cfg, reinterpret_cast<const FcChar8*>(fontFilePath.c_str()))) {
+            debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        return true;
+    }
+
 } // namespace UltraCanvas

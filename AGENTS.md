@@ -180,7 +180,11 @@ anywhere else, and never introduce a new literal copy of one:
 - `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
   configure time and sets one `<PREFIX>_VERSION` per row of the table above —
   `ULTRACANVAS_VERSION`, `EMAILCLEANER_VERSION`, `ULTRAFILER_VERSION` and the
-  rest — plus `_DOT4` / `_COMMA4` variants for Windows resources. Adding an
+  rest — plus `_DOT4` / `_COMMA4` variants for Windows resources and
+  `<PREFIX>_VERSION_DATE`, the date on that same changelog line. An
+  application that shows when its version shipped takes it from there: it is
+  the release's date, so every build of one release agrees, which a build
+  clock would not. Adding an
   application is one `_ultracanvas_declare_product()` line there plus its
   changelog file. It feeds every `project(VERSION …)` and the matching compile
   definitions. Several of those variables have no consumer yet; they are set
@@ -208,17 +212,13 @@ anywhere else, and never introduce a new literal copy of one:
   files — that would put one change in two places under two numbers.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
-- **Nothing holds a literal version any more, and there is no script to run.**
-  The Windows resource pairs windres reads from disk are templates —
-  `Apps/Texter/UltraTexter.{rc,manifest}.in` and
-  `Apps/UltraFiler/UltraFiler.{rc,manifest}.in` — written into the build tree by
-  `ultracanvas_add_windows_resources()`
-  (`cmake/UltraCanvasWinResources.cmake`) from the app's changelog version. Edit
-  the `.in` file, never the generated one, and use `@UCRES_VERSION@`,
-  `@UCRES_VERSION_DOT4@` or `@UCRES_VERSION_COMMA4@` for the number. Generation
-  is not guarded by `WIN32`, so a broken template fails a Linux or macOS
-  configure too. `set-version.sh` is gone; so is the staleness warning it
-  existed to satisfy.
+- Only the Windows resource files still hold literals, because windres reads
+  them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
+  `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
+  bumping either app's version; a CMake configure on any platform warns when
+  they are stale. Nothing else may hold a literal — UltraFiler's compile
+  definition did, and titled its window `UltraFiler 0.8.0` for thirteen
+  releases while its changelog said 1.17.0.
 
 ## House rules for AI-generated changes
 

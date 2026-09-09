@@ -10,7 +10,6 @@ cmake_minimum_required(VERSION 3.16)
 # line the packaging scripts read for the artefact file names. Must be included
 # before project(), which needs ULTRACANVAS_VERSION.
 include(cmake/UltraCanvasVersion.cmake)
-include(cmake/UltraCanvasWinResources.cmake)
 
 project(UltraCanvasDemoApp
     VERSION ${ULTRACANVAS_VERSION}
@@ -65,6 +64,7 @@ if(ANDROID)
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
+    set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
     set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
@@ -97,6 +97,7 @@ endif()
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
 option(BUILD_ULTRAVIEWER_APP "Build the UltraViewer universal media viewer application" ON)
+option(BUILD_ULTRAPAINT_APP "Build the UltraPaint bitmap editor application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
@@ -153,6 +154,25 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
 endif()
 
+# Which platforms can answer "is this file in use by another program"
+# (UltraCanvasFileLock: Windows share-mode probe + Restart Manager, Linux
+# /proc). Decided here for the same reason as the folder watch above: the core
+# file compiles a null-returning fallback unless this is set, and the library
+# and Tests/ must agree about which side defines the backend.
+if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
+# Same decision, same reasons, for the volume monitor (UltraCanvasVolumeMonitor:
+# WM_DEVICECHANGE / poll() on /proc/self/mountinfo / NSWorkspace mount
+# notifications). macOS is included here where it is absent above, because a
+# workspace notification needs no API the folder watcher was missing. Without
+# the define the core file compiles a null-returning fallback and the monitor
+# polls the volume list instead - correct, just slower to notice.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
+endif()
+
 add_subdirectory(UltraCanvas)
 
 # ===== BUILD ULTRAAI MODULE =====
@@ -176,6 +196,15 @@ if(BUILD_ULTRAAI_MODULE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLis
     add_subdirectory(UltraAI)
 endif()
     
+# ===== ULTRACLOUD =====
+# Cloud storage accounts, providers and share links, shared by every app
+# (Mail attaches links, Filer uploads and shares, Social hosts media). The
+# engine needs UltraDatabase (+ UltraNet for HTTP); the dialogs need the UI.
+option(BUILD_ULTRACLOUD "Build the UltraCloud module" ON)
+if(BUILD_ULTRACLOUD AND TARGET UltraDatabase)
+    add_subdirectory(UltraCloud)
+endif()
+
 # ===== ULTRAMAIL =====
 # The mail application. Phase 1 builds the headless engine (LocalStore on
 # UltraDatabase); UI targets are added in later phases. Enabled by default
@@ -389,6 +418,10 @@ if(BUILD_DEMO_APP)
 
         if(PLUGIN_TARGET MATCHES "EPS")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasEPSExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "UltraCanvasVectorPlugin")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasDWGExamples.cpp)
         endif()
 
         if(PLUGIN_TARGET MATCHES "OCR")
@@ -645,6 +678,17 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
     message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
 endif()
 
+# ===== ULTRACLOUD TESTS =====
+# Headless module tests (account store on UltraDatabase, secret stores, the
+# WebDAV / Nextcloud providers against a fake HTTP function); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS "Build the UltraCloud test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS AND TARGET UltraCloud)
+    enable_testing()
+    add_subdirectory(Tests/UltraCloud)
+    message(STATUS "")
+    message(STATUS "── UltraCloud test suite enabled (target: UltraCloudTests) ──")
+endif()
+
 # ===== EMAILCLEANER ENGINE TESTS =====
 # Headless analysis-engine tests (text pipeline, rules, classifier, store on
 # UltraDatabase, ingest over real RFC 5322 messages, analytics); in-tree
@@ -744,17 +788,6 @@ endif()
     ultracanvas_embed_app_icon(UltraCanvasTexter
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Texter.png")
 
-    # Version info + manifest, written from Apps/Texter/UltraTexter.{rc,manifest}.in
-    # and the Texter changelog. Until now only the standalone Apps/Texter build
-    # compiled those, so the Texter built from here had no manifest (no DPI
-    # awareness, no UTF-8 code page) and no version resource at all — and
-    # nothing in CI ever compiled the templates. No collision with the icon .rc
-    # above: that one defines only an ICON, and this target embeds no other
-    # manifest.
-    ultracanvas_add_windows_resources(UltraCanvasTexter
-        "${CMAKE_CURRENT_SOURCE_DIR}/Apps/Texter" UltraTexter
-        "${ULTRATEXTER_VERSION}")
-
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(UltraCanvasTexter PRIVATE
@@ -803,10 +836,11 @@ if (BUILD_ULTRAFILER_APP)
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraFiler PRIVATE
-            # UltraFiler's own version, not the framework's: the first line of
-            # Docs/UltraFiler/CHANGELOG.md. The Windows .rc and .manifest are
-            # generated from the same value below, so there is nothing to keep
-            # in sync by hand.
+            # UltraFiler's own version, not the framework's: read from
+            # Docs/UltraFiler/CHANGELOG.md by cmake/UltraCanvasVersion.cmake,
+            # never written out again here. The literal that used to stand
+            # here was last touched at 0.8.0 and went on titling the window
+            # "UltraFiler 0.8.0" through every release since.
             ULTRAFILER_VERSION="${ULTRAFILER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/UltraFiler.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
@@ -816,19 +850,29 @@ if (BUILD_ULTRAFILER_APP)
     ultracanvas_embed_app_icon(UltraFiler
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraFiler.png")
 
-    # Version info + manifest: written into the build tree from
-    # Apps/UltraFiler/UltraFiler.{rc,manifest}.in and this app's changelog
-    # version, then compiled into the .exe on Windows. Generation runs on every
-    # platform, so a broken template fails a Linux or macOS configure too.
-    #
-    # Do NOT also call ultracanvas_embed_windows_manifest() here: this .rc
-    # already embeds UltraFiler.manifest, which is a superset of the generated
-    # one (UTF-8 code page + long paths, plus DPI awareness, common controls v6
-    # and segment heap). A second RT_MANIFEST id=1 resource is a hard error with
-    # lld (CLANGARM64), even though GNU ld let the duplicate through silently.
-    ultracanvas_add_windows_resources(UltraFiler
-        "${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler" UltraFiler
-        "${ULTRAFILER_VERSION}")
+    # Embed the application manifest + version info (Windows only). The .rc
+    # ships its own manifest, so do NOT also call
+    # ultracanvas_embed_windows_manifest here (two RT_MANIFEST id=1 resources
+    # would collide at resource link time).
+    if(WIN32)
+        target_sources(UltraFiler PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler/UltraFiler.rc
+        )
+        # windres/rc.exe resolves the manifest path relative to the .rc file's
+        # directory.
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler/UltraFiler.rc
+            PROPERTIES
+                COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler"
+        )
+    endif()
+
+    # No ultracanvas_embed_windows_manifest(UltraFiler) here: UltraFiler.rc
+    # above already embeds Apps/UltraFiler/UltraFiler.manifest, which is a
+    # superset of the generated one (UTF-8 code page + long paths, plus DPI
+    # awareness, common controls v6 and segment heap). A second RT_MANIFEST
+    # id=1 resource is a hard error with lld (CLANGARM64), even though GNU ld
+    # let the duplicate through silently.
 
     message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
@@ -879,6 +923,54 @@ if (BUILD_ULTRAVIEWER_APP)
     message(STATUS "  UltraViewer executable: UltraViewer")
 endif()
 
+# ===== ULTRAPAINT APPLICATION =====
+# Bitmap editor on the framework's raster-editing layer (UCRasterDocument,
+# brush engine, UltraCanvasPaintSurface) with PixelFX for the filters.
+if (BUILD_ULTRAPAINT_APP)
+    message(STATUS "")
+    message(STATUS "── Building UltraPaint Application ──")
+
+    add_executable(UltraPaint
+            Apps/UltraPaint/main.cpp
+            Apps/UltraPaint/UltraPaintWindow.cpp
+            Apps/UltraPaint/UltraPaintTools.cpp
+            Apps/UltraPaint/UltraPaintFilters.cpp
+            Apps/UltraPaint/UltraPaintDialogs.cpp
+    )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraPaint PROPERTIES ENABLE_EXPORTS ON)
+
+    target_include_directories(UltraPaint PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraPaint
+    )
+
+    target_link_libraries(UltraPaint PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+
+    target_compile_features(UltraPaint PRIVATE cxx_std_20)
+
+    target_compile_definitions(UltraPaint PRIVATE
+            # UltraPaint versions itself: Docs/UltraPaint/CHANGELOG.md is the
+            # single source of this number (cmake/UltraCanvasVersion.cmake).
+            ULTRAPAINT_VERSION="${ULTRAPAINT_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/UltraPaint.png"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraPaint
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraPaint.png")
+
+    # Embed manifest with UTF-8 active code page (Windows only) - the editor
+    # opens arbitrary paths, so narrow Win32/CRT calls must read them as UTF-8.
+    ultracanvas_embed_windows_manifest(UltraPaint)
+
+    message(STATUS "  UltraPaint executable: UltraPaint")
+endif()
+
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
@@ -894,6 +986,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIDashboard.cpp
         Apps/UltraAIApp/UltraAIServiceDialog.cpp
         Apps/UltraAIApp/UltraAIDialogs.cpp
+        Apps/UltraAIApp/UltraAIEndpoints.cpp
+        Apps/UltraAIApp/UltraAISettingsDialog.cpp
+        Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
 
     target_include_directories(UltraAIApp PRIVATE
@@ -913,8 +1008,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     target_compile_features(UltraAIApp PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraAIApp PRIVATE
-        # The first line of Docs/UltraAI/CHANGELOG.md.
-        ULTRAAI_APP_VERSION="${ULTRAAI_VERSION}"
+        ULTRAAI_APP_VERSION="0.1.0"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
 
@@ -1024,7 +1118,11 @@ if (BUILD_TESTS)
     # round-trip plus the mandated negative cases, KDF behaviour and secure
     # buffer semantics. Compiles only UltraCrypt, so it runs headless.
     add_executable(UltraCryptTests Tests/UltraCryptTests.cpp)
-    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt)
+    # UltraCrypt brings UltraCanvasBase32; the test also checks Base64 vectors,
+    # which live with the rest of the core's text utilities. Linking that archive
+    # here is safe precisely because this test is headless — there is no shared
+    # libultracanvas on the line for its symbols to collide with.
+    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt UltraCanvasTextUtils)
     target_compile_features(UltraCryptTests PRIVATE cxx_std_20)
     set_target_properties(UltraCryptTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -1185,6 +1283,60 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME AudioCodecTests COMMAND AudioCodecTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # ISO-BMFF audio demuxer (the M4A half of the AAC decode path). Builds the
+    # MP4 buffers it parses in memory, so it needs neither media assets nor the
+    # audio backend - just the two demuxer sources.
+    add_executable(Mp4AudioDemuxTest
+        Tests/Mp4AudioDemuxTest.cpp
+        UltraCanvas/libspecific/Audio/Mp4AudioDemux.cpp)
+    target_include_directories(Mp4AudioDemuxTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/libspecific/Audio)
+    target_compile_features(Mp4AudioDemuxTest PRIVATE cxx_std_20)
+    set_target_properties(Mp4AudioDemuxTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME Mp4AudioDemuxTest COMMAND Mp4AudioDemuxTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The audio/video codec registry that drives media classification and the
+    # format inventory. Links the full library so it sees the codecs this build
+    # actually compiled with, and runs headless.
+    add_executable(MediaCodecRegistryTest Tests/MediaCodecRegistryTest.cpp)
+    target_include_directories(MediaCodecRegistryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(MediaCodecRegistryTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(MediaCodecRegistryTest PRIVATE cxx_std_20)
+    set_target_properties(MediaCodecRegistryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaCodecRegistryTest COMMAND MediaCodecRegistryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The video half of the codec plugin path: a synthetic in-process codec
+    # driven through UltraCanvasVideoPlayer and CaptureVideoThumbnail. Needs no
+    # media assets and no platform video backend.
+    add_executable(VideoCodecPluginTest Tests/VideoCodecPluginTest.cpp)
+    target_include_directories(VideoCodecPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoCodecPluginTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(VideoCodecPluginTest PRIVATE cxx_std_20)
+    set_target_properties(VideoCodecPluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoCodecPluginTest COMMAND VideoCodecPluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The raster-editing layer under UltraPaint: layers, selection, brush
+    # engine, document undo / redo, selection-aware PixelFX filters and the
+    # PNG / .ucraster round trips. Headless; no window is created.
+    add_executable(RasterEditingTest Tests/RasterEditingTest.cpp)
+    target_include_directories(RasterEditingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(RasterEditingTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(RasterEditingTest PRIVATE cxx_std_20)
+    set_target_properties(RasterEditingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RasterEditingTest COMMAND RasterEditingTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 

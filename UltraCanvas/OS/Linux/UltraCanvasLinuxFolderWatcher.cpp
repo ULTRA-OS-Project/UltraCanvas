@@ -44,7 +44,8 @@ namespace UltraCanvas {
             ~InotifyFolderWatchBackend() override { Stop(); }
 
             bool Start(const std::string& path,
-                       std::function<void()> onChanged) override {
+                       std::function<void()> onChanged,
+                       std::function<void()> onFailed) override {
                 Stop();
 
                 inotifyFd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
@@ -62,6 +63,8 @@ namespace UltraCanvas {
                 }
 
                 callback = std::move(onChanged);
+                failedCallback = std::move(onFailed);
+                failureReported = false;
                 stopping.store(false);
                 worker = std::thread([this]() { Run(); });
                 return true;
@@ -83,12 +86,23 @@ namespace UltraCanvas {
                 CloseFd(inotifyFd);
                 watchDescriptor = -1;
                 callback = nullptr;
+                failedCallback = nullptr;
+                failureReported = false;
             }
 
         private:
             static void CloseFd(int& fd) {
                 if (fd >= 0) ::close(fd);
                 fd = -1;
+            }
+
+            // Tell the caller the watch is over, exactly once, and never
+            // because of Stop() - a failure it asked for is a failure it can
+            // act on, a Stop() it performed is not news.
+            void ReportFailure() {
+                if (failureReported || stopping.load() || !failedCallback) return;
+                failureReported = true;
+                failedCallback();
             }
 
             void Run() {
@@ -107,7 +121,8 @@ namespace UltraCanvas {
                     const int ready = ::poll(fds, 2, -1);
                     if (ready < 0) {
                         if (errno == EINTR) continue;
-                        return;              // the queue is unusable; caller polls
+                        ReportFailure();     // the queue is unusable
+                        return;
                     }
                     if (stopping.load()) return;
                     if (fds[1].revents & POLLIN) return;   // Stop() woke us
@@ -118,14 +133,45 @@ namespace UltraCanvas {
                     // save is several events, and the receiver would coalesce
                     // them anyway.
                     bool sawEvent = false;
+                    bool watchGone = false;
                     for (;;) {
                         const ssize_t got = ::read(inotifyFd, buffer.data(), buffer.size());
-                        if (got > 0) { sawEvent = true; continue; }
+                        if (got > 0) {
+                            sawEvent = true;
+                            if (WatchEnded(buffer.data(), static_cast<size_t>(got)))
+                                watchGone = true;
+                            continue;
+                        }
                         if (got < 0 && errno == EINTR) continue;
                         break;               // EAGAIN: queue drained
                     }
                     if (sawEvent && !stopping.load() && callback) callback();
+                    if (watchGone) {
+                        // The descriptor is gone - the folder was deleted, or
+                        // the volume it lives on was unmounted. Waiting on it
+                        // again would park this thread on a queue that can
+                        // never produce another event.
+                        ReportFailure();
+                        return;
+                    }
                 }
+            }
+
+            // Does this batch say the watch itself has ended? IN_IGNORED is
+            // the kernel retiring the descriptor (after a delete, a move of
+            // the folder, or an unmount) and IN_UNMOUNT precedes it when the
+            // filesystem goes away. Both arrive whether or not they were
+            // asked for. IN_Q_OVERFLOW deliberately does not count: events
+            // were lost, but the watch is alive and the rescan covers it.
+            static bool WatchEnded(const char* data, size_t length) {
+                size_t offset = 0;
+                while (offset + sizeof(struct inotify_event) <= length) {
+                    const auto* event =
+                            reinterpret_cast<const struct inotify_event*>(data + offset);
+                    if (event->mask & (IN_IGNORED | IN_UNMOUNT)) return true;
+                    offset += sizeof(struct inotify_event) + event->len;
+                }
+                return false;
             }
 
             int inotifyFd = -1;
@@ -134,6 +180,8 @@ namespace UltraCanvas {
             std::atomic<bool> stopping{false};
             std::thread worker;
             std::function<void()> callback;
+            std::function<void()> failedCallback;
+            bool failureReported = false;   // worker thread only
         };
 
     } // namespace

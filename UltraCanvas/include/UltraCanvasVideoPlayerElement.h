@@ -58,6 +58,13 @@ public:
     // Opens the platform's native open dialog pre-filled with video filters.
     void ShowOpenDialog();
 
+    // Lets go of the loaded clip: playback stops and the decoder releases the
+    // file, which is what frees it for renaming, replacing or deleting (on
+    // Windows an open handle refuses all three). Stop() alone does not - it
+    // parks the pipeline on the same still-open source. The element stays
+    // usable: a later LoadFrom* loads again.
+    void Unload();
+
     // ===== TRANSPORT =====
     void Play();
     void Pause();

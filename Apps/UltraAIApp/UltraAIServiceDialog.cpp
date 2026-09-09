@@ -120,11 +120,12 @@ void UltraAIServiceDialog::CreateServiceDialog() {
     AddDialogElement(resultLbl);
 
     long resultH = kDialogHeight - resultY - 80;
-    resultArea_ = std::make_shared<UltraCanvasTextInput>(
+    resultArea_ = std::make_shared<UltraCanvasTextArea>(
         "svc-result",
         kMargin, resultY + 22,
         kDialogWidth - 2 * kMargin, resultH);
-    resultArea_->SetInputType(TextInputType::Multiline);
+    resultArea_->SetReadOnly(true);
+    resultArea_->SetWordWrap(true);
     resultArea_->SetText("");
     AddDialogElement(resultArea_);
 
@@ -158,11 +159,19 @@ std::shared_ptr<UltraCanvasLabel> UltraAIServiceDialog::MakeLabel(
 
 std::shared_ptr<UltraCanvasTextInput> UltraAIServiceDialog::MakeInput(
     const std::string& id, long x, long y, long w, long h,
-    const std::string& placeholder, bool multiline) {
+    const std::string& placeholder) {
     auto in = std::make_shared<UltraCanvasTextInput>(id, x, y, w, h);
     in->SetPlaceholder(placeholder);
-    if (multiline) in->SetInputType(TextInputType::Multiline);
     return in;
+}
+
+std::shared_ptr<UltraCanvasTextArea> UltraAIServiceDialog::MakeTextArea(
+    const std::string& id, long x, long y, long w, long h,
+    const std::string& placeholder) {
+    auto ta = std::make_shared<UltraCanvasTextArea>(id, x, y, w, h);
+    ta->SetWordWrap(true);
+    ta->SetPlaceholder(placeholder);
+    return ta;
 }
 
 void UltraAIServiceDialog::AddProviderAndModelRow(

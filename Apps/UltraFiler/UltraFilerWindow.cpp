@@ -1,8 +1,10 @@
 // Apps/UltraFiler/UltraFilerWindow.cpp
 // UltraFiler main window: Windows Explorer style file manager built from the
 // UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
-// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a recursive
-// search field and the detail pane: a selected media file shows in the media
+// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab), a search
+// field with an in-field "Scan sub folder" button — the sub-folder scan it
+// starts runs on a worker thread and feeds its matches into the display while
+// it walks — and the detail pane: a selected media file shows in the media
 // preview (UltraCanvasMediaViewer), a selected folder shows its content
 // through the folder preview (a second UltraCanvasFilerWidget in
 // small-thumbnail mode) — the two share the pane. The toolbar's
@@ -17,8 +19,13 @@
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
 // submenu ends with an app-provided block (extrasMenuProvider): "Open
-// prompt", then Pin / Unpin submenus whose "To Treeview" / "To Favorites"
-// flags follow the current selection.
+// prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// submenus whose "To Treeview" / "To Favorites" flags follow the current
+// selection. Folder icons: the main user folders carry one of their own
+// (media/icons), and any folder can be given a picture through "Set folder
+// icon", which is converted to QOI and kept with the settings
+// (UltraFilerFolderIcons); both are handed to the file displays through the
+// filer widget's folderIconProvider and to the folder tree's rows.
 // The gear button at the right end of the navigation row opens the settings
 // window (UltraFilerSettingsDialog), which also clears the history / the
 // favorites; persisted settings load at startup and configure the preview's
@@ -26,10 +33,18 @@
 // preview's PDF page inventory and the folder tree's colours - the background
 // of the drive rows and the highlight of the selected folder. A backdrop
 // colour picked from the strip under a transparent image in the preview is
-// saved the same way. Esc closes the History or Favorites view, or an open
-// media preview.
-// Version: 1.15.0
-// Last Modified: 2026-08-26
+// saved the same way. Esc closes the History or Favorites view, the Computer
+// page, or an open media preview.
+// The tree's "Computer" entry - and Up from a drive root, and the
+// breadcrumb's leading "Computer" node - opens the Computer page in the folder
+// pane, in place of the active tab's folder display: the Home and Cloud
+// Storage folders as folder tiles (a file display listing exactly those), then
+// one card per mounted volume with a pie chart of used against free space,
+// the drive's name as the button that opens it, and the free / total sizes.
+// The sizes are read on a worker thread (UltraFilerVolumeSpace.h), and the
+// cards follow mounts and unmounts like the tree's drive rows.
+// Version: 1.19.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -38,8 +53,11 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasSupportedFormats.h"  // its image formats
 #include "UltraCanvasUtils.h"
 #include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
@@ -52,16 +70,17 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <map>
 #include <sstream>
 #include <system_error>
-
-#ifndef _WIN32
-#include <sys/stat.h>
-#endif
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -86,9 +105,26 @@ namespace {
     // Dropbox / iCloud folders hang under. Like "Pinned" it is a header, not a
     // folder, and is never scanned as a path.
     constexpr const char* kCloudNodeId = "ufl-cloud";
+    // "Computer": the section Home, Cloud Storage and the drives hang under -
+    // and the entry that opens the Computer page (BuildComputerPage).
+    constexpr const char* kComputerNodeId = "ufl-computer";
 
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
+
+    // ===== SUB-FOLDER SEARCH LIMITS =====
+    // How many matches one scan collects. The list is held in memory and
+    // stat-ed entry by entry for the display, so a match-everything query on
+    // a whole volume has to stop somewhere.
+    constexpr size_t kMaxSearchResults = 20000;
+    // How deep the walk goes. Symlinks and junctions are never entered, which
+    // rules out the usual endless loops; this is the backstop for a genuinely
+    // (or pathologically) deep tree.
+    constexpr int kMaxSearchDepth = 64;
+    // Minimum distance between two result batches reaching the display. Small
+    // enough to read as "results appearing while it searches", large enough
+    // that the walk is not paced by the re-sort of what is already listed.
+    constexpr int kSearchBatchMs = 200;
 
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
@@ -104,6 +140,28 @@ namespace {
     // rename-click delay, this must exceed the platform double-click
     // interval.
     constexpr unsigned int kFolderPreviewClickDelayMs = 500;
+
+    // ===== COMPUTER PAGE =====
+    // The folder tiles row: one row of medium thumbnails (the tile edge, the
+    // caption band under it and the display's padding); more folders than
+    // fit across scroll inside it.
+    constexpr int kComputerFoldersHeight = 180;
+    // A drive card: the pie chart's square, and the width and height of the
+    // card the name button and the size lines are centred in under it.
+    constexpr int kComputerPieSize    = 128;
+    constexpr int kComputerCardWidth  = 176;
+    constexpr int kComputerCardHeight = kComputerPieSize + 100;
+
+    // The colour of the used slice: green while there is room, amber when it
+    // is getting tight, red when the volume is nearly full - so the chart
+    // answers "should I care?" before its number is read. The free slice is
+    // always the same light grey.
+    Color VolumeUsedColor(double usedPercent) {
+        if (usedPercent >= 90.0) return Color(198, 60, 60, 255);
+        if (usedPercent >= 75.0) return Color(214, 152, 46, 255);
+        return Color(70, 150, 96, 255);
+    }
+    const Color kVolumeFreeColor(222, 226, 232, 255);
 
     void ApplyDropdownFontSize(UltraCanvasDropdown* dropdown) {
         DropdownStyle s = dropdown->GetStyle();
@@ -157,16 +215,18 @@ namespace {
         return false;
     }
 
-    // Tree icon for each of the well-known home folders
-    // (GetWellKnownUserFolders), Explorer / Finder sidebar style.
+    // The icon each of the well-known home folders (GetWellKnownUserFolders)
+    // is shown with, in the folder tree and in the file display alike -
+    // Explorer / Finder sidebar style. A file in `media/icons`; the user can
+    // override any of them through Extras > Set folder icon.
     const char* UserFolderIconFile(UserFolderKind kind) {
         switch (kind) {
-            case UserFolderKind::Desktop:   return "computer.png";
-            case UserFolderKind::Documents: return "document.svg";
-            case UserFolderKind::Downloads: return "download.png";
-            case UserFolderKind::Music:     return "audio.png";
-            case UserFolderKind::Pictures:  return "image.svg";
-            case UserFolderKind::Videos:    return "video.png";
+            case UserFolderKind::Desktop:   return "user-desktop.svg";
+            case UserFolderKind::Documents: return "folder-documents.svg";
+            case UserFolderKind::Downloads: return "folder-download.svg";
+            case UserFolderKind::Music:     return "folder-music.svg";
+            case UserFolderKind::Pictures:  return "folder-images.svg";
+            case UserFolderKind::Videos:    return "folder-videos.svg";
             default:                        return "folder-brown.svg";
         }
     }
@@ -175,13 +235,31 @@ namespace {
     // (used to keep a curated home folder from listing twice): normalised,
     // no trailing separator, case-folded on Windows.
     std::string FolderIdentityKey(const std::string& path) {
-        std::string key = fs::path(path).lexically_normal().string();
-        while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
-            key.pop_back();
-#ifdef _WIN32
-        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
-#endif
-        return key;
+        // One implementation, shared with the folder-icon store: what the
+        // tree, the file display and the stored icons call "the same folder"
+        // cannot drift apart that way.
+        return UltraFilerFolderIcons::IdentityKey(path);
+    }
+
+    // The icon file of `path` when it is one of the well-known user folders,
+    // else "" - the folder is drawn the ordinary way then. Matched through
+    // FolderIdentityKey, so a redirected or differently spelled Documents
+    // folder is still recognised.
+    //
+    // Asked for every folder the file display draws, so where the platform
+    // puts those folders (a registry read per folder on Windows,
+    // xdg-user-dirs on Linux) is looked up once and kept: they do not move
+    // while the application runs.
+    std::string WellKnownFolderIconFile(const std::string& path) {
+        static const std::map<std::string, std::string> byKey = []() {
+            std::map<std::string, std::string> map;
+            for (const UserFolderInfo& f : GetWellKnownUserFolders())
+                map.emplace(FolderIdentityKey(f.path), UserFolderIconFile(f.kind));
+            return map;
+        }();
+        if (path.empty()) return {};
+        auto it = byKey.find(FolderIdentityKey(path));
+        return it == byKey.end() ? std::string() : it->second;
     }
 
     bool IsUserHomeDir(const std::string& path) {
@@ -232,11 +310,14 @@ namespace {
     // of a profile folder out of the tree - and UF_HIDDEN on macOS.
     bool HasSubdirectories(const std::string& path) {
         std::error_code ec;
-        fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
-        if (ec) return false;
-        for (const fs::directory_entry& e : it) {
+        // Stepped with the error_code overload: the range-for's operator++
+        // throws filesystem_error when a read fails part-way through (a
+        // removable or network drive going away), and this runs on the probe
+        // worker thread, where a throw ends the process.
+        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+                 end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
                 return true;
         }
         return false;
@@ -252,13 +333,14 @@ namespace {
         return paths;
     }
 
-    // Does the tree show anything below `path`? The home folder answers from
-    // its curated list rather than from the disk: it only ever shows the main
-    // user folders, so a profile holding none of them is a leaf however many
-    // other folders sit in it - and gets no expand button that opens onto
-    // nothing.
-    bool TreeFolderHasChildren(const std::string& path) {
-        if (IsUserHomeDir(path)) return !HomeTreeChildren().empty();
+    // Does the tree show anything below `path`? A CURATED home folder answers
+    // from its curated list rather than from the disk: it only ever shows the
+    // main user folders, so a profile holding none of them is a leaf however
+    // many other folders sit in it - and gets no expand button that opens
+    // onto nothing. With Settings > Display > Home folder on "Show all
+    // content" the home folder answers like any other folder.
+    bool TreeFolderHasChildren(const std::string& path, bool curatedHome) {
+        if (curatedHome && IsUserHomeDir(path)) return !HomeTreeChildren().empty();
         return HasSubdirectories(path);
     }
 
@@ -266,12 +348,11 @@ namespace {
     std::vector<fs::path> ListSubdirectories(const std::string& path) {
         std::vector<fs::path> dirs;
         std::error_code ec;
-        fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
-        if (ec) return dirs;
-        for (const fs::directory_entry& e : it) {
+        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+                 end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (e.is_directory(dec) && !dec && !IsHiddenFileSystemEntry(e.path()))
-                dirs.push_back(e.path());
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
+                dirs.push_back(it->path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
             std::string an = a.filename().string(), bn = b.filename().string();
@@ -282,23 +363,22 @@ namespace {
         return dirs;
     }
 
-#ifndef _WIN32
-    // True when `path` is an actual mount point - its device differs from its
-    // parent's. Keeps unmounted placeholder folders under /media and /mnt from
-    // being shown as drives.
-    bool IsMountPoint(const std::string& path) {
-        struct stat here{}, parent{};
-        if (lstat(path.c_str(), &here) != 0) return false;
-        const std::string up = fs::path(path).parent_path().string();
-        if (up.empty() || lstat(up.c_str(), &parent) != 0) return false;
-        return here.st_dev != parent.st_dev;
+    // What a volume is called in the tree. The framework labels the system
+    // root "/" because it has no business choosing an application's wording;
+    // in a file manager that row is the whole filesystem, and "File System" is
+    // what it has always been called here. Everything else - a drive letter, a
+    // stick's volume name - already reads correctly.
+    std::string DriveNodeLabel(const MountedVolume& volume) {
+        if (volume.path == "/") return "File System";
+        return volume.label.empty() ? volume.path : volume.label;
     }
-#endif
 
     // A plain flex wrapper that must never scroll itself - the filer, the tree
     // and the preview are the only scroll regions of the window.
-    std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
-        auto c = std::make_shared<UltraCanvasContainer>(id);
+    std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id,
+                                                       float width = -1,
+                                                       float height = -1) {
+        auto c = std::make_shared<UltraCanvasContainer>(id, -1, -1, width, height);
         ContainerStyle st;
         st.autoShowScrollbars           = false;
         st.forceShowVerticalScrollbar   = false;
@@ -389,6 +469,10 @@ namespace {
     // than things the user launches.
     bool IsApplicationEntry(const FilerEntry& e) {
         if (e.isDirectory) return false;
+        // A Windows shortcut is whatever it points at: one to a program
+        // belongs in the Applications list (that is what a Start-Menu entry
+        // is), one to a document does not.
+        if (e.isShortcut) return e.category == FilerFileCategory::Executable;
         static const char* const kAppExtensions[] = {
             "exe", "msi", "com", "bat", "cmd", "appimage", "desktop",
             "app", "apk", "deb", "rpm", "flatpakref", "snap", "run"};
@@ -440,10 +524,16 @@ namespace {
 // ===== INITIALIZATION =====
 
 UltraFilerWindow::~UltraFilerWindow() {
+    // First: its callback captures the window, and Stop() joins, so after this
+    // no mount notification can reach a window that is being destroyed.
+    volumeMonitor.Stop();
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
+    StopSubfolderSearch();
+    ReapSearchWorkers(true);    // now the search threads are waited for
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
+    StopVolumeSpaceQuery();
 }
 
 bool UltraFilerWindow::Initialize(const std::string& startFolder) {
@@ -481,6 +571,12 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
             UltraCanvasFilerWidget* ff = ActiveFavoritesFiler();
             if (ff && ff->WantsEscapeKey()) return false;
             SetFavoritesVisible(false);
+            return true;
+        }
+        if (computerShown) {
+            // The folder tiles keep their own cancel key (a drag, a rename).
+            if (computerFolders && computerFolders->WantsEscapeKey()) return false;
+            SetComputerPageVisible(false);
             return true;
         }
         if (!previewShown) return false;
@@ -543,7 +639,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // default application, and a double-clicked subfolder is entered right
     // in the pane.
     folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
-    folderPreview->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
+    // Created before settings.Load(); ApplySettings() right after it applies
+    // the Display > Home folder mode here.
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
     folderPreviewStyle.fontSize = kUiFontSize;
     folderPreviewStyle.smallFontSize = kUiFontSize;
@@ -563,6 +660,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreview->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
+    WireDisplayFormatCallbacks(folderPreview.get());
+    WireFolderIconProvider(folderPreview.get());
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
     // the recently used files / folders / applications behind the clock button.
@@ -571,6 +670,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     history.Load();
     favorites.Load();
     folderViews.Load();
+    // Loaded before the tree is built, so a folder the user gave an icon
+    // carries it from the first frame rather than after the first repaint.
+    folderIcons.Load();
 
     BuildTabbedContainer();
 
@@ -598,8 +700,28 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     std::string start = startFolder;
     std::error_code ec;
+    // Resolved against the working directory while that is still the one we
+    // were started in - the move below changes what a relative path means.
+    if (!start.empty()) {
+        fs::path absolute = fs::absolute(start, ec);
+        if (!ec) start = absolute.lexically_normal().string();
+    }
     if (start.empty() || !fs::is_directory(start, ec)) start = UserHomeDir();
     if (start.empty()) start = fs::current_path(ec).string();
+
+    // A process holds its working directory open, and on Windows that handle
+    // alone is enough to stop the folder being renamed, replaced or deleted.
+    // Starting UltraFiler by double-clicking it makes its own folder the
+    // working directory, so copying a newer version over that folder fails
+    // with "the folder is open in another program" for as long as it runs -
+    // for a reason no file in the folder explains. Nothing here reads relative
+    // paths (resources are found from the executable, settings from the home
+    // folder), so the working directory moves to the home folder, which is
+    // not a folder anybody replaces.
+    const std::string home = UserHomeDir();
+    if (!home.empty() && fs::is_directory(home, ec)) {
+        fs::current_path(home, ec);   // a refusal changes nothing but the lock
+    }
 
     AddNewTab(start, true);
 
@@ -707,6 +829,76 @@ void UltraFilerWindow::RefreshVisibleListing() {
 
 // ===== SETTINGS =====
 
+std::vector<UltraCanvasFilerWidget*> UltraFilerWindow::AllFilers() const {
+    std::vector<UltraCanvasFilerWidget*> out;
+    for (const auto& state : tabStates)
+        if (state->filer) out.push_back(state->filer.get());
+    if (folderPreview) out.push_back(folderPreview.get());
+    for (const auto& f : historyFilers)   if (f) out.push_back(f.get());
+    for (const auto& f : favoritesFilers) if (f) out.push_back(f.get());
+    if (computerFolders) out.push_back(computerFolders.get());
+    return out;
+}
+
+void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
+    if (!source || applyingDisplayFormats) return;
+    settings.thumbnailKinds  = source->GetThumbnailKinds();
+    settings.detailViewKinds = source->GetDetailViewKinds();
+    settings.disabledThumbnailFormats  = source->GetDisabledThumbnailFormats();
+    settings.disabledDetailViewFormats = source->GetDisabledDetailViewFormats();
+    // The same hook reports the Display > File extensions switches.
+    settings.showFileExtensions = source->AreFileExtensionsInNames();
+    settings.extensionBadge     = source->GetExtensionBadge();
+    settings.Save();
+    ApplySettings();
+}
+
+bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
+    if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return false;
+    // Settings > Display > Detail view. Any file display answers the same -
+    // they all carry the same switches - so the active tab's is used, and a
+    // window without one falls back to "the viewer decides".
+    return !filer || filer->DetailViewEnabledFor(entry);
+}
+
+std::vector<MenuItemData> UltraFilerWindow::BuildFormatListMenuItems(
+        FilerPreviewTarget target) {
+    const auto page = target == FilerPreviewTarget::Thumbnails
+                              ? UltraFilerSettingsDialog::Page::Thumbnails
+                              : UltraFilerSettingsDialog::Page::DetailView;
+    std::vector<MenuItemData> items;
+    items.push_back(MenuItemData::Action("File formats…",
+            [this, page]() { OpenSettingsDialog(page); }));
+    return items;
+}
+
+void UltraFilerWindow::WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->formatListMenuProvider = [this](FilerPreviewTarget t) {
+        return BuildFormatListMenuItems(t);
+    };
+    target->onDisplayFormatsChanged = [this, target]() {
+        AdoptDisplayFormats(target);
+    };
+}
+
+void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    // The flag keeps the widgets' own change hooks from writing the setting
+    // straight back while it is being pushed into them.
+    const bool wasApplying = applyingDisplayFormats;
+    applyingDisplayFormats = true;
+    target->SetThumbnailKinds(settings.thumbnailKinds);
+    target->SetDetailViewKinds(settings.detailViewKinds);
+    target->SetDisabledThumbnailFormats(settings.disabledThumbnailFormats);
+    target->SetDisabledDetailViewFormats(settings.disabledDetailViewFormats);
+    // Display > File extensions: whether the names keep their extension, and
+    // the tag the thumbnail tiles carry.
+    target->SetFileExtensionsInNames(settings.showFileExtensions);
+    target->SetExtensionBadge(settings.extensionBadge);
+    applyingDisplayFormats = wasApplying;
+}
+
 void UltraFilerWindow::ApplySettings() {
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
@@ -723,18 +915,83 @@ void UltraFilerWindow::ApplySettings() {
     }
     // Handling > Drag & Drop: every tab's folder display, so the choice holds
     // for tabs that were already open when it changed. The folder preview
-    // accepts drops too, so it follows the same setting.
-    for (auto& state : tabStates)
-        if (state->filer) state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
-    if (folderPreview)
+    // accepts drops too, so it follows the same setting. Display > Files in
+    // use rides along, for the same reason and to the same displays.
+    for (auto& state : tabStates) {
+        if (!state->filer) continue;
+        state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+        state->filer->SetShowLockState(settings.showLockState);
+    }
+    if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+        folderPreview->SetShowLockState(settings.showLockState);
+    }
+    // Display > Home folder: curate the home folder's display - every tab and
+    // the folder preview - or show it whole, and keep the tree's Home entry in
+    // step. The widget ignores a SetCuratedHomeFolder that changes nothing, so
+    // re-applying on every unrelated settings change costs no rescans.
+    const bool curatedHome = settings.homeShowPredefinedOnly;
+    const std::string home = UserHomeDir();
+    const std::string curatedPath = curatedHome ? home : std::string();
+    std::vector<std::string> curatedFolders =
+            curatedHome ? HomeCurationPaths() : std::vector<std::string>();
+    for (auto& state : tabStates)
+        if (state->filer)
+            state->filer->SetCuratedHomeFolder(curatedPath, curatedFolders);
+    if (folderPreview)
+        folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
+    if (curatedHomeActive.exchange(curatedHome) != curatedHome)
+        RefreshHomeTreeChildren();
+    // Display > Thumbnails / Display > Detail view: which files are worth a
+    // thumbnail and which ones the detail pane opens for. Every file display
+    // of the window carries the same switches, so the setting holds wherever
+    // the user is looking - and the flag keeps the widgets' own change hooks
+    // from writing the setting straight back.
+    for (UltraCanvasFilerWidget* f : AllFilers()) ApplyDisplaySettingsTo(f);
+    // The detail pane may have been showing a file kind that was just switched
+    // off - or may now be allowed to open for what is selected. (A no-op
+    // before the split exists, i.e. on the call during start-up.)
+    UpdatePreviewPane();
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
     ApplyTreeColors();
 }
 
-void UltraFilerWindow::OpenSettingsDialog() {
+// Re-derives the tree's Home children after the Display > Home folder setting
+// flips. The loaded-state of Home AND of everything below it is forgotten:
+// the child nodes are recreated, and a stale "already loaded" entry for one
+// of them would suppress its placeholder and leave it inexpandable.
+void UltraFilerWindow::RefreshHomeTreeChildren() {
+    if (!folderTree) return;
+    const std::string home = UserHomeDir();
+    TreeNode* node = folderTree->FindNode(home);
+    if (!node) return;
+    const bool wasExpanded = node->IsExpanded();
+    while (!node->children.empty())
+        folderTree->RemoveNode(node->children.front()->data.nodeId);
+    for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
+        // Home itself, or a path below it ("/home/me/x", not "/home/mexico").
+        const std::string& key = *it;
+        const bool underHome = key.size() > home.size() &&
+                key.compare(0, home.size(), home) == 0 &&
+                (key[home.size()] == '/' || key[home.size()] == '\\');
+        if (key == home || underHome) it = treeChildrenLoaded.erase(it);
+        else ++it;
+    }
+    if (wasExpanded) {
+        // Repopulate right away: removing the last child demoted the node to
+        // a collapsed leaf, so load the children first, then expand through
+        // the notifying path (its callback early-returns, already loaded).
+        EnsureTreeChildren(node);
+        folderTree->ExpandNode(node);
+    } else {
+        QueueSubfolderProbe(home);
+    }
+    folderTree->RequestRedraw();
+}
+
+void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
     UltraFilerSettingsDialog::Show(window.get(), &settings,
             [this]() { ApplySettings(); },
             [this]() {   // Clear History
@@ -754,7 +1011,8 @@ void UltraFilerWindow::OpenSettingsDialog() {
     },
             [this]() {   // Clear Folder views
         folderViews.ClearAll();
-    });
+    },
+            page);
 }
 
 // ===== EXTRAS EXTENSION (filer context menus: Open prompt + Pin / Unpin) =====
@@ -773,6 +1031,7 @@ void UltraFilerWindow::OpenSystemPrompt() {
 UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
     if (favoritesShown) return ActiveFavoritesFiler();
     if (historyShown) return ActiveHistoryFiler();
+    if (computerShown) return computerFolders.get();
     return filer.get();
 }
 
@@ -783,7 +1042,7 @@ std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
     if (!sel.empty()) return sel;
     // Nothing selected: in the browsing view the shown folder itself is the
     // content, so that is what gets pinned.
-    if (!historyShown && !favoritesShown) {
+    if (!historyShown && !favoritesShown && !computerShown) {
         const std::string path = f->GetPath();
         std::error_code ec;
         if (!path.empty() && fs::is_directory(path, ec) && !ec) {
@@ -838,12 +1097,164 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this](bool) { UnpinTargetsFromFavorites(); });
     unpinFavorites.enabled = anyInFavorites;
 
+    // Folder icons act on the folders among the targets: "Set folder icon"
+    // opens the image dialog, and "Remove folder icon" only lights up while
+    // one of them actually carries an icon of its own.
+    bool anyCustomIcon = false;
+    for (const FilerEntry& e : targets)
+        if (e.isDirectory && folderIcons.HasIcon(e.path)) anyCustomIcon = true;
+
+    MenuItemData setIcon = MenuItemData::Action("Set folder icon",
+            [this]() { SetFolderIconForTargets(); });
+    setIcon.enabled = allFolders;
+    MenuItemData removeIcon = MenuItemData::Action("Remove folder icon",
+            [this]() { RemoveFolderIconForTargets(); });
+    removeIcon.enabled = anyCustomIcon;
+
     return {
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
+            MenuItemData::Separator(),
+            setIcon,
+            removeIcon,
             MenuItemData::Separator(),
             MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
             MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
     };
+}
+
+// ===== EXTRAS EXTENSION: FOLDER ICONS =====
+
+// The icon file a tree row falls back to once the folder has no icon of its
+// own: what the row was created with. Derived rather than remembered - the
+// three rows that are not plain folders are recognisable from the tree itself,
+// so removing an icon cannot leave a drive or the Home row showing a folder.
+std::string UltraFilerWindow::DefaultTreeIconFile(const TreeNode* node) const {
+    if (!node) return "folder-brown.svg";
+    if (node->parent && node->parent->data.nodeId == kCloudNodeId) return "cloud.svg";
+    const std::string path = TreeNodeTargetPath(node);
+    if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(),
+                  node->data.nodeId) != treeDriveNodeIds.end())
+        return "drive.png";
+    if (IsUserHomeDir(path)) return "home-icon.png";
+    return "folder-brown.svg";
+}
+
+std::string UltraFilerWindow::FolderIconPath(const std::string& folderPath) const {
+    if (folderPath.empty()) return {};
+    // What the user picked beats the built-in icon of a well-known folder:
+    // setting one on Pictures is exactly the case for it.
+    const std::string custom = folderIcons.IconFor(folderPath);
+    if (!custom.empty()) return custom;
+    const std::string builtIn = WellKnownFolderIconFile(folderPath);
+    return builtIn.empty() ? std::string() : IconPath(builtIn);
+}
+
+void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->folderIconProvider = [this](const FilerEntry& entry) {
+        return FolderIconPath(entry.path);
+    };
+}
+
+std::vector<std::string> UltraFilerWindow::FolderIconTargets() const {
+    std::vector<std::string> folders;
+    for (const FilerEntry& e : PinTargets())
+        if (e.isDirectory) folders.push_back(e.path);
+    return folders;
+}
+
+void UltraFilerWindow::SetFolderIconForTargets() {
+    const std::vector<std::string> folders = FolderIconTargets();
+    if (folders.empty()) return;
+
+    // The image formats this build can actually turn into an icon: the
+    // runtime inventory's bitmap and vector entries, minus the ones only a
+    // graphics plugin understands - the conversion goes through the image
+    // pipeline, and offering a format it cannot decode would only produce a
+    // failure the user has to read.
+    std::vector<std::string> extensions;
+    for (MediaFormatCategory category : {MediaFormatCategory::Bitmap,
+                                         MediaFormatCategory::Vector}) {
+        for (const std::string& ext :
+                     UltraCanvasSupportedFormats::GetLoadExtensions(category)) {
+            if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
+                extensions.push_back(ext);
+        }
+    }
+    std::sort(extensions.begin(), extensions.end());
+    extensions.erase(std::unique(extensions.begin(), extensions.end()),
+                     extensions.end());
+
+    FileDialogOptions opts;
+    opts.SetTitle(folders.size() == 1
+                          ? "Icon for " + fs::path(folders.front()).filename().string()
+                          : "Icon for " + std::to_string(folders.size()) + " folders")
+        .SetInitialDirectory(folders.front())
+        // A picture chosen as an icon is not a document the shell should
+        // offer under "recently used".
+        .SetRegisterAsRecent(false)
+        .SetParentWindow(window.get());
+    if (!extensions.empty()) opts.AddFilter("Image files", extensions);
+    opts.AddFilter("All files", "*");
+
+    UltraCanvasFileLoader::OpenFileDialog(opts,
+            [this, folders](DialogResult result, const std::string& imagePath) {
+        if (result != DialogResult::OK || imagePath.empty()) return;
+        // The picture is converted once per folder into a QOI file of the
+        // application's own config directory, so the icon keeps working after
+        // the original is moved, renamed or deleted.
+        std::string error;
+        std::vector<std::string> changed;
+        for (const std::string& folder : folders) {
+            if (folderIcons.SetFromImage(folder, imagePath, error))
+                changed.push_back(folder);
+            else
+                break;   // the same picture fails for every folder
+        }
+        RefreshFolderIcons(changed);
+        if (!error.empty()) {
+            UltraCanvasAlert::Error("Cannot use this image as a folder icon.\n" + error,
+                                    "Set folder icon", nullptr, window.get());
+        }
+    });
+}
+
+void UltraFilerWindow::RemoveFolderIconForTargets() {
+    std::vector<std::string> changed;
+    for (const std::string& folder : FolderIconTargets())
+        if (folderIcons.Clear(folder)) changed.push_back(folder);
+    RefreshFolderIcons(changed);
+}
+
+void UltraFilerWindow::RefreshFolderIcons(const std::vector<std::string>& folders) {
+    if (folders.empty()) return;
+    // The tree draws its rows from the node data, so the changed rows are
+    // repointed at their new icon; the file displays ask the provider while
+    // they paint, so they only need a repaint.
+    if (folderTree) {
+        for (const std::string& folder : folders) {
+            const std::string icon = FolderIconPath(folder);
+            // The folder's regular row and, when it is pinned, its bookmark
+            // under the tree's "Pinned" section.
+            for (const std::string& nodeId : {folder, kPinnedChildPrefix + folder}) {
+                TreeNode* node = folderTree->FindNode(nodeId);
+                if (!node) continue;
+                node->data.leftIcon = TreeNodeIcon(
+                        icon.empty() ? IconPath(DefaultTreeIconFile(node)) : icon,
+                        16, 16);
+            }
+        }
+        folderTree->RequestRedraw();
+    }
+    // The converted icon of a folder that had one before is a new file at a
+    // new path, so nothing stale is cached - but a folder whose icon was
+    // removed and set again within one run can land on the same name, and the
+    // image cache would then serve the previous picture.
+    for (const std::string& folder : folders) {
+        const std::string icon = folderIcons.IconFor(folder);
+        if (!icon.empty()) UCImage::RemoveFromCache(icon);
+    }
+    for (UltraCanvasFilerWidget* f : AllFilers()) f->RequestRedraw();
 }
 
 void UltraFilerWindow::PinTargetsToFavorites() {
@@ -951,6 +1362,11 @@ void UltraFilerWindow::ApplyLiveSearchFilter(const std::string& text) {
     // The filter narrows the folder display, so typing leaves the History /
     // Favorites views.
     ShowBrowsingView();
+    // Editing the query invalidates a scan of the old one — and the folder
+    // filter below is about to take the display back anyway.
+    StopSubfolderSearch();
+    searchStatus.clear();
+    searchQueryText.clear();
     if (!filer) return;
     // Typing filters the folder itself: a recursive-result display from an
     // earlier Enter ends first (SetPath leaves file-list mode and drops the
@@ -968,6 +1384,10 @@ void UltraFilerWindow::ResetSearchState() {
     // does not re-enter the filter path.
     if (searchInput) searchInput->SetText("");
     if (FilerTabState* tab = ActiveTabState()) tab->searchQuery.clear();
+    StopSubfolderSearch();
+    searchQueryText.clear();
+    searchStatus.clear();
+    UpdateScanButton();
     if (!filer) return;
     if (filer->IsShowingFileList()) {
         filer->SetOpenPathMenuItemVisible(false);
@@ -1022,52 +1442,270 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
     ShowBrowsingView();
     if (!filer) return;
 
+    // Whatever was being scanned belonged to the previous query.
+    StopSubfolderSearch();
+
     if (query.empty()) {
         // Back to the normal folder display (SetPath leaves file-list mode).
         if (filer->IsShowingFileList()) filer->SetPath(filer->GetPath());
+        searchStatus.clear();
+        searchQueryText.clear();
+        UpdateScanButton();
+        UpdateStatusBar();
         return;
     }
 
     const std::string root = filer->GetPath();
     if (root.empty()) return;
+    FilerTabState* tab = ActiveTabState();
+    if (!tab) return;
 
-    // The recursive results replace the as-you-type folder filter — they are
-    // an explicit file list, not a narrowed folder listing.
+    // Recorded before the display is touched: dropping the name filter below
+    // makes the filer report a refresh, and the handler for that puts the
+    // filer's (now empty) filter text back into the search field unless the
+    // tab is already known to be showing a search.
+    tab->searchQuery = query;
+    searchTab = tab;
+    searchQueryText = query;
+    searchResultsShown = false;
+
+    // The scan results replace the as-you-type folder filter — they are an
+    // explicit file list, not a narrowed folder listing.
     filer->SetNameFilter("");
 
     std::string needle = query;
     std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+    filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+    // An empty result display right away: the folder listing the search was
+    // typed against is not what the search is about, and the first matches
+    // land in this display a moment later.
+    filer->ShowFileList({});
 
-    // Bounded so a match-everything query on a huge tree stays responsive.
-    constexpr size_t kMaxResults = 1000;
-    std::vector<std::string> results;
-    std::error_code ec;
-    fs::recursive_directory_iterator it(
-            root, fs::directory_options::skip_permission_denied, ec), end;
-    for (; !ec && it != end && results.size() < kMaxResults; it.increment(ec)) {
-        const std::string name = it->path().filename().string();
-        if (IsHiddenFileSystemEntry(it->path())) {
-            // Consistent with the folder tree: hidden folders are not entered.
-            std::error_code dec;
-            if (it->is_directory(dec) && !dec) it.disable_recursion_pending();
+    searchState = std::make_shared<SubfolderSearchState>();
+    const uint64_t generation = ++searchGeneration;
+    searchStatus = "Searching \"" + query + "\" ...";
+    UpdateScanButton();
+    UpdateStatusBar();
+
+    auto state = searchState;
+    auto alive = probeAlive;
+    searchWorker = std::thread([this, state, alive, root, needle, generation]() {
+        SubfolderSearchWorkerMain(state, alive, root, needle, generation);
+    });
+}
+
+void UltraFilerWindow::SubfolderSearchWorkerMain(
+        std::shared_ptr<SubfolderSearchState> state,
+        std::shared_ptr<std::atomic<bool>> alive,
+        std::string root, std::string needle, uint64_t generation) {
+    // Hands the batch collected so far to the UI thread. Only one is ever in
+    // flight: a walk over a fast local tree finds matches far quicker than the
+    // display can absorb them, and every posted batch costs a stat per path
+    // plus a re-sort of what is already listed.
+    auto post = [&](bool force) {
+        if (state->drainPosted.exchange(true) && !force) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, state, alive, generation]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            DrainSubfolderSearch(state, generation);
+        });
+    };
+
+    struct PendingDir { fs::path path; int depth; };
+    std::vector<PendingDir> stack;
+    stack.push_back({fs::path(root), 0});
+    auto lastPost = std::chrono::steady_clock::now();
+
+    try {
+        while (!stack.empty() && !state->cancelled.load()) {
+            const PendingDir dir = stack.back();
+            stack.pop_back();
+
+            std::error_code ec;
+            fs::directory_iterator it(
+                    dir.path, fs::directory_options::skip_permission_denied, ec);
+            const fs::directory_iterator end;
+            if (ec) continue;   // vanished, unreadable, not a directory any more
+
+            std::vector<std::string> found;
+            for (; it != end; it.increment(ec)) {
+                if (ec || state->cancelled.load()) break;
+                const fs::path p = it->path();
+                // Consistent with the folder tree: hidden entries are neither
+                // reported nor entered.
+                if (IsHiddenFileSystemEntry(p)) continue;
+                std::error_code dec;
+                // A symlink is never followed — and on Windows a directory
+                // junction is one, which is what kept the old recursive walk
+                // going in circles through the profile's compatibility links.
+                const bool link = it->is_symlink(dec) && !dec;
+                dec.clear();
+                const bool isDir = !link && it->is_directory(dec) && !dec;
+
+                const std::string name = p.filename().string();
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                if (lower.find(needle) != std::string::npos)
+                    found.push_back(p.string());
+
+                if (isDir && dir.depth < kMaxSearchDepth)
+                    stack.push_back({p, dir.depth + 1});
+            }
+
+            state->foldersScanned.fetch_add(1);
+            const size_t total = state->matches.load() + found.size();
+            bool truncated = false;
+            if (total >= kMaxSearchResults) {
+                // Bounded so a match-everything query on a huge tree cannot
+                // grow the result list without end.
+                if (found.size() > kMaxSearchResults - state->matches.load())
+                    found.resize(kMaxSearchResults - state->matches.load());
+                truncated = true;
+            }
+            if (!found.empty()) {
+                std::lock_guard<std::mutex> lk(state->mutex);
+                state->matches.fetch_add(found.size());
+                state->pending.insert(state->pending.end(),
+                                      std::make_move_iterator(found.begin()),
+                                      std::make_move_iterator(found.end()));
+            }
+            if (truncated) { state->truncated.store(true); break; }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now - lastPost >= std::chrono::milliseconds(kSearchBatchMs)) {
+                lastPost = now;
+                post(false);
+            }
+        }
+    } catch (const std::exception&) {
+        // A walk must never take the application down: whatever the platform
+        // layer threw, the search ends with what it has.
+    } catch (...) {
+    }
+
+    state->finished.store(true);
+    post(true);
+}
+
+void UltraFilerWindow::DrainSubfolderSearch(
+        std::shared_ptr<SubfolderSearchState> state, uint64_t generation) {
+    // A batch from a scan that was cancelled or superseded meanwhile.
+    if (!state || state != searchState || generation != searchGeneration) return;
+    state->drainPosted.store(false);
+
+    std::vector<std::string> batch;
+    {
+        std::lock_guard<std::mutex> lk(state->mutex);
+        batch.swap(state->pending);
+    }
+
+    // The results belong to one tab; when the user moves on, the scan has
+    // nothing left to fill and stops (keeping what it already found).
+    if (!searchTab || !IsActiveTab(searchTab) || !searchTab->filer ||
+        searchTab->searchQuery != searchQueryText) {
+        StopSubfolderSearch();
+        return;
+    }
+
+    if (!batch.empty()) {
+        if (searchResultsShown) searchTab->filer->AppendToFileList(batch);
+        else {
+            searchTab->filer->ShowFileList(batch);
+            searchResultsShown = true;
+        }
+    }
+
+    const size_t matches = state->matches.load();
+    const size_t folders = state->foldersScanned.load();
+    const bool done = state->finished.load();
+    const bool truncated = state->truncated.load();
+
+    if (!done) {
+        searchStatus = "Searching \"" + searchQueryText + "\" - "
+                + std::to_string(matches)
+                + (matches == 1 ? " result, " : " results, ")
+                + std::to_string(folders) + " folders scanned";
+    } else {
+        searchStatus = std::to_string(matches)
+                + (matches == 1 ? " result for \"" : " results for \"")
+                + searchQueryText + "\" in " + std::to_string(folders)
+                + (folders == 1 ? " folder" : " folders");
+        if (truncated)
+            searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
+    }
+
+    if (done) {
+        // The worker is on its way out (it posted this batch as its last act).
+        if (searchWorker.joinable()) searchWorker.join();
+        searchState.reset();
+        searchTab = nullptr;   // the results stay; nothing points at the tab
+    }
+    UpdateScanButton();
+    UpdateStatusBar();
+}
+
+void UltraFilerWindow::StopSubfolderSearch() {
+    ReapSearchWorkers(false);
+    if (!searchState && !searchWorker.joinable()) return;
+    const bool wasRunning = static_cast<bool>(searchState);
+    if (searchState) searchState->cancelled.store(true);
+    // Deliberately not joined here: the walk may be inside a directory read
+    // that takes its time (an unresponsive network volume), and making the
+    // window wait for it is exactly the freeze this whole change removes. The
+    // thread is set aside and joined once it reports itself finished — at the
+    // latest when the window closes.
+    if (searchWorker.joinable())
+        retiredSearches.push_back({std::move(searchWorker), searchState});
+    searchState.reset();
+    searchTab = nullptr;
+    // Batches the worker managed to queue before it noticed the cancel are
+    // dropped by the generation bump rather than landing in the next search.
+    ++searchGeneration;
+    if (wasRunning && !searchQueryText.empty()) {
+        searchStatus = "Search for \"" + searchQueryText + "\" stopped";
+        UpdateStatusBar();
+    }
+    UpdateScanButton();
+}
+
+void UltraFilerWindow::ReapSearchWorkers(bool waitForAll) {
+    for (auto it = retiredSearches.begin(); it != retiredSearches.end(); ) {
+        // A worker that has set `finished` is on its way out, so this join
+        // returns immediately; the others are left for the next round.
+        if (!waitForAll && it->state && !it->state->finished.load()) {
+            ++it;
             continue;
         }
-        std::string lower = name;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-        if (lower.find(needle) != std::string::npos)
-            results.push_back(it->path().string());
+        if (it->thread.joinable()) it->thread.join();
+        it = retiredSearches.erase(it);
     }
+}
 
-    if (FilerTabState* tab = ActiveTabState()) tab->searchQuery = query;
-    filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
-    filer->ShowFileList(results);
-    if (statusLabel) {
-        std::string text = std::to_string(results.size())
-                + (results.size() == 1 ? " result for \"" : " results for \"")
-                + query + "\"";
-        if (results.size() >= kMaxResults) text += " (first 1000 shown)";
-        statusLabel->SetText(text);
+void UltraFilerWindow::UpdateScanButton() {
+    if (!scanButton) return;
+    const bool searching = static_cast<bool>(searchState);
+    const bool hasQuery = searchInput && !searchInput->GetText().empty();
+    // Guarded: while a scan runs this is called with every batch of results,
+    // and each set here would invalidate the command bar's layout again.
+    if (searching != scanButtonStops) {
+        scanButtonStops = searching;
+        scanButton->SetText(searching ? "Stop" : "Scan sub folder");
+        scanButton->SetTooltip(searching
+                ? "Stop the sub-folder scan"
+                : "Search every sub folder of this folder (Enter)");
+        // Red while it stops something, the accent blue while it starts it.
+        if (searching) {
+            scanButton->SetColors(Color(208, 74, 66, 255), Color(224, 92, 84, 255),
+                                  Color(184, 60, 52, 255), Color(184, 60, 52, 255));
+        } else {
+            scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
+                                  Color(52, 112, 214, 255), Color(52, 112, 214, 255));
+        }
     }
+    // Nothing to search for and nothing running: the field is a plain search
+    // field again and gets its full width back.
+    scanButton->SetVisible(searching || hasQuery);
 }
 
 // ===== COMMAND BAR (New / clipboard / rename / delete / search / sort / view / preview) =====
@@ -1148,25 +1786,72 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sep2->SetTextColor(Color(200, 200, 206, 255));
     row->AddChild(sep2);
 
-    // Search field. Typing filters the shown folder as-you-type (the
-    // filer's name filter); Enter runs the recursive search under the
-    // current folder — as does the "Search in sub folders" button the
-    // filer centers when the filter matches nothing. An empty field
-    // returns to the normal folder display.
-    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 26);
+    // Search box: the field plus the "Scan sub folder" button sitting inside
+    // it. Typing filters the shown folder as-you-type (the filer's name
+    // filter) and makes the button appear; the button — like Enter, and like
+    // the "Scan sub folder" button the filer centers when the filter
+    // matches nothing — escalates to the sub-folder scan, and reads "Stop"
+    // while that scan runs. An empty field returns to the folder display.
+    // The box carries the border and the white ground the field used to draw
+    // itself, so the two children read as one control.
+    // Fixed width: the field gives way to the button rather than the whole box
+    // growing, so the controls to its right do not shift when it appears.
+    searchBox = MakeLayoutBox("ufl-search-box", 320, 26);
+    searchBox->layout.SetFlexRow().SetFlexGap(3)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    searchBox->SetBackgroundColor(Colors::White);
+    searchBox->SetBorders(1.0f, Color(200, 200, 206, 255), 4.0f);
+    searchBox->SetPadding(1, 3, 1, 1);
+    searchBox->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Center);
+
+    searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
     searchInput->SetFontSize(kUiFontSize);
     searchInput->SetPlaceholder("Search");
+    {
+        // Borderless inside the box - the box draws the frame.
+        TextInputStyle st = searchInput->GetStyle();
+        st.fontStyle.fontSize = kUiFontSize;
+        st.borderWidth = 0;
+        st.backgroundColor = Colors::White;
+        searchInput->SetStyle(st);
+    }
     searchInput->onTextChanged = [this](const std::string& text) {
         ApplyLiveSearchFilter(text);
+        UpdateScanButton();
     };
     searchInput->onEnterPressed = [this](const std::string& text) {
         RunSearch(text);
         return true;
     };
     // May give way (shrink) when the bar gets tight - the dropdowns cannot.
-    searchInput->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+    searchInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                            .SetAlignSelf(CSSLayout::AlignSelf::Center);
-    row->AddChild(searchInput);
+    searchBox->AddChild(searchInput);
+
+    // Wide enough for the label at kUiFontSize - a clipped "Scan sub fol…"
+    // is worse than the few pixels the field gives up for it.
+    scanButton = std::make_shared<UltraCanvasButton>(
+            "ufl-scan-sub", 0, 0, 118, 22, "Scan sub folder");
+    scanButton->SetFontSize(kUiFontSize);
+    scanButton->SetCornerRadius(3.0f);
+    scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
+                          Color(52, 112, 214, 255), Color(52, 112, 214, 255));
+    scanButton->SetTextColors(Colors::White);
+    scanButton->SetBorder(0.0f, Colors::Transparent);
+    // The user is typing in the field next to it; clicking must not take the
+    // keyboard away from what they were typing.
+    scanButton->SetAcceptsFocus(false);
+    scanButton->SetOnClick([this]() {
+        if (searchState) StopSubfolderSearch();
+        else if (searchInput) RunSearch(searchInput->GetText());
+    });
+    scanButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    scanButton->SetVisible(false);   // appears with the first typed character
+    searchBox->AddChild(scanButton);
+
+    row->AddChild(searchBox);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
     auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
@@ -1278,8 +1963,18 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->SetFontSize(kUiFontSize);
     folderTree->SetRowHeight(24);
     folderTree->SetSelectionMode(TreeSelectionMode::Single);
-    folderTree->SetLineStyle(TreeLineStyle::NoLine);
+    // Dotted connectors between a folder and its subfolders, the way a file
+    // manager tree reads: which rows belong to which parent stays visible once
+    // several branches are open at the same time.
+    folderTree->SetLineStyle(TreeLineStyle::Dotted);
+    folderTree->SetLineColor(Color(0x9A, 0x9A, 0xA6, 0xFF));
     folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
+
+    // Slim the vertical scrollbar to half its default width (6px) so it reads
+    // as a thin sidebar accent rather than a full control.
+    ScrollbarStyle treeScrollbarStyle = folderTree->GetVerticalScrollbarStyle();
+    treeScrollbarStyle.trackSize = 6;
+    folderTree->SetVerticalScrollbarStyle(treeScrollbarStyle);
 
     // A hidden root carries the two top-level sections, so "Pinned" can sit
     // ABOVE "Computer" instead of inside it. Neither the root nor the section
@@ -1297,14 +1992,14 @@ void UltraFilerWindow::BuildFolderTree() {
     treeChildrenLoaded.insert(kPinnedNodeId);
 
     TreeNode* root = folderTree->AddNode(kTreeRootNodeId,
-            MakeFolderNodeData("ufl-computer", "Computer", "computer.png"));
-    treeChildrenLoaded.insert("ufl-computer");
+            MakeFolderNodeData(kComputerNodeId, "Computer", "computer.png"));
+    treeChildrenLoaded.insert(kComputerNodeId);
 
     RefreshPinnedTreeNodes();
 
     const std::string home = UserHomeDir();
     if (!home.empty()) {
-        AddTreeFolderNode("ufl-computer", home, "Home", "home-icon.png");
+        AddTreeFolderNode(kComputerNodeId, home, "Home", "home-icon.png");
     }
 
     // "Cloud Storage" sits between Home and the drives: OneDrive, Google Drive,
@@ -1314,50 +2009,46 @@ void UltraFilerWindow::BuildFolderTree() {
     // created here so the section keeps its place in the order; which folders
     // exist is answered off the UI thread (QueueCloudStorageDiscovery), and,
     // exactly like the Pinned section, an empty one stays hidden.
-    folderTree->AddNode("ufl-computer",
+    folderTree->AddNode(kComputerNodeId,
             MakeFolderNodeData(kCloudNodeId, "Cloud Storage", "cloud.svg"));
     treeChildrenLoaded.insert(kCloudNodeId);
     if (TreeNode* cloud = folderTree->FindNode(kCloudNodeId))
         cloud->data.visible = false;
     QueueCloudStorageDiscovery();
 
-#ifdef _WIN32
-    // ListDriveRoots() reads the mount table in one call. Probing every letter
-    // with is_directory() instead spins up empty optical drives and waits out
-    // the timeout of each disconnected network mapping before the window shows.
-    for (const std::string& drive : ListDriveRoots()) {
-        std::string label = fs::path(drive).root_name().string();  // "C:"
-        if (label.empty()) label = drive;
-        AddTreeDriveNode(drive, label);
-    }
-#else
-    AddTreeDriveNode("/", "File System");
-    // Removable / additional volumes. Only entries that are really mounted are
-    // shown - an empty placeholder folder left behind under /media or /mnt is
-    // not a drive.
-    for (const std::string base : {std::string("/media"), std::string("/mnt")}) {
-        for (const fs::path& mount : ListSubdirectories(base)) {
-            // /media holds one folder per user with the volumes below it.
-            if (base == "/media") {
-                auto volumes = ListSubdirectories(mount.string());
-                for (const fs::path& vol : volumes)
-                    if (IsMountPoint(vol.string()))
-                        AddTreeDriveNode(vol.string(), vol.filename().string());
-            } else if (IsMountPoint(mount.string())) {
-                AddTreeDriveNode(mount.string(), mount.filename().string());
-            }
-        }
-    }
-#endif
+    // ListMountedVolumes() reads the mount table in one pass (the drive
+    // letters on Windows, the directories volumes are mounted under
+    // elsewhere - /media, /run/media, /Volumes, /mnt). Probing every drive
+    // letter with is_directory() instead spins up empty optical drives and
+    // waits out the timeout of each disconnected network mapping before the
+    // window shows; scanning a hand-picked pair of directories instead of the
+    // framework's list is how /run/media, where udisks2 mounts on Fedora,
+    // RHEL, Arch and openSUSE, used to be missed entirely.
+    //
+    // This is only the first fill: RefreshDriveNodes keeps the rows in step
+    // with what is mounted from here on.
+    for (const MountedVolume& volume : ListMountedVolumes())
+        AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
 
     if (root) root->Expand();
     ApplyTreeColors();
+
+    // From here the drive rows follow the machine: a USB stick, a card, an
+    // optical disc, a network share or a disk image appearing or going away
+    // updates them without a restart (RefreshDriveNodes).
+    StartVolumeMonitor();
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
     };
     folderTree->onNodeSelected = [this](TreeNode* node) {
         if (syncingTree || !node) return;
+        // "Computer" is not a folder: it opens the page of the machine's
+        // places - Home, the cloud folders, the drives with their sizes.
+        if (node->data.nodeId == kComputerNodeId) {
+            SetComputerPageVisible(true);
+            return;
+        }
         // A pinned entry navigates to its target folder, like a bookmark.
         const std::string path = TreeNodeTargetPath(node);
         if (path.empty()) return;
@@ -1448,7 +2139,12 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
                                          const std::string& path,
                                          const std::string& label,
                                          const std::string& iconFile) {
-    if (!folderTree->AddNode(parentId, MakeFolderNodeData(path, label, iconFile)))
+    TreeNodeData data = MakeFolderNodeData(path, label, iconFile);
+    // A folder with an icon of its own - one the user set, or a well-known
+    // user folder - carries it in the tree too, not only in the file display.
+    const std::string icon = FolderIconPath(path);
+    if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+    if (!folderTree->AddNode(parentId, data))
         return;
     // The placeholder child that gives the node its expand button is added
     // once the background probe reports that the folder has subfolders.
@@ -1457,8 +2153,97 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
 
 void UltraFilerWindow::AddTreeDriveNode(const std::string& path,
                                         const std::string& label) {
-    AddTreeFolderNode("ufl-computer", path, label, "drive.png");
+    AddTreeFolderNode(kComputerNodeId, path, label, "drive.png");
     if (folderTree->FindNode(path)) treeDriveNodeIds.push_back(path);
+}
+
+void UltraFilerWindow::RefreshDriveNodes() {
+    if (!folderTree) return;
+
+    const std::vector<MountedVolume> volumes = ListMountedVolumes();
+    std::set<std::string> mounted;
+    for (const MountedVolume& volume : volumes) mounted.insert(volume.path);
+
+    // ===== VOLUMES THAT WENT AWAY =====
+    // Copied first: DropDriveNode edits treeDriveNodeIds.
+    std::vector<std::string> gone;
+    for (const std::string& nodeId : treeDriveNodeIds)
+        if (!mounted.count(nodeId)) gone.push_back(nodeId);
+    for (const std::string& path : gone) {
+        DropDriveNode(path);
+        volumeSpaces.erase(path);   // its sizes describe nothing any more
+    }
+
+    // ===== VOLUMES THAT APPEARED =====
+    // Appended in the order the enumeration gives them, at the end of the
+    // drive rows. Deliberately not re-sorted: sorting means rebuilding every
+    // drive row, which would collapse a subtree the user has open just
+    // because a stick was plugged in somewhere else.
+    bool added = false;
+    for (const MountedVolume& volume : volumes) {
+        if (folderTree->FindNode(volume.path)) continue;
+        AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
+        added = true;
+    }
+
+    if (!added && gone.empty()) return;   // nothing moved: nothing to repaint
+
+    if (added) {
+        // The new rows need the configured drive background, and a volume can
+        // carry a cloud folder with it (a Google Drive that mounts as its own
+        // drive letter), so the cloud section is asked again as well.
+        ApplyTreeColors();
+        QueueCloudStorageDiscovery();
+    }
+    // The Computer page's drive cards follow the same mounts and unmounts.
+    if (computerShown) RefreshComputerPage();
+    folderTree->RequestRedraw();
+}
+
+void UltraFilerWindow::DropDriveNode(const std::string& path) {
+    // Tabs first, while the tree still describes where they are: a tab left
+    // inside an unmounted volume shows an empty folder that cannot be left by
+    // going up, because its parent is gone too.
+    const std::string home = UserHomeDir();
+    bool moved = false;
+    for (auto& state : tabStates) {
+        if (!state->filer) continue;
+        if (!IsPathInside(state->filer->GetPath(), path)) continue;
+        if (!home.empty()) state->filer->SetPath(home);
+        moved = true;
+    }
+
+    if (folderTree) folderTree->RemoveNode(path);
+    treeDriveNodeIds.erase(
+            std::remove(treeDriveNodeIds.begin(), treeDriveNodeIds.end(), path),
+            treeDriveNodeIds.end());
+    // Forget that anything under the volume was ever scanned: the same stick
+    // plugged back in is a fresh tree, not the one this window last saw.
+    for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
+        if (IsPathInside(*it, path)) it = treeChildrenLoaded.erase(it);
+        else ++it;
+    }
+
+    if (moved && statusLabel)
+        statusLabel->SetText("\"" + path + "\" is no longer connected");
+}
+
+void UltraFilerWindow::StartVolumeMonitor() {
+    auto alive = probeAlive;
+    volumeMonitor.Start([this, alive]() {
+        // The monitor's thread. One insertion is reported several times over
+        // (the device, then the volume, then the mount), and each report would
+        // otherwise cost a pass over the tree: the flag turns the burst into
+        // one refresh, and is cleared by the pass that answers it.
+        if (volumeRefreshPending.exchange(true)) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) { volumeRefreshPending.store(false); return; }
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            volumeRefreshPending.store(false);
+            RefreshDriveNodes();
+        });
+    });
 }
 
 void UltraFilerWindow::ApplyTreeColors() {
@@ -1485,16 +2270,30 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
-    // The home folder is curated, not scanned: it shows the user's main folders
-    // (kHomeTreeFolders) and stops there, so a profile does not spill "3D
-    // Objects", "Saved Games", "Links" and every working folder into the tree.
-    // The paths come from the platform (SHGetKnownFolderPath / xdg-user-dirs),
-    // so a redirected or localized folder - "Bilder", a Documents folder moved
-    // into OneDrive - is the one listed, under its own icon. Everything left
-    // out is still reachable: the folder display lists the whole home folder.
+    // Settings > Display > Home folder decides what the Home entry shows.
+    // Curated ("Show only predefined folders", the Windows default): the main
+    // user folders (kHomeTreeFolders) and nothing else, so a profile does not
+    // spill "3D Objects", "Saved Games" and every working folder into the
+    // tree. The paths come from the platform (SHGetKnownFolderPath /
+    // xdg-user-dirs), so a redirected or localized folder - "Bilder", a
+    // Documents folder moved into OneDrive - is the one listed, under its own
+    // icon. "Show all content" (the Linux / macOS default) lists every
+    // subfolder, with the main folders still carrying their icons and a
+    // redirected one listed once, by its real path.
     std::vector<TreeChild> children;
-    if (IsUserHomeDir(path)) {
+    const bool isHome = IsUserHomeDir(path);
+    if (isHome && settings.homeShowPredefinedOnly) {
         children = HomeTreeChildren();
+    } else if (isHome) {
+        std::unordered_set<std::string> curated;
+        for (const TreeChild& c : HomeTreeChildren()) {
+            curated.insert(FolderIdentityKey(c.path));
+            children.push_back(c);
+        }
+        for (const fs::path& dir : ListSubdirectories(path)) {
+            if (curated.count(FolderIdentityKey(dir.string()))) continue;
+            children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+        }
     } else {
         for (const fs::path& dir : ListSubdirectories(path))
             children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
@@ -1522,16 +2321,39 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
     // a GVFS mount listing on Linux - and one wedged mount would hold up the
     // window. It runs on its own thread and the section appears when it
     // answers, the way the expand buttons do.
-    if (cloudWorker.joinable()) return;   // runs exactly once, at tree build
+    //
+    // Asked again whenever a volume appears, because a cloud folder can arrive
+    // with one - a Google Drive mounted as its own drive letter is the case
+    // this exists for. The busy flag, not the thread's joinability, is what
+    // keeps two lookups from overlapping; the finished thread of the previous
+    // lookup is joined here rather than left dangling.
+    if (cloudWorkerBusy.exchange(true)) return;
+    if (cloudWorker.joinable()) cloudWorker.join();
     auto alive = probeAlive;
     cloudWorker = std::thread([this, alive]() {
-        std::vector<CloudStorageInfo> found = GetCloudStorageFolders();
+        // An exception leaving a std::thread ends the process; a provider
+        // whose registry or config cannot be read costs the Cloud section.
+        std::vector<CloudStorageInfo> found;
+        try {
+            found = GetCloudStorageFolders();
+        } catch (const std::exception& e) {
+            debugOutput << "UltraFiler: cloud storage discovery failed: "
+                        << e.what() << std::endl;
+            return;
+        } catch (...) {
+            debugOutput << "UltraFiler: cloud storage discovery failed" << std::endl;
+            return;
+        }
         if (found.empty()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
-        if (!app) return;
+        if (found.empty() || !app) {
+            cloudWorkerBusy.store(false);
+            return;
+        }
         app->PostToUIThread([this, alive, found = std::move(found)]() {
             if (!alive->load()) return;   // window destroyed meanwhile
             ApplyCloudStorageFolders(found);
+            cloudWorkerBusy.store(false);
         });
     });
 }
@@ -1548,14 +2370,20 @@ void UltraFilerWindow::ApplyCloudStorageFolders(
     if (found.empty() || !folderTree) return;
     TreeNode* cloud = folderTree->FindNode(kCloudNodeId);
     if (!cloud) return;
-    for (const CloudStorageInfo& c : found)
+    for (const CloudStorageInfo& c : found) {
+        // A re-run answers with the folders that were already there as well;
+        // the tree does not reject a duplicate id, it shows the row twice.
+        if (folderTree->FindNode(c.path)) continue;
         AddTreeFolderNode(kCloudNodeId, c.path, c.label, "cloud.svg");
+    }
     if (cloud->children.empty()) return;   // every folder vanished meanwhile
     // Shown open: a section of two or three entries that has to be unfolded
     // first hides exactly what it was added to surface.
     cloud->data.visible = true;
     folderTree->ExpandNode(cloud);
     folderTree->RequestRedraw();
+    // The Computer page lists the same folders.
+    if (computerShown) RefreshComputerFolders();
 }
 
 // ===== FOLDER TREE: BACKGROUND "HAS SUBFOLDERS?" PROBE =====
@@ -1596,8 +2424,20 @@ void UltraFilerWindow::SubfolderProbeWorkerMain() {
             probeQueue.pop_front();
         }
 
-        // The directory open - outside the lock, off the UI thread.
-        const bool has = TreeFolderHasChildren(path);
+        // The directory open - outside the lock, off the UI thread. The home
+        // mode comes through the atomic: `settings` belongs to the UI thread.
+        // A throw here would end the process (nothing catches what leaves a
+        // std::thread); a folder that cannot be read is shown as a leaf.
+        bool has = false;
+        try {
+            has = TreeFolderHasChildren(path, curatedHomeActive.load());
+        } catch (const std::exception& e) {
+            debugOutput << "UltraFiler: subfolder probe failed for \"" << path
+                        << "\": " << e.what() << std::endl;
+        } catch (...) {
+            debugOutput << "UltraFiler: subfolder probe failed for \"" << path
+                        << "\"" << std::endl;
+        }
         if (!has) continue;   // leaf folder: nothing to change on the node
 
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -1663,7 +2503,7 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
 std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
     if (!node) return {};
     const std::string& id = node->data.nodeId;
-    if (id == kTreeRootNodeId || id == "ufl-computer" || id == kPinnedNodeId ||
+    if (id == kTreeRootNodeId || id == kComputerNodeId || id == kPinnedNodeId ||
         id == kCloudNodeId)
         return {};
     if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
@@ -1684,9 +2524,12 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
     for (const std::string& path : favorites.Paths(FilerFavoriteKind::Tree)) {
         std::string label = fs::path(path).filename().string();
         if (label.empty()) label = path;   // a filesystem root
-        folderTree->AddNode(kPinnedNodeId,
-                MakeFolderNodeData(kPinnedChildPrefix + path, label,
-                                   "folder-brown.svg"));
+        TreeNodeData data = MakeFolderNodeData(kPinnedChildPrefix + path, label,
+                                               "folder-brown.svg");
+        // The bookmark shows the folder's own icon, like its regular row does.
+        const std::string icon = FolderIconPath(path);
+        if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+        folderTree->AddNode(kPinnedNodeId, data);
     }
     // An empty section is just a header over nothing: hide it entirely while
     // nothing is pinned, and show it open — its entries are the point of it.
@@ -1716,7 +2559,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     // catastrophe (a cloud folder syncs the deletion to every other device), so
     // they keep Delete disabled.
     const bool isTopLevelRoot = !isPinnedEntry && node->parent &&
-            (node->parent->data.nodeId == "ufl-computer" ||
+            (node->parent->data.nodeId == kComputerNodeId ||
              node->parent->data.nodeId == kCloudNodeId);
 
     std::vector<std::string> clipboardFiles;
@@ -1779,6 +2622,13 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     unpinItem.enabled = isPinnedEntry;
 
+    // The drive rows follow the machine on their own (RefreshDriveNodes, run
+    // from the volume monitor); this is the manual way to the same pass, for a
+    // mount the platform reports through a channel nothing listens on.
+    MenuItemData refreshDrives = MenuItemData::Action("Refresh drives", [this]() {
+        RefreshDriveNodes();
+    });
+
     MenuStyle style = MenuStyle::Default();
     style.font.fontSize = kUiFontSize;
     treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 160, 0);
@@ -1790,6 +2640,8 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     treeContextMenu->AddItem(MenuItemData::Separator());
     treeContextMenu->AddItem(pinSubmenu);
     treeContextMenu->AddItem(unpinItem);
+    treeContextMenu->AddItem(MenuItemData::Separator());
+    treeContextMenu->AddItem(refreshDrives);
     treeContextMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
 }
 
@@ -1885,8 +2737,16 @@ void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer->onTabClose = [this](int index) {
         // The last remaining tab stays open.
         if (tabStates.size() <= 1) return false;
-        if (index >= 0 && index < (int)tabStates.size())
+        if (index >= 0 && index < (int)tabStates.size()) {
+            // A scan filling this tab has nothing left to fill, and its state
+            // must not outlive the tab it points at.
+            if (searchTab == tabStates[index].get()) {
+                StopSubfolderSearch();
+                searchStatus.clear();
+                searchQueryText.clear();
+            }
             tabStates.erase(tabStates.begin() + index);
+        }
         return true;
     };
     tabbedContainer->onTabChange = [this](int /*oldIndex*/, int newIndex) {
@@ -1919,10 +2779,12 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
-    // The home folder's display is curated like the tree's Home entry: its
-    // main folders and its files, not the whole profile. Display > Hidden
-    // files reveals the full listing.
-    state->filer->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
+    // Settings > Display > Home folder: when curated (the Windows default),
+    // the home folder's display shows its main folders and its files, not the
+    // whole profile - like the tree's Home entry. Display > Hidden files
+    // always reveals the full listing.
+    if (settings.homeShowPredefinedOnly)
+        state->filer->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
     FilerStyle filerStyle = state->filer->GetStyle();
     filerStyle.fontSize = kUiFontSize;
     filerStyle.smallFontSize = kUiFontSize;
@@ -1934,6 +2796,8 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     state->filer->SetSelectNextAfterDelete(previewEnabled);
     // Handling > Drag & Drop: move or copy on a plain drop onto a folder.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+    // Display > Files in use: mark files another program is holding.
+    state->filer->SetShowLockState(settings.showLockState);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
@@ -1956,7 +2820,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     };
     // When the as-you-type filter matches nothing in the folder, the filer
     // centers this escalation: the same recursive search Enter runs.
-    tab->filer->SetFilterEmptyAction("Search in sub folders", [this, tab]() {
+    tab->filer->SetFilterEmptyAction("Scan sub folder", [this, tab]() {
         if (!IsActiveTab(tab) || !tab->filer) return;
         // Copied: RunSearch clears the filer's filter, which would otherwise
         // empty the query out from under the search.
@@ -1990,15 +2854,27 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         RecordFolderInHistory(fs::path(entry.path).parent_path().string());
         if (!IsActiveTab(tab)) return;
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
-        // Windows executables and installers go to the UltraWin emulation
-        // layer, not to the host's file associations (.msi runs through
-        // msiexec inside the environment).
-        if (entry.extension == "exe" || entry.extension == "msi") {
+        // Windows executables, installers and program shortcuts go to the
+        // UltraWin emulation layer, not to the host's file associations
+        // (.msi runs through msiexec inside the environment, and a .lnk
+        // through Wine's "start", which keeps the arguments and working
+        // directory the shortcut carries). A shortcut whose target is a
+        // document is not a Windows program and opens with whatever this
+        // system opens that document with; one whose target is not on this
+        // machine still goes to Wine, which resolves it inside the prefix.
+        // A shortcut to a folder never reaches here — the widget navigates
+        // into it instead.
+        const bool windowsShortcut =
+            entry.isShortcut &&
+            (entry.category == FilerFileCategory::Executable ||
+             entry.linkTarget.empty());
+        if (entry.extension == "exe" || entry.extension == "msi" ||
+            windowsShortcut) {
             LaunchWindowsExecutable(entry);
             return;
         }
 #endif
-        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) {
+        if (!CanShowInDetailView(entry)) {
             // Not previewable: run it / open it, Explorer-style. The widget
             // launches executables directly (scripts through its Run-or-Open
             // dialog) and everything else with the OS default application;
@@ -2064,6 +2940,8 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    WireDisplayFormatCallbacks(tab->filer.get());
+    WireFolderIconProvider(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -2073,13 +2951,17 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     if (index < 0 || index >= (int)tabStates.size()) return;
     FilerTabState* tab = tabStates[index].get();
     if (!tab->filer) return;
+    // A scan fills one tab's display; moving to another tab ends it, keeping
+    // whatever it found on the tab it was searching.
+    if (searchTab && searchTab != tab) {
+        StopSubfolderSearch();
+        searchStatus.clear();
+        searchQueryText.clear();
+    }
     filer = tab->filer;
 
     const std::string path = filer->GetPath();
-    if (breadcrumb && !path.empty()) {
-        BuildFolderBreadcrumb(breadcrumb.get(), path,
-                              [this](const std::string& folder) { NavigateTo(folder); });
-    }
+    if (!path.empty()) RebuildBreadcrumb(path);
     // The field shows whatever search state the tab is in: the recursive
     // query while its results are displayed, else the tab's live filter.
     if (searchInput) {
@@ -2088,6 +2970,7 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
                                      : (tab->filer ? tab->filer->GetNameFilter()
                                                    : std::string()));
     }
+    UpdateScanButton();
     UpdateNavButtons();
     if (!path.empty()) SyncTreeSelection(path);
     UpdateStatusBar();
@@ -2169,8 +3052,11 @@ void UltraFilerWindow::BuildSplitLayout() {
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     // The tab strip itself is the window's top bar; this pane shows the page
-    // of whichever tab is active.
+    // of whichever tab is active - or, while the tree's Computer entry is
+    // open, the Computer page in its place.
     filerPane->AddChild(tabContentHost);
+    BuildComputerPage();
+    filerPane->AddChild(computerPane);
 
     preview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -2260,6 +3146,8 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        WireDisplayFormatCallbacks(histFiler.get());
+        WireFolderIconProvider(histFiler.get());
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -2348,6 +3236,15 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
 void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
                                           const std::string& environment) {
     const bool firstLaunch = !UltraWin_EnvironmentExists(environment);
+    // The pointer says a launch is under way for as long as this one can
+    // plausibly still be starting — a first launch runs wineboot first, and
+    // that is a minute in which nothing appears on screen. Unlike a plain
+    // spawn this path does learn when the run started, and takes the busy
+    // pointer down then.
+    if (window)
+        window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
+                                firstLaunch ? 120000
+                                            : UltraCanvasWindowBase::kBusyPointerHoldMs);
     const char* verb =
         entry.extension == "msi" ? "Installing " : "Launching ";
     if (statusLabel)
@@ -2366,12 +3263,21 @@ void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
         UltraWinRunOptions options;
         options.environment = environment;
         UltraWinHandle handle = UltraWinInvalidHandle;
-        auto result = UltraWin_RunApp(path, options, &handle);
+        UltraWinResult result;
+        try {
+            result = UltraWin_RunApp(path, options, &handle);
+        } catch (const std::exception& e) {
+            // Off the UI thread: reported through the status line below
+            // rather than by ending the process.
+            result = UltraWinResult::Error(UltraWinResultCode::LaunchFailed, e.what());
+        }
 
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
         app->PostToUIThread([this, alive, name, result]() {
-            if (!alive->load() || !statusLabel) return;
+            if (!alive->load()) return;
+            if (window) window->HideBusyPointer();
+            if (!statusLabel) return;
             statusLabel->SetText(result ? "Launched " + name
                                         : "Could not launch " + name + ": " +
                                               result.message);
@@ -2488,6 +3394,8 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        WireDisplayFormatCallbacks(favFiler.get());
+        WireFolderIconProvider(favFiler.get());
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;
@@ -2522,6 +3430,8 @@ void UltraFilerWindow::SetFavoritesVisible(bool visible) {
 void UltraFilerWindow::ShowBrowsingView() {
     SetHistoryVisible(false);
     SetFavoritesVisible(false);
+    // Showing a folder also means leaving the Computer page.
+    SetComputerPageVisible(false);
 }
 
 void UltraFilerWindow::RefreshFavoritesTabs() {
@@ -2537,6 +3447,354 @@ UltraCanvasFilerWidget* UltraFilerWindow::ActiveFavoritesFiler() const {
     const int index = favoritesTabs->GetActiveTab();
     if (index < 0 || index >= HistoryTabCount) return nullptr;
     return favoritesFilers[index].get();
+}
+
+// ===== COMPUTER PAGE (the tree's "Computer" entry) =====
+
+void UltraFilerWindow::BuildComputerPage() {
+    // The page's own scroll region: the folder tiles keep a fixed height and
+    // the drive cards wrap into as many rows as they need, so on a machine
+    // with a dozen mounts the page scrolls rather than clipping the cards.
+    computerPane = std::make_shared<UltraCanvasContainer>("ufl-computer-page");
+    computerPane->layout.SetFlexColumn().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    computerPane->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    computerPane->SetPadding(10, 12, 10, 12);
+    computerPane->SetBackgroundColor(Colors::White);
+
+    auto makeHeading = [](const std::string& id, const std::string& text) {
+        auto heading = CreateLabel(id, 0, 0, 200, 22, text);
+        heading->SetFontSize(kUiFontSize + 2);
+        heading->SetFontWeight(FontWeight::Bold);
+        heading->SetTextColor(Color(40, 40, 44, 255));
+        heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        return heading;
+    };
+    computerPane->AddChild(makeHeading("ufl-computer-folders-heading", "Folders"));
+
+    // Home and the cloud folders as folder tiles - the file display's own,
+    // so they carry the folder icons, open on a double-click and offer the
+    // context menu every other folder tile has.
+    computerFolders = CreateFilerWidget("ufl-computer-folders", 0, 0, 0,
+                                        kComputerFoldersHeight);
+    FilerStyle filerStyle = computerFolders->GetStyle();
+    filerStyle.fontSize = kUiFontSize;
+    filerStyle.smallFontSize = kUiFontSize;
+    filerStyle.folderIconScale = 0.7f;
+    computerFolders->SetStyle(filerStyle);
+    computerFolders->SetViewType(FilerViewType::ThumbnailsMedium);
+    // Home first, then the cloud folders in the tree's order.
+    computerFolders->SetFileListOrderPreserved(true);
+    // A home folder or a cloud folder is listed on purpose, dotted or not.
+    computerFolders->SetShowHiddenFiles(true);
+    computerFolders->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    computerFolders->onSelectionChanged = [this](const std::vector<FilerEntry>&) {
+        UpdateStatusBar();
+    };
+    computerFolders->onFolderRefreshed = [this]() { UpdateStatusBar(); };
+    computerFolders->onFileActivated = [this](const FilerEntry& entry) {
+        RecordEntryInHistory(entry);
+        RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+        OpenHistoryEntry(entry.path, false);
+    };
+    // A folder tile is activated by the widget itself (it navigates into the
+    // folder); hand that folder to the active tab instead of browsing it
+    // inside the page.
+    computerFolders->onPathChanged = [this](const std::string& path) {
+        OpenHistoryEntry(path, true);
+    };
+    computerFolders->onError = [this](const std::string& message) {
+        if (statusLabel) statusLabel->SetText("Error: " + message);
+    };
+    computerFolders->onSettings = [this]() { OpenSettingsDialog(); };
+    computerFolders->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
+    computerFolders->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
+    computerFolders->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
+    computerFolders->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
+    computerFolders->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    WireDisplayFormatCallbacks(computerFolders.get());
+    // The tiles carry the tree's icons for these folders - the house for
+    // Home, the cloud for a cloud folder - and otherwise whatever the folder
+    // has of its own (a user-set icon, a well-known folder's).
+    computerFolders->folderIconProvider = [this](const FilerEntry& entry) -> std::string {
+        if (!entry.isDirectory) return {};
+        if (IsUserHomeDir(entry.path)) return IconPath("home-icon.png");
+        const std::string key = FolderIdentityKey(entry.path);
+        if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
+            for (const auto& child : cloud->children)
+                if (child && FolderIdentityKey(child->data.nodeId) == key)
+                    return IconPath("cloud.svg");
+        }
+        return FolderIconPath(entry.path);
+    };
+    computerPane->AddChild(computerFolders);
+
+    computerPane->AddChild(makeHeading("ufl-computer-drives-heading", "Drives"));
+
+    // The drive cards, wrapping into rows; RebuildComputerDriveCards fills
+    // it. It never scrolls by itself - the page does.
+    computerDriveRow = MakeLayoutBox("ufl-computer-drives");
+    computerDriveRow->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+                            .SetFlexGap(12)
+                            .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    computerDriveRow->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    computerPane->AddChild(computerDriveRow);
+
+    computerPane->SetVisible(false);   // the tree's Computer entry turns it on
+}
+
+void UltraFilerWindow::SetComputerPageVisible(bool visible) {
+    if (visible == computerShown || !computerPane || !tabContentHost) return;
+    if (visible) {
+        // The page lives inside the split, so the History / Favorites views
+        // - which replace the whole split - go first. Not ShowBrowsingView():
+        // that hides this page.
+        SetHistoryVisible(false);
+        SetFavoritesVisible(false);
+    }
+    computerShown = visible;
+    if (visible) {
+        RefreshComputerPage();
+        tabContentHost->SetVisible(false);
+        computerPane->SetVisible(true);
+        ShowComputerBreadcrumb();
+        // The tree shows where the page came from, whichever way it was
+        // opened (the Up button, the breadcrumb).
+        if (TreeNode* node = folderTree ? folderTree->FindNode(kComputerNodeId) : nullptr) {
+            syncingTree = true;
+            folderTree->SelectNode(node);
+            syncingTree = false;
+        }
+    } else {
+        computerPane->SetVisible(false);
+        tabContentHost->SetVisible(true);
+        // Back to the active tab's folder: the strip, the tree and the
+        // status line describe it again.
+        const std::string path = filer ? filer->GetPath() : std::string();
+        if (!path.empty()) {
+            RebuildBreadcrumb(path);
+            SyncTreeSelection(path);
+        }
+    }
+    UpdateNavButtons();
+    UpdateStatusBar();
+    UpdateWindowTitle();
+    UpdatePreviewPane();
+}
+
+void UltraFilerWindow::RefreshComputerPage() {
+    RefreshComputerFolders();
+    RebuildComputerDriveCards(ListMountedVolumes());
+    QueueVolumeSpaceQuery();
+}
+
+void UltraFilerWindow::RefreshComputerFolders() {
+    if (computerFolders) computerFolders->ShowFileList(ComputerPageFolderPaths());
+}
+
+std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
+    std::vector<std::string> paths;
+    const std::string home = UserHomeDir();
+    std::error_code ec;
+    if (!home.empty() && fs::is_directory(home, ec) && !ec) paths.push_back(home);
+    // The cloud folders are the ones the tree's Cloud Storage section holds:
+    // found once, off the UI thread, by QueueCloudStorageDiscovery.
+    if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
+        for (const auto& child : cloud->children)
+            if (child) paths.push_back(child->data.nodeId);
+    }
+    return paths;
+}
+
+void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume>& volumes) {
+    if (!computerDriveRow) return;
+    computerDriveRow->ClearChildren();
+    computerDriveCards.clear();
+
+    int index = 0;
+    for (const MountedVolume& volume : volumes) {
+        const std::string id = "ufl-computer-drive-" + std::to_string(index++);
+        const std::string path = volume.path;
+        const std::string label = DriveNodeLabel(volume);
+
+        auto card = MakeLayoutBox(id, kComputerCardWidth, kComputerCardHeight);
+        card->layout.SetFlexColumn().SetFlexGap(2)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        card->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
+        // The pie: used against free, as a ring with the percentage in its
+        // hole. No slice labels - the lines under it say the numbers - and
+        // the pie draws neither grid, axes nor a plot box of its own.
+        auto pie = std::make_shared<UltraCanvasPieChartElement>(
+                id + "-pie", 0, 0, kComputerPieSize, kComputerPieSize);
+        pie->SetDonutMode(true);
+        pie->SetInnerRadius(0.52f);
+        pie->SetLabelPosition(LabelPosition::None);
+        pie->SetBorderColor(Colors::White);
+        pie->SetBorderWidth(2.0f);
+        pie->SetCenterFont("Arial", 15.0f, FontWeight::Bold);
+        pie->SetCenterTextColor(Color(40, 40, 44, 255));
+        pie->SetTooltipsEnabled(true);
+        pie->SetValueFormatter([](double v) {
+            return FormatVolumeBytes(static_cast<uint64_t>(v < 0.0 ? 0.0 : v));
+        });
+        pie->SetEnableSelection(false);
+        pie->SetEnableZoom(false);
+        pie->SetEnablePan(false);
+        pie->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // A click on the chart opens the drive, like the button under it.
+        pie->onSliceClick = [this, path](size_t) { NavigateTo(path); };
+        card->AddChild(pie);
+
+        // The drive's name is the button that opens it.
+        card->AddChild(MakeToolButton(id + "-open", label, "drive.png", 0,
+                                      [this, path]() { NavigateTo(path); }));
+
+        auto usage = CreateLabel(id + "-usage", 0, 0, kComputerCardWidth, 18, "");
+        usage->SetFontSize(kUiFontSize);
+        usage->SetAlignment(TextAlignment::Center);
+        usage->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        card->AddChild(usage);
+
+        auto space = CreateLabel(id + "-space", 0, 0, kComputerCardWidth, 18, "");
+        space->SetFontSize(kUiFontSize);
+        space->SetAlignment(TextAlignment::Center);
+        space->SetTextColor(Color(110, 110, 116, 255));
+        space->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        card->AddChild(space);
+
+        // Where it is mounted: "/" under "File System", the /media path under
+        // a stick's volume name, the root under a drive letter.
+        auto mount = CreateLabel(id + "-mount", 0, 0, kComputerCardWidth, 18, path);
+        mount->SetFontSize(kUiFontSize);
+        mount->SetAlignment(TextAlignment::Center);
+        mount->SetTextColor(Color(150, 150, 156, 255));
+        mount->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        card->AddChild(mount);
+
+        computerDriveRow->AddChild(card);
+        computerDriveCards.push_back({path, pie, usage, space});
+
+        // What is already known about the volume goes up at once; the fresh
+        // reading replaces it when the worker answers. A volume never seen
+        // before shows a neutral ring until then.
+        auto known = volumeSpaces.find(path);
+        VolumeSpace unknown;
+        unknown.path = path;
+        ApplyVolumeSpaceToCard(known != volumeSpaces.end() ? known->second : unknown);
+    }
+    computerDriveRow->RequestRedraw();
+}
+
+void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
+    for (ComputerDriveCard& card : computerDriveCards) {
+        if (card.path != space.path || !card.pie) continue;
+        std::vector<ChartDataPoint> slices;
+        if (space.known && space.totalBytes > 0) {
+            const double used = static_cast<double>(VolumeUsedBytes(space));
+            const double free = static_cast<double>(space.freeBytes);
+            const double percent = VolumeUsedPercent(space);
+            // A slice of nothing is left out: the pie would still draw its
+            // border as a hairline across the ring.
+            if (used > 0.0)
+                slices.emplace_back(1, used, 0, "Used", used, VolumeUsedColor(percent));
+            if (free > 0.0)
+                slices.emplace_back(2, free, 0, "Free", free, kVolumeFreeColor);
+            char kpi[16];
+            std::snprintf(kpi, sizeof kpi, "%.0f%%", percent);
+            card.pie->SetCenterKPI(kpi, "used");
+        } else {
+            // Nothing known (yet): a neutral full ring and no number.
+            slices.emplace_back(1, 1.0, 0, "Size not available", 1.0, kVolumeFreeColor);
+            card.pie->SetCenterKPI("", "");
+        }
+        auto data = std::make_shared<ChartDataVector>();
+        data->LoadFromArray(slices);
+        card.pie->SetDataSource(data);
+        if (card.usageLabel) card.usageLabel->SetText(DescribeVolumeUsage(space));
+        if (card.spaceLabel) card.spaceLabel->SetText(DescribeVolumeSpace(space));
+        card.pie->RequestRedraw();
+    }
+}
+
+void UltraFilerWindow::QueueVolumeSpaceQuery() {
+    if (computerDriveCards.empty()) return;
+    // One reading at a time; a request during a reading is remembered and
+    // served by that reading's completion, so the newest set of volumes is
+    // measured without two workers touching the same shares.
+    if (spaceWorkerBusy.exchange(true)) {
+        spaceQueryPending.store(true);
+        return;
+    }
+    if (spaceWorker.joinable()) spaceWorker.join();
+    std::vector<std::string> paths;
+    for (const ComputerDriveCard& card : computerDriveCards) paths.push_back(card.path);
+    auto alive = probeAlive;
+    spaceWorker = std::thread([this, alive, paths = std::move(paths)]() {
+        // std::filesystem::space with an error_code never throws; this is
+        // where a share that stopped answering spends its timeout.
+        std::vector<VolumeSpace> spaces;
+        spaces.reserve(paths.size());
+        for (const std::string& path : paths) spaces.push_back(QueryVolumeSpace(path));
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app || !alive->load()) {
+            spaceWorkerBusy.store(false);
+            return;
+        }
+        app->PostToUIThread([this, alive, spaces = std::move(spaces)]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            spaceWorkerBusy.store(false);
+            ApplyVolumeSpaces(spaces);
+            if (spaceQueryPending.exchange(false)) QueueVolumeSpaceQuery();
+        });
+    });
+}
+
+void UltraFilerWindow::StopVolumeSpaceQuery() {
+    // Joined rather than detached, like the cloud lookup: the thread posts
+    // back into the window, so it must not outlive it - nor the application
+    // it posts through.
+    if (spaceWorker.joinable()) spaceWorker.join();
+}
+
+void UltraFilerWindow::ApplyVolumeSpaces(const std::vector<VolumeSpace>& spaces) {
+    for (const VolumeSpace& space : spaces) {
+        volumeSpaces[space.path] = space;
+        ApplyVolumeSpaceToCard(space);
+    }
+    if (computerShown) UpdateStatusBar();
+}
+
+void UltraFilerWindow::RebuildBreadcrumb(const std::string& path) {
+    if (!breadcrumb) return;
+    FolderBreadcrumbOptions options;
+    // The strip's leading "Computer" opens the Computer page - the same
+    // place the tree's Computer entry opens - rather than the drive root,
+    // which the node next to it already is.
+    options.onComputerClick = [this]() { SetComputerPageVisible(true); };
+    BuildFolderBreadcrumb(breadcrumb.get(), path,
+                          [this](const std::string& folder) { NavigateTo(folder); },
+                          options);
+}
+
+void UltraFilerWindow::ShowComputerBreadcrumb() {
+    if (!breadcrumb) return;
+    BreadcrumbItem computer("__computer__", "Computer");
+    computer.tooltip = "Computer";
+    // The drives stay one click away, as they are on every other strip.
+    computer.hasDropdown = true;
+    computer.sortDropdownItems = true;
+    computer.dropdownAvailableProvider = []() { return !ListDriveRoots().empty(); };
+    computer.dropdownItemsProvider = [this]() {
+        std::vector<MenuItemData> out;
+        for (const std::string& d : ListDriveRoots())
+            out.emplace_back(d, [this, d]() { NavigateTo(d); });
+        return out;
+    };
+    breadcrumb->SetItems({computer});
 }
 
 // ===== NAVIGATION =====
@@ -2569,10 +3827,16 @@ void UltraFilerWindow::NavigateForward() {
 }
 
 void UltraFilerWindow::NavigateUp() {
-    if (!filer) return;
+    if (!filer || computerShown) return;
     const fs::path p(filer->GetPath());
-    if (p.has_parent_path() && p.parent_path() != p)
+    if (p.has_parent_path() && p.parent_path() != p) {
         NavigateTo(p.parent_path().string());
+        return;
+    }
+    // Above a drive root sits the machine itself: Up from "/" or "C:\\"
+    // opens the Computer page, the way Explorer's Up from a drive lands on
+    // "This PC".
+    SetComputerPageVisible(true);
 }
 
 void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& path) {
@@ -2588,7 +3852,14 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     const int index = TabIndexOf(tab);
     if (index >= 0) tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
 
-    // Entering a folder ends a search-result display (SetPath leaves it).
+    // Entering a folder ends a search-result display (SetPath leaves it) and
+    // the scan that was filling it.
+    if (searchTab == tab) {
+        StopSubfolderSearch();
+        searchStatus.clear();
+        searchQueryText.clear();
+        UpdateScanButton();
+    }
     tab->searchQuery.clear();
     tab->filer->SetOpenPathMenuItemVisible(false);
 
@@ -2600,11 +3871,9 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     if (!IsActiveTab(tab)) return;
 
     if (searchInput) searchInput->SetText("");
+    UpdateScanButton();   // nothing to search for in the folder just entered
 
-    if (breadcrumb) {
-        BuildFolderBreadcrumb(breadcrumb.get(), path,
-                              [this](const std::string& folder) { NavigateTo(folder); });
-    }
+    RebuildBreadcrumb(path);
     UpdateNavButtons();
     SyncTreeSelection(path);
     UpdateStatusBar();
@@ -2656,10 +3925,9 @@ void UltraFilerWindow::UpdateNavButtons() {
     if (forwardButton)
         forwardButton->SetDisabled(!tab || tab->history.empty() ||
                                    tab->historyIndex + 1 >= tab->history.size());
-    if (upButton && filer) {
-        const fs::path p(filer->GetPath());
-        upButton->SetDisabled(!p.has_parent_path() || p.parent_path() == p);
-    }
+    // Up is always possible from a folder - a drive root goes up to the
+    // Computer page; only that page itself has nothing above it.
+    if (upButton) upButton->SetDisabled(!filer || computerShown);
 }
 
 // ===== STATUS BAR / PREVIEW =====
@@ -2686,11 +3954,34 @@ void UltraFilerWindow::UpdateStatusBar() {
         statusLabel->SetText(text);
         return;
     }
+    if (computerShown) {
+        // The drives in one line: how many, and how much is free of how much
+        // in total over the ones whose sizes are known.
+        std::string text = "Computer    |    " +
+                std::to_string(computerDriveCards.size()) +
+                (computerDriveCards.size() == 1 ? " drive" : " drives");
+        VolumeSpace sum;
+        for (const ComputerDriveCard& card : computerDriveCards) {
+            auto it = volumeSpaces.find(card.path);
+            if (it == volumeSpaces.end() || !it->second.known) continue;
+            sum.known = true;
+            sum.totalBytes += it->second.totalBytes;
+            sum.freeBytes  += it->second.freeBytes;
+        }
+        if (sum.known) text += ", " + DescribeVolumeSpace(sum) + " in total";
+        if (computerFolders)
+            text += "    |    " + DescribeFilerContent(computerFolders.get());
+        statusLabel->SetText(text);
+        return;
+    }
     if (!filer) return;
     std::string text = DescribeFilerContent(filer.get());
     // A live filter changes what the counts describe — say so.
     if (!filer->GetNameFilter().empty())
         text += "    |    filtered by \"" + filer->GetNameFilter() + "\"";
+    // What the sub-folder scan is doing (or found), so the counts are not the
+    // only thing said about a display the search is still filling.
+    if (!searchStatus.empty()) text += "    |    " + searchStatus;
     statusLabel->SetText(text);
 }
 
@@ -2701,6 +3992,8 @@ void UltraFilerWindow::UpdateWindowTitle() {
         title += " - History";
     } else if (favoritesShown) {
         title += " - Favorites";
+    } else if (computerShown) {
+        title += " - Computer";
     } else if (filer && !filer->GetPath().empty()) {
         title += " - " + filer->GetPath();
     }
@@ -2774,10 +4067,12 @@ void UltraFilerWindow::UpdatePreviewPane() {
     // (showing that folder's content), anything else folds the pane away.
     std::string mediaPath;
     std::string folderPath;
-    if (previewEnabled) {
+    // The Computer page has no selection to preview: the pane folds away
+    // while it is shown.
+    if (previewEnabled && !computerShown) {
         if (const FilerEntry* e = SingleSelectedEntry()) {
             if (e->isDirectory) folderPath = e->path;
-            else if (UltraCanvasMediaViewer::IsSupportedMedia(e->path))
+            else if (CanShowInDetailView(*e))
                 mediaPath = e->path;
         }
     }

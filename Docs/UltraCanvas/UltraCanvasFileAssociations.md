@@ -64,6 +64,20 @@ All launches detach via `LaunchDetachedProcess`
 (`UltraCanvasUtils.h`: POSIX double-fork + `setsid`, Windows
 `CreateProcess` into a detached process group).
 
+On Linux/BSD, `OpenWithApplicationPath` accepts a **`.desktop` file** as well
+as a program: running the file itself would fail (it is text, not a
+program), so the entry is read and the command it names is what runs, with
+its own `Path=` as the working directory. That is what makes the file
+dialog's "Other application…" work when the user picks a launcher out of
+`/usr/share/applications`, and it is how the file display activates a
+desktop entry it lists.
+
+Reading those files — the `[Desktop Entry]` group, its localized `Name=`, and
+the icon-theme lookup behind `Icon=` — is
+[`UltraCanvasDesktopEntry`](UltraCanvasDesktopEntry.md)'s, not this service's:
+the file display draws the very same launchers and must agree with the menu
+about what they are called and what they look like.
+
 ## Prewarm / caching model
 
 Lookups are cached per extension and served under a mutex, so
@@ -84,6 +98,21 @@ files (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
 `~/Library/Caches/UltraCanvas/openwith-icons`), keyed by icon source, so the
 extraction survives both the expiry above and a restart. Linux `.desktop`
 icons already resolve to theme files and need no extraction.
+
+Because that cache outlives the process it is also **expired**: an entry is
+keyed by where its icon came from, so an application that is upgraded, moved
+or uninstalled orphans its PNG — nothing will ever ask for that key again.
+Each file carries the day it was last served as its modification time (the
+one timestamp worth trusting; Windows stopped maintaining last-access times
+by default with Vista), rewritten at most once a day so a menu that opens
+repeatedly costs no disk writes. The first lookup in a process sweeps the
+directory and deletes everything not served for **two weeks**, along with any
+`.tmp` left by an interrupted write; nothing else in there is touched. A
+swept icon that turns out to still be wanted is simply extracted again. The
+policy is `kIconCacheMaxAge` / `SweepIconCache` / `StampIconCacheFile` in
+`UltraCanvasFileAssociationsBackend.h`, implemented once in
+`core/UltraCanvasFileAssociations.cpp` so both platforms expire on the same
+rule.
 
 ## Example
 

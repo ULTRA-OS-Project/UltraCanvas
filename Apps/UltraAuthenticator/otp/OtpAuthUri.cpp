@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "OtpAuthUri.h"
 
+#include "UltraCanvasTextUtils.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <strings.h>
@@ -360,7 +362,8 @@ Result BuildOtpAuthUri(const Parameters& params,
     uri += "/";
     uri += label;
     uri += "?secret=";
-    uri += UltraCrypt_Base32Encode(secret.Data(), secret.GetSize(), /*pad=*/false);
+    uri += UltraCanvas::Base32Encode(static_cast<const uint8_t*>(secret.Data()),
+                                     secret.GetSize(), /*pad=*/false);
 
     if (!params.issuer.empty()) {
         uri += "&issuer=" + PercentEncode(params.issuer);

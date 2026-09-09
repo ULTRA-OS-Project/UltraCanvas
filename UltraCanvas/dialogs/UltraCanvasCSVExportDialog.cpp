@@ -23,6 +23,9 @@ void UltraCanvasCSVExportDialog::Initialize(UltraCanvasSpreadsheet* source,
     config.height = 560;
     config.resizable = true;
     config.buttons = DialogButtons::NoButtons;  // custom Export/Cancel below
+    // Custom type: skip the built-in icon/message/footer layout so its
+    // grow-section can't compete with our own flex content.
+    config.dialogType = DialogType::Custom;
 
     CreateDialog(config);
     BuildLayout();
@@ -122,11 +125,10 @@ void UltraCanvasCSVExportDialog::BuildLayout() {
 
     // ===== Preview =====
     contentSection->AddChild(makeLabel("lblExpPreview", "Preview", 300, true));
-    previewText_ = std::make_shared<UltraCanvasTextInput>("ExpPreview", 0, 0, 588, 200);
-    previewText_->SetInputType(TextInputType::Multiline);
+    previewText_ = std::make_shared<UltraCanvasTextArea>("ExpPreview", 0, 0, 588, 200);
     previewText_->SetReadOnly(true);
     previewText_->SetFontSize(11);
-    previewText_->SetShowValidationState(false);
+    previewText_->SetWordWrap(false);
     contentSection->AddChild(previewText_);
 
     AddChild(contentSection);
