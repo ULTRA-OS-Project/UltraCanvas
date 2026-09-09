@@ -2,8 +2,8 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.1.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
@@ -138,7 +138,14 @@ std::string RunToMarkdown(const RichTextRun& run, bool inTableCell) {
     if (core.empty()) return run.text;
 
     std::string body;
-    if (run.code) {
+    if (run.math) {
+        // LaTeX source between single dollars, unescaped: the Markdown pipeline
+        // hands it to the math engine. Hard breaks would end the formula, so
+        // the source is flattened to one line.
+        body = "$";
+        for (char c : core) body.push_back(c == '\n' ? ' ' : c);
+        body += "$";
+    } else if (run.code) {
         // Inline code swallows other emphasis; pick a fence that is not in the text.
         std::string fence = "`";
         while (core.find(fence) != std::string::npos) fence += "`";
@@ -149,6 +156,11 @@ std::string RunToMarkdown(const RichTextRun& run, bool inTableCell) {
         else if (run.bold)          body = "**" + body + "**";
         else if (run.italic)        body = "*" + body + "*";
         if (run.strikethrough)      body = "~~" + body + "~~";
+        // ^x^ / ~x~ are the TextArea's super-/subscript markers; they only
+        // work around a single word, so longer spans stay plain text.
+        const bool oneWord = body.find_first_of(" \t^~") == std::string::npos;
+        if (run.superscript && oneWord)     body = "^" + body + "^";
+        else if (run.subscript && oneWord)  body = "~" + body + "~";
     }
     if (!run.linkTarget.empty()) {
         body = "[" + body + "](" + run.linkTarget + ")";
@@ -579,14 +591,19 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                 for (size_t r = 0; r < block.tableRows.size(); ++r) {
                     const auto& row = block.tableRows[r];
                     md << "|";
+                    size_t columns = 0;
                     for (const auto& cell : row.cells) {
                         md << ' ' << RunsToMarkdown(cell.runs, true) << " |";
+                        // Markdown has no column spans: a spanning cell is
+                        // followed by empty cells so the grid stays aligned.
+                        for (int span = 1; span < cell.columnSpan; ++span) md << " |";
+                        columns += static_cast<size_t>(std::max(1, cell.columnSpan));
                     }
                     md << "\n";
                     if (r == 0) {
                         // Markdown tables require a header separator after row one.
                         md << "|";
-                        for (size_t c = 0; c < row.cells.size(); ++c) md << " --- |";
+                        for (size_t c = 0; c < columns; ++c) md << " --- |";
                         md << "\n";
                     }
                 }
@@ -607,6 +624,13 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             case RichBlockType::PageBreak: {
                 blockSeparator();
                 md << "---\n";
+                break;
+            }
+            case RichBlockType::MathBlock: {
+                // A `$$` fence pair: the Markdown renderer typesets the lines
+                // between them as one centred display formula.
+                blockSeparator();
+                md << "$$\n" << ConcatenateRunText(block.runs) << "\n$$\n";
                 break;
             }
             case RichBlockType::Paragraph:
@@ -657,6 +681,25 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
             trimmed = (b == std::string::npos) ? std::string() : trimmed.substr(b);
         }
         if (trimmed.empty()) continue;
+
+        // Display-math fence: `$$` alone on a line up to the next such line.
+        if (trimmed == "$$") {
+            RichDocBlock block;
+            block.type = RichBlockType::MathBlock;
+            bool firstLine = true;
+            while (++li < lines.size()) {
+                std::string mathLine = lines[li];
+                size_t b = mathLine.find_first_not_of(" \t");
+                if (b != std::string::npos && mathLine.substr(b) == "$$") break;
+                RichTextRun run;
+                run.text = mathLine;
+                run.lineBreakBefore = !firstLine;
+                firstLine = false;
+                block.runs.push_back(run);
+            }
+            doc.blocks.push_back(std::move(block));
+            continue;
+        }
 
         // Fenced code block.
         if (trimmed.rfind("```", 0) == 0) {
@@ -815,6 +858,7 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs) {
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) out += "<br/>";
         std::string body = EscapeHtml(run.text);
+        if (run.math) body = "<span class=\"math\">$" + body + "$</span>";
         if (run.code) body = "<code>" + body + "</code>";
         if (run.bold) body = "<b>" + body + "</b>";
         if (run.italic) body = "<i>" + body + "</i>";
@@ -920,6 +964,10 @@ std::string UCRichDocument::ToHTML() const {
             case RichBlockType::HorizontalRule:
             case RichBlockType::PageBreak:
                 html << "<hr/>\n";
+                break;
+            case RichBlockType::MathBlock:
+                html << "<p class=\"math\" style=\"text-align:center\">$$"
+                     << EscapeHtml(ConcatenateRunText(block.runs)) << "$$</p>\n";
                 break;
             case RichBlockType::Paragraph:
             default: {

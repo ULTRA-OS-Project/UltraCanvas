@@ -446,6 +446,8 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
+        # UCWordDocumentIO dispatches .tex to the LaTeX document reader
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
         # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasTextUtils.cpp
@@ -475,6 +477,48 @@ else()
 endif()
 
 # ===== MIND MAP IO TEST =====
+# ===== LATEX DOCUMENT TEST =====
+# The LaTeX document-subset importer (UltraCanvasLaTeXDocumentReader →
+# UCRichDocument): structure, text commands, macros, tables, references,
+# math runs/blocks, diagnostics, Markdown/ODT round trips of the math model
+# parts, format detection, and the shipped media/LaTex corpus. Needs the Word
+# module sources (for UCWordDocumentIO) like WordFormatsTest, not the UI stack.
+if(TINYXML2_TEST_FOUND)
+    message(STATUS "  Building LaTeXDocumentTest...")
+    add_executable(LaTeXDocumentTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LaTeXDocumentTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasZipPackage.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+    )
+    target_include_directories(LaTeXDocumentTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${TINYXML2_TEST_INCLUDE_DIRS}
+    )
+    target_link_libraries(LaTeXDocumentTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_features(LaTeXDocumentTest PRIVATE cxx_std_20)
+    set_target_properties(LaTeXDocumentTest PROPERTIES
+        OUTPUT_NAME "LaTeXDocumentTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME LaTeXDocumentTest
+        COMMAND LaTeXDocumentTest ${CMAKE_BINARY_DIR}/latexdocument-test-out ${ULTRACANVAS_ROOT}/media/LaTex
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: LaTeXDocumentTest")
+else()
+    message(STATUS "  tinyxml2 not found - LaTeXDocumentTest disabled")
+endif()
+
 # Interchange: Mermaid, FreeMind/Freeplane .mm, OPML, indented text, CSV, XMind
 # content.json, SVG export and format sniffing. Checks round-trip fidelity and
 # that a failed import leaves the caller's model untouched. Needs the same

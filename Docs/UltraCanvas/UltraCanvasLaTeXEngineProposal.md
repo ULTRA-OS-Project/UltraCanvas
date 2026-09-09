@@ -1,6 +1,6 @@
 # UltraCanvas LaTeX Engine — Investigation & Proposal
 
-Status: **Investigation complete; Phases 0 and 1 implemented.** Phase 0,
+Status: **Investigation complete; Phases 0–3 implemented.** Phase 0,
 `UltraCanvasMathFont` ([`UltraCanvasMathFont.md`](UltraCanvasMathFont.md)),
 reads the OpenType MATH table, metrics and outlines straight from a font
 file through FreeType; `Tests/MathFontTest.cpp` proves it equal to the
@@ -14,7 +14,14 @@ Phase 2, inline math for the text stack, is done: `UltraCanvasInlineMath`
 (core, through module ABI 3) typesets a formula with a baseline, and
 `UltraCanvasTextArea`'s Markdown mode sets `$...$` runs, `$$...$$` and `$$`
 blocks into its lines — so imported Word/ODT equations render typeset
-(`Tests/InlineMathTest.cpp`). Phases 3–4 are not started. This document
+(`Tests/InlineMathTest.cpp`). Phase 3, the document subset, is done:
+`UltraCanvasLaTeXDocumentReader`
+([`UltraCanvasLaTeXDocumentReader.md`](UltraCanvasLaTeXDocumentReader.md))
+imports `article`-style `.tex` files into `UCRichDocument` — the model the
+Word/ODT readers fill — with formulas kept as source for the engine; `.tex`
+opens as a document in the Filer preview, the Media Viewer and the demo,
+and the demo's reference-image fallback now serves TikZ pictures only
+(`Tests/LaTeXDocumentTest.cpp`). Phase 4 is not started. This document
 answers two questions put to the framework: can UltraCanvas replace the
 vendored MicroTeX math engine with an implementation of its own, built on the
 framework's vector rendering engine; and how far can such an implementation be
@@ -505,7 +512,7 @@ way it draws `GetLastError()` today.
 | **0 — Font layer** — **done** | `UltraCanvasMathFont` on FreeType (`include/Plugins/LaTeX/UltraCanvasMathFont.h`, built into the LaTeX module); `Tests/MathFontTest.cpp` links `microtex_core` as the oracle and compares the `.otf` against the `.clm2` | Met: all 56 constants, the connector overlap and, over all 4,802 glyphs, every advance/height/depth, 1,002 italics corrections, 2,475 top-accent attachments, 176 variant lists and 114 assemblies are equal; math kerning (absent from every font at hand) is verified on a synthetic table; STIX Math and TeX Gyre Termes Math load and stretch when installed |
 | **1 — Native math engine** — **done** | `UltraCanvasMathParser` (2,000 lines: ~180 commands, ~600 symbols, environments, macros, text mode), `UltraCanvasMathLayout` (1,570 lines: Appendix G on the MATH constants), `UltraCanvasMathRender` (180 lines), the `UltraCanvasMathEngine` facade; `UltraCanvasLaTeXView` uses it by default, MicroTeX stays selectable (`ULTRACANVAS_LATEX_ENGINE`) as the oracle | Met except the removal: every shipped `.tex` renders without a diagnostic; `Tests/MathEngineTest.cpp` compares 63 formulas with MicroTeX at mean 6% width / 7% height deviation, and checks the layout against the font's own constants. Deleting `third_party/microtex` and the `.clm2` is left for when the native engine has been in use for a release (§8 decision 4) |
 | **2 — Inline math** — **done** | `UltraCanvasInlineMath` (core) over four new module entry points (ABI 3); `TextAttributeFactory::CreateShape` + `ITextLayout::IndexToBaseline` reserve and locate the formula's box in a Pango layout; `UltraCanvasTextArea` Markdown: `$…$` and `$$…$$` runs become a U+FFFC placeholder carrying the source, `$$` fences a centred display block; the Word Markdown serializer keeps `$…$` unescaped | Met: `Tests/InlineMathTest.cpp` renders a TextArea offscreen and finds the formula's ink in the line and the block centred; `Tests/WordFormatsTest.cpp` checks an OMML fraction reaches Markdown as `$\frac{b}{2a}$`; the shipped Markdown example's `$E = mc^2$` and `$$` blocks render typeset |
-| **3 — Document subset** | `UltraCanvasLaTeXDocumentReader` producing the rich-text document model; `.tex` in the Filer/MediaViewer opens as a document; demo fallback-image path retired for documents in the subset | The `media/LaTex` set plus a small `article` corpus render; unknown commands produce diagnostics, not blank panes |
+| **3 — Document subset** — **done** | `UltraCanvasLaTeXDocumentReader` (`include/Plugins/Documents/LaTeX/`, 1,900 lines: sectioning, lists, tables, floats and captions, images, footnotes, references and citations, theorems, verbatim, macros and user environments, `\input`, accents; formulas as `math` runs and `MathBlock` blocks added to `UCRichDocument`); `WordDocumentFormat::LaTeX` in `UCWordDocumentIO` so `FileLoader::LoadTextDocument`, the Filer preview and the Media Viewer open `.tex` as a document; the demo keeps the reference image for TikZ only | Met: the `media/LaTex` set (23 formula files and `article-quadratic-note.tex`) imports without a diagnostic; `Tests/LaTeXDocumentTest.cpp` covers the vocabulary, the Markdown/ODT round trips and detection; unknown commands and environments, missing images and undefined labels produce diagnostics with line numbers, never a blank pane |
 | **4 — TikZ / pgfplots subsets** | `UltraCanvasTikZConverter` → `VectorDocument`; `UltraCanvasPgfPlotsReader` → chart engine element | A curated TikZ corpus (shapes, nodes, arrows, `\foreach`) and a pgfplots line/bar/scatter set render; unsupported libraries are diagnosed |
 
 Phases 0–2 are the proposal proper; 3 and 4 are how the same foundation

@@ -202,6 +202,11 @@ namespace {
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });
+        out.push_back({ "tex", { "latex", "ltx" }, "LaTeX document",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in LaTeX document reader + math engine",
+                        "article subset: sections, lists, tables, images, "
+                        "footnotes, references, formulas; no TikZ, no writer" });
         out.push_back({ "md", { "markdown" }, "Markdown text",
                         MediaFormatCategory::Document, true, true,
                         "built-in Markdown engine", "" });

@@ -1,3 +1,48 @@
+#### 2026-09-09 *0.3.117*
+- **LaTeX documents open as documents (LaTeX engine Phase 3).** New
+  `UltraCanvasLaTeXDocumentReader`
+  (`include/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h`, core
+  library) imports the `article` document subset of a `.tex` file into
+  `UCRichDocument`, the model the ODT/DOCX readers fill: `\maketitle`,
+  sectioning with article numbering, paragraphs and line breaks, text
+  formatting and colours, `itemize` / `enumerate` / `description`, quotes,
+  alignment environments, `tabular` with `\multicolumn` / `\multirow`,
+  floats with numbered captions, `\includegraphics` (embedded as media,
+  sized from `width=` / `height=` / `scale=`), verbatim and listings,
+  footnotes, `\label` / `\ref` / `\eqref`, `\cite` with `thebibliography`,
+  `\newtheorem` environments, `\newcommand` / `\def` / `\newenvironment`
+  expansion, `\input` / `\include`, accents and text symbols. Formulas are
+  kept as LaTeX source (the definitions they use prepended) and typeset by
+  the math engine wherever the document is shown. Unknown commands and
+  environments, missing images, undefined labels and TikZ pictures are
+  reported as line-numbered diagnostics while the rest of the document
+  still imports. It is an importer, not a TeX interpreter: no page layout,
+  no arbitrary packages, no writer.
+- `UCRichDocument` gained `RichTextRun::math` (inline formula source) and
+  `RichBlockType::MathBlock` (display formula). `ToMarkdown` writes them as
+  `$...$` and `$$` fences, emits `^x^` / `~x~` for single-word super- and
+  subscripts, and pads spanning table cells so the Markdown grid stays
+  aligned; `FromMarkdown` reads `$$` fences back; `ToHTML` and the ODT/DOCX
+  writers degrade a math block to a centred `$$...$$` paragraph.
+- `WordDocumentFormat::LaTeX`: `DetectWordDocumentFormat` recognises a
+  LaTeX head (`\documentclass`, `\begin{document}`, a sectioning command;
+  comments skipped) or a `.tex` / `.latex` / `.ltx` text file, and
+  `UCWordDocumentIO::Load` / `LoadLaTeX` dispatch to the reader, so
+  `UltraCanvasFileLoader::LoadTextDocument` (and its dialog filter), the
+  Filer's preview page and the Media Viewer open `.tex` as the rendered
+  document. `UltraCanvasSupportedFormats` lists `tex`. Texter keeps editing
+  `.tex` as source.
+- Demo "LaTeX Documents": a formula-only file still goes to the LaTeX view;
+  an article-style file renders through the reader in a Markdown TextArea
+  with its diagnostics in the header; only TikZ / pgfplots documents fall
+  back to a reference image. New sample `media/LaTex/article-quadratic-note.tex`.
+- `Tests/LaTeXDocumentTest.cpp` (registered as `LaTeXDocumentTest`): the
+  vocabulary above, macros, diagnostics with line numbers, Markdown and ODT
+  round trips of the math model parts, format detection, and the shipped
+  `media/LaTex` corpus (every file imports without a diagnostic). Docs:
+  `UltraCanvasLaTeXDocumentReader.md`; the proposal, the ODT/DOCX
+  proposal, the Media Viewer, Filer and element catalogue pages updated.
+
 #### 2026-09-09 *0.3.116*
 - **Inline math in the text stack (LaTeX engine Phase 2).** Formulas now
   render typeset inside text: `UltraCanvasTextArea`'s Markdown mode sets
