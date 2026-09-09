@@ -5,7 +5,7 @@
 //
 // It answers the question the map raises — "why is this block so big, and is
 // it something I want?" — without leaving the app.
-// Version: 0.1.0 (Phase 1)
+// Version: 0.3.0 (Phase 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -15,6 +15,7 @@
 
 #include "EmailCleanerStore.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -23,8 +24,11 @@ namespace EmailCleaner {
 // One message row: sender-scoped, so it shows date, category and subject.
 class MessageRow : public UltraCanvas::UltraCanvasContainer {
 public:
+    // `onAttachments`, when set and the message has any, puts a button on the
+    // row that asks to see them.
     MessageRow(const std::string& id, float x, float y, float w, float h,
-               const AnalyzedMessage& message);
+               const AnalyzedMessage& message,
+               const std::function<void(const AnalyzedMessage&)>& onAttachments = {});
 };
 
 class DetailView {
@@ -36,6 +40,10 @@ public:
 
     // Show whatever the filter selects. `title` names it in the heading.
     void Refresh(const MessageFilter& filter, const std::string& title);
+
+    // Raised when a message's attachments are asked for. The app owns the
+    // opening: the bytes live in the mail cache, not in the analysis database.
+    std::function<void(const AnalyzedMessage&)> onOpenAttachments;
 
 private:
     void RebuildEvidence();
