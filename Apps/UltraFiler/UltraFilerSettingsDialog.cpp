@@ -12,11 +12,12 @@
 // Display > Detail view (the list of files: which file kinds, and which
 // individual formats inside them, are drawn as a thumbnail in the file
 // display / opened in the detail pane beside it), Handling > Drag & Drop
-// (what a plain drop onto a folder does - move or copy), Extras > Open prompt
-// (the command line program UltraFiler opens, picked with the file dialog
-// and stored with "Save app") and History & Favorites (clearing the
-// recently-used lists and the pinned entries). Changes apply live and are
-// saved immediately.
+// (what a plain drop onto a folder does - move or copy), Handling > Tabs
+// (what the "+" of the folder tab strip opens - the current folder again or
+// the Home folder), Extras > Open prompt (the command line program UltraFiler
+// opens, picked with the file dialog and stored with "Save app") and History
+// & Favorites (clearing the recently-used lists and the pinned entries).
+// Changes apply live and are saved immediately.
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
@@ -26,8 +27,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.9.0
-// Last Modified: 2026-09-08
+// Version: 1.10.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -96,6 +97,7 @@ namespace {
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
+    constexpr const char* kPageTabs = "handling/tabs";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "history-favorites";
@@ -167,6 +169,11 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       dropMoveRadio;
         std::shared_ptr<UltraCanvasRadio>       dropCopyRadio;
         UltraCanvasRadioGroup                   dropOnFolderGroup;
+
+        // Handling > Tabs: what the tab strip's "+" opens.
+        std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
+        std::shared_ptr<UltraCanvasRadio>       newTabHomeRadio;
+        UltraCanvasRadioGroup                   newTabGroup;
 
         // Extras > Open prompt
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
@@ -1156,6 +1163,40 @@ namespace {
         return parts.page;
     }
 
+    // ===== HANDLING > TABS =====
+    std::shared_ptr<UltraCanvasContainer> BuildTabsPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-tabs", "Tabs",
+                "New tab - what the \"+\" at the end of the tab strip opens:");
+
+        const bool home = d->settings->newTabOpensHome;
+
+        d->newTabCurrentRadio = MakeChoice("ufl-set-tab-current",
+                "New view of the current folder", !home);
+        d->newTabHomeRadio = MakeChoice("ufl-set-tab-home",
+                "Open the Home folder", home);
+        d->newTabGroup.AddRadioButton(d->newTabCurrentRadio);
+        d->newTabGroup.AddRadioButton(d->newTabHomeRadio);
+        d->newTabGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->newTabOpensHome = (selected == d->newTabHomeRadio);
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->newTabCurrentRadio);
+        parts.body->AddChild(d->newTabHomeRadio);
+
+        AddNote(parts, "ufl-set-tab-note1",
+                "A new view of the current folder opens the tab on the folder "
+                "the active tab is showing, so the work carries on where it "
+                "is; the Home folder opens every new tab on the same starting "
+                "point instead.");
+        AddNote(parts, "ufl-set-tab-note2",
+                "Only the \"+\" follows this. A tab opened on a named folder - "
+                "the containing folder of a search result, an entry of the "
+                "History or Favorites view - still opens on that folder.");
+        return parts.page;
+    }
+
     // ===== EXTRAS > OPEN PROMPT =====
 
     // Describes what "Extras > Open prompt" will start right now: the saved
@@ -1477,6 +1518,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageDetailView, "Detail view");
         AddTreeNode(d, "settings", kPageHandling, "Handling");
         AddTreeNode(d, kPageHandling, kPageDragDrop, "Drag & Drop");
+        AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
         AddTreeNode(d, "settings", kPageLists, "History & Favorites");
@@ -1503,6 +1545,7 @@ namespace {
         AddPage(d, kPageDetailView,
                 BuildFormatSwitchPage(d, FilerPreviewTarget::DetailView));
         AddPage(d, kPageDragDrop, BuildDragDropPage(d));
+        AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
 

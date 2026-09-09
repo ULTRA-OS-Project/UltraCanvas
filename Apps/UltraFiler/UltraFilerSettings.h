@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.7.0
-// Last Modified: 2026-09-04
+// Version: 1.8.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -116,6 +116,15 @@ public:
     // way this is set.
     bool dropOnFolderCopies = false;
 
+    // Handling > Tabs: what the "+" at the end of the folder tab strip opens -
+    // another view of the folder the active tab is showing (the default, and
+    // what every earlier release did: the new tab continues where the work is)
+    // or the Home folder (a clean starting point, the way a browser opens a
+    // new tab on its start page). Everything else that opens a tab - "Open
+    // containing folder" from a search result, a folder opened in a new tab
+    // from the History view - names its own folder and is not affected.
+    bool newTabOpensHome = false;
+
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
     // default is detected at run time (see UltraFilerPrompt).
@@ -197,6 +206,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
+        it = kv.find("handling.tabs.new.tab");
+        if (it != kv.end()) newTabOpensHome = (it->second == "home");
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
         return true;
@@ -242,6 +253,8 @@ public:
              << (showLockState ? "true" : "false") << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
+        file << "handling.tabs.new.tab = "
+             << (newTabOpensHome ? "home" : "current") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
     }

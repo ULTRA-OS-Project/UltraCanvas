@@ -21,11 +21,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 
 - **Tabs:** the tab strip is the topmost bar of the window — above the
   toolbars, browser style — and its tabs name the folder each one shows. The
-  **"+" at the end of the tab list** opens an additional tab on the current
-  folder. Every tab has its own folder view, Back / Forward history, sort and
-  view settings; tabs can be reordered by dragging and closed (the last one
-  stays open). The strip stays visible while the History or Favorites view
-  replaces the folder display, so clicking a tab returns to browsing it.
+  **"+" at the end of the tab list** opens an additional tab — on the folder
+  the active tab is showing, or on the Home folder, whichever *Settings >
+  Handling > Tabs* is set to. Every tab has its own folder view, Back /
+  Forward history, sort and view settings; tabs can be reordered by dragging
+  and closed (the last one stays open). The strip stays visible while the
+  History or Favorites view replaces the folder display, so clicking a tab
+  returns to browsing it.
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
   tree with lazy expansion, and the History toggle (see below).
@@ -269,6 +271,7 @@ running application immediately and is saved to the config file
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
+| Handling > Tabs | **New tab** — what the **"+"** at the end of the tab strip opens: a **new view of the current folder** (the default) or the **Home folder**. Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
 | History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
 

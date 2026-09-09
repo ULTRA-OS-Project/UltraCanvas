@@ -1,3 +1,16 @@
+#### 2026-09-09 *1.25.0*
+- **The "+" of the tab strip can open the Home folder instead of the folder
+  in front of you.** Opening a tab has always meant "the same folder once
+  more", which is what a second view of the folder being worked in wants, and
+  exactly wrong when the new tab is meant to start somewhere else entirely -
+  every one of those began with a walk back up out of the folder the tab
+  inherited. *Settings > Handling > Tabs* now chooses between the two: **New
+  view of the current folder** (the default, unchanged behaviour) or **Open
+  the Home folder**. Only the "+" follows the setting - a tab opened on a
+  folder that was named, such as the containing folder of a search result or
+  an entry of the History or Favorites view, still opens on that folder - and
+  the choice is saved as `handling.tabs.new.tab` in the config file.
+
 #### 2026-09-09 *1.24.0*
 - **The search field kept its button and lost its text when the window got
   narrow.** Reducing the window width squeezed the search field away entirely

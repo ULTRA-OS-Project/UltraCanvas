@@ -2802,12 +2802,15 @@ void UltraFilerWindow::BuildTabbedContainer() {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     tabbedContainer->SetContentHost(tabContentHost);
 
-    // "+" at the end of the tab list opens another tab on the current folder.
+    // "+" at the end of the tab list opens another tab - on the folder the
+    // active tab is showing, or on the Home folder, per Settings > Handling >
+    // Tabs. The current folder is what it always was and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
     tabbedContainer->SetNewButtonColor(Color(249, 249, 251, 255));
     tabbedContainer->onNewTabRequest = [this]() {
-        std::string path = filer ? filer->GetPath() : std::string();
+        std::string path;
+        if (!settings.newTabOpensHome && filer) path = filer->GetPath();
         if (path.empty()) path = UserHomeDir();
         AddNewTab(path, true);
     };
