@@ -288,6 +288,40 @@ public:
 #endif
     }
     
+    // Moves the whole network to `channel`, as network manager. Blocks
+    // until the coordinator's own radio has moved (or the attempt is known
+    // to have failed).
+    bool ChangeChannel(uint8_t channel, uint8_t nwkUpdateId) {
+#ifdef ULTRACANVAS_WITH_EZSP
+        return EZSP_ChangeChannel(channel, nwkUpdateId);
+#else
+        (void)channel; (void)nwkUpdateId;
+        return true;
+#endif
+    }
+    
+    // Network key rotation is two steps with a pause between them: the new
+    // key goes out encrypted with the old one, and once every device has had
+    // a chance to hear it (sleepy ones included) the switch is broadcast.
+    bool BroadcastNextNetworkKey(const std::array<uint8_t, 16>& key) {
+#ifdef ULTRACANVAS_WITH_EZSP
+        return SendEzspExpectingStatus("broadcastNextNetworkKey", Ezsp::kBroadcastNextNetworkKey,
+                                       std::vector<uint8_t>(key.begin(), key.end()));
+#else
+        (void)key;
+        return true;
+#endif
+    }
+    
+    bool BroadcastNetworkKeySwitch() {
+#ifdef ULTRACANVAS_WITH_EZSP
+        return SendEzspExpectingStatus("broadcastNetworkKeySwitch",
+                                       Ezsp::kBroadcastNetworkKeySwitch, {});
+#else
+        return true;
+#endif
+    }
+    
     // ===== ZCL OPERATIONS =====
     
     bool SendZCLFrame(uint16_t nwkAddress, uint8_t endpoint, uint16_t clusterId,
@@ -801,6 +835,10 @@ private:
             {Ezsp::kPolicyTrustCenter, joinDecision, "trust centre policy"},
             {Ezsp::kPolicyTcKeyRequest, Ezsp::kDecisionAllowTcKeyRequestsSendCurrent, "TC key request policy"},
             {Ezsp::kPolicyAppKeyRequest, Ezsp::kDecisionDenyAppKeyRequests, "app key request policy"},
+            // Delivery reports carry the message, so a failed unicast can be
+            // matched back to the request that is waiting on its answer.
+            {Ezsp::kPolicyMessageContentsInCallback, Ezsp::kDecisionMessageTagAndContentsInCallback,
+             "message contents in callback policy"},
         };
         for (const auto& p : policies) {
             if (!SendEzspExpectingStatus(p.name, Ezsp::kSetPolicy,
@@ -856,10 +894,45 @@ private:
                 HandleTrustCenterJoin(frame->Parameters);
                 break;
             case Ezsp::kMessageSent:
-                break;   // delivery reports: the device's answer is what counts
+                HandleMessageSent(frame->Parameters);
+                break;
             default:
                 break;   // an unsolicited response nobody waits for any more
         }
+    }
+
+    // A delivery report. Success needs no action: the device's answer is
+    // what the request waits on. Failure means that answer will never come,
+    // so the request waiting on it is failed now instead of at its timeout.
+    void HandleMessageSent(const std::vector<uint8_t>& params) {
+        auto sent = Ezsp::DecodeMessageSent(params);
+        if (!sent || sent->Status == Ezsp::kEmberSuccess) return;
+        if (sent->Type == Ezsp::kOutgoingBroadcast || sent->Type == Ezsp::kOutgoingMulticast) {
+            return;   // nothing waits on those
+        }
+        Log(1, "delivery to 0x" + Hex16(sent->IndexOrDestination) + " failed, status 0x" +
+               Hex8(sent->Status));
+        if (sent->Contents.empty()) return;   // tag-only policy: nothing to match on
+
+        std::function<void(bool, const std::vector<uint8_t>&)> callback;
+        {
+            std::lock_guard<std::mutex> lock(requestMutex);
+            if (sent->Aps.ProfileId == Ezsp::Zdo::kProfile) {
+                auto it = pendingZdo.find(sent->Contents[0]);
+                if (it != pendingZdo.end() &&
+                    it->second.ResponseCluster == (sent->Aps.ClusterId | 0x8000)) {
+                    callback = std::move(it->second.Callback);
+                    pendingZdo.erase(it);
+                }
+            } else if (auto header = Ezsp::Zcl::DecodeHeader(sent->Contents)) {
+                auto it = pendingRequests.find(header->Tsn);
+                if (it != pendingRequests.end() && it->second.ClusterId == sent->Aps.ClusterId) {
+                    callback = std::move(it->second.Callback);
+                    pendingRequests.erase(it);
+                }
+            }
+        }
+        if (callback) callback(false, {});
     }
 
     void HandleTrustCenterJoin(const std::vector<uint8_t>& params) {
@@ -1079,20 +1152,55 @@ private:
 
         // Tell the routers too, or only the coordinator's own radio range
         // would be open. Broadcast, so no answer is expected.
-        Ezsp::ApsFrame aps;
-        aps.ProfileId = Ezsp::Zdo::kProfile;
-        aps.ClusterId = Ezsp::Zdo::kMgmtPermitJoiningReq;
-        aps.SourceEndpoint = Ezsp::Zdo::kEndpoint;
-        aps.DestinationEndpoint = Ezsp::Zdo::kEndpoint;
-        aps.Sequence = apsSequence++;
-        const std::vector<uint8_t> req =
-            Ezsp::Zdo::EncodeMgmtPermitJoiningReq(NextZdoSequence(), duration);
-        if (!SendEzsp(Ezsp::kSendBroadcast,
-                      Ezsp::EncodeSendBroadcastParams(Ezsp::kBroadcastRouters, aps,
-                                                      /*radius*/ 0, aps.Sequence, req))) {
+        if (!SendZdoBroadcast(Ezsp::kBroadcastRouters, Ezsp::Zdo::kMgmtPermitJoiningReq,
+                              Ezsp::Zdo::EncodeMgmtPermitJoiningReq(NextZdoSequence(), duration))) {
             Log(1, "Mgmt_Permit_Joining broadcast not sent; only direct joins are open");
         }
         return true;
+    }
+
+    // A ZDO request to everyone at once. Broadcasts are not answered and
+    // nothing is registered for them.
+    bool SendZdoBroadcast(uint16_t destination, uint16_t cluster,
+                          const std::vector<uint8_t>& zdoFrame) {
+        Ezsp::ApsFrame aps;
+        aps.ProfileId = Ezsp::Zdo::kProfile;
+        aps.ClusterId = cluster;
+        aps.SourceEndpoint = Ezsp::Zdo::kEndpoint;
+        aps.DestinationEndpoint = Ezsp::Zdo::kEndpoint;
+        aps.Sequence = apsSequence++;
+        return SendEzsp(Ezsp::kSendBroadcast,
+                        Ezsp::EncodeSendBroadcastParams(destination, aps, /*radius*/ 0,
+                                                        aps.Sequence, zdoFrame));
+    }
+
+    // Channel change, the network-manager way: Mgmt_NWK_Update_req to every
+    // awake device names the new channel and a new update id. The NCP is a
+    // member of the network too and moves itself on hearing the broadcast;
+    // if it has not done so after a grace period, setRadioChannel moves it
+    // by hand — the devices have been told, so the network follows.
+    bool EZSP_ChangeChannel(uint8_t channel, uint8_t nwkUpdateId) {
+        if (!SendZdoBroadcast(Ezsp::kBroadcastRxOnWhenIdle, Ezsp::Zdo::kMgmtNwkUpdateReq,
+                              Ezsp::Zdo::EncodeMgmtNwkUpdateChannelChange(
+                                  NextZdoSequence(), 1u << channel, nwkUpdateId))) {
+            Log(0, "Mgmt_NWK_Update_req broadcast not sent; channel unchanged");
+            return false;
+        }
+
+        // The spec gives devices about a beacon-order's worth of time to
+        // switch; a few seconds covers it and the broadcast's own propagation.
+        for (int waited = 0; waited < 10; ++waited) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            auto rsp = SendEzspAndWait(Ezsp::kGetNetworkParams, {});
+            auto np = rsp ? Ezsp::DecodeNetworkParametersResponse(*rsp) : std::nullopt;
+            if (np && np->Status == Ezsp::kEmberSuccess &&
+                np->Parameters.RadioChannel == channel) {
+                return true;
+            }
+        }
+
+        Log(1, "NCP did not move on the broadcast; setting its radio channel directly");
+        return SendEzspExpectingStatus("setRadioChannel", Ezsp::kSetRadioChannel, {channel});
     }
 
     bool EZSP_LeaveNetwork() {
@@ -1442,6 +1550,9 @@ void ZigbeeProtocol::Shutdown() {
     }
     if (networkThread.joinable()) {
         networkThread.join();
+    }
+    if (keySwitchThread.joinable()) {
+        keySwitchThread.join();   // returns promptly: it watches `running`
     }
     
     // Clear state
@@ -2582,15 +2693,59 @@ bool ZigbeeProtocol::ChangeChannel(uint8_t newChannel) {
     if (newChannel < 11 || newChannel > 26) {
         return false;
     }
+    if (!hasNetwork) {
+        return false;
+    }
+    if (newChannel == networkParams.Channel) {
+        return true;
+    }
     
-    // TODO: Implement network manager channel change
+    // Each change carries a fresh network update id so a device that missed
+    // the broadcast and later hears an older one does not follow it.
+    const uint8_t nwkUpdateId = static_cast<uint8_t>(networkParams.NetworkUpdateId + 1);
+    Log(2, "Moving network to channel " + std::to_string(newChannel));
+    if (!stack->ChangeChannel(newChannel, nwkUpdateId)) {
+        ReportError(-210, "Channel change failed");
+        return false;
+    }
     networkParams.Channel = newChannel;
+    networkParams.ChannelMask = 1u << newChannel;
+    networkParams.NetworkUpdateId = nwkUpdateId;
+    SetNetworkInfo(MakeNetworkInfo());
     return true;
 }
 
 bool ZigbeeProtocol::UpdateNetworkKey(const std::array<uint8_t, 16>& newKey) {
-    // TODO: Implement network key update broadcast
-    networkParams.NetworkKey = newKey;
+    if (!hasNetwork) {
+        return false;
+    }
+    if (keySwitchThread.joinable()) {
+        Log(1, "A network key rotation is already in progress");
+        return false;
+    }
+    
+    // Step one goes out now; step two, the switch, after every device has had
+    // time to hear the new key — sleepy end devices only poll every so often.
+    // The key on record changes when the network actually switches.
+    if (!stack->BroadcastNextNetworkKey(newKey)) {
+        ReportError(-211, "Network key broadcast failed");
+        return false;
+    }
+    Log(2, "New network key broadcast; switching in " +
+        std::to_string(kKeySwitchDelaySeconds) + " s");
+    
+    keySwitchThread = std::thread([this, newKey]() {
+        for (int waited = 0; waited < kKeySwitchDelaySeconds && running; ++waited) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        if (!running) return;
+        if (stack->BroadcastNetworkKeySwitch()) {
+            networkParams.NetworkKey = newKey;
+            Log(2, "Network switched to the new key");
+        } else {
+            ReportError(-212, "Network key switch failed; the old key stays in use");
+        }
+    });
     return true;
 }
 
@@ -2714,20 +2869,24 @@ bool ZigbeeProtocol::SetInstallCode(const std::string& ieeeAddress,
 
 // ===== GREEN POWER =====
 
+// Green Power is not implemented: a proxy needs the NCP's GP proxy table
+// configured (EZSP_CONFIG_GP_PROXY_TABLE_SIZE, gpProxyTableProcessGpPairing)
+// and a sink needs the GP cluster (0x0021) commissioning exchange. Neither
+// exists here, so these say so instead of recording a wish as a fact.
 bool ZigbeeProtocol::EnableGreenPowerProxy(bool enable) {
-    greenPowerEnabled = enable;
-    Log(2, enable ? "Green Power proxy enabled" : "Green Power proxy disabled");
-    return true;
+    if (!enable) {
+        greenPowerEnabled = false;
+        return true;
+    }
+    Log(1, "Green Power proxy is not implemented");
+    return false;
 }
 
 bool ZigbeeProtocol::AddGreenPowerDevice(uint32_t srcId, const std::vector<uint8_t>& key) {
-    if (!greenPowerEnabled) {
-        return false;
-    }
-    
-    greenPowerDevices[srcId] = key;
-    Log(2, "Added Green Power device: " + std::to_string(srcId));
-    return true;
+    (void)key;
+    Log(1, "Green Power device " + std::to_string(srcId) +
+        " not added: Green Power commissioning is not implemented");
+    return false;
 }
 
 bool ZigbeeProtocol::RemoveGreenPowerDevice(uint32_t srcId) {

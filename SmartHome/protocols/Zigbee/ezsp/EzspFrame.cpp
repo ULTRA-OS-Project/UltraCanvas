@@ -327,6 +327,26 @@ std::optional<IncomingMessage> DecodeIncomingMessage(const std::vector<uint8_t>&
     return m;
 }
 
+std::optional<MessageSent> DecodeMessageSent(const std::vector<uint8_t>& p) {
+    // type(1) indexOrDestination(2) aps(11) tag(1) status(1) length(1) contents
+    constexpr size_t kHeader = 1 + 2 + kApsFrameSize + 1 + 1 + 1;
+    if (p.size() < kHeader) return std::nullopt;
+    MessageSent m;
+    m.Type = p[0];
+    m.IndexOrDestination = ReadU16(p, 1);
+    auto aps = ReadApsFrame(p, 3);
+    if (!aps) return std::nullopt;
+    m.Aps = *aps;
+    size_t o = 3 + kApsFrameSize;
+    m.MessageTag = p[o++];
+    m.Status = p[o++];
+    const size_t length = p[o++];
+    if (o + length > p.size()) return std::nullopt;
+    m.Contents.assign(p.begin() + static_cast<long>(o),
+                      p.begin() + static_cast<long>(o + length));
+    return m;
+}
+
 // ============================================================================
 // ZDO
 // ============================================================================
@@ -385,6 +405,15 @@ std::vector<uint8_t> EncodeMgmtLeaveReq(uint8_t tsn, uint64_t ieee, bool rejoin,
 
 std::vector<uint8_t> EncodeMgmtPermitJoiningReq(uint8_t tsn, uint8_t duration) {
     return {tsn, duration, 0x01};
+}
+
+std::vector<uint8_t> EncodeMgmtNwkUpdateChannelChange(uint8_t tsn, uint32_t channelMask,
+                                                      uint8_t nwkUpdateId) {
+    std::vector<uint8_t> f{tsn};
+    AppendU32(f, channelMask);
+    f.push_back(0xFE);           // ScanDuration: channel change
+    f.push_back(nwkUpdateId);
+    return f;
 }
 
 std::optional<ActiveEpRsp> DecodeActiveEpRsp(const std::vector<uint8_t>& f) {

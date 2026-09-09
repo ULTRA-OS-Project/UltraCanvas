@@ -46,6 +46,9 @@ enum FrameId : uint16_t {
     kSetPolicy          = 0x0055,
     kSetInitialSecurityState = 0x0068,
     kAddTransientLinkKey = 0x00AF,
+    kBroadcastNextNetworkKey = 0x0073,
+    kBroadcastNetworkKeySwitch = 0x0074,
+    kSetRadioChannel    = 0x009A,
 };
 
 // EmberStatus values this backend acts on.
@@ -118,9 +121,11 @@ constexpr uint16_t kZdoFlagsAppHandlesUnsupportedRequests = 0x02;
 // version; for the trust-center policy from v8 the byte is a bitmask).
 enum PolicyId : uint8_t {
     kPolicyTrustCenter = 0x00,
+    kPolicyMessageContentsInCallback = 0x04,
     kPolicyTcKeyRequest = 0x05,
     kPolicyAppKeyRequest = 0x06,
 };
+constexpr uint8_t kDecisionMessageTagAndContentsInCallback = 0x41;
 constexpr uint8_t kDecisionAllowJoins = 0x01;              // bitmask, v8+
 constexpr uint8_t kDecisionAllowUnsecuredRejoins = 0x02;   // bitmask, v8+
 constexpr uint8_t kDecisionAllowJoinsLegacy = 0x00;        // EzspDecisionId, < v8
@@ -250,6 +255,8 @@ std::vector<uint8_t> EncodeSendBroadcastParams(uint16_t destination, const ApsFr
                                                uint8_t radius, uint8_t messageTag,
                                                const std::vector<uint8_t>& contents);
 constexpr uint16_t kBroadcastRouters = 0xFFFC;
+constexpr uint16_t kBroadcastRxOnWhenIdle = 0xFFFD;
+constexpr uint16_t kBroadcastAll = 0xFFFF;
 // Parameters for sendMulticast (0x0038): APS frame (group id inside it), hops,
 // non-member radius, message tag, length, contents.
 std::vector<uint8_t> EncodeSendMulticastParams(const ApsFrame& aps, uint8_t hops,
@@ -268,6 +275,19 @@ struct IncomingMessage {
     std::vector<uint8_t> Contents;
 };
 std::optional<IncomingMessage> DecodeIncomingMessage(const std::vector<uint8_t>& params);
+
+// messageSentHandler (0x003F): the NCP's delivery report for a unicast,
+// broadcast or multicast. Contents are present only when the
+// message-contents-in-callback policy asks for them.
+struct MessageSent {
+    uint8_t Type = 0;
+    uint16_t IndexOrDestination = 0;
+    ApsFrame Aps;
+    uint8_t MessageTag = 0;
+    uint8_t Status = 0;             // EmberStatus; 0x00 delivered
+    std::vector<uint8_t> Contents;
+};
+std::optional<MessageSent> DecodeMessageSent(const std::vector<uint8_t>& params);
 
 // ===== ZDO =====
 //
@@ -290,6 +310,7 @@ enum Cluster : uint16_t {
     kUnbindReq      = 0x0022, kUnbindRsp      = 0x8022,
     kMgmtLeaveReq   = 0x0034, kMgmtLeaveRsp   = 0x8034,
     kMgmtPermitJoiningReq = 0x0036, kMgmtPermitJoiningRsp = 0x8036,
+    kMgmtNwkUpdateReq = 0x0038, kMgmtNwkUpdateNotify = 0x8038,
 };
 
 // Requests. Each takes the transaction sequence number first.
@@ -306,6 +327,11 @@ std::vector<uint8_t> EncodeMgmtLeaveReq(uint8_t tsn, uint64_t ieee, bool rejoin,
 // Mgmt_Permit_Joining_req, broadcast to routers so devices can join through
 // them and not only through the coordinator. TC_Significance is always 1.
 std::vector<uint8_t> EncodeMgmtPermitJoiningReq(uint8_t tsn, uint8_t duration);
+// Mgmt_NWK_Update_req in its channel-change form (ScanDuration 0xFE): the
+// network manager tells every device to move to the one channel in the mask,
+// stamped with a new network update id so late-comers can tell old from new.
+std::vector<uint8_t> EncodeMgmtNwkUpdateChannelChange(uint8_t tsn, uint32_t channelMask,
+                                                      uint8_t nwkUpdateId);
 
 // Responses. The status byte follows the TSN in every one; the decoders return
 // nothing when the frame is too short to hold what its cluster promises.

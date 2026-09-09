@@ -127,6 +127,26 @@ int main() {
         Check(!DecodeIncomingMessage({0x00, 0x01}), "incoming message shorter than its header is rejected");
     }
 
+    // ---- messageSentHandler ----
+    {
+        // type(1) dest(2) aps(11) tag(1) status(1) len(1) contents
+        std::vector<uint8_t> params{
+            0x00, 0x34, 0x12,
+            0x04, 0x01, 0x06, 0x00, 0x01, 0x01, 0x40, 0x01, 0x00, 0x00, 0x2A,
+            0x2A, 0x66,                                     // tag, EMBER_DELIVERY_FAILED
+            0x03, 0x01, 0x07, 0x01};
+        auto ms = DecodeMessageSent(params);
+        Check(ms && ms->Type == 0 && ms->IndexOrDestination == 0x1234 && ms->Aps.ClusterId == 6 &&
+              ms->MessageTag == 0x2A && ms->Status == 0x66 &&
+              ms->Contents == std::vector<uint8_t>{0x01, 0x07, 0x01},
+              "messageSentHandler unpacks destination, APS, tag, status, contents");
+        std::vector<uint8_t> noContents(params.begin(), params.begin() + 16);
+        noContents.push_back(0x00);
+        auto ms2 = DecodeMessageSent(noContents);
+        Check(ms2 && ms2->Contents.empty(), "messageSentHandler with tag-only policy has empty contents");
+        Check(!DecodeMessageSent({0x00, 0x34}), "short messageSentHandler is rejected");
+    }
+
     // ---- ZDO requests ----
     {
         CheckBytes(Zdo::EncodeActiveEpReq(0x10, 0x1234), {0x10, 0x34, 0x12},
@@ -160,6 +180,9 @@ int main() {
                    "Mgmt_Leave_req: tsn, ieee LE, flags clear");
         CheckBytes(Zdo::EncodeMgmtPermitJoiningReq(0x18, 0xFE), {0x18, 0xFE, 0x01},
                    "Mgmt_Permit_Joining_req: tsn, duration, TC significance 1");
+        CheckBytes(Zdo::EncodeMgmtNwkUpdateChannelChange(0x19, 1u << 20, 0x07),
+                   {0x19, 0x00, 0x00, 0x10, 0x00, 0xFE, 0x07},
+                   "Mgmt_NWK_Update_req channel change: tsn, mask LE, 0xFE, update id");
         CheckBytes(Zdo::EncodeMgmtLeaveReq(0x17, 0x0011223344556677ULL, true, true),
                    {0x17, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xC0},
                    "Mgmt_Leave_req: rejoin is bit 7, remove children bit 6");

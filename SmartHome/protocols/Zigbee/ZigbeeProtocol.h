@@ -394,6 +394,8 @@ private:
     // Processing
     std::thread processThread;
     std::thread networkThread;
+    std::thread keySwitchThread;                    // second half of UpdateNetworkKey
+    static constexpr int kKeySwitchDelaySeconds = 60;
     std::atomic<bool> running{false};
     std::atomic<bool> permitJoinActive{false};
     int permitJoinTimeout = 0;

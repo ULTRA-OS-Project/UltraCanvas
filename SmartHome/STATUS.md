@@ -260,7 +260,7 @@ ZDO requests the interview and binding need (Active_EP, Simple_Desc,
 Node_Desc, IEEE_addr, Bind, Unbind, Mgmt_Leave) with their responses and
 Device_annce, and the ZCL header plus attribute-record walker (Report
 Attributes / Read Attributes Response, all fixed-width types, both string
-lengths). `tests/EzspFrameTest.cpp` checks 55 byte layouts written from
+lengths). `tests/EzspFrameTest.cpp` checks 59 byte layouts written from
 UG100, the ZDP tables and ZCL 2.6 — not from the code — and cross-checked
 against bellows' command tables where UG100 is ambiguous (addEndpoint's bare
 cluster lists, networkInit's bitmask from v6, setPolicy's single-byte
@@ -325,10 +325,28 @@ sequence is now the real one, and commands that need their answer get it:
   `uint16_t` (compiling as a single character) is fixed; PAN and extended PAN
   ids are formatted as hex.
 
-**What is still not done:** `messageSentHandler` is ignored, so a unicast
-the NCP could not deliver is only noticed by its ZCL/ZDO timeout (10 s)
-rather than immediately. Source routing, the address table, and channel
-changes (`SetChannel` updates a field and sends nothing) are untouched.
+**Third pass (2026-09-09):** the last Zigbee TODOs.
+
+- `messageSentHandler` is decoded. With the message-contents-in-callback
+  policy set at start-up, a failed unicast's report carries the frame, so
+  the ZCL or ZDO request waiting on its answer is failed at once instead of
+  at its 10 s timeout. Broadcasts and multicasts have nothing waiting.
+- `ChangeChannel` is the network-manager procedure: `Mgmt_NWK_Update_req`
+  (channel-change form, new network update id) broadcast to every awake
+  device; the NCP moves itself on hearing it, and if it has not within five
+  seconds `setRadioChannel` moves it by hand. `SetChannel` on the facade
+  reaches this.
+- `UpdateNetworkKey` is the two-step rotation: `broadcastNextNetworkKey`
+  now, `broadcastNetworkKeySwitch` sixty seconds later on a thread
+  `Shutdown()` joins; the key on record changes when the switch succeeds.
+
+**What is still not done:** source routing and the address table (fine for
+a home-sized network; the stack routes on its own), OTA image serving
+(`StartOTAUpdate` returns false, as it always did), and Green Power —
+`EnableGreenPowerProxy(true)` and `AddGreenPowerDevice` used to return
+true while only setting a flag and storing a key; they now return false and
+say why. `GetTopology` still reports only what the interview found, not the
+neighbour tables (`Mgmt_Lqi_req` is not sent).
 
 **None of it has met a real NCP.** It is verified by compilation and by the
 framing and layout tests. First contact with hardware should be at 115200 8N1
