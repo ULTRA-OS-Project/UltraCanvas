@@ -1,3 +1,30 @@
+#### 2026-09-09 *1.26.0*
+- **A dragged-and-dropped move asks first.** Dropping files onto a folder of
+  the file display carried the move out the moment the button came up, and a
+  drag is the one file operation that starts by accident - a press that
+  wandered a few pixels on the way somewhere else - so the first sign of it was
+  a folder that had quietly emptied itself into a neighbour. *Settings >
+  Handling > Drag & Drop* now carries **Confirmation**: **Always**, **Only when
+  files are moved** (the new default) or **None**, the silent drop earlier
+  releases had. The question names how many entries are about to be moved or
+  copied and into which folder, with that folder's full path underneath -
+  a drop lands on whatever was under the cursor - and nothing is touched until
+  it is answered. Files dragged in from another program are copies, so only
+  *Always* asks about those. (Framework side:
+  `Docs/UltraCanvas/CHANGELOG.md` 0.3.117.)
+- **The settings window opens on its sections instead of inside one.** The tree
+  led with a *Settings* row that held everything and stood for nothing, below
+  it every section and every page was already open, and the window opened on
+  *Display > Treeview* - one page of eleven, picked because it happened to be
+  first. Now the three sections - **Display**, **Handling**, **Extras** - are
+  the top level of the list, all three closed, and the page beside them says
+  what each one holds. Opening a section still moves straight on to its first
+  page, and a page opened from elsewhere in the application (the file display's
+  *File formats...* entries) opens its section on the way.
+- **History & Favorites moved into Extras.** It was a section of its own, one
+  row deep, sitting beside the three that group everything else; it is now the
+  second page of *Extras*, next to *Open prompt*. What it does is unchanged.
+
 #### 2026-09-09 *1.25.0*
 - **The "+" of the tab strip can open the Home folder instead of the folder
   in front of you.** Opening a tab has always meant "the same folder once

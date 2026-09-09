@@ -1,3 +1,17 @@
+#### 2026-09-09 *0.3.117*
+- **A drop can ask before it is carried out.** Dragging files onto a folder of
+  `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag
+  is the one file operation that starts by accident - a press that wandered a
+  few pixels on the way somewhere else - so the first sign of it was a folder
+  that had emptied itself. `SetDropConfirmation(FilerDropConfirmation)` now
+  chooses when the drop asks first: `NeverConfirm` (the default, unchanged
+  behaviour), `MoveOnly` - the half that changes where the files live - or
+  `AlwaysConfirm`, copies and files dragged in from other programs included.
+  The question names what is about to happen, how many entries and into which
+  folder, with the folder's full path underneath, and nothing is touched until
+  it is answered; with dialogs disabled the drop is carried out rather than
+  lost. (`Docs/UltraCanvas/UltraCanvasFilerWidget.md` > Drag & drop.)
+
 #### 2026-09-09 *0.3.116*
 - **Cross-checked against the Ladybird port's processor-detection findings**
   (`OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`), which changed three things

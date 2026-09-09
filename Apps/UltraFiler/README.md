@@ -113,8 +113,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   stays on details by name. Entering a folder puts its own settings back; a
   folder that has none keeps whatever the previous one used. They are stored
   next to the settings as `folderviews.txt` (the 400 most recently entered
-  folders) and *Settings > History & Favorites > Clear Folder views* forgets
-  them.
+  folders) and *Settings > Extras > History & Favorites > Clear Folder views*
+  forgets them.
 - **Folder tree:** a **Pinned** section on top — above *Computer*, open, and
   shown only while something is pinned — then *Computer* with Home, **Cloud
   Storage** and the drives / volumes below it.
@@ -184,7 +184,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   (VirtualFS), compress / extract, drag & drop to and from other
   applications. Dropping dragged files onto a folder shown in the view moves
   them there; *Settings > Handling > Drag & Drop* switches that to copying.
-  Ctrl at the drop always copies and Shift always moves. A move takes the
+  Ctrl at the drop always copies and Shift always moves. A move asks before it
+  is carried out — a drag is easy to start by accident — which the same
+  settings page turns off, or extends to copies. A move takes the
   dragged files out of the selection first, so the preview lets go of the file
   before it is renamed away.
 - **Preview:** selecting a single previewable file shows it in the preview
@@ -254,14 +256,15 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 ## Settings
 
 The **Settings > Settings...** menu entry opens the settings window: a tree of
-pages on the left, the selected page on the right. Every page reads the same
+pages on the left, the selected page on the right. Its top level is the three
+sections — *Display*, *Handling*, *Extras* — and the window opens with all
+three closed, on a start page saying what each holds. Every page reads the same
 way: a title, one line saying what the choice is about, the controls, and the
 notes explaining the setting set apart in a tinted block at the foot of the
 page. A page's *Restore default ...* button sits at the left end of the
-window's bottom bar, opposite *Close*. Clicking a heading in the tree
-(*Display*, *Handling*, ...) moves on to its first page, since a heading has
-no page of its own. Every change applies to the
-running application immediately and is saved to the config file
+window's bottom bar, opposite *Close*. Clicking a section opens it and moves on
+to its first page, since a section has no page of its own. Every change applies
+to the running application immediately and is saved to the config file
 (`~/.config/UltraFiler/config.ini`, `%APPDATA%\UltraFiler\config.ini`,
 `~/Library/Application Support/UltraFiler/config.ini`).
 
@@ -270,10 +273,10 @@ running application immediately and is saved to the config file
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
-| Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
+| Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
 | Handling > Tabs | **New tab** — what the **"+"** at the end of the tab strip opens: a **new view of the current folder** (the default) or the **Home folder**. Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
-| History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
+| Extras > History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
 
 On the *Open prompt* page the folder button next to the path field opens the
 file dialog filtered to applications (`*.exe`, `*.com`, `*.bat`, `*.cmd` on

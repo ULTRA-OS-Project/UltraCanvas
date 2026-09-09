@@ -1,6 +1,9 @@
 // Apps/UltraFiler/UltraFilerSettingsDialog.cpp
 // UltraFiler settings window: settings-page tree on the left, the selected
-// page on the right. Pages: Display > Treeview (the folder tree's drive-row
+// page on the right. The tree shows the three sections - Display, Handling,
+// Extras - as its top level (the root row itself is hidden), each closed when
+// the window opens, so it opens on the start page: what the sections hold.
+// Pages: Display > Treeview (the folder tree's drive-row
 // background and selected-folder highlight, each shown as a colour box that
 // opens the colour picker in a popup window), Display > Home folder (what the
 // Home folder shows), Display > File extensions (whether a displayed name
@@ -12,12 +15,13 @@
 // Display > Detail view (the list of files: which file kinds, and which
 // individual formats inside them, are drawn as a thumbnail in the file
 // display / opened in the detail pane beside it), Handling > Drag & Drop
-// (what a plain drop onto a folder does - move or copy), Handling > Tabs
-// (what the "+" of the folder tab strip opens - the current folder again or
-// the Home folder), Extras > Open prompt (the command line program UltraFiler
-// opens, picked with the file dialog and stored with "Save app") and History
-// & Favorites (clearing the recently-used lists and the pinned entries).
-// Changes apply live and are saved immediately.
+// (what a plain drop onto a folder does - move or copy - and whether it asks
+// first), Handling > Tabs (what the "+" of the folder tab strip opens - the
+// current folder again or the Home folder), Extras > Open prompt (the command
+// line program UltraFiler opens, picked with the file dialog and stored with
+// "Save app") and Extras > History & Favorites (clearing the recently-used
+// lists and the pinned entries). Changes apply live and are saved
+// immediately.
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
@@ -27,7 +31,7 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.10.0
+// Version: 1.11.0
 // Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 
@@ -100,7 +104,10 @@ namespace {
     constexpr const char* kPageTabs = "handling/tabs";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
-    constexpr const char* kPageLists = "history-favorites";
+    constexpr const char* kPageLists = "extras/history-favorites";
+    // The page shown while nothing is selected - the window opens with every
+    // section closed, so there is no page to show yet.
+    constexpr const char* kPageStart = "start";
 
     // A page's "Restore default ..." action, shown in the bottom bar while
     // that page is up.
@@ -169,6 +176,12 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       dropMoveRadio;
         std::shared_ptr<UltraCanvasRadio>       dropCopyRadio;
         UltraCanvasRadioGroup                   dropOnFolderGroup;
+
+        // Handling > Drag & Drop: whether a drop asks first.
+        std::shared_ptr<UltraCanvasRadio>       confirmAlwaysRadio;
+        std::shared_ptr<UltraCanvasRadio>       confirmMoveRadio;
+        std::shared_ptr<UltraCanvasRadio>       confirmNeverRadio;
+        UltraCanvasRadioGroup                   dropConfirmGroup;
 
         // Handling > Tabs: what the tab strip's "+" opens.
         std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
@@ -1157,9 +1170,48 @@ namespace {
         parts.body->AddChild(d->dropMoveRadio);
         parts.body->AddChild(d->dropCopyRadio);
 
+        AddBodyCaption(parts, "ufl-set-dd-confirm-caption",
+                "Confirmation - whether a drop asks before it is carried out:");
+
+        const FilerDropConfirmation confirm = d->settings->dropConfirmation;
+
+        d->confirmAlwaysRadio = MakeChoice("ufl-set-dd-confirm-always",
+                "Always", confirm == FilerDropConfirmation::AlwaysConfirm);
+        d->confirmMoveRadio = MakeChoice("ufl-set-dd-confirm-move",
+                "Only when files are moved",
+                confirm == FilerDropConfirmation::MoveOnly);
+        d->confirmNeverRadio = MakeChoice("ufl-set-dd-confirm-none",
+                "None", confirm == FilerDropConfirmation::NeverConfirm);
+        d->dropConfirmGroup.AddRadioButton(d->confirmAlwaysRadio);
+        d->dropConfirmGroup.AddRadioButton(d->confirmMoveRadio);
+        d->dropConfirmGroup.AddRadioButton(d->confirmNeverRadio);
+        d->dropConfirmGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->dropConfirmation =
+                    selected == d->confirmAlwaysRadio
+                            ? FilerDropConfirmation::AlwaysConfirm
+                    : selected == d->confirmNeverRadio
+                            ? FilerDropConfirmation::NeverConfirm
+                            : FilerDropConfirmation::MoveOnly;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->confirmAlwaysRadio);
+        parts.body->AddChild(d->confirmMoveRadio);
+        parts.body->AddChild(d->confirmNeverRadio);
+
         AddNote(parts, "ufl-set-dd-note1",
                 "Whatever is chosen here, Ctrl while dropping always copies "
                 "and Shift always moves.");
+        AddNote(parts, "ufl-set-dd-note2",
+                "The question names what is about to happen - how many "
+                "entries, moved or copied, and into which folder - and nothing "
+                "is touched until it is answered. A drag is the one file "
+                "operation that can be started by accident, which is why moves "
+                "ask by default.");
+        AddNote(parts, "ufl-set-dd-note3",
+                "Files dragged in from another program are copied, so only "
+                "\"Always\" asks about those.");
         return parts.page;
     }
 
@@ -1397,6 +1449,31 @@ namespace {
         return parts.page;
     }
 
+    // ===== THE PAGE SHOWN WHILE NOTHING IS SELECTED =====
+    // The window opens with the three sections closed, so it opens on this
+    // rather than on whichever page happened to be first.
+    std::shared_ptr<UltraCanvasContainer> BuildStartPage(DialogState* /*d*/) {
+        PageParts parts = MakePage("ufl-set-page-start", "Settings",
+                "Open a section on the left and choose the page to set:");
+
+        AddNote(parts, "ufl-set-start-note1",
+                "Display - what the folder tree, the file display and the "
+                "preview beside it show: colours, the Home folder, file "
+                "extensions, files in use, and which file kinds get a "
+                "thumbnail or a preview.");
+        AddNote(parts, "ufl-set-start-note2",
+                "Handling - what an action does: dropping dragged files onto "
+                "a folder, and what the \"+\" of the tab strip opens.");
+        AddNote(parts, "ufl-set-start-note3",
+                "Extras - the command line program \"Open prompt\" starts, and "
+                "clearing the recently-used lists, the pinned entries and the "
+                "remembered folder views.");
+        AddNote(parts, "ufl-set-start-note4",
+                "Every change applies straight away and is saved; there is "
+                "nothing to confirm.");
+        return parts.page;
+    }
+
     // ===== PAGE SWITCHING =====
 
     // The bottom bar's "Restore default ..." button stands for the shown
@@ -1446,7 +1523,13 @@ namespace {
     // tree's selection callback.
     void SelectPage(DialogState* d, const std::string& pageId) {
         TreeNode* node = d->tree ? d->tree->FindNode(pageId) : nullptr;
-        if (node) d->tree->SelectNode(node);
+        if (node) {
+            // The sections start closed, so the one holding this page has to
+            // be opened for its row to be on screen at all.
+            for (TreeNode* parent = node->parent; parent; parent = parent->parent)
+                d->tree->ExpandNode(parent);
+            d->tree->SelectNode(node);
+        }
         ShowPage(d, pageId);
     }
 
@@ -1503,6 +1586,9 @@ namespace {
         d->tree->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+        // The root row itself is not shown: its children - Display, Handling,
+        // Extras - are the top level of the list, so the tree opens on the
+        // sections instead of on one row that holds them.
         TreeNodeData rootData;
         rootData.nodeId = "settings";
         rootData.text = "Settings";
@@ -1521,9 +1607,13 @@ namespace {
         AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
-        AddTreeNode(d, "settings", kPageLists, "History & Favorites");
+        AddTreeNode(d, kPageExtras, kPageLists, "History & Favorites");
 
-        d->tree->ExpandAll();
+        // After the nodes: hiding the root promotes its children to the top
+        // level, which it can only do once they exist. The sections themselves
+        // stay closed - the window opens on the list of sections, and opening
+        // one is the first step of finding a setting.
+        d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
 
         d->pageArea = std::make_shared<UltraCanvasContainer>("ufl-set-pages");
@@ -1548,6 +1638,7 @@ namespace {
         AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
+        AddPage(d, kPageStart, BuildStartPage(d));
 
         d->window->AddChild(content);
 
@@ -1583,9 +1674,9 @@ namespace {
 
         d->tree->onNodeSelected = [d](TreeNode* node) {
             if (!node) return;
-            // Settings, the root, has a heading for its first entry: the tree
-            // jumps one level per selection, so this takes the second step to
-            // the first page itself.
+            // A section (Display, Handling, Extras) has no page of its own:
+            // selecting one moves on to its first page. The tree jumps one
+            // level per selection, so this takes the remaining steps.
             TreeNode* leaf = node;
             while (leaf && leaf->HasChildren()) leaf = leaf->FirstChild();
             if (leaf && leaf != node) {
@@ -1594,7 +1685,10 @@ namespace {
             }
             ShowPage(d, node->data.nodeId);
         };
-        SelectPage(d, kPageTreeview);
+        // Nothing is selected while every section is closed, so the page
+        // area opens on the start page. Show() selects a page from here when
+        // the caller asked for one.
+        ShowPage(d, kPageStart);
 
         // Escape closes, matching the framework's dialog convention.
         d->window->SetEventCallback([](const UCEvent& event) {

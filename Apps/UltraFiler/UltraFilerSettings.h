@@ -4,7 +4,7 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.8.0
+// Version: 1.9.0
 // Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 #pragma once
@@ -116,6 +116,14 @@ public:
     // way this is set.
     bool dropOnFolderCopies = false;
 
+    // Handling > Drag & Drop: whether a drop asks before it is carried out.
+    // A drag is the one file operation that starts by accident - a press that
+    // wandered a few pixels while the hand was on the way somewhere else - and
+    // it is done before it is seen, which is why the destructive half of it
+    // asks by default: "Only when files are moved". "Always" asks for copies
+    // too, "Never" is the silent drop earlier releases had.
+    FilerDropConfirmation dropConfirmation = FilerDropConfirmation::MoveOnly;
+
     // Handling > Tabs: what the "+" at the end of the folder tab strip opens -
     // another view of the folder the active tab is showing (the default, and
     // what every earlier release did: the new tab continues where the work is)
@@ -206,6 +214,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
+        it = kv.find("handling.dragdrop.confirmation");
+        if (it != kv.end()) dropConfirmation = ParseDropConfirmation(it->second);
         it = kv.find("handling.tabs.new.tab");
         if (it != kv.end()) newTabOpensHome = (it->second == "home");
         it = kv.find("extras.prompt.application");
@@ -253,6 +263,8 @@ public:
              << (showLockState ? "true" : "false") << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
+        file << "handling.dragdrop.confirmation = "
+             << FormatDropConfirmation(dropConfirmation) << "\n";
         file << "handling.tabs.new.tab = "
              << (newTabOpensHome ? "home" : "current") << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
@@ -276,6 +288,23 @@ public:
         if (value == "bar")  return FilerExtensionBadge::Bar;
         if (value == "icon") return FilerExtensionBadge::Icon;
         return FilerExtensionBadge::NoneBadge;
+    }
+
+    // ===== THE DROP CONFIRMATION =====
+    // Named rather than numbered, like every other choice in the file.
+    static std::string FormatDropConfirmation(FilerDropConfirmation mode) {
+        switch (mode) {
+            case FilerDropConfirmation::AlwaysConfirm: return "always";
+            case FilerDropConfirmation::MoveOnly:      return "move";
+            default:                                   return "none";
+        }
+    }
+
+    static FilerDropConfirmation ParseDropConfirmation(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "always") return FilerDropConfirmation::AlwaysConfirm;
+        if (value == "none")   return FilerDropConfirmation::NeverConfirm;
+        return FilerDropConfirmation::MoveOnly;
     }
 
     // ===== PREVIEW KIND NAMES =====
