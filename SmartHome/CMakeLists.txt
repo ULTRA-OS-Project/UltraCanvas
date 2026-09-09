@@ -260,6 +260,13 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Zigbee/ezsp)
     add_test(NAME SmartHomeAshCodec COMMAND SmartHomeAshCodecTest)
 
+    # Likewise: EZSP, APS, ZDO and ZCL are byte layouts, testable anywhere.
+    add_executable(SmartHomeEzspFrameTest tests/EzspFrameTest.cpp
+                   protocols/Zigbee/ezsp/EzspFrame.cpp)
+    target_include_directories(SmartHomeEzspFrameTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Zigbee/ezsp)
+    add_test(NAME SmartHomeEzspFrame COMMAND SmartHomeEzspFrameTest)
+
     add_executable(SmartHomeWidgetTest tests/WidgetTest.cpp)
     target_link_libraries(SmartHomeWidgetTest PRIVATE SmartHomeUI)
 

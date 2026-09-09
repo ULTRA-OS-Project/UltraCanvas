@@ -318,9 +318,19 @@ private:
     std::string IeeeAddressToString(uint64_t addr) const;
     uint64_t StringToIeeeAddress(const std::string& str) const;
     
-    void InterviewNode(ZigbeeNode& node);
-    void DiscoverEndpoints(ZigbeeNode& node);
-    void DiscoverClusters(ZigbeeNode& node, uint8_t endpoint);
+    // The interview runs step by step against the node table, by device id,
+    // because each answer arrives on the stack's receive thread.
+    void InterviewNode(const std::string& deviceId);
+    void DiscoverEndpoints(const std::string& deviceId);
+    void DiscoverClusters(const std::string& deviceId, uint8_t endpoint);
+    static std::string ZclStringToStd(const ZigbeeAttributeValue& value);
+    
+    // Called by the stack for every message a node sends: records link
+    // quality and the last-seen time, and returns the node's IEEE address
+    // (0 if the network address is not one this coordinator knows).
+    uint64_t NoteHeardFrom(uint16_t nwkAddress, uint8_t lqi, int8_t rssi);
+    // Network address of a known node, for ZDO requests addressed by IEEE.
+    bool NwkForIeee(uint64_t ieeeAddress, uint16_t& nwkAddress) const;
     
     // ZCL command helpers
     bool SendOnOff(const std::string& deviceId, uint8_t endpoint, uint8_t command);

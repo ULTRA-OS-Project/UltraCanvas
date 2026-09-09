@@ -251,18 +251,52 @@ here, in `protocols/Zigbee/ezsp/`:
   is what decides the format of everything after it.
 
 `InitializeEZSP()` now opens the port, resets the NCP, negotiates the protocol
-version and starts the receive pump. Form/permit-join/leave/unicast/multicast
-are wired to real EZSP commands.
+version and starts the receive pump. Form/permit-join/leave are wired to real
+EZSP commands.
 
-**What is still stubbed, and honestly:** the ZDO queries (active endpoints,
-simple and node descriptors, IEEE lookup), binding, and unpacking an incoming
-message's APS frame. Those need the asynchronous request/response plumbing that
-the ZDO layer expects; guessing at the APS layout would deliver attribute
-reports against the wrong cluster, which is worse than delivering none.
+**APS, ZDO and ZCL are now unpacked (2026-09-09).** `EzspFrame` grew the layers
+above the EZSP header: the 11-byte `EmberApsFrame`, `sendUnicast` /
+`sendMulticast` parameter blocks, `incomingMessageHandler` decoding, the seven
+ZDO requests the interview and binding need (Active_EP, Simple_Desc,
+Node_Desc, IEEE_addr, Bind, Unbind, Mgmt_Leave) with their responses and
+Device_annce, and the ZCL header plus attribute-record walker (Report
+Attributes / Read Attributes Response, all fixed-width types, both string
+lengths). `tests/EzspFrameTest.cpp` checks 41 byte layouts written from
+UG100, the ZDP tables and ZCL 2.6 — not from the code.
+
+On top of that, in `ZigbeeStack`:
+
+- Unicasts and groupcasts carry a real APS frame (HA profile, host endpoint
+  1, retry + route discovery for unicasts). The previous `EZSP_SendUnicast`
+  sent `nwk, ep, cluster, len, data` with no APS frame at all — the NCP would
+  have rejected every frame.
+- ZDO requests register under their transaction sequence number in a map of
+  their own (the ZCL map is keyed by ZCL TSN; the two spaces would collide),
+  and `incomingMessageHandler` routes profile-0 responses back by that number.
+  Bind, unbind and leave block until the device's status response, so `true`
+  means the device confirmed, not that bytes left the port.
+- ZCL: a reply with our TSN completes the pending request (this is how the
+  synchronous `ReadAttribute` gets its answer); Report Attributes and
+  unsolicited Read responses become `OnAttributeReport` calls per attribute;
+  everything else goes to `OnZCLResponse`. Every message updates the sender's
+  LQI/RSSI/last-seen.
+- `Device_annce` from an unknown IEEE is treated as a join and starts the
+  interview; from a known one it refreshes the network address.
+- The interview no longer holds references into the node table across
+  asynchronous callbacks (the previous `[this, &node]` captures dangled the
+  moment a node was erased); each step is keyed by device id and waits for its
+  answer before the next.
+
+**What is still not done:** `EZSP_FormNetwork` sends `panId, channel, key`,
+which is not `EmberNetworkParameters` (extendedPanId, panId, txPower, channel,
+joinMethod, nwkManagerId, nwkUpdateId, channels — 20 bytes); the host endpoint
+is never registered with `addEndpoint` and `networkInit` / security setup are
+not sent; `messageSentHandler` and `trustCenterJoinHandler` are ignored. That
+is the network-formation sequence, and it is the next piece of work.
 
 **None of it has met a real NCP.** It is verified by compilation and by the
-framing tests. First contact with hardware should be at 115200 8N1 on the
-adapter's serial node, watching for RSTACK.
+framing and layout tests. First contact with hardware should be at 115200 8N1
+on the adapter's serial node, watching for RSTACK.
 
 **Thread needs a built OpenThread, not a checkout.** Its headers are fine — one
 rename, `openthread/tasklets.h` became `tasklet.h`, now fixed — but the backend

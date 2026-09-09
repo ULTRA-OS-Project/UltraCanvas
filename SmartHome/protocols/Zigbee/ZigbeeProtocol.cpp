@@ -13,6 +13,8 @@
 #include <cstring>
 #include <queue>
 #include <condition_variable>
+#include <cstdio>
+#include <memory>
 
 // Conditional Zigbee stack includes
 #ifdef ULTRACANVAS_WITH_EZSP
@@ -177,6 +179,18 @@ public:
     };
     std::map<uint8_t, PendingRequest> pendingRequests;
     std::mutex requestMutex;
+
+    // ZDO transactions in flight, keyed by their transaction sequence number.
+    // Kept apart from the ZCL map above: both sequence spaces are eight bits
+    // wide and run independently, so one map would let a ZCL read and a ZDO
+    // query with the same number claim each other's answer.
+    struct PendingZdo {
+        uint16_t ResponseCluster;
+        std::function<void(bool success, const std::vector<uint8_t>& zdoFrame)> Callback;
+        uint64_t Timestamp;
+    };
+    std::map<uint8_t, PendingZdo> pendingZdo;
+    uint8_t zdoSequence = 0;
     
     // Receive buffer
     std::vector<uint8_t> receiveBuffer;
@@ -457,19 +471,37 @@ private:
     
     void CheckTimeouts() {
         uint64_t now = GetTimestamp();
-        std::lock_guard<std::mutex> lock(requestMutex);
-        
-        for (auto it = pendingRequests.begin(); it != pendingRequests.end();) {
-            if (now - it->second.Timestamp > 10000) {  // 10 second timeout
-                if (it->second.Callback) {
-                    it->second.Callback(false, {});
+
+        // Collect the expired callbacks under the lock and run them outside
+        // it: a callback may well send another request, which takes the lock.
+        std::vector<std::function<void()>> expired;
+        {
+            std::lock_guard<std::mutex> lock(requestMutex);
+            for (auto it = pendingRequests.begin(); it != pendingRequests.end();) {
+                if (now - it->second.Timestamp > kRequestTimeoutMs) {
+                    if (it->second.Callback) {
+                        expired.push_back([cb = it->second.Callback]() { cb(false, {}); });
+                    }
+                    it = pendingRequests.erase(it);
+                } else {
+                    ++it;
                 }
-                it = pendingRequests.erase(it);
-            } else {
-                ++it;
+            }
+            for (auto it = pendingZdo.begin(); it != pendingZdo.end();) {
+                if (now - it->second.Timestamp > kRequestTimeoutMs) {
+                    if (it->second.Callback) {
+                        expired.push_back([cb = it->second.Callback]() { cb(false, {}); });
+                    }
+                    it = pendingZdo.erase(it);
+                } else {
+                    ++it;
+                }
             }
         }
+        for (auto& fn : expired) fn();
     }
+
+    static constexpr uint64_t kRequestTimeoutMs = 10000;
     
     uint64_t GetTimestamp() const {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -478,7 +510,7 @@ private:
     
     void Log(int level, const std::string& message) {
         if (protocol) {
-            // Use protocol's logging
+            protocol->Log(level, "[stack] " + message);
         }
     }
 
@@ -554,7 +586,7 @@ private:
         }
         switch (frame->Id) {
             case Ezsp::kIncomingMessage:
-                HandleIncomingZclMessage(frame->Parameters);
+                HandleIncomingMessage(frame->Parameters);
                 break;
             case Ezsp::kStackStatus:
                 Log(2, "stack status changed");
@@ -564,17 +596,126 @@ private:
         }
     }
 
-    void HandleIncomingZclMessage(const std::vector<uint8_t>& params) {
-        // An EZSP incomingMessageHandler carries the message type, an APS frame
-        // and then the payload. The APS frame gives the cluster and endpoints;
-        // the class above already knows how to read a ZCL payload from there.
-        //
-        // Not yet unpacked: doing it correctly means following the APS frame
-        // layout for the negotiated EZSP version, and getting it wrong would
-        // deliver attribute reports against the wrong cluster, which is worse
-        // than delivering none. Left explicit rather than guessed.
-        (void)params;
+    // ----- incoming messages -----
+    //
+    // Everything a device says arrives through incomingMessageHandler: ZDO
+    // responses and announcements on profile 0x0000, ZCL on everything else.
+    // The APS frame decides which, and then the first bytes of the payload
+    // say which conversation it belongs to.
+
+    void HandleIncomingMessage(const std::vector<uint8_t>& params) {
+        auto msg = Ezsp::DecodeIncomingMessage(params);
+        if (!msg) {
+            Log(1, "incomingMessageHandler too short to unpack; dropped");
+            return;
+        }
+        if (msg->Aps.ProfileId == Ezsp::Zdo::kProfile) {
+            HandleZdoMessage(*msg);
+        } else {
+            HandleZclMessage(*msg);
+        }
     }
+
+    void HandleZdoMessage(const Ezsp::IncomingMessage& msg) {
+        const uint16_t cluster = msg.Aps.ClusterId;
+
+        if (cluster == Ezsp::Zdo::kDeviceAnnce) {
+            // Broadcast by every device when it joins or rejoins. It is the
+            // one ZDO frame nobody asked for, and the way the coordinator
+            // learns a network address.
+            if (auto annce = Ezsp::Zdo::DecodeDeviceAnnce(msg.Contents)) {
+                if (protocol) protocol->OnDeviceAnnounce(annce->Ieee, annce->Nwk);
+            }
+            return;
+        }
+
+        // Every other ZDO frame of interest is a response, and the TSN in its
+        // first byte names the request it answers.
+        if (!(cluster & 0x8000) || msg.Contents.empty()) return;
+
+        std::function<void(bool, const std::vector<uint8_t>&)> callback;
+        {
+            std::lock_guard<std::mutex> lock(requestMutex);
+            auto it = pendingZdo.find(msg.Contents[0]);
+            if (it == pendingZdo.end() || it->second.ResponseCluster != cluster) {
+                return;   // late, duplicate, or somebody else's transaction
+            }
+            callback = std::move(it->second.Callback);
+            pendingZdo.erase(it);
+        }
+        if (callback) callback(true, msg.Contents);
+    }
+
+    void HandleZclMessage(const Ezsp::IncomingMessage& msg) {
+        auto header = Ezsp::Zcl::DecodeHeader(msg.Contents);
+        if (!header) return;
+
+        const uint16_t cluster = msg.Aps.ClusterId;
+        const uint8_t endpoint = msg.Aps.SourceEndpoint;
+        const std::vector<uint8_t> payload(msg.Contents.begin() + header->PayloadOffset,
+                                           msg.Contents.end());
+
+        // Whoever this is, they were just heard from.
+        const uint64_t ieee = protocol
+            ? protocol->NoteHeardFrom(msg.Sender, msg.LastHopLqi, msg.LastHopRssi)
+            : 0;
+
+        // A reply to one of our own ZCL requests comes back with our TSN.
+        if (!header->ClusterSpecific) {
+            std::function<void(bool, const std::vector<uint8_t>&)> callback;
+            {
+                std::lock_guard<std::mutex> lock(requestMutex);
+                auto it = pendingRequests.find(header->Tsn);
+                if (it != pendingRequests.end() && it->second.ClusterId == cluster) {
+                    callback = std::move(it->second.Callback);
+                    pendingRequests.erase(it);
+                }
+            }
+            if (callback) {
+                callback(true, payload);
+                return;
+            }
+        }
+
+        if (ieee == 0) {
+            // A device this coordinator has never seen announce itself. Its
+            // report cannot be filed anywhere yet.
+            Log(3, "ZCL message from unknown node 0x" + Hex16(msg.Sender));
+            return;
+        }
+
+        if (!header->ClusterSpecific &&
+            (header->CommandId == Ezsp::Zcl::kReportAttributes ||
+             header->CommandId == Ezsp::Zcl::kReadAttributesResponse)) {
+            // Unsolicited reports, and read responses nobody is waiting for,
+            // are both attribute values and go the same way.
+            const bool withStatus = header->CommandId == Ezsp::Zcl::kReadAttributesResponse;
+            for (const auto& attr : Ezsp::Zcl::DecodeAttributes(
+                     msg.Contents, header->PayloadOffset, withStatus)) {
+                if (withStatus && attr.Status != 0) continue;
+                ZigbeeAttributeValue value;
+                value.ClusterId = cluster;
+                value.AttributeId = attr.Id;
+                value.DataType = attr.DataType;
+                value.Value = attr.Value;
+                value.Status = attr.Status;
+                if (protocol) protocol->OnAttributeReport(ieee, endpoint, cluster, value);
+            }
+            return;
+        }
+
+        if (protocol) {
+            protocol->OnZCLResponse(ieee, endpoint, cluster, header->CommandId, payload);
+        }
+    }
+
+    static std::string Hex16(uint16_t v) {
+        char buf[8];
+        std::snprintf(buf, sizeof buf, "%04X", v);
+        return buf;
+    }
+
+    // ----- sending -----
 
     bool SendEzsp(uint16_t frameId, const std::vector<uint8_t>& params) {
         if (ezspVersion == 0) return false;
@@ -604,39 +745,238 @@ private:
         return SendEzsp(Ezsp::kLeaveNetwork, {});
     }
 
+    // The endpoint this host speaks from. Endpoint 1, Home Automation profile,
+    // is what every Zigbee coordinator exposes.
+    static constexpr uint8_t kHostEndpoint = 1;
+
+    // Unicast APS options: ask for an APS acknowledgement and let the stack
+    // find a route if it has none.
+    static constexpr uint16_t kUnicastOptions =
+        Ezsp::kApsRetry | Ezsp::kApsEnableRouteDiscovery;
+
+    // A ZCL frame to one device. The message tag is the APS sequence, which
+    // is enough to tell messageSentHandler callbacks apart if they are ever
+    // listened to.
     bool EZSP_SendUnicast(uint16_t nwk, uint8_t ep, uint16_t cluster,
                           const std::vector<uint8_t>& data) {
-        std::vector<uint8_t> params;
-        Ezsp::AppendU16(params, nwk);
-        params.push_back(ep);
-        Ezsp::AppendU16(params, cluster);
-        params.push_back(static_cast<uint8_t>(data.size()));
-        params.insert(params.end(), data.begin(), data.end());
-        return SendEzsp(Ezsp::kSendUnicast, params);
+        Ezsp::ApsFrame aps;
+        aps.ProfileId = ZigbeeProfiles::HomeAutomation;
+        aps.ClusterId = cluster;
+        aps.SourceEndpoint = kHostEndpoint;
+        aps.DestinationEndpoint = ep;
+        aps.Options = kUnicastOptions;
+        aps.Sequence = apsSequence++;
+        return SendEzsp(Ezsp::kSendUnicast,
+                        Ezsp::EncodeSendUnicastParams(nwk, aps, aps.Sequence, data));
     }
 
+    // A ZCL frame to a group. Groupcasts are not acknowledged; the radius
+    // is the default non-member radius from the Zigbee spec.
     bool EZSP_SendMulticast(uint16_t group, uint8_t ep, uint16_t cluster,
                             const std::vector<uint8_t>& data) {
-        std::vector<uint8_t> params;
-        Ezsp::AppendU16(params, group);
-        params.push_back(ep);
-        Ezsp::AppendU16(params, cluster);
-        params.push_back(static_cast<uint8_t>(data.size()));
-        params.insert(params.end(), data.begin(), data.end());
-        return SendEzsp(Ezsp::kSendMulticast, params);
+        Ezsp::ApsFrame aps;
+        aps.ProfileId = ZigbeeProfiles::HomeAutomation;
+        aps.ClusterId = cluster;
+        aps.SourceEndpoint = kHostEndpoint;
+        aps.DestinationEndpoint = ep;
+        aps.GroupId = group;
+        aps.Sequence = apsSequence++;
+        return SendEzsp(Ezsp::kSendMulticast,
+                        Ezsp::EncodeSendMulticastParams(aps, /*hops*/ 0,
+                                                        /*nonMemberRadius*/ 7,
+                                                        aps.Sequence, data));
     }
 
-    // ZDO queries. These go out as ZDO requests over a unicast rather than as
-    // EZSP commands of their own, and their answers come back asynchronously as
-    // incoming messages. Wiring the callbacks through is the next piece of work
-    // and they are honest about not being done rather than reporting success.
-    bool EZSP_ActiveEndpoints(uint16_t, std::function<void(bool, const std::vector<uint8_t>&)>) { return false; }
-    bool EZSP_SimpleDescriptor(uint16_t, uint8_t, std::function<void(bool, const ZigbeeEndpoint&)>) { return false; }
-    bool EZSP_NodeDescriptor(uint16_t, std::function<void(bool, ZigbeeDeviceType)>) { return false; }
-    bool EZSP_IeeeAddress(uint16_t, std::function<void(bool, uint64_t)>) { return false; }
-    bool EZSP_Bind(uint64_t, uint8_t, uint16_t, uint64_t, uint8_t) { return false; }
-    bool EZSP_Unbind(uint64_t, uint8_t, uint16_t, uint64_t, uint8_t) { return false; }
-    bool EZSP_RemoveDevice(uint64_t) { return false; }
+    // ----- ZDO -----
+    //
+    // ZDO requests are ordinary unicasts on profile 0, endpoint 0. The frame's
+    // first byte is the transaction sequence number and the answer echoes it,
+    // so a request registers itself under that number and the incoming-message
+    // path looks it up. The callback always fires: with the response frame on
+    // success, or with `false` from CheckTimeouts.
+
+    uint8_t NextZdoSequence() { return zdoSequence++; }
+
+    bool SendZdo(uint16_t nwk, uint16_t requestCluster, uint16_t responseCluster,
+                 const std::vector<uint8_t>& zdoFrame,
+                 std::function<void(bool, const std::vector<uint8_t>&)> callback) {
+        if (zdoFrame.empty()) return false;
+        const uint8_t tsn = zdoFrame[0];
+
+        {
+            std::lock_guard<std::mutex> lock(requestMutex);
+            PendingZdo pending;
+            pending.ResponseCluster = responseCluster;
+            pending.Callback = std::move(callback);
+            pending.Timestamp = GetTimestamp();
+            pendingZdo[tsn] = std::move(pending);
+        }
+
+        Ezsp::ApsFrame aps;
+        aps.ProfileId = Ezsp::Zdo::kProfile;
+        aps.ClusterId = requestCluster;
+        aps.SourceEndpoint = Ezsp::Zdo::kEndpoint;
+        aps.DestinationEndpoint = Ezsp::Zdo::kEndpoint;
+        aps.Options = kUnicastOptions;
+        aps.Sequence = apsSequence++;
+
+        if (!SendEzsp(Ezsp::kSendUnicast,
+                      Ezsp::EncodeSendUnicastParams(nwk, aps, aps.Sequence, zdoFrame))) {
+            std::lock_guard<std::mutex> lock(requestMutex);
+            pendingZdo.erase(tsn);
+            return false;
+        }
+        return true;
+    }
+
+    bool EZSP_ActiveEndpoints(uint16_t nwk,
+                              std::function<void(bool, const std::vector<uint8_t>&)> cb) {
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdo(nwk, Ezsp::Zdo::kActiveEpReq, Ezsp::Zdo::kActiveEpRsp,
+                       Ezsp::Zdo::EncodeActiveEpReq(tsn, nwk),
+                       [cb](bool ok, const std::vector<uint8_t>& frame) {
+                           if (!cb) return;
+                           auto rsp = ok ? Ezsp::Zdo::DecodeActiveEpRsp(frame) : std::nullopt;
+                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                               cb(false, {});
+                               return;
+                           }
+                           cb(true, rsp->Endpoints);
+                       });
+    }
+
+    bool EZSP_SimpleDescriptor(uint16_t nwk, uint8_t endpoint,
+                               std::function<void(bool, const ZigbeeEndpoint&)> cb) {
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdo(nwk, Ezsp::Zdo::kSimpleDescReq, Ezsp::Zdo::kSimpleDescRsp,
+                       Ezsp::Zdo::EncodeSimpleDescReq(tsn, nwk, endpoint),
+                       [cb](bool ok, const std::vector<uint8_t>& frame) {
+                           if (!cb) return;
+                           auto rsp = ok ? Ezsp::Zdo::DecodeSimpleDescRsp(frame) : std::nullopt;
+                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                               cb(false, ZigbeeEndpoint{});
+                               return;
+                           }
+                           ZigbeeEndpoint ep;
+                           ep.EndpointId = rsp->Endpoint;
+                           ep.ProfileId = rsp->ProfileId;
+                           ep.DeviceId = rsp->DeviceId;
+                           ep.DeviceVersion = rsp->DeviceVersion;
+                           for (uint16_t id : rsp->InputClusters) {
+                               ZigbeeCluster c;
+                               c.ClusterId = id;
+                               c.IsServer = true;
+                               ep.InputClusters.push_back(c);
+                           }
+                           for (uint16_t id : rsp->OutputClusters) {
+                               ZigbeeCluster c;
+                               c.ClusterId = id;
+                               c.IsServer = false;
+                               ep.OutputClusters.push_back(c);
+                           }
+                           cb(true, ep);
+                       });
+    }
+
+    bool EZSP_NodeDescriptor(uint16_t nwk,
+                             std::function<void(bool, ZigbeeDeviceType)> cb) {
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdo(nwk, Ezsp::Zdo::kNodeDescReq, Ezsp::Zdo::kNodeDescRsp,
+                       Ezsp::Zdo::EncodeNodeDescReq(tsn, nwk),
+                       [cb](bool ok, const std::vector<uint8_t>& frame) {
+                           if (!cb) return;
+                           auto rsp = ok ? Ezsp::Zdo::DecodeNodeDescRsp(frame) : std::nullopt;
+                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                               cb(false, ZigbeeDeviceType::Unknown);
+                               return;
+                           }
+                           ZigbeeDeviceType type = ZigbeeDeviceType::Unknown;
+                           switch (rsp->LogicalType) {
+                               case 0: type = ZigbeeDeviceType::Coordinator; break;
+                               case 1: type = ZigbeeDeviceType::Router; break;
+                               case 2: type = ZigbeeDeviceType::EndDevice; break;
+                               default: break;
+                           }
+                           cb(true, type);
+                       });
+    }
+
+    bool EZSP_IeeeAddress(uint16_t nwk, std::function<void(bool, uint64_t)> cb) {
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdo(nwk, Ezsp::Zdo::kIeeeAddrReq, Ezsp::Zdo::kIeeeAddrRsp,
+                       Ezsp::Zdo::EncodeIeeeAddrReq(tsn, nwk),
+                       [cb](bool ok, const std::vector<uint8_t>& frame) {
+                           if (!cb) return;
+                           auto rsp = ok ? Ezsp::Zdo::DecodeIeeeAddrRsp(frame) : std::nullopt;
+                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                               cb(false, 0);
+                               return;
+                           }
+                           cb(true, rsp->Ieee);
+                       });
+    }
+
+    // Bind, unbind and leave are answered by a bare status, and their callers
+    // expect a yes or no. So these block until the device answers or the
+    // request times out; `true` means the device said so, not that the bytes
+    // left the serial port. Not to be called from the receive thread.
+    bool SendZdoAndWaitForStatus(uint16_t nwk, uint16_t requestCluster,
+                                 uint16_t responseCluster,
+                                 const std::vector<uint8_t>& zdoFrame) {
+        struct Wait {
+            std::mutex m;
+            std::condition_variable cv;
+            bool done = false;
+            bool ok = false;
+        };
+        auto wait = std::make_shared<Wait>();
+
+        const bool sent = SendZdo(nwk, requestCluster, responseCluster, zdoFrame,
+            [wait](bool ok, const std::vector<uint8_t>& frame) {
+                auto rsp = ok ? Ezsp::Zdo::DecodeStatusRsp(frame) : std::nullopt;
+                std::lock_guard<std::mutex> lock(wait->m);
+                wait->ok = rsp && rsp->Status == Ezsp::Zdo::kStatusSuccess;
+                wait->done = true;
+                wait->cv.notify_all();
+            });
+        if (!sent) return false;
+
+        std::unique_lock<std::mutex> lock(wait->m);
+        wait->cv.wait_for(lock, std::chrono::milliseconds(kRequestTimeoutMs + 500),
+                          [&] { return wait->done; });
+        return wait->done && wait->ok;
+    }
+
+    // A binding lives in the source device's table, so the request goes to
+    // the source. The IEEE address has to be turned into a network address
+    // first, which the protocol keeps.
+    bool EZSP_Bind(uint64_t srcIeee, uint8_t srcEp, uint16_t cluster,
+                   uint64_t dstIeee, uint8_t dstEp) {
+        uint16_t nwk;
+        if (!protocol || !protocol->NwkForIeee(srcIeee, nwk)) return false;
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdoAndWaitForStatus(nwk, Ezsp::Zdo::kBindReq, Ezsp::Zdo::kBindRsp,
+            Ezsp::Zdo::EncodeBindReq(tsn, srcIeee, srcEp, cluster, dstIeee, dstEp));
+    }
+
+    bool EZSP_Unbind(uint64_t srcIeee, uint8_t srcEp, uint16_t cluster,
+                     uint64_t dstIeee, uint8_t dstEp) {
+        uint16_t nwk;
+        if (!protocol || !protocol->NwkForIeee(srcIeee, nwk)) return false;
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdoAndWaitForStatus(nwk, Ezsp::Zdo::kUnbindReq, Ezsp::Zdo::kUnbindRsp,
+            Ezsp::Zdo::EncodeUnbindReq(tsn, srcIeee, srcEp, cluster, dstIeee, dstEp));
+    }
+
+    // Mgmt_Leave to the device itself, no rejoin, children left alone.
+    bool EZSP_RemoveDevice(uint64_t ieee) {
+        uint16_t nwk;
+        if (!protocol || !protocol->NwkForIeee(ieee, nwk)) return false;
+        const uint8_t tsn = NextZdoSequence();
+        return SendZdoAndWaitForStatus(nwk, Ezsp::Zdo::kMgmtLeaveReq, Ezsp::Zdo::kMgmtLeaveRsp,
+            Ezsp::Zdo::EncodeMgmtLeaveReq(tsn, ieee, /*rejoin*/ false,
+                                          /*removeChildren*/ false));
+    }
 #endif
 
 #ifdef ULTRACANVAS_WITH_ZSTACK
@@ -1049,24 +1389,34 @@ bool ZigbeeProtocol::PermitJoin(int timeoutSeconds) {
 // ===== DEVICE OPERATIONS =====
 
 bool ZigbeeProtocol::RemoveDevice(const std::string& deviceId) {
-    std::lock_guard<std::mutex> lock(nodeMutex);
-    
-    auto it = zigbeeNodes.find(deviceId);
-    if (it == zigbeeNodes.end()) {
-        return false;
+    uint64_t ieeeAddress;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) {
+            return false;
+        }
+        ieeeAddress = it->second.IeeeAddress;
     }
-    
-    uint64_t ieeeAddress = it->second.IeeeAddress;
-    uint16_t nwkAddress = it->second.NwkAddress;
-    
-    // Send leave request
-    stack->RemoveNode(ieeeAddress);
-    
-    // Remove from tracking
-    ieeeToDeviceId.erase(ieeeAddress);
-    nwkToDeviceId.erase(nwkAddress);
-    zigbeeNodes.erase(it);
-    
+
+    // Ask the device to leave. This waits for its answer and needs the node
+    // table to find its address, so it runs with the lock released. Whether
+    // or not the device confirms, it is forgotten here: a device that never
+    // answered is gone from this side's point of view either way.
+    if (!stack->RemoveNode(ieeeAddress)) {
+        Log(1, "Device " + deviceId + " did not confirm the leave request");
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it != zigbeeNodes.end()) {
+            ieeeToDeviceId.erase(it->second.IeeeAddress);
+            nwkToDeviceId.erase(it->second.NwkAddress);
+            zigbeeNodes.erase(it);
+        }
+    }
+
     RemovePairedDevice(deviceId);
     
     Log(2, "Removed Zigbee device: " + deviceId);
@@ -1074,114 +1424,215 @@ bool ZigbeeProtocol::RemoveDevice(const std::string& deviceId) {
 }
 
 bool ZigbeeProtocol::InterviewDevice(const std::string& deviceId) {
-    ZigbeeNode* node = nullptr;
     {
         std::lock_guard<std::mutex> lock(nodeMutex);
-        auto it = zigbeeNodes.find(deviceId);
-        if (it == zigbeeNodes.end()) {
+        if (zigbeeNodes.find(deviceId) == zigbeeNodes.end()) {
             return false;
         }
-        node = &it->second;
     }
     
     Log(2, "Interviewing device: " + deviceId);
-    InterviewNode(*node);
+    InterviewNode(deviceId);
     
     return true;
 }
 
-void ZigbeeProtocol::InterviewNode(ZigbeeNode& node) {
-    // Step 1: Get node descriptor
-    stack->RequestNodeDescriptor(node.NwkAddress, 
-        [this, &node](bool success, ZigbeeDeviceType type) {
-            if (success) {
-                node.Type = type;
-                Log(3, "Node type: " + std::to_string(static_cast<int>(type)));
-            }
-        });
-    
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
-    // Step 2: Get active endpoints
-    DiscoverEndpoints(node);
-    
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    
-    // Step 3: Get simple descriptor for each endpoint
-    for (auto& endpoint : node.Endpoints) {
-        DiscoverClusters(node, endpoint.EndpointId);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+// The interview asks the device about itself one ZDO query at a time. Each
+// answer arrives on the stack's receive thread, so every step hands the
+// receive thread a device id rather than a reference into the node table,
+// finds the node again under the lock, and waits for the step to finish
+// before starting the next. A node that is removed mid-interview is simply
+// not found and the step becomes a no-op.
+
+namespace {
+struct InterviewStep {
+    std::mutex m;
+    std::condition_variable cv;
+    bool done = false;
+
+    void Finish() {
+        std::lock_guard<std::mutex> lock(m);
+        done = true;
+        cv.notify_all();
+    }
+    // The stack guarantees every callback fires, by response or by timeout,
+    // so the ceiling here is only a guard against a stack that is shut down
+    // underneath the interview.
+    void Wait() {
+        std::unique_lock<std::mutex> lock(m);
+        cv.wait_for(lock, std::chrono::seconds(12), [&] { return done; });
+    }
+};
+}  // namespace
+
+void ZigbeeProtocol::InterviewNode(const std::string& deviceId) {
+    uint16_t nwkAddress;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return;
+        nwkAddress = it->second.NwkAddress;
     }
     
-    // Step 4: Read basic cluster attributes
-    if (!node.Endpoints.empty()) {
-        uint8_t ep = node.Endpoints[0].EndpointId;
+    // Step 1: Node descriptor — what kind of device this is
+    {
+        auto step = std::make_shared<InterviewStep>();
+        stack->RequestNodeDescriptor(nwkAddress,
+            [this, deviceId, step](bool success, ZigbeeDeviceType type) {
+                if (success) {
+                    std::lock_guard<std::mutex> lock(nodeMutex);
+                    auto it = zigbeeNodes.find(deviceId);
+                    if (it != zigbeeNodes.end()) it->second.Type = type;
+                    Log(3, "Node type: " + std::to_string(static_cast<int>(type)));
+                }
+                step->Finish();
+            });
+        step->Wait();
+    }
+    
+    // Step 2: Active endpoints
+    DiscoverEndpoints(deviceId);
+    
+    // Step 3: Simple descriptor for each endpoint
+    std::vector<uint8_t> endpoints;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return;
+        for (const auto& ep : it->second.Endpoints) endpoints.push_back(ep.EndpointId);
+    }
+    for (uint8_t ep : endpoints) {
+        DiscoverClusters(deviceId, ep);
+    }
+    
+    // Step 4: Basic cluster attributes, read from the first endpoint
+    if (!endpoints.empty()) {
+        const uint8_t ep = endpoints.front();
+        std::string manufacturerName, modelIdentifier;
+        int powerSource = -1;
         
-        // Read manufacturer name
         ZigbeeAttributeValue mfgName;
-        if (ReadAttribute(node.DeviceId, ep, ZigbeeClusters::Basic, 
+        if (ReadAttribute(deviceId, ep, ZigbeeClusters::Basic, 
                           BasicAttributes::ManufacturerName, mfgName)) {
-            node.ManufacturerName = std::string(mfgName.Value.begin(), mfgName.Value.end());
+            manufacturerName = ZclStringToStd(mfgName);
         }
         
-        // Read model identifier
         ZigbeeAttributeValue modelId;
-        if (ReadAttribute(node.DeviceId, ep, ZigbeeClusters::Basic,
+        if (ReadAttribute(deviceId, ep, ZigbeeClusters::Basic,
                           BasicAttributes::ModelIdentifier, modelId)) {
-            node.ModelIdentifier = std::string(modelId.Value.begin(), modelId.Value.end());
+            modelIdentifier = ZclStringToStd(modelId);
         }
         
-        // Read power source
         ZigbeeAttributeValue powerSrc;
-        if (ReadAttribute(node.DeviceId, ep, ZigbeeClusters::Basic,
+        if (ReadAttribute(deviceId, ep, ZigbeeClusters::Basic,
                           BasicAttributes::PowerSource, powerSrc)) {
             if (!powerSrc.Value.empty()) {
-                node.PowerSource = powerSrc.Value[0];
+                powerSource = powerSrc.Value[0];
             }
         }
+        
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return;
+        if (!manufacturerName.empty()) it->second.ManufacturerName = manufacturerName;
+        if (!modelIdentifier.empty()) it->second.ModelIdentifier = modelIdentifier;
+        if (powerSource >= 0) it->second.PowerSource = static_cast<uint8_t>(powerSource);
     }
     
-    node.IsOnline = true;
-    node.LastSeen = static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
+    ZigbeeNode snapshot;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return;
+        it->second.IsOnline = true;
+        it->second.LastSeen = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+        snapshot = it->second;
+    }
     
     // Update paired device info
-    SmartHomeDeviceInfo info = NodeToDeviceInfo(node);
+    SmartHomeDeviceInfo info = NodeToDeviceInfo(snapshot);
     UpdatePairedDevice(info);
     
-    Log(2, "Interview complete: " + node.ManufacturerName + " " + node.ModelIdentifier);
+    Log(2, "Interview complete: " + snapshot.ManufacturerName + " " + snapshot.ModelIdentifier);
 }
 
-void ZigbeeProtocol::DiscoverEndpoints(ZigbeeNode& node) {
-    stack->RequestActiveEndpoints(node.NwkAddress,
-        [this, &node](bool success, const std::vector<uint8_t>& endpoints) {
+// ZCL character strings carry a length byte before the text; a device that
+// answers with an octet string (0x41) or a long string (0x43/0x44) is treated
+// the same way, because the Basic cluster's names are all human-readable.
+std::string ZigbeeProtocol::ZclStringToStd(const ZigbeeAttributeValue& value) {
+    const auto& v = value.Value;
+    if (v.empty()) return {};
+    size_t lengthBytes = 1;
+    if (value.DataType == 0x43 || value.DataType == 0x44) lengthBytes = 2;
+    if (v.size() < lengthBytes) return {};
+    size_t len = v[0];
+    if (lengthBytes == 2) len |= static_cast<size_t>(v[1]) << 8;
+    if (len == 0xFF || len == 0xFFFF) return {};       // "invalid" string marker
+    len = std::min(len, v.size() - lengthBytes);
+    return std::string(v.begin() + lengthBytes, v.begin() + lengthBytes + len);
+}
+
+void ZigbeeProtocol::DiscoverEndpoints(const std::string& deviceId) {
+    uint16_t nwkAddress;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return;
+        nwkAddress = it->second.NwkAddress;
+    }
+    
+    auto step = std::make_shared<InterviewStep>();
+    stack->RequestActiveEndpoints(nwkAddress,
+        [this, deviceId, step](bool success, const std::vector<uint8_t>& endpoints) {
             if (success) {
-                node.Endpoints.clear();
-                for (uint8_t ep : endpoints) {
-                    ZigbeeEndpoint endpoint;
-                    endpoint.EndpointId = ep;
-                    node.Endpoints.push_back(endpoint);
+                std::lock_guard<std::mutex> lock(nodeMutex);
+                auto it = zigbeeNodes.find(deviceId);
+                if (it != zigbeeNodes.end()) {
+                    it->second.Endpoints.clear();
+                    for (uint8_t ep : endpoints) {
+                        ZigbeeEndpoint endpoint;
+                        endpoint.EndpointId = ep;
+                        it->second.Endpoints.push_back(endpoint);
+                    }
                 }
                 Log(3, "Found " + std::to_string(endpoints.size()) + " endpoints");
             }
+            step->Finish();
         });
+    step->Wait();
 }
 
-void ZigbeeProtocol::DiscoverClusters(ZigbeeNode& node, uint8_t endpointId) {
-    stack->RequestSimpleDescriptor(node.NwkAddress, endpointId,
-        [this, &node, endpointId](bool success, const ZigbeeEndpoint& descriptor) {
+void ZigbeeProtocol::DiscoverClusters(const std::string& deviceId, uint8_t endpointId) {
+    uint16_t nwkAddress;
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it == zigbeeNodes.end()) return;
+        nwkAddress = it->second.NwkAddress;
+    }
+    
+    auto step = std::make_shared<InterviewStep>();
+    stack->RequestSimpleDescriptor(nwkAddress, endpointId,
+        [this, deviceId, endpointId, step](bool success, const ZigbeeEndpoint& descriptor) {
             if (success) {
-                for (auto& ep : node.Endpoints) {
-                    if (ep.EndpointId == endpointId) {
-                        ep = descriptor;
-                        break;
+                std::lock_guard<std::mutex> lock(nodeMutex);
+                auto it = zigbeeNodes.find(deviceId);
+                if (it != zigbeeNodes.end()) {
+                    for (auto& ep : it->second.Endpoints) {
+                        if (ep.EndpointId == endpointId) {
+                            ep = descriptor;
+                            break;
+                        }
                     }
                 }
                 Log(3, "Endpoint " + std::to_string(endpointId) + 
                     ": " + std::to_string(descriptor.InputClusters.size()) + " clusters");
             }
+            step->Finish();
         });
+    step->Wait();
 }
 
 // ===== COMMANDS =====
@@ -1636,32 +2087,46 @@ bool ZigbeeProtocol::ReadAttribute(const std::string& deviceId, uint8_t endpoint
     payload.push_back(attributeId & 0xFF);
     payload.push_back((attributeId >> 8) & 0xFF);
     
-    bool success = false;
-    std::condition_variable cv;
-    std::mutex cvMutex;
+    // The answer arrives on the stack's receive thread, or as a timeout from
+    // its housekeeping, and either way exactly once. The state is shared so a
+    // late answer after this call has given up has somewhere harmless to go.
+    struct Reply {
+        std::mutex m;
+        std::condition_variable cv;
+        bool done = false;
+        bool success = false;
+        ZigbeeAttributeValue value;
+    };
+    auto reply = std::make_shared<Reply>();
     
-    stack->SendZCLFrame(nwkAddress, endpoint, clusterId,
+    const bool sent = stack->SendZCLFrame(nwkAddress, endpoint, clusterId,
                         ZCL::FrameTypeGlobal, ZCL::CmdReadAttributes, payload,
-                        [&](bool ok, const std::vector<uint8_t>& data) {
-                            if (ok && data.size() >= 4) {
-                                outValue.ClusterId = clusterId;
-                                outValue.AttributeId = (data[1] << 8) | data[0];
-                                outValue.Status = data[2];
-                                if (outValue.Status == 0 && data.size() > 4) {
-                                    outValue.DataType = data[3];
-                                    outValue.Value.assign(data.begin() + 4, data.end());
+                        [reply, clusterId](bool ok, const std::vector<uint8_t>& data) {
+                            std::lock_guard<std::mutex> lock(reply->m);
+                            // Read Attributes Response record: id, status,
+                            // then type and value only when status is success.
+                            if (ok && data.size() >= 3) {
+                                reply->value.ClusterId = clusterId;
+                                reply->value.AttributeId = (data[1] << 8) | data[0];
+                                reply->value.Status = data[2];
+                                if (reply->value.Status == 0 && data.size() > 4) {
+                                    reply->value.DataType = data[3];
+                                    reply->value.Value.assign(data.begin() + 4, data.end());
                                 }
-                                success = true;
+                                reply->success = reply->value.Status == 0;
                             }
-                            std::lock_guard<std::mutex> lock(cvMutex);
-                            cv.notify_one();
+                            reply->done = true;
+                            reply->cv.notify_all();
                         });
+    if (!sent) return false;
     
-    // Wait for response (with timeout)
-    std::unique_lock<std::mutex> lock(cvMutex);
-    cv.wait_for(lock, std::chrono::seconds(5));
-    
-    return success;
+    std::unique_lock<std::mutex> lock(reply->m);
+    reply->cv.wait_for(lock, std::chrono::seconds(5), [&] { return reply->done; });
+    if (reply->done && reply->success) {
+        outValue = reply->value;
+        return true;
+    }
+    return false;
 }
 
 bool ZigbeeProtocol::WriteAttribute(const std::string& deviceId, uint8_t endpoint,
@@ -1974,23 +2439,55 @@ void ZigbeeProtocol::OnDeviceLeft(uint64_t ieeeAddress) {
 void ZigbeeProtocol::OnDeviceAnnounce(uint64_t ieeeAddress, uint16_t nwkAddress) {
     Log(3, "Device announce: " + IeeeAddressToString(ieeeAddress));
     
-    // Check if this is a new device or network address change
-    std::lock_guard<std::mutex> lock(nodeMutex);
-    auto it = ieeeToDeviceId.find(ieeeAddress);
-    
-    if (it != ieeeToDeviceId.end()) {
-        // Existing device - may have changed network address
-        auto& node = zigbeeNodes[it->second];
-        if (node.NwkAddress != nwkAddress) {
-            nwkToDeviceId.erase(node.NwkAddress);
-            node.NwkAddress = nwkAddress;
-            nwkToDeviceId[nwkAddress] = it->second;
+    // A known device announcing is back online, possibly at a new network
+    // address. An unknown one has just joined: Device_annce is the first
+    // thing a device broadcasts after joining, and how the coordinator hears
+    // of it.
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = ieeeToDeviceId.find(ieeeAddress);
+        if (it != ieeeToDeviceId.end()) {
+            auto& node = zigbeeNodes[it->second];
+            if (node.NwkAddress != nwkAddress) {
+                nwkToDeviceId.erase(node.NwkAddress);
+                node.NwkAddress = nwkAddress;
+                nwkToDeviceId[nwkAddress] = it->second;
+            }
+            node.IsOnline = true;
+            node.LastSeen = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count());
+            return;
         }
-        node.IsOnline = true;
-        node.LastSeen = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count());
     }
+    OnDeviceJoined(ieeeAddress, nwkAddress);
+}
+
+uint64_t ZigbeeProtocol::NoteHeardFrom(uint16_t nwkAddress, uint8_t lqi, int8_t rssi) {
+    std::lock_guard<std::mutex> lock(nodeMutex);
+    auto idIt = nwkToDeviceId.find(nwkAddress);
+    if (idIt == nwkToDeviceId.end()) return 0;
+    auto it = zigbeeNodes.find(idIt->second);
+    if (it == zigbeeNodes.end()) return 0;
+    
+    ZigbeeNode& node = it->second;
+    node.Lqi = lqi;
+    node.Rssi = rssi;
+    node.IsOnline = true;
+    node.LastSeen = static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    return node.IeeeAddress;
+}
+
+bool ZigbeeProtocol::NwkForIeee(uint64_t ieeeAddress, uint16_t& nwkAddress) const {
+    std::lock_guard<std::mutex> lock(nodeMutex);
+    auto idIt = ieeeToDeviceId.find(ieeeAddress);
+    if (idIt == ieeeToDeviceId.end()) return false;
+    auto it = zigbeeNodes.find(idIt->second);
+    if (it == zigbeeNodes.end()) return false;
+    nwkAddress = it->second.NwkAddress;
+    return true;
 }
 
 void ZigbeeProtocol::OnAttributeReport(uint64_t srcAddress, uint8_t endpoint,
