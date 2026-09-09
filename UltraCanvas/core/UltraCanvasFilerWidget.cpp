@@ -5164,9 +5164,12 @@ namespace UltraCanvas {
 
         // The window is optional: without it (dialogs disabled, no parent) the
         // work still runs, it just runs unannounced.
+        // No severity badge on the pack / unpack window: the progress ring is
+        // its graphic, and the icon column would push the ring off centre.
         job->dialog = UltraCanvasProgressDialog::Show(
                 GetWindow(), title, caption,
-                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); });
+                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); },
+                /*showIcon=*/false);
 
         // The reporter is the worker's only way to talk to the UI: it stores
         // numbers the poll timer reads, and answers whether to keep going.

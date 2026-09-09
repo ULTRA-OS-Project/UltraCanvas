@@ -1179,6 +1179,10 @@ Extract dialogs all run the work on a background worker behind an
 percentage, the file being handled, and Cancel. The UI stays live throughout —
 packing a few hundred megabytes no longer freezes the window.
 
+The progress window is opened **without the severity badge**
+(`showIcon = false`), so the ring is horizontally centred in the dialog instead
+of being pushed to the right of a blue `i` that says nothing the ring does not.
+
 Cancel stops the backend at its next progress callback. A cancelled **pack**
 deletes the half-written archive (nobody wants that in the listing); a cancelled
 **unpack** keeps what it already wrote, because those are real files, and stops
