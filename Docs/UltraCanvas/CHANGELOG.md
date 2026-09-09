@@ -59,6 +59,21 @@
   for the size, `UltraCanvasLabel` for the information line,
   `UltraCanvasScrollbar` for the bar, and `UltraCanvasSmoothScroll` for the
   easing, so a wheel notch feels the same as it does in the filer.
+- **A label rendered without a window crashed instead of drawing.**
+  `UltraCanvasLabel::Render()` segfaulted whenever the label was drawn into an
+  offscreen context — one from `CreateRenderContext(size, nullptr)`, the kind
+  the QR code plugin uses to export a PNG — because it built its cached
+  `ITextLayout` from the context reachable through the element's *window*,
+  which an unattached label does not have, and then dereferenced the null it
+  got back. `UpdateInternalLayout()` had been handed the right context all
+  along and ignored it. The layout is now built from the context the label is
+  about to draw into, falling back to the window's; the two are the same object
+  for a label in a window, so nothing changes there. A layout that still cannot
+  be built now costs the label its words rather than the process — the check
+  `IRenderContext::DrawText()` makes a few lines away. The offscreen path turns
+  out to lay out text perfectly well: with the context threaded through, a
+  label drawn into an image surface draws its text. Covered by a new
+  `OffscreenRenderTest`, which segfaults without the fix.
 - **The font viewer's control bar landed in one column on top of the grid.**
   Putting the viewer in a window for the first time showed the range picker,
   the size slider and the information line stacked at the top-left over the

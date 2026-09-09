@@ -1796,3 +1796,25 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  FontViewerTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== OFFSCREEN RENDER TEST =====
+# Widgets drawn into a surface with no window behind it. Everything a widget
+# needs at paint time has to come from the context it was handed, and a widget
+# that cannot get it must draw less rather than crash.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OffscreenRenderTest...")
+    add_executable(OffscreenRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/OffscreenRenderTest.cpp
+    )
+    target_include_directories(OffscreenRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OffscreenRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(OffscreenRenderTest PRIVATE UltraCanvas)
+    set_target_properties(OffscreenRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OffscreenRenderTest COMMAND OffscreenRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OffscreenRenderTest")
+else()
+    message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
+endif()

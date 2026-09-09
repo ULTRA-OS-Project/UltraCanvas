@@ -145,9 +145,12 @@ namespace UltraCanvas {
     // own context. Returns false if no render context is reachable yet
     // (element not attached to a window), in which case callers should
     // bail gracefully without crashing.
-    bool UltraCanvasLabel::EnsureTextLayout() {
+    bool UltraCanvasLabel::EnsureTextLayout(IRenderContext* context) {
         if (textLayout) return true;
-        IRenderContext* ctx = GetRenderContext();
+        // The context we are about to draw into first, the element's window
+        // second: a label rendered into an offscreen surface has no window,
+        // and asking one it does not have is what left the layout null.
+        IRenderContext* ctx = context ? context : GetRenderContext();
         if (!ctx) return false;
         textLayout = ctx->CreateTextLayout(text, isMarkup);
         if (!textLayout) return false;
@@ -316,7 +319,7 @@ namespace UltraCanvas {
 
     void UltraCanvasLabel::UpdateInternalLayout(IRenderContext *ctx) {
         // finalBounds is owned by the engine (set during Arrange).
-        if (!EnsureTextLayout()) return;
+        if (!EnsureTextLayout(ctx)) return;
 
         auto crect = GetLocalContentRect();
         // When a non-zero content area exists, point the text layout at it.
@@ -337,7 +340,11 @@ namespace UltraCanvas {
 
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
-        if (!text.empty()) {
+        // The background, border and any decoration are drawn above whatever
+        // happens to the text. A layout that could not be built is a label
+        // without its words, not a crash - the same call the framework makes
+        // in IRenderContext::DrawText, which checks before it dereferences.
+        if (!text.empty() && textLayout) {
             // Element-local content rect: ctx is already translated to element origin
             int contentX = GetBorderLeftWidth() + GetPaddingLeft();
             int contentY = GetBorderTopWidth() + GetPaddingTop();
