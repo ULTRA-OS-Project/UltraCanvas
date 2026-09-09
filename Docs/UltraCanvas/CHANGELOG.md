@@ -1,4 +1,4 @@
-#### 2026-09-09 *0.3.110*
+#### 2026-09-09 *0.3.111*
 - **A double-click that starts a program now says so: the busy pointer.**
   Spawning a program takes milliseconds, the program appearing takes seconds,
   and nothing in between told the user their double-click had arrived — so a
@@ -19,6 +19,8 @@
   bundle, a `.webloc` address and anything handed to the OS default
   application. A launch that fails immediately takes the pointer down again
   through `onError`.
+
+#### 2026-09-09 *0.3.110*
 - **A dialog can drop the severity icon, and the extract window's progress ring
   is centred again.** Every modal dialog put the coloured severity badge (the
   blue `i`) in its own column left of the message, and the whole content column

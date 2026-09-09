@@ -8,7 +8,7 @@
   second double-click. Windows programs launched through UltraWin use it too,
   with the long wait a first launch needs while its Windows environment is
   prepared, and put the pointer back the moment the run actually starts.
-  (Framework side: `Docs/UltraCanvas/CHANGELOG.md` 0.3.110.)
+  (Framework side: `Docs/UltraCanvas/CHANGELOG.md` 0.3.111.)
 
 #### 2026-09-08 *1.22.0*
 - **The settings window reads the same on every page.** The pages had grown
