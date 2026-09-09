@@ -249,6 +249,7 @@ namespace UltraCanvas {
             case UCMouseCursor::SizeNWSE:     return "nwse-resize";
             case UCMouseCursor::SizeNESW:     return "nesw-resize";
             case UCMouseCursor::ContextMenu:  return "context-menu";
+            case UCMouseCursor::AppStarting:  return "progress";
             default:                          return nullptr;
         }
     }

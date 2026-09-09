@@ -14,6 +14,17 @@
   leaves the text input zero-wide for good — a trap now written down in
   `Docs/CSSLayout.md` — so the box reports and the window applies it on the
   next turn of the event loop.
+#### 2026-09-09 *1.23.0*
+- **Double-clicking a program or a document now shows that it is starting.**
+  The launch itself is instant, the application appearing is not, and until
+  it did the window looked exactly as it does when a double-click was missed.
+  A second after the double-click the pointer changes to the arrow-with-busy-
+  sign shape, and it returns to normal by itself — so a program that opens
+  at once never changes the pointer, and a slow one no longer invites a
+  second double-click. Windows programs launched through UltraWin use it too,
+  with the long wait a first launch needs while its Windows environment is
+  prepared, and put the pointer back the moment the run actually starts.
+  (Framework side: `Docs/UltraCanvas/CHANGELOG.md` 0.3.111.)
 
 #### 2026-09-08 *1.22.0*
 - **The settings window reads the same on every page.** The pages had grown
