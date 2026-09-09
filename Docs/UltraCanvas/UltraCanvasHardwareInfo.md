@@ -128,7 +128,7 @@ deliberate call, and it clears the snapshot cache so nothing masked is reused.
 | Struct | Notable fields |
 |---|---|
 | `SystemInfo` | host name, OS and kernel, vendor/model, mainboard, firmware, chassis, uptime |
-| `CPUInfo` | vendor, model, architecture, packages/cores/threads, base/max/current clock, `caches`, `coreGroups` (hybrid P/E tiers), `instructionSets`, `temperatureC`, `loadPercent` |
+| `CPUInfo` | vendor, model, architecture, packages/cores/threads, base/max/current clock, `caches`, `coreGroups` (hybrid P/E tiers), `instructionSets`, `x86MicroarchitectureLevel`, `emulation`, `temperatureC`, `loadPercent` |
 | `CPUCacheInfo` | level, type, size, line size, associativity, `instanceCount`, `sharedByLogicalCores`, `Describe()` |
 | `GPUInfo` | vendor, model, driver, PCI ids, `kind` (integrated/discrete/virtual/software), VRAM, compute units, clock, temperature, utilisation |
 | `NPUInfo` | vendor, model, driver, `runtime` (OpenVINO / DirectML / Core ML / RKNN …), integrated flag |
@@ -142,6 +142,72 @@ deliberate call, and it clears the snapshot cache so nothing masked is reused.
 
 Optional readings use `std::optional`, so "0 °C" is never confused with "not
 reported".
+
+### Instruction sets: read from CPUID, and levelled
+
+On x86 the feature list comes from **CPUID directly** — leaf 1, leaf 7 subleaf 0
+and leaf 0x80000001 — on every platform, not from the OS's own feature query.
+Win32's `IsProcessorFeaturePresent` has `PF_*` constants for only a handful of
+extensions and none for **GFNI, VAES or VPCLMULQDQ**, and Linux's
+`/proc/cpuinfo` flag list is easy to under-filter. Those three are exactly the
+ones `-march=native` picks up without needing AVX-512, because they are
+VEX-encoded — so a CPU can hold every feature a naive list prints and still
+refuse the binary. The Ladybird port hit precisely that: an AVX2-capable
+Ryzen 5 5500U faulting on `VGF2P8AFFINEQB` while the crash reporter read
+`[SSE4.2 AVX AVX2]`.
+
+`CPUInfo::x86MicroarchitectureLevel` is the actionable form: the highest x86-64
+psABI level the CPU satisfies (1–4), shown as **Baseline level: x86-64-v3**.
+`-march=x86-64-v<N>` means exactly that feature set, so a build targeting it is
+guaranteed to run here — something a packager can paste, rather than a vague
+"lower the baseline". GFNI, VAES, VPCLMULQDQ and SHA are listed among the
+instruction sets but deliberately **do not** raise the level: they belong to no
+level, which is why no `-march=x86-64-vN` emits them and only `-march=native`
+drags them in.
+
+Off x86 the level is 0 and the names come from the platform's own list
+(`/proc/cpuinfo` Features on ARM Linux, `hw.optional.*` on Apple Silicon, the
+`PF_ARM_*` queries on Windows on ARM). The CPUID path is guarded on the
+**architecture**, never on the compiler — MSYS2's CLANGARM64 toolchain defines
+`__clang__`, so a "GCC or MSVC" split would ask an ARM64 target for `__cpuidex`
+on a CPU that has no CPUID at all.
+
+The bit assignments and the level rules are shared with
+`OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`, which established them and
+verified them flag-by-flag against `/proc/cpuinfo`. That file keeps its own copy
+because it feeds the crash reporter and must not depend on this module; the two
+must stay in step, and both are covered by tests over synthetic feature sets.
+
+### Emulation: when half the struct describes something else
+
+`CPUInfo::emulation` is set when the process is not running natively on the CPU
+above — `"x64 image on an ARM64 machine"` (Windows on ARM, via
+`IsWow64Process2`), `"x86_64 image translated by Rosetta on Apple Silicon"` (via
+`sysctl.proc_translated`). It is empty when native, and the panel shows it as a
+**Running under** row directly beneath the architecture.
+
+It earns its place because the two halves of `CPUInfo` then describe different
+things: `model`, the core counts and the caches come from the silicon, while
+`instructionSets` is **what the emulator permits** — Windows on ARM implements a
+subset of x86 and offers no AVX-512 at all; Rosetta implements no AVX. That gap
+is not academic. The Ladybird port hit it in the field as `lagom-gfx.dll`
+faulting with `0xC000001D` (`ILLEGAL_INSTRUCTION`) on a Windows 11 machine while
+the same package ran on Windows 10 — a CPU difference, not an OS one. Anything
+deciding at run time whether a code path is safe must branch on
+`instructionSets`, never on `model`.
+
+For the same reason the Windows backend reads features through
+`IsProcessorFeaturePresent` rather than raw CPUID bits: it reports what the OS
+*permits*, which is the set that actually decides whether an instruction faults.
+The missing `PF_*` constants are defined to their ABI-fixed values rather than
+`#ifdef`-ed out, so an older MinGW-w64 header under-reports nothing. Both of
+these follow `OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`, which learned
+them the hard way; see `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` and
+`Docs/Ladybird/CHANGELOG.md`.
+
+Linux has no equivalent first-class check — `qemu-user` reports the guest
+architecture through `uname` — so `emulation` is left empty there rather than
+guessed at.
 
 ### `warnings` is part of the answer
 
@@ -169,6 +235,8 @@ internal `UltraCanvasHardwareInfoBackend.h`. `GetBackendName()` returns
 | CPU clocks | `cpufreq` | `CallNtPowerInformation` | `hw.cpufrequency*` (Intel), perf levels (Apple Silicon) |
 | CPU temperature | ✅ hwmon / thermal zones | ✖ needs WMI | ✖ private frameworks |
 | Hybrid P/E cores | ✅ | ✅ (efficiency class) | ✅ (performance levels) |
+| Instruction sets, psABI level | ✅ CPUID (x86), `/proc/cpuinfo` (ARM) | ✅ CPUID (x86), `PF_ARM_*` (ARM) | ✅ CPUID (Intel), `hw.optional.*` (Apple Silicon) |
+| Emulation / translation | ✖ no reliable check | ✅ `IsWow64Process2` | ✅ `sysctl.proc_translated` |
 | Memory totals | ✅ | ✅ | ✅ |
 | Memory modules | root only (DMI) | ✅ `GetSystemFirmwareTable` | ✖ |
 | GPU | ✅ DRM + PCI | ✅ display class registry | ✅ IOKit |
