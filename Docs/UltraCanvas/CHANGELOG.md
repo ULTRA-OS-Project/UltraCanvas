@@ -24,6 +24,24 @@
   `lagom-gfx.dll` faulting with `ILLEGAL_INSTRUCTION` on Windows 11 while the
   same package ran on Windows 10.
 
+#### 2026-09-09 *0.3.112*
+- **Work that was pushed but never published now announces itself.** A branch
+  can carry days of finished work and still be invisible to `main`: no pull
+  request was ever opened for it, or its pull request was merged and the
+  commits pushed afterwards are stranded on a branch nothing tracks. Neither
+  announces itself — the push succeeds, the session ends, and the change is
+  simply not in the product, which surfaces days later as "the fix did not
+  arrive". `scripts/check_publication.py` answers it mechanically: run with no
+  arguments it lists the commits on the current branch that are not in `main`
+  and exits non-zero when there are any; `--all` sweeps every branch on the
+  remote and separates the ones fully merged, the ones carrying unpublished
+  work, and the ones that share no history with `main` (they predate a history
+  rewrite, so nothing can be concluded from their commits). It cannot see pull
+  request state — that needs GitHub — so it names the check to run there and
+  what each answer means. `AGENTS.md` rule 3 now requires running it after a
+  push and **saying so unprompted** when there is no open pull request: not
+  opening one unasked is the rule, leaving the user to discover that nothing
+  was published is not.
 #### 2026-09-09 *0.3.111*
 - **A double-click that starts a program now says so: the busy pointer.**
   Spawning a program takes milliseconds, the program appearing takes seconds,

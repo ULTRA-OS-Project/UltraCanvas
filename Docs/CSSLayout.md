@@ -142,6 +142,21 @@ sequenceDiagram
   border-box into `finalBounds`, and dispatches to `ArrangeBlock` / `ArrangeFlex` /
   `ArrangeGrid` to place children.
 
+### Do not change the tree from inside `Arrange`
+
+An `Arrange` override is the right place to *read* the size the engine settled
+on — it is the only place that knows it, and a window-resize callback is a pass
+behind. It is the wrong place to act on it by adding, removing, showing or
+hiding a child: the pass is midway through placing that flex line, and the
+child it is holding comes out of it with a stale size. Hiding one sibling this
+way leaves the other zero-wide, and it stays zero-wide through every later pass,
+because nothing marks it dirty again.
+
+Report from `Arrange` and act on the next turn of the event loop — a one-shot
+`UltraCanvasApplication::StartTimer(1, false, …)` is the framework's usual way
+of saying that. `UltraFilerSearchBox` in `Apps/UltraFiler/UltraFilerWindow.cpp`
+does exactly this to drop its in-field button when the command bar narrows.
+
 ## `finalBounds` is a border-box
 
 `finalBounds` now holds the element's **border-box** (border + padding + content;
