@@ -102,8 +102,14 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
 
     VirtualFSLibArchiveProvider p;
     CHECK(p.Open(archivePath) == VirtualFSResult::Success, "archive opens");
+
+    // BuildArchive() adds files only; the provider synthesizes an entry for
+    // each parent directory that has no explicit header of its own, so the
+    // archive also carries "media" and "docs".
+    const size_t kSynthesizedDirs = 2;
     const size_t entriesBefore = p.GetArchiveInfo().entryCount;
-    CHECK(entriesBefore == allPaths.size(), "all entries present before delete");
+    CHECK(entriesBefore == allPaths.size() + kSynthesizedDirs,
+          "all entries present before delete");
 
     // Single batched call: the whole "media" subtree + one named file.
     size_t callbackCalls = 0;
@@ -126,8 +132,14 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
     CHECK(!p.Exists(lastName), "last bulk file removed");
     CHECK(!p.Exists("docs/manual.txt"), "named file removed");
     CHECK(p.Exists("docs/readme.txt"), "sibling file kept");
-    CHECK(p.GetArchiveInfo().entryCount == entriesBefore - bulkCount - 1,
+    // Deleting the "media" subtree takes the bulk files *and* the synthesized
+    // "media" directory entry, which has nothing left under it; "docs"
+    // survives because readme.txt and license.txt still do. Plus the one
+    // named file, that is bulkCount + 2 entries gone.
+    CHECK(p.GetArchiveInfo().entryCount == entriesBefore - bulkCount - 2,
           "entry count dropped by exactly the deleted set");
+    CHECK(!p.Exists("media"), "emptied directory entry removed with its subtree");
+    CHECK(p.Exists("docs"), "directory with surviving children kept");
     CHECK(EntryContentIntact(p, "docs/readme.txt"), "kept file content intact");
     CHECK(EntryContentIntact(p, "keep_root.txt"), "root file content intact");
     CHECK(EntryContentIntact(p, "also_kept.dat"), "second root file content intact");

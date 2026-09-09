@@ -15,7 +15,9 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasFileLock.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasShellLink.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
@@ -270,8 +272,21 @@ void UltraFilerPropertiesDialogs::ShowAttributes(
     }
 
     const bool single = entries.size() == 1;
-    auto window = MakeDialogWindow(parent, "Attributes - UltraFiler",
-                                   460, single ? 280 : 380);
+    // A shortcut has up to five more rows to show (what it starts, and how).
+    const bool shortcut = single && entries.front().isShortcut;
+    // Whether another program is holding the file, and which - the answer to
+    // a copy or a rename that fails with "the file is open in another
+    // program". Asked here rather than carried on the entry: naming the
+    // holder is expensive (a Restart Manager session on Windows), which is
+    // affordable for the one file a dialog is open on and not for a listing.
+    // The file display marks the state; this dialog says who. Probed before
+    // the window so its one extra row is part of the height.
+    FileLockInfo lock;
+    if (single && !entries.front().isDirectory && FileLockProbeAvailable())
+        lock = ProbeFileLock(entries.front().path, true);
+    const int height = single ? ((shortcut ? 400 : 280) + (lock.InUse() ? 26 : 0))
+                              : 380;
+    auto window = MakeDialogWindow(parent, "Attributes - UltraFiler", 460, height);
     if (!window) return;
     auto content = AddDialogFrame(window, "ufl-attr");
 
@@ -292,8 +307,37 @@ void UltraFilerPropertiesDialogs::ShowAttributes(
                 FormatTime(e.modifiedTime)));
         content->AddChild(MakeDetailRow("ufl-attr-flags", "Attributes:",
                 DescribeFlags(e)));
-        if (!e.info.empty())
+        if (!e.info.empty() && !e.isShortcut)
             content->AddChild(MakeDetailRow("ufl-attr-info", "Info:", e.info));
+        if (lock.InUse()) {
+            content->AddChild(MakeDetailRow("ufl-attr-inuse", "In use:",
+                    FileLockText(lock)));
+        }
+        // A shortcut: what it starts, and how. Read here rather than carried
+        // on the entry — the file display only needs the target, and this is
+        // the one place the rest of the link is shown.
+        UCShellLink link;
+        if (e.isShortcut && ReadShellLink(e.path, link)) {
+            if (!link.targetPath.empty())
+                content->AddChild(MakeDetailRow("ufl-attr-target", "Target:",
+                        link.targetPath));
+            if (!link.arguments.empty())
+                content->AddChild(MakeDetailRow("ufl-attr-args", "Arguments:",
+                        link.arguments));
+            if (!link.workingDirectory.empty())
+                content->AddChild(MakeDetailRow("ufl-attr-workdir", "Start in:",
+                        link.workingDirectory));
+            if (!link.description.empty())
+                content->AddChild(MakeDetailRow("ufl-attr-comment", "Comment:",
+                        link.description));
+            // Where the target is on THIS machine, when that is not simply
+            // the Windows path above — the answer that says whether the
+            // shortcut still works here.
+            content->AddChild(MakeDetailRow("ufl-attr-resolved", "Points to:",
+                    link.hostTargetPath.empty()
+                            ? std::string("not found on this system")
+                            : link.hostTargetPath));
+        }
     } else {
         size_t files = 0, folders = 0;
         uint64_t bytes = 0;

@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasPieChart.h
 // Comprehensive pie / donut / 3D chart element for UltraCanvas
-// Version: 1.0.0
-// Last Modified: 2026-05-14
+// Version: 1.0.1
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -138,6 +138,12 @@ namespace UltraCanvas {
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
         bool OnEvent(const UCEvent& event) override;
+        // The slices are cut from the data, so whatever invalidates the
+        // base cache - a new data source above all - invalidates them too.
+        // Without this a chart handed fresh data kept drawing the old slices
+        // (with the new centre text), since only the pie's own setters knew
+        // to drop them.
+        void UpdateRenderingCache() override;
 
     protected:
         ChartPlotArea CalculatePlotArea() override;

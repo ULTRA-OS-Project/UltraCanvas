@@ -9,7 +9,7 @@
 // at the matching Parse*Record handler.
 //
 // Usage: XARProbeTest [--render <outdir>] [file.xar ...]
-// With no arguments it probes the repo samples (media/xar/*.xar). Exit code
+// With no arguments it probes the repo samples (media/vector/XAR/*.xar). Exit code
 // is the number of files that failed to load, so it doubles as a regression
 // test: the shipped samples must always parse.
 //

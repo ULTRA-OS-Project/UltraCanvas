@@ -225,6 +225,9 @@ namespace UltraCanvas {
         Color currentLineHighlightColor;
         Color cursorColor;
 
+        // Placeholder hint shown when the document is empty
+        Color placeholderColor = Color(150, 150, 150, 255);
+
         // Line numbers
         bool showLineNumbers;
         Color lineNumbersColor;
@@ -601,6 +604,17 @@ namespace UltraCanvas {
         // Properties
         void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool IsReadOnly() const { return isReadOnly; }
+
+        // Hides/shows the blinking caret without affecting focus or selection.
+        // Useful for read-only viewers (e.g. a chat transcript) that should still
+        // be clickable and copyable but must not show an editing caret.
+        void SetCaretVisible(bool visible);
+        bool IsCaretVisible() const { return caretVisible; }
+
+        // Grey hint text drawn when the document is empty (like a TextInput
+        // placeholder). Shown whether or not the widget is focused.
+        void SetPlaceholder(const std::string& text) { placeholderText = text; RequestRedraw(); }
+        const std::string& GetPlaceholder() const { return placeholderText; }
 
         // Display-only ("viewer") mode: implies read-only and additionally takes
         // the area out of the keyboard focus chain — no caret, no key handling —
@@ -1042,7 +1056,9 @@ namespace UltraCanvas {
         bool isNeedRecalculateVisibleArea;
         bool isNeedRebuildLineLayouts;
         bool isReadOnly;
+        bool caretVisible = true;   // opt-out: hide the blinking caret while staying focusable/selectable
         bool displayOnly = false;   // pure viewer: read-only + not focusable
+        std::string placeholderText; // grey hint drawn when the document is empty
         bool wordWrap;
         bool highlightCurrentLine;
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).

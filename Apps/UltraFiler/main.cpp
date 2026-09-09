@@ -16,6 +16,7 @@
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
+#include "UltraFilerSettingsDialog.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -115,6 +116,10 @@ int main(int argc, char* argv[]) {
 
         debugOutput << "=== UltraFiler Ready ===" << std::endl;
         app.Run();
+        // Tear down the retained settings-dialog widget tree while `app` (and
+        // thus the Application singleton) is still alive, instead of at static
+        // destruction after main() returns — see UltraFilerSettingsDialog::Shutdown.
+        UltraFilerSettingsDialog::Shutdown();
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());
         return EXIT_FAILURE;

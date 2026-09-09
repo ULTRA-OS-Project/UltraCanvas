@@ -40,6 +40,11 @@ click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
 undo/redo, placeholder, max length, validation state, horizontal scrolling and
 multi-byte text. Reproducing even half of that by hand is a week of bugs.
 
+Password fields also get a reveal control: `SetShowPasswordToggle(true)` paints
+an eye button inside the field, and `SetPasswordRevealed()` drives the same state
+from an external "Show password" checkbox. See
+[UltraCanvasTextInputExamples.md](UltraCanvasTextInputExamples.md).
+
 ## Buttons and choices
 
 | You need | Element | Header |
@@ -63,6 +68,7 @@ multi-byte text. Reproducing even half of that by hand is a week of bugs.
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
+| **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
@@ -118,6 +124,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
+| Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 
 Charts, diagrams and document views live under `UltraCanvas/Plugins/` with their
 own docs — check there before drawing a graph by hand as well.

@@ -1,15 +1,16 @@
 // Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp
 // MicroTeX -> UltraCanvas rendering backend implementation.
 // See UltraCanvasLaTeXBackend.h for the design overview.
-// Version: 1.0.0
-// Last Modified: 2026-06-28
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/LaTeX/UltraCanvasLaTeXBackend.h"
 
 #ifdef ULTRACANVAS_PLUGIN_LATEX
 
-#include "UltraCanvasUtils.h"   // GetExecutableDir
+#include "UltraCanvasConfig.h"  // GetResourcesDir
+#include "UltraCanvasUtils.h"   // GetExecutableDir, NormalizePath
 
 #include "microtex.h"
 #include "unimath/font_src.h"
@@ -54,21 +55,32 @@ bool FileExists(const std::string& path) {
 
 // Directories to probe for the bundled math font, in priority order.
 std::string g_userFontDir;
+// Bumped whenever the user font dir changes, so a view whose font lookup
+// failed knows a retry may now succeed (see GetLaTeXEngineFontDirGeneration).
+unsigned g_fontDirGeneration = 0;
 
 std::vector<std::string> FontSearchDirs() {
     std::vector<std::string> dirs;
     if (!g_userFontDir.empty()) dirs.push_back(g_userFontDir);
     if (const char* env = std::getenv("MICROTEX_FONTDIR"); env && *env) dirs.emplace_back(env);
+    // The framework's own resource root first - every other media/ consumer
+    // (icons, fonts, the demo's .tex files) resolves through it. That is
+    // <exe>/share/ in a dev build (the root CMake copies media/ to
+    // <build>/share/media) and <exe>/../share/ in a package.
+    dirs.push_back(NormalizePath(GetResourcesDir() + "media/microtex"));
     const std::string exe = GetExecutableDir();
     if (!exe.empty()) {
         dirs.push_back(exe + "/media/microtex");
         dirs.push_back(exe + "/../media/microtex");
-        // Build/install layout: the root CMake copies media/ to
-        // <build>/share/UltraCanvas/media (see CMakeLists.txt copy_directory).
+        dirs.push_back(exe + "/share/media/microtex");
+        dirs.push_back(exe + "/../share/media/microtex");
         dirs.push_back(exe + "/share/UltraCanvas/media/microtex");
         dirs.push_back(exe + "/../share/UltraCanvas/media/microtex");
     }
+    // Last resort: relative to the working directory (running from the
+    // repository root, as an IDE launch typically does).
     dirs.push_back("media/microtex");
+    dirs.push_back("share/media/microtex");
     dirs.push_back("share/UltraCanvas/media/microtex");
     return dirs;
 }
@@ -264,7 +276,13 @@ PlatformFactory_ultracanvas::createTextLayout(const std::string& src, microtex::
 
 // ===== Engine bootstrap =====
 
-void SetLaTeXEngineFontDir(const std::string& dir) { g_userFontDir = dir; }
+void SetLaTeXEngineFontDir(const std::string& dir) {
+    if (g_userFontDir == dir) return;
+    g_userFontDir = dir;
+    ++g_fontDirGeneration;
+}
+
+unsigned GetLaTeXEngineFontDirGeneration() { return g_fontDirGeneration; }
 
 void SetLaTeXActiveContext(IRenderContext* ctx) {
     auto* factory = static_cast<PlatformFactory_ultracanvas*>(PlatformFactory::get());
@@ -274,9 +292,16 @@ void SetLaTeXActiveContext(IRenderContext* ctx) {
 bool EnsureLaTeXEngineInitialized() {
     if (MicroTeX::isInited()) return true;
 
-    PlatformFactory::registerFactory("ultracanvas",
-                                     std::make_unique<PlatformFactory_ultracanvas>());
-    PlatformFactory::activate("ultracanvas");
+    // Register the platform factory exactly once; a failed font lookup below
+    // may bring us back here (after SetLaTeXFontSearchDir), and re-registering
+    // would replace the factory a live view's context pointer was set on.
+    static bool factoryRegistered = false;
+    if (!factoryRegistered) {
+        PlatformFactory::registerFactory("ultracanvas",
+                                         std::make_unique<PlatformFactory_ultracanvas>());
+        PlatformFactory::activate("ultracanvas");
+        factoryRegistered = true;
+    }
 
     const std::string clm = LocateFont("latinmodern-math.clm2");
     if (clm.empty()) return false;

@@ -185,6 +185,8 @@ BorderStyle BorderStyleFromName(const std::string& name) {
 // Excel column width is in "characters" of the default font; the grid model
 // stores pixels. ~7px per character matches the default Calibri 11 metric.
 constexpr double kPixelsPerWidthChar = 7.0;
+// A <col> run wider than this is a sheet-wide default, not per-column sizing.
+constexpr int kWideColumnRun = 512;
 constexpr double kPixelsPerPoint = 1.33;
 
 // ===== XLSX LOADER =====
@@ -420,6 +422,20 @@ private:
         auto* root = doc.FirstChildElement("worksheet");
         if (!root) return;
 
+        // Sheet-wide default column width, when the workbook overrides Excel's.
+        if (auto* fmt = root->FirstChildElement("sheetFormatPr")) {
+            double defaultWidth = fmt->DoubleAttribute("defaultColWidth", 0);
+            if (defaultWidth > 0) {
+                sheet->SetDefaultColumnWidth(
+                    static_cast<int>(defaultWidth * kPixelsPerWidthChar + 0.5));
+            }
+            double defaultHeight = fmt->DoubleAttribute("defaultRowHeight", 0);
+            if (defaultHeight > 0) {
+                sheet->SetDefaultRowHeight(
+                    static_cast<int>(defaultHeight * kPixelsPerPoint + 0.5));
+            }
+        }
+
         if (auto* cols = root->FirstChildElement("cols")) {
             for (auto* col = cols->FirstChildElement("col"); col;
                  col = col->NextSiblingElement("col")) {
@@ -427,9 +443,26 @@ private:
                 int max = col->IntAttribute("max", 1) - 1;
                 double width = col->DoubleAttribute("width", 0);
                 if (width <= 0) continue;
+                // bestFit means Excel sized the column to its content rather
+                // than the user choosing a width, so leave it to our own
+                // auto-width pass, which measures the font actually in use.
+                bool authored = col->BoolAttribute("customWidth", false) ||
+                                !col->BoolAttribute("bestFit", false);
                 int pixels = static_cast<int>(width * kPixelsPerWidthChar + 0.5);
-                for (int c = min; c <= max && c < SpreadsheetLimits::MaxColumns; ++c) {
-                    sheet->SetColumnWidth(c, pixels);
+                if (max >= SpreadsheetLimits::MaxColumns) max = SpreadsheetLimits::MaxColumns - 1;
+                // A run spanning the whole sheet ("min=1 max=16384") is how
+                // Excel states a sheet-wide default. Storing 16k identical
+                // column definitions for it would cost more memory than the
+                // data; record it as the default instead.
+                if (max - min + 1 > kWideColumnRun) {
+                    // Only a run starting at column A states the sheet default;
+                    // a wide run further in is left to the auto-width pass
+                    // rather than materialized column by column.
+                    if (min <= 0) sheet->SetDefaultColumnWidth(pixels);
+                    continue;
+                }
+                for (int c = std::max(0, min); c <= max; ++c) {
+                    sheet->SetColumnWidth(c, pixels, authored);
                 }
             }
         }
@@ -1084,6 +1117,7 @@ bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
         return false;
     }
     Recalculate();
+    RequestAutoFitForUnsizedColumns();
     Invalidate();
     return true;
 }

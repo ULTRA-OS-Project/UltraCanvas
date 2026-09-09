@@ -1,22 +1,101 @@
 // core/UltraCanvasNativeFileIcons.cpp
-// Fallback for platforms without a native file-icon extractor. The real
-// implementations live in the platform directories (currently
-// OS/MSWindows/UltraCanvasWindowsFileIcons.cpp); everywhere else these
-// stubs report "no icon" and file displays keep their generic glyphs.
-// Version: 1.0.0
-// Last Modified: 2026-08-21
+// The portable half of the native file-icon service: the icon a Windows
+// program, icon file or shortcut carries, read from the file itself
+// (UltraCanvasIconResource / UltraCanvasShellLink) rather than from a shell.
+// This is what ULTRA OS, Linux and macOS use - a Windows disk mounted there,
+// or the drive_c of a Wine prefix, holds the same .exe and .lnk files as it
+// does on Windows, and their icons are in them. Windows itself uses the
+// shell instead (OS/MSWindows/UltraCanvasWindowsFileIcons.cpp), which also
+// covers the file types only a registry association can answer for.
+// Version: 1.2.0
+// Last Modified: 2026-09-05
 // Author: UltraCanvas Framework
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasDesktopEntry.h"
+#include "UltraCanvasIconResource.h"
+#include "UltraCanvasMacBundle.h"
+#include "UltraCanvasShellLink.h"
 
 #ifndef _WIN32
 namespace UltraCanvas {
 
-    bool NativeFileIconAvailable(const std::string&) { return false; }
+    bool NativeFileIconAvailable(const std::string& path) {
+        return HasIconResourceExtension(path) || IsShellLinkPath(path) ||
+               IsDesktopEntryPath(path) || IsBundlePath(path);
+    }
 
-    std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string&,
-                                                       int) {
+    std::shared_ptr<UCPixmap> LoadNativeFileIconPixmap(const std::string& path,
+                                                       int desiredSize) {
+        if (IsShellLinkPath(path)) {
+            // A shortcut is drawn with the icon it names - which is a file
+            // somewhere else entirely, usually the program it starts.
+            UCShellLink link;
+            if (!ReadShellLink(path, link)) return nullptr;
+            if (!link.hostIconLocation.empty()) {
+                if (auto pixmap = LoadIconResource(link.hostIconLocation,
+                                                   link.iconIndex, desiredSize))
+                    return pixmap;
+            }
+            // No icon of its own, or one that has gone missing or holds no
+            // icon resource: what a shortcut shows then is the icon of what
+            // it points at.
+            if (!link.hostTargetPath.empty() &&
+                link.hostTargetPath != link.hostIconLocation)
+                return LoadIconResource(link.hostTargetPath, 0, desiredSize);
+            return nullptr;
+        }
+        if (IsBundlePath(path)) {
+            // An application bundle keeps its icon inside itself, as the
+            // ".icns" its Info.plist names.
+            UCAppBundle bundle;
+            if (!ReadApplicationBundle(path, bundle) || bundle.iconFile.empty())
+                return nullptr;
+            return LoadIconResource(bundle.iconFile, 0, desiredSize);
+        }
+        if (IsDesktopEntryPath(path)) {
+            // A desktop entry names its icon rather than carrying one: the
+            // name is looked up in the icon themes installed on the machine,
+            // and what comes back is an ordinary image file.
+            UCDesktopEntry entry;
+            if (!ReadDesktopEntry(path, entry)) return nullptr;
+            const std::string iconFile =
+                    FindDesktopIconFile(entry.iconName, desiredSize);
+            if (iconFile.empty()) return nullptr;
+            // Themes do ship Windows icon files; everything else (PNG, SVG,
+            // XPM) is what the image pipeline reads.
+            if (HasIconResourceExtension(iconFile)) {
+                if (auto pixmap = LoadIconResource(iconFile, 0, desiredSize))
+                    return pixmap;
+            }
+            auto image = UCImage::Get(iconFile);
+            if (!image || image->GetWidth() <= 0 || image->GetHeight() <= 0)
+                return nullptr;
+            return image->GetPixmap(desiredSize, desiredSize,
+                                    ImageFitMode::Contain, 1.0f);
+        }
+        if (auto pixmap = LoadIconResource(path, 0, desiredSize)) return pixmap;
+        // An icon file this reader cannot decode - one holding a frame in a
+        // format only the image pipeline knows - is still an image, so it
+        // gets one more chance through the normal decoder before the file
+        // display falls back to a type glyph.
+        const size_t dot = path.find_last_of('.');
+        if (dot != std::string::npos && path.size() - dot == 4 &&
+            (path[dot + 1] == 'i' || path[dot + 1] == 'I') &&
+            (path[dot + 2] == 'c' || path[dot + 2] == 'C') &&
+            (path[dot + 3] == 'o' || path[dot + 3] == 'O')) {
+            auto image = UCImage::Get(path);
+            if (image && image->GetWidth() > 0 && image->GetHeight() > 0) {
+                return image->GetPixmap(desiredSize, desiredSize,
+                                        ImageFitMode::Contain, 1.0f);
+            }
+        }
         return nullptr;
     }
+
+    // Reading a file needs no per-thread setup; the scope exists for the
+    // Windows shell, which does.
+    NativeFileIconThreadScope::NativeFileIconThreadScope() = default;
+    NativeFileIconThreadScope::~NativeFileIconThreadScope() = default;
 
 } // namespace UltraCanvas
 #endif // !_WIN32

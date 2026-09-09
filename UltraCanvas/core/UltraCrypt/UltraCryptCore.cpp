@@ -11,6 +11,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCanvasTextUtils.h"
 
 #include <cstring>
 #include <fstream>
@@ -1058,132 +1059,27 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
 }
 
 // ============================================================================
-// Base16 / Base32 / Base64 (RFC 4648)
+// Base32 into a secure buffer
 // ============================================================================
-namespace {
-
-const char kBase64Alphabet[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const char kBase32Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
-int Base64Value(char c) {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;
-}
-
-int Base32Value(char c) {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a';      // case-insensitive
-    if (c >= '2' && c <= '7') return c - '2' + 26;
-    return -1;
-}
-
-} // namespace
-
-std::string UltraCrypt_Base64Encode(const void* data, size_t size) {
-    std::string out;
-    if (!data || size == 0) return out;
-    const auto* in = static_cast<const uint8_t*>(data);
-    out.reserve(((size + 2) / 3) * 4);
-    for (size_t i = 0; i < size; i += 3) {
-        const uint32_t b0 = in[i];
-        const uint32_t b1 = (i + 1 < size) ? in[i + 1] : 0;
-        const uint32_t b2 = (i + 2 < size) ? in[i + 2] : 0;
-        const uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
-        out.push_back(kBase64Alphabet[(triple >> 18) & 0x3F]);
-        out.push_back(kBase64Alphabet[(triple >> 12) & 0x3F]);
-        out.push_back((i + 1 < size) ? kBase64Alphabet[(triple >> 6) & 0x3F] : '=');
-        out.push_back((i + 2 < size) ? kBase64Alphabet[triple & 0x3F] : '=');
-    }
-    return out;
-}
-
-UltraCryptResult UltraCrypt_Base64Decode(const std::string& text,
-                                         std::vector<uint8_t>& out) {
-    out.clear();
-    uint32_t accumulator = 0;
-    int bits = 0;
-    size_t padding = 0;
-    for (char c : text) {
-        if (c == '=') { ++padding; continue; }
-        if (padding > 0) {
-            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
-                                           "base64 data after padding");
-        }
-        const int value = Base64Value(c);
-        if (value < 0) {
-            out.clear();
-            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
-                                           "invalid base64 character");
-        }
-        accumulator = (accumulator << 6) | static_cast<uint32_t>(value);
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            out.push_back(static_cast<uint8_t>((accumulator >> bits) & 0xFF));
-        }
-    }
-    return UltraCryptResult::Ok();
-}
-
-std::string UltraCrypt_Base32Encode(const void* data, size_t size, bool pad) {
-    std::string out;
-    if (!data || size == 0) return out;
-    const auto* in = static_cast<const uint8_t*>(data);
-    uint32_t accumulator = 0;
-    int bits = 0;
-    for (size_t i = 0; i < size; ++i) {
-        accumulator = (accumulator << 8) | in[i];
-        bits += 8;
-        while (bits >= 5) {
-            bits -= 5;
-            out.push_back(kBase32Alphabet[(accumulator >> bits) & 0x1F]);
-        }
-    }
-    if (bits > 0) {
-        out.push_back(kBase32Alphabet[(accumulator << (5 - bits)) & 0x1F]);
-    }
-    if (pad) {
-        while (out.size() % 8 != 0) out.push_back('=');
-    }
-    return out;
-}
+// The RFC 4648 codecs live in UltraCanvasUtils (UltraCanvasTextUtils.h);
+// the Base64 pair and the Base32 encoder that used to be here were duplicates
+// and are gone. This is the one variant that belongs to a crypto module: the
+// decoded bytes are a TOTP seed, so they go straight into a zeroizing buffer
+// and the intermediate vector is wiped on every path, success or failure.
 
 UltraCryptResult UltraCrypt_Base32Decode(const std::string& text,
                                          UltraCryptSecureBuffer& out) {
     out.Clear();
     std::vector<uint8_t> decoded;
-    uint32_t accumulator = 0;
-    int bits = 0;
-    bool sawPadding = false;
-
-    for (char c : text) {
-        if (c == ' ' || c == '\t') continue;      // seeds are often typed in groups
-        if (c == '=') { sawPadding = true; continue; }
-        if (sawPadding) {
-            UltraCrypt_SecureZero(decoded.data(), decoded.size());
-            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
-                                           "base32 data after padding");
-        }
-        const int value = Base32Value(c);
-        if (value < 0) {
-            UltraCrypt_SecureZero(decoded.data(), decoded.size());
-            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
-                                           "invalid base32 character");
-        }
-        accumulator = (accumulator << 5) | static_cast<uint32_t>(value);
-        bits += 5;
-        if (bits >= 8) {
-            bits -= 8;
-            decoded.push_back(static_cast<uint8_t>((accumulator >> bits) & 0xFF));
-        }
+    const bool ok = UltraCanvas::Base32Decode(text, decoded);
+    if (ok) {
+        out = UltraCryptSecureBuffer(decoded.data(), decoded.size());
     }
-
-    out = UltraCryptSecureBuffer(decoded.data(), decoded.size());
-    UltraCrypt_SecureZero(decoded.data(), decoded.size());
+    // On failure `decoded` holds a prefix of the seed; wipe it either way.
+    if (!decoded.empty()) UltraCrypt_SecureZero(decoded.data(), decoded.size());
+    if (!ok) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "invalid base32 input");
+    }
     return UltraCryptResult::Ok();
 }

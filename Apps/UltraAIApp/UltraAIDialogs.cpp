@@ -65,15 +65,9 @@ std::string ErrorLine(const Error& e) {
 } // namespace
 
 // ===================================================================
-// ChatDialog (ITextLLM)
+// Shared credential helpers (used by the cloud-capable dialogs below;
+// the Chat capability now lives in UltraAIChatDialog.cpp).
 // ===================================================================
-
-ChatDialog::ChatDialog()
-    : UltraAIServiceDialog("Chat (LLM)",
-        "Send a prompt to the LLM and receive a single-turn reply. The "
-        "provider list comes from the UltraAI registry; \"(default route)\" "
-        "follows the routing policy. Cloud API keys are stored in UltraVault, "
-        "never in this window.") {}
 
 namespace {
 // Read a whole text file. Used for the ComfyUI workflow field, which takes
@@ -133,78 +127,6 @@ bool ApplyCredential(const std::string& provider,
 
 } // namespace
 
-long ChatDialog::BuildForm(long y) {
-    AddProviderAndModelRow(y, "chat", ListTextLLMProviders(),
-                           "Model (or GGUF path for llama-cpp; optional)",
-                           "provider default", modelInput_);
-    AddLabelledInput(y, "chat-key",
-                     "API key — cloud providers only, stored in UltraVault",
-                     "leave empty to use the stored key", keyInput_);
-
-    AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "System prompt (optional)"));
-    y += kLabelHeight + 2;
-    input1_ = MakeInput("chat-sys", kMargin, y, kFormWidth, kRowHeight,
-                        "You are a concise assistant...");
-    AddDialogElement(input1_);
-    y += kRowHeight + kRowGap;
-
-    AddDialogElement(MakeLabel("usr-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "User message"));
-    y += kLabelHeight + 2;
-    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 60,
-                        "Type your prompt...", true);
-    AddDialogElement(input2_);
-    y += 60 + kRowGap;
-    return y;
-}
-
-void ChatDialog::RunCapability() {
-    const std::string provider = SelectedProviderId();
-
-    TextLLMConfig cfg;
-    cfg.providerId = provider;
-    if (modelInput_ && !modelInput_->GetText().empty()) {
-        cfg.defaultModel = modelInput_->GetText();
-    }
-
-    std::string credentialStatus;
-    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
-        SetStatus(credentialStatus);
-        return;
-    }
-
-    ChatRequest req;
-    if (input1_ && !input1_->GetText().empty()) {
-        Message sys; sys.role = Role::System; sys.text = input1_->GetText();
-        req.messages.push_back(std::move(sys));
-    }
-    Message usr; usr.role = Role::User;
-    usr.text = input2_ ? input2_->GetText() : "";
-    req.messages.push_back(std::move(usr));
-
-    RunOffThread([cfg, req]() -> RunOutcome {
-        RunOutcome outcome;
-        Error createError;
-        auto llm = CreateTextLLM(cfg, &createError);
-        if (!llm) {
-            outcome.status = "Failed to create TextLLM";
-            outcome.result = createError.message;
-            return outcome;
-        }
-
-        auto resp = llm->Chat(req);
-        std::ostringstream os;
-        os << ErrorLine(resp.error) << resp.text
-           << "\n\n(provider=" << llm->GetCapabilities().providerId
-           << "  model=" << resp.model
-           << "  in=" << resp.usage.inputTokens
-           << "  out=" << resp.usage.outputTokens << ")";
-        outcome.result = os.str();
-        return outcome;
-    });
-}
-
 // ===================================================================
 // EmbeddingsDialog (IEmbeddings)
 // ===================================================================
@@ -221,8 +143,8 @@ long EmbeddingsDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("emb-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Inputs (one per line)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("emb-in", kMargin, y, kFormWidth, 120,
-                        "apple\nfruit\ncar", true);
+    input1_ = MakeTextArea("emb-in", kMargin, y, kFormWidth, 120,
+                        "apple\nfruit\ncar");
     AddDialogElement(input1_);
     y += 120 + kRowGap;
 
@@ -362,8 +284,8 @@ long TextToSpeechDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("tts-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Text to speak"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("tts-text", kMargin, y, kFormWidth, 80,
-                        "Hello world from UltraAI.", true);
+    input1_ = MakeTextArea("tts-text", kMargin, y, kFormWidth, 80,
+                        "Hello world from UltraAI.");
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
@@ -449,8 +371,8 @@ long ImageGenDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("ig-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("ig-prompt", kMargin, y, kFormWidth, 60,
-                        "a serene mountain lake at sunset", true);
+    input1_ = MakeTextArea("ig-prompt", kMargin, y, kFormWidth, 60,
+                        "a serene mountain lake at sunset");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -617,8 +539,8 @@ long TranslatorDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Texts (one per line)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("tr-text", kMargin, y, kFormWidth, 80,
-                        "ich bin der schnelle fuchs", true);
+    input1_ = MakeTextArea("tr-text", kMargin, y, kFormWidth, 80,
+                        "ich bin der schnelle fuchs");
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
@@ -683,8 +605,8 @@ long VideoGenDialog::BuildForm(long y) {
     AddDialogElement(MakeLabel("vg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("vg-prompt", kMargin, y, kFormWidth, 60,
-                        "ocean waves rolling at sunset", true);
+    input1_ = MakeTextArea("vg-prompt", kMargin, y, kFormWidth, 60,
+                        "ocean waves rolling at sunset");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -773,8 +695,8 @@ long MusicGenDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Prompt (style, mood, instruments)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("mg-prompt", kMargin, y, kFormWidth, 60,
-                        "uplifting jazz piano trio", true);
+    input1_ = MakeTextArea("mg-prompt", kMargin, y, kFormWidth, 60,
+                        "uplifting jazz piano trio");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -859,8 +781,8 @@ long CodeAssistDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Code snippet (used by Explain / Refactor / DetectBugs)"));
     y += kLabelHeight + 2;
-    input3_ = MakeInput("ca-code", kMargin, y, kFormWidth, 80,
-                        "if x = 1: pass", true);
+    input3_ = MakeTextArea("ca-code", kMargin, y, kFormWidth, 80,
+                        "if x = 1: pass");
     AddDialogElement(input3_);
     y += 80 + kRowGap;
     return y;

@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailDiscovery.h"
 
@@ -25,6 +25,23 @@ std::string EmailDomain(const std::string& email) {
 std::string EmailLocalPart(const std::string& email) {
     auto at = email.find('@');
     return at == std::string::npos ? email : email.substr(0, at);
+}
+
+bool LooksLikeEmailAddress(const std::string& email) {
+    const auto at = email.find('@');
+    if (at == std::string::npos) return false;          // no separator
+    if (at == 0) return false;                          // empty local part
+    if (email.find('@', at + 1) != std::string::npos) return false;  // more than one
+
+    const std::string domain = email.substr(at + 1);
+    if (domain.size() < 3) return false;                // shortest is "a.b"
+    const auto dot = domain.find('.');
+    if (dot == std::string::npos) return false;         // no dot
+    if (dot == 0 || dot + 1 >= domain.size()) return false;  // leading/trailing dot
+
+    for (unsigned char c : email)
+        if (std::isspace(c)) return false;
+    return true;
 }
 
 namespace {

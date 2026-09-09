@@ -244,6 +244,13 @@ public:
         return DecodeViaDecoder(decoder);
     }
 
+    std::string DescribeDecodeFailure(const std::string& path) override {
+        // The optional-codec layer knows what an MPEG-4 container turned out to
+        // hold and which library would decode it; miniaudio itself only knows
+        // that its own decoders declined.
+        return AudioCodecs::DescribeDecodeFailure(path);
+    }
+
     bool EncodeFile(const std::string& path, const UCAudio& audio,
                     AudioFormat format) override {
         if (!Initialize() || !audio.IsValid()) return false;

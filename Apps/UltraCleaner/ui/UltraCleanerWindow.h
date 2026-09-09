@@ -26,6 +26,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasColumnsTreeView.h"
+#include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasWindow.h"
 
@@ -53,12 +54,18 @@ private:
     // startup and from onWindowResize, so the app follows the window instead
     // of staying at whatever size it opened with.
     void LayoutForSize(float width, float height);
+    // Sets the System junk page's divider from the window's width, unless the
+    // user has dragged it — see the comment on the definition.
+    void FitCategoryColumn(float tabsWidth);
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildHomePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRulePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAlbumPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
+    // The System junk page's two halves and the band of text under them.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildCategoryPanel();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildDetailPanel();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRuleFooter();
 
     // ===== ACTIONS =====
     void StartScan();
@@ -101,6 +108,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
 
     CategoryPanel categoryPanel_;
+    // The System junk page's two halves, and whether the user has moved the
+    // divider between them (after which the window stops setting its place).
+    std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> ruleSplit_;
+    bool categoryWidthPinned_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasColumnsTreeView> detailTree_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> categoryFilter_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> modeDropdown_;

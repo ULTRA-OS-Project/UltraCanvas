@@ -1122,7 +1122,22 @@ namespace UltraCanvas {
             DrawSpellErrorMarks(ctx);
             ctx->PopState();
 
-            if (IsFocused()) {
+            // Grey hint drawn over the (empty) text area, whether focused or not,
+            // so an empty composer still prompts the user. Mirrors the TextInput
+            // placeholder using the same render-context text API.
+            if (!placeholderText.empty() && GetText().empty()) {
+                ctx->PushState();
+                ctx->ClipRect(visibleTextArea);
+                ctx->SetFontStyle(style.fontStyle);
+                ctx->SetTextPaint(style.placeholderColor);
+                ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+                ctx->DrawTextInRect(placeholderText,
+                    Rect2Dd(visibleTextArea.x, visibleTextArea.y,
+                            visibleTextArea.width, visibleTextArea.height));
+                ctx->PopState();
+            }
+
+            if (IsFocused() && caretVisible) {
                 UpdateCaret(ctx);
             } else {
                 UltraCanvasCaret::GetInstance().Hide(this);
@@ -1331,6 +1346,15 @@ namespace UltraCanvas {
     }
 
 // ===== EVENT HANDLING =====
+
+    void UltraCanvasTextArea::SetCaretVisible(bool visible) {
+        if (caretVisible == visible) return;
+        caretVisible = visible;
+        // Toggling off should drop the caret right away rather than waiting for
+        // the next focus change; the render path keeps it hidden thereafter.
+        if (!visible) UltraCanvasCaret::GetInstance().Hide(this);
+        RequestRedraw();
+    }
 
     void UltraCanvasTextArea::SetDisplayOnly(bool displayOnlyMode) {
         if (displayOnly == displayOnlyMode) return;

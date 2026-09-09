@@ -3,37 +3,52 @@
 A Windows Explorer style file manager built entirely from UltraCanvas
 components:
 
+This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler/CHANGELOG.md).
+
 | Area | Component |
 |---|---|
 | Folder tree (left pane) | `UltraCanvasTreeView` — lazily populated filesystem tree (a curated Home, Cloud Storage, drives / mounted volumes) |
-| Folder content (center pane) | `UltraCanvasTabbedContainer` hosting one `UltraCanvasFilerWidget` per tab — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
+| Folder tabs (window top bar) | `UltraCanvasTabbedContainer` with its pages detached into the folder pane (`SetContentHost`), so the tab strip is the topmost bar of the window and its "+" ends the tab list |
+| Folder content (center pane) | one `UltraCanvasFilerWidget` per tab, the active one shown in the tab strip's content host — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
-| Search field | `UltraCanvasTextInput` driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type and `ShowFileList()` for the recursive search |
+| Search field | a container holding an `UltraCanvasTextInput` — driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type — and the in-field **Scan sub folder** `UltraCanvasButton`, which starts the background sub-folder scan whose matches arrive through `ShowFileList()` / `AppendToFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
 | Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
 | Panes | `UltraCanvasSplitPane` with draggable splitters |
 
 ## Features
 
-- **Tabs:** the "+" button on the left side of the toolbar opens an
-  additional tab showing the current folder. Every tab has its own folder
-  view, Back / Forward history, sort and view settings; tabs can be
-  reordered by dragging and closed (the last one stays open).
+- **Tabs:** the tab strip is the topmost bar of the window — above the
+  toolbars, browser style — and its tabs name the folder each one shows. The
+  **"+" at the end of the tab list** opens an additional tab on the current
+  folder. Every tab has its own folder view, Back / Forward history, sort and
+  view settings; tabs can be reordered by dragging and closed (the last one
+  stays open). The strip stays visible while the History or Favorites view
+  replaces the folder display, so clicking a tab returns to browsing it.
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
   tree with lazy expansion, and the History toggle (see below).
 - **Search:** typing in the field filters the shown folder **as-you-type**
   (case-insensitive name filter, no disk walk; the status bar notes the
-  filter). When nothing in the folder matches, a centered **Search in sub
-  folders** button appears in the folder display; it — like **Enter** in the
-  field — searches the current folder recursively for names containing the
-  text (case-insensitive, up to 1000 matches). The recursive matches are
-  displayed in the tab's current view mode, with a *Path* column after the
-  name in Details view, and the context menu's first entry, **Open path (in
-  new tab)**, opens the selected match's folder in a new tab. Clearing the
-  field (or navigating anywhere) returns to the normal folder display. Each
-  tab keeps its own search.
+  filter). A **Scan sub folder** button appears *inside* the search field as
+  soon as there is something to search for; it — like **Enter** in the field,
+  and like the centered **Scan sub folder** button the folder display shows
+  when nothing in the folder matches — scans the current folder and everything
+  under it for names containing the text (case-insensitive, up to 20 000
+  matches).
+  The scan runs on a worker thread and its matches appear **while it walks**,
+  in batches, so the window stays usable and results can be opened before it
+  finishes; the status bar counts matches and scanned folders as they come in.
+  While a scan runs the in-field button reads **Stop** and ends it, keeping
+  what was found. Symlinks and directory junctions are never entered (a
+  reparse-point loop cannot make the scan run forever) and hidden entries are
+  skipped, as in the folder tree. The matches are displayed in the tab's
+  current view mode, with a *Path* column after the name in Details view, and
+  the context menu's first entry, **Open path (in new tab)**, opens the
+  selected match's folder in a new tab. Clearing the field, editing the query,
+  navigating, switching tabs or closing the tab ends the scan and returns to
+  the normal folder display. Each tab keeps its own search.
 - **Type-ahead:** a letter typed anywhere outside a text field selects the
   first entry in the visible listing whose name starts with it; pressing the
   same letter again walks on to the next such entry (wrapping), Explorer
@@ -101,18 +116,33 @@ components:
 - **Folder tree:** a **Pinned** section on top — above *Computer*, open, and
   shown only while something is pinned — then *Computer* with Home, **Cloud
   Storage** and the drives / volumes below it.
-  - **Home** is curated, not scanned: it lists the user's main folders —
-    Desktop, Documents, Downloads, Music, Pictures, Videos — and stops there,
-    so a profile does not spill *3D Objects*, *Saved Games*, *Links* and every
-    working folder into the tree. The paths come from the platform
+  - **Computer is a page of its own.** Clicking the entry (or *Up* from a
+    drive root, or the breadcrumb's leading *Computer* node) replaces the
+    folder display with the machine's places: **Folders** — Home and every
+    Cloud Storage folder as folder tiles, which open on a double-click and
+    carry the usual context menu — and **Drives** — one card per mounted
+    volume with a **pie chart of used against free space** (green while there
+    is room, amber past 75 %, red past 90 %, the percentage in the middle),
+    the drive's name as the button that opens it, *232.9 GB free of 476.2 GB*
+    and the mount point. The sizes are read off the UI thread, so a network
+    share that stopped answering delays its own card and nothing else, and
+    the cards follow mounts and unmounts like the tree's drive rows. The
+    status bar sums the drives; Esc, any navigation or a tab switch returns
+    to the folder display.
+  - **Home** follows *Settings > Display > Home folder*. Curated (the Windows
+    default), it lists the user's main folders — Desktop, Documents, Downloads,
+    Music, Pictures, Videos — and stops there, so a profile does not spill
+    *3D Objects*, *Saved Games*, *Links* and every working folder into the
+    tree; *Show all content* (the Linux / macOS default) lists every subfolder,
+    with the main folders keeping their icons. The paths come from the platform
     (`SHGetKnownFolderPath`, the macOS home layout, `xdg-user-dirs`), so a
     redirected or localized folder — *Bilder*, a Documents folder moved into
     OneDrive — is the one listed, under its own icon.
-  - The **folder display is curated the same way**: showing the home folder
-    lists the main folders (wherever they physically live) plus the folder's
-    files, and nothing else. **Display > Hidden files** in the context menu
-    reveals the full physical listing — that toggle means "show me
-    everything".
+  - The **folder display follows the same setting**: curated, showing the home
+    folder lists the main folders (wherever they physically live) plus the
+    folder's files, and nothing else. **Display > Hidden files** in the context
+    menu always reveals the full physical listing — that toggle means "show me
+    everything", whatever the setting says.
   - **Cloud Storage** collects the sync folders this machine actually has —
     OneDrive (personal and every business tenant), Google Drive, Dropbox
     (personal and business) and iCloud Drive — instead of leaving them
@@ -122,7 +152,26 @@ components:
     the section is hidden entirely when there is nothing to show, and the
     lookup runs off the UI thread, so the window never waits for it. Like the
     drive roots, the cloud roots keep *Delete* disabled in the context menu —
-    deleting one would sync the deletion to every other device.
+    deleting one would sync the deletion to every other device. The lookup is
+    repeated when a volume appears, because a cloud folder can arrive with one
+    (that Google Drive mounted as its own drive letter).
+  - **The drives follow the machine.** A USB stick, a card, an optical disc, a
+    network share or a disk image connected while UltraFiler is running gets
+    its row straight away, and loses it again when it is removed — the tree is
+    not the start-up snapshot it used to be. The operating system reports the
+    change (`UltraCanvasVolumeMonitor`: `WM_DEVICECHANGE` on Windows,
+    `/proc/self/mountinfo` on Linux, `NSWorkspace` on macOS), so there is
+    nothing polling in the background. A tab left inside a volume that went
+    away is moved back to the home folder rather than showing a listing that
+    no longer exists, and the status bar says which volume disconnected.
+    *Refresh drives* in the tree's context menu runs the same pass by hand.
+  - Volumes are looked for where each platform puts them: the drive letters on
+    Windows, and `/media`, `/run/media` (both also one level down, for the
+    per-user directory udisks creates), `/Volumes` and `/mnt` elsewhere.
+    `/run/media` is the udisks2 location on Fedora, RHEL, Arch and openSUSE,
+    and `/Volumes` is where every removable volume on macOS lands — neither
+    used to be looked at, so on those systems a stick was missing from the
+    tree even after a restart.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps
@@ -158,8 +207,7 @@ components:
   document (SVG) - shows a strip of backdrop colours right under the picture:
   greys and colours to click, and the checkered swatch to go back to the
   transparency pattern. What is picked there is saved, so the next preview
-  opens with it (it is the same setting as *Settings > Media Viewer >
-  Transparent Images*).
+  opens with it; the strip is the only place this is set.
   While the preview is enabled, **deleting the previewed file selects its
   neighbour** (the next entry, or the previous one when it was the last), so
   the pane moves on to that file instead of folding away and snapping the
@@ -183,6 +231,17 @@ components:
   are prewarmed in the background while a folder is shown, so the menu opens
   without any lookup delay.
 - **Status bar:** entry count of the folder, selection count and summed size.
+- **Folder icons:** the main user folders — Desktop, Documents, Downloads,
+  Music, Pictures and Videos — are shown with icons of their own instead of
+  the generic folder shape, in the file display and in the folder tree alike.
+  **Extras > Set folder icon** gives *any* folder a picture of the user's
+  choosing: it opens the file dialog filtered to the image formats the build
+  can read, and converts the chosen file to a QOI icon kept in the config
+  directory (`~/.config/UltraFiler/foldericons`), so the icon survives the
+  original being moved or deleted. It is drawn everywhere the folder appears —
+  every tab, the folder preview, the History and Favorites lists, the tree row
+  and its Pinned bookmark — and beats the built-in icon of a main user folder.
+  **Extras > Remove folder icon** takes it away again.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file
@@ -193,7 +252,13 @@ components:
 ## Settings
 
 The **Settings > Settings...** menu entry opens the settings window: a tree of
-pages on the left, the selected page on the right. Every change applies to the
+pages on the left, the selected page on the right. Every page reads the same
+way: a title, one line saying what the choice is about, the controls, and the
+notes explaining the setting set apart in a tinted block at the foot of the
+page. A page's *Restore default ...* button sits at the left end of the
+window's bottom bar, opposite *Close*. Clicking a heading in the tree
+(*Display*, *Handling*, ...) moves on to its first page, since a heading has
+no page of its own. Every change applies to the
 running application immediately and is saved to the config file
 (`~/.config/UltraFiler/config.ini`, `%APPDATA%\UltraFiler\config.ini`,
 `~/Library/Application Support/UltraFiler/config.ini`).
@@ -201,8 +266,8 @@ running application immediately and is saved to the config file
 | Page | Setting |
 |---|---|
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
+| Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
-| Media Viewer > Transparent Images | Backdrop shown behind transparent images in the preview: checkered pattern or a preset colour picked with `UltraCanvasColorPicker`. The colour strip under a transparent image in the preview writes to the same setting |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves |
 | History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |

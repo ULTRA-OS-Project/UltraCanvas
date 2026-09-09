@@ -45,6 +45,15 @@
 #undef Rect
 #endif
 
+// winuser.h maps these onto IsZoomed/IsIconic; they collide with the
+// UltraCanvasWindowBase state queries of the same names.
+#ifdef IsMaximized
+#undef IsMaximized
+#endif
+#ifdef IsMinimized
+#undef IsMinimized
+#endif
+
 // ===== STANDARD INCLUDES =====
 #include <memory>
 #include <vector>
@@ -103,6 +112,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowsApplication();
+        ~UltraCanvasWindowsApplication() override;
 
         static UltraCanvasWindowsApplication* GetInstance() {
             return instance;
@@ -156,6 +166,7 @@ namespace UltraCanvas {
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
         void LoadBundledFontsNative() override;
+        bool RegisterFontFileNative(const std::string& fontFilePath) override;
 
     private:
         // ===== INTERNAL INITIALIZATION =====

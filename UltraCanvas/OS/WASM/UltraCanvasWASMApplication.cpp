@@ -1,12 +1,13 @@
 // OS/WASM/UltraCanvasWASMApplication.cpp
 // WebAssembly (Emscripten) platform application implementation
-// Version: 2.0.0
-// Last Modified: 2026-08-12
+// Version: 2.1.0
+// Last Modified: 2026-09-07
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
 #include "UltraCanvasWASMApplication.h"
 #include "UltraCanvasWASMWindow.h"
+#include "UltraCanvasWASMClipboard.h"
 #include "../../include/UltraCanvasClipboard.h"
 #include "../../include/UltraCanvasImage.h"
 #include "../../include/UltraCanvasDebug.h"
@@ -18,9 +19,40 @@
 #include <cstring>
 #include <filesystem>
 
+// ===== PASTE BRIDGE =====
+// The browser only exposes clipboard contents synchronously inside a `paste`
+// event, and it only fires that event when the page lets the Ctrl/Cmd+V
+// keydown through (OnKeyCallback does). The DOM listener registered in
+// InitializeNative() lands here with the pasted text: hand it to the
+// clipboard backend first, then queue the Ctrl+V key event the application
+// was waiting for, so the text field's paste handler finds the text in place.
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnPaste(char* text) {
+    if (text) {
+        UltraCanvas::UltraCanvasWASMClipboard::OfferText(text);
+        free(text);
+    }
+    auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance();
+    if (!app) return;
+    UltraCanvas::UCEvent event;
+    event.type = UltraCanvas::UCEventType::KeyDown;
+    event.virtualKey = static_cast<UltraCanvas::UCKeys>('V');
+    event.nativeKeyCode = 'V';
+    event.ctrl = true;
+    app->PushEvent(event);
+}
+
 namespace UltraCanvas {
 
     UltraCanvasWASMApplication* UltraCanvasWASMApplication::instance = nullptr;
+
+    namespace {
+        // Ctrl+V / Cmd+V: the one shortcut the browser must see, so that it
+        // fires `paste` (see UltraCanvasWasmOnPaste above).
+        bool IsPasteChord(const EmscriptenKeyboardEvent* keyEvent) {
+            if (!(keyEvent->ctrlKey || keyEvent->metaKey) || keyEvent->altKey) return false;
+            return keyEvent->key[1] == 0 && (keyEvent->key[0] == 'v' || keyEvent->key[0] == 'V');
+        }
+    }
 
 // ===== CONSTRUCTOR / DESTRUCTOR =====
 
@@ -46,6 +78,23 @@ namespace UltraCanvas {
         emscripten_set_visibilitychange_callback(this, EM_TRUE, OnVisibilityChange);
         emscripten_set_beforeunload_callback(this, OnBeforeUnload);
 
+        // Paste bridge (no Emscripten HTML5 wrapper exists for clipboard
+        // events). The canvas has focus while the app is used, and `paste`
+        // bubbles from it to the document.
+        EM_ASM({
+            if (window.__ultracanvasOnPaste) {
+                document.removeEventListener('paste', window.__ultracanvasOnPaste);
+            }
+            window.__ultracanvasOnPaste = function(e) {
+                var data = e.clipboardData || window.clipboardData;
+                var text = '';
+                try { text = data ? (data.getData('text/plain') || '') : ''; } catch (err) {}
+                e.preventDefault();
+                _UltraCanvasWasmOnPaste(stringToNewUTF8(text));
+            };
+            document.addEventListener('paste', window.__ultracanvasOnPaste);
+        });
+
         InitializeWakeUp();
 
         running = false;
@@ -61,6 +110,12 @@ namespace UltraCanvas {
         emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
         emscripten_set_visibilitychange_callback(nullptr, EM_TRUE, nullptr);
         emscripten_set_beforeunload_callback(nullptr, nullptr);
+        EM_ASM({
+            if (window.__ultracanvasOnPaste) {
+                document.removeEventListener('paste', window.__ultracanvasOnPaste);
+                window.__ultracanvasOnPaste = null;
+            }
+        });
     }
 
 // ===== MAIN LOOP =====
@@ -194,6 +249,7 @@ namespace UltraCanvas {
             case UCMouseCursor::SizeNWSE:     return "nwse-resize";
             case UCMouseCursor::SizeNESW:     return "nesw-resize";
             case UCMouseCursor::ContextMenu:  return "context-menu";
+            case UCMouseCursor::AppStarting:  return "progress";
             default:                          return nullptr;
         }
     }
@@ -333,6 +389,14 @@ namespace UltraCanvas {
         auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
         if (!app) return EM_FALSE;
 
+        // Let the paste chord through untouched: the browser answers it with a
+        // `paste` event, and UltraCanvasWasmOnPaste() queues the KeyDown from
+        // there, after the clipboard text has been captured. (The KeyUp still
+        // arrives through the normal path below.)
+        if (eventType == EMSCRIPTEN_EVENT_KEYDOWN && IsPasteChord(keyEvent)) {
+            return EM_FALSE;
+        }
+
         UCEvent event = app->ConvertKeyEvent(eventType, keyEvent);
         if (event.virtualKey != UCKeys::Unknown || !event.text.empty()) {
             app->PushEvent(event);
@@ -389,6 +453,24 @@ namespace UltraCanvas {
             FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()));
         }
         FcConfigBuildFonts(cfg);
+    }
+
+    bool UltraCanvasWASMApplication::RegisterFontFileNative(const std::string& fontFilePath) {
+        // An application font: added to this process's FcConfig only, so
+        // nothing is installed for the user or for other applications.
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) {
+            debugOutput << "UltraCanvas: RegisterFontFileNative: no current "
+                           "fontconfig config" << std::endl;
+            return false;
+        }
+        if (!FcConfigAppFontAddFile(
+                cfg, reinterpret_cast<const FcChar8*>(fontFilePath.c_str()))) {
+            debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        return true;
     }
 
 } // namespace UltraCanvas

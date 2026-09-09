@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasTreeMapElement.cpp
 // Interactive treemap component implementation
-// Version: 1.0.2
-// Last Modified: 2026-05-09
+// Version: 1.1.0
+// Last Modified: 2026-08-31
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasTreeMapElement.h"
@@ -205,6 +205,46 @@ void UltraCanvasTreeMapElement::RenderChart(IRenderContext* ctx) {
         
         ctx->PopState();
     }
+}
+
+bool UltraCanvasTreeMapElement::OnEvent(const UCEvent& event) {
+    if (IsDisabled() || !IsVisible()) return UltraCanvasChartElementBase::OnEvent(event);
+
+    if (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) {
+        auto node = GetNodeAtPosition(Point2Di(event.pointer.x, event.pointer.y));
+
+        if (event.button == UCMouseButton::Right) {
+            if (node && onNodeRightClick) {
+                onNodeRightClick(node->name);
+                return true;
+            }
+            return UltraCanvasChartElementBase::OnEvent(event);
+        }
+
+        if (event.button == UCMouseButton::Left) {
+            // A click on the background clears the selection, which is how the
+            // user gets back to "everything" without hunting for a control.
+            if (!node) {
+                ClearSelection();
+                return UltraCanvasChartElementBase::OnEvent(event);
+            }
+
+            if (event.type == UCEventType::MouseDoubleClick) {
+                if (onNodeDoubleClick) onNodeDoubleClick(node->name, node->value, node->secondaryValue);
+                // Drilling needs children; on a leaf the double click is just
+                // a click, and the selection above already reported it.
+                DrillDown(node);
+                return true;
+            }
+
+            SelectNode(node);
+            // Still let the base start its drag tracking, so pan keeps working.
+            UltraCanvasChartElementBase::OnEvent(event);
+            return true;
+        }
+    }
+
+    return UltraCanvasChartElementBase::OnEvent(event);
 }
 
 bool UltraCanvasTreeMapElement::HandleChartMouseMove(const Point2Di& mousePos) {
@@ -747,27 +787,17 @@ void UltraCanvasTreeMapElement::DrawLeafNodeDetails(IRenderContext* ctx) {
 
 std::shared_ptr<TreeMapNode> UltraCanvasTreeMapElement::GetNodeAtPosition(const Point2Di& pos) const {
     if (!currentNode) return nullptr;
-    
+
     Point2Dd relativePos(static_cast<double>(pos.x),
                          static_cast<double>(pos.y));
-    
-    return FindNodeAtPositionRecursive(currentNode, relativePos);
-}
 
-std::shared_ptr<TreeMapNode> UltraCanvasTreeMapElement::FindNodeAtPositionRecursive(
-    std::shared_ptr<TreeMapNode> node, const Point2Dd& pos) const {
-    
-    if (!node || !node->isVisible) return nullptr;
-    
-    if (node->isLeaf && PointInRect(pos, node->bounds)) {
-        return node;
+    // Hit-test exactly what RenderChart draws: the current level's children.
+    // Only those have been through the layout, so only those carry bounds —
+    // deeper nodes keep whatever bounds a previous drill-down left them, and
+    // a block that groups children is just as clickable as a leaf.
+    for (const auto& child : currentNode->children) {
+        if (child->isVisible && PointInRect(relativePos, child->bounds)) return child;
     }
-    
-    for (const auto& child : node->children) {
-        auto found = FindNodeAtPositionRecursive(child, pos);
-        if (found) return found;
-    }
-    
     return nullptr;
 }
 

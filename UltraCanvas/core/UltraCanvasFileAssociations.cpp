@@ -16,6 +16,7 @@
 #include "UltraCanvasUtils.h"   // ToLowerCase
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
@@ -24,6 +25,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <sys/wait.h>
@@ -333,6 +335,69 @@ void PrewarmExtensionsAsync(const std::vector<std::string>& extensions) {
 }
 
 } // namespace FileAssociations
+
+// ===== ON-DISK ICON CACHE RETENTION =====
+// Shared by every backend that keeps extracted icons as files (Windows and
+// macOS today); see UltraCanvasFileAssociationsBackend.h for why the policy
+// lives here rather than in each of them. Pure std::filesystem, so it is
+// compiled on every platform whether or not that platform's backend uses it.
+namespace FileAssociationsBackend {
+
+    namespace {
+        namespace fs = std::filesystem;
+
+        // A hit re-stamps the file, but only once the stamp has gone this
+        // stale — a two-week window wants day resolution, not a disk write
+        // every time a menu opens.
+        constexpr auto kStampInterval = std::chrono::hours(24);
+
+        // Compared as paths, not strings: fs::path::string_type is wide on
+        // Windows and narrow elsewhere, and path comparison needs no encoding
+        // conversion that could throw on an odd file name.
+        bool IsIconCacheFile(const fs::path& path) {
+            const fs::path ext = path.extension();
+            return ext == ".png" || ext == ".tmp";
+        }
+    } // namespace
+
+    void StampIconCacheFile(const std::string& path) {
+        std::error_code ec;
+        const fs::path file = PathFromUtf8(path);
+        const auto stamp = fs::last_write_time(file, ec);
+        if (ec) return;
+        const auto now = fs::file_time_type::clock::now();
+        if (now - stamp < kStampInterval) return;
+        // A read-only cache directory makes this fail; that is harmless — the
+        // file is simply swept earlier than it would otherwise have been.
+        fs::last_write_time(file, now, ec);
+    }
+
+    void SweepIconCache(const std::string& directory) {
+        std::error_code ec;
+        fs::directory_iterator it(PathFromUtf8(directory), ec);
+        if (ec) return;
+        const auto now = fs::file_time_type::clock::now();
+        // Collected first, deleted after: removing entries from a directory
+        // while walking it is not something the iterator promises to survive.
+        std::vector<fs::path> expired;
+        for (const fs::directory_entry& entry : it) {
+            if (!entry.is_regular_file(ec) || ec) { ec.clear(); continue; }
+            if (!IsIconCacheFile(entry.path())) continue;
+            const auto stamp = entry.last_write_time(ec);
+            // Unreadable stamp: leave the file alone rather than guess at it.
+            if (ec) { ec.clear(); continue; }
+            // A stamp in the future — a clock that was set back — reads as
+            // infinitely fresh. That is the safe way round, so let it be.
+            if (now - stamp <= kIconCacheMaxAge) continue;
+            expired.push_back(entry.path());
+        }
+        for (const fs::path& path : expired) {
+            fs::remove(path, ec);
+            ec.clear();   // in use by another process: it goes next time
+        }
+    }
+
+} // namespace FileAssociationsBackend
 
 // ===== BACKEND FOR PLATFORMS WITHOUT ONE =====
 // WebAssembly has no application registry to enumerate or launch into; give

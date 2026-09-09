@@ -113,7 +113,33 @@ UltraWin_ReleaseApp(app);
 
 - `UltraWin_RunApp(path, options, &handle)` forks and execs Wine in its own
   process group, with `WINEPREFIX` set and optional extra environment
-  variables (e.g. a DXVK switch) applied. The path is routed by extension:
+  variables (e.g. a DXVK switch) applied.
+- **Environment selection**, in order: an explicit
+  `UltraWinRunOptions::environment` always wins; a path living *inside*
+  an environment's prefix (an installed program, its Start-Menu `.lnk`)
+  selects the environment that owns it — the only prefix where that
+  program is actually installed; a **remembered association** (below)
+  covers programs outside any prefix; everything else runs in the shared
+  `Default` environment.
+- **Associations** — how a launcher's one-time choice becomes durable:
+  `UltraWin_SetAssociation(programPath, env)` /
+  `UltraWin_GetAssociation` / `UltraWin_RemoveAssociation`, persisted
+  under the UltraWin data directory and shared by every launcher. Each
+  entry carries a **file fingerprint** (size + content hash), so a
+  *different* file appearing at the same path — a re-downloaded
+  `setup.exe` in Downloads — makes the stored choice stale and the
+  picker asks again instead of silently reusing the old program's
+  environment.
+  `UltraWin_SuggestEnvironment(path)` gives pickers their default: the
+  program's own association, else a *sibling* program's association
+  (multi-exe applications share one environment), else a name derived
+  from the parent folder, else the file name.
+  `UltraWin_EnvironmentForPath` tells a launcher the choice is already
+  made because the program lives inside a prefix.
+- UltraFiler asks **once** per unknown program (a small picker: existing
+  environments + a new-environment name, pre-filled from the suggestion,
+  with "remember for this program" checked) — later double-clicks launch
+  straight through the stored association. The path is routed by extension:
   `.exe` (and anything else) runs directly, `.msi` installs through
   `msiexec /i`, and `.lnk` Start-Menu shortcuts resolve through
   `start /wait /unix` — so installers and installed programs launch through
@@ -196,14 +222,37 @@ launch/supervision path runs against a stub wine script (via the
 `UltraWinConfig::winePath` override), and the one test that exercises a real
 `wineboot` skips itself when no binary is found.
 
+## UltraWin Manager — the graphical front-end
+
+`UltraWinManager` (built with the framework, `Apps/UltraWinManager/`) is
+the desktop UI over this module — assembled entirely from catalogue
+elements, with every slow UltraWin call on a worker thread:
+
+- **Environments** — the isolated Wine prefixes: their installed
+  components, one-click component installs (winetricks verbs), launching
+  a `.exe`/`.msi` into a chosen environment, deletion (busy-guarded).
+- **Programs** — installed Start-Menu programs across all environments,
+  launchable by double-click or button.
+- **Windows VM** — machine state (provisioned/installed, pid, KVM/TCG,
+  RDP port, home share), provisioning from install media, and
+  start/suspend/resume/stop — the `ultrawin-setup` flow with buttons.
+
+The header always shows the host capability line (Wine, winetricks, QEMU,
+KVM, RemoteApp), and missing engines surface as guidance in the status
+bar, never as silent failures.
+
 ## UltraFiler integration
 
 Double-clicking a `.exe` or `.msi` in UltraFiler launches it through
-`UltraWin_RunApp` in a per-app environment named after the file (created
-automatically on first launch, off the UI thread; installers run through
-msiexec). When Wine is missing, the status bar says how to install it.
-Available only in Linux builds (`ULTRACANVAS_HAS_ULTRAWIN`); on other
-platforms activation behaves as before.
+`UltraWin_RunApp` (installers run through msiexec, off the UI thread).
+For a program whose environment is not already decided (not inside a
+prefix, no stored association) a small picker asks **once** — existing
+environments plus a new-environment name pre-filled from
+`UltraWin_SuggestEnvironment` — and remembers the answer, so every later
+launch is a plain double-click. When Wine is missing, the status bar says
+how to install it. Available only in Linux builds
+(`ULTRACANVAS_HAS_ULTRAWIN`); on other platforms activation behaves as
+before.
 
 ## The VM tier (Stage 2a — machine backbone)
 

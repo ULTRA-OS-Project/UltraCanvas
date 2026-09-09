@@ -16,8 +16,8 @@
 // only the .cpp files under Plugins/LaTeX include it. The public widget
 // (UltraCanvasLaTeXView.h) is free of any MicroTeX dependency.
 //
-// Version: 1.0.0
-// Last Modified: 2026-06-28
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -154,6 +154,11 @@ void SetLaTeXActiveContext(IRenderContext* ctx);
 // Takes effect on the next (first) initialization. (Module-internal; distinct
 // from the core-side public SetLaTeXFontSearchDir() in the loader.)
 void SetLaTeXEngineFontDir(const std::string& dir);
+
+// Incremented by every SetLaTeXEngineFontDir() that changes the directory.
+// A view that failed to initialise the engine remembers the generation it
+// failed at and retries only once it has moved on.
+unsigned GetLaTeXEngineFontDirGeneration();
 
 } // namespace UltraCanvas
 

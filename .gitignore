@@ -5,6 +5,9 @@ CMakeFiles/
 /cmake-build-debug/
 /cmake-build-release/
 /build/
+# Out-of-tree build trees: a configuration-specific name (build-shared,
+# build-android, ...) is the usual way to keep several around at once.
+/build-*/
 /dist/
 Apps/Texter/build/
 /1icons/

@@ -39,7 +39,8 @@ namespace UltraCanvas {
             ~WindowsFolderWatchBackend() override { Stop(); }
 
             bool Start(const std::string& path,
-                       std::function<void()> onChanged) override {
+                       std::function<void()> onChanged,
+                       std::function<void()> onFailed) override {
                 Stop();
 
                 // FILE_LIST_DIRECTORY + BACKUP_SEMANTICS is what opening a
@@ -65,6 +66,8 @@ namespace UltraCanvas {
                 }
 
                 callback = std::move(onChanged);
+                failedCallback = std::move(onFailed);
+                failureReported = false;
                 stopping.store(false);
                 worker = std::thread([this]() { Run(); });
                 return true;
@@ -81,6 +84,8 @@ namespace UltraCanvas {
                 }
                 CloseHandles();
                 callback = nullptr;
+                failedCallback = nullptr;
+                failureReported = false;
             }
 
         private:
@@ -91,6 +96,15 @@ namespace UltraCanvas {
                 }
                 if (readEvent) { ::CloseHandle(readEvent); readEvent = nullptr; }
                 if (stopEvent) { ::CloseHandle(stopEvent); stopEvent = nullptr; }
+            }
+
+            // Tell the caller the watch is over, exactly once, and never
+            // because of Stop() - a failure it asked for is a failure it can
+            // act on, a Stop() it performed is not news.
+            void ReportFailure() {
+                if (failureReported || stopping.load() || !failedCallback) return;
+                failureReported = true;
+                failedCallback();
             }
 
             void Run() {
@@ -111,7 +125,10 @@ namespace UltraCanvas {
                                 static_cast<DWORD>(buffer.size() * sizeof(DWORD)),
                                 FALSE,          // this folder only, not the subtree
                                 kWatchFilter, &bytes, &overlapped, nullptr)) {
-                        return;                 // handle unusable; caller polls
+                        // The handle went bad under us: the volume was
+                        // removed, the share dropped, the folder deleted.
+                        ReportFailure();
+                        return;
                     }
 
                     HANDLE waits[2] = {readEvent, stopEvent};
@@ -122,12 +139,14 @@ namespace UltraCanvas {
                         // read and let it drain before the buffer goes away.
                         ::CancelIoEx(directory, &overlapped);
                         ::GetOverlappedResult(directory, &overlapped, &bytes, TRUE);
+                        ReportFailure();        // no-op when this was Stop()
                         return;
                     }
 
                     DWORD transferred = 0;
                     if (!::GetOverlappedResult(directory, &overlapped, &transferred, FALSE)) {
-                        return;                 // cancelled or broken
+                        ReportFailure();        // cancelled or broken
+                        return;
                     }
                     if (stopping.load()) return;
 
@@ -144,6 +163,8 @@ namespace UltraCanvas {
             std::atomic<bool> stopping{false};
             std::thread worker;
             std::function<void()> callback;
+            std::function<void()> failedCallback;
+            bool failureReported = false;   // worker thread only
         };
 
     } // namespace

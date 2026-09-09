@@ -167,7 +167,7 @@ namespace UltraCanvas {
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         container->AddChild(statusLabel);
 
-        // One tile per sample drawing in media/xar/
+        // One tile per sample drawing in media/vector/XAR/
         auto makeTile = [&](const std::string& id, int x, int y,
                             const std::string& fileName) {
             auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 280);
@@ -175,7 +175,7 @@ namespace UltraCanvas {
             tile->SetBorders(2, Color(180, 180, 180, 255));
 
             auto element = std::make_shared<UltraCanvasXARElement>(id + "El", 10, 10, 280, 220);
-            std::string path = NormalizePath(GetResourcesDir() + "media/xar/" + fileName);
+            std::string path = NormalizePath(GetResourcesDir() + "media/vector/XAR/" + fileName);
             if (element->LoadFromFile(path)) {
                 statusLabel->SetText("Loaded: " + path);
             } else {

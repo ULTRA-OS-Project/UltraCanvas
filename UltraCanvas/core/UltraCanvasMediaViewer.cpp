@@ -1,8 +1,12 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.5.0
-// Last Modified: 2026-08-23
+// Version: 1.6.0
+// Last Modified: 2026-09-03
+// V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
+//   EPS/PostScript) are shown from the preview bitmap they carry inside
+//   themselves, the way a *.ucd container is - so a file manager's detail pane
+//   shows the drawing instead of folding away.
 // V1.5.0: CloseFile() shows nothing and lets go of the file - playback stops and
 //   every display backend releases its document, so a host preview pane can move,
 //   rename or delete the file it was just showing. StopPlayback() alone never
@@ -30,6 +34,8 @@
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
+#include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
+#include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "Documents/eBook/TXTEngine.h" // RegisterBuiltinEBookEngines (idempotent)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -40,6 +46,9 @@
 #ifdef ULTRACANVAS_ENABLE_AUDIO
 #include "UltraCanvasAudioPlayerElement.h"
 #endif
+// Always: file classification asks the codec registry what this build can
+// play, and with neither backend compiled in it correctly answers "nothing".
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1220,6 +1229,16 @@ bool UltraCanvasMediaViewer::IsUCDFile(const std::string& path) {
     return LowerExt(path) == "ucd";
 }
 
+bool UltraCanvasMediaViewer::IsVectorDocumentFile(const std::string& path) {
+    // The vector formats that carry a preview bitmap of the drawing inside
+    // themselves. Nothing here rasterizes the drawing - that needs a renderer
+    // with a window - so the preview IS the display, exactly as for a *.ucd
+    // container. A format the image pipeline can rasterize (SVG, and EPS on a
+    // libvips build with a PostScript loader) is still shown from the file
+    // itself; the embedded preview is the fallback (see LoadCurrent).
+    return FormatCarriesEmbeddedPreview(path);
+}
+
 // Image / vector formats the image pipeline can rasterize. Kept in one place
 // because both ClassifyFile() and IsSupportedMedia() need the same list.
 static const std::vector<std::string>& ImageExtensions() {
@@ -1259,39 +1278,26 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
 }
 
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
-    // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
-    // real video backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_VIDEO
-    static const std::vector<std::string> v = {
-        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv",
-        "flv", "mpg", "mpeg", "ogv", "3gp", "ts"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(v.begin(), v.end(), e) != v.end();
-#else
-    (void)path;
-    return false;
-#endif
+    // The codec registry is the single source of truth: it knows which
+    // containers the platform video backend was built with, honours the
+    // content probe for an extension shared with another kind of file (".ts"
+    // is TypeScript far more often than a transport stream), and returns true
+    // for a format that is recognised but has no decoder — so the viewer can
+    // show a player and the reason it is empty rather than mistaking the file
+    // for a picture. With no video backend compiled in nothing is registered,
+    // and this is false for everything.
+    return IsMediaFileOfKind(MediaCodecKind::Video, path);
 }
 
 bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
-    // Audio plays through UltraCanvasAudioPlayerElement; only advertised when a
-    // real audio backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_AUDIO
-    static const std::vector<std::string> a = {
-        "mp3", "wav", "flac", "ogg", "oga", "m4a",
-        "aac", "opus", "wma", "aif", "aiff"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(a.begin(), a.end(), e) != a.end();
-#else
-    (void)path;
-    return false;
-#endif
+    return IsMediaFileOfKind(MediaCodecKind::Audio, path);
 }
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsUCDFile(path))         return MediaKind::UCDoc;
+    // Before the text check: an EPS is PostScript source, and its own drawing
+    // is the more useful answer to "what is in this file".
+    if (IsVectorDocumentFile(path)) return MediaKind::Vector;
     if (IsDocumentFile(path))    return MediaKind::Document;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
@@ -1313,7 +1319,7 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     // Documents / spreadsheets / 3D models / e-books / UCD containers / text /
     // video / audio (video & audio gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
-           IsEBookFile(path) || IsUCDFile(path) ||
+           IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -1411,8 +1417,18 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
     if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
     ucdDetails.clear();
-    // Spreadsheets and 3D models are parsed into memory by their loaders, and
-    // the video / audio backends expose no release beyond Stop() (done above).
+    // A stopped clip is still an OPEN clip: the decoder keeps the file until
+    // it is unloaded, and on Windows that handle is what makes the file
+    // impossible to rename, replace or delete - the very operations a file
+    // manager offers next to the preview it just closed.
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (videoPlayer) static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->Unload();
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Unload();
+#endif
+    // Spreadsheets and 3D models are parsed into memory by their loaders, so
+    // they hold nothing open once loaded.
 }
 
 void UltraCanvasMediaViewer::ShowOpenDialog() {
@@ -1700,6 +1716,35 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         }
         handled = true;
     }
+    if (!handled && kind == MediaKind::Vector) {
+        // A vector document nothing here can rasterize (Xara, CorelDRAW, EPS
+        // and the rest of PostScript). Shown the way a *.ucd container is:
+        // the preview bitmap the file carries inside itself - the only
+        // picture of the drawing obtainable without a renderer that needs a
+        // window. Where the image pipeline DOES rasterize the format (a
+        // libvips build with a PostScript loader), that is the better picture
+        // and is tried first.
+        ShowView(MediaKind::Image);
+        std::shared_ptr<UCImage> img;
+        const std::string ext = LowerExt(path);
+        if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
+            img = UCImage::Get(path);
+        if (!img || !img->IsValid()) {
+            std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+            if (!bytes.empty()) img = UCImage::LoadFromMemory(bytes);
+        }
+        if (img && img->IsValid()) {
+            surface->ShowImage(img, transition, transitionDurationMs, animated);
+        } else {
+            // No preview stored, and no renderer for the drawing: say so
+            // rather than leaving an empty pane the user has to interpret.
+            surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+            if (infoLabel)
+                infoLabel->SetText(BaseName(path) +
+                        " - no preview stored in this vector document");
+        }
+        handled = true;
+    }
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     if (!handled && kind == MediaKind::Video && videoPlayer) {
         ShowView(MediaKind::Video);
@@ -1726,7 +1771,15 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ap = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get());
         if (!ap->LoadFromFile(path)) {
-            if (infoLabel) infoLabel->SetText("Failed to open audio: " + BaseName(path));
+            // The player's reason names the codec and what would decode it,
+            // which is the difference between a silent dead transport and an
+            // answer the user can act on.
+            const std::string& why = ap->GetLastError();
+            if (infoLabel) {
+                infoLabel->SetText(why.empty()
+                                       ? "Failed to open audio: " + BaseName(path)
+                                       : BaseName(path) + " - " + why);
+            }
         } else {
             ap->Play();
         }

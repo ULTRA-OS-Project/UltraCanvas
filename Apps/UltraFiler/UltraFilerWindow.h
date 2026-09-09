@@ -1,16 +1,22 @@
 // Apps/UltraFiler/UltraFilerWindow.h
 // UltraFiler - file manager main window (Windows Explorer style layout):
-// a navigation row ("+" new-tab button, Back / Forward / Up / Refresh, the
+// the folder tab strip at the very top of the window (an
+// UltraCanvasTabbedContainer detached from its pages: the strip is the
+// window's top bar, the pages live in the folder pane of the split below,
+// and the "+" at the end of the tab list opens another tab), then
+// a navigation row (Back / Forward / Up / Refresh, the
 // History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
 // bar (the "New folder ▾" split button — its arrow lists the same kinds as
 // the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
 // search field — typing filters the shown folder as-you-type; when nothing
-// matches, a centered "Search in sub folders" button (and the Enter key)
-// escalates to the recursive search —, Sort and
+// matches, a centered "Scan sub folder" button (and the Enter key, and the
+// button inside the search field) escalates to the background sub-folder
+// scan whose matches appear while it runs —, Sort and
 // View dropdowns, video preview mode, Preview toggle), a three-pane split with
-// the lazy folder tree (UltraCanvasTreeView), the tabbed folder content display
-// (UltraCanvasTabbedContainer hosting one UltraCanvasFilerWidget per tab) and
+// the lazy folder tree (UltraCanvasTreeView), the folder content display
+// (the tab strip's content host, showing the active tab's
+// UltraCanvasFilerWidget - one per tab) and
 // the detail pane (shown only while a single previewable file OR a folder is
 // selected — a folder only once the double-click interval has passed, so a
 // double-click that opens it never flashes its preview; Esc closes it): a
@@ -34,14 +40,26 @@
 // Delete / Paste (folders only), a Pin submenu whose "To Treeview" /
 // "To Favorites" flags show and toggle where the folder is pinned, and Unpin
 // (pinned entries only). The filer context menus' Extras submenu ends with an
-// app-provided block (extrasMenuProvider): "Open prompt", then Pin / Unpin
-// submenus with the same flags, acting on the current selection.
+// app-provided block (extrasMenuProvider): "Open prompt", then "Set folder
+// icon" / "Remove folder icon" (any folder can be given a picture of the
+// user's choosing, converted to QOI and kept in the config directory - see
+// UltraFilerFolderIcons), then Pin / Unpin submenus with the same flags, all
+// acting on the current selection. The main user folders (Desktop, Documents,
+// Downloads, Music, Pictures, Videos) carry icons of their own without
+// anything being set.
 // The tree's drive entries (the drive roots on Windows, "File System" and the
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
 // come from the settings window's Display > Treeview page.
-// Version: 1.12.0
-// Last Modified: 2026-08-28
+// The tree's "Computer" entry (and the Up button from a drive root) opens the
+// Computer page in the folder pane, in place of the active tab's folder
+// display: the Home and Cloud Storage folders as folder tiles, then one card
+// per mounted volume with a pie chart of its used against free space
+// (UltraCanvasPieChartElement), its name as the button that opens it, and
+// the free / total sizes. The sizes are read off the UI thread and the cards
+// follow mounts and unmounts like the tree's drive rows do.
+// Version: 1.17.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -60,14 +78,21 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
+#include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
+#include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
 #include "UltraFilerFavorites.h"
+#include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerSettings.h"
+#include "UltraFilerSettingsDialog.h"
+#include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -119,7 +144,8 @@ private:
     void BuildFavoritesView();
 
     // ===== TABS =====
-    // Creates a tab with its own filer widget showing `path`.
+    // Creates a tab with its own filer widget showing `path`. Wired to the
+    // tab strip's "+" button at the end of the tab list.
     void AddNewTab(const std::string& path, bool activate);
     void WireFilerCallbacks(FilerTabState* tab);
     // Refreshes breadcrumb, nav buttons, tree, dropdowns, status bar, window
@@ -138,6 +164,24 @@ private:
     // Scans `node`'s subfolders into real child nodes (once per node) and drops
     // the placeholder that stood for them.
     void EnsureTreeChildren(TreeNode* node);
+    // Brings the drive rows back in line with what is actually mounted: a row
+    // is added for every volume that appeared and removed for every one that
+    // is gone, together with everything the tree remembers about it. Any tab
+    // that was inside a volume that went away is moved to the home folder, so
+    // nothing keeps showing a folder that no longer exists.
+    //
+    // Driven by the volume monitor (StartVolumeMonitor), which is what makes a
+    // USB stick plugged in while UltraFiler is running appear without a
+    // restart - the tree used to be enumerated exactly once, at start-up.
+    // Cheap and idempotent: calling it when nothing changed does nothing.
+    void RefreshDriveNodes();
+    // Takes one drive row out of the tree and out of the bookkeeping that
+    // would otherwise keep it from ever being scanned again.
+    void DropDriveNode(const std::string& path);
+    // Starts watching for mounts and unmounts. The monitor reports from its
+    // own thread, so the refresh is posted back to the UI thread, and a burst
+    // of notifications from one insertion is collapsed into a single pass.
+    void StartVolumeMonitor();
     // Adds a drive node (a drive root on Windows, "File System" or a mounted
     // volume elsewhere) under `parentId` and remembers it as a drive, so the
     // configured drive background colour reaches it - now and after every
@@ -157,6 +201,11 @@ private:
     void StopCloudStorageDiscovery();
     void ApplyCloudStorageFolders(const std::vector<CloudStorageInfo>& found);
 
+    // Re-derives the tree's Home children after Settings > Display > Home
+    // folder flips between "Show all content" and "Show only predefined
+    // folders" (ApplySettings calls it on a change).
+    void RefreshHomeTreeChildren();
+
     // "Does this folder contain subfolders?" costs a directory open each, and a
     // single expansion asks it once per child — on a slow or network volume
     // that froze the window for seconds. The question is answered on a worker
@@ -169,22 +218,63 @@ private:
     void SubfolderProbeWorkerMain();
 
     // ===== SEARCH =====
-    // Searches the active tab's folder (recursively) for names containing
-    // `query` and shows the matches in the tab's current view mode; an empty
-    // query returns the tab to its normal folder display. Wired to the
-    // search field's Enter and to the filer's "Search in sub folders" button.
+    // Starts a sub-folder scan of the active tab's folder for names containing
+    // `query`; an empty query returns the tab to its normal folder display.
+    // The walk runs on a worker thread and its matches reach the display in
+    // batches while it goes on (see SubfolderSearchWorkerMain) — the scan used
+    // to run on the UI thread, which froze the window for as long as the tree
+    // took and, on a large volume, long enough for the user to conclude the
+    // application had died. Wired to the search field's Enter, to its in-field
+    // "Scan sub folder" button and to the filer's centered "Scan sub folder"
+    // button.
     void RunSearch(const std::string& query);
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's
     // name filter — no disk walk). When nothing matches, the filer shows the
-    // centered "Search in sub folders" button, which escalates to RunSearch.
+    // centered "Scan sub folder" button, which escalates to RunSearch.
     // An empty text ends the filter (and leaves an earlier recursive-result
     // display).
     void ApplyLiveSearchFilter(const std::string& text);
     // Ends every search state of the active tab — the field's text, the live
-    // filter and a recursive-result display — used by the file-creation
+    // filter, a running scan and a result display — used by the file-creation
     // commands, whose fresh entry has to be visible in the folder display.
     void ResetSearchState();
+
+    // ===== SUB-FOLDER SEARCH (background, incremental) =====
+    // Everything the worker and the UI thread share about one scan. Held by
+    // shared_ptr so a cancelled or superseded scan can be dropped without
+    // waiting for its thread, and so a batch still queued for the UI thread
+    // can tell which scan it belongs to.
+    struct SubfolderSearchState {
+        std::mutex mutex;
+        std::vector<std::string> pending;      // matches not yet on screen
+        std::atomic<bool> cancelled{false};
+        std::atomic<bool> drainPosted{false};  // one batch in flight at a time
+        std::atomic<bool> finished{false};     // the walk ran out of folders
+        std::atomic<bool> truncated{false};    // stopped at kMaxSearchResults
+        std::atomic<size_t> matches{0};
+        std::atomic<size_t> foldersScanned{0};
+    };
+    // The walk itself: an explicit folder stack (no recursive iterator, whose
+    // errors are awkward to contain), symlinks and junctions never entered so
+    // a reparse-point loop cannot run forever, and a depth cap on top of that.
+    void SubfolderSearchWorkerMain(std::shared_ptr<SubfolderSearchState> state,
+                                   std::shared_ptr<std::atomic<bool>> alive,
+                                   std::string root, std::string needle,
+                                   uint64_t generation);
+    // Moves what the worker has found onto the display (UI thread), refreshes
+    // the status line and, when the walk is done, retires the worker.
+    void DrainSubfolderSearch(std::shared_ptr<SubfolderSearchState> state,
+                              uint64_t generation);
+    // Cancels a running scan; the results found so far stay on screen. The
+    // worker is set aside rather than waited for (see StopSubfolderSearch).
+    void StopSubfolderSearch();
+    // Joins the workers of cancelled scans: the ones that have finished, or
+    // all of them when `waitForAll` (window shutdown).
+    void ReapSearchWorkers(bool waitForAll);
+    // The search field's in-field button: "Scan sub folder" while there is
+    // something to search for, "Stop" while a scan runs.
+    void UpdateScanButton();
 
     // ===== NEW ENTRY (the command bar's "New folder ▾" split button) =====
     // The primary section creates a folder (the old "New folder" button);
@@ -213,6 +303,10 @@ private:
     // create the environment, which takes a while. Status-bar feedback only;
     // when Wine is missing the status bar says how to get it.
     void LaunchWindowsExecutable(const FilerEntry& entry);
+    // Runs the entry in the given environment on a worker thread, with
+    // status-bar feedback (called once the environment is decided).
+    void StartWindowsLaunch(const FilerEntry& entry,
+                            const std::string& environment);
 #endif
     // Remembers a folder the user did something in (opened a file there,
     // created / pasted / renamed / deleted something, ...). Browsing a folder
@@ -241,6 +335,42 @@ private:
     // What the Pin / Unpin entries act on: the visible filer's selection, or
     // the shown folder itself while nothing is selected in the browsing view.
     std::vector<FilerEntry> PinTargets() const;
+
+    // ===== COMPUTER PAGE (the tree's "Computer" entry) =====
+    // The page lives in the split's folder pane next to the tab content host
+    // and replaces it while shown; the tabs keep their folders meanwhile, and
+    // anything that shows a folder - a navigation, a tab switch, Back /
+    // Forward, an entry opened from History - hides it again. Esc hides it
+    // too, and the tree keeps "Computer" selected while it is up.
+    void BuildComputerPage();
+    void SetComputerPageVisible(bool visible);
+    // Re-lists the page's folders (Home, then the Cloud Storage folders the
+    // tree found) and rebuilds the drive cards from what is mounted right
+    // now; the sizes come in afterwards (QueueVolumeSpaceQuery).
+    void RefreshComputerPage();
+    void RefreshComputerFolders();
+    void RebuildComputerDriveCards(const std::vector<MountedVolume>& volumes);
+    // Pushes a volume's sizes into its card: the pie's two slices (used /
+    // free, the used one coloured by how full the volume is), the centre
+    // percentage and the "free of" line.
+    void ApplyVolumeSpaceToCard(const VolumeSpace& space);
+    // Reads the sizes of the listed volumes on a worker thread and posts
+    // them back (ApplyVolumeSpaces): std::filesystem::space on a network
+    // share that stopped answering waits out a timeout, which the window
+    // must not. A query asked for while one runs is run again once that
+    // one has answered, so the newest set of volumes is always measured.
+    void QueueVolumeSpaceQuery();
+    void StopVolumeSpaceQuery();
+    void ApplyVolumeSpaces(const std::vector<VolumeSpace>& spaces);
+    // The folders the page lists: the home folder, then the cloud folders
+    // under the tree's Cloud Storage section, in the tree's order.
+    std::vector<std::string> ComputerPageFolderPaths() const;
+    // Rebuilds the breadcrumb for `path`, with the strip's leading
+    // "Computer" node opening the Computer page rather than the drive root.
+    void RebuildBreadcrumb(const std::string& path);
+    // The breadcrumb while the Computer page is shown: the single "Computer"
+    // node, whose dropdown still lists the drives.
+    void ShowComputerBreadcrumb();
     // Pin > To Favorites: each target goes into the tab its kind belongs to.
     void PinTargetsToFavorites();
     // Pin > To Treeview: each target folder appears under the tree's Pinned
@@ -254,6 +384,32 @@ private:
     // then Pin / Unpin submenus whose "To Treeview" / "To Favorites" flags
     // show whether the current selection is pinned there.
     std::vector<MenuItemData> BuildExtrasMenuItems();
+
+    // ===== FOLDER ICONS (Extras > Set folder icon) =====
+    // The icon a folder is drawn with, as an absolute image path: the one the
+    // user set for it, else the icon of a well-known user folder (Desktop,
+    // Documents, Downloads, Music, Pictures, Videos), else "" — which is what
+    // makes the file display draw its own folder shape.
+    std::string FolderIconPath(const std::string& folderPath) const;
+    // The icon file a tree row shows when its folder has no icon of its own -
+    // "drive.png" for a drive entry, "home-icon.png" for Home, "cloud.svg"
+    // under Cloud Storage, else the plain folder.
+    std::string DefaultTreeIconFile(const TreeNode* node) const;
+    // Installs FolderIconPath as a freshly created file display's
+    // folderIconProvider, so every view of it draws the icons.
+    void WireFolderIconProvider(UltraCanvasFilerWidget* target);
+    // Extras > Set folder icon: opens the image file dialog and gives the
+    // chosen picture — converted to QOI — to the selected folders (or, with
+    // nothing selected, to the shown folder). Extras > Remove folder icon
+    // takes it away again.
+    void SetFolderIconForTargets();
+    void RemoveFolderIconForTargets();
+    // The folders the two entries above act on: the selected ones, or the
+    // shown folder while nothing is selected.
+    std::vector<std::string> FolderIconTargets() const;
+    // Repaints what shows a folder's icon after it changed: its tree row and
+    // every file display.
+    void RefreshFolderIcons(const std::vector<std::string>& folders);
 
     // ===== FOLDER TREE: PINNED SECTION + CONTEXT MENU =====
     // Rebuilds the children of the tree's "Pinned" node from the pinned
@@ -359,15 +515,46 @@ private:
     // preview's transparent-image backdrop). Called at startup and by the
     // settings dialog after every change.
     void ApplySettings();
+    // Every file display of the window - the tabs, the folder preview and the
+    // History / Favorites lists - so a setting that governs all of them is
+    // applied in one pass.
+    std::vector<UltraCanvasFilerWidget*> AllFilers() const;
+    // Display > Thumbnails / Detail view: the switches of `source` (the file
+    // display whose menu was used) become the persisted setting and are
+    // mirrored into every other file display. Guarded against the echo of its
+    // own writes - each SetThumbnailKinds() fires the change hook again.
+    void AdoptDisplayFormats(UltraCanvasFilerWidget* source);
+    // Whether the detail pane can show this entry: the Display > Detail view
+    // switches allow it AND the media viewer has a view for the file.
+    bool CanShowInDetailView(const FilerEntry& entry) const;
+    // The tail the file display hangs under Display > Thumbnails and
+    // Display > Detail view: "File formats...", which opens the matching
+    // settings page.
+    std::vector<MenuItemData> BuildFormatListMenuItems(FilerPreviewTarget target);
+    // Installs the display-format callbacks (menu tail + change hook) on a
+    // freshly created file display.
+    void WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target);
+    // The Display settings every file display carries alike: the thumbnail /
+    // detail-view switches and the File extensions ones. Applied by
+    // ApplySettings to all of them, and to a display created later (a new tab,
+    // the History and Favorites lists) so it opens configured rather than
+    // waiting for the next settings change.
+    void ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
-    // History / Clear Favorites actions.
-    void OpenSettingsDialog();
+    // History / Clear Favorites actions. `page` points it straight at one
+    // settings page - the Display menu's "File formats..." entries do.
+    void OpenSettingsDialog(UltraFilerSettingsDialog::Page page =
+                                    UltraFilerSettingsDialog::Page::Default);
 
     // ===== WIDGETS =====
     std::shared_ptr<UltraCanvasWindow>          window;
     std::shared_ptr<UltraCanvasTreeView>        folderTree;
+    // The folder tab strip: the window's topmost bar. Its pages are detached
+    // into `tabContentHost` (in the split's folder pane), so the tabs sit above
+    // the toolbars while the folder they select is displayed below them.
     std::shared_ptr<UltraCanvasTabbedContainer> tabbedContainer;
+    std::shared_ptr<UltraCanvasContainer>       tabContentHost;  // shows the active tab's page
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
     std::shared_ptr<UltraCanvasMediaViewer>     preview;
     // Folder preview: shows the content of a selected folder in the detail
@@ -382,12 +569,26 @@ private:
     std::shared_ptr<UltraCanvasContainer>       favoritesPane; // Favorites view root
     std::shared_ptr<UltraCanvasTabbedContainer> favoritesTabs; // Files / Folders / Apps
     std::shared_ptr<UltraCanvasFilerWidget>     favoritesFilers[HistoryTabCount];
+    // The Computer page (see BuildComputerPage): its root in the folder pane,
+    // the folder tiles, the row of drive cards and what each card is made of.
+    struct ComputerDriveCard {
+        std::string path;                                    // mount point
+        std::shared_ptr<UltraCanvasPieChartElement> pie;     // used / free
+        std::shared_ptr<UltraCanvasLabel> usageLabel;        // "62% used"
+        std::shared_ptr<UltraCanvasLabel> spaceLabel;        // "232.9 GB free of 476.2 GB"
+    };
+    std::shared_ptr<UltraCanvasContainer>       computerPane;
+    std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
+    std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
     std::shared_ptr<UltraCanvasButton>          newButton;       // "New folder ▾" split button
     std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
     std::shared_ptr<UltraCanvasBreadcrumb>      breadcrumb;
+    std::shared_ptr<UltraCanvasContainer>       searchBox;    // field + in-field button
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
+    std::shared_ptr<UltraCanvasButton>          scanButton;   // "Scan sub folder" / "Stop"
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
@@ -416,8 +617,49 @@ private:
     std::condition_variable probeCond;
     std::thread probeWorker;
     bool probeShutdown = false;
-    // One-shot "which cloud folders exist?" lookup (QueueCloudStorageDiscovery).
+    // "Which cloud folders exist?" lookup (QueueCloudStorageDiscovery). Re-run
+    // when a volume appears - a Google Drive mounted as a virtual drive letter
+    // arrives with it - so the flag, not the thread's joinability, is what
+    // keeps two lookups from running at once.
     std::thread cloudWorker;
+    std::atomic<bool> cloudWorkerBusy{false};
+    // The volume sizes the Computer page shows (QueueVolumeSpaceQuery):
+    // the last answer per mount point, so a re-opened page shows the sizes
+    // it already knows while the fresh ones are read; the worker reading
+    // them, its busy flag and the "ask again when done" flag.
+    std::map<std::string, VolumeSpace> volumeSpaces;
+    std::thread spaceWorker;
+    std::atomic<bool> spaceWorkerBusy{false};
+    std::atomic<bool> spaceQueryPending{false};
+    // Background sub-folder search (see RunSearch). `searchState` is null while
+    // no scan runs; `searchGeneration` is bumped for every scan started or
+    // stopped, so batches queued by an abandoned one are dropped on arrival.
+    std::thread searchWorker;
+    std::shared_ptr<SubfolderSearchState> searchState;
+    uint64_t searchGeneration = 0;
+    FilerTabState* searchTab = nullptr;    // tab the results belong to
+    std::string searchQueryText;           // query of the running / last scan
+    std::string searchStatus;              // what the status bar says about it
+    bool searchResultsShown = false;       // first batch already on display
+    bool scanButtonStops = false;          // the in-field button reads "Stop"
+    // Workers of cancelled scans, waiting to be joined (ReapSearchWorkers).
+    struct RetiredSearch {
+        std::thread thread;
+        std::shared_ptr<SubfolderSearchState> state;
+    };
+    std::vector<RetiredSearch> retiredSearches;
+    // Display > Home folder mode, mirrored for the probe worker: `settings`
+    // belongs to the UI thread, the "has subfolders?" probe does not.
+    std::atomic<bool> curatedHomeActive{false};
+    // Set by the monitor's thread, cleared by the UI thread that acts on it:
+    // one tree pass per burst, however many notifications an insertion makes.
+    std::atomic<bool> volumeRefreshPending{false};
+    // Mounts and unmounts (see RefreshDriveNodes). Stopped first thing in the
+    // destructor: its callback captures the window, and Stop() joins, so
+    // nothing can report into a window that is going away. Declared after the
+    // flag its callback touches, so even the implicit Stop() in its own
+    // destructor runs while that flag is still alive.
+    UltraCanvasVolumeMonitor volumeMonitor;
     // Cleared on destruction so results still in flight drop instead of
     // reaching a half-destroyed window.
     std::shared_ptr<std::atomic<bool>> probeAlive =
@@ -425,6 +667,9 @@ private:
 
     bool syncingTree = false;              // tree selection driven by code
     bool syncingControls = false;          // dropdowns driven by filer callbacks
+    // Set while the display-format switches are pushed into the file
+    // displays, so their change hooks do not write the setting back.
+    bool applyingDisplayFormats = false;
     bool previewEnabled = true;            // the command bar toggle state
     bool previewShown = false;             // preview pane currently in the split
     bool previewShowsFolder = false;       // pane holds folderPreview, not preview
@@ -437,9 +682,11 @@ private:
     std::string folderPreviewReadyPath;
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split
+    bool computerShown = false;            // Computer page replaces the tab content
     UltraFilerSettings settings;           // persisted application settings
     UltraFilerHistory  history;            // recently used files / folders / apps
     UltraFilerFavorites favorites;         // pinned files / folders / apps + tree pins
+    UltraFilerFolderIcons folderIcons;     // user-set icons of individual folders
     UltraFilerFolderViews folderViews;     // per-folder view type + sort order
     // Set while a stored folder state is being pushed into a filer, so the
     // widget's own onViewTypeChanged / onSortChanged do not record it straight

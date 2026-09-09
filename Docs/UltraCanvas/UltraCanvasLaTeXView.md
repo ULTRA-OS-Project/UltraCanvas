@@ -65,14 +65,35 @@ height of `0` lets the element size itself to the formula via the layout engine.
 On first use the loader searches for the module in this order:
 1. a path set via `SetLaTeXModulePath(...)`,
 2. `$ULTRACANVAS_PLUGIN_DIR`,
-3. `<exe>/`, `<exe>/plugins/`, `<exe>/../lib/`, `<exe>/../lib/ultracanvas/`,
+3. `<exe>/`, `<exe>/plugins/`, `<exe>/lib/` (dev build: executable at the
+   build root, module in `<build>/lib`), `<exe>/../lib/` (package: executable
+   in `bin/`), `<exe>/../lib/ultracanvas/`,
 4. the dynamic linker's own search path (rpath / `LD_LIBRARY_PATH`).
 
-The module then loads `latinmodern-math.clm2` (+ `.otf`) from `media/microtex`
-relative to the executable (or `$MICROTEX_FONTDIR`, or `SetLaTeXFontSearchDir`).
-The top-level CMake copies `media/` into the build/install tree.
+The module then loads `latinmodern-math.clm2` (+ `.otf`) from the first
+directory that has it:
+1. `SetLaTeXFontSearchDir(...)`, then `$MICROTEX_FONTDIR`,
+2. `GetResourcesDir() + "media/microtex"` — the framework's own resource root,
+   which is where the top-level CMake copies `media/` (`<build>/share/media`)
+   and where a package installs it (`<exe>/../share/media`),
+3. `<exe>/media/microtex`, `<exe>/../media/microtex`,
+   `<exe>/share/media/microtex`, `<exe>/../share/media/microtex`,
+   `<exe>/share/UltraCanvas/media/microtex`,
+   `<exe>/../share/UltraCanvas/media/microtex`,
+4. the same `media/microtex`, `share/media/microtex` and
+   `share/UltraCanvas/media/microtex` relative to the working directory.
 
 If `CreateLaTeXView` returns `nullptr`, check `GetLaTeXModuleError()`.
+
+## Diagnostics
+
+A view never fails silently. When the formula cannot be typeset — the math
+font was not found, or the source has a syntax error — the element draws the
+reason as a short red message in place of the formula and sizes itself to
+that message, so the problem is visible in the UI and not just through
+`IsValid()` / `GetLastError()`. A font lookup that failed is retried after
+`SetLaTeXFontSearchDir(...)` is called, so an application can recover a view
+at runtime instead of recreating it.
 
 ## Build / deployment
 

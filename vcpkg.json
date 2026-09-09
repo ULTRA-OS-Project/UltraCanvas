@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    "cairo",
+    "pango",
+    "harfbuzz",
+    "glib",
+    "libiconv",
+    "freetype",
+    "tinyxml2",
+    "jsoncpp",
+    "zlib",
+    "pkgconf"
+  ]
+}

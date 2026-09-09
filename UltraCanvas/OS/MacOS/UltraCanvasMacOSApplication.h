@@ -108,6 +108,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasMacOSApplication();
+        ~UltraCanvasMacOSApplication() override;
 
         static UltraCanvasMacOSApplication* GetInstance() {
             return instance;
@@ -159,6 +160,7 @@ namespace UltraCanvas {
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
         void LoadBundledFontsNative() override;
+        bool RegisterFontFileNative(const std::string& fontFilePath) override;
         NSCursor* LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 
     private:

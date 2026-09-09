@@ -33,6 +33,14 @@
 #ifdef RGB
 #undef RGB
 #endif
+// winuser.h maps these onto IsZoomed/IsIconic; they collide with the
+// UltraCanvasWindowBase state queries of the same names.
+#ifdef IsMaximized
+#undef IsMaximized
+#endif
+#ifdef IsMinimized
+#undef IsMinimized
+#endif
 
 #include <string>
 #include <vector>

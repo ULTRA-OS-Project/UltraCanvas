@@ -93,6 +93,33 @@ TEST(run_routing_by_extension) {
     UltraWin_Shutdown();
 }
 
+TEST(run_selects_owning_environment_for_prefix_paths) {
+    // A program installed inside an environment (here: its Start-Menu
+    // shortcut) must run in THAT environment when the caller names none —
+    // the stub records its command line into $WINEPREFIX, so the file
+    // location proves which prefix the launch used.
+    REQUIRE(UltraWin_Initialize(StubConfig()));
+    REQUIRE(UltraWin_CreateEnvironment("Owner"));
+    std::string lnk = WriteFile(
+        ultrawin_internal::PrefixPath("Owner") +
+            "/drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs/"
+            "App.lnk",
+        "L");
+
+    UltraWinRunOptions opt;  // no environment named
+    UltraWinHandle h = UltraWinInvalidHandle;
+    REQUIRE(UltraWin_RunApp(lnk, opt, &h));
+    int code = -1;
+    REQUIRE(UltraWin_WaitApp(h, 10000, &code));
+    UltraWin_ReleaseApp(h);
+    CHECK(fs::exists(ultrawin_internal::PrefixPath("Owner") +
+                     "/last-cmd.txt"));
+    CHECK(!fs::exists(ultrawin_internal::PrefixPath("Default") +
+                      "/last-cmd.txt"));
+    REQUIRE(UltraWin_DeleteEnvironment("Owner"));
+    UltraWin_Shutdown();
+}
+
 TEST(list_programs_from_start_menus) {
     REQUIRE(UltraWin_Initialize(StubConfig()));
     REQUIRE(UltraWin_CreateEnvironment("Menu"));
